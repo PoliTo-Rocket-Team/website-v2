@@ -236,6 +236,13 @@ export function evaluate(expr: unknown, ctx: Ctx): unknown {
   const lower = (v: unknown) => (typeof v === "string" ? v.toLowerCase() : v);
   if (text === "lower(?)") return lower(at(0));
   if (text === "lower(?) = ?") return compare(lower(at(0)), at(1)) === 0;
+  // A JSON field read as text: `new_data ->> 'project_id'`.
+  const field = /^\? ->> '([a-z_]+)'$/.exec(text);
+  if (field) {
+    const json = at(0);
+    const value = json !== null && typeof json === "object" ? (json as Record<string, unknown>)[field[1]] : undefined;
+    return value === undefined || value === null ? null : typeof value === "object" ? JSON.stringify(value) : String(value);
+  }
   if (/^coalesce\(\?(, \?)*\)$/.test(text)) return args.map((_, i) => at(i)).find((v) => v !== null && v !== undefined) ?? null;
   const aggregated = /^(count|max|min|sum)\(\?\)$/.exec(text);
   if (aggregated) return aggregate(aggregated[1], args[0], ctx);

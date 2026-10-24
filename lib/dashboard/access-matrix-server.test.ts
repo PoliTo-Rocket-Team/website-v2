@@ -13,6 +13,7 @@ import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
 import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
 import { betterAuthUsers, logs, members, orders, roles, scopes } from "@/db/schema";
+import { readProjectStamps } from "./database-projects";
 import { readViewAsAccount, recordViewAs, viewAsRefusal } from "./database-view-as";
 import { viewAsSiteOf, type ViewAsSite } from "./view-as";
 import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
@@ -1164,6 +1165,26 @@ describe("a write made while viewing as someone records both people, from the se
     assert.ok(!isRefusal(await actions.decideOrder(IDS.order(DM), { kind: "approve", actingAccountId: itLead.userId })));
     assert.equal(decidedOrder().reviewedByActingAccount, null, "in a plain session, none");
     assert.deepEqual(recordedAuditWriters(), [{ userId: teamLeader.userId, actingAccountId: null }]);
+  });
+
+  test("the Projects edited-by line names the IT lead as the person for an edit made while viewing as them", async () => {
+    await signedIn(true);
+    // What the audit trigger stores for two project edits: one made while
+    // viewing as the team leader, one the team leader made on their own.
+    const edit = (projectId: number, actingAccountId: string | null) => ({
+      schemaName: "public",
+      tableName: "project_versions",
+      operation: "UPDATE",
+      recordId: String(projectId),
+      newData: { project_id: projectId },
+      changedBy: teamLeader.userId,
+      changedByActingAccount: actingAccountId,
+      changedAt: "2026-10-24T09:00:00.000Z",
+    });
+    insertRows(logs, [edit(1, itLead.userId), edit(2, null)]);
+    const stamps = await readProjectStamps();
+    assert.equal(stamps.get(1)?.by, asTeamLeader, "an edit made while viewing as them");
+    assert.equal(stamps.get(2)?.by, `Viewer ${teamLeader.userId}`, "an edit made outside View as");
   });
 
   test("a write made outside View as stores no acting account and reads as before", async () => {

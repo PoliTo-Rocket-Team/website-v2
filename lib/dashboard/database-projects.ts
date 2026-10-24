@@ -13,6 +13,8 @@ import type { ProjectRecord } from "@/lib/project-content/record";
 import { newRowContent, rowContentOf, rowRecordOf, type KeptRow } from "@/lib/project-content/row";
 import { publicStorePanelPhotos, type PhotoFiles } from "@/lib/outreach-photos";
 import { deletePublicFile, ownPublicStoreHost, uploadPublicFile } from "@/lib/storage/public-store";
+import { attributedName } from "./acting-account";
+import { actingTitleIn, readActingTitles } from "./database-acting-account";
 import { written } from "./write";
 
 // The database side of the projects (issue #295): the store a projects editor
@@ -88,6 +90,8 @@ export async function cachedPublishedProjects(): Promise<ProjectRecord[] | null>
  * "edited by" line, issue #297), read off the audit log that every write
  * here leaves. Moving a card writes `projects`, not its versions, so it is
  * not an edit. Someone whose account was anonymized is named by no one.
+ * An edit made while viewing as someone names the acting seat too, "IT lead
+ * as Sara Conti", from the acting account the log row stores (issue #605).
  */
 export async function readProjectStamps(): Promise<ReadonlyMap<number, EditStamp>> {
   const projectId = sql<string>`${logs.newData} ->> 'project_id'`;
@@ -95,6 +99,7 @@ export async function readProjectStamps(): Promise<ReadonlyMap<number, EditStamp
     .selectDistinctOn([projectId], {
       projectId,
       at: logs.changedAt,
+      actingAccount: logs.changedByActingAccount,
       firstName: users.firstName,
       lastName: users.lastName,
       anonymizedAt: users.anonymizedAt,
@@ -103,12 +108,14 @@ export async function readProjectStamps(): Promise<ReadonlyMap<number, EditStamp
     .leftJoin(users, eq(users.id, logs.changedBy))
     .where(and(eq(logs.schemaName, "public"), eq(logs.tableName, "project_versions"), inArray(logs.operation, ["INSERT", "UPDATE"])))
     .orderBy(projectId, desc(logs.changedAt));
+  const actingTitles = await readActingTitles(rows.map((row) => row.actingAccount));
   return new Map(
     rows.flatMap((row) => {
       const id = Number(row.projectId);
       if (!Number.isSafeInteger(id)) return [];
       const name = row.anonymizedAt === null ? [row.firstName, row.lastName].filter(Boolean).join(" ") : "";
-      return [[id, { at: new Date(row.at).toISOString(), by: name === "" ? null : name }] as const];
+      const by = name === "" ? null : attributedName(name, actingTitleIn(actingTitles, row.actingAccount));
+      return [[id, { at: new Date(row.at).toISOString(), by }] as const];
     }),
   );
 }

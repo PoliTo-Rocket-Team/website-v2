@@ -19,6 +19,9 @@ made stale. Client components import the action functions directly.
    "by" column (`given_by`, `reviewed_by`, ...) also sets that column's `..._acting_account`
    companion from `identity.actingAccountId`, and a read shows it with `attributedName`
    ([lib/dashboard/acting-account.ts](../lib/dashboard/acting-account.ts)): "IT lead as Sara Conti".
+   A "by" line read off the log itself, joined on `logs.changed_by`, also reads
+   `logs.changed_by_acting_account` and shows it the same way (`readProjectStamps` in
+   [lib/dashboard/database-projects.ts](../lib/dashboard/database-projects.ts)).
 
    ```ts
    async function setPositionOpen(identity: Identity, positionId: number, open: boolean): Promise<void> {
