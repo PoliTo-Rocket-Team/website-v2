@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { SCOPE_ROWS } from "../db/seed/access";
-import { ROLE_ROWS, TESTER_AUTH_ROWS, TESTER_MEMBER, USER_ROWS } from "../db/seed/people";
+import { PROPULSION_HEAD, ROLE_ROWS, TESTER_AUTH_ROWS, TESTER_MEMBER, USER_ROWS } from "../db/seed/people";
 import { DEPARTMENT } from "../db/seed/structure";
 import { TESTER_KEYS, TESTERS, isTesterKey, testerSignInOn } from "./dev-tester";
+import { seatOf } from "./seeded-accounts";
 import { BASE, GATE_OFF, GATE_ON, LOOKALIKE_DB, OTHER_DB, PREVIEW_DB, PREVIEW_DB_DIRECT, TEST_ENV, envRestorer, memoryAuth, setEnv } from "./dev-tester-fixture";
 
 afterEach(envRestorer());
@@ -85,19 +86,17 @@ test("every tester key names a tester with its own id and email", () => {
   assert.equal(isTesterKey("admin"), false);
 });
 
-test("the tester sign-in offers a department head (issue #230)", () => {
-  assert.equal(isTesterKey("department-head"), true);
-  assert.equal(TESTERS["department-head"].email, "department-head.tester@example.com");
-});
-
-test("the seed gives the department head tester a head role in Payload, a test department, and no scope row", () => {
-  const memberId = TESTER_MEMBER["department-head"];
-  const held = ROLE_ROWS.rows.filter((r) => r.memberId === memberId);
+test("no tester is a department head: that seat is the seeded head of Propulsion, with no scope row (issue #644)", () => {
+  assert.equal(isTesterKey("department-head"), false);
+  assert.ok(!(Object.values(TESTER_MEMBER) as number[]).includes(904), "the old department-head tester's member 904 is gone");
+  const seat = seatOf("department-head");
+  assert.equal(seat.memberId, PROPULSION_HEAD);
+  const held = ROLE_ROWS.rows.filter((r) => r.memberId === seat.memberId && r.leavedAt == null);
   assert.deepEqual(
-    held.map((r) => [r.type, r.deptId, r.divisionId ?? null, r.title, r.leavedAt ?? null]),
-    [["head", DEPARTMENT.payload, null, "Head of Payload", null]],
+    held.map((r) => [r.type, r.deptId, r.divisionId ?? null, r.title]),
+    [["head", DEPARTMENT.propulsion, null, "Head of Propulsion"]],
   );
-  assert.ok(!SCOPE_ROWS.rows.some((s) => s.memberId === memberId));
+  assert.ok(!SCOPE_ROWS.rows.some((s) => s.memberId === seat.memberId));
 });
 
 test("the seed puts every tester in better_auth.user and public.users", () => {

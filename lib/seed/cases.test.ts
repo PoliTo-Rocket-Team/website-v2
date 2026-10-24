@@ -56,6 +56,8 @@ import {
 } from "../../db/seed/cases";
 import { handOverAttentionFor } from "../dashboard/hand-over-request";
 import { ANONYMIZED_ALUMNUS, TESTER_AUTH_ROWS, PLAIN_SEAT_PEOPLE } from "../../db/seed/people";
+import { PUBLIC_TEAM } from "../../db/seed/public-team";
+import { DIVISION_ROWS } from "../../db/seed/structure";
 import { teamPageSeed } from "../../db/seed/team-page";
 import { getTableName } from "drizzle-orm";
 import { advisorOfFields, fieldsOf as advisorFields } from "../about/advisors";
@@ -489,6 +491,41 @@ test("the seeded layer is published, is one the editor could have saved, and eve
   ].filter((id): id is number => id !== undefined);
   assert.ok(named.length > 0);
   for (const id of named) assert.ok(onTeam.has(id), `member ${id} is on the team`);
+});
+
+test("the public Team page the seed builds shows only real units, and no one as a lead of a division they do not lead (issue #644)", () => {
+  const { build, layer, shown } = teamPageOfSeed(data);
+  const publicRoles = PUBLIC_TEAM.flatMap((p) => p.roles);
+  const publicDivisions = new Set(publicRoles.flatMap((r) => (r.divisionId === null ? [] : [r.divisionId])));
+  const publicDepartments = new Set([
+    ...publicRoles.flatMap((r) => (r.deptId === null ? [] : [r.deptId])),
+    ...DIVISION_ROWS.rows.filter((d) => publicDivisions.has(d.id!)).map((d) => d.deptId),
+  ]);
+  const divisionNamed = (name: string) => DIVISION_ROWS.rows.find((d) => d.name === name && d.closedAt == null);
+  assert.ok(shown.departments.length > 0);
+  for (const department of shown.departments) {
+    assert.equal(typeof department.at, "number", `${department.name} is a seeded department, not one the layer added`);
+    assert.ok(publicDepartments.has(department.at as number), `${department.name} is a department the public team data uses`);
+    assert.notEqual(department.name, "Payload");
+    for (const { at, shown: lead } of department.leads) {
+      assert.notEqual(lead.division, "Payload Integration");
+      const division = divisionNamed(lead.division);
+      assert.ok(division !== undefined && publicDivisions.has(division.id!), `${lead.division} is a division the public team data uses`);
+      assert.ok(at.startsWith("lead:"), `${lead.name} is a lead the roles place, not one the layer added`);
+      const built = build.departments.flatMap((d) => d.leads).find((l) => l.spot === at);
+      const person = layer.spots[at as `lead:${number}:${number}`]?.person ?? built?.person.id;
+      assert.ok(
+        data.roles.some((r) => r.memberId === person && r.type === "lead" && r.divisionId === division!.id && isActive(r)),
+        `${lead.name} holds a lead role in ${lead.division}`,
+      );
+    }
+  }
+  const names = [
+    ...(shown.leader === null ? [] : [shown.leader.name]),
+    ...shown.leaders.map((l) => l.shown.name),
+    ...shown.departments.flatMap((d) => [...d.heads.map((h) => h.shown.name), ...d.leads.map((l) => l.shown.name)]),
+  ];
+  assert.ok(!names.includes("Tester Department Head"), "no one is shown as the old department-head tester");
 });
 
 test("each seeded advisor is one the Advisors panel would keep as it is", () => {

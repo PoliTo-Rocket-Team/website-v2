@@ -41,7 +41,6 @@ export const TESTER_KEYS = [
   "applicant",
   "member",
   "division-lead",
-  "department-head",
   "operations-lead",
 ] as const;
 
@@ -80,13 +79,6 @@ export const TESTERS: Readonly<Record<TesterKey, Tester>> = {
     email: "division-lead.tester@example.com",
     name: "Tester Division Lead",
     sees: "Leads Test Bench. Edits that division's positions and applications by the lead role alone.",
-  },
-  "department-head": {
-    key: "department-head",
-    id: "7e57e500-0000-4000-8000-000000000005",
-    email: "department-head.tester@example.com",
-    name: "Tester Department Head",
-    sees: "Heads Payload, a test department whose one division has nobody yet (issue #230).",
   },
   "operations-lead": {
     key: "operations-lead",

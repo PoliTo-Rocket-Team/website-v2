@@ -271,9 +271,9 @@ These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
 - R&D is a department with a head and no divisions (Owner decision, 2026-10-24, #627). The Team
   tree and Edit team tree draw it as a department box with its head, never on the seat row.
   Department 8, Research and Development (code RND), is the real R&D department: its only head
-  is the Head of R&D, and it has no divisions (Owner decision, 2026-10-24, #600). The seed keeps
-  its department-head tester and the Payload Integration test division in a separate test
-  department, Payload (code PAY), so R&D stays as it is in reality.
+  is the Head of R&D, and it has no divisions (Owner decision, 2026-10-24, #600). The seed adds
+  no test-only department, division or head, so the public Team page shows only real units; the
+  department-head test seat is the seeded head of Propulsion (Owner decision, 2026-10-24, #644).
   Migration 0059 makes a Head of R&D role kept in no unit the head of the R&D department
   (coded RND, or named R&D or Research and Development), only while that department has no
   head, and adds the department only when none is open, so there is never a second R&D

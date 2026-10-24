@@ -94,8 +94,6 @@ import { IT_LEAD, MEMBER_ROWS, ROLE_ROWS, PLAIN_SEAT_PEOPLE, USER_ROWS } from ".
 import { APPLICATION_FILE_ROWS, APPLICATION_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
 import { DEPARTMENT_ROWS, DIVISION_ROWS } from "./structure";
 import {
-  ADDED_LEAD_DEPARTMENT,
-  ADDED_LEAD_PERSON,
   ADDED_LEADER_AFTER,
   ADDED_LEADER_PERSON,
   HIDDEN_LEAD_SPOT,
@@ -706,8 +704,6 @@ export function teamAdvisorItemsOf(data: SeedData): AdvisorItem[] {
   );
 }
 
-const shownDepartment = (shown: ShownTeam, id: number) => shown.departments.find((d) => d.at === id);
-
 export type SeedArea =
   | "structure"
   | "people"
@@ -772,14 +768,6 @@ export const SEED_CASES: readonly SeedCase[] = [
       data.divisions.some(
         (d) => d.closedAt != null && activeIn(data, d.id!).length === 0 && data.roles.some((r) => r.divisionId === d.id),
       ),
-  },
-  {
-    area: "structure",
-    case: "An open division with nobody in it",
-    data: "invented",
-    rows: "`divisions` code `PLI`",
-    exercisedBy: issue(251),
-    holds: (data) => openDivisions(data).some((d) => !data.roles.some((r) => r.divisionId === d.id)),
   },
   {
     area: "people",
@@ -1477,20 +1465,6 @@ export const SEED_CASES: readonly SeedCase[] = [
         build.departments.some((d) => d.leads.some((l) => l.spot === HIDDEN_LEAD_SPOT)) &&
         !shown.departments.some((d) => d.leads.some((l) => l.at === HIDDEN_LEAD_SPOT))
       );
-    },
-  },
-  {
-    area: "team-page",
-    case: "A division lead added to a department whose one division has nobody in it",
-    data: "invented",
-    rows: "`team_page_layer_versions` published, `departments` 8 `addedLeads`, member 183",
-    exercisedBy: `${issue(283)}, ${issue(285)}`,
-    holds: (data) => {
-      const { build, shown } = teamPageOfSeed(data);
-      const before = build.departments.find((d) => d.id === ADDED_LEAD_DEPARTMENT);
-      const after = shownDepartment(shown, ADDED_LEAD_DEPARTMENT);
-      const leadsNothing = !data.roles.some((r) => r.memberId === ADDED_LEAD_PERSON && r.type === "lead" && isActive(r));
-      return before?.leads.length === 0 && (after?.leads.some((l) => l.at.startsWith("added:")) ?? false) && leadsNothing;
     },
   },
   {
