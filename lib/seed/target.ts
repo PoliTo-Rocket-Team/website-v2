@@ -61,9 +61,9 @@ export function parseTarget(connectionString: string | undefined): ParsedTarget 
 /**
  * Whether a connection string names the shared `preview` branch: a Neon host
  * whose endpoint is `PREVIEW_ENDPOINT`, direct or `-pooler`. Read off the host
- * alone, so it connects to nothing. The seed guard and the test developer's
- * write gate (`testDeveloperMayWrite` in lib/test-developer.ts) both ask it
- * (issue #364, ADR 0016).
+ * alone, so it connects to nothing. The seed guard and the tester sign-in
+ * gate (`testerSignInOn` in lib/dev-tester.ts) both ask it (issue #364, ADR
+ * 0016).
  */
 export function isPreviewDatabase(connectionString: string | undefined): boolean {
   const parsed = parseTarget(connectionString);

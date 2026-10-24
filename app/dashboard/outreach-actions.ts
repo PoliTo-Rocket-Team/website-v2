@@ -9,9 +9,8 @@ import type { PostItem } from "@/lib/outreach-types";
 
 // The Outreach list's writes (board 74, issue #289). Each opens the dashboard
 // as the page did and checks the viewer reaches the Outreach page; the
-// outreach editor then checks the site-content gate again and writes, to the
-// database or, for a test developer, to their cookie. The database write
-// refreshes the cached public read; /outreach and its post pages render again.
+// outreach editor then checks the site-content gate again and writes to the
+// database. The write refreshes the cached public read; /outreach and its post pages render again.
 
 async function onOutreach<T>(run: (data: DashboardData) => Promise<WriteResult<T>>): Promise<WriteResult<T>> {
   const opening = await openDashboard();

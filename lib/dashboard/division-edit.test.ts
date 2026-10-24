@@ -47,9 +47,9 @@ const team: TeamPerson[] = [
   person(3, "Sara Conti", [[1, "member"]]),
   person(4, "Laura Greco", [[2, "lead"]]),
   person(5, "Davide Russo", [[1, "member"], [3, "member"]]),
-  person(6, "Chiara Rinaldi", [], [{ kind: "head", departmentId: 1 }]),
-  person(7, "Alessandro Greco", [], [{ kind: "team-leader" }]),
-  person(8, "Federica Moretti", [[3, "member"]], [{ kind: "board", seat: "chief-engineer" }]),
+  person(6, "Chiara Rinaldi", [], [{ kind: "head", departmentId: 1, title: "Head of Aerodynamics" }]),
+  person(7, "Alessandro Greco", [], [{ kind: "team-leader", title: "" }]),
+  person(8, "Federica Moretti", [[3, "member"]], [{ kind: "board", seat: { roleId: 28, title: "Chief Engineer", flag: "chief-engineer", since: "2025-10-01" } }]),
 ];
 
 const head: TeamActor = { kind: "head", departmentIds: [1] };
@@ -181,7 +181,7 @@ const seatRows: readonly DivisionRow[] = [
   { id: 105, memberId: 6, type: "lead" },
   { id: 106, memberId: 7, type: "president" },
 ];
-const headLeads = [...team.slice(0, 5), person(6, "Chiara Rinaldi", [[1, "lead"]], [{ kind: "head", departmentId: 1 }]), ...team.slice(6)];
+const headLeads = [...team.slice(0, 5), person(6, "Chiara Rinaldi", [[1, "lead"]], [{ kind: "head", departmentId: 1, title: "Head of Aerodynamics" }]), ...team.slice(6)];
 const planWithHead = (save: Partial<DivisionSave>, subject: DivisionSubject = missionAnalysis) =>
   planDivisionSave({ actor: { kind: "team" }, org, subject, save: { ...keep, ...save }, team: headLeads });
 
@@ -202,7 +202,7 @@ test("every division write touches only lead and member rows: a seat kept on the
 
   // Promote: Chiara's only row here is the seat, so she is no member to promote; she joins as a lead and the seat row is untouched.
   const seatOnly = seatRows.filter((r) => r.id !== 105);
-  const team6 = [...team.slice(0, 5), person(6, "Chiara Rinaldi", [], [{ kind: "head", departmentId: 1 }]), ...team.slice(6)];
+  const team6 = [...team.slice(0, 5), person(6, "Chiara Rinaldi", [], [{ kind: "head", departmentId: 1, title: "Head of Aerodynamics" }]), ...team.slice(6)];
   const picked = planDivisionSave({ actor: head, org, subject: missionAnalysis, save: { ...keep, newLeads: [6] }, team: team6 });
   assert.ok(picked.ok && picked.plan.joinAsLead.join() === "6");
   assert.deepEqual(divisionRowWrites(picked.plan, 1, seatOnly), { end: [], toLead: [], toMember: [] });

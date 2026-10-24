@@ -11,8 +11,7 @@ import { checkDeparture, type EditableRole } from "@/lib/dashboard/team";
 import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
 
 // The Team pages' writes (issues #143 and #172). Each goes through the dashboard data
-// interface, so a test developer's change lands in their cookie and nowhere
-// else; a source that stores none answers false.
+// interface, which writes to the database; a source that stores none answers false.
 
 export type TeamActionResult = { readonly ok: true } | { readonly ok: false; readonly error: string };
 
@@ -225,4 +224,22 @@ export async function handOverTeamLeader(input: unknown): Promise<TeamActionResu
   const writes = await writesOn("team-tree");
   if (!writes) return REFUSED;
   return answered(await writes.handOverTeamLeader(input));
+}
+
+// The seat row of Edit team tree (issue #627). The rules are checked again
+// behind each of these (lib/dashboard/team-seats.ts): only the team leader
+// and full access change a team-level seat.
+
+/** Change holder on a seat box: who holds the seat `roleId` from now on, and what the holder does next. */
+export async function changeSeatHolder(roleId: number, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes || !isId(roleId)) return REFUSED;
+  return answered(await writes.changeSeatHolder(roleId, input));
+}
+
+/** Add seat: a person and the seat's title. */
+export async function addSeat(input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes) return REFUSED;
+  return answered(await writes.addSeat(input));
 }

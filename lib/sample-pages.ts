@@ -1,8 +1,8 @@
 // Sample pages (app/preview/*): fixed sample content that lets a reviewer see
 // a look no real record draws yet, such as the placeholder rocket (#296,
-// #360). They read no database and no dummy array, so they do not follow
-// dummy mode (lib/dummy-data/mode.ts): a preview with its seeded database
-// shows them too. Production never does; there the route answers 404.
+// #360). They read no database, so a preview shows them
+// whatever database it reads. Production never does; there the route
+// answers 404.
 
 /** The two variables the gate reads. */
 export type SamplePagesEnv = {

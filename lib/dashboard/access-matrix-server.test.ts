@@ -12,10 +12,19 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
 import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
-import { divisions, members, roles, scopes } from "@/db/schema";
+import { betterAuthUsers, divisions, logs, members, orders, projects, projectVersions, roles, scopes } from "@/db/schema";
+import { databaseTeamRoles } from "@/lib/about/team-data";
+import { teamBuildOf } from "@/lib/about/team-roles";
+import { importedProjects } from "@/lib/project-content/import";
+import { newRowContent } from "@/lib/project-content/row";
+import { readProjectStamps } from "./database-projects";
+import { readViewAsAccount, recordViewAs, viewAsRefusal } from "./database-view-as";
+import { viewAsSiteOf, type ViewAsSite } from "./view-as";
 import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
 import { areaLevelsOf, canChangePerson, checkRemoveGrant, grantablePeople, heldIn, holdsAny, placeKey, placesOf, removalOf, type AccessPage } from "./division-access";
+import type { TeamSearch } from "./division-edit";
+import { SEAT_TITLE_REQUIRED } from "./division-members";
 import { membersExportFileName, XLSX_TYPE } from "./members-export";
 import { filterTeam, NO_TEAM_FILTER } from "./team-members";
 import { membersModelOf, NO_MEMBERS_FILTER, shownMembers } from "./members-view";
@@ -27,14 +36,14 @@ import type { TeamStructure } from "./team-structure";
 import { applicationsModelOf } from "./applications-view";
 import { positionsModelOf } from "./positions-view";
 import type { ApplicationsPage, PositionsPage } from "./recruitment";
-import { insertRows, keepWrites, recordedWrites, rowsIn, updateRows } from "./access-matrix/fake-db";
+import { insertRows, keepWrites, recordedAuditWriters, recordedWrites, rowsIn, updateRows } from "./access-matrix/fake-db";
 import type { OwnAlias } from "./alias-setup";
 import { isOffTeam } from "./viewer";
 import { fileReads, resetFiles } from "./access-matrix/fakes/files";
 import { ownPublicStoreHost } from "./access-matrix/fakes/public-store";
 import { accountOf, cvHash, EXTRA, IDS, MARKERS, seedFixture } from "./access-matrix/fixture";
 import { ALL, ORG, VIEWERS, type Expect, type MatrixRow, type Unit } from "./access-matrix/matrix";
-import { signInAs } from "./access-matrix/session";
+import { signInAs, viewAs } from "./access-matrix/session";
 
 // The server side of the dashboard access matrix (issue #477): every loader
 // the data interface hands the pages, every server action under
@@ -444,6 +453,12 @@ const siteContent = (r: MatrixRow) => r.expect.siteContent;
 const accessInDM = (r: MatrixRow) =>
   fullAccess(r) ? true : r.viewer.kind === "department-head" && r.viewer.rawRows.some((x) => x.divisionId === IDS.division(DM)) ? undefined : false;
 const decidesOrders = (r: MatrixRow) => r.expect.decidesOrders;
+/** The active seat row a matrix viewer's team-level seat is, in the database as seeded now. */
+const seatRowOf = (name: string): number => {
+  const row = rowsIn(roles).find((r) => r.memberId === accountOf(name).memberId && r.leavedAt == null && r.deptId == null && r.divisionId == null);
+  if (typeof row?.id !== "number") throw new Error(`${name} holds no team-level seat`);
+  return row.id;
+};
 const HOST = ownPublicStoreHost();
 
 const ACTION_CASES: readonly ActionCase[] = [
@@ -513,6 +528,14 @@ const ACTION_CASES: readonly ActionCase[] = [
     may: (r) => r.name === "team leader",
     control: by("team leader"),
   },
+  // The seat row of Edit team tree (issue #627): the team leader and full access, as for departments.
+  {
+    action: "team-actions.changeSeatHolder",
+    run: () => teamActions.changeSeatHolder(seatRowOf("Project Manager"), { to: EXTRA.mover, outcome: "advisor" }),
+    may: fullAccess,
+    control: by("team leader"),
+  },
+  { action: "team-actions.addSeat", run: () => teamActions.addSeat({ personId: EXTRA.mover, title: "Safety Officer" }), may: fullAccess, control: by("team leader") },
 
   // The Alumni page: site content under the Content grant (issue #589). The
   // control is a member holding Content at Can edit, so each write is proven
@@ -770,6 +793,8 @@ describe("the decision rows come to every Overview whose viewer decides orders (
     assert.deepEqual(VIEWERS.find((v) => v.name === name)!.viewer.rawRows.map((r) => [r.scope, r.target]), [["team", "approve_orders"]]);
     const board = (await (await open(name)).overview()) as TeamSideOverview;
     assert.deepEqual(board.access, { kind: "lines", lines: [{ area: "approve-orders", href: "/dashboard/orders", waiting: ALL.length }] });
+    const plain = (await (await open("member")).overview()) as TeamSideOverview;
+    assert.deepEqual(plain.access, { kind: "hint" }, "a member without it gets no Approve orders line, only the access hint");
   });
 });
 
@@ -1297,6 +1322,13 @@ describe("a division lead with no scope row edits their own division in the Team
     );
   });
 
+  test("Edit division's lead and member pickers search the whole team for the lead", async () => {
+    const { answer, writes } = await asLead(() => teamActions.findPeople("Mover"));
+    assert.ok(answer !== null && typeof answer === "object" && (answer as TeamSearch).kind === "people", `the pickers answered ${JSON.stringify(answer)}`);
+    assert.ok((answer as Extract<TeamSearch, { kind: "people" }>).people.some((p) => p.id === EXTRA.mover), "someone outside the led division is found");
+    assert.deepEqual(writes, []);
+  });
+
   test("the drawer's member actions add someone from the team, invite an email and remove a member in the led division", async () => {
     await writes("add OA's member to MA", () => teamActions.addMember({ kind: "member", divisionId: IDS.division(MA), personId: IDS.person(OA), title: "Member" }));
     assert.deepEqual(rolesIn(IDS.person(OA), MA), ["core"]);
@@ -1386,12 +1418,12 @@ describe("one Edit details panel: whoever may edit a member in scope saves their
   const tables = (writes: readonly { readonly kind: string; readonly table: string }[]) => [...new Set(writes.map((w) => `${w.kind} ${w.table}`))].sort();
   const SAVE = { title: "Engineer", details: MEMBER_DETAILS };
 
-  test("full access saves the details of a seat with no division from the whole team, and never their seat's title", async () => {
+  test("full access saves the details of a seat with no division from the whole team, with their seat's title (#626)", async () => {
     for (const name of ["operations lead", "team leader"]) {
       const { answer, writes } = await attempt(accountOf(name).userId, () => teamActions.saveMemberDetails({ kind: "person", id: EXTRA.head }, null, SAVE));
       assert.deepEqual(answer, { ok: true }, name);
       assert.ok(writes.length > 0, `${name}: wrote nothing`);
-      assert.ok(!tables(writes).some((t) => t.endsWith(" roles")), `${name}: touched a role: ${tables(writes)}`);
+      assert.ok(tables(writes).some((t) => t.endsWith(" roles")), `${name}: the seat's title: ${tables(writes)}`);
     }
     const photo = await attempt(accountOf("operations lead").userId, () => teamActions.setMemberPhoto(EXTRA.head, form({ photo: PHOTO() })));
     assert.deepEqual(photo.answer, { ok: true });
@@ -1429,6 +1461,98 @@ describe("one Edit details panel: whoever may edit a member in scope saves their
     const elsewhere = await attempt(accountOf("division lead").userId, () => teamActions.saveMember(IDS.person(DM), IDS.division(DM), "division-lead"));
     assert.ok(isRefusal(elsewhere.answer), "never in a division they do not lead");
     assert.deepEqual(elsewhere.writes, []);
+  });
+});
+
+describe("Edit details sets a seat's title: the team leader and full access only, on the seat's row, its title alone (issue #626)", () => {
+  const RENAMED = "Chief of Propulsion";
+  const HEAD_ROW = 6_000;
+
+  /** Saves `title` as `viewer` on `personId`'s seat on a freshly seeded database that keeps its writes: the answer, and each role row the save changed, as it was and as it is. */
+  async function saveSeatTitle(viewer: string, personId: number, title: string) {
+    seedFixture();
+    const before = rowsIn(roles);
+    keepWrites();
+    signInAs(accountOf(viewer).userId);
+    const answer = await answerOf(() => teamActions.saveMemberDetails({ kind: "person", id: personId }, null, { title, details: MEMBER_DETAILS }));
+    const changed = rowsIn(roles).flatMap((now, n) => (JSON.stringify(now) === JSON.stringify(before[n]) ? [] : [{ was: before[n], now }]));
+    return { answer, changed };
+  }
+
+  test("the team leader renames a head: their head row's title alone changes, and the Members Role column reads it", async () => {
+    const { answer, changed } = await saveSeatTitle("team leader", EXTRA.head, `  ${RENAMED} `);
+    assert.deepEqual(answer, { ok: true });
+    assert.deepEqual(
+      changed.map(({ was, now }) => [was.id, now]),
+      [[HEAD_ROW, { ...changed[0]?.was, title: RENAMED }]],
+      "the head row's title, trimmed, and nothing else",
+    );
+    const opening = await openDashboard();
+    assert.equal(opening.kind, "open");
+    const roster = await (opening as { data: DashboardData }).data.members(null);
+    const row = roster.scope === "whole-team" ? roster.people.find((p) => p.id === EXTRA.head) : undefined;
+    assert.deepEqual([row?.role, row?.roleLabel], ["head", RENAMED]);
+  });
+
+  test("a seat-title save changes the seat row's title only: never its type, department, division or full access", async () => {
+    for (const [viewer, seat] of [
+      ["team leader", "Project Manager"],
+      ["team leader", "Chief Engineer"],
+      ["operations lead", "team leader"],
+    ] as const) {
+      const { answer, changed } = await saveSeatTitle(viewer, accountOf(seat).memberId!, RENAMED);
+      assert.deepEqual(answer, { ok: true }, `${viewer} on ${seat}`);
+      assert.equal(changed.length, 1, `${viewer} on ${seat}: one row`);
+      const { was, now } = changed[0];
+      assert.deepEqual(now, { ...was, title: RENAMED }, `${viewer} on ${seat}`);
+      assert.equal(was.memberId, accountOf(seat).memberId, "their own row");
+    }
+  });
+
+  test("the team leader's Role starts at their row's stored title, so a full-access details save with it left as shown keeps that title", async () => {
+    const CUSTOM = "President of the Team";
+    const leaderId = accountOf("team leader").memberId!;
+    seedFixture();
+    updateRows(roles, { memberId: leaderId, type: "president" }, { title: CUSTOM });
+    const before = rowsIn(roles);
+    keepWrites();
+    signInAs(accountOf("operations lead").userId);
+    for (const round of [1, 2]) {
+      const opening = await openDashboard();
+      assert.equal(opening.kind, "open");
+      const roster = await (opening as { data: DashboardData }).data.members(null);
+      const title = roster.scope === "whole-team" ? roster.positions.find((p) => p.id === leaderId)?.title : undefined;
+      assert.deepEqual(title, { kind: "seat", value: CUSTOM }, `round ${round}: the Role input starts at the stored title`);
+      // The Role left as shown: the value the panel starts at.
+      const shown = title?.kind === "seat" ? title.value : "";
+      const answer = await answerOf(() =>
+        teamActions.saveMemberDetails({ kind: "person", id: leaderId }, null, { title: shown, details: { ...MEMBER_DETAILS, phone: `+39 333 000 000${round}` } }),
+      );
+      assert.deepEqual(answer, { ok: true }, `round ${round}`);
+      assert.deepEqual(rowsIn(roles), before, `round ${round}: every role row, the custom title included, as it was`);
+    }
+  });
+
+  test("a head, a division lead and a member are refused a seat's title, and write nothing", async () => {
+    for (const viewer of ["department head", "division lead", "member"]) {
+      for (const personId of [EXTRA.head, accountOf("Chief Engineer").memberId!]) {
+        const { answer, writes } = await attempt(accountOf(viewer).userId, () =>
+          teamActions.saveMemberDetails({ kind: "person", id: personId }, null, { title: RENAMED, details: MEMBER_DETAILS }),
+        );
+        assert.ok(isRefusal(answer), `${viewer} on ${personId}: ${JSON.stringify(answer)}`);
+        assert.deepEqual(writes, [], viewer);
+      }
+    }
+  });
+
+  test("an empty seat title is refused with the field's error, and writes nothing", async () => {
+    for (const title of ["", "   "]) {
+      const { answer, writes } = await attempt(accountOf("team leader").userId, () =>
+        teamActions.saveMemberDetails({ kind: "person", id: EXTRA.head }, null, { title, details: MEMBER_DETAILS }),
+      );
+      assert.deepEqual(answer, { ok: false, error: SEAT_TITLE_REQUIRED });
+      assert.deepEqual(writes, []);
+    }
   });
 });
 
@@ -1578,6 +1702,240 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
   });
 });
 
+// View as ---------------------------------------------------------------------
+
+describe("View as: on production only the IT lead seat starts it, on a preview and under next dev a seeded admin tester too (issue #604)", () => {
+  const LIVE: ViewAsSite = "live";
+  const PREVIEW = viewAsSiteOf({ NODE_ENV: "production", VERCEL_ENV: "preview" });
+  const NEXT_DEV = viewAsSiteOf({ NODE_ENV: "development" });
+  const itLead = accountOf("IT lead");
+  const member = accountOf("member");
+  /** A plain member of MA, the person viewed as. */
+  const person = "person-ma";
+
+  /** The fixture, with a Better Auth account for every matrix viewer and the person: `admins` store the admin role, everyone else the plugin's default. */
+  function seedAccounts(admins: readonly string[] = []): void {
+    seedFixture();
+    const ids = [...VIEWERS.map(({ name }) => accountOf(name).userId), person];
+    insertRows(
+      betterAuthUsers,
+      ids.map((id) => ({ id, name: id, email: `${id}@auth.test`, emailVerified: true, role: admins.includes(id) ? "admin" : "user" })),
+    );
+  }
+
+  const start = (actingAccountId: string, personId = person, viewingAs = false) => ({ actingAccountId, viewingAs, personId });
+
+  test("production, previews and next dev are told apart by the environment, and anything unproven reads as production", () => {
+    assert.equal(viewAsSiteOf({ NODE_ENV: "production", VERCEL_ENV: "production" }), "live");
+    assert.equal(PREVIEW, "test");
+    assert.equal(NEXT_DEV, "test");
+    assert.equal(viewAsSiteOf({ NODE_ENV: "development", VERCEL_ENV: "production" }), "live");
+    assert.equal(viewAsSiteOf({ NODE_ENV: "production" }), "live");
+    assert.equal(viewAsSiteOf({ NODE_ENV: "test" }), "live");
+  });
+
+  test("on production the IT lead starts View as, and every other matrix viewer is refused, the team leader and a stored admin included", async () => {
+    seedAccounts([member.userId, accountOf("team leader").userId]);
+    for (const { name } of VIEWERS) {
+      assert.equal(await viewAsRefusal(start(accountOf(name).userId), LIVE), name === "IT lead" ? null : "not-allowed", name);
+    }
+    assert.deepEqual(recordedWrites(), [], "deciding writes nothing");
+  });
+
+  test("after an IT lead hand-over the new seat holder starts View as and the previous one is refused, with no stored flag", async () => {
+    seedAccounts();
+    // The hand-over: the IT lead leaves the seat's role, and the member takes a role flagged as the seat.
+    updateRows(roles, { memberId: itLead.memberId }, { leavedAt: "2026-10-20" });
+    insertRows(roles, [{ id: 9_000, memberId: member.memberId, title: "IT Lead", startedAt: "2026-10-20", type: "core", fullAccess: "it_lead" }]);
+    assert.equal(await viewAsRefusal(start(member.userId), LIVE), null, "the new seat holder");
+    assert.equal(await viewAsRefusal(start(itLead.userId), LIVE), "not-allowed", "the previous seat holder");
+    // Nothing per person decides it: both still store the plugin's default role.
+    assert.equal((await readViewAsAccount(member.userId))?.storedRole, "user");
+    assert.equal((await readViewAsAccount(itLead.userId))?.storedRole, "user");
+  });
+
+  test("on a preview and under next dev a seeded admin tester starts View as, and a plain member is refused", async () => {
+    const adminTester = accountOf("non-member").userId;
+    seedAccounts([adminTester]);
+    for (const [label, site] of [["preview", PREVIEW], ["next dev", NEXT_DEV]] as const) {
+      assert.equal(await viewAsRefusal(start(adminTester), site), null, `${label}: the admin tester`);
+      assert.equal(await viewAsRefusal(start(itLead.userId), site), null, `${label}: the IT lead`);
+      assert.equal(await viewAsRefusal(start(member.userId), site), "not-allowed", `${label}: a plain member`);
+    }
+    assert.equal(await viewAsRefusal(start(adminTester), LIVE), "not-allowed", "the same admin tester on production");
+  });
+
+  test("nobody views as themselves, as someone who may use View as, as an unknown account, or from inside a View as session", async () => {
+    const adminTester = accountOf("non-member").userId;
+    seedAccounts([adminTester]);
+    assert.equal(await viewAsRefusal(start(itLead.userId, itLead.userId), LIVE), "same-person");
+    assert.equal(await viewAsRefusal(start(itLead.userId, adminTester), PREVIEW), "person-may-view-as", "an admin tester on a preview");
+    assert.equal(await viewAsRefusal(start(adminTester, itLead.userId), PREVIEW), "person-may-view-as", "the IT lead");
+    assert.equal(await viewAsRefusal(start(itLead.userId, "nobody"), LIVE), "no-such-person");
+    assert.equal(await viewAsRefusal(start(itLead.userId, person, true), LIVE), "already-viewing-as");
+  });
+
+  test("starting and stopping View as each write one Activity log entry, under the acting account, naming both people", async () => {
+    seedAccounts();
+    keepWrites();
+    await recordViewAs({ event: "start", sessionId: "view-as-session", personId: person, actingAccountId: itLead.userId });
+    await recordViewAs({ event: "stop", sessionId: "view-as-session", personId: person, actingAccountId: itLead.userId });
+    const entries = rowsIn(logs).map(({ schemaName, tableName, operation, recordId, newData, changedBy }) => ({ schemaName, tableName, operation, recordId, newData, changedBy }));
+    const both = { personId: person, actingAccountId: itLead.userId };
+    assert.deepEqual(entries, [
+      { schemaName: "better_auth", tableName: "session", operation: "VIEW_AS_START", recordId: "view-as-session", newData: both, changedBy: itLead.userId },
+      { schemaName: "better_auth", tableName: "session", operation: "VIEW_AS_STOP", recordId: "view-as-session", newData: both, changedBy: itLead.userId },
+    ]);
+  });
+});
+
+// Writes made while viewing as someone ----------------------------------------
+//
+// Owner decisions on #597 (2026-10-24): a write made in a View as session
+// stores the person viewed as and the acting account, read from the session
+// on the server, and every "by" field shows it as "IT lead as <Name
+// Surname>". Each test signs in as a View as session of the team leader with
+// the IT lead behind it, or as the team leader alone, and reads what the
+// write stored, who the audit log would name, and what the page then shows.
+
+describe("a write made while viewing as someone records both people, from the session (issue #605)", () => {
+  const itLead = accountOf("IT lead");
+  const teamLeader = accountOf("team leader");
+  const asTeamLeader = `IT lead as Viewer ${teamLeader.userId}`;
+  /** A request body naming an acting account the session does not: the server never reads it. */
+  const FORGED = { actingAccountId: "forged-account", impersonatedBy: "forged-account" };
+
+  /** A fresh fixture that keeps its writes, signed in as the team leader: viewed as by the IT lead, or on their own. */
+  async function signedIn(viewedAs: boolean): Promise<DashboardData> {
+    seedFixture();
+    resetFiles();
+    keepWrites();
+    if (viewedAs) viewAs(teamLeader.userId, itLead.userId);
+    else signInAs(teamLeader.userId);
+    const opening = await openDashboard();
+    assert.equal(opening.kind, "open", "the dashboard opens");
+    return (opening as { data: DashboardData }).data;
+  }
+
+  const decidedOrder = () => rowsIn(orders).find((o) => o.id === IDS.order(DM))!;
+
+  test("an order approved while viewing as the team leader stores both ids, logs both, and reads as the IT lead as them", async () => {
+    await signedIn(true);
+    const answer = (await actions.decideOrder(IDS.order(DM), { kind: "approve" })) as { ok: boolean; value?: { answer?: { by: string; byYou: boolean } } };
+    assert.ok(answer.ok, JSON.stringify(answer));
+    assert.equal(decidedOrder().reviewedBy, teamLeader.memberId, "the person viewed as");
+    assert.equal(decidedOrder().reviewedByActingAccount, itLead.userId, "the acting account");
+    assert.deepEqual(recordedAuditWriters(), [{ userId: teamLeader.userId, actingAccountId: itLead.userId }], "the log names both");
+    assert.deepEqual(answer.value?.answer && { by: answer.value.answer.by, byYou: answer.value.answer.byYou }, { by: asTeamLeader, byYou: false });
+  });
+
+  test("a grant given and an NDA confirmed while viewing as the team leader store both ids and read as the IT lead as them", async () => {
+    const data = await signedIn(true);
+    assert.ok(!isRefusal(await actions.saveAccess({ personId: IDS.person(DM), areas: { positions: "edit" } })), "the grant is given");
+    const grant = rowsIn(scopes).find((s) => s.memberId === IDS.person(DM) && s.target === "positions")!;
+    assert.deepEqual({ givenBy: grant.givenBy, acting: grant.givenByActingAccount }, { givenBy: teamLeader.memberId, acting: itLead.userId });
+    assert.ok(JSON.stringify(await data.divisionAccess()).includes(asTeamLeader), "Access shows who gave it");
+
+    assert.deepEqual(await teamActions.confirmNda(IDS.join(DM)), { ok: true });
+    const joined = rowsIn(members).find((m) => m.ndaConfirmedByActingAccount !== null)!;
+    assert.deepEqual({ by: joined.ndaConfirmedBy, acting: joined.ndaConfirmedByActingAccount }, { by: teamLeader.memberId, acting: itLead.userId });
+    assert.ok(JSON.stringify(await data.members(null)).includes(asTeamLeader), "Members shows who confirmed the NDA");
+    assert.ok(recordedAuditWriters().every((w) => w.actingAccountId === itLead.userId), "every write is logged with the acting account");
+  });
+
+  test("a request naming another acting account changes nothing that is stored", async () => {
+    await signedIn(true);
+    assert.ok(!isRefusal(await actions.decideOrder(IDS.order(DM), { kind: "approve", ...FORGED })));
+    assert.equal(decidedOrder().reviewedByActingAccount, itLead.userId, "in a View as session, the session's acting account");
+    assert.deepEqual(recordedAuditWriters(), [{ userId: teamLeader.userId, actingAccountId: itLead.userId }]);
+    assert.ok(!JSON.stringify(rowsIn(orders)).includes(FORGED.actingAccountId), "the forged id is stored nowhere");
+
+    await signedIn(false);
+    assert.ok(!isRefusal(await actions.decideOrder(IDS.order(DM), { kind: "approve", actingAccountId: itLead.userId })));
+    assert.equal(decidedOrder().reviewedByActingAccount, null, "in a plain session, none");
+    assert.deepEqual(recordedAuditWriters(), [{ userId: teamLeader.userId, actingAccountId: null }]);
+  });
+
+  test("the Projects edited-by line names the IT lead as the person for an edit made while viewing as them", async () => {
+    await signedIn(true);
+    // What the audit trigger stores for two project edits: one made while
+    // viewing as the team leader, one the team leader made on their own.
+    const edit = (projectId: number, actingAccountId: string | null) => ({
+      schemaName: "public",
+      tableName: "project_versions",
+      operation: "UPDATE",
+      recordId: String(projectId),
+      newData: { project_id: projectId },
+      changedBy: teamLeader.userId,
+      changedByActingAccount: actingAccountId,
+      changedAt: "2026-10-24T09:00:00.000Z",
+    });
+    insertRows(logs, [edit(1, itLead.userId), edit(2, null)]);
+    const stamps = await readProjectStamps();
+    assert.equal(stamps.get(1)?.by, asTeamLeader, "an edit made while viewing as them");
+    assert.equal(stamps.get(2)?.by, `Viewer ${teamLeader.userId}`, "an edit made outside View as");
+  });
+
+  test("a write made outside View as stores no acting account and reads as before", async () => {
+    const data = await signedIn(false);
+    const answer = (await actions.decideOrder(IDS.order(DM), { kind: "approve" })) as { ok: boolean; value?: { answer?: { by: string; byYou: boolean } } };
+    assert.ok(answer.ok, JSON.stringify(answer));
+    assert.deepEqual({ by: decidedOrder().reviewedBy, acting: decidedOrder().reviewedByActingAccount }, { by: teamLeader.memberId, acting: null });
+    assert.deepEqual(answer.value?.answer && { by: answer.value.answer.by, byYou: answer.value.answer.byYou }, { by: `Viewer ${teamLeader.userId}`, byYou: true });
+    assert.ok(!isRefusal(await actions.saveAccess({ personId: IDS.person(DM), areas: { positions: "edit" } })));
+    assert.equal(rowsIn(scopes).find((s) => s.memberId === IDS.person(DM) && s.target === "positions")?.givenByActingAccount, null);
+    assert.ok(!JSON.stringify(await data.divisionAccess()).includes(" as Viewer"), "no grant names an acting seat");
+    assert.deepEqual(recordedAuditWriters(), [
+      { userId: teamLeader.userId, actingAccountId: null },
+      { userId: teamLeader.userId, actingAccountId: null },
+    ]);
+  });
+});
+
+// The Projects board ---------------------------------------------------------
+
+describe("moving a project card on the Projects page is not an edit (issue #297, #613)", () => {
+  test("projects.setSiteOrder writes the site order on projects and no project_versions row, so no card's edited-by line changes", async () => {
+    const data = await open("team leader");
+    keepWrites();
+    const items = importedProjects();
+    insertRows(projects, items.map((item) => ({ id: item.id, siteOrder: item.siteOrder })));
+    insertRows(
+      projectVersions,
+      items.map((item) => {
+        const record = item.version.state === "published" ? item.version.published : item.version.draft;
+        return { id: item.id, projectId: item.id, version: "published", content: newRowContent(record), page: record };
+      }),
+    );
+    // One earlier edit, as the audit trigger logs it, so a card has a line to keep.
+    insertRows(logs, [
+      {
+        schemaName: "public",
+        tableName: "project_versions",
+        operation: "UPDATE",
+        recordId: "1",
+        newData: { project_id: 1 },
+        changedBy: accountOf("team leader").userId,
+        changedAt: "2026-10-20T09:00:00.000Z",
+      },
+    ]);
+    const linesBefore = (await data.projects.board())?.edited;
+    assert.ok(linesBefore?.[1], "the edited card has a line before the move");
+    const stampsBefore = await readProjectStamps();
+    const ids = items.map((item) => item.id).reverse();
+
+    assert.ok((await data.projects.setSiteOrder(ids)).ok, "a site-content editor moves the cards");
+
+    const written = recordedWrites();
+    assert.ok(written.some((w) => w.table === "projects"), `the move writes the site order: ${JSON.stringify(written)}`);
+    assert.ok(!written.some((w) => w.table === "project_versions"), `the move writes no project version: ${JSON.stringify(written)}`);
+    const order = rowsIn(projects).sort((a, b) => Number(a.siteOrder) - Number(b.siteOrder)).map((p) => p.id);
+    assert.deepEqual(order, ids, "the cards stand in the new order");
+    assert.deepEqual(await readProjectStamps(), stampsBefore, "the audit log holds no new edit");
+    assert.deepEqual((await data.projects.board())?.edited, linesBefore, "every card's edited-by line reads as before");
+  });
+});
+
 // The CV and letter links ---------------------------------------------------
 
 describe("the CV and letter routes open a file only where the viewer reads Applications", () => {
@@ -1609,4 +1967,332 @@ describe("the CV and letter routes open a file only where the viewer reads Appli
       assert.equal((await status(`applicant-${u.toLowerCase()}`, legacyRoute(u))).status, 200, "the applicant");
     });
   }
+});
+
+// Stored role titles (issue #625) -------------------------------------------
+//
+// A role title is stored and can be renamed. A rename never moves a seat, a
+// headship or any access: seats are read from `roles.full_access` and from
+// where a role sits, never from its title.
+
+describe("a renamed role title changes no access, no seat and no headship (issue #625)", () => {
+  const RENAMED = "Chief of Propulsion";
+  /** Retitles every active role the matrix viewer holds, as a rename would store it. */
+  const rename = (name: string, title = RENAMED) => updateRows(roles, { memberId: accountOf(name).memberId }, { title });
+
+  /** Signs in as `name` on a freshly seeded database whose rows `before` laid over, and opens their dashboard. */
+  async function openAfter(name: string, before: () => void = () => {}): Promise<DashboardData> {
+    seedFixture();
+    before();
+    signInAs(accountOf(name).userId);
+    const opening = await openDashboard();
+    assert.equal(opening.kind, "open", `${name}: the dashboard opens`);
+    return (opening as { data: DashboardData }).data;
+  }
+
+  /** Every read the sweep above calls, as one text, with what it leaked. */
+  async function readEverything(data: DashboardData, expect: Expect): Promise<{ seen: string; leaks: string[] }> {
+    let seen = "";
+    const leaks: string[] = [];
+    for (const [, call] of readCalls()) {
+      const answer = await answerOf(() => call(data));
+      leaks.push(...leaked(answer, expect));
+      seen += JSON.stringify(answer ?? null).toLowerCase();
+    }
+    return { seen, leaks };
+  }
+
+  const standing = ({ role: _role, ...rest }: DashboardData["viewer"]) => rest;
+  const SAVE = { title: "Engineer", details: MEMBER_DETAILS };
+
+  for (const name of ["operations lead", "IT lead", "Project Manager", "Chief Engineer"]) {
+    test(`${name}: full access is the same after their title is renamed`, async () => {
+      const { expect } = VIEWERS.find((v) => v.name === name)!;
+      const before = await openAfter(name);
+      const after = await openAfter(name, () => rename(name));
+      assert.deepEqual(standing(after.viewer), standing(before.viewer), "the same standing, seat and grants");
+      assert.equal(after.viewer.kind, "operations-lead", "full access by the seat");
+      assert.equal(after.viewer.role, RENAMED, "the user card reads the stored title");
+      const { seen, leaks } = await readEverything(after, expect);
+      assert.deepEqual(leaks, [], "no read answers more than before");
+      assert.deepEqual(expectedMarkers(expect).filter((m) => !seen.includes(m)), [], "every read still answers what it did");
+      // A whole-team change still lands.
+      seedFixture();
+      rename(name);
+      signInAs(accountOf(name).userId);
+      assert.deepEqual(await teamActions.saveMemberDetails({ kind: "person", id: IDS.person(DM) }, IDS.division(DM), SAVE), { ok: true });
+      assert.ok(recordedWrites().length > 0);
+    });
+  }
+
+  test("the Project Manager and the Chief Engineer stay on the seat row of the Team tree, in the same place, after a rename", async () => {
+    const seats = async (renamed: boolean) => {
+      const data = await openAfter("team leader", () => {
+        if (renamed) {
+          rename("Project Manager", "Programme Lead");
+          rename("Chief Engineer", RENAMED);
+        }
+      });
+      return (await data.teamTree()).board.map((b) => [b.person.id, b.title]);
+    };
+    const [pm, ce] = [accountOf("Project Manager").memberId, accountOf("Chief Engineer").memberId];
+    const before = await seats(false);
+    const after = await seats(true);
+    assert.deepEqual(
+      after.filter(([id]) => id === pm || id === ce),
+      [
+        [pm, "Programme Lead"],
+        [ce, RENAMED],
+      ],
+    );
+    assert.deepEqual(
+      after.map(([id]) => id),
+      before.map(([id]) => id),
+      "every seat keeps its place on the row",
+    );
+  });
+
+  test("a role in no department and no division, not a head's, an advisor's or the team leader's, sits on the seat row after the flagged seats", async () => {
+    const data = await openAfter("team leader", () =>
+      insertRows(roles, [{ id: 7_000, memberId: IDS.person("MA"), title: "Head of R&D", startedAt: "2020-10-01", type: "core" }]),
+    );
+    const board = (await data.teamTree()).board.map((b) => [b.person.id, b.title]);
+    const [pm, ce] = [accountOf("Project Manager").memberId, accountOf("Chief Engineer").memberId];
+    // The flagged seats first, whatever the further seat's start date.
+    assert.deepEqual(board.slice(0, 2), [
+      [pm, "Project Manager"],
+      [ce, "Chief Engineer"],
+    ]);
+    assert.ok(
+      board.slice(2).some(([id, title]) => id === IDS.person("MA") && title === "Head of R&D"),
+      JSON.stringify(board),
+    );
+  });
+
+  test("a renamed head is still their department's head on the roster, the Team tree and every access check, and no grant changes", async () => {
+    const name = "department head";
+    const head = accountOf(name).memberId!;
+    const { expect } = VIEWERS.find((v) => v.name === name)!;
+    const before = await openAfter(name);
+    const grants = rowsIn(scopes);
+    const after = await openAfter(name, () => rename(name, "Chief of Aerodynamics"));
+    assert.deepEqual(rowsIn(scopes), grants, "no grant changes");
+    assert.deepEqual(standing(after.viewer), standing(before.viewer), "the same standing and grants");
+    const { seen, leaks } = await readEverything(after, expect);
+    assert.deepEqual(leaks, []);
+    assert.deepEqual(expectedMarkers(expect).filter((m) => !seen.includes(m)), []);
+    // Their department's change still lands; another department's is still refused.
+    seedFixture();
+    rename(name, "Chief of Aerodynamics");
+    signInAs(accountOf(name).userId);
+    assert.deepEqual(await teamActions.saveMemberDetails({ kind: "person", id: IDS.person("MA") }, IDS.division("MA"), SAVE), { ok: true });
+    assert.ok(isRefusal(await answerOf(() => teamActions.saveMemberDetails({ kind: "person", id: IDS.person(DM) }, IDS.division(DM), SAVE))));
+    // The team leader's roster and Team tree read them as Aerodynamics' head, under the stored title.
+    const leader = await openAfter("team leader", () => rename(name, "Chief of Aerodynamics"));
+    const roster = await leader.members(null);
+    assert.equal(roster.scope, "whole-team");
+    const row = roster.scope === "whole-team" ? roster.people.find((p) => p.id === head) : undefined;
+    assert.deepEqual([row?.role, row?.roleLabel, row?.departmentIds], ["head", "Chief of Aerodynamics", [IDS.department("MA")]]);
+    const aerodynamics = (await leader.teamTree()).departments.find((d) => d.id === IDS.department("MA"));
+    assert.deepEqual([aerodynamics?.head?.id, aerodynamics?.head?.title], [head, "Chief of Aerodynamics"]);
+  });
+
+  test("the Access page's line under a renamed head and a renamed Chief Engineer, and Close department's head label, read the stored title", async () => {
+    const [head, ce] = [accountOf("department head").memberId, accountOf("Chief Engineer").memberId];
+    const lines = async (titles?: { readonly head: string; readonly ce: string }) => {
+      const data = await openAfter("team leader", () => {
+        if (titles !== undefined) {
+          rename("department head", titles.head);
+          rename("Chief Engineer", titles.ce);
+        }
+      });
+      const access = await data.divisionAccess();
+      const titleOf = (id: number | null) => {
+        const role = access?.roleAccess.find((r) => r.person.id === id);
+        return role !== undefined && "title" in role ? role.title : null;
+      };
+      const aerodynamics = (await data.teamStructure())?.departments.find((d) => d.id === IDS.department("MA"));
+      const closing = aerodynamics?.closing.find((p) => p.id === head);
+      return { head: titleOf(head), ce: titleOf(ce), close: closing?.standing === "head" ? closing.title : null, department: aerodynamics?.name };
+    };
+    // The fixture stores the head's title as "Head" and the Chief Engineer's as "Chief Engineer": each reads as stored.
+    const seeded = await lines();
+    assert.deepEqual([seeded.head, seeded.ce, seeded.close], ["Head", "Chief Engineer", "Head"]);
+    const renamed = await lines({ head: "Chief of Aerodynamics", ce: RENAMED });
+    assert.deepEqual([renamed.head, renamed.ce, renamed.close], ["Chief of Aerodynamics", RENAMED, "Chief of Aerodynamics"]);
+    // A blank title reads the default.
+    const blank = await lines({ head: "", ce: "" });
+    assert.deepEqual([blank.head, blank.ce, blank.close], [`Head of ${blank.department}`, "Chief Engineer", `Head of ${blank.department}`]);
+  });
+
+  test("a department rename rewrites a head title still at the old default and keeps a renamed one", async () => {
+    const renameStructures = async (headTitle: string) => {
+      seedFixture();
+      updateRows(roles, { id: 6_000 }, { title: headTitle });
+      keepWrites();
+      signInAs(accountOf("team leader").userId);
+      const answer = await teamActions.saveDepartment(IDS.department(DM), { name: "Frames", code: "FRM", kind: "technical", head: null });
+      assert.deepEqual(answer, { ok: true });
+      return rowsIn(roles).find((r) => r.id === 6_000)?.title;
+    };
+    assert.equal(await renameStructures("Head of Structures"), "Head of Frames", "the default follows the new name");
+    assert.equal(await renameStructures("Chief of Structures"), "Chief of Structures", "a renamed title is kept");
+  });
+
+  test("a new head row gets the default title", async () => {
+    seedFixture();
+    keepWrites();
+    signInAs(accountOf("team leader").userId);
+    const created = await teamActions.createDepartment({ name: "Avionics", code: "AVI", kind: "technical", heads: [EXTRA.mover] });
+    assert.ok(created.ok, JSON.stringify(created));
+    const row = rowsIn(roles).find((r) => r.memberId === EXTRA.mover && r.type === "head");
+    assert.equal(row?.title, "Head of Avionics");
+  });
+});
+
+// The seat row of Edit team tree (issue #627) ---------------------------------
+//
+// A seat box changes who holds a team-level seat: the holder's seat role ends
+// and the successor's starts with the same title and full-access flag. Add
+// seat starts one with no flag. The team leader and full access only.
+
+describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", () => {
+  const SEAT_VIEWERS = VIEWERS.filter(fullAccess).map((r) => r.name);
+  const REFUSED_VIEWERS = ["department head", "division lead", "member"];
+
+  /** Signs in as `who` (a matrix viewer, or a fixture account by its user id) on the database as it stands, and opens their dashboard. */
+  async function openAs(who: string): Promise<DashboardData> {
+    signInAs(userIdOf(who));
+    const opening = await openDashboard();
+    assert.equal(opening.kind, "open", `${who}: the dashboard opens`);
+    return (opening as { data: DashboardData }).data;
+  }
+  /** The fixture's mover: in DM and Testing, holding no seat. */
+  const MOVER = "mover";
+
+  const active = (memberId: number | null) => rowsIn(roles).filter((r) => r.memberId === memberId && r.leavedAt == null);
+
+  test("Change holder ends the old holder's seat role and gives the successor the same title and full access", async () => {
+    const pm = accountOf("Project Manager").memberId;
+    seedFixture();
+    keepWrites();
+    const seatId = seatRowOf("Project Manager");
+    const seat = rowsIn(roles).find((r) => r.id === seatId)!;
+    signInAs(accountOf("team leader").userId);
+    assert.deepEqual(await teamActions.changeSeatHolder(seatId, { to: EXTRA.mover, outcome: "advisor" }), { ok: true });
+
+    assert.ok(rowsIn(roles).find((r) => r.id === seatId)?.leavedAt != null, "the old seat row ended");
+    const taken = active(EXTRA.mover).filter((r) => r.deptId == null && r.divisionId == null);
+    assert.deepEqual(
+      taken.map((r) => [r.title, r.fullAccess, r.type]),
+      [[seat.title, "project_manager", seat.type ?? null]],
+      "one seat row, with the seat's title and flag",
+    );
+    assert.equal(active(EXTRA.mover).length, 3, "the successor keeps their two division roles");
+    // The old holder becomes an advisor to the team, holding no seat and no flag.
+    assert.deepEqual(
+      active(pm).map((r) => [r.type, r.deptId ?? null, r.divisionId ?? null, r.fullAccess ?? null]),
+      [["advisor", null, null, null]],
+    );
+
+    // Access follows the seat: the successor has full access, the old holder has it no more.
+    const successor = await openAs(MOVER);
+    assert.equal(successor.viewer.kind, "operations-lead", "the successor has full access");
+    const former = await openAs("Project Manager");
+    assert.notEqual(former.viewer.kind, "operations-lead", "the old holder has full access no more");
+    const board = (await (await openAs("team leader")).teamTree()).board.map((b) => [b.person.id, b.title]);
+    assert.deepEqual(board[0], [EXTRA.mover, seat.title], "the successor is on the seat row in the seat's place");
+    assert.ok(!board.some(([id]) => id === pm), "the old holder holds the seat no more");
+  });
+
+  test("Leave the team on Change holder ends every role the old holder holds", async () => {
+    const ce = accountOf("Chief Engineer").memberId;
+    seedFixture();
+    keepWrites();
+    signInAs(accountOf("team leader").userId);
+    assert.deepEqual(await teamActions.changeSeatHolder(seatRowOf("Chief Engineer"), { to: EXTRA.mover, outcome: "leave" }), { ok: true });
+    assert.deepEqual(active(ce), [], "no role is left");
+    assert.ok(active(EXTRA.mover).some((r) => r.fullAccess === "chief_engineer"));
+  });
+
+  test("Change holder refuses no outcome, the holder themself and someone who already holds a seat, and writes nothing", async () => {
+    for (const change of [
+      { to: EXTRA.mover, outcome: null },
+      { to: accountOf("Project Manager").memberId, outcome: "advisor" },
+      { to: EXTRA.head, outcome: "advisor" },
+    ]) {
+      const { answer, writes } = await attempt(accountOf("team leader").userId, () => teamActions.changeSeatHolder(seatRowOf("Project Manager"), change));
+      assert.ok(isRefusal(answer), JSON.stringify(change));
+      assert.deepEqual(writes, [], JSON.stringify(change));
+    }
+  });
+
+  test("Add seat starts a role in no department and no division with no full access, on both tree rows and the public Team page's arc", async () => {
+    seedFixture();
+    keepWrites();
+    signInAs(accountOf("team leader").userId);
+    assert.deepEqual(await teamActions.addSeat({ personId: EXTRA.mover, title: "  Safety   Officer " }), { ok: true });
+    const added = active(EXTRA.mover).filter((r) => r.deptId == null && r.divisionId == null);
+    assert.deepEqual(
+      added.map((r) => [r.title, r.fullAccess ?? null, r.type]),
+      [["Safety Officer", null, "core"]],
+    );
+    const leader = await openAs("team leader");
+    const tree = (await leader.teamTree()).board.map((b) => [b.person.id, b.title]);
+    assert.deepEqual(tree.at(-1), [EXTRA.mover, "Safety Officer"], "after the flagged seats on the Team tree");
+    const structure = (await leader.teamStructure())?.board.map((s) => [s.holder.id, s.title, s.flag]);
+    assert.deepEqual(structure?.at(-1), [EXTRA.mover, "Safety Officer", null], "and on Edit team tree's seat row");
+    const arc = teamBuildOf(await databaseTeamRoles()).arc.map((l) => [l.person.id, l.role]);
+    assert.deepEqual(arc.at(-1), [EXTRA.mover, "Safety Officer"], "and on the public Team page's arc");
+    // A new seat gives no full access of its own.
+    assert.notEqual((await openAs(MOVER)).viewer.kind, "operations-lead");
+  });
+
+  test("Add seat refuses a blank title and someone who already holds a seat, and writes nothing", async () => {
+    for (const add of [
+      { personId: EXTRA.mover, title: "   " },
+      { personId: EXTRA.head, title: "Safety Officer" },
+    ]) {
+      const { answer, writes } = await attempt(accountOf("team leader").userId, () => teamActions.addSeat(add));
+      assert.ok(isRefusal(answer), JSON.stringify(add));
+      assert.deepEqual(writes, [], JSON.stringify(add));
+    }
+  });
+
+  for (const name of SEAT_VIEWERS) {
+    test(`${name} may change a seat's holder and add a seat`, async () => {
+      const change = await attempt(accountOf(name).userId, () => teamActions.changeSeatHolder(seatRowOf("Chief Engineer"), { to: EXTRA.mover, outcome: "advisor" }));
+      assert.deepEqual(change.answer, { ok: true }, `${name}: Change holder`);
+      assert.ok(change.writes.length > 0);
+      const add = await attempt(accountOf(name).userId, () => teamActions.addSeat({ personId: EXTRA.mover, title: "Safety Officer" }));
+      assert.deepEqual(add.answer, { ok: true }, `${name}: Add seat`);
+      assert.ok(add.writes.length > 0);
+    });
+  }
+
+  for (const name of REFUSED_VIEWERS) {
+    test(`${name} is refused both, and writes nothing`, async () => {
+      for (const run of [
+        () => teamActions.changeSeatHolder(seatRowOf("Project Manager"), { to: EXTRA.mover, outcome: "advisor" }),
+        () => teamActions.addSeat({ personId: EXTRA.mover, title: "Safety Officer" }),
+      ]) {
+        const { answer, writes } = await attempt(accountOf(name).userId, run);
+        assert.ok(isRefusal(answer), `${name}: ${JSON.stringify(answer)}`);
+        assert.deepEqual(writes, [], `${name}: wrote`);
+      }
+    });
+  }
+
+  test("a head sees the same seat row on Edit team tree as the team leader, with no Add seat", async () => {
+    seedFixture();
+    const rows = async (name: string) => {
+      const structure = await (await openAs(name)).teamStructure();
+      return { board: structure?.board.map((s) => [s.roleId, s.holder.id, s.title]), editable: structure?.departmentsEditable };
+    };
+    const leader = await rows("team leader");
+    const head = await rows("department head");
+    assert.deepEqual(head.board, leader.board);
+    assert.ok((leader.board?.length ?? 0) >= 2);
+    assert.deepEqual([leader.editable, head.editable], [true, false]);
+  });
 });

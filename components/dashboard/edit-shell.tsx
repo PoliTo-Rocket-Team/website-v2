@@ -20,6 +20,7 @@ import {
 import { CONTENT_STATUS_LABELS, type ContentStatus } from "@/lib/content/versioned";
 import { CONTENT_FOCUS } from "./content-parts";
 import { EditFrame } from "./edit-frame";
+import { ViewAsBanner } from "./view-as-banner";
 
 // The edit shell (boards 74b, 74e, 75b and 75d, issue #288): a content type's
 // real page under an edit bar, on top of the dashboard. Any content type
@@ -289,6 +290,9 @@ export function EditShell<Id extends string, Section extends string, Page extend
           <PageSwitcher {...switcher} />
         </div>
       )}
+
+      {/* The editor lies over the page's View as banner, so it draws its own (issue #611). */}
+      <ViewAsBanner placement="editor" />
 
       {notice !== undefined && (
         <p role="status" className="flex shrink-0 items-center gap-2.5 border-b border-warning/20 bg-warning-soft px-4 py-3 text-[13px] text-warning md:px-6">

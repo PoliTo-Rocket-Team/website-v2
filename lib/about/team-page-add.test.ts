@@ -3,9 +3,9 @@ import { test } from "node:test";
 import { arcLayout } from "@/components/about/arc-layout";
 import { memoryContentStore } from "@/lib/content/memory";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import { dummyTeamPagePhotos, dummyTeamRoles } from "@/lib/dummy-data/team-page";
+import { SEED_DATA, teamRolesOf } from "@/db/seed/cases";
 import { team } from "./team";
-import { applyLayer, ARC_LEADERS, nextAddedId, NO_TEAM_LAYER, type AddedRef, type TeamPageLayer } from "./team-layer";
+import { applyLayer, ARC_LEADERS, nextAddedId, NO_TEAM_LAYER, NO_UPLOADS, type AddedRef, type TeamPageLayer } from "./team-layer";
 import { arcVisualOrder, readingIndexOfGap } from "./arc-order";
 import {
   arcHasRoom,
@@ -23,7 +23,7 @@ import {
   type HeadFields,
 } from "./team-page-add";
 import { editedTeamPage } from "./team-page-edit";
-import { publicTeamPage, teamPageEditor } from "./team-page-editor";
+import { publicTeamPage, teamPageEditor, type TeamPagePhotos } from "./team-page-editor";
 import { memoryTeamPageStore } from "./team-page-memory";
 import { advisorRowsOf } from "./advisors";
 import { importedAdvisors } from "./advisors-import";
@@ -33,9 +33,11 @@ import { teamBuildOf } from "./team-roles";
 // #285): a leader lands in the gap the editor clicked, on the desktop arc and
 // in the phone grid alike, until the arc holds eight; added departments,
 // division leads and head-block edits show on the page and the save writes
-// the layer alone.
+// the layer alone. The team is the seeded one, read as the Team page reads it.
 
-const roles = dummyTeamRoles();
+const roles = teamRolesOf(SEED_DATA);
+/** Photos that store nothing: no test here uploads one. */
+const NO_PHOTOS: TeamPagePhotos = { put: async () => "/team/stand-in.webp", owns: NO_UPLOADS, drop: async () => {} };
 const build = teamBuildOf(roles);
 const siteContent: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false };
 
@@ -117,7 +119,7 @@ test("added departments, division leads and head-block edits show on the page, a
 
   const store = memoryContentStore<TeamPageLayer>([]);
   const advisors = memoryContentStore(importedAdvisors());
-  const editor = teamPageEditor(siteContent, memoryTeamPageStore(store, advisors), async () => roles, team, dummyTeamPagePhotos);
+  const editor = teamPageEditor(siteContent, memoryTeamPageStore(store, advisors), async () => roles, team, NO_PHOTOS);
   assert.ok((await editor.save("publish", layer, advisorRowsOf(await advisors.list()))).ok);
   const page = publicTeamPage(roles, team, await store.list());
   const heads = page.departments.groups.flatMap((g) => g.members);

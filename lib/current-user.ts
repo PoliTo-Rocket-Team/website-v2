@@ -1,32 +1,23 @@
 import "server-only";
 
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import { getCookieCache, getSessionCookie } from "better-auth/cookies";
 import { isDatabaseConfigured } from "@/db/client";
 import { getAuth } from "@/lib/auth";
-import { TEST_DEVELOPER_COOKIE, testDeveloperStandIn } from "@/lib/test-developer";
+import { accountUserOf, impersonatorOf, type CurrentUser } from "@/lib/session-user";
+
+export type { CurrentUser } from "@/lib/session-user";
 
 /**
- * The signed-in person, as much as the pages need of it. `session` says how:
- * a real account, or a test developer read as a seeded person (issue #307),
- * who has no name of its own here and writes only on a preview
- * (`testDeveloperMayWrite` in lib/test-developer.ts).
- */
-export type CurrentUser =
-  | { readonly session: "account"; readonly id: string; readonly name: string }
-  | { readonly session: "test-developer"; readonly id: string; readonly name: null };
-
-/**
- * The signed-in person, or null. A test developer where the pages read a
- * database is their viewer's seeded person (lib/test-developer.ts). Else the
- * signed cookie cache answers first; it lives 10 minutes (lib/auth.ts) while
- * the session token lives 7 days, so once it lapses a request that still
- * holds a token asks Better Auth for the session.
+ * The signed-in person, or null: only a real Better Auth session answers
+ * (issue #612). The signed cookie cache answers first; it lives 10 minutes
+ * (lib/auth.ts) while the session token lives 7 days, so once it lapses a
+ * request that still holds a token asks Better Auth for the session. A View
+ * as session answers the person viewed as, with the acting account read from
+ * the session's own `impersonatedBy` (issue #604), never from anything the
+ * request names.
  */
 export async function getCurrentUser(): Promise<CurrentUser | null> {
-  const standIn = testDeveloperStandIn((await cookies()).get(TEST_DEVELOPER_COOKIE)?.value);
-  if (standIn !== null) return { session: "test-developer", id: standIn.userId, name: null };
-
   const requestHeaders = await headers();
 
   const sessionCookie = await getCookieCache(requestHeaders, {
@@ -34,7 +25,11 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   });
 
   if (sessionCookie?.user) {
-    return { session: "account", id: sessionCookie.session.userId ?? sessionCookie.user.id, name: sessionCookie.user.name };
+    return accountUserOf({
+      userId: sessionCookie.session.userId ?? sessionCookie.user.id,
+      name: sessionCookie.user.name,
+      impersonatedBy: impersonatorOf(sessionCookie.session),
+    });
   }
 
   if (!isDatabaseConfigured() || getSessionCookie(new Headers(requestHeaders)) === null) {
@@ -42,7 +37,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   }
 
   const session = await getAuth().api.getSession({ headers: requestHeaders });
-  return session ? { session: "account", id: session.user.id, name: session.user.name } : null;
+  return session ? accountUserOf({ userId: session.user.id, name: session.user.name, impersonatedBy: session.impersonatedBy }) : null;
 }
 
 /** The signed-in person's user id, or null (getCurrentUser). */

@@ -6,6 +6,7 @@ import { getDb } from "@/db/client";
 import { departments, divisions, members, roles, scopes, users } from "@/db/schema";
 import { DEGREE_PROGRAMMES, GENDERS, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
 import { TEAM_ROSTER_CACHE_TAG } from "@/lib/cache-tags";
+import { actingTitleOf, attributedName } from "./acting-account";
 import type { MemberDetails } from "./details";
 import type { TeamPerson } from "./division-edit";
 import type { PersonRecord } from "./division-members";
@@ -13,12 +14,11 @@ import type { HeldSeat } from "./hand-over";
 import { normalizeLinkedin } from "./self";
 import { SEAT_OF_FLAG, type SeatFlag } from "./viewer";
 import {
-  boardSeatOf,
   headDepartmentOf,
+  isTeamSeat,
   membershipsIn,
   membershipsOfRoles,
   roleBeyondDivisions,
-  type BoardSeat,
   type OrgChart,
   type Placement,
   type RoleHeld,
@@ -37,6 +37,7 @@ import {
 export { TEAM_ROSTER_CACHE_TAG };
 
 type RoleRow = {
+  id: number;
   member_id: number;
   type: RoleType;
   title: string;
@@ -50,6 +51,8 @@ type RoleRow = {
 
 type PersonRow = {
   member_id: number;
+  /** Their account id: what an acting account is stored as (issue #605). */
+  user_id: string;
   first_name: string | null;
   last_name: string | null;
   /** The email they sign in with, or were added with. */
@@ -72,6 +75,7 @@ type PersonRow = {
   picture: string | null;
   nda_signed_at: string | null;
   nda_confirmed_by: number | null;
+  nda_confirmed_by_acting_account: string | null;
 };
 
 type ScopeRow = { member_id: number | null; target: string; access_level: string };
@@ -98,6 +102,7 @@ async function queryTeamSnapshot(): Promise<TeamSnapshot> {
       .orderBy(asc(divisions.id)),
     db
       .select({
+        id: roles.id,
         member_id: roles.memberId,
         type: roles.type,
         title: roles.title,
@@ -111,6 +116,7 @@ async function queryTeamSnapshot(): Promise<TeamSnapshot> {
     db
       .select({
         member_id: users.member,
+        user_id: users.id,
         first_name: users.firstName,
         last_name: users.lastName,
         email: users.email,
@@ -130,6 +136,7 @@ async function queryTeamSnapshot(): Promise<TeamSnapshot> {
         picture: members.picture,
         nda_signed_at: members.ndaSignedAt,
         nda_confirmed_by: members.ndaConfirmedBy,
+        nda_confirmed_by_acting_account: members.ndaConfirmedByActingAccount,
       })
       .from(users)
       .leftJoin(members, eq(members.memberId, users.member)),
@@ -160,26 +167,23 @@ export async function readTeamSnapshot(): Promise<TeamSnapshot> {
 const ROLE_RANK = { president: 0, head: 2, lead: 3, core: 4, advisor: 4 } as const;
 
 /**
- * A board seat (Project Manager, Chief Engineer) has no role type of its own:
- * it is a role in no department or division whose title names the seat.
+ * A team-level seat (the Project Manager, the Chief Engineer, any other) has
+ * no role type of its own: it is read from where the row sits
+ * (`roleBeyondDivisions`), never from its title, and ranks under the team
+ * leader only.
  */
-function boardSeatOfRole(role: RoleRow): BoardSeat | null {
-  if (role.type === "president" || role.dept_id !== null || role.division_id !== null) return null;
-  return boardSeatOf(role.title);
-}
-
 function rank(role: RoleRow): number {
-  if (boardSeatOfRole(role) !== null) return 1;
+  if (isTeamSeat(roleSeat(role))) return 1;
   return role.type === null ? 5 : ROLE_RANK[role.type];
 }
 
 /**
  * Where someone's active roles put them, highest first: the team leader, a
- * board seat or a head by their top role; anyone else in every open division
- * they hold a role in, each with its own role (issue #229). A seat or a head
- * also keeps each division role they hold beside it, since anyone can lead a
- * division (Owner decision, 2026-10-11, on #232); a head row kept on a
- * division is the seat, not a role in it. A role in a closed or missing
+ * team-level seat or a head by their top role; anyone else in every open
+ * division they hold a role in, each with its own role (issue #229). A seat
+ * or a head also keeps each division role they hold beside it, since anyone
+ * can lead a division (Owner decision, 2026-10-11, on #232); a head row kept
+ * on a division is the seat, not a role in it. A role in a closed or missing
  * division places them nowhere, so someone with only such roles is on the
  * roster and not yet placed.
  */
@@ -187,12 +191,12 @@ function placementOf(active: readonly RoleRow[], org: OrgChart): Placement {
   const [top] = active;
   const open = active.filter((role) => org.divisions.some((d) => d.id === role.division_id));
   const beside = () => membershipsOfRoles(open.filter((role) => roleBeyondDivisions(roleSeat(role), org) === null).map(roleHeld));
-  if (top.type === "president") return { role: "team-leader", memberships: beside() };
-  const seat = boardSeatOfRole(top);
-  if (seat !== null) return { role: "board", seat, memberships: beside() };
-  if (top.type === "head") {
-    const departmentId = headDepartmentOf(roleSeat(top), org);
-    if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId, memberships: beside() };
+  const seat = roleBeyondDivisions(roleSeat(top), org);
+  if (seat?.kind === "team-leader") return { role: "team-leader", memberships: beside() };
+  if (seat?.kind === "board") return { role: "board", seat: seat.seat, memberships: beside() };
+  if (seat?.kind === "head") {
+    const { departmentId, title } = seat;
+    if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId, title, memberships: beside() };
   }
   return { role: "divisions", memberships: membershipsOfRoles(open.map(roleHeld)) };
 }
@@ -202,7 +206,13 @@ function roleHeld(role: RoleRow): RoleHeld {
 }
 
 function roleSeat(role: RoleRow): RoleSeat {
-  return { ...roleHeld(role), departmentId: role.dept_id, title: role.title };
+  return {
+    ...roleHeld(role),
+    id: role.id,
+    departmentId: role.dept_id,
+    title: role.title,
+    fullAccess: role.full_access === null ? null : SEAT_OF_FLAG[role.full_access],
+  };
 }
 
 const TARGET_LABELS: Readonly<Record<string, string>> = {
@@ -312,11 +322,22 @@ export function teamPeopleOf(snapshot: TeamSnapshot): TeamPerson[] {
 /**
  * Everyone on the roster as the Members page reads them (issue #231): their
  * divisions with the title of their active role in each, their details, and
- * the NDA they signed, with who confirmed it.
+ * the NDA they signed, with who confirmed it: "IT lead as Sara Conti" when
+ * it was confirmed while viewing as Sara Conti (issue #605).
  */
 export function recordsOf(snapshot: TeamSnapshot): PersonRecord[] {
   const people = new Map(snapshot.people.map((p) => [p.member_id, p]));
   const byMember = rolesByMember(snapshot);
+  const actingTitle = (accountId: string | null): string | null => {
+    if (accountId === null) return null;
+    const acting = snapshot.people.find((p) => p.user_id === accountId);
+    const held = acting === undefined ? [] : (byMember.get(acting.member_id) ?? []);
+    return actingTitleOf(held.map((r) => (r.full_access === null ? null : SEAT_OF_FLAG[r.full_access])));
+  };
+  const confirmerOf = (person: PersonRow): string | null => {
+    const confirmer = person.nda_confirmed_by === null ? null : (nameOf(people.get(person.nda_confirmed_by))?.name ?? null);
+    return confirmer === null ? null : attributedName(confirmer, actingTitle(person.nda_confirmed_by_acting_account));
+  };
   return rosterOf(snapshot).map((entry): PersonRecord => {
     const person = people.get(entry.id)!;
     const active = (byMember.get(entry.id) ?? []).filter((r) => r.leaved_at === null);
@@ -340,7 +361,7 @@ export function recordsOf(snapshot: TeamSnapshot): PersonRecord[] {
           ? null
           : {
               signedOn: person.nda_signed_at.slice(0, 10),
-              confirmedBy: person.nda_confirmed_by === null ? null : (nameOf(people.get(person.nda_confirmed_by))?.name ?? null),
+              confirmedBy: confirmerOf(person),
             },
     };
   });

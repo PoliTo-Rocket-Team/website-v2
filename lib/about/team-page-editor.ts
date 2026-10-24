@@ -107,8 +107,8 @@ export interface TeamPageStore {
 }
 
 /**
- * Where a photo uploaded from Replace photo is kept: the public store on the
- * database side, a stand-in on previews. Either way `put` answers a src the
+ * Where a photo uploaded from Replace photo is kept: the public store, or, in
+ * tests, a stand-in. Either way `put` answers a src the
  * layer and the advisor rows take: a `/team/` path or an `https://` URL.
  */
 export interface TeamPagePhotos {

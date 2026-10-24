@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dummyTeamRoles } from "@/lib/dummy-data/team-page";
+import { SEED_DATA, teamRolesOf } from "@/db/seed/cases";
 import { NO_TEAM_LAYER, type TeamPageLayer } from "./team-layer";
 import { team } from "./team";
 import { backToTeamRecord, editedTeamPage, editOfFields, personFieldsOf, withPerson, withSpotEdit } from "./team-page-edit";
@@ -9,8 +9,9 @@ import { teamBuildOf, teamPageFromRoles } from "./team-roles";
 // The Team page editor's Edit person panel (board 80b, issue #284): the
 // fields make only the edit that differs from the team record, and Back to
 // the team record removes the spot's edit so the spot shows the roles again.
+// The team is the seeded one, read as the Team page reads it.
 
-const roles = dummyTeamRoles();
+const roles = teamRolesOf(SEED_DATA);
 const build = teamBuildOf(roles);
 const fromRoles = teamPageFromRoles(roles, team)!;
 const arcSpot = build.arc[0].spot;

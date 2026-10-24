@@ -3,7 +3,9 @@
 // public photo and LinkedIn it gives them, as the seed's roles. The people
 // seed (./people.ts) adds their invented private fields.
 //
-// team.ts places everyone but its core members. A core member's division is
+// team.ts places everyone but its core members. A leader on its arc titled
+// "Head of" a seeded department heads it: the head of R&D, a department with
+// no divisions (issue #627). A core member's division is
 // invented from their role ("Aerodynamicist" sits in Optimization and
 // Analysis), so the dashboard's division pages have people in them; the
 // title is the one team.ts gives. Ids: the leaders, heads and leads take the
@@ -95,11 +97,21 @@ const CORE_DIVISION: Readonly<Record<string, number>> = {
   "Desktop App Developer": D.informationTechnology,
 };
 
+/** The short names team.ts gives a seeded department: "Head of R&D" heads Research and Development (issue #600). */
+const SHORT_DEPARTMENT_NAMES: Readonly<Record<string, string>> = { "R&D": "Research and Development" };
+
+/** The seeded department a "Head of <name>" role heads; null for any other role. */
+function departmentNamedBy(role: string): number | null {
+  if (!role.startsWith("Head of ")) return null;
+  const short = role.slice("Head of ".length);
+  const name = SHORT_DEPARTMENT_NAMES[short] ?? short;
+  return DEPARTMENT_ROWS.rows.find((d) => d.name === name)?.id ?? null;
+}
+
 function departmentHeaded(role: string): number {
-  const name = role.replace(/^Head of /, "");
-  const row = DEPARTMENT_ROWS.rows.find((d) => d.name === name);
-  if (row === undefined) throw new Error(`no seeded department for "${role}" in lib/about/team.ts`);
-  return row.id!;
+  const id = departmentNamedBy(role);
+  if (id === null) throw new Error(`no seeded department for "${role}" in lib/about/team.ts`);
+  return id;
 }
 
 type Division = { readonly id: number; readonly deptId: number };
@@ -143,8 +155,10 @@ function publicTeam(): PublicTeammate[] {
   for (const l of leaders) {
     // A head is placed by the Departments section below.
     if (heads.has(l.name)) continue;
-    // A board seat, or a titled role in no unit such as "Head of R&D".
-    add(l, { title: l.role, type: "core", deptId: null, divisionId: null });
+    // The head of a department with no divisions, which the Departments section does not list: "Head of R&D" (issue #627).
+    const headed = departmentNamedBy(l.role);
+    // Otherwise a board seat, in no unit.
+    add(l, { title: l.role, type: headed === null ? "core" : "head", deptId: headed, divisionId: null });
   }
   for (const group of team.departments.groups) {
     for (const member of group.members) {

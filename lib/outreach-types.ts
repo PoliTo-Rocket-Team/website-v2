@@ -15,8 +15,8 @@ export type IsoDate = `${number}-${number}-${number}`;
  * Where a post or project photo is: a file of the site in public/outreach/ or
  * public/project-photos/ (issue #371), given as its path from the site root; a
  * file uploaded from the dashboard, at its public
- * Blob store URL (issue #291); or, on a preview, an upload kept nowhere, as a
- * data URL the page shows until the next load (lib/dummy-data/outreach.ts).
+ * Blob store URL (issue #291); or, in tests, an upload kept nowhere, as a
+ * data URL (lib/outreach-memory.ts).
  */
 export type PhotoSrc = `/outreach/${string}` | `/project-photos/${string}` | `https://${string}` | `data:image/${string}`;
 
@@ -135,7 +135,7 @@ export type PostVersions = Versioned<OutreachPost, OutreachDraft>;
 /** A stored post with its id and place in the site order. */
 export type PostItem = ContentItem<OutreachPost, OutreachDraft>;
 
-/** Where the posts are kept: the database, or the dummy data on previews. */
+/** Where the posts are kept: the database, or, in tests, memory. */
 export type PostStore = ContentStore<OutreachPost, OutreachDraft>;
 
 /** No item, one, or two: the featured posts (issue #496), at most two at once. */

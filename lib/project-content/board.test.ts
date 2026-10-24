@@ -4,9 +4,7 @@ import { publicItems } from "@/lib/content/versioned";
 import { memoryContentStore } from "@/lib/content/memory";
 import { canReach } from "@/lib/dashboard/access";
 import { VIEWER_KINDS, type ViewerStanding } from "@/lib/dashboard/viewer";
-import { dummyProjectHistory, dummyProjectSeed, dummyProjectStore, parseProjectEdits, serializeProjectEdits, type DummyProjectEdits, type DummyProjectEditsStore } from "@/lib/dummy-data/projects";
-import { DUMMY_NOW } from "@/lib/dummy-data/team";
-import { editedLine } from "./edited";
+import { editedLine, type EditStamp } from "./edited";
 import { projectEditor } from "./editor";
 import { importedProjects } from "./import";
 import { homeCardOf, listingOf, type ProjectRecord } from "./record";
@@ -14,24 +12,12 @@ import { sectionBlockOf, withSectionBlock } from "./sections";
 
 // The dashboard Projects page (board 75, issue #297): dragging the cards sets
 // the site order Home and /projects read, only the site-content editors reach
-// it, a preview keeps the order across a reload, and each card's "edited by"
-// line.
+// it, and each card's "edited by" line.
 
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 
-/** A cookie that keeps what was saved, as the browser does between requests. */
-function cookie(): DummyProjectEditsStore {
-  const jar = {
-    value: undefined as string | undefined,
-    get current(): DummyProjectEdits {
-      return parseProjectEdits(jar.value);
-    },
-    save: async (next: DummyProjectEdits) => {
-      jar.value = serializeProjectEdits(next);
-    },
-  };
-  return jar;
-}
+/** The moment the lines below count "today" from. */
+const NOW = "2026-10-09T16:00:00+02:00";
 
 const names = (records: readonly ProjectRecord[]) => records.map((r) => r.name);
 
@@ -82,38 +68,25 @@ test("only the full admins and holders of site-content access reach the page; ev
   }
 });
 
-test("a test developer's new order is kept across a reload, and the public pages there keep the seed's", async () => {
-  const jar = cookie();
-  const before = projectEditor(admin, dummyProjectStore(jar));
-  assert.ok((await before.setSiteOrder([2, 3, 1])).ok);
-
-  // A reload opens a new store from what the cookie kept.
-  const reloaded = await projectEditor(admin, dummyProjectStore(jar)).board();
-  assert.deepEqual(reloaded?.items.map((i) => i.id), [2, 3, 1]);
-  assert.deepEqual(names(publicItems(dummyProjectSeed())), ["Cavour", "VES", "Efesto"]);
-});
-
 test("each card's line names the last edit, and the one part a draft changes", async () => {
-  const jar = cookie();
-  const editor = projectEditor(admin, dummyProjectStore(jar), dummyProjectHistory(jar, "Marco Bianchi"));
+  // The stamps as the database's audit log gives them (readProjectStamps, lib/dashboard/database-projects.ts).
+  const stamps = new Map<number, EditStamp>([
+    [1, { at: "2026-09-12T11:00:00+02:00", by: "Giulia Rossi" }],
+    [3, { at: "2026-10-02T15:00:00+02:00", by: "Elisa Marchi" }],
+  ]);
+  const store = memoryContentStore(importedProjects());
+  const editor = projectEditor(admin, store, { stamps: async () => stamps, now: () => new Date(NOW) });
   const first = await editor.board();
-  assert.deepEqual(first?.edited, {
-    1: "Edited 12 Sep by Giulia Rossi",
-    2: "Top of the page edited today by Marco Bianchi",
-    3: "Edited 2 Oct by Elisa Marchi",
-  });
+  assert.deepEqual(first?.edited, { 1: "Edited 12 Sep by Giulia Rossi", 3: "Edited 2 Oct by Elisa Marchi" }, "a project with no stamp has no line");
 
-  // Moving a card is not an edit.
-  assert.ok((await editor.setSiteOrder([3, 2, 1])).ok);
-  assert.deepEqual((await editor.board())?.edited, first?.edited);
-
-  // Saving a project is: it reads as edited today by whoever saved it.
+  // Saving a project is an edit: once logged, it reads as edited today, naming the part its draft changes.
   const cavour = importedProjects()[0];
   assert.equal(cavour.version.state, "published");
   if (cavour.version.state !== "published") return;
   const record = cavour.version.published;
   const launches = withSectionBlock(record, "launches", { ...sectionBlockOf(record, "launches")!, title: "Four flights." });
   assert.ok((await editor.save(1, "save-draft", async () => ({ ok: true, value: launches }))).ok);
+  stamps.set(1, { at: NOW, by: "Marco Bianchi" });
   assert.equal((await editor.board())?.edited[1], "Launch history edited today by Marco Bianchi");
 });
 
@@ -123,7 +96,7 @@ test("the line says only Edited when the draft changes more than one part, and n
   const published = cavour.version.published;
   const draft = { ...published, name: "A new name", description: "A new description." };
   const item = { ...cavour, version: { state: "published" as const, published, draft } };
-  const now = new Date(DUMMY_NOW).toISOString();
+  const now = new Date(NOW).toISOString();
   assert.equal(editedLine(item, { at: "2026-10-09T09:00:00+02:00", by: "Giulia Rossi" }, now), "Edited today by Giulia Rossi");
   assert.equal(editedLine(cavour, { at: "2026-09-30T09:00:00+02:00", by: null }, now), "Edited 30 Sep");
   assert.equal(editedLine(cavour, undefined, now), null);

@@ -1,8 +1,7 @@
 // My applications (boards 50, 50b, 50c, 50d and 53; 50m to 50d-m on phones,
 // issue #169): the viewer's own applications, each followed from sent to
-// decision, and the ones that are over. Types and rules only; the dummy side
-// (lib/dummy-data/my-applications.ts) and the database side
-// (./database-self.ts) build the same shapes.
+// decision, and the ones that are over. Types and rules only; the database
+// side (./database-self.ts) builds the shapes.
 
 /** One interview time a division lead offers (the lead's side is issue #171). ISO timestamps. */
 export type InterviewSlot = {
