@@ -41,17 +41,6 @@ export function isViewerKind(value: unknown): value is ViewerKind {
 }
 
 /**
- * How the viewer signed in, which decides how they sign out. A test developer
- * holds no account and no database session (lib/test-developer.ts).
- */
-export const VIEWER_SESSIONS = ["account", "test-developer"] as const;
-export type ViewerSession = (typeof VIEWER_SESSIONS)[number];
-
-export function isViewerSession(value: unknown): value is ViewerSession {
-  return typeof value === "string" && (VIEWER_SESSIONS as readonly string[]).includes(value);
-}
-
-/**
  * The seats that hold every access in the dashboard from the role alone
  * (Owner decision, 2026-10-11, issue #238): the team leader, the operations
  * lead and the IT lead, and since issue #485 the Project Manager and the
@@ -139,15 +128,14 @@ function alumniGrantOf(holds: boolean): { readonly alumniGrant?: true } {
 }
 
 /**
- * Who a test developer looks as (issue #141): one of the viewer kinds, the
- * alumnus included (issue #317), or the team leader (issue #247), who has
- * full access like the operations lead but sits in the team leader's seat,
- * so decides orders and gives "Approve orders".
+ * The standings a check names by kind alone (issue #141): one of the viewer
+ * kinds, the alumnus included (issue #317), or the team leader (issue #247),
+ * who has full access like the operations lead but sits in the team leader's
+ * seat, so decides orders and gives "Approve orders". Each is also the key of
+ * its plain seeded seat (lib/seeded-accounts.ts).
  */
 export const TEST_VIEWERS = ["team-leader", ...VIEWER_KINDS] as const;
 export type TestViewer = (typeof TEST_VIEWERS)[number];
-
-export const TEST_VIEWER_LABELS: Readonly<Record<TestViewer, string>> = { "team-leader": "Team leader", ...VIEWER_KIND_LABELS };
 
 export function isTestViewer(value: unknown): value is TestViewer {
   return typeof value === "string" && (TEST_VIEWERS as readonly string[]).includes(value);
@@ -159,12 +147,11 @@ export function kindOfTestViewer(viewer: TestViewer): ViewerKind {
 }
 
 /**
- * A test developer holds no scope rows, so their standing is who they look
- * as: the operations-lead test developer sits in the operations lead's seat,
- * the team-leader one in the team leader's. `approveOrders` is whether the
- * person they look as holds "Approve orders" in the dummy data, which the
- * team leader gives on the Access page (issue #270); someone off the team
- * never holds it.
+ * The standing of a kind alone, with no scope rows: the operations-lead one
+ * sits in the operations lead's seat, the team-leader one in the team
+ * leader's. `approveOrders` is whether that person holds "Approve orders",
+ * which the team leader gives on the Access page (issue #270); someone off
+ * the team never holds it.
  */
 export function testDeveloperStanding(viewer: TestViewer, approveOrders = false): ViewerStanding {
   switch (viewer) {
@@ -180,11 +167,6 @@ export function testDeveloperStanding(viewer: TestViewer, approveOrders = false)
     default:
       return { kind: viewer, siteContent: false, approveOrders };
   }
-}
-
-/** The test viewer a standing shows as in View as: the team leader's seat is its own entry. */
-export function testViewerOf(viewer: ViewerStanding): TestViewer {
-  return seatOf(viewer) === "team-leader" ? "team-leader" : viewer.kind;
 }
 
 /** The standing alone, out of anything that carries one (an identity, a viewer). */
@@ -287,7 +269,6 @@ export type DashboardViewer = ViewerStanding & {
   readonly role: string;
   /** Their profile photo, which the user card draws in place of the PRT mark. */
   readonly photoUrl: string | null;
-  readonly session: ViewerSession;
 };
 
 /**

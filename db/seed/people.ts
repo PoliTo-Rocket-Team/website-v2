@@ -19,8 +19,8 @@
 import { betterAuthUsers, members, roles, users } from "@/db/schema";
 import { clearedUser, CLEARED_MEMBER } from "@/lib/dashboard/anonymize";
 import { TESTERS } from "@/lib/dev-tester";
-import { ADMIN_TESTERS, ONE_GRANT_SEATS, SEATS } from "@/lib/seeded-accounts";
-import { SEEDED_DEPARTMENT_HEAD, SEEDED_RENAMED_ALUMNUS, SEEDED_TEAM_LEADER, seedUserId } from "@/lib/test-viewer-people";
+import type { TestViewer } from "@/lib/dashboard/viewer";
+import { ADMIN_TESTERS, ONE_GRANT_SEATS, SEATS, seatOf } from "@/lib/seeded-accounts";
 import { PUBLIC_TEAM, publicMember, type PublicTeammate } from "./public-team";
 import { rowsOf, tableSeedModule, type SeedStatement } from "./rows";
 import { DEPARTMENT, DIVISION } from "./structure";
@@ -107,8 +107,13 @@ function publicPerson(p: PublicTeammate): Person {
   };
 }
 
+/** A user id made for the seed: `5eed0000-…-0000000000NN`, NN the member id. */
+export function seedUserId(memberId: number): string {
+  return `5eed0000-0000-4000-8000-${String(memberId).padStart(12, "0")}`;
+}
+
 /** The team leader (lib/about/team.ts). */
-export const TEAM_LEADER = SEEDED_TEAM_LEADER;
+export const TEAM_LEADER = 1;
 /** Invented: team leader 2023–24 and 2024–25, then an advisor of the whole team. */
 export const FORMER_TEAM_LEADER = 40;
 /** Invented: the first head of Structures, 2021–22 and 2022–23. */
@@ -124,7 +129,7 @@ export const ANONYMIZED_ALUMNUS = 48;
 /** Invented: left in 2025–26 and asked to be removed from the Alumni page. */
 export const REMOVED_ALUMNUS = 49;
 /** Invented: left in 2024–25; an editor fixed the name the Alumni page shows. */
-export const RENAMED_ALUMNUS = SEEDED_RENAMED_ALUMNUS;
+export const RENAMED_ALUMNUS = 50;
 /** Invented: joined through an application in 2022 (./recruitment.ts) and left in 2023–24. */
 export const JOINED_MEMBER = 32;
 /** Leads Liquid System Architecture (lib/about/team.ts); took it over from the division advisor by a hand-over (./hand-overs.ts). */
@@ -141,7 +146,7 @@ export const IT_LEAD = publicMember("Huseyin Gulec");
 export const PROJECT_MANAGER = publicMember("Riccardo Savio");
 export const CHIEF_ENGINEER = publicMember("Andrea Manzo");
 
-if (PROPULSION_HEAD !== SEEDED_DEPARTMENT_HEAD) throw new Error("the department-head test viewer is not the head of Propulsion");
+if (PROPULSION_HEAD !== seatOf("department-head").memberId) throw new Error("the department-head seat is not the head of Propulsion");
 
 /** The people the site publishes, then the invented ones, then the applicants. */
 export const PEOPLE: readonly Person[] = [
@@ -480,8 +485,22 @@ export const PUBLIC_SEAT_UPDATED_AT_FIX: SeedStatement = {
   params: [],
 };
 
-/** The seeded person each test viewer is (lib/test-viewer-people.ts), which the app reads too. */
-export { TEST_VIEWER_PEOPLE } from "@/lib/test-viewer-people";
+/**
+ * The seeded person each kind's plain seat is, by user id (lib/seeded-accounts.ts):
+ * the team leader, the head of Propulsion, who answers the waiting hand-over
+ * (issue #326), the alumnus whose name was fixed for the Alumni page (issue
+ * #317), and the local tester of each other kind. A check signs in as one, or
+ * views as one, through a real session (issue #612).
+ */
+export const TEST_VIEWER_PEOPLE: Readonly<Record<TestViewer, string>> = {
+  "team-leader": seatOf("team-leader").id,
+  "operations-lead": seatOf("operations-lead").id,
+  "department-head": seatOf("department-head").id,
+  "division-lead": seatOf("division-lead").id,
+  member: seatOf("member").id,
+  alumni: seatOf("alumni").id,
+  "non-member": seatOf("non-member").id,
+};
 
 export const people = tableSeedModule({
   name: "people",

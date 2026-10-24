@@ -1,27 +1,23 @@
 import "server-only";
 
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import { getCookieCache, getSessionCookie } from "better-auth/cookies";
 import { isDatabaseConfigured } from "@/db/client";
 import { getAuth } from "@/lib/auth";
 import { accountUserOf, impersonatorOf, type CurrentUser } from "@/lib/session-user";
-import { TEST_DEVELOPER_COOKIE, testDeveloperStandIn } from "@/lib/test-developer";
 
 export type { CurrentUser } from "@/lib/session-user";
 
 /**
- * The signed-in person, or null. A test developer is their viewer's seeded
- * person (lib/test-developer.ts). Else the
- * signed cookie cache answers first; it lives 10 minutes (lib/auth.ts) while
- * the session token lives 7 days, so once it lapses a request that still
- * holds a token asks Better Auth for the session. A View as session answers
- * the person viewed as, with the acting account read from the session's own
- * `impersonatedBy` (issue #604), never from anything the request names.
+ * The signed-in person, or null: only a real Better Auth session answers
+ * (issue #612). The signed cookie cache answers first; it lives 10 minutes
+ * (lib/auth.ts) while the session token lives 7 days, so once it lapses a
+ * request that still holds a token asks Better Auth for the session. A View
+ * as session answers the person viewed as, with the acting account read from
+ * the session's own `impersonatedBy` (issue #604), never from anything the
+ * request names.
  */
 export async function getCurrentUser(): Promise<CurrentUser | null> {
-  const standIn = testDeveloperStandIn((await cookies()).get(TEST_DEVELOPER_COOKIE)?.value);
-  if (standIn !== null) return { session: "test-developer", id: standIn.userId, name: null, actingAccountId: null };
-
   const requestHeaders = await headers();
 
   const sessionCookie = await getCookieCache(requestHeaders, {

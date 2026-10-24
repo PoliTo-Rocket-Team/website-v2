@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 import { callbackPath } from "@/lib/auth-callback";
-import { TEST_DEVELOPER_COOKIE, testDeveloperViewer } from "@/lib/test-developer";
 
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
@@ -14,11 +13,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // A test developer (issue #141) counts as signed in only where the gate
-  // is on; in production the cookie is ignored.
-  const isTestDeveloper =
-    testDeveloperViewer(request.cookies.get(TEST_DEVELOPER_COOKIE)?.value) !== null;
-  const isAuthenticated = !!getSessionCookie(request) || isTestDeveloper;
+  const isAuthenticated = !!getSessionCookie(request);
 
   if (isAuthenticated && pathname === "/login") {
     const target = callbackPath(request.nextUrl.searchParams.get("cb"));

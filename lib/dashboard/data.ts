@@ -32,8 +32,8 @@ import type { Upload, WriteResult } from "./write";
 
 /**
  * The one way dashboard pages read and write data (issue #141). Every page
- * reads the database (./database.ts), a test developer as their viewer's
- * seeded person; ./open.ts opens it and answers a DashboardOpening
+ * reads the database (./database.ts) as the signed-in account; ./open.ts
+ * opens it and answers a DashboardOpening
  * (./opening.ts). The dummy implementation (lib/dummy-data/) is read only by
  * tests (issue #609). A later page adds one method here and to both
  * implementations.

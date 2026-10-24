@@ -3,7 +3,8 @@
 How dashboard pages and their server actions read and write data: through one interface,
 `DashboardData`, with two implementations. Every page reads the database one: under `next dev`
 the Neon `development` branch, on a preview the shared `preview` branch, in production its own. A
-test developer reads it as their viewer's seeded person. The dummy implementation in
+check reads it as a seeded person through a real session: the tester sign-in, then View as (issue
+#612). The dummy implementation in
 `lib/dummy-data/` is read only by tests now (issue #609), until a later child of epic #597 removes
 it. Why a preview reads its own seeded database is
 [0016](../.decisions/0016-previews-read-their-own-seeded-branch.md), and its amendment of
@@ -24,10 +25,9 @@ it. Why a preview reads its own seeded database is
 
 2. **Two implementations.** `openDatabaseDashboard()` in
    [lib/dashboard/database.ts](../lib/dashboard/database.ts) answers from the signed-in person's
-   rows, and is `null` with no session, or in production with no database. That person is an
-   account, or the seeded person a test developer is read as (`getCurrentUser` in
-   [lib/current-user.ts](../lib/current-user.ts), `TEST_VIEWER_PEOPLE` in
-   [lib/test-viewer-people.ts](../lib/test-viewer-people.ts)). `dummyDashboardData(kind, …)` in
+   rows, and is `null` with no session, or in production with no database. That person is the
+   session's account, or the person a View as session views as (`getCurrentUser` in
+   [lib/current-user.ts](../lib/current-user.ts)). `dummyDashboardData(kind, …)` in
    [lib/dummy-data/index.ts](../lib/dummy-data/index.ts) answers from the dummy arrays for one
    viewer kind; only tests call it.
 
@@ -54,10 +54,9 @@ it. Why a preview reads its own seeded database is
    (`dataFor`), check the viewer reaches the page, and hand what the browser sent to the interface.
    The interface checks it again and answers `written(value)` or `refused(error)`
    ([lib/dashboard/write.ts](../lib/dashboard/write.ts)). `runAuditQuery` and `runAuditBatch`
-   ([lib/db-audit.ts](../lib/db-audit.ts)) both ask `auditWriterOf` in
-   [lib/test-developer.ts](../lib/test-developer.ts): on a preview a test developer's write is
-   saved to the shared `preview` branch as the viewer's seeded person, and in production and under
-   `next dev` it is refused before it is sent (`testDeveloperMayWrite`, ADR 0016).
+   ([lib/db-audit.ts](../lib/db-audit.ts)) both ask `auditWriterFor` in
+   [lib/audit-writer.ts](../lib/audit-writer.ts), which logs the write under the session's account
+   and, in a View as session, the acting account beside it (issue #605).
 
 6. **A run with no database stops where it must have one.** `isDatabaseConfigured` and `getDb` in
    [db/client.ts](../db/client.ts) ask `assertDatabaseWhereRequired` in
@@ -84,12 +83,9 @@ It does not apply to the legacy route group, whose pages still call `app/actions
 ## Why it is not obvious
 
 - A page that imports a database read directly skips the viewer resolution `openDashboard()`
-  does, so a test developer is not read as their seeded person.
+  does, so it reads no standing for the session's account.
 - A page that adds its own "no database" fallback under `next dev` or on a preview never runs it:
   the first database read there stops the run (`DatabaseRequired`).
-- A test developer's write reaches no database but a preview's `preview` branch. `lib/db-audit.ts`
-  saves it as the viewer's seeded person only on a preview, whose shared branch keeps it across
-  preview builds (a build seeds that branch only while it is empty), and refuses it anywhere else.
 
 ## Known inconsistencies (not the pattern)
 

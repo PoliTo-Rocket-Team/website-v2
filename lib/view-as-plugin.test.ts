@@ -126,7 +126,7 @@ test("a start the gate allows makes one View as session for the person, logs it 
   assert.deepEqual(asked, [{ actingAccountId: ACTING.id, viewingAs: false, personId: PERSON.id }], "the gate is asked, with the acting account read from its session");
 
   const viewing = await cachedUser(jar);
-  assert.deepEqual(viewing, { session: "account", id: PERSON.id, name: PERSON.name, actingAccountId: ACTING.id });
+  assert.deepEqual(viewing, { id:PERSON.id, name: PERSON.name, actingAccountId: ACTING.id });
   const session = await auth.api.getSession({ headers: jar.headers() });
   assert.equal(session?.user.id, PERSON.id);
   assert.equal(session?.impersonatedBy, ACTING.id, "the server's own session read names the acting account");
@@ -138,7 +138,7 @@ test("a start the gate allows makes one View as session for the person, logs it 
 test("a plain session names no acting account", async () => {
   const { auth } = await setUp();
   const jar = await signIn(auth, ACTING);
-  assert.deepEqual(await cachedUser(jar), { session: "account", id: ACTING.id, name: ACTING.name, actingAccountId: null });
+  assert.deepEqual(await cachedUser(jar), { id:ACTING.id, name: ACTING.name, actingAccountId: null });
   assert.equal((await auth.api.getSession({ headers: jar.headers() }))?.impersonatedBy, null);
 });
 
@@ -150,7 +150,7 @@ test("a start the gate refuses makes no session and logs nothing, though the plu
     const refused = await post(auth, jar, "/admin/impersonate-user", { userId: TESTERS.applicant.id });
     assert.equal(refused.status, 403, tester.key);
     assert.equal(db.session.length, sessions, `${tester.key}: no session is made`);
-    assert.deepEqual(await cachedUser(jar), { session: "account", id: tester.id, name: tester.name, actingAccountId: null }, `${tester.key} is still themselves`);
+    assert.deepEqual(await cachedUser(jar), { id:tester.id, name: tester.name, actingAccountId: null }, `${tester.key} is still themselves`);
   }
   const signedOut = await auth.handler(
     new Request(`${BASE}/admin/impersonate-user`, { method: "POST", headers: { "content-type": "application/json", origin: ORIGIN }, body: JSON.stringify({ userId: PERSON.id }) }),
@@ -194,7 +194,7 @@ test("Stop ends the View as session, logs it once naming both people, and signs 
     { event: "start", sessionId, personId: PERSON.id, actingAccountId: ACTING.id },
     { event: "stop", sessionId, personId: PERSON.id, actingAccountId: ACTING.id },
   ]);
-  assert.deepEqual(await cachedUser(jar), { session: "account", id: ACTING.id, name: ACTING.name, actingAccountId: null });
+  assert.deepEqual(await cachedUser(jar), { id:ACTING.id, name: ACTING.name, actingAccountId: null });
 
   // A stop with no View as session to end is refused and logs nothing.
   assert.equal((await post(auth, jar, "/admin/stop-impersonating")).status, 400);

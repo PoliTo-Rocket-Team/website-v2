@@ -8,8 +8,7 @@ import type { NavViewer } from "@/lib/nav-viewer-shape";
 
 /**
  * Who the navbar shows as signed in (issues #157, #261): the signed-in
- * person, an account or the seeded person a test developer is read as
- * (issue #307), else nobody. Read at request time by GET /api/viewer, never
+ * account, else nobody. Read at request time by GET /api/viewer, never
  * by a page, so the pages that carry the navbar stay prerendered.
  */
 export async function navViewer(): Promise<NavViewer | null> {
@@ -23,8 +22,6 @@ async function personNavViewer(user: CurrentUser): Promise<NavViewer | null> {
   const [row] = await getDb()
     .select({
       email: users.email,
-      first_name: users.firstName,
-      last_name: users.lastName,
       prt_email: members.prtEmail,
       picture: members.picture,
     })
@@ -35,7 +32,5 @@ async function personNavViewer(user: CurrentUser): Promise<NavViewer | null> {
   if (!row) return null;
   const teamEmail = row.prt_email?.trim() ? row.prt_email : null;
   const photoUrl = row.picture?.trim() ? row.picture : null;
-  // A test developer has no session name; their seeded person's row has one.
-  const name = user.name ?? ([row.first_name, row.last_name].filter(Boolean).join(" ") || row.email);
-  return { name, email: teamEmail ?? row.email, photoUrl, session: user.session };
+  return { name: user.name, email: teamEmail ?? row.email, photoUrl };
 }

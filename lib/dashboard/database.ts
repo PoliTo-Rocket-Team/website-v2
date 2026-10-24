@@ -886,8 +886,6 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     name: identity.name,
     role: roleLabelOf(identity),
     photoUrl: identity.picture,
-    // A test developer read as a seeded person signs out as a test developer.
-    session: user.session,
   };
   const self = databaseSelfPages(identity);
   return {
