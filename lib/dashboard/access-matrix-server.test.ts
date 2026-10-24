@@ -185,15 +185,8 @@ describe("figures about applications come only where the viewer reads Applicatio
 
       const overview = await answerOf(() => data.overview());
       if (overview === "refused") return;
+      // Every seat reads one Overview, a member's with only their granted areas (issue #593).
       const board = overview as TeamSideOverview;
-      if (board.shape === "personal") {
-        // A member's own page: an Applications grant adds one counts-only line and no attention row (issue #480).
-        const line = board.access.find((s) => s.area === "applications");
-        if (reads.length === 0) assert.equal(line, undefined, `${name}: an Applications line`);
-        else assert.equal(line?.area === "applications" && line.fresh, reads.length, `${name}: new applications on the Applications line`);
-        assert.equal(board.attention.some((a) => a.kind === "applications"), false, `${name}: a new-application row`);
-        return;
-      }
       const fresh = board.stats.find((s) => s.label === "New applications");
       if (reads.length === 0) assert.equal(fresh, undefined, `${name}: a New applications figure`);
       else assert.equal(fresh?.value, String(reads.length), `${name}: New applications`);
@@ -776,8 +769,7 @@ describe("the decision rows come to every Overview whose viewer decides orders (
     const name = "member with Approve orders";
     assert.deepEqual(VIEWERS.find((v) => v.name === name)!.viewer.rawRows.map((r) => [r.scope, r.target]), [["team", "approve_orders"]]);
     const board = (await (await open(name)).overview()) as TeamSideOverview;
-    assert.ok(board.shape === "personal", `${name}: ${board.shape}`);
-    assert.deepEqual(board.access, [{ area: "approve-orders", href: "/dashboard/orders", waiting: ALL.length }]);
+    assert.deepEqual(board.access, { kind: "lines", lines: [{ area: "approve-orders", href: "/dashboard/orders", waiting: ALL.length }] });
   });
 });
 

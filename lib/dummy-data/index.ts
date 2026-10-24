@@ -22,7 +22,7 @@ import { projectEditor } from "@/lib/project-content/editor";
 import { dummyProjectHistory, dummyProjectStore, type DummyProjectEditsStore } from "./projects";
 import {
   checklistProgress,
-  divisionShortName,
+  divisionRoster,
   noPhotoItem,
   interviewOrder,
   oldestLine,
@@ -32,14 +32,16 @@ import {
   type DepartmentOverview,
   type DivisionOverview,
   type DivisionSummary,
-  type PersonalOverview,
-  type RosterPerson,
+  type PersonalPanels,
+  type Roster,
+  type ScopeBoard,
   type TeamLeaderOverview,
   type TeamOverview,
   type TeamSideOverview,
   type UpcomingInterview,
 } from "@/lib/dashboard/overview";
-import { homeDivisionOf, isIn, membershipsIn, roleIn, type Departure, type RosterEntry } from "@/lib/dashboard/team";
+import { divisionOverviewOf, membersScopeOf, membersStat, overviewAreasOf } from "@/lib/dashboard/division-overview";
+import { homeDivisionOf, homeFirst, isIn, membershipsIn, roleIn, type Departure, type RosterEntry } from "@/lib/dashboard/team";
 import { applyMove, type LeadMove } from "@/lib/dashboard/application-flow";
 import { checkNewPosition, checkPositionContent, newPositionCode, type DivisionChoice, type PositionContent } from "@/lib/dashboard/new-position";
 import {
@@ -56,7 +58,7 @@ import {
   type PositionRow,
   type PositionsPage,
 } from "@/lib/dashboard/recruitment";
-import { kindOfTestViewer, readsArea, testDeveloperStanding, VIEWER_KIND_LABELS, type DashboardViewer, type OffTeamKind, type TestViewer, type ViewerKind } from "@/lib/dashboard/viewer";
+import { kindOfTestViewer, readsArea, testDeveloperStanding, VIEWER_KIND_LABELS, type DashboardViewer, type OffTeamKind, type TestViewer, type ViewerKind, type ViewerStanding } from "@/lib/dashboard/viewer";
 import { mayChangePositionIn, type PositionWriter } from "@/lib/dashboard/position-access";
 import { departmentSummaries, leaderAttention, leaderStats } from "@/lib/dashboard/leader-overview";
 import { openPositionsDetail } from "@/lib/dashboard/open-positions-detail";
@@ -88,8 +90,8 @@ import { NO_TEAM_EDITS, type TeamEdits, type TeamEditsStore } from "./edits";
 import { dummyNoticeAttention, dummyNoticesOf, isDummyNoticeOpen, type DummyNotices } from "./notices";
 import { checkPhoto, HAND_OVER_FIRST, leaveReason, type LeaveState } from "@/lib/dashboard/self";
 import { NO_OWN_STORE, type OwnApplicationsStart, type OwnChangesStore } from "./own";
-import { testGrantHoldsContent, withTestGrant, type TestGrant } from "./test-grant";
-import { accessSummariesOf } from "@/lib/dashboard/access-summary";
+import { grantActors, testGrantAreas, withTestGrant, type TestGrant } from "./test-grant";
+import { accessSectionOf, accessSummariesOf, type AccessSection } from "@/lib/dashboard/access-summary";
 import { dummyDetails, ownApplicationsOf } from "./own-applications";
 import type { YourDetails } from "@/lib/dashboard/details";
 import {
@@ -502,11 +504,8 @@ function divisionOverview(team: Team, notices: DummyNotices): DivisionOverview {
         detail: `${formatEuro(waiting.total)} to be placed`,
         live: waiting.count > 0,
       },
-      {
-        label: "My division",
-        value: String(members.length),
-        detail: `${members.length === 1 ? "person" : "people"} in ${divisionShortName(division.name)}`,
-      },
+      // The lead reads Members in the division they lead, so the figure names it as theirs (issue #593).
+      membersStat(members.length, membersScopeOf([division.id], { divisions, departments }, [division.id])),
     ],
     attention: attentionFor(kind, team, notices),
     interviews: interviewsFor([division.id], team),
@@ -569,28 +568,76 @@ function sinceLine(isoDate: string): string {
   return `In the team since ${month} ${date.getUTCFullYear()}`;
 }
 
-/** The lead first, then up to two others, then the viewer (board 40m). */
-function rosterPreview(me: DummyPerson): RosterPerson[] {
-  const mine = divisionIdOfPerson(me);
-  const isLead = (p: DummyPerson) => mine !== null && roleInDivision(p, mine) === "lead";
-  const division = people.filter((p) => mine !== null && isIn(p.placement, mine));
-  const lead = division.filter(isLead);
-  const others = division.filter((p) => !isLead(p) && p.id !== me.id).slice(0, 2);
-  return [...lead, ...others, me].map((p) => ({
-    name: p.name,
-    role: isLead(p) ? "Division lead" : "Member",
-    lead: isLead(p),
-    self: p.id === me.id,
-  }));
+/** One of the viewer's divisions as board 52 shows it: its leads, up to two others, then the viewer (`divisionRoster`). */
+function rosterIn(me: DummyPerson, divisionId: number): Roster {
+  const division = divisionOf(divisionId);
+  return divisionRoster(
+    { title: division.name, department: departmentOf(divisionId).name },
+    people
+      .filter((p) => isIn(p.placement, divisionId))
+      .map((p) => ({ memberId: p.id, name: p.name, type: roleInDivision(p, divisionId) === "lead" ? "lead" : null })),
+    me.id,
+  );
 }
 
-/** The member's own page; `teamOrders` is the team's orders when they hold Approve orders, else null. */
-function memberOverview(notices: DummyNotices, content: boolean, teamOrders: readonly Order[] | null): PersonalOverview {
+/** What a member's grants cover, as the database side reads them (`grantActors`): the divisions their Members grant reaches. */
+function grantedMemberDivisions(grant: TestGrant | null, edits: TeamEdits): number[] {
+  const viewing = grant === null ? null : grantActors(grant, dummyOrg(edits).org).viewing;
+  return viewing?.kind === "lead" ? [...viewing.divisionIds] : [];
+}
+
+/**
+ * Board 56 for the member (issue #593): the division board with only the
+ * areas their test grant names, so none without one. Their Members grant
+ * counts the people in the divisions it covers, each once.
+ */
+function memberBoard(standing: ViewerStanding, grant: TestGrant | null, edits: TeamEdits, notices: DummyNotices): DivisionOverview {
   const me = personFor.member;
-  const division = divisionOf(myDivisionId("member"));
-  const department = departmentOf(division.id);
+  const covered = grantedMemberDivisions(grant, edits);
+  const inScope = people.filter((p) => covered.some((id) => isIn(p.placement, id)));
+  const own = membershipsIn(me.placement).map((m) => m.divisionId);
+  return divisionOverviewOf(overviewAreasOf(standing), {
+    now: NOW,
+    notices: dummyNoticeAttention(me, notices, NOW),
+    members: {
+      count: inScope.length,
+      scope: membersScopeOf(covered, { divisions, departments }, own),
+      withoutPhoto: people.filter((p) => covered.some((id) => roleInDivision(p, id) === "member") && !p.hasPhoto).map((p) => p.name),
+    },
+  });
+}
+
+/**
+ * "Your access" for a test viewer (issue #593): the member's test grant's
+ * lines, then Approve orders for whoever holds it, counted from `teamOrders`;
+ * the access hint for a member with neither.
+ */
+function accessFor(standing: ViewerStanding, grant: TestGrant | null, edits: TeamEdits, teamOrders: readonly Order[] | null): AccessSection {
+  const areas = grant === null ? [] : testGrantAreas(grant);
+  const covered = grantedMemberDivisions(grant, edits);
+  const lines = accessSummariesOf(
+    areas,
+    {
+      members: { people: people.filter((p) => covered.some((id) => isIn(p.placement, id))).length, divisions: covered.length },
+      approveOrders: standing.approveOrders && teamOrders !== null ? { waiting: waitingOrders(teamOrders).count } : undefined,
+    },
+    standing.siteContent,
+  );
+  return accessSectionOf(lines, overviewAreasOf(standing).length > 0);
+}
+
+/** Board 52's panels for every test viewer on the team (issue #593): who they are, their page on the site, one roster per division they are in, and `access`. */
+function personalPanelsFor(me: DummyPerson, access: AccessSection): PersonalPanels {
+  const home = divisionIdOfPerson(me);
+  const { placement } = me;
+  const place =
+    home !== null
+      ? [divisionOf(home).name, departmentOf(home).name]
+      : placement.role === "head"
+        ? departments.filter((d) => d.id === placement.departmentId).map((d) => d.name)
+        : [];
   const items: ChecklistItem[] = [
-    { label: "Name and division", detail: "Set by your division lead", done: true, action: null },
+    { label: "Name and division", detail: "Set by your division lead", done: home !== null, action: null },
     { label: "Email", detail: me.email, done: true, action: null },
     {
       label: "Photo",
@@ -605,13 +652,10 @@ function memberOverview(notices: DummyNotices, content: boolean, teamOrders: rea
       action: me.linkedin !== null ? null : { label: "Add", href: "/dashboard/profile" },
     },
   ];
-  const size = people.filter((p) => isIn(p.placement, division.id)).length;
   return {
-    shape: "personal",
-    attention: dummyNoticeAttention(me, notices, NOW),
     person: {
       name: me.name,
-      line: `${me.title} · ${division.name} · ${department.name}`,
+      line: [me.title, ...place].join(" · "),
       since: sinceLine(me.since),
       edit: { label: "Edit profile", href: "/dashboard/profile" },
     },
@@ -620,19 +664,13 @@ function memberOverview(notices: DummyNotices, content: boolean, teamOrders: rea
       detail: `This is how you appear on The Team page. ${checklistProgress(items)}`,
       items,
     },
-    roster: {
-      title: division.name,
-      detail: `${department.name} · ${size} people`,
-      size,
-      people: rosterPreview(me),
-    },
-    // The dummy member holds no area grant, so the access hint shows (issue #480), unless they hold
-    // the Content test grant (issue #504) or Approve orders (issue #592).
-    access: accessSummariesOf([], { approveOrders: teamOrders === null ? undefined : { waiting: waitingOrders(teamOrders).count } }, content),
+    rosters: homeFirst(membershipsIn(me.placement)).map((m) => rosterIn(me, m.divisionId)),
+    access,
   };
 }
 
-function overviewFor(kind: ViewerKind, team: Team, notices: DummyNotices, content: boolean, teamOrders: readonly Order[] | null): TeamSideOverview {
+/** The board a test viewer's scope reads (issue #593): a member reads the division board over their test grant, a lead over their division. */
+function boardFor(kind: ViewerKind, team: Team, notices: DummyNotices, standing: ViewerStanding, grant: TestGrant | null, edits: TeamEdits): ScopeBoard {
   switch (kind) {
     case "operations-lead":
       return teamOverview(team, notices);
@@ -641,7 +679,7 @@ function overviewFor(kind: ViewerKind, team: Team, notices: DummyNotices, conten
     case "division-lead":
       return divisionOverview(team, notices);
     case "member":
-      return memberOverview(notices, content, teamOrders);
+      return memberBoard(standing, grant, edits, notices);
     case "non-member":
     case "alumni":
       throw new DashboardRefused("an Overview off the team is built from My applications");
@@ -1000,10 +1038,14 @@ export function dummyDashboardData(
   // Whoever decides orders, whatever their Overview's shape, reads the team's orders for it (issue #592).
   const decidingOrders = (): Order[] | null =>
     offTeam === null && decideRightOfStanding(dummyViewer(viewer, holders, grant)) !== null ? dummyTeamOrders(teamEdits.current) : null;
-  const shapeOfOverview = (teamOrders: Order[] | null): TeamSideOverview =>
-    viewer === "team-leader"
-      ? leaderOverview(team, teamEdits.current, dummyNoticesOf(teamEdits.current))
-      : overviewFor(kind, team, dummyNoticesOf(teamEdits.current), grant !== null && testGrantHoldsContent(grant), teamOrders);
+  // One Overview for every seat on the team (issue #593): the board their scope reads, with board 52's panels.
+  const overviewOf = (teamOrders: Order[] | null): TeamSideOverview => {
+    const standing = dummyViewer(viewer, holders, grant);
+    const notices = dummyNoticesOf(teamEdits.current);
+    const board = viewer === "team-leader" ? leaderOverview(team, teamEdits.current, notices) : boardFor(kind, team, notices, standing, grant, teamEdits.current);
+    if (person === null) throw new DashboardRefused("an Overview off the team is built from My applications");
+    return { ...board, ...personalPanelsFor(person, accessFor(standing, grant, teamEdits.current, teamOrders)) };
+  };
 
   /**
    * Whether the viewer may change `area` on the role: it is one they reach
@@ -1043,7 +1085,7 @@ export function dummyDashboardData(
     // then what waits for a decision, for whoever decides orders (issue #592).
     overview: async () => {
       const teamOrders = decidingOrders();
-      const overview = shapeOfOverview(teamOrders);
+      const overview = overviewOf(teamOrders);
       const decisions = teamOrders === null ? [] : leaderAttention({ orders: teamOrders, now: NOW });
       const answering = [...handOvers.attention(NOW), ...aliases.attention(NOW), ...decisions];
       return answering.length === 0 ? overview : { ...overview, attention: [...answering, ...overview.attention] };

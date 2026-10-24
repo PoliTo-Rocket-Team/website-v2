@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { divisionOverviewOf, overviewAreasOf, type DivisionFigures } from "./division-overview";
+import { divisionOverviewOf, membersScopeOf, membersStat, overviewAreasOf, type DivisionFigures } from "./division-overview";
 import type { AttentionItem, DivisionOverview } from "./overview";
 import { viewerStandingOf, type ActiveRoleRef, type ScopeRef, type ScopeTarget } from "./viewer";
 
@@ -26,7 +26,7 @@ const everything: DivisionFigures = {
     interviews: [{ applicant: "Ada Applicant", position: "Test Engineer", state: "waiting" }],
   },
   orders: { count: 3, total: 12_000 },
-  members: { count: 6, divisionName: "Mission Analysis Division", withoutPhoto: ["Mia Member"] },
+  members: { count: 6, scope: { kind: "division", name: "Mission Analysis Division", own: true }, withoutPhoto: ["Mia Member"] },
 };
 
 const statLabels = (overview: DivisionOverview) => overview.stats.map((s) => s.label);
@@ -93,6 +93,30 @@ test("a division lead reads every area, so their Overview is the whole board, as
   assert.deepEqual(overview.stats.map((s) => s.value), ["2", "1", "3 waiting", "6"]);
   assert.deepEqual(attentionKinds(overview), ["applications", "no-photo", "notice"]);
   assert.equal(overview.interviews.length, 1);
+});
+
+test("the Members figure names the scope it counts, not always the viewer's division (issue #593)", () => {
+  const org = {
+    departments: [
+      { id: 1, name: "Aerodynamics" },
+      { id: 2, name: "Structures" },
+    ],
+    divisions: [
+      { id: 1, name: "Mission Analysis Division", departmentId: 1 },
+      { id: 2, name: "Optimization Division", departmentId: 1 },
+      { id: 3, name: "Design Division", departmentId: 2 },
+    ],
+  };
+  const label = (covered: number[], own: number[]) => {
+    const stat = membersStat(4, membersScopeOf(covered, org, own));
+    return `${stat.label}: ${stat.detail}`;
+  };
+  assert.equal(label([1], [1]), "My division: people in Mission Analysis");
+  assert.equal(label([2], [1]), "Division: people in Optimization");
+  assert.equal(label([1, 2], [1]), "Department: people in Aerodynamics");
+  assert.equal(label([1, 2, 3], [1]), "Team: people on the team");
+  assert.equal(label([1, 3], [1]), "Divisions: people in 2 divisions");
+  assert.equal(membersStat(1, { kind: "team" }).detail, "person on the team");
 });
 
 test("a member with a grant on every area sees the whole board over their grants", () => {

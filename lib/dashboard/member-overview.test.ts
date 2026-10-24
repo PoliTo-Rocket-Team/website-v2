@@ -4,70 +4,104 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { DashboardData } from "./data";
 import { openDashboard } from "./open";
-import type { PersonalOverview, TeamSideOverview } from "./overview";
-import { accountOf, MARKERS, seedFixture } from "./access-matrix/fixture";
-import { ALL } from "./access-matrix/matrix";
+import type { TeamSideOverview } from "./overview";
+import { accountOf, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 
-// A member's Overview on the database path (issue #480): with a grant or
-// without one, it is their own page (profile, "Your page on the site", their
-// division, their own notices), and each grant adds one counts-only "Your
-// access" line. It runs on the access matrix's in-memory database
-// (./access-matrix/install.ts), where each unit holds one new application and
-// one interview with times offered and none booked.
+// One Overview for every team seat on the database path (issue #593): the
+// plain member, a member with one grant, a division lead, a department head
+// and the team leader all get the same board. Each keeps the personal panels
+// (the profile header with Edit profile, "Your page on the site" and their
+// division's roster), and anyone holding a grant gets "Your access" listing
+// it. Only the figures, rows and panels their scope reads differ. It runs on
+// the access matrix's in-memory database (./access-matrix/install.ts).
 
-async function overviewOf(name: string): Promise<PersonalOverview> {
+async function overviewOf(name: string): Promise<TeamSideOverview> {
   seedFixture();
   signInAs(accountOf(name).userId);
   const opening = await openDashboard();
   assert.equal(opening.kind, "open", `${name}: the dashboard opens`);
-  const board: TeamSideOverview = await (opening as { data: DashboardData }).data.overview();
-  assert.equal(board.shape, "personal", `${name}: the member's own Overview`);
-  return board as PersonalOverview;
+  return (opening as { data: DashboardData }).data.overview();
 }
 
-/** What a member's own page holds, whoever they are: the parts a grant must leave alone. */
-function ownPage(overview: PersonalOverview) {
+/** The personal panels every seat keeps (board 52). */
+function personal(overview: TeamSideOverview) {
   return {
-    edit: overview.person.edit,
-    checklist: overview.checklist?.title,
-    roster: overview.roster?.title,
-    attention: overview.attention.map((a) => a.kind),
+    edit: overview.person.edit?.label,
+    checklist: overview.checklist.title,
+    rosters: overview.rosters.map((r) => r.title),
   };
 }
 
-/** Every applicant's and every private member detail's marker, in any unit. */
-const PRIVATE = ALL.flatMap((u) => [...MARKERS.applications(u), ...MARKERS.members(u)]);
+const SEATS = ["member", "member with a positions grant across the team", "division lead", "department head", "team leader"] as const;
 
-test("a member with no grant sees their own page and the access hint, no access line", async () => {
-  const plain = await overviewOf("member");
-  assert.deepEqual(plain.access, []);
-  assert.equal(ownPage(plain).edit?.label, "Edit profile");
-  assert.equal(ownPage(plain).checklist, "Your page on the site");
-  assert.notEqual(plain.roster, null);
-});
-
-test("a Positions grant keeps the member's page and adds the Positions line alone", async () => {
-  const plain = await overviewOf("member");
-  const granted = await overviewOf("member with a positions grant across the team");
-  assert.deepEqual(ownPage(granted), ownPage(plain));
-  assert.deepEqual(granted.access, [{ area: "positions", href: "/dashboard/positions", open: 3, divisions: 3 }]);
-});
-
-test("an Applications grant adds the Applications line alone: no attention row and no interview list", async () => {
-  const plain = await overviewOf("member");
-  const granted = await overviewOf("member with a applications grant across the team");
-  assert.deepEqual(ownPage(granted), ownPage(plain));
-  assert.deepEqual(granted.access, [{ area: "applications", href: "/dashboard/applications", fresh: 3, booked: 0 }]);
-  assert.equal(granted.attention.some((a) => a.kind === "applications" || a.kind === "no-photo"), false);
-  assert.equal("interviews" in granted, false);
-});
-
-test("no applicant and no private member detail reaches a granted member's Overview", async () => {
-  for (const area of ["positions", "applications", "members", "orders"]) {
-    const text = JSON.stringify(await overviewOf(`member with a ${area} grant across the team`));
-    for (const marker of PRIVATE) assert.equal(text.includes(marker), false, `${area}: ${marker}`);
+test("every team seat gets the personal panels: profile with Edit profile, Your page on the site, and their division's roster", async () => {
+  const expected: Record<(typeof SEATS)[number], readonly string[]> = {
+    member: ["Mission Analysis"],
+    "member with a positions grant across the team": ["Mission Analysis"],
+    "division lead": ["Mission Analysis"],
+    // The head's and the team leader's roles name no division, so there is no roster to show.
+    "department head": [],
+    "team leader": [],
+  };
+  for (const seat of SEATS) {
+    assert.deepEqual(personal(await overviewOf(seat)), { edit: "Edit profile", checklist: "Your page on the site", rosters: expected[seat] }, seat);
   }
-  const members = await overviewOf("member with a members grant across the team");
-  assert.equal(JSON.stringify(members.access).includes("Person"), false, "the Members line counts people, it names none");
+});
+
+test("a member gets the division board a lead gets, with only the areas they are granted", async () => {
+  const plain = await overviewOf("member");
+  assert.equal(plain.shape, "division");
+  assert.deepEqual(plain.stats, [], "a plain member reads no area, so no figure");
+  const granted = await overviewOf("member with a positions grant across the team");
+  assert.equal(granted.shape, "division");
+  assert.deepEqual(granted.stats.map((s) => s.label), ["Open positions"]);
+  const lead = await overviewOf("division lead");
+  assert.equal(lead.shape, "division");
+  assert.deepEqual(lead.stats.map((s) => s.label), ["New applications", "Open positions", "Orders", "My division"]);
+});
+
+test("the plain member keeps the access hint; a seat with no grant and its own areas gets neither hint nor lines", async () => {
+  assert.deepEqual((await overviewOf("member")).access, { kind: "hint" });
+  for (const seat of ["division lead", "department head", "team leader"]) assert.deepEqual((await overviewOf(seat)).access, { kind: "none" }, seat);
+});
+
+test("Your access lists each grant the seat holds, a lead's and a head's included", async () => {
+  const lines = async (name: string) => {
+    const { access } = await overviewOf(name);
+    return access.kind === "lines" ? access.lines.map((l) => l.area) : access.kind;
+  };
+  assert.deepEqual(await lines("member with a positions grant across the team"), ["positions"]);
+  assert.deepEqual(await lines("member with a Content grant"), ["content"]);
+  assert.deepEqual(await lines("member with Approve orders"), ["approve-orders"]);
+  assert.deepEqual(await lines("division lead with a Content grant"), ["content"]);
+  assert.deepEqual(await lines("department head with Approve orders"), ["approve-orders"]);
+  assert.deepEqual(await lines("department head with a Positions grant in DM"), ["positions"]);
+});
+
+test("a lead's grant line counts the grant's own units, not the division they lead", async () => {
+  const { access } = await overviewOf("division lead with a Positions grant (Can edit) in DM");
+  assert.ok(access.kind === "lines", access.kind);
+  assert.deepEqual(access.lines, [{ area: "positions", href: "/dashboard/positions", open: 1, divisions: 1 }]);
+});
+
+test("the Members figure names the scope it counts: the viewer's division, a department, or the whole team", async () => {
+  /** The Members figure, beside the people the "Your access" Members line counts over the same units. */
+  const members = async (name: string) => {
+    const overview = await overviewOf(name);
+    const line = overview.access.kind === "lines" ? overview.access.lines.find((l) => l.area === "members") : undefined;
+    const figure = overview.stats.at(-1);
+    return { label: figure?.label, detail: figure?.detail.replace(/^people /, ""), counted: line?.area === "members" ? String(line.people) : figure?.value, value: figure?.value };
+  };
+  const lead = await members("division lead");
+  assert.deepEqual([lead.label, lead.detail], ["My division", "in Mission Analysis"]);
+  for (const [name, label, detail] of [
+    ["member with a members grant across the division", "My division", "in Mission Analysis"],
+    ["member with a members grant across the department", "Department", "in Aerodynamics"],
+    ["member with a members grant across the team", "Team", "on the team"],
+  ] as const) {
+    const figure = await members(name);
+    assert.deepEqual([figure.label, figure.detail], [label, detail], name);
+    assert.equal(figure.value, figure.counted, `${name}: the figure counts the people its grant covers`);
+  }
 });

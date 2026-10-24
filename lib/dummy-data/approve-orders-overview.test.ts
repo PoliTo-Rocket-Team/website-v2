@@ -41,10 +41,15 @@ test("every Approve orders holder gets the team leader's two decision rows, coun
 
 test("a member holding Approve orders gets one Approve orders line under Your access, in place of the access hint", async () => {
   const holder = await overviewOf("member", true);
-  assert.ok(holder.shape === "personal", holder.shape);
   const waiting = Number(/^(\d+) order/.exec(decisionRows(holder)[0])?.[1]);
-  assert.deepEqual(holder.access, [{ area: "approve-orders", href: "/dashboard/orders", waiting }]);
-  const plain = await overviewOf("member", false);
-  assert.ok(plain.shape === "personal", plain.shape);
-  assert.deepEqual(plain.access, []);
+  assert.deepEqual(holder.access, { kind: "lines", lines: [{ area: "approve-orders", href: "/dashboard/orders", waiting }] });
+  assert.deepEqual((await overviewOf("member", false)).access, { kind: "hint" });
+});
+
+test("a lead or a head holding Approve orders gets the same line; the team leader decides by their seat, which is no grant", async () => {
+  for (const view of ["department-head", "division-lead"] as const) {
+    const { access } = await overviewOf(view, true);
+    assert.deepEqual(access.kind === "lines" ? access.lines.map((l) => l.area) : access.kind, ["approve-orders"], view);
+  }
+  assert.deepEqual((await overviewOf("team-leader", false)).access, { kind: "none" });
 });
