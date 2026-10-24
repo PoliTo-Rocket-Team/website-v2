@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   check,
@@ -118,6 +119,14 @@ export const partnerLogoKindEnum = pgEnum("partner_logo_kind", [
   "mark",
 ]);
 
+/**
+ * The acting account beside a member-id "by" column (issue #605,
+ * drizzle/0061): the account behind the View as session that made the write,
+ * while the "by" column names the person viewed as. Null for a write made
+ * outside View as.
+ */
+const actingAccount = (name: string) => text(name).references((): AnyPgColumn => users.id, { onDelete: "set null", onUpdate: "cascade" });
+
 export const members = pgTable("members", {
   memberId: serial("member_id").primaryKey(),
   prtEmail: text("prt_email"),
@@ -131,6 +140,7 @@ export const members = pgTable("members", {
     .notNull(),
   ndaName: text("nda_name"),
   ndaConfirmedBy: integer("nda_confirmed_by"),
+  ndaConfirmedByActingAccount: actingAccount("nda_confirmed_by_acting_account"),
   picture: text("picture"),
   // Set when the person is moved to alumni (issue #172): the years they were
   // on the team as their lead gave them. Why they left goes to team_leaves.
@@ -248,6 +258,7 @@ export const orders = pgTable("orders", {
   // The team leader's answer when they send a request back (issue #172).
   reviewNote: text("review_note"),
   reviewedBy: integer("reviewed_by").references(() => members.memberId),
+  reviewedByActingAccount: actingAccount("reviewed_by_acting_account"),
   reviewedAt: timestamp("reviewed_at", {
     withTimezone: true,
     mode: "string",
@@ -435,6 +446,7 @@ export const teamJoins = pgTable("team_joins", {
   prtEmail: text("prt_email"),
   discord: text("discord"),
   addedBy: integer("added_by").references(() => members.memberId, { onDelete: "set null" }),
+  addedByActingAccount: actingAccount("added_by_acting_account"),
   addedAt: timestamp("added_at", { withTimezone: true, mode: "string" })
     .defaultNow()
     .notNull(),
@@ -505,6 +517,7 @@ export const handOverRequests = pgTable("hand_over_requests", {
     .notNull(),
   decision: handOverDecisionEnum("decision"),
   decidedBy: integer("decided_by").references(() => members.memberId, { onDelete: "set null" }),
+  decidedByActingAccount: actingAccount("decided_by_acting_account"),
   decidedAt: timestamp("decided_at", { withTimezone: true, mode: "string" }),
 }, (table) => ({
   oneWaiting: uniqueIndex("hand_over_requests_one_waiting").on(table.fromId).where(sql`${table.decision} is null`),
@@ -532,11 +545,13 @@ export const aliasRequests = pgTable("alias_requests", {
     .references(() => members.memberId, { onDelete: "cascade" })
     .notNull(),
   requestedBy: integer("requested_by").references(() => members.memberId, { onDelete: "set null" }),
+  requestedByActingAccount: actingAccount("requested_by_acting_account"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
     .defaultNow()
     .notNull(),
   outcome: aliasRequestOutcomeEnum("outcome"),
   answeredBy: integer("answered_by").references(() => members.memberId, { onDelete: "set null" }),
+  answeredByActingAccount: actingAccount("answered_by_acting_account"),
   answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }),
 }, (table) => ({
   oneOpen: uniqueIndex("alias_requests_one_open").on(table.memberId).where(sql`${table.outcome} is null`),
@@ -628,6 +643,7 @@ export const scopes = pgTable(
     givenBy: integer("given_by").references(() => members.memberId, {
       onDelete: "set null",
     }),
+    givenByActingAccount: actingAccount("given_by_acting_account"),
     scope: scopeTypeEnum("scope").notNull(),
     target: targetTypeEnum("target").notNull(),
     accessLevel: accessLevelTypeEnum("access_level").default("view").notNull(),
@@ -1000,6 +1016,11 @@ export const logs = pgTable("logs", {
   oldData: jsonb("old_data"),
   newData: jsonb("new_data"),
   changedBy: text("changed_by").references(() => users.id),
+  // The acting account when the write was made in a View as session (issue
+  // #605): the audit trigger stores the `request.acting_account` setting
+  // lib/db-audit.ts sets, so `changed_by` is the person viewed as and this
+  // is who was viewing. Null outside View as.
+  changedByActingAccount: actingAccount("changed_by_acting_account"),
   changedAt: timestamp("changed_at", {
     withTimezone: true,
     mode: "string",

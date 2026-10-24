@@ -1,25 +1,40 @@
-// Local-only tester sign-in (issues #129, #230). On `next dev`, a reviewer can sign
-// in as one of five seeded testers to see signed-in pages without a Google
-// account. Every tester code path asks `testerSignInOn()` first; on previews,
-// production and under the test runner it is off, so the sign-in route is not
-// registered at all.
+// Tester sign-in (issues #129, #230, #608). A reviewer or an agent signs in,
+// without Google, as one of the seeded accounts of lib/seeded-accounts.ts and
+// gets a real Better Auth session, so every page and write runs the real
+// code. Every tester code path asks `testerSignInOn()` first. It is on in two
+// places only: under `next dev` off Vercel (the Neon `development` branch,
+// Owner decision on #597), and on a Vercel preview whose database is the
+// shared `preview` branch. On production, on any other Vercel environment,
+// on a preview pointed at another database and under the test runner it is
+// off, so the sign-in route is not registered at all.
 
-/** The two variables the gate reads. */
+import { isPreviewDatabase } from "@/lib/seed/target";
+
+/** The three variables the gate reads. */
 export type GateEnv = {
   readonly NODE_ENV?: string;
   readonly VERCEL_ENV?: string;
+  readonly DATABASE_URL?: string;
 };
 
 function processGateEnv(): GateEnv {
-  return { NODE_ENV: process.env.NODE_ENV, VERCEL_ENV: process.env.VERCEL_ENV };
+  return {
+    NODE_ENV: process.env.NODE_ENV,
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    DATABASE_URL: process.env.DATABASE_URL,
+  };
 }
 
 /**
- * Whether tester sign-in is on: only under `next dev` (NODE_ENV
- * "development") and never on a Vercel deploy (VERCEL_ENV set).
+ * Whether tester sign-in is on: under `next dev` (NODE_ENV "development")
+ * with no Vercel environment, or on a Vercel preview whose `DATABASE_URL` is
+ * the shared `preview` branch (`isPreviewDatabase`). Never on production or
+ * any other Vercel environment.
  */
 export function testerSignInOn(env: GateEnv = processGateEnv()): boolean {
-  return env.NODE_ENV === "development" && !env.VERCEL_ENV;
+  const localDev = env.NODE_ENV === "development" && !env.VERCEL_ENV;
+  const sharedPreview = env.VERCEL_ENV === "preview" && isPreviewDatabase(env.DATABASE_URL);
+  return localDev || sharedPreview;
 }
 
 export const TESTER_KEYS = [
@@ -42,7 +57,8 @@ export type Tester = {
   readonly sees: string;
 };
 
-// Seeded by db/seed/people.ts, which reads these ids and emails.
+// Seeded by db/seed/people.ts, which reads these ids and emails. Four of them
+// are also seats of lib/seeded-accounts.ts, whose table the sign-in lists.
 export const TESTERS: Readonly<Record<TesterKey, Tester>> = {
   applicant: {
     key: "applicant",
@@ -70,7 +86,7 @@ export const TESTERS: Readonly<Record<TesterKey, Tester>> = {
     id: "7e57e500-0000-4000-8000-000000000005",
     email: "department-head.tester@example.com",
     name: "Tester Department Head",
-    sees: "Heads Research and Development, whose one division has nobody yet (issue #230).",
+    sees: "Heads Payload, a test department whose one division has nobody yet (issue #230).",
   },
   "operations-lead": {
     key: "operations-lead",

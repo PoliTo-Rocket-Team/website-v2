@@ -617,11 +617,11 @@ function holdsUnit(person: ClosingPerson, unit: Unit): boolean {
   return person.holds.some((u) => unitKey(u) === unitKey(unit));
 }
 
-/** What Close department names each person as, beside their name. */
-function standingLabel(person: ClosingPerson, department: string): string {
+/** What Close department names each person as, beside their name: the head by their stored title. */
+function standingLabel(person: ClosingPerson): string {
   switch (person.standing) {
     case "head":
-      return `Head of ${department}`;
+      return person.title;
     case "lead":
       return "Division Lead";
     case "advisor":
@@ -773,7 +773,6 @@ function CloseDepartment({
                 <PersonCard
                   key={person.id}
                   person={person}
-                  department={department.name}
                   pick={pickOf(person.id)}
                   departments={others}
                   destination={(unit) => destinationName(unit, org, department.id)}
@@ -876,14 +875,12 @@ function DestinationSelect({
  */
 function PersonCard({
   person,
-  department,
   pick,
   departments,
   destination,
   onChange,
 }: {
   person: ClosingPerson;
-  department: string;
   pick: Pick;
   departments: readonly StructureDepartment[];
   destination: (unit: Unit) => string | null;
@@ -896,7 +893,7 @@ function PersonCard({
       <div className="flex items-center gap-3">
         <Avatar size="sm" accent={choosesRole} />
         <span className="min-w-0 flex-1 truncate text-[14px] text-prt-text">{person.name}</span>
-        <span className="shrink-0 text-[13px] text-prt-muted">{standingLabel(person, department)}</span>
+        <span className="shrink-0 text-[13px] text-prt-muted">{standingLabel(person)}</span>
       </div>
       <DestinationSelect
         label={`Where ${person.name} goes`}

@@ -25,7 +25,7 @@ import type { OutreachTag, PhotoSrc, PostItem } from "@/lib/outreach-types";
 // The dashboard's writes (issues #145 and #169). Each one opens the dashboard as the
 // page did, checks the viewer reaches the page the write belongs to, and
 // hands what the browser sent to the data interface, which checks it again
-// and writes: to nothing for a test developer, to the database otherwise.
+// and writes to the database.
 
 /** The dashboard, when the viewer reaches one of `pages`; else why not. */
 async function dataFor(pages: DashboardPageKey | readonly DashboardPageKey[]): Promise<DashboardData | string> {

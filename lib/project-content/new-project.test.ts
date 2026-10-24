@@ -3,8 +3,6 @@ import { test } from "node:test";
 import { memoryContentStore } from "@/lib/content/memory";
 import { editorVersion, publicItems } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import { dummyProjectStore, parseProjectEdits, serializeProjectEdits, type DummyProjectEdits, type DummyProjectEditsStore } from "@/lib/dummy-data/projects";
-import { DUMMY_STATE_COOKIE_BYTES } from "@/lib/dummy-data/state";
 import { cardPosterOf, rocketModelOf, stageStillOf } from "@/lib/rocket-model";
 import { isProjectRecord } from "./check";
 import { projectEditor } from "./editor";
@@ -115,25 +113,4 @@ test("a new project's card and page draw the placeholder rocket, and its draft i
     assert.notEqual(cardPosterOf("placeholder"), cardPosterOf("cavour"));
     assert.deepEqual(fieldProblems(fieldsOf(record)), [], `${kind}: Save draft works on the draft as it opens`);
   }
-});
-
-test("a test developer's new project is kept in their cookie across a reload and stays off the public site", async () => {
-  const jar = {
-    value: undefined as string | undefined,
-    get current(): DummyProjectEdits {
-      return parseProjectEdits(jar.value);
-    },
-    save: async (next: DummyProjectEdits) => {
-      jar.value = serializeProjectEdits(next);
-    },
-  };
-  const store: DummyProjectEditsStore = jar;
-  const created = await projectEditor(admin, dummyProjectStore(store)).create(mark3);
-  assert.ok(created.ok);
-  assert.ok((jar.value ?? "").length <= DUMMY_STATE_COOKIE_BYTES);
-
-  const reloaded = await projectEditor(admin, dummyProjectStore(store)).list();
-  const item = reloaded?.find((i) => i.id === created.value.id);
-  assert.equal(item?.version.state, "draft");
-  assert.equal(publicItems(reloaded ?? []).some((r) => r.slug === "ves-mark-iii"), false);
 });

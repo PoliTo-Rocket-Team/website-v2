@@ -12,6 +12,18 @@ made stale. Client components import the action functions directly.
    `set_config('request.jwt.claim.sub', <userId>, true)`. The audit trigger `log_db_changes()`
    (migrations [0002](../drizzle/0002_add_audit_logs.sql) and
    [0003](../drizzle/0003_logs_changed_by_user_fk.sql)) reads that setting into `logs.changed_by`.
+   The same setup sets `request.acting_account` to the account behind a View as session, read from
+   the session (`auditWriterFor` in [lib/audit-writer.ts](../lib/audit-writer.ts)), and empty
+   otherwise; since [0061](../drizzle/0061_impersonated_write_attribution.sql) the trigger stores it
+   in `logs.changed_by_acting_account` (issue #605). A write that names its author in a member-id
+   "by" column (`given_by`, `reviewed_by`, ...) also sets that column's `..._acting_account`
+   companion from `identity.actingAccountId`, and a read shows it with `attributedName`
+   ([lib/dashboard/acting-account.ts](../lib/dashboard/acting-account.ts)): "IT lead as Sara Conti".
+   A "by" line read off the log itself, joined on `logs.changed_by`, also reads
+   `logs.changed_by_acting_account` and shows it the same way (`readProjectStamps` in
+   [lib/dashboard/database-projects.ts](../lib/dashboard/database-projects.ts)). No page
+   lists the `logs` rows yet: the Activity log page is
+   [#642](https://github.com/PoliTo-Rocket-Team/website-v2/issues/642).
 
    ```ts
    async function setPositionOpen(identity: Identity, positionId: number, open: boolean): Promise<void> {
@@ -47,10 +59,9 @@ made stale. Client components import the action functions directly.
 6. **Call the actions from the client.** The dashboard's client components import them from
    [app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts), which checks the
    arguments and writes through the dashboard data interface
-   ([lib/dashboard/data.ts](../lib/dashboard/data.ts)): where no database is configured, a test
-   developer's write changes only a cookie; where one is (a preview reads the seeded `preview`
-   branch), the test developer is read as the viewer's seeded person, and `runAuditQuery` or
-   `runAuditBatch` saves the write as that person on a preview and refuses it anywhere else (ADR 0016). An account's write goes through `runAuditQuery` in
+   ([lib/dashboard/data.ts](../lib/dashboard/data.ts)), which reads the database under `next dev`
+   and on a preview (issue #609; a preview reads the seeded `preview` branch). Every writer is a
+   real Better Auth session, plain or View as (issue #612). An account's write goes through `runAuditQuery` in
    [lib/dashboard/database.ts](../lib/dashboard/database.ts) after a scope check. The client shows
    the change at once (`useOptimistic`) and a toast when the write is refused (see
    [client-form-submit.md](./client-form-submit.md)).
@@ -77,16 +88,13 @@ writes (issue #256) pass the site-content gate in `contentEditor`
 page editor's Save draft and Publish (issue #321) send the layer's rows and every advisor write in
 one `runAuditBatch` through
 [lib/dashboard/database-team-page-store.ts](../lib/dashboard/database-team-page-store.ts), so the
-two land together or not at all. Where no database is configured, a test developer's write goes to
-the dummy side, which checks the same rules and stores nothing; where one is, `runAuditQuery`
-and `runAuditBatch` both ask `auditWriterOf` in [lib/test-developer.ts](../lib/test-developer.ts)
-(through [lib/db-audit.ts](../lib/db-audit.ts)), which logs the write under the viewer's seeded
-person on a preview and refuses it before it is sent in production and under `next dev`
-(`testDeveloperMayWrite`, ADR 0016). The
+two land together or not at all. `runAuditQuery` and `runAuditBatch` both ask `auditWriterFor` in
+[lib/audit-writer.ts](../lib/audit-writer.ts) (through [lib/db-audit.ts](../lib/db-audit.ts)), which
+logs the write under the session's account and, in a View as session, the acting account beside
+it (issue #605). The
 Positions and Applications writes ([app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts))
 leave the scope check to the data interface: its database side checks the viewer reaches the
-position or application before it writes through `runAuditQuery` or `runAuditBatch`, and a test developer's dummy
-side keeps the change in a cookie and writes no row. An application move (issue #171) first asks
+position or application before it writes through `runAuditQuery` or `runAuditBatch`. An application move (issue #171) first asks
 `applyMove` in [lib/dashboard/application-flow.ts](../lib/dashboard/application-flow.ts) whether
 it is legal, and each update is guarded on the status it was read in. Confirm join is one
 data-modifying `WITH` statement through `runAuditQuery` (`db.execute` with a `sql` template), because the
@@ -102,9 +110,9 @@ recruitment switch does the same: its rule lives in
 and the cache refresh passed in, and [recruitment-switch.test.ts](../lib/apply/recruitment-switch.test.ts)
 tests each scope case. Its action reaches the write through the dashboard data interface
 (`setRecruitment` in [lib/dashboard/data.ts](../lib/dashboard/data.ts)): the database side upserts
-through `runAuditQuery`; a test developer's dummy side keeps the state in a cookie and writes no row
-([lib/dummy-data/recruitment.ts](../lib/dummy-data/recruitment.ts)). The other mutations have no
-automated tests.
+through `runAuditQuery`, and the server-side access tests
+([lib/dashboard/access-matrix-server.test.ts](../lib/dashboard/access-matrix-server.test.ts)) call it
+against an in-memory database. The other mutations have no automated tests.
 
 ## Why it is not obvious
 

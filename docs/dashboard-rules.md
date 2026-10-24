@@ -78,7 +78,8 @@ An admin column comes later. **Planned**, no issue yet.
     for changes. The other full-access seats decide only with "Approve orders" (see
     "4. Orders").
   - **Exception 2, the Activity log:** only the IT lead reaches it. The reach rule is in place;
-    the page itself is **Planned**, so no sidebar lists it yet.
+    the page itself is **Planned**
+    ([#642](https://github.com/PoliTo-Rocket-Team/website-v2/issues/642)), so no sidebar lists it yet.
 - **The team leader's own pages** (boards 72 to 73c, #252). The team leader has full access like
   the operations lead and the IT lead, but some of their pages differ. The operations lead and the
   IT lead keep boards 40 and 46.
@@ -254,6 +255,32 @@ These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
   reads "Also in another division · shown once" (board 54e).
 - The division a person is drawn under, and the one a page names when it shows only one, is
   their home division: the oldest division they lead, else their oldest membership.
+- A role title is stored (`roles.title`) and every page that names a head or a team-level seat by
+  its role shows it as stored (#625): Members, the Team tree, the Team page, the line under a name
+  on Access and Close department's head label. A hand-over's full-access line names the seat that
+  moves ("becomes Operations lead"), not the role's title. A head row is
+  written with "Head of {department}"; a department rename rewrites only head titles still at
+  the old default. The default shows only for a blank title. No page decides a seat or a
+  headship by a title's text, so a rename never moves anyone or changes any access.
+- The Team tree's seat row, under the team leader, holds every team-level seat: an active role in
+  no department and no division that is not the team leader's, a head's or an advisor's. The
+  Project Manager and the Chief Engineer, read from their `roles.full_access` flag, come first;
+  any other seat follows by start date. The Team page's arc lists them in the same order. Each
+  seat is drawn as a box built like the team leader's, in one row directly under it, on every
+  width (#627).
+- R&D is a department with a head and no divisions (Owner decision, 2026-10-24, #627). The Team
+  tree and Edit team tree draw it as a department box with its head, never on the seat row.
+  Department 8, Research and Development (code RND), is the real R&D department: its only head
+  is the Head of R&D, and it has no divisions (Owner decision, 2026-10-24, #600). The seed keeps
+  its department-head tester and the Payload Integration test division in a separate test
+  department, Payload (code PAY), so R&D stays as it is in reality.
+  Migration 0059 makes a Head of R&D role kept in no unit the head of the R&D department
+  (coded RND, or named R&D or Research and Development), only while that department has no
+  head, and adds the department only when none is open, so there is never a second R&D
+  department and no department gets two heads (Owner decision, 2026-10-24, #600). The public
+  Team page is laid out apart: a department with no division has no block on its departments
+  carousel, so its head shows as a core member, where the Team page editor can place them on
+  the arc, as before.
 - **Superseded:** rule 7 of [0011](../.decisions/0011-applicant-journey-received-to-joining.md),
   "one person, one division", no longer holds. [0014](../.decisions/0014-several-divisions-one-nda.md)
   replaces it, and also amends 0011's Confirm join rule for someone already on the team.
@@ -376,9 +403,17 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   - Details (board 61g): photo, contact, studies and personal details, with the same field checks.
   - Role: the person's title in one division, shown on the Team page: the division the page lists
     them under, else their first division the editor reaches. Titles in their other divisions
-    show on the member panel, not in the form. A seat with no division the editor reaches (the
-    team leader, a board seat, a department head) shows their seat's title locked: it is set on
-    the Team tree, and Save never changes it.
+    show on the member panel, not in the form. Someone in no division the editor reaches who holds
+    a seat (the team leader, a department head, the Project Manager, the Chief Engineer or another
+    team-level seat) shows their seat's stored title as an editable Role, and only the team
+    leader and full access reach them (issue #626). A blank stored title shows as the seat's
+    default name ("Team Leader", "Head of Aerodynamics"). It may not be blank. Save writes that
+    seat row's title and nothing else: never its type, department, division or full access, so
+    the seat, the headship and every access stay. A save with the Role left as shown writes the
+    title back unchanged. The team leader's title is the one on the public Team page; the
+    Members Role column names that seat "Team Leader" whatever it stores.
+    Someone with no such seat (an Advisor role, a role kept on a department) shows their role
+    locked.
   - Lead or member: one choice per division of the person where the editor may change who leads
     it, as Edit division allows: the department's head, the team leader, full access, and a lead
     of that division by role (#594). A Members grant never shows it, and the server refuses its
@@ -498,6 +533,27 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
 - The **Team Leader box** on top opens "Hand over your role" (board 77i, #253) for the team leader
   alone, with a pencil. For everyone else, full access included, it shows a lock and opens
   nothing (see "Handing over a role" above).
+- The **seat row** (#627) sits directly under the Team Leader box and above the department
+  columns: one box per team-level seat, built like the Team Leader box, with the holder's name
+  and the seat's stored title, in the Team tree's seat order. Everyone who opens the edit view
+  sees the same row. A row too wide for the frame shrinks to fit it, as the department row does.
+  - For the team leader and full access, each seat box has a pencil and opens **Change
+    holder**, and the row ends in **+ Add seat**, in the Add department style. For a head the
+    boxes open nothing and there is no Add seat. The server refuses both writes to everyone
+    but the team leader and full access.
+  - **Change holder** picks who holds the seat from the team. As in Change head, someone who
+    already holds a seat, or the holder themself, cannot be picked, and the successor keeps
+    their divisions. The holder gets "What happens to {name}?": Become an advisor (on the whole
+    team, their access ends) or Leave the team, with neither picked at first. On save the
+    holder's seat role ends and the successor's starts with the same title and the same
+    `roles.full_access` flag, so the Project Manager's and the Chief Engineer's full access
+    moves with the seat.
+  - A seat box changes who holds the seat, never its title: the title is changed on Members,
+    in Edit details (#626).
+  - **Add seat** takes a title and one person from the team who holds no seat yet. It starts an
+    active role in no department and no division with that title and no full-access flag, so a
+    new seat gives no access of its own. It shows on the Team tree's seat row, this row and the
+    public Team page's arc. Ending a seat with no successor is not offered.
 
 #### Departments
 
@@ -803,6 +859,13 @@ and 67m).
   can give **"Approve orders"** to any number of people, from their Access page; there is no
   limit on how many hold it. Only the team leader gives or removes it. The server refuses a
   decision from anyone else, and a decision on a request that is not waiting.
+- **What waits on the Overview** (#592). Everyone who decides orders, the team leader and every
+  holder of "Approve orders" (a member, a lead, a head or a full-access seat), sees the team
+  leader's two rows under "Needs your attention" on their Overview, whatever its shape: "N orders
+  wait for your decision" and "N approved orders are not ordered yet", both counted across the
+  whole team and both linking to Orders. Nobody else gets either row. A member who holds
+  "Approve orders" also sees an "Approve orders" line under "Your access", with the count of
+  orders waiting for a decision, linking to Orders, in place of the access hint.
 - **Deciding on the page** (#247, boards 70 to 70e). A waiting order opened by someone who decides
   shows Reject, Ask for changes and Approve; Edit moves to the panel's head. While a panel is open
   the Department column is hidden. Ask for changes opens a "What should change" note, which is
@@ -825,22 +888,18 @@ and 67m).
 
 ## 5. Data and testing
 
-- A preview with a database reads the shared, seeded `preview` branch (ADR 0016): a test
-  developer there is read as the viewer's seeded person, and their writes are saved to that
-  branch as that person and kept across preview builds; outside a preview they are
-  refused.
-  The dummy data, and the cookie that keeps a test developer's changes, apply only where no
-  database is configured (`next dev` without one). Both offer the "Sign in as test
-  developer" switch, with seven people: team leader, operations lead, department head, division
-  lead, member, alumni and non-member. The alumni viewer is a former member with three years of
-  ended roles, an Alumni entry, one application decided within the last month and one decided
-  before it (#317). The operations lead there sits in the operations lead's seat, so
-  they have full access and do not decide orders; the team leader decides orders and gives
-  "Approve orders" (#247), and sees boards 72 to 73c (#252). On dummy data, "Approve orders" given or
-  removed is kept until sign out, so after switching to the member it went to, that member reaches
-  Orders and decides there (#270).
-  Production never does. The sign-in link takes `applications=none` (no applications yet) or
-  `applications=withdrawn` (only withdrawn ones) to start the viewer from those states.
+- A preview with a database reads the shared, seeded `preview` branch (ADR 0016), and writes
+  made there are kept across preview builds.
+  Every page reads a database under `next dev` (the Neon `development` branch) and on a preview
+  (the `preview` branch); a run there with no database stops with a message naming the one it
+  needs (#609). Both offer the tester sign-in, and a seeded admin tester uses View as to see the
+  dashboard as a plain seat: team leader, operations lead, department head, division lead,
+  member, alumni and non-member, among others (#608, #610, #612). The alumni seat is a former member with three years of ended roles, an Alumni entry, one
+  application decided within the last month and one decided before it (#317). The operations
+  lead there sits in the operations lead's seat, so they have full access and do not decide
+  orders; the team leader decides orders and gives "Approve orders" (#247), and sees boards 72 to
+  73c (#252).
+  Production never does.
 - On a phone, popups become bottom sheets, side panels become full pages with a back arrow, and
   tables become stacked cards.
 
@@ -866,12 +925,8 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - A logo is an 8-bit PNG of at most 1 MB. It is measured on upload: one too dark for the page is
   saved with the dark flag, and the panel and the public pages draw it white.
 - Remove asks "are you sure" first. It removes the partner and its draft at once.
-- On a preview with a database, a test developer reads the seeded `preview` branch as the
-  viewer's seeded person, and their partner changes are saved there as that person and kept
-  across preview builds (ADR 0016). Only where no database is
-  configured do their partner changes stay in a cookie in their own browser until they sign out,
-  and a logo they upload is not kept; the public pages there show the partners as they were
-  before the switch.
+- On a preview with a database, partner changes are saved to the seeded `preview` branch and
+  kept across preview builds (ADR 0016).
 
 ### FAQ (#258, boards 79 and 79b)
 
@@ -892,12 +947,8 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   being typed.
 - Remove asks "are you sure" first, and removes the question and its draft at once.
 - Every write renders /apply again (it is prerendered whole, #163).
-- On a preview with a database, a test developer reads the seeded `preview` branch as the
-  viewer's seeded person, and their question changes are saved there as that person and kept
-  across preview builds (ADR 0016). Only where no database is
-  configured do their question changes stay in their own cookie until they sign out, seen from
-  the dummy team's moment, so a change reads "Today"; /apply there shows the questions as they
-  were before the switch.
+- On a preview with a database, question changes are saved to the seeded `preview` branch and
+  kept across preview builds (ADR 0016).
 
 ### Projects page (#297, board 75)
 
@@ -923,10 +974,8 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   it, and its address has no page, until it is published.
 - Only the full admins and holders of a Content grant reach the page or use New project;
   everyone else gets the dashboard's not found.
-- On a preview with the seeded `preview` branch, a test developer's new order and new projects
-  are saved there as the viewer's seeded person and kept across preview builds (ADR
-  0016). Only where no database is configured do they stay in their own cookie until they sign
-  out, and their saves read as edited today by the person they signed in as.
+- On a preview with the seeded `preview` branch, a new order and new projects are saved there
+  and kept across preview builds (ADR 0016).
 
 ### Project pages (#298 and #299, boards 75b and 75c)
 
@@ -983,12 +1032,8 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   published page as it is; Publish puts the changes on the public page.
 - Only the full admins and holders of a Content grant open the editor or save; everyone else
   gets the dashboard's not found.
-- On a preview with the seeded `preview` branch, a test developer's project changes are saved
-  there as the viewer's seeded person and kept across preview builds (ADR 0016). Only
-  where no database is configured do they stay in their own cookie until they sign out; the
-  public pages there show the projects as they were before the switch.
-  A photo uploaded there is shown on the page while the editor is open, but the cookie holds
-  only a few kilobytes, so a save with a real photo is refused with the preview's "full" message.
+- On a preview with the seeded `preview` branch, project changes are saved there and kept
+  across preview builds (ADR 0016).
 
 ### Team page visual layer (#283, epic #259)
 
@@ -1008,11 +1053,8 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - Writes follow the site-content rule, and none writes a role, division, department, scope or
   member.
 - On a preview with the seeded `preview` branch (ADR 0016), the public Team page shows the seeded
-  published layer and advisors. A test developer's layer writes there are saved to the
-  `preview` branch as the viewer's seeded person and kept across preview builds
-  (ADR 0016). Only a preview with no database keeps a test developer's layer in
-  their own cookie until they sign out, laid on the dummy team in the editor; its public Team page
-  shows the dummy team with no layer.
+  published layer and advisors. Layer writes there are saved to the `preview` branch and kept
+  across preview builds (ADR 0016).
 - The editor (boards 80, 80b and 80h, #284) is "Team page" under Content, at
   `/dashboard/team-page`: the real page under the shared edit shell, with the "Visual changes
   only" tag and Reset to team on the bar. The team leader and each leader on the arc open the Edit
@@ -1043,8 +1085,5 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   they advised: the advisor leaves the Team page and an Alumni entry in the Advisors group takes
   their name, role, years and photo. It writes the advisor tables and that one `alumni_entries`
   row, never a role, division, department, scope or member. Reset to team never changes the
-  advisors. On a preview with the seeded `preview` branch, a test developer's advisor changes and
-  End advising are saved there as the viewer's seeded person and kept across preview builds
-  (ADR 0016). Only a preview with no
-  database keeps a test developer's advisors in their own cookie over today's advisors; End
-  advising there adds to their Alumni changes.
+  advisors. On a preview with the seeded `preview` branch, advisor changes and End advising are
+  saved there and kept across preview builds (ADR 0016).

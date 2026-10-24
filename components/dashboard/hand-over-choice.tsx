@@ -6,8 +6,8 @@ import {
   BECOME_AN_ADVISOR,
   fullAccessMovesLine,
   steppingDown,
-  type HandedRole,
   type HandOverOutcome,
+  type SteppedDownFrom,
 } from "@/lib/dashboard/hand-over";
 import type { Permission } from "@/lib/dashboard/team";
 import type { FullAccessSeat } from "@/lib/dashboard/viewer";
@@ -106,8 +106,9 @@ export function FullAccessMoves({ className = "", ...words }: Parameters<typeof 
 }
 
 /**
- * "Become an advisor" / "Leave the team" for a lead or head who is replaced
- * (boards 68b4 and 77e): an advisor in `unit`, whose access ends, or Alumni.
+ * "Become an advisor" / "Leave the team" for a lead, head or seat holder who
+ * is replaced (boards 68b4 and 77e, issue #627): an advisor in `unit`, whose
+ * access ends, or Alumni.
  * No third option, and neither is picked at first. When the role carries a
  * full-access seat, the note under it says the seat moves (`FullAccessMoves`).
  */
@@ -125,8 +126,8 @@ export function HandOverChoice({
   name: string;
   /** Whose next step it is: "Marco Bianchi". */
   person: string;
-  /** The role they hand over: an advisor stays in its unit (`advising`). */
-  handed: HandedRole;
+  /** The role they hand over, or the team-level seat they step down from: an advisor stays in its unit (`advising`). */
+  handed: SteppedDownFrom;
   /** That unit's name: "Mission Analysis", "Aerodynamics". */
   unit: string;
   value: HandOverOutcome | null;

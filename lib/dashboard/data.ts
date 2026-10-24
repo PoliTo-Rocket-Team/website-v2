@@ -31,20 +31,20 @@ import type { DashboardViewer } from "./viewer";
 import type { Upload, WriteResult } from "./write";
 
 /**
- * The one way dashboard pages read and write data (issue #141). A test
- * developer gets the dummy arrays (lib/dummy-data/), everyone else the
- * database (./database.ts); ./open.ts picks which and answers a
- * DashboardOpening (./opening.ts). A later page adds one method here and to
- * both implementations.
+ * The one way dashboard pages read and write data (issue #141). Every page
+ * reads the database (./database.ts) as the signed-in account; ./open.ts
+ * opens it and answers a DashboardOpening
+ * (./opening.ts). It is the one implementation (issue #613); a later page
+ * adds one method here and to it.
  *
  * Positions and Applications (issue #142) answer only what the viewer
  * reaches, and a read or write there the viewer does not reach rejects with
- * DashboardRefused, so a server action needs no check of its own; a test
- * developer's write there changes only a cookie. The other pages' reads answer
- * null when the viewer has nothing on that page (an applicant has no
- * division), and their writes take what the browser sent as it came, check
- * it, and answer a WriteResult (./write.ts); a test developer's write there
- * lands nowhere and answers what the page shows next.
+ * DashboardRefused, so a server action needs no check of its own. The other
+ * pages' reads answer null when the viewer has nothing on that page (an
+ * applicant has no division), and their writes take what the browser sent as
+ * it came, check it, and answer a WriteResult (./write.ts). A test
+ * developer's write is saved to the shared preview database as their seeded
+ * person on a preview, and refused anywhere else (lib/db-audit.ts, ADR 0016).
  */
 export interface DashboardData {
   readonly viewer: DashboardViewer;
@@ -211,16 +211,13 @@ export interface DashboardData {
 
   /**
    * Boards 76 and 76b (issue #256): the partners and their writes, behind the
-   * site-content gate (lib/content/gate.ts). Each side brings its own store:
-   * the database, or a test developer's cookie over the dummy partners.
+   * site-content gate (lib/content/gate.ts), over the database's store.
    */
   readonly partners: PartnerEditor;
 
   /**
    * Boards 79 and 79b (issue #258): the questions on /apply and their writes,
-   * behind the same gate. Each side brings its own store and clock: the
-   * database and the time now, or a test developer's cookie over the dummy
-   * questions, seen from the dummy team's moment.
+   * behind the same gate, over the database's store and the time now.
    */
   readonly faqs: FaqEditor;
 
@@ -229,8 +226,7 @@ export interface DashboardData {
    * to team, behind the same gate. Save draft and Publish write the layer and
    * the advisor list together, in one step (issue #321); Reset to team writes
    * the layer alone. None writes a role, division, department, scope or
-   * member. Each side brings its own store and its own roles: the database's,
-   * or a test developer's cookies laid on the dummy team.
+   * member. Its store and its roles are the database's.
    */
   readonly teamPage: TeamPageEditor;
 
@@ -238,22 +234,20 @@ export interface DashboardData {
    * The Team page's advisors (issue #286): added by hand, never from roles,
    * behind the same gate. The editor saves them with the layer (`teamPage`);
    * End advising also adds the advisor to the Alumni page's Advisors group. Reset to team never reaches them. Each side brings its own store:
-   * the database's, or a test developer's cookie over today's advisors.
+   * the database's, or, in tests, a cookie over today's advisors.
    */
   readonly teamAdvisors: AdvisorEditor;
 
   /**
    * Boards 74 to 74h (issue #287): the Outreach posts, which of them are
-   * featured (issue #496), the tag list, and their writes, behind the same gate. Each side brings its
-   * own store: the database, or a test developer's cookie over the dummy
-   * content.
+   * featured (issue #496), the tag list, and their writes, behind the same
+   * gate, over the database's store.
    */
   readonly outreach: OutreachEditor;
 
   /**
    * Boards 75 to 75d (issues #255 and #298): the projects and their writes,
-   * behind the same gate. Each side brings its own store: the database, or a
-   * test developer's cookie over the dummy projects.
+   * behind the same gate, over the database's store.
    */
   readonly projects: ProjectEditor;
 
@@ -437,6 +431,20 @@ export interface TeamWrites {
    * current team leader; everyone else is refused.
    */
   handOverTeamLeader(input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Change holder on a seat box of Edit team tree (issue #627): the holder's
+   * seat role ends and the successor's starts with the same title and the
+   * same full-access flag; the holder becomes an advisor to the team or
+   * leaves the team, checked by `planSeatHolderChange` (./team-seats.ts). The
+   * team leader and full access only.
+   */
+  changeSeatHolder(roleId: number, input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Add seat (issue #627): an active role in no department and no division,
+   * with the title given and no full-access flag, checked by `planNewSeat`.
+   * The team leader and full access only.
+   */
+  addSeat(input: unknown): Promise<WriteResult<null>>;
 }
 
 /** A read or write the viewer does not reach. */

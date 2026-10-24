@@ -8,7 +8,7 @@
 // #595, lib/seed/reseed.ts). Every other build skips it and touches no database. A refusal
 // or a failure fails the build: a preview whose database was not migrated, or
 // not seeded while empty, must not deploy, because its pages read that
-// database (lib/dummy-data/mode.ts).
+// database (lib/database-required.ts).
 //
 // It reads the real environment only, never a .env file, so a local build
 // never seeds.

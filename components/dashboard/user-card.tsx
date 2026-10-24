@@ -2,15 +2,14 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Check, ChevronsUpDown, LogOut, UserRound } from "lucide-react";
+import { ChevronsUpDown, Eye, LogOut, UserRound } from "lucide-react";
 import { Dialog, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import type { MenuPage } from "@/lib/dashboard/access";
-import { TEST_VIEWER_LABELS, TEST_VIEWERS, testViewerOf, type DashboardViewer } from "@/lib/dashboard/viewer";
-import { testDeveloperSignInHref } from "@/lib/test-developer";
+import type { DashboardViewer } from "@/lib/dashboard/viewer";
 import { useSignOut } from "@/components/use-sign-out";
 import { Avatar } from "./avatar";
+import { useViewAsHref } from "./view-as-dialog";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -19,7 +18,8 @@ const ITEM =
 
 const SEPARATOR = "-mx-1.5 my-1 h-px bg-hairline";
 
-const VIEW_AS_LABEL = "font-mono text-[10px] uppercase tracking-[0.3em] text-dim";
+/** The user menu's entry to the View as dialog (board 96a). */
+const VIEW_AS_ENTRY = "View as…";
 
 /** Where the user menu opens: a dropdown above the card from md, a bottom sheet on phones. */
 export type UserMenuForm = "dropdown" | "sheet";
@@ -27,18 +27,22 @@ export type UserMenuForm = "dropdown" | "sheet";
 // The user card at the foot of the sidebar and the menu it opens (board 51b):
 // the PRT mark on the accent, name, role and an up-down chevron. The menu holds
 // the viewer's own page (My account for a non-member, My profile for the
-// team), then a red Sign out. A test developer also gets "View as", every
-// test view, each a sign-in link back to this page. From md it opens above the
+// team), then "View as…" for an account the View as gate allows (board 96a,
+// issue #610), which opens the View as dialog over this page, then a red
+// Sign out. From md it opens above the
 // card, as wide as it; on phones (inside the menu sheet) it is a bottom sheet,
 // like every popup there.
 export function UserCard({
   viewer,
   menuPage,
+  viewAs,
   form,
   onNavigate,
 }: {
   viewer: DashboardViewer;
   menuPage: MenuPage | null;
+  /** Whether the View as gate allows this account the "View as…" entry (issue #610). */
+  viewAs: boolean;
   form: UserMenuForm;
   onNavigate?: () => void;
 }) {
@@ -58,7 +62,7 @@ export function UserCard({
 
   if (form === "sheet") {
     return (
-      <UserSheet viewer={viewer} menuPage={menuPage} onNavigate={onNavigate}>
+      <UserSheet viewer={viewer} menuPage={menuPage} viewAs={viewAs} onNavigate={onNavigate}>
         <button type="button" aria-label={label} className={triggerClass}>
           {trigger}
         </button>
@@ -71,7 +75,7 @@ export function UserCard({
         {trigger}
       </DropdownMenuTrigger>
       <DropdownMenuPortal>
-        <UserDropdown viewer={viewer} menuPage={menuPage} onNavigate={onNavigate} />
+        <UserDropdown viewer={viewer} menuPage={menuPage} viewAs={viewAs} onNavigate={onNavigate} />
       </DropdownMenuPortal>
     </DropdownMenu>
   );
@@ -80,14 +84,16 @@ export function UserCard({
 function UserDropdown({
   viewer,
   menuPage,
+  viewAs,
   onNavigate,
 }: {
   viewer: DashboardViewer;
   menuPage: MenuPage | null;
+  viewAs: boolean;
   onNavigate?: () => void;
 }) {
-  const pathname = usePathname();
-  const signOut = useSignOut(viewer.session);
+  const viewAsHref = useViewAsHref();
+  const signOut = useSignOut();
   return (
     <DropdownMenuPrimitive.Content
       side="top"
@@ -96,35 +102,22 @@ function UserDropdown({
       className="z-50 w-[var(--radix-dropdown-menu-trigger-width)] rounded-xl border border-hairline bg-panel p-1.5 text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0"
     >
       {menuPage && (
-        <>
-          <DropdownMenuPrimitive.Item asChild>
-            <Link href={menuPage.href} onClick={onNavigate} className={`${ITEM} text-text-2 data-[highlighted]:text-prt-text`}>
-              <UserRound aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
-              {menuPage.label}
-            </Link>
-          </DropdownMenuPrimitive.Item>
-          <DropdownMenuPrimitive.Separator className={SEPARATOR} />
-        </>
+        <DropdownMenuPrimitive.Item asChild>
+          <Link href={menuPage.href} onClick={onNavigate} className={`${ITEM} text-text-2 data-[highlighted]:text-prt-text`}>
+            <UserRound aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+            {menuPage.label}
+          </Link>
+        </DropdownMenuPrimitive.Item>
       )}
-
-      {viewer.session === "test-developer" && (
-        <>
-          <DropdownMenuPrimitive.Label className={`${VIEW_AS_LABEL} px-2.5 pb-1.5 pt-1.5`}>View as</DropdownMenuPrimitive.Label>
-          {TEST_VIEWERS.map((kind) => (
-            <DropdownMenuPrimitive.Item key={kind} asChild>
-              <a
-                href={testDeveloperSignInHref(kind, pathname)}
-                aria-current={kind === testViewerOf(viewer) ? "true" : undefined}
-                className={`${ITEM} justify-between text-text-2 data-[highlighted]:text-prt-text`}
-              >
-                {TEST_VIEWER_LABELS[kind]}
-                {kind === testViewerOf(viewer) && <Check aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={2} />}
-              </a>
-            </DropdownMenuPrimitive.Item>
-          ))}
-          <DropdownMenuPrimitive.Separator className={SEPARATOR} />
-        </>
+      {viewAs && (
+        <DropdownMenuPrimitive.Item asChild>
+          <Link href={viewAsHref} scroll={false} onClick={onNavigate} className={`${ITEM} text-text-2 data-[highlighted]:text-prt-text`}>
+            <Eye aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+            {VIEW_AS_ENTRY}
+          </Link>
+        </DropdownMenuPrimitive.Item>
       )}
+      {(menuPage || viewAs) && <DropdownMenuPrimitive.Separator className={SEPARATOR} />}
 
       <DropdownMenuPrimitive.Item onSelect={() => void signOut()} className={`${ITEM} text-danger`}>
         <LogOut aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
@@ -146,17 +139,19 @@ const SHEET_ROW =
 export function UserSheet({
   viewer,
   menuPage,
+  viewAs,
   onNavigate,
   children,
 }: {
   viewer: DashboardViewer;
   menuPage: MenuPage | null;
+  viewAs: boolean;
   onNavigate?: () => void;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const pathname = usePathname();
-  const signOut = useSignOut(viewer.session);
+  const viewAsHref = useViewAsHref();
+  const signOut = useSignOut();
   const navigate = () => {
     setOpen(false);
     onNavigate?.();
@@ -186,22 +181,11 @@ export function UserSheet({
                 {menuPage.label}
               </Link>
             )}
-
-            {viewer.session === "test-developer" && (
-              <div className="mt-2 border-t border-hairline pt-3">
-                <p className={`${VIEW_AS_LABEL} px-3 pb-1`}>View as</p>
-                {TEST_VIEWERS.map((kind) => (
-                  <a
-                    key={kind}
-                    href={testDeveloperSignInHref(kind, pathname)}
-                    aria-current={kind === testViewerOf(viewer) ? "true" : undefined}
-                    className={`${SHEET_ROW} justify-between text-text-2 hover:text-prt-text`}
-                  >
-                    {TEST_VIEWER_LABELS[kind]}
-                    {kind === testViewerOf(viewer) && <Check aria-hidden className="h-4 w-4 text-accent" strokeWidth={2} />}
-                  </a>
-                ))}
-              </div>
+            {viewAs && (
+              <Link href={viewAsHref} scroll={false} onClick={navigate} className={`${SHEET_ROW} text-text-2 hover:text-prt-text`}>
+                <Eye aria-hidden className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
+                {VIEW_AS_ENTRY}
+              </Link>
             )}
 
             <div className="mt-2 border-t border-hairline pt-2">

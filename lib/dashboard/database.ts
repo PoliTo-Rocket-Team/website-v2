@@ -20,7 +20,7 @@ import {
 } from "@/db/schema";
 import type { Recruitment } from "@/lib/apply/positions";
 import { canSwitchRecruitment, switchRecruitment } from "@/lib/apply/recruitment-switch";
-import { getCurrentUser } from "@/lib/current-user";
+import { getCurrentUser, type CurrentUser } from "@/lib/current-user";
 import { runAuditQuery } from "@/lib/db-audit";
 import { canReach, LANDING_AFTER_LEAVING, type NavCounts } from "./access";
 import { isShownAt } from "./my-applications";
@@ -35,7 +35,7 @@ import { readTeamSnapshot, recordsOf, rosterOf } from "./team-database";
 import { departmentSummaries, leaderAttention, leaderStats } from "./leader-overview";
 import { opensWholeTeam } from "./members-view";
 import { databaseAlumniWrites, databaseOwnAlumni, readAlumniDirectory, readOwnAlumnus } from "./database-alumni";
-import { formatEuro, waitingOrders } from "./orders";
+import { decideRightOfStanding, formatEuro, waitingOrders, type Order } from "./orders";
 import {
   checklistProgress,
   divisionRoster,
@@ -81,8 +81,8 @@ import { upcomingInterviews } from "./interview-slots";
 import { SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areaUnitsOf, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 
-// The signed-in account's side of the dashboard data interface: the same
-// answers as lib/dummy-data/, read from the database. Reads follow
+// The dashboard data interface for the signed-in account, read from the
+// database. Reads follow
 // .patterns/drizzle-reads.md: getDb() per call, closed units and deleted
 // positions left out.
 
@@ -101,6 +101,12 @@ type ActiveRole = {
 
 type Identity = {
   userId: string;
+  /**
+   * The account behind a View as session, read from the session on the
+   * server (issue #605): `userId` is then the person viewed as. Each write
+   * that names its author stores it beside them; null for a plain session.
+   */
+  actingAccountId: string | null;
   name: string;
   email: string;
   linkedin: string | null;
@@ -129,7 +135,7 @@ export type DashboardIdentity = Identity;
  * the open departments go out together, since none needs another's answer.
  * Only someone with no active role waits for one more read, the Alumni record.
  */
-async function readIdentity(userId: string): Promise<Identity | null> {
+async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "id" | "actingAccountId">): Promise<Identity | null> {
   const db = getDb();
   const [[user], scopeRows, roleRows, openDepartments] = await Promise.all([
     db
@@ -181,6 +187,7 @@ async function readIdentity(userId: string): Promise<Identity | null> {
   const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email;
   const base = {
     userId,
+    actingAccountId,
     name,
     email: user.email,
     linkedin: user.linkedin,
@@ -416,17 +423,25 @@ async function teamOverview(identity: Identity): Promise<TeamOverview> {
 }
 
 /**
- * Board 72 (issue #252): the team leader's figures, what waits for their
- * decision, and the Departments panel, across the team. The database holds
- * no activity feed, so that reads empty.
+ * Every order in the team. Deciding is team-wide (`ordersScopeOf`), so what
+ * waits for a decision is counted across the team.
  */
-async function leaderOverview(identity: Identity): Promise<TeamLeaderOverview> {
-  const snapshotRead = readTeamSnapshot();
+function readTeamOrders(): Promise<Order[]> {
+  return readTeamSnapshot().then((s) => readOrdersIn(s.org.divisions.map((d) => d.id)));
+}
+
+/**
+ * Board 72 (issue #252): the team leader's figures and the Departments
+ * panel, across the team, from the team's orders (`teamOrders`). What waits
+ * for their decision is added by `overviewOf`, as for anyone who decides. The
+ * database holds no activity feed, so that reads empty.
+ */
+async function leaderOverview(identity: Identity, teamOrders: Promise<Order[]>): Promise<TeamLeaderOverview> {
   const [positions, unread, snapshot, orders, notices] = await Promise.all([
     scopedPositions(identity, "positions"),
     readUnreadPositions(identity),
-    snapshotRead,
-    snapshotRead.then((s) => readOrdersIn(s.org.divisions.map((d) => d.id))),
+    readTeamSnapshot(),
+    teamOrders,
     readNoticeAttention(identity, new Date()),
   ]);
   const records = recordsOf(snapshot);
@@ -442,7 +457,7 @@ async function leaderOverview(identity: Identity): Promise<TeamLeaderOverview> {
       people: records.length,
       departments: snapshot.org.departments.length,
     }),
-    attention: [...leaderAttention({ orders, now: new Date() }), ...notices],
+    attention: notices,
     departments: departmentSummaries(records, snapshot.org, positions, unread),
     people: records.length,
     activity: [],
@@ -676,7 +691,8 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
 
 const monthYear = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 
-async function memberOverview(identity: Identity): Promise<PersonalOverview> {
+/** A member's own page; `teamOrders` is the team's orders when they decide orders, else null. */
+async function memberOverview(identity: Identity, teamOrders: Promise<Order[]> | null): Promise<PersonalOverview> {
   const role = identity.role;
   const items: ChecklistItem[] = [
     { label: "Name and division", detail: "Set by your division lead", done: role?.divisionId != null, action: null },
@@ -723,12 +739,14 @@ async function memberOverview(identity: Identity): Promise<PersonalOverview> {
   const [roster, notices, access] = await Promise.all([
     readRoster(),
     readNoticeAttention(identity, new Date()),
-    readAccessSummaries(identity),
+    readAccessSummaries(identity, teamOrders),
   ]);
 
   return {
     shape: "personal",
-    // Their own notices alone: a grant adds no attention row (issue #480).
+    // Their own notices: an area grant adds no attention row (issue #480).
+    // What waits for their decision, when they hold Approve orders, is added
+    // by `overviewOf` (issue #592).
     attention: notices,
     person: {
       name: identity.name,
@@ -752,18 +770,20 @@ async function memberOverview(identity: Identity): Promise<PersonalOverview> {
  * in the units their grants on it cover (`readsAreaIn`). Nothing is read for
  * an area they are not granted, and the summaries keep counts alone. A
  * Content grant adds its own line, which reads nothing (issue #504).
+ * Approve orders adds the count of the team's orders waiting for a decision,
+ * from `teamOrders`, which is null when they do not decide (issue #592).
  */
-async function readAccessSummaries(identity: Identity): Promise<AccessSummary[]> {
+async function readAccessSummaries(identity: Identity, teamOrders: Promise<Order[]> | null): Promise<AccessSummary[]> {
   const areas = overviewAreasOf(identity);
-  if (areas.length === 0) return accessSummariesOf([], {}, identity.siteContent);
   const reads = (area: GrantArea) => areas.includes(area);
-  const [positions, applications, orders, members] = await Promise.all([
+  const [positions, applications, orders, members, approveOrders] = await Promise.all([
     reads("positions") ? scopedPositions(identity, "positions") : undefined,
     reads("applications") ? readApplicationFigures(identity) : undefined,
     reads("orders") ? readOrderFigures(identity) : undefined,
     reads("members") ? readMemberAccess(identity) : undefined,
+    teamOrders?.then((all) => ({ waiting: waitingOrders(all).count })),
   ]);
-  return accessSummariesOf(areas, { positions, applications, orders, members }, identity.siteContent);
+  return accessSummariesOf(areas, { positions, applications, orders, members, approveOrders }, identity.siteContent);
 }
 
 /**
@@ -787,18 +807,29 @@ async function readMemberAccess(identity: Identity): Promise<NonNullable<AccessF
  * attention rows (board 62c, issue #262): a head of the sender's department
  * or the team leader, whatever their Overview's shape. The open alias
  * requests follow them for the three approver seats (board 94c, epic #538).
+ * Whoever decides orders (`decideRightOfStanding`), whatever the shape, then
+ * gets what waits for their decision across the team (`leaderAttention`,
+ * issue #592); nobody else's Overview reads the team's orders for it.
  */
 async function overviewOf(identity: Identity): Promise<TeamSideOverview> {
   const now = new Date();
-  const [overview, handOvers, aliases] = await Promise.all([overviewShapeOf(identity), readHandOverAttention(identity, now), readAliasAttention(identity, now)]);
-  const top = [...handOvers, ...aliases];
+  const teamOrders = decideRightOfStanding(identity) === null ? null : readTeamOrders();
+  const [overview, handOvers, aliases, decisions] = await Promise.all([
+    overviewShapeOf(identity, teamOrders),
+    readHandOverAttention(identity, now),
+    readAliasAttention(identity, now),
+    teamOrders?.then((orders) => leaderAttention({ orders, now })) ?? [],
+  ]);
+  const top = [...handOvers, ...aliases, ...decisions];
   return top.length === 0 ? overview : { ...overview, attention: [...top, ...overview.attention] };
 }
 
-function overviewShapeOf(identity: Identity): Promise<TeamSideOverview> {
+/** The viewer's Overview by its shape; `teamOrders` is the team's orders when they decide orders, else null. */
+function overviewShapeOf(identity: Identity, teamOrders: Promise<Order[]> | null): Promise<TeamSideOverview> {
   switch (identity.kind) {
     case "operations-lead":
-      return isTeamLeader(identity) ? leaderOverview(identity) : teamOverview(identity);
+      // The team leader always decides, so their figures share the one read.
+      return isTeamLeader(identity) ? leaderOverview(identity, teamOrders ?? readTeamOrders()) : teamOverview(identity);
     case "department-head":
       return departmentOverview(identity);
     case "division-lead":
@@ -806,7 +837,7 @@ function overviewShapeOf(identity: Identity): Promise<TeamSideOverview> {
     case "member":
       // A member keeps their own page whatever they are granted; each grant
       // adds one "Your access" line to it (issue #480).
-      return memberOverview(identity);
+      return memberOverview(identity, teamOrders);
     case "non-member":
     case "alumni":
       return Promise.reject(new DashboardRefused("an Overview off the team is built from My applications"));
@@ -871,7 +902,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
   if (!isDatabaseConfigured()) return null;
   const user = await getCurrentUser();
   if (!user) return null;
-  const identity = await readIdentity(user.id);
+  const identity = await readIdentity(user);
   if (!identity) return null;
 
   const viewer: DashboardViewer = {
@@ -879,8 +910,6 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     name: identity.name,
     role: roleLabelOf(identity),
     photoUrl: identity.picture,
-    // A test developer read as a seeded person signs out as a test developer.
-    session: user.session,
   };
   const self = databaseSelfPages(identity);
   return {

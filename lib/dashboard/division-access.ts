@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { checkApproveOrdersChange, type ApproveOrdersChange } from "./orders";
+import { boardFlagOf } from "./team";
 import type { FullAccessSeat } from "./viewer";
 
 // The Access page (boards 60, 60b, 60c and 60m for a division lead, issues
@@ -332,8 +333,10 @@ export const PERSON_STANDING_LABELS: Readonly<Record<PersonStanding, string>> = 
 export type PersonRole =
   | { readonly kind: "member" }
   | { readonly kind: "lead"; readonly divisions: readonly [AccessDivision, ...AccessDivision[]] }
-  | { readonly kind: "head"; readonly department: AccessDepartmentUnit }
-  | { readonly kind: "full"; readonly seat: FullAccessSeat };
+  /** `title`: the head role's stored title (`headTitleOf`), written under the name (issue #625). */
+  | { readonly kind: "head"; readonly department: AccessDepartmentUnit; readonly title: string }
+  /** `title`: the seat's line under the name (`seatLine`, issue #625). */
+  | { readonly kind: "full"; readonly seat: FullAccessSeat; readonly title: string };
 
 export const NO_ROLE = { kind: "member" } as const satisfies PersonRole;
 
@@ -379,9 +382,9 @@ export function roleAccessOf(person: AccessPerson): RoleAccess[] {
     case "member":
       return [];
     case "full":
-      return [{ person, place: WHOLE_TEAM_PLACE, seat: role.seat }];
+      return [{ person, place: WHOLE_TEAM_PLACE, seat: role.seat, title: role.title }];
     case "head":
-      return [{ person, place: { kind: "department", department: role.department.department } }];
+      return [{ person, place: { kind: "department", department: role.department.department }, title: role.title }];
     case "lead":
       return role.divisions.map((division) => ({ person, place: { kind: "division", division } }));
   }
@@ -404,11 +407,14 @@ export type AccessGrant = {
  * Access that comes with a role, shown "With the role" and locked: a lead's
  * or co-lead's whole division, a head's whole department (boards 60 and 65),
  * or, on a team page, a full-access seat's whole team (board 71, issue #247).
- * It is no grant, so nothing on the page changes it.
+ * It is no grant, so nothing on the page changes it. A head's and a seat's row
+ * carry the `title` the page writes under the name (issue #625): a head's is
+ * their head role's stored title (`headTitleOf`), a seat's is `seatLine`'s.
  */
 export type RoleAccess =
-  | { readonly person: AccessPerson; readonly place: Exclude<AccessPlace, { kind: "team" }> }
-  | { readonly person: AccessPerson; readonly place: { readonly kind: "team" }; readonly seat: FullAccessSeat };
+  | { readonly person: AccessPerson; readonly place: Extract<AccessPlace, { kind: "division" }> }
+  | { readonly person: AccessPerson; readonly place: Extract<AccessPlace, { kind: "department" }>; readonly title: string }
+  | { readonly person: AccessPerson; readonly place: { readonly kind: "team" }; readonly seat: FullAccessSeat; readonly title: string };
 
 /**
  * The division a role row stands in: the one the role leads, else the
@@ -427,6 +433,18 @@ export const SEAT_LABELS: Readonly<Record<FullAccessSeat, string>> = {
   "project-manager": "Project Manager",
   "chief-engineer": "Chief Engineer",
 };
+
+/**
+ * The line under a full-access person's name: a team-level seat's (the
+ * Project Manager's, the Chief Engineer's) role title as stored on its
+ * flagged row, the seat's name for a blank one; any other seat's name
+ * (`SEAT_LABELS`), as that seat is not its row's title (issue #625).
+ */
+export function seatLine(seat: FullAccessSeat, storedTitle: string): string {
+  const stored = storedTitle.trim();
+  const teamLevel = seat !== "team-leader" && boardFlagOf(seat) !== null;
+  return teamLevel && stored !== "" ? stored : SEAT_LABELS[seat];
+}
 
 /**
  * Only the team leader gives or removes "Approve orders" (issue #233): the

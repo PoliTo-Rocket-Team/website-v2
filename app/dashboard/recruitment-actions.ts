@@ -10,8 +10,8 @@ import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 // The writes of the Positions and Applications pages (issues #142, #171).
 // Each goes through the dashboard data interface, which decides what the
 // viewer may change and, for an application, whether the move is legal
-// (lib/dashboard/application-flow.ts): a test developer's write changes only
-// a cookie, an account's the database. The browser's arguments are checked
+// (lib/dashboard/application-flow.ts), and writes to the database (a test
+// developer's write only on a preview, ADR 0016). The browser's arguments are checked
 // here, never trusted.
 
 async function answer<T>(run: (data: DashboardData) => Promise<WriteResult<T>>): Promise<WriteResult<T>> {

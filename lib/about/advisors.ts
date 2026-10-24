@@ -90,7 +90,7 @@ export function isAdvisorVersion(value: unknown): value is AdvisorVersion {
  * The advisors the hand-typed record lists (lib/about/team.ts), carried into
  * the store as they are: ids and site order from 1 in the record's order,
  * each published with no draft. Migration 0035 imports exactly these
- * (`advisorImportSql`), and the dummy data starts from them.
+ * (`advisorImportSql`), and the tests start from them.
  */
 export function advisorSeed(people: readonly Advisor[]): AdvisorItem[] {
   const placed = new Map<AdvisorStanding, number>();

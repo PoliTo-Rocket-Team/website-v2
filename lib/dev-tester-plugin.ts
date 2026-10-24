@@ -3,18 +3,31 @@ import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import * as z from "zod";
 import { callbackPath } from "@/lib/auth-callback";
-import { TESTER_KEYS, TESTERS, testerSignInOn } from "@/lib/dev-tester";
+import { testerSignInOn } from "@/lib/dev-tester";
+import { SEEDED_ACCOUNTS, type SeededAccount } from "@/lib/seeded-accounts";
 
-// Better Auth plugin for the local-only tester sign-in (issue #129).
-// `getAuth()` adds it only when `testerSignInOn()` is true, so on previews
-// and production neither route exists. Each handler asks the gate again.
+// Better Auth plugin for the tester sign-in (issues #129, #608). `getAuth()`
+// adds it only when `testerSignInOn()` is true: under `next dev` off Vercel,
+// and on a preview of the shared `preview` database. Everywhere else neither
+// route exists. Each handler asks the gate again.
 //
-//   GET /api/auth/dev-tester                     a plain list of the testers
+//   GET /api/auth/dev-tester                     a plain list of the accounts
 //   GET /api/auth/dev-tester/sign-in?tester=<key>[&cb=<path>]
 //
+// `<key>` is the key of a seat or an admin tester in lib/seeded-accounts.ts.
 // The sign-in starts a real session through Better Auth's own adapter and
 // cookie helper, so the session cookie and the cookie cache are the ones a
-// Google sign-in sets, and getCurrentUserId() and proxy.ts read them.
+// Google sign-in sets, getCurrentUserId() and proxy.ts read them, and
+// signing out deletes the session as it does for any account.
+
+const ACCOUNT_KEYS = SEEDED_ACCOUNTS.map((account) => account.key);
+
+function accountOf(key: string): SeededAccount {
+  const account = SEEDED_ACCOUNTS.find((a) => a.key === key);
+  // The query schema admits only these keys, so this never throws on a request.
+  if (account === undefined) throw new APIError("BAD_REQUEST");
+  return account;
+}
 
 function refuseWhenOff(): void {
   if (!testerSignInOn()) throw new APIError("NOT_FOUND");
@@ -30,17 +43,16 @@ function escapeHtml(text: string): string {
 
 function testerListHtml(cb: string | undefined): string {
   const query = cb === undefined ? "" : `&cb=${encodeURIComponent(callbackPath(cb))}`;
-  const items = TESTER_KEYS.map((key) => {
-    const tester = TESTERS[key];
-    const href = `/api/auth/dev-tester/sign-in?tester=${key}${query}`;
-    return `<li><a href="${escapeHtml(href)}">${escapeHtml(tester.name)}</a> (${escapeHtml(key)}): ${escapeHtml(tester.sees)}</li>`;
+  const items = SEEDED_ACCOUNTS.map((account) => {
+    const href = `/api/auth/dev-tester/sign-in?tester=${account.key}${query}`;
+    return `<li><a href="${escapeHtml(href)}">${escapeHtml(account.name)}</a> (${escapeHtml(account.key)}): ${escapeHtml(account.sees)}</li>`;
   }).join("\n");
 
   return `<!doctype html>
 <meta charset="utf-8">
-<title>Sign in as a tester (local only)</title>
-<h1>Sign in as a tester (local only)</h1>
-<p>Run <code>pnpm db:seed</code> first. This page exists only on <code>pnpm dev</code>.</p>
+<title>Sign in as a tester</title>
+<h1>Sign in as a tester</h1>
+<p>Locally, run <code>pnpm db:seed</code> first. This page exists only on <code>pnpm dev</code> and on previews of the shared preview database.</p>
 <ul>
 ${items}
 </ul>`;
@@ -68,17 +80,17 @@ export function devTesterPlugin() {
         {
           method: "GET",
           query: z.object({
-            tester: z.enum(TESTER_KEYS),
+            tester: z.enum(ACCOUNT_KEYS),
             cb: z.string().optional(),
           }),
         },
         async (ctx) => {
           refuseWhenOff();
-          const tester = TESTERS[ctx.query.tester];
-          const found = await ctx.context.internalAdapter.findUserByEmail(tester.email);
-          if (!found || found.user.id !== tester.id) {
+          const account = accountOf(ctx.query.tester);
+          const found = await ctx.context.internalAdapter.findUserByEmail(account.email);
+          if (!found || found.user.id !== account.id) {
             throw new APIError("NOT_FOUND", {
-              message: `Tester "${tester.key}" is not seeded. Run pnpm db:seed.`,
+              message: `Tester "${account.key}" is not seeded. Run pnpm db:seed.`,
             });
           }
           const session = await ctx.context.internalAdapter.createSession(found.user.id);

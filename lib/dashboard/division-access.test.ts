@@ -524,5 +524,5 @@ test("a lead of two divisions has a role row in each, each in its own division, 
   assert.equal(roleDivision({ person: marco, place: { kind: "division", division: msa } }), msa);
   assert.equal(roleDivision({ person: marco, place: { kind: "division", division: aoa } }), aoa);
   // A head's role is in a department: the row stays with the person's own division, if any.
-  assert.equal(roleDivision({ person: marco, place: { kind: "department", department: aerodynamics } }), msa);
+  assert.equal(roleDivision({ person: marco, place: { kind: "department", department: aerodynamics }, title: "Head of Aerodynamics" }), msa);
 });

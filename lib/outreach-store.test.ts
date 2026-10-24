@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { memoryContentStore } from "@/lib/content/memory";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import { dummyOutreachStore, dummyPhotoFiles, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
+import { memoryOutreachStore, memoryPhotoFiles } from "./outreach-memory";
 import { awardPosts, featuredCard, iressStory, outreachRecord, postBySlug, postsWithPages, slugOf, trackRecord } from "./outreach";
 import { outreachEditor, publicOutreach, type StoredOutreach } from "./outreach-editor";
 import { FEATURE_LOCKED, FEATURED_FULL } from "./outreach-featured";
@@ -19,20 +19,6 @@ import type { IsoDate, OutreachPost } from "./outreach-types";
 const drizzle = join(__dirname, "..", "drizzle");
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 const member: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: false, approveOrders: false };
-
-/** A cookie that keeps what was saved, as the browser does between requests. */
-function cookie() {
-  const jar = {
-    value: undefined as string | undefined,
-    get current(): DummyOutreachEdits {
-      return parseOutreachEdits(jar.value);
-    },
-    save: async (next: DummyOutreachEdits) => {
-      jar.value = serializeOutreachEdits(next);
-    },
-  };
-  return jar;
-}
 
 /** A post as the database hands it back: its JSON columns through a JSON round trip, as jsonb stores them. */
 function throughRow(post: OutreachPost): OutreachPost {
@@ -122,8 +108,8 @@ test("a Featured card is drawn from its post alone: its date and place, title, s
   assert.equal(featuredCard(noPlace).eyebrow, "MAY 2023");
 });
 
-test("on the dummy-data path none, one or two posts are featured, newest first, a third is refused, and only site-content editors feature", async () => {
-  const editor = outreachEditor(admin, dummyOutreachStore(cookie()), dummyPhotoFiles);
+test("none, one or two posts are featured, newest first, a third is refused, and only site-content editors feature", async () => {
+  const editor = outreachEditor(admin, memoryOutreachStore(), memoryPhotoFiles);
   const shown = async () =>
     publicOutreach({ posts: (await editor.posts.list())!, tags: (await editor.tags())!, featured: await editor.featured() } satisfies StoredOutreach);
   const [story] = await editor.featured();
@@ -169,7 +155,7 @@ test("on the dummy-data path none, one or two posts are featured, newest first, 
   assert.deepEqual(await editor.feature(999), { ok: false, error: "This post was removed. Reload the page." });
   assert.deepEqual(await editor.featured(), [1]);
 
-  const refused = outreachEditor(member, dummyOutreachStore(cookie()), dummyPhotoFiles);
+  const refused = outreachEditor(member, memoryOutreachStore(), memoryPhotoFiles);
   assert.deepEqual(await refused.featured(), []);
   assert.equal((await refused.feature(1)).ok, false);
   assert.equal((await refused.unfeature(story)).ok, false);
@@ -224,7 +210,7 @@ test("a stored post gallery reads back as its photos only, whatever switch or ti
 test("/outreach and the post pages show only published posts: a draft-only post is not listed and its page is not found", async () => {
   const stored = importedOutreach();
   const posts = memoryContentStore(stored.posts);
-  const editor = outreachEditor(admin, { ...dummyOutreachStore(cookie()), posts }, dummyPhotoFiles);
+  const editor = outreachEditor(admin, { ...memoryOutreachStore(), posts }, memoryPhotoFiles);
   const draftOnly: OutreachPost = { ...outreachRecord.posts[0], title: "A post still in draft", date: "2026-10-01" };
   const created = await editor.posts.save(null, "save-draft", async () => ({ ok: true, value: draftOnly }));
   assert.ok(created.ok);
@@ -285,8 +271,7 @@ test("tags are data: a post tagged Award counts toward the award figure, and the
 });
 
 test("the editor keeps a post's tags to the list, adds a tag inline, and lets only site-content editors in", async () => {
-  const jar = cookie();
-  const editor = outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles);
+  const editor = outreachEditor(admin, memoryOutreachStore(), memoryPhotoFiles);
   const unknown = await editor.posts.save(1, "save-draft", async (current) => ({ ok: true, value: { ...outreachPostOf(current)!, tags: ["Workshop"] } }));
   assert.deepEqual(unknown, { ok: false, error: "Workshop is not a tag. Add it to the tag list first." });
 
@@ -296,7 +281,7 @@ test("the editor keeps a post's tags to the list, adds a tag inline, and lets on
   assert.ok((await editor.posts.save(1, "save-draft", async (current) => ({ ok: true, value: { ...outreachPostOf(current)!, tags: ["Workshop"] } }))).ok);
   assert.deepEqual((await editor.tags())?.at(-1), { name: "Workshop", award: false });
 
-  const refused = outreachEditor(member, dummyOutreachStore(cookie()), dummyPhotoFiles);
+  const refused = outreachEditor(member, memoryOutreachStore(), memoryPhotoFiles);
   assert.equal(await refused.posts.list(), null);
   assert.equal(await refused.tags(), null);
   assert.equal((await refused.addTag("Workshop")).ok, false);

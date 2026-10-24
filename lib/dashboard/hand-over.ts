@@ -29,7 +29,14 @@ export type HandedRole =
   | { readonly kind: "head"; readonly departmentId: number }
   | { readonly kind: "lead"; readonly divisionId: number };
 
-/** Where an Advisor role sits: on the whole team (a former team leader), a department (a former head) or a division (a former lead). */
+/**
+ * A role someone steps down from: one they hand over, or a team-level seat
+ * whose holder the Edit team tree changes (issue #627). A seat is not a
+ * `HandedRole`: My profile never hands one over.
+ */
+export type SteppedDownFrom = HandedRole | { readonly kind: "team-seat" };
+
+/** Where an Advisor role sits: on the whole team (a former team leader or seat holder), a department (a former head) or a division (a former lead). */
 export type AdvisorPlace =
   | { readonly kind: "team" }
   | { readonly kind: "department"; readonly departmentId: number }
@@ -50,10 +57,10 @@ export type SteppingDown =
  * The one rule for every hand-over: "leave" ends every role and access and
  * moves them to Alumni; "advisor" ends the role handed over and starts one
  * Advisor role in the unit they held it in, the whole team for the team
- * leader. A lead or head who becomes an advisor loses their access; a former
- * team leader keeps theirs.
+ * leader and a team-level seat's holder. A lead, head or seat holder who
+ * becomes an advisor loses their access; a former team leader keeps theirs.
  */
-export function steppingDown(handed: HandedRole, outcome: HandOverOutcome): SteppingDown {
+export function steppingDown(handed: SteppedDownFrom, outcome: HandOverOutcome): SteppingDown {
   return outcome === "leave" ? { kind: "leave" } : advising(handed);
 }
 
@@ -61,10 +68,12 @@ export function steppingDown(handed: HandedRole, outcome: HandOverOutcome): Step
 export type Advising = Extract<SteppingDown, { kind: "advisor" }>;
 
 /** "Become an advisor" for whoever hands over `handed`: an Advisor role in the same unit (`steppingDown`). */
-export function advising(handed: HandedRole): Advising {
+export function advising(handed: SteppedDownFrom): Advising {
   switch (handed.kind) {
     case "team-leader":
       return { kind: "advisor", place: { kind: "team" }, access: "keeps-full-access" };
+    case "team-seat":
+      return { kind: "advisor", place: { kind: "team" }, access: "ends" };
     case "head":
       return advisingIn({ kind: "department", departmentId: handed.departmentId });
     case "lead":
@@ -233,7 +242,7 @@ function advisorWords(step: Advising, unit: string | null, voice: Voice): string
  * "Stays in Aerodynamics with the Advisor role; their access ends". `unit`
  * names the division or department they hand over.
  */
-export function advisorOptionDetail(handed: HandedRole, unit: string | null, voice: Voice): string {
+export function advisorOptionDetail(handed: SteppedDownFrom, unit: string | null, voice: Voice): string {
   const words = advisorWords(advising(handed), unit, voice);
   return words.charAt(0).toUpperCase() + words.slice(1);
 }

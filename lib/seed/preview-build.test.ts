@@ -80,7 +80,7 @@ test("production and development builds never touch a database", async () => {
   }
 });
 
-test("a preview with no database is skipped, so its pages fall back to the dummy arrays", async () => {
+test("a preview with no database is skipped: the build step touches nothing", async () => {
   const env = { VERCEL_ENV: "preview" };
   const { events, steps } = recorded(env);
   assert.equal((await preparePreviewDatabase(env, steps)).kind, "skipped");

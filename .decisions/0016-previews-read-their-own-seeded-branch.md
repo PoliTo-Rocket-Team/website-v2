@@ -8,6 +8,8 @@ tags: [previews, seed, dummy-data, database]
 
 # 0016 — Previews read a database branch created from an empty schema and filled with the dummy seed; dummy arrays stay only where no database is configured
 
+> **Current state (2026-10-24):** there is no dummy mode. Every page reads a database, and `lib/dummy-data/` is removed; see the amendments of 2026-10-24 below (issues #609, #612, #613).
+
 **What this decides:** Vercel previews read one Neon database branch named `preview`, which every preview deployment shares. That branch started from an empty schema, never from production data, and the preview build migrates it and then fills it with the dummy seed. Previews read that branch. The typed arrays in `lib/dummy-data/` stay only for runs with no database configured. The seed itself refuses any target that is not a local database or a preview branch it can prove is not production. This supersedes [ADR 0009](0009-previews-and-dev-use-dummy-data.md).
 
 ## Context
@@ -131,6 +133,47 @@ This amendment overrides these earlier lines, which stay as written:
 - the 2026-10-21 amendment's "Re-seeding the branch is a deliberate owner step, never part of a build", restated: re-seeding the branch is an owner request through `PREVIEW_RESEED_REQUEST`, performed once by the next preview build; an ordinary build never re-seeds;
 - the 2026-10-21 amendment's "Never reset. No preview build runs the seed's reset on the shared branch", narrowed: no preview build resets the branch unless it carries a re-seed request the branch has not served;
 - the 2026-10-21 amendment's "Rows made on a preview, by a test developer or anyone else, stay until someone removes them", extended: or until the next requested re-seed.
+
+## Amendment, 2026-10-24: tester sign-in on previews of the `preview` branch
+
+Checks sign in without Google as a seeded seat or a seeded admin tester and get a real session, on previews as well as under `next dev`, so they run the real code against a real database (Owner decisions on epic [#597](https://github.com/PoliTo-Rocket-Team/website-v2/issues/597), https://github.com/PoliTo-Rocket-Team/website-v2/issues/597#issuecomment-6383054423, built by [#608](https://github.com/PoliTo-Rocket-Team/website-v2/issues/608)). Decision 8 reads with it as follows:
+
+- **Where it is on.** `testerSignInOn` in [lib/dev-tester.ts](../lib/dev-tester.ts) is true under `next dev` with no `VERCEL_ENV`, and on a Vercel preview (`VERCEL_ENV` is `preview`) whose `DATABASE_URL` names the `preview` branch, read by `isPreviewDatabase` in [lib/seed/target.ts](../lib/seed/target.ts), the same check the seed guard and the test developer's write gate ask.
+- **Where it is off.** On production, on every other Vercel environment and on a preview whose `DATABASE_URL` names any other database or none, the tester plugin is not registered and its routes answer 404. Decision 7 and the binding constraint that every tester sign-in gate is false in production stand.
+- **Who it signs in as.** Any seat or admin tester of [lib/seeded-accounts.ts](../lib/seeded-accounts.ts) ([#607](https://github.com/PoliTo-Rocket-Team/website-v2/issues/607)). The session is a real Better Auth session; signing out deletes it.
+
+This amendment overrides Decision 8's "Signing in as them stays local only", which stays as written, and the line of ADR 0009's mapping above that restates it.
+
+## Amendment, 2026-10-24: every page reads a database under `next dev` and on previews
+
+The Owner decision of 2026-10-24 on epic [#597](https://github.com/PoliTo-Rocket-Team/website-v2/issues/597) replaces the fake-data path with real sessions on a real database, so a check never reads a second copy of the dashboard's rules. Issue [#609](https://github.com/PoliTo-Rocket-Team/website-v2/issues/609) is the step that stops pages from reading the arrays:
+
+- **No dummy fallback.** No page, route or loader reads `lib/dummy-data/`. Under `next dev` the pages read the Neon `development` branch; on a preview they read the shared `preview` branch.
+- **A run with no database stops.** Under `next dev` or on a preview with no `DATABASE_URL`, the first database read stops with a message naming the database the run needs ([lib/database-required.ts](../lib/database-required.ts), asked by `isDatabaseConfigured` and `getDb` in [db/client.ts](../db/client.ts)).
+- **Production unchanged.** Production, and a local production build, may still run with no database, and the pages that render without one still do.
+- **The arrays stay for tests** until a later child of #597 removes `lib/dummy-data/`.
+
+This amendment retires Decision 5 ("Dummy arrays only without a database"), the Consequences line "A preview with no `DATABASE_URL` stays on the dummy arrays", and the Gaps pointer to `dummyDataOn` in `lib/dummy-data/mode.ts`, which is gone; those lines stay as written.
+
+## Amendment, 2026-10-24: the test developer is retired
+
+The same Owner decision on epic [#597](https://github.com/PoliTo-Rocket-Team/website-v2/issues/597) puts every check on a real session, and the epic's approved plan (https://github.com/PoliTo-Rocket-Team/website-v2/issues/597#issuecomment-6383269347) retires the test developer once the tester sign-in, View as and its banner are in. Issue [#612](https://github.com/PoliTo-Rocket-Team/website-v2/issues/612) is that step:
+
+- **No cookie sign-in.** The test developer sign-in on `/login`, its `/api/test-developer/*` routes, its `prt_test_developer*` cookies and the viewer switch on the user card are gone. `lib/test-developer.ts` and `lib/test-viewer-people.ts` are removed.
+- **Only real sessions.** `getCurrentUser` in [lib/current-user.ts](../lib/current-user.ts) answers only a Better Auth session, plain or View as. A check signs in as a seeded tester (the amendment above) and views as a seeded seat with View as.
+- **One write rule.** Every write is logged under the session's account, with the acting account beside it in a View as session ([lib/audit-writer.ts](../lib/audit-writer.ts)); there is no separate test developer write gate.
+
+This amendment retires Decision 6 ("The test developer stays"), Decision 7's "never offers the test developer sign-in", the mapping lines for ADR 0009's Decision 3 and its test developer constraint, the binding constraint on a test developer's changes, and the amendment of 2026-10-17; those lines stay as written.
+
+## Amendment, 2026-10-24: the dummy copy of the dashboard is removed
+
+The same Owner decision on epic [#597](https://github.com/PoliTo-Rocket-Team/website-v2/issues/597) wants one implementation of the dashboard's rules, and the epic's approved plan (https://github.com/PoliTo-Rocket-Team/website-v2/issues/597#issuecomment-6383269347) removes `lib/dummy-data/` last. Issue [#613](https://github.com/PoliTo-Rocket-Team/website-v2/issues/613) is that step:
+
+- **No dummy mode.** `lib/dummy-data/` is gone, and with it every in-memory copy of the access, Members, Orders, content and Team page rules. There is no dummy mode anywhere: under `next dev`, on a preview and in production the dashboard reads a database, and the one implementation is [lib/dashboard/database.ts](../lib/dashboard/database.ts).
+- **Tests run the real code.** The rules its tests covered are tested against the real loaders and actions, over the in-memory database of the access tests ([lib/dashboard/access-matrix/](../lib/dashboard/access-matrix/)), or as the domain functions those loaders call. Editor tests hold their store in memory ([lib/content/memory.ts](../lib/content/memory.ts), [lib/outreach-memory.ts](../lib/outreach-memory.ts)); the Team page tests read the seeded team ([db/seed/cases.ts](../db/seed/cases.ts)).
+- **The seed keeps its name.** The rows `pnpm db:seed` loads are still called the dummy set (Decision 3, [docs/seed-cases.md](../docs/seed-cases.md)); that is seed data in a database, not a dummy mode.
+
+This amendment retires the title's and What this decides' "dummy arrays stay only where no database is configured", the binding constraint's "dummy data" gate, and Decision 7's "never shows dummy data", which now has nothing to refer to; those lines stay as written.
 
 ## Records
 

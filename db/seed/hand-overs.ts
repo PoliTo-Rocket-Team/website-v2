@@ -2,7 +2,7 @@
 // #262), one still waiting for the next level up and one confirmed. Hand-overs
 // are private, so both are invented (issue #326). The waiting one is the
 // division-lead tester's in Test Bench, to the member tester there, so the
-// department-head test viewer, the head of Propulsion, answers it from their
+// department-head plain seat, the head of Propulsion, answers it from their
 // Overview (board 62c). The confirmed one is the invented division advisor's
 // Liquid System Architecture lead, handed to its lead today, written the way
 // Confirm writes it (lib/dashboard/database-team.ts): the lead row ended and

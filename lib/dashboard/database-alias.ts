@@ -21,6 +21,7 @@ import {
   type MemberAliases,
 } from "./alias-request";
 import { ownAliasOf, planAliasSetUp, type OwnAlias } from "./alias-setup";
+import { actingTitleIn, readActingTitles } from "./database-acting-account";
 import type { DashboardIdentity } from "./database";
 import { isOffTeam } from "./viewer";
 import type { AttentionItem } from "./overview";
@@ -48,10 +49,28 @@ function isUniqueViolation(error: unknown): boolean {
 /** The requests still open: all of them, or one by id. */
 export async function readOpenAliasRequests(filter: { readonly id?: number } = {}): Promise<AliasRequest[]> {
   const rows = await getDb()
-    .select({ id: aliasRequests.id, member_id: aliasRequests.memberId, requested_by: aliasRequests.requestedBy, created_at: aliasRequests.createdAt })
+    .select({
+      id: aliasRequests.id,
+      member_id: aliasRequests.memberId,
+      requested_by: aliasRequests.requestedBy,
+      requested_by_acting_account: aliasRequests.requestedByActingAccount,
+      created_at: aliasRequests.createdAt,
+    })
     .from(aliasRequests)
     .where(and(isNull(aliasRequests.outcome), filter.id === undefined ? undefined : eq(aliasRequests.id, filter.id)));
-  return rows.map((r) => ({ id: r.id, memberId: r.member_id, requesterId: r.requested_by, sentAt: r.created_at }));
+  const titles = await readActingTitles(rows.map((r) => r.requested_by_acting_account));
+  return rows.map((r) => ({
+    id: r.id,
+    memberId: r.member_id,
+    requesterId: r.requested_by,
+    requesterActingTitle: actingTitleIn(titles, r.requested_by_acting_account),
+    sentAt: r.created_at,
+  }));
+}
+
+/** Who answers a request, as its row stores it: the viewer, and the acting account behind a View as session (issue #605). */
+function answeredByOf(identity: DashboardIdentity) {
+  return { answeredBy: identity.memberId, answeredByActingAccount: identity.actingAccountId };
 }
 
 /** A PRT email that is set: not null and not empty. */
@@ -100,7 +119,9 @@ export async function requestAlias(identity: DashboardIdentity, memberId: number
   });
   if (!planned.ok) return refused(planned.error);
   try {
-    await runAuditQuery((db) => db.insert(aliasRequests).values({ memberId, requestedBy: planned.value.requesterId }));
+    await runAuditQuery((db) =>
+      db.insert(aliasRequests).values({ memberId, requestedBy: planned.value.requesterId, requestedByActingAccount: identity.actingAccountId }),
+    );
   } catch (error) {
     if (isUniqueViolation(error)) return refused("An alias for this member is already requested.");
     throw error;
@@ -127,14 +148,14 @@ export async function automaticAliasRequests(becoming: readonly number[]): Promi
       .from(members)
       .where(and(inArray(members.memberId, ids), hasPrtEmail())),
     db
-      .select({ id: aliasRequests.id, member_id: aliasRequests.memberId, requested_by: aliasRequests.requestedBy, created_at: aliasRequests.createdAt })
+      .select({ member_id: aliasRequests.memberId })
       .from(aliasRequests)
       .where(and(inArray(aliasRequests.memberId, ids), isNull(aliasRequests.outcome))),
   ]);
   const owed = owedAliasRequests({
     becoming: ids,
     addresses: addressesOf(addressed),
-    open: open.map((r) => ({ id: r.id, memberId: r.member_id, requesterId: r.requested_by, sentAt: r.created_at })),
+    open: open.map((r) => ({ memberId: r.member_id })),
   });
   if (owed.length === 0) return () => [];
   return (tx) => [tx.insert(aliasRequests).values(owed.map((r) => ({ memberId: r.memberId, requestedBy: r.requesterId }))).onConflictDoNothing()];
@@ -149,7 +170,7 @@ export async function cancelAliasRequest(identity: DashboardIdentity, requestId:
   const closed = await runAuditQuery((db) =>
     db
       .update(aliasRequests)
-      .set({ outcome: "cancelled", answeredBy: identity.memberId, answeredAt: new Date().toISOString() })
+      .set({ outcome: "cancelled", ...answeredByOf(identity), answeredAt: new Date().toISOString() })
       .where(and(eq(aliasRequests.id, requestId), isNull(aliasRequests.outcome)))
       .returning({ id: aliasRequests.id }),
   );
@@ -175,7 +196,7 @@ export async function answerAlias(identity: DashboardIdentity, requestId: number
   const claimed = await runAuditQuery((db) =>
     db
       .update(aliasRequests)
-      .set({ outcome: plan.kind === "created" ? "created" : "declined", answeredBy: identity.memberId, answeredAt: new Date().toISOString() })
+      .set({ outcome: plan.kind === "created" ? "created" : "declined", ...answeredByOf(identity), answeredAt: new Date().toISOString() })
       .where(and(eq(aliasRequests.id, requestId), isNull(aliasRequests.outcome)))
       .returning({ id: aliasRequests.id }),
   );
@@ -194,7 +215,10 @@ export async function answerAlias(identity: DashboardIdentity, requestId: number
     });
   } catch (error) {
     await runAuditQuery((db) =>
-      db.update(aliasRequests).set({ outcome: null, answeredBy: null, answeredAt: null }).where(eq(aliasRequests.id, requestId)),
+      db
+        .update(aliasRequests)
+        .set({ outcome: null, answeredBy: null, answeredByActingAccount: null, answeredAt: null })
+        .where(eq(aliasRequests.id, requestId)),
     );
     throw error;
   }

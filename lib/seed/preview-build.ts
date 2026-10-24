@@ -54,7 +54,7 @@ export function previewBuildPlan(env: PreviewBuildEnv): PreviewBuildPlan {
   const pooled = env.DATABASE_URL || undefined;
   const direct = env.DATABASE_URL_UNPOOLED || undefined;
   if (!pooled) {
-    return { kind: "skip", why: "this preview has no DATABASE_URL, so its pages read the dummy arrays" };
+    return { kind: "skip", why: "this preview has no DATABASE_URL, so its pages stop at their first database read (lib/database-required.ts)" };
   }
   if (!direct) {
     // The lock is a session lock. Through Neon's pooler the lock and the

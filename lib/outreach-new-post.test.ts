@@ -3,37 +3,30 @@ import { test } from "node:test";
 import { editorVersion, statusOf } from "@/lib/content/versioned";
 import { draftFromColumns, postColumns, postFromColumns } from "./outreach-rows";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import { dummyOutreachStore, dummyPhotoFiles, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
 import { checklistDone } from "./content/edit-shell";
 import { outreachRecord, postBySlug } from "./outreach";
 import { outreachEditor, publicOutreach } from "./outreach-editor";
 import { importedOutreach } from "./outreach-import";
 import { listStatusOf, outreachRow } from "./outreach-list";
+import { memoryOutreachStore, memoryPhotoFiles } from "./outreach-memory";
 import { blankPostFields, publishChecklist, type PostFields } from "./outreach-post-fields";
 
 // New post (board 74f, issue #292), through the outreach editor the server
-// action calls, over the dummy-data store previews use: Save draft takes a
-// new post as it is, Publish waits on the checklist and the server refuses
-// one that fails it, and a title may not take another post's address.
+// action calls, over an in-memory store holding the import
+// (./outreach-memory.ts): Save draft takes a new post as it is, Publish waits
+// on the checklist and the server refuses one that fails it, and a title may
+// not take another post's address.
 
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 
 function fresh() {
-  let value: string | undefined;
-  const store = dummyOutreachStore({
-    get current(): DummyOutreachEdits {
-      return parseOutreachEdits(value);
-    },
-    save: async (next: DummyOutreachEdits) => {
-      value = serializeOutreachEdits(next);
-    },
-  });
-  const editor = outreachEditor(admin, store, dummyPhotoFiles);
+  const store = memoryOutreachStore();
+  const editor = outreachEditor(admin, store, memoryPhotoFiles);
   const shown = async () => publicOutreach({ ...importedOutreach(), posts: await store.posts.list(), tags: await store.tags() });
   return { editor, shown };
 }
 
-/** A new post with everything Publish asks for; the photo is an upload, as a preview answers it. */
+/** A new post with everything Publish asks for; the photo is an upload, as the in-memory photo files answer it. */
 const whole: PostFields = {
   ...blankPostFields("2026-10-11"),
   title: "Space Festival, Torino",

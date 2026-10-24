@@ -7,14 +7,14 @@ import { afterStep, afterUnfinishedDraft, editorVersion, unpublished, type Conte
 // One content type's editor (issue #256): the reads and writes a dashboard
 // content page makes, behind the site-content gate (./gate.ts), with the
 // publish step of ./versioned.ts. A content type brings its own store (the
-// database, or the dummy data on previews) and its own field checks; the
+// database, or one held in memory in tests) and its own field checks; the
 // gate, the draft and publish rules and the site order are the same for all.
 // `D` is what a never-published item's draft may be (`Versioned`).
 
 /**
- * Where one content type's items are kept. Each side of the dashboard data
- * interface brings one. A write answers why when the store cannot take it (a
- * preview keeps a test developer's changes in one cookie, which fills up).
+ * Where one content type's items are kept: the database, or, in tests, one
+ * held in memory (./memory.ts). A write answers why when the store cannot
+ * take it.
  */
 export interface ContentStore<T extends D, D = T> {
   list(): Promise<readonly ContentItem<T, D>[]>;
