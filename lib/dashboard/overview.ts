@@ -19,6 +19,7 @@
 import type { AccessSection } from "./access-summary";
 import type { ApplicantOverview } from "./applicant-overview";
 import type { AlumniOverview } from "./my-alumni";
+import type { RoleType } from "./team";
 
 export type Link = { readonly label: string; readonly href: string };
 
@@ -234,6 +235,77 @@ export type Checklist = {
   readonly items: readonly ChecklistItem[];
 };
 
+/**
+ * Who sets someone's name and division on The Team page, from the seat they
+ * hold (issue #641): their division lead for a role in a division; the team
+ * leader for a department head (Change head) and for a team-level seat (Add
+ * seat, Change holder on the Team tree's seat row); and, for the team leader,
+ * the previous team leader, who handed the role over.
+ */
+export type PageSetter = "division-lead" | "team-leader" | "previous-team-leader";
+
+/** One active role, as "Your page on the site" reads it. */
+export type PageRole = { readonly type: RoleType; readonly divisionId: number | null };
+
+/**
+ * The setter of the highest seat among someone's active roles: the team
+ * leader's seat, then a head's or any role in no division (a team-level
+ * seat), then a role in a division. Null for someone holding no role.
+ */
+export function pageSetterOf(roles: readonly PageRole[]): PageSetter | null {
+  if (roles.length === 0) return null;
+  if (roles.some((r) => r.type === "president")) return "previous-team-leader";
+  if (roles.some((r) => r.type === "head" || r.divisionId === null)) return "team-leader";
+  return "division-lead";
+}
+
+const PAGE_SETTER_DETAIL: Readonly<Record<PageSetter, string>> = {
+  "division-lead": "Set by your division lead",
+  "team-leader": "Set by the team leader",
+  "previous-team-leader": "Handed over by the previous team leader",
+};
+
+/** What "Your page on the site" reads about the viewer. */
+export type PageProfile = {
+  readonly roles: readonly PageRole[];
+  readonly email: string;
+  /** Their stored photo; null when none is stored. */
+  readonly photoUrl: string | null;
+  readonly linkedin: string | null;
+};
+
+/**
+ * "Your page on the site" (board 52): name and division, email, photo and
+ * LinkedIn, each done or not. Null once all four are done, so the Overview
+ * shows no panel; it comes back as soon as one is undone (Owner decision,
+ * 2026-10-24, on #641).
+ */
+export function pageChecklistOf(page: PageProfile): Checklist | null {
+  const setter = pageSetterOf(page.roles);
+  const items: ChecklistItem[] = [
+    { label: "Name and division", detail: PAGE_SETTER_DETAIL[setter ?? "division-lead"], done: setter !== null, action: null },
+    { label: "Email", detail: page.email, done: true, action: null },
+    {
+      label: "Photo",
+      detail: "A clear, square photo of your face",
+      done: page.photoUrl !== null,
+      action: page.photoUrl !== null ? null : { label: "Upload", href: "/dashboard/profile" },
+    },
+    {
+      label: "LinkedIn",
+      detail: "Optional, shown as an icon on your card",
+      done: page.linkedin !== null,
+      action: page.linkedin !== null ? null : { label: "Add", href: "/dashboard/profile" },
+    },
+  ];
+  if (items.every((item) => item.done)) return null;
+  return {
+    title: "Your page on the site",
+    detail: `This is how you appear on The Team page. ${checklistProgress(items)}`,
+    items,
+  };
+}
+
 export type RosterPerson = {
   readonly name: string;
   /** "Division lead" or "Member"; the viewer's own row reads "You" on desktop (board 52). */
@@ -303,7 +375,8 @@ export function divisionRoster(
  */
 export type PersonalPanels = {
   readonly person: PersonHeader;
-  readonly checklist: Checklist;
+  /** "Your page on the site" (`pageChecklistOf`); null once every step is done (issue #641). */
+  readonly checklist: Checklist | null;
   readonly rosters: readonly Roster[];
   readonly access: AccessSection;
 };

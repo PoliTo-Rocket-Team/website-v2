@@ -124,6 +124,13 @@ An admin column comes later. **Planned**, no issue yet.
   - **Personal panels (board 52), for every seat:** the profile header with Edit profile, "Your
     page on the site", and a roster for each division they are in. A seat whose roles name no
     division (a head, the team leader) has no roster.
+  - **"Your page on the site"** lists four steps: name and division, email, photo and LinkedIn.
+    Name and division is done from the seat the viewer holds, and names who sets it: a member's
+    and a division lead's division lead; the team leader for a department head and a team-level
+    seat; for the team leader, the previous team leader who handed the role over. Once all four
+    steps are done the panel is hidden, and the rosters stand on their own. It shows again, with
+    its "N of 4 done" count, as soon as a step becomes undone, for example when the photo is
+    removed (Owner decision, 2026-10-24, #641).
   - **The scope's board (boards 40, 56, 62, 72)** under the profile: the figures, "Needs your
     attention" and the panels of the seat's scope. A member gets board 56 with only the areas they
     are granted, at the grant's scope, so a plain member gets no figure. Their own notices and the
