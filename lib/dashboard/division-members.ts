@@ -11,6 +11,7 @@ import {
   reachesDivision,
   removalFrom,
   roleIn,
+  titledSeatOf,
   type DivisionRole,
   type Joining,
   type Memberships,
@@ -109,13 +110,16 @@ export type LeadChoice = {
 
 /**
  * The role title Edit details sets: their title in one division the viewer
- * reaches, or, for someone in none (a seat on the whole team: the team
- * leader, a board seat, a head), their seat's title, which Edit details shows
- * locked. A seat's title is set where the seat is (the Team tree).
+ * reaches, or, for someone in none, their seat's stored title (`titledSeatOf`:
+ * the team leader's, a head's or a team-level seat's), which the team edits
+ * there too (issue #626) and which may not be blank. `fixed` is someone with
+ * no such seat either (an Advisor role, a role kept on a department): their
+ * role is shown and nothing sets it here.
  */
 export type PositionTitle =
   | { readonly kind: "division"; readonly divisionId: number; readonly short: string; readonly value: string | null }
-  | { readonly kind: "seat"; readonly label: string };
+  | { readonly kind: "seat"; readonly value: string }
+  | { readonly kind: "fixed"; readonly label: string };
 
 /** What the viewer may change about someone's place on the team from Edit details. */
 export type MemberPosition = {
@@ -148,11 +152,10 @@ export function positionOf(record: PersonRecord, org: OrgChart, actor: TeamActor
   const reached = homeFirst(record.memberships).filter((m) => org.divisions.some((d) => d.id === m.divisionId) && reachesDivision(actor, m.divisionId, org));
   const short = (divisionId: number) => divisionLabel(org.divisions.find((d) => d.id === divisionId)?.name ?? "");
   const titled = reached.find((m) => m.divisionId === titleIn) ?? reached[0];
-  const seat = record.beyondDivisions[0];
   return {
     title:
       titled === undefined
-        ? { kind: "seat", label: seat === undefined ? "Member" : beyondTitle(seat, org) }
+        ? seatTitleOf(record, org)
         : { kind: "division", divisionId: titled.divisionId, short: short(titled.divisionId), value: record.titles[titled.divisionId] ?? null },
     // An Advisor role is no lead or member role, so the switch does not set it.
     leads: reached
@@ -161,6 +164,14 @@ export function positionOf(record: PersonRecord, org: OrgChart, actor: TeamActor
     removals: reached.map((m) => ({ divisionId: m.divisionId, short: short(m.divisionId), removal: removalFrom(actor, standing, m.divisionId, org) })),
     leave: mayLeaveTeam(actor, standing, org),
   };
+}
+
+/** The title of someone in no division the viewer reaches: their seat's, as it reads (a blank one by its default name), or their role, fixed. */
+function seatTitleOf(record: PersonRecord, org: OrgChart): PositionTitle {
+  const titled = titledSeatOf(record.beyondDivisions, (role) => role);
+  if (titled !== null) return { kind: "seat", value: beyondTitle(titled.seat, org) };
+  const other = record.beyondDivisions[0];
+  return { kind: "fixed", label: other === undefined ? "Member" : beyondTitle(other, org) };
 }
 
 /** The whole team's positions: everyone `actor` may edit, never the viewer; none for no actor. */
@@ -549,10 +560,21 @@ export function isDetailsTarget(value: unknown): value is DetailsTarget {
   return false;
 }
 
-export function checkMemberEdit(input: unknown): { ok: true; value: MemberEditDetails } | { ok: false; errors: AddMemberErrors } {
+/** A seat's title (`PositionTitle` kind `seat`) is never blank: the Team tree and the Team page name the seat by it. */
+export const SEAT_TITLE_REQUIRED = "Enter their role.";
+
+/**
+ * What Edit details sends, checked. `titled` says whether the role title may
+ * be blank: a division title may, a seat's is `required` (issue #626).
+ */
+export function checkMemberEdit(
+  input: unknown,
+  titled: "optional" | "required" = "optional",
+): { ok: true; value: MemberEditDetails } | { ok: false; errors: AddMemberErrors } {
   const sent = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
   const t = title.safeParse(sent.title ?? "");
   if (!t.success) return { ok: false, errors: { title: t.error.issues[0]?.message ?? "Check the role." } };
+  if (titled === "required" && t.data === null) return { ok: false, errors: { title: SEAT_TITLE_REQUIRED } };
   const details = parseMemberDetails(sent.details);
   if (!details.ok) return { ok: false, errors: details.errors };
   return { ok: true, value: { title: t.data, details: details.value } };

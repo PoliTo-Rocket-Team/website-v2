@@ -83,11 +83,11 @@ test("a lead's Edit details sets titles but never a role: only the head changes 
   assert.equal(saved.length, 2);
 });
 
-test("the whole team's Edit details saves a seat's details, never their seat or its title, and the team leader keeps their place (#584)", async () => {
+test("the whole team's Edit details saves a seat's details and title, never the seat, and the team leader keeps their place (#584, #626)", async () => {
   const ops = pages("operations-lead");
   const writes = ops.view.teamWrites!;
   const details = { ...NO_MEMBER_DETAILS, discord: "alessandro.g" };
-  assert.deepEqual(await writes.saveMemberDetails({ kind: "person", id: 14 }, null, { title: "Ignored", details }), { ok: true, value: null });
+  assert.deepEqual(await writes.saveMemberDetails({ kind: "person", id: 14 }, null, { title: "President", details }), { ok: true, value: null });
   assert.deepEqual(await writes.setMemberPhoto(14, null), { ok: true, value: null });
   assert.equal(await writes.saveMember(15, { divisionId: MISSION_ANALYSIS, role: "member" }), false, "a head is no member of a division here");
   const edits = reread(ops.saved[0]);
@@ -95,6 +95,16 @@ test("the whole team's Edit details saves a seat's details, never their seat or 
   assert.equal(leader?.role, "team-leader");
   assert.equal(leader?.details.discord, "alessandro.g");
   assert.equal(editedRoster(edits).find((e) => e.id === 14)?.pageTitle, editedRoster(NO_EDITS).find((e) => e.id === 14)?.pageTitle);
+});
+
+test("the whole team renames a head from Edit details: still the head, under the new title; a blank one and a lead's are refused (#626)", async () => {
+  const leader = pages("team-leader");
+  const writes = leader.view.teamWrites!;
+  assert.equal((await writes.saveMemberDetails({ kind: "person", id: 15 }, null, { title: " ", details: NO_MEMBER_DETAILS })).ok, false, "never blank");
+  assert.deepEqual(await writes.saveMemberDetails({ kind: "person", id: 15 }, null, { title: "Chief of Aerodynamics", details: NO_MEMBER_DETAILS }), { ok: true, value: null });
+  const head = wholeTeam(await pages("team-leader", reread(leader.saved[0])).view.members()).find((p) => p.id === 15);
+  assert.deepEqual([head?.role, head?.roleLabel], ["head", "Chief of Aerodynamics"]);
+  assert.equal((await pages("division-lead").view.teamWrites!.saveMemberDetails({ kind: "person", id: 7 }, null, { title: "x", details: NO_MEMBER_DETAILS })).ok, false);
 });
 
 test("the whole team's Edit details saves a member's details and title in a division, and their lead switch (#584)", async () => {

@@ -40,6 +40,7 @@ import {
   divisionMembers,
   lookupForAdd,
   positionsOf,
+  SEAT_TITLE_REQUIRED,
   type AddLookup,
   type AddStanding,
   type DetailsTarget,
@@ -55,7 +56,9 @@ import {
   NO_MEMBERS,
   reachesDivision,
   removalFrom,
+  roleBeyondDivisions,
   standingOfRoles,
+  titledSeatOf,
   type Departure,
   type EditableRole,
   type Joining,
@@ -851,8 +854,11 @@ const NOT_IN_SCOPE = "You can edit only people your Members page lets you change
  * lead reach everyone, a head their department's people, a division lead or a
  * Members grant at Can edit the people in the divisions it covers. `divisionId`
  * names the division whose role title the form sets, which the viewer must
- * reach and the person be in; null for someone in no division the viewer
- * reaches (a seat), whose details are saved and whose seat title is not.
+ * reach and the person be in. Null is someone in no division the viewer
+ * reaches: only the team (the team leader, full access) edits them, and the
+ * title is their seat's (`titledSeatOf`: the team leader's, a head's or a
+ * team-level seat's row), never blank (issue #626). It writes `roles.title`
+ * alone, so the seat, the headship and every access stay as they were.
  * Fill details, for someone waiting, names the division they wait for. Each
  * detail is written where it lives (`columnsFromMemberDetails`).
  */
@@ -886,8 +892,17 @@ async function saveMemberDetails(
   const actor = await readActor(identity, org);
   const active = await rolesTheViewerChanges(identity, actor, target.id);
   if (actor === null || active === null) return refused(NOT_IN_SCOPE);
-  const titled = divisionId === null ? [] : divisionRowsIn(active, divisionId).map((r) => r.id);
-  if (divisionId !== null && (titled.length === 0 || !reachesDivision(actor, divisionId, org))) return refused(NOT_IN_SCOPE);
+  let titled: number[];
+  if (divisionId === null) {
+    // A head or a division lead reaches division rows only, so a seat's title is never theirs to set.
+    if (actor.kind !== "team") return refused(NOT_IN_SCOPE);
+    const seat = titledSeatOf(active, (r) => roleBeyondDivisions(roleSeat(r), org));
+    if (seat !== null && title === null) return refused(SEAT_TITLE_REQUIRED);
+    titled = seat === null ? [] : [seat.role.id];
+  } else {
+    titled = divisionRowsIn(active, divisionId).map((r) => r.id);
+    if (titled.length === 0 || !reachesDivision(actor, divisionId, org)) return refused(NOT_IN_SCOPE);
+  }
   await runAuditBatch((db) => [
     db.update(users).set({ ...columns.user, updatedAt: sql`now()` }).where(eq(users.member, target.id)),
     db.update(members).set(columns.member).where(eq(members.memberId, target.id)),

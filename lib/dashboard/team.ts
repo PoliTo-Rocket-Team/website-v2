@@ -621,6 +621,33 @@ export function beyondTitle(role: RoleBeyondDivisions, org: OrgChart): string {
   }
 }
 
+/** A role beyond every division whose stored title Edit details sets: the team leader's, a team-level seat's or a head's. */
+export type TitledSeat = Extract<RoleBeyondDivisions, { readonly kind: "team-leader" | "board" | "head" }>;
+
+const TITLED_SEAT_RANK: Readonly<Record<TitledSeat["kind"], number>> = { "team-leader": 0, head: 1, board: 2 };
+
+function isTitledSeat(role: RoleBeyondDivisions): role is TitledSeat {
+  return role.kind in TITLED_SEAT_RANK;
+}
+
+/**
+ * The seat whose stored title Edit details sets for someone in no division
+ * the viewer reaches (issue #626), with the role it came from: the team
+ * leader's, else a head's, else a team-level seat's (`bySeatOrder`). Both
+ * sides of the data interface pick it by this one rule, so the panel shows
+ * the title the save writes. Null for someone holding none of these (an
+ * Advisor role, a role kept on a department): no title of theirs is set here.
+ */
+export function titledSeatOf<T>(roles: readonly T[], beyondOf: (role: T) => RoleBeyondDivisions | null): { readonly role: T; readonly seat: TitledSeat } | null {
+  const seats = roles.flatMap((role) => {
+    const seat = beyondOf(role);
+    return seat !== null && isTitledSeat(seat) ? [{ role, seat }] : [];
+  });
+  const order = (a: TitledSeat, b: TitledSeat) =>
+    TITLED_SEAT_RANK[a.kind] - TITLED_SEAT_RANK[b.kind] || (a.kind === "board" && b.kind === "board" ? bySeatOrder(a.seat, b.seat) : 0);
+  return [...seats].sort((a, b) => order(a.seat, b.seat))[0] ?? null;
+}
+
 /** "the team leader", "Project Manager", "Head of Aerodynamics", "in Aerodynamics": what the lock reason says they also are. */
 function beyondLabel(role: RoleBeyondDivisions, org: OrgChart): string {
   switch (role.kind) {

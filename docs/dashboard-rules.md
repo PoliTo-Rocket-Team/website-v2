@@ -386,9 +386,14 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   - Details (board 61g): photo, contact, studies and personal details, with the same field checks.
   - Role: the person's title in one division, shown on the Team page: the division the page lists
     them under, else their first division the editor reaches. Titles in their other divisions
-    show on the member panel, not in the form. A seat with no division the editor reaches (the
-    team leader, a board seat, a department head) shows their seat's title locked: it is set on
-    the Team tree, and Save never changes it.
+    show on the member panel, not in the form. Someone in no division the editor reaches who holds
+    a seat (the team leader, a department head, the Project Manager, the Chief Engineer or another
+    team-level seat) shows their seat's stored title as an editable Role, and only the team
+    leader and full access reach them (issue #626). It may not be blank. Save writes that seat
+    row's title and nothing else: never its type, department, division or full access, so the
+    seat, the headship and every access stay. A team leader's title shows on the public Team
+    page; the dashboard still names that seat "Team Leader". Someone with no such seat (an
+    Advisor role, a role kept on a department) shows their role locked.
   - Lead or member: one choice per division of the person where the editor may change who leads
     it (the department's head, the team leader or full access, as Edit division allows). A
     division lead and a Members grant never see it, and the server refuses their change.
