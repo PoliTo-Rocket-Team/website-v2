@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { NO_MEMBER_DETAILS } from "./details";
 import type { PersonRecord } from "./division-members";
 import { membershipsOf, type OrgChart, type RoleBeyondDivisions, type TeamActor } from "./team";
-import { editableDivisionIds, showsTreeEdit, teamStructure } from "./team-structure";
+import { editableDivisionIds, editViewIntro, showsTreeEdit, teamStructure } from "./team-structure";
 
 // The Team tree's edit view (#251, boards 77b and 66t-b): who gets pencils and
 // Add buttons where. Aerodynamics holds Mission Analysis (1) and Optimization
@@ -68,14 +68,42 @@ test("a head edits only their own department's divisions, and no department (boa
   assert.deepEqual(editableDivisionIds({ kind: "head", departmentIds: [1] }, org), [1, 2]);
 });
 
-test("a division lead and anyone else edit no structure, and get no Edit button", () => {
-  assert.equal(build({ kind: "lead", divisionIds: [1] }), null);
+test("a division lead edits only the divisions they lead: a pencil there, and no Add division, department pencil or Add department (#594)", () => {
+  const lead: TeamActor = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] };
+  const structure = build(lead, 3)!;
+  assert.ok(structure !== null, "the edit view opens for a lead");
+  assert.equal(structure.departmentsEditable, false, "no department pencil and no Add department");
+  assert.ok(structure.departments.every((d) => !d.divisionsEditable && d.closing.length === 0), "no Add division and no Close division");
+  const pencils = structure.departments.flatMap((d) => d.divisions).filter((v) => v.page !== null);
+  assert.deepEqual(pencils.map((v) => v.id), [1]);
+  assert.deepEqual(editableDivisionIds(lead, org), [1]);
+  assert.equal(editViewIntro(structure), "You can edit Mission Analysis Division. Ask your department head to add or close a division.");
+});
+
+test("a lead of two divisions edits both, and the intro names them; a lead's right never comes from a grant alone (#594)", () => {
+  const twoLed: TeamActor = { kind: "lead", divisionIds: [1, 3], ledDivisionIds: [1, 3] };
+  const structure = build(twoLed)!;
+  assert.deepEqual(structure.departments.flatMap((d) => d.divisions).filter((v) => v.page !== null).map((v) => v.id), [1, 3]);
+  assert.equal(editViewIntro(structure), "You can edit Mission Analysis Division and Design & Manufacturing Division. Ask your department head to add or close a division.");
+  // A Members (Can edit) grant on Optimization and on Manufacturing: they reach both, and lead only Mission Analysis.
+  const granted: TeamActor = { kind: "lead", divisionIds: [1, 2, 4], ledDivisionIds: [1] };
+  assert.deepEqual(editableDivisionIds(granted, org), [1]);
+  const onlyGrant: TeamActor = { kind: "lead", divisionIds: [2], ledDivisionIds: [] };
+  assert.equal(build(onlyGrant), null, "a grant alone opens no edit view");
+  assert.deepEqual(editableDivisionIds(onlyGrant, org), []);
+});
+
+test("who gets the Team tree's Edit button: full access, a head and a division lead; a member gets none (#594)", () => {
   assert.equal(build(null), null);
-  assert.deepEqual(editableDivisionIds({ kind: "lead", divisionIds: [1] }, org), []);
-  assert.equal(showsTreeEdit({ kind: "division-lead", siteContent: false, approveOrders: false }), false);
+  assert.equal(showsTreeEdit({ kind: "division-lead", siteContent: false, approveOrders: false }), true);
   assert.equal(showsTreeEdit({ kind: "member", grantedAreas: [], siteContent: false, approveOrders: false }), false);
   assert.equal(showsTreeEdit({ kind: "department-head", siteContent: false, approveOrders: false }), true);
   assert.equal(showsTreeEdit({ kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false }), true);
+});
+
+test("the intro line says what the viewer may change: the whole tree, a head's departments", () => {
+  assert.equal(editViewIntro(build({ kind: "team" })!), "Click a box to rename it, change its head or lead, or close it.");
+  assert.equal(editViewIntro(build({ kind: "head", departmentIds: [1] })!), "You can edit the divisions of Aerodynamics. Ask the team leader to change a department.");
 });
 
 test("only the viewer's own boxes are marked theirs: the leader's for the leader, a head's department, a lead's division (#405)", () => {

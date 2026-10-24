@@ -279,8 +279,8 @@ These rules come from the Owner decisions of 2026-10-16 on #253 (boards 77i, 77e
     lead included, and the server refuses them.
   - **Department head:** the team leader or full access, with Change head in Edit department
     (board 77e).
-  - **Division lead:** the department's head, the team leader or full access, when a new lead
-    replaces them in Edit division (board 68b4).
+  - **Division lead:** the department's head, the team leader, full access or a lead of the
+    division (#594), when a new lead replaces them in Edit division (board 68b4).
 - **Access after a hand-over** (Owner decision, 2026-10-16): a lead or head who becomes an
   advisor loses every access row they held; they keep only the Advisor role in their own unit.
   A former team leader who becomes an advisor keeps every access row they hold, and the full
@@ -379,8 +379,9 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
     team leader, a board seat, a department head) shows their seat's title locked: it is set on
     the Team tree, and Save never changes it.
   - Lead or member: one choice per division of the person where the editor may change who leads
-    it (the department's head, the team leader or full access, as Edit division allows). A
-    division lead and a Members grant never see it, and the server refuses their change.
+    it, as Edit division allows: the department's head, the team leader, full access, and a lead
+    of that division by role (#594). A Members grant never shows it, and the server refuses its
+    change.
   - Leaving the team (board 46b): "Remove from {division}" for each of the person's divisions the
     editor reaches, and "Move to alumni", under the rules of the ⋯ menu below. An action the editor
     may not take is locked with the menu's reason, and opens the menu's own "are you sure".
@@ -405,16 +406,18 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
     the team leader can do this". The server checks the same rule on every request.
 - Confirm NDA, Cancel add, Remove from {division} and Leaves the team each ask "are you sure"
   first.
-- A lead cannot rename a division, change its code or change its leads; only the head can. The
-  lead's page shows "Leads are changed by the Head of {department}", and the server refuses a
-  lead's lead change.
+- A lead renames, recodes and changes the leads of each division they lead by role, in Edit
+  division (see Divisions below; Owner decision, 2026-10-24, on #594). A Members grant does not:
+  a page reached only through one shows "Leads are changed by the Head of {department}", and the
+  server refuses that lead change.
 
 - The role in Edit details is the person's title on the Team page. The public Team page is built
   from the team's roles, so a saved title shows there once the `team-roster` cache refreshes
   (ADR 0015).
 - A division's leads change through Edit division (see Divisions below), or through Edit
-  details' lead or member choice, for the same people: the department's head, the team leader or
-  full access (#231, #584). The Members page has no Promote (removed by #551).
+  details' lead or member choice, for the same people: the department's head, the team leader,
+  full access (#231, #584) and a lead of the division by role (#594). "Remove from {division}" on
+  a lead follows the same rule. The Members page has no Promote (removed by #551).
   - A "promoted" notice written while Promote existed (#188) still shows under "Needs your
     attention" until it is dismissed.
 - Move to alumni in Edit details is the same "Leaves the team": every role and every access ends,
@@ -473,8 +476,8 @@ These rules come from #235 (boards 69, 69b, 69c and 69m) and the Owner decisions
 These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77g, 66t and 66t-b).
 
 - Structure is edited in one place: the Team tree's edit view. The Team tree header shows one
-  **Edit** button to the team leader, to full access (#238) and to a department head. A division
-  lead and a member get none; a division lead keeps adding and removing members on Members.
+  **Edit** button to the team leader, to full access (#238), to a department head and to a
+  division lead (#594). A member gets none, and so does a Members grant on its own.
 - The edit view shows the team leader on top and one column per open department: its box (name,
   head, how many people), then each division's box (name, lead, how many people), every box
   collapsed. **Done** returns to the tree. There is no closed-divisions list.
@@ -484,7 +487,12 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
   Every other department is dimmed and read-only, and no department has a pencil or Add
   department (board 66t-b). The server refuses a division create, edit or close by a head outside
   their own department, not only the page.
-- A division's pencil opens Edit division (below), with **Close division** in its footer. Add
+- A division lead sees a pencil only on each division they lead by role, and no **+ Add
+  division**, department pencil or **+ Add department** (#594). Departments with none of their
+  divisions are dimmed. The intro line names the divisions they can edit. The server refuses
+  their edit of any other division, not only the page.
+- A division's pencil opens Edit division (below), with **Close division** in its footer for its
+  department's head, the team leader and full access; a lead's Edit division has none. Add
   division opens New division in the department of the column it is under.
 - The **Team Leader box** on top opens "Hand over your role" (board 77i, #253) for the team leader
   alone, with a pencil. For everyone else, full access included, it shows a lock and opens
@@ -531,12 +539,21 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
 
 #### Divisions
 
-These rules come from the Owner decisions of 2026-10-11 on #232 (boards 68b to 68c and 69d) and
-of 2026-10-16 on #251.
+These rules come from the Owner decisions of 2026-10-11 on #232 (boards 68b to 68c and 69d), of
+2026-10-16 on #251 and of 2026-10-24 on #594.
 
-- Only the head of a division's department, the team leader or full access creates, edits or
-  closes it. A division lead never can, not even for their own division. The server refuses
-  everyone else.
+- Only the head of a division's department, the team leader or full access creates or closes it.
+  They edit it, and so does a **division lead**, for each division they lead by role: its name
+  (and so its code), who leads it (add, replace and remove leads) and its members (add from the
+  team, an email that waits for Confirm NDA, remove). This replaces the #231 rule, that only the
+  head changes a division's leads, for a lead's own division (Owner decision, 2026-10-24,
+  https://github.com/PoliTo-Rocket-Team/website-v2/issues/594#issuecomment-6385484701).
+  - A lead's right comes from their lead role, never from an access grant: a Members grant at
+    Can edit adds and removes members in the divisions it covers, as on Members, and opens no
+    Edit division there.
+  - A lead never creates or closes a division, not even their own.
+  - Every rule below holds for a lead's save as it does for a head's. The server refuses everyone
+    else.
 - **No reopen.** A closed division never opens again: there is no Reopen control, no Closed tab
   and no save that clears a division's `closed_at` (board 68e is dropped). Closed divisions stay
   only as names in history; a team that needs one back creates a new division.

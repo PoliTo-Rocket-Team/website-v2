@@ -57,6 +57,7 @@ import {
   homeFirst,
   inDivisions,
   isIn,
+  leadActor,
   ledDivisionsOf,
   mayChangeDivision,
   mayLeaveTeam,
@@ -80,7 +81,7 @@ import {
   type RosterEntry,
   type TeamActor,
 } from "@/lib/dashboard/team";
-import { editableDivisionIds, teamStructure } from "@/lib/dashboard/team-structure";
+import { editableDivisionIds, editsStructure, teamStructure } from "@/lib/dashboard/team-structure";
 import { kindOfTestViewer, readsArea, seatOf, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
 import { grantActors, testGrantAreas, type TestGrant } from "./test-grant";
 import { wholeTeamMembers } from "@/lib/dashboard/team-members";
@@ -498,8 +499,9 @@ function actorOf(kind: TestViewer, org: OrgChart, grant: TestGrant | null): Team
   if (kindOfTestViewer(kind) === "operations-lead") return { kind: "team" };
   const department = myDepartment(kind);
   if (department !== null) return { kind: "head", departmentIds: [department] };
+  // The test lead leads every division they reach by role: each opens Edit division to them (issue #594).
   const divisions = myDivisions(kind);
-  return divisions.length === 0 ? null : { kind: "lead", divisionIds: divisions };
+  return leadActor(divisions, divisions);
 }
 
 /** One roster entry as the Members page shows it, with the details and titles the test developer saved. */
@@ -1112,8 +1114,8 @@ export function dummyTeamPages(
       return lookupForAdd(query, team, waitingIn(edits, divisionId).map((w) => w.email), divisionId, org);
     },
     findPeople: async (query) => {
-      // The pickers are New division's and Edit division's: a head's or the team's (#232).
-      if (actor === null || actor.kind === "lead") return { kind: "none" };
+      // The pickers are New division's and Edit division's: the team's, a head's (#232) or a lead's on their own division (#594).
+      if (!editsStructure(actor, org)) return { kind: "none" };
       return searchTeam(query, teamPeople(editedRoster(edits, joiners), edits), org);
     },
     alumni: async () =>
