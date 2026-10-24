@@ -234,6 +234,24 @@ export type HeldAccess = {
 /** A head's role holds every unit area at Can edit across their department (board 65). */
 export const ROLE_HELD_ACCESS: readonly HeldAccess[] = UNIT_TARGETS.map((target) => ({ target, level: "edit" }));
 
+/**
+ * The areas a division lead's role gives in each division they lead, at Can
+ * edit: the "Whole division · Can edit" role row (#596 finding 2). The role
+ * also edits the division's orders (#590), but Access treats Orders as a grant (#632).
+ */
+export const LEAD_ROLE_TARGETS = ["positions", "applications", "members"] as const satisfies readonly UnitTarget[];
+
+/** What a lead's role holds in each division they lead (`LEAD_ROLE_TARGETS`). */
+export const LEAD_ROLE_HELD_ACCESS: readonly HeldAccess[] = LEAD_ROLE_TARGETS.map((target) => ({ target, level: "edit" }));
+
+/** Both sets of areas together, each area once at the higher of its levels, in `ACCESS_TARGETS` order. */
+export function mergeHeld(a: readonly HeldAccess[], b: readonly HeldAccess[]): HeldAccess[] {
+  return ACCESS_TARGETS.flatMap((target) => {
+    const level = heldLevel([...a, ...b], target);
+    return level === null ? [] : [{ target, level }];
+  });
+}
+
 /** Full access holds every area at Can edit across the team (issue #238), Content (#504) included. */
 export const FULL_HELD_ACCESS: readonly HeldAccess[] = ACCESS_TARGETS.map((target) => ({ target, level: "edit" }));
 
@@ -303,13 +321,71 @@ export const PERSON_STANDING_LABELS: Readonly<Record<PersonStanding, string>> = 
   member: "Member",
 };
 
+/**
+ * What a person's role gives them on an Access page, which no grant adds to
+ * and nothing on the page changes (issue #591): nothing for a member; a
+ * division lead's `LEAD_ROLE_TARGETS` in each division of the unit they lead;
+ * a head's every unit area across their department and each of its
+ * divisions; every area across the team for a full-access seat. Every other
+ * area, in every other place, is a grant like anyone's.
+ */
+export type PersonRole =
+  | { readonly kind: "member" }
+  | { readonly kind: "lead"; readonly divisions: readonly [AccessDivision, ...AccessDivision[]] }
+  | { readonly kind: "head"; readonly department: AccessDepartmentUnit }
+  | { readonly kind: "full"; readonly seat: FullAccessSeat };
+
+export const NO_ROLE = { kind: "member" } as const satisfies PersonRole;
+
 export type AccessPerson = {
   readonly id: number;
   readonly name: string;
-  readonly standing: PersonStanding;
+  /** What their role gives them here (`roleCovers`). */
+  readonly role: PersonRole;
   /** The division they are in; null for someone placed in none, such as another head. */
   readonly division: AccessDivision | null;
 };
+
+/** "Lead" for anyone whose role gives access here, else "Member". */
+export function standingOf(person: AccessPerson): PersonStanding {
+  return person.role.kind === "member" ? "member" : "lead";
+}
+
+/** Whether the person's role already gives `target` in `place`: that area there is locked, never a grant (issue #591). */
+export function roleCovers(person: AccessPerson, place: AccessPlace, target: AccessTarget): boolean {
+  const role = person.role;
+  switch (role.kind) {
+    case "member":
+      return false;
+    case "full":
+      return true;
+    case "lead":
+      return place.kind === "division" && role.divisions.some((d) => d.id === place.division.id) && (LEAD_ROLE_TARGETS as readonly AccessTarget[]).includes(target);
+    case "head":
+      if (!(UNIT_TARGETS as readonly AccessTarget[]).includes(target)) return false;
+      if (place.kind === "department") return place.department.id === role.department.department.id;
+      return place.kind === "division" && role.department.divisions.some((d) => d.id === place.division.id);
+  }
+}
+
+/**
+ * The access a person's role gives, as the page's locked "With the role"
+ * rows: one per division a lead leads, a head's whole department, a
+ * full-access seat's whole team; none for a member.
+ */
+export function roleAccessOf(person: AccessPerson): RoleAccess[] {
+  const role = person.role;
+  switch (role.kind) {
+    case "member":
+      return [];
+    case "full":
+      return [{ person, place: WHOLE_TEAM_PLACE, seat: role.seat }];
+    case "head":
+      return [{ person, place: { kind: "department", department: role.department.department } }];
+    case "lead":
+      return role.divisions.map((division) => ({ person, place: { kind: "division", division } }));
+  }
+}
 
 /** One stored grant: one person, one area, one level, in one place, and who gave it. */
 export type AccessGrant = {
@@ -388,9 +464,9 @@ export type AccessPage = {
   readonly unit: AccessUnit;
   /** The other leads of the unit, never the viewer (issue #230). */
   readonly roleAccess: readonly RoleAccess[];
-  /** Grants to people who are not leads; a lead's access is in `roleAccess`. */
+  /** Every stored grant in the unit, a lead's or head's included (issue #591); never an area their role gives (`roleCovers`), which is in `roleAccess`. */
   readonly grants: readonly AccessGrant[];
-  /** The people in the unit the viewer can give access to: everyone but the viewer. */
+  /** The people in the unit: everyone but the viewer. Give access lists those it can give something (`grantablePeople`). */
   readonly people: readonly AccessPerson[];
   /** "Approve orders": who holds it, and whether the viewer gives it (board 71). */
   readonly approveOrders: ApproveOrdersAccess;
@@ -465,22 +541,61 @@ function reaches(held: readonly HeldAccess[], target: AccessTarget, level: Acces
 }
 
 /**
- * What the viewer may do with one area of one person's access in a drawer:
- * nothing when the person is a lead, the viewer does not hold the area, or
- * the person holds it above the viewer; else tick or untick it, up to `highest`.
+ * What the viewer may do with one area of one person's access in one place,
+ * in a drawer: nothing when the person's role already gives it there
+ * (`roleCovers`), the viewer does not hold the area, or the person holds it
+ * above the viewer; else tick or untick it, up to `highest`.
  */
 export type AreaRule = { readonly changeable: false } | { readonly changeable: true; readonly highest: AccessLevel };
 
-export function areaRule(held: readonly HeldAccess[], person: AccessPerson, target: AccessTarget, current: AccessLevel | null): AreaRule {
+export function areaRule(held: readonly HeldAccess[], person: AccessPerson, place: AccessPlace, target: AccessTarget, current: AccessLevel | null): AreaRule {
   const highest = heldLevel(held, target);
-  if (person.standing === "lead" || highest === null) return { changeable: false };
+  if (roleCovers(person, place, target) || highest === null) return { changeable: false };
   if (current !== null && !reaches(held, target, current)) return { changeable: false };
   return { changeable: true, highest };
 }
 
 /** Whether the viewer may change anything of this person's access in one place. */
-export function canChangePerson(held: readonly HeldAccess[], person: AccessPerson, current: AreaLevels): boolean {
-  return ACCESS_TARGETS.some((t) => areaRule(held, person, t, current[t] ?? null).changeable);
+export function canChangePerson(held: readonly HeldAccess[], person: AccessPerson, place: AccessPlace, current: AreaLevels): boolean {
+  return ACCESS_TARGETS.some((t) => areaRule(held, person, place, t, current[t] ?? null).changeable);
+}
+
+/**
+ * The areas a drawer lists for a person in one place: those the place offers
+ * that the viewer holds, and any other the person holds there, which shows
+ * locked; never one the person's role already gives there. With no person
+ * chosen yet, every area the place offers that the viewer holds.
+ */
+export function shownAreas(held: readonly HeldAccess[], person: AccessPerson | undefined, place: AccessPlace, current: AreaLevels): AccessTarget[] {
+  return targetsAt(place).filter(
+    (t) => (person === undefined || !roleCovers(person, place, t)) && (heldLevel(held, t) !== null || current[t] !== undefined),
+  );
+}
+
+/**
+ * The places a drawer offers for a person: on a lead's page their division
+ * there (issue #185) and, for a lead who holds Content, the whole team (issue
+ * #504); every place of the unit on a head's or a team page.
+ */
+export function placesFor(unit: AccessUnit, person: AccessPerson): AccessPlace[] {
+  if (unit.kind !== "division") return placesOf(unit);
+  const division = person.division ?? unit.divisions[0].division;
+  return [{ kind: "division", division }, ...contentPlace(unit)];
+}
+
+/**
+ * The people Give access lists (issue #591): everyone in the unit but the
+ * viewer, leads and heads included, to whom the viewer can give some area in
+ * some place. A full-access seat, whose role holds every area, is never
+ * listed, nor a co-lead whose role already holds all the viewer could give.
+ */
+export function grantablePeople(access: Pick<AccessPage, "unit" | "people">): AccessPerson[] {
+  return access.people.filter((person) =>
+    placesFor(access.unit, person).some((place) => {
+      const held = heldIn(access.unit, place);
+      return targetsAt(place).some((t) => heldLevel(held, t) !== null && !roleCovers(person, place, t));
+    }),
+  );
 }
 
 /** One change to one area of a person's access. */
@@ -502,9 +617,13 @@ export function accessChanges(current: AreaLevels, next: AreaLevels): AccessChan
   });
 }
 
-/** The viewer's delegation limit on one change: the area is theirs to touch, at both ends, offered in the place, and never a lead's. */
+/**
+ * The viewer's delegation limit on one change: the area is theirs to touch,
+ * at both ends, offered in the place, and never one the person's role
+ * already gives there (`roleCovers`, issue #591).
+ */
 function allowed(held: readonly HeldAccess[], person: AccessPerson, place: AccessPlace, change: AccessChange): boolean {
-  if (person.standing === "lead") return false;
+  if (roleCovers(person, place, change.target)) return false;
   if (change.kind !== "remove" && !targetsAt(place).includes(change.target)) return false;
   const from = change.kind === "add" ? null : change.from;
   const to = change.kind === "remove" ? null : change.to;
@@ -605,8 +724,9 @@ function checkApproveOrders(access: AccessFacts, personId: number, holds: boolea
  * in that place become exactly `areas`; every add, level change and removal
  * that takes must be within the viewer's own level, Content goes only to the
  * whole team, only at Can edit and only from someone who
- * holds it (full access, or a Content grant: `heldIn`), and a lead's access
- * is never touched. "Approve orders" changes
+ * holds it (full access, or a Content grant: `heldIn`), and access a
+ * person's role gives is never touched (`roleCovers`). A full-access seat
+ * takes no Save at all: their role holds every area. "Approve orders" changes
  * only from the team leader. The Activity log is no area, so it is never
  * given. Every rule runs on the server: the drawer's own limits are a
  * convenience, not the check.
@@ -615,6 +735,7 @@ export function checkSaveAccess(access: AccessFacts, input: unknown): Checked<Ac
   const parsed = saveAccessSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the form." };
   const { personId, where } = parsed.data;
+  if (access.people.find((p) => p.id === personId)?.role.kind === "full") return { ok: false, error: "Full access already holds every area." };
   const place = placeOfSave(access, personId, where);
   if (place === undefined) return { ok: false, error: `You can give access only inside your ${access.unit.kind}.` };
   if (!inPersonDivision(access, personId, place)) return { ok: false, error: "You can give access only in the division of the person you edit." };
@@ -689,8 +810,8 @@ export function removalOf(grant: AccessGrant): RemoveGrant {
 }
 
 /**
- * Checks Remove on one grant (issue #483): the person is in the viewer's unit
- * and no lead, the place is in the unit (on a lead's page, the person's own
+ * Checks Remove on one grant (issue #483): the person is in the viewer's unit,
+ * the area there is no access their role gives (issue #591), the place is in the unit (on a lead's page, the person's own
  * division), the person holds the area there, and the viewer reaches it at
  * the level the person holds it. The person's other areas there, and every
  * other place, stay as they are: the write is that one removal. The drawer

@@ -80,7 +80,7 @@ export const targetTypeEnum = pgEnum("target_type", [
   "approve_orders",
   // The Content grant, on scope `website` (issue #504, drizzle/0049). It opens
   // the Alumni page too; the old Alumni `website` rows on `all` are read as
-  // nothing (issue #589, drizzle/0056).
+  // nothing (issue #589, drizzle/0058).
   "content",
 ]);
 

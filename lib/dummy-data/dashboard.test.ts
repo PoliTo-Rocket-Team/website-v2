@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DashboardRefused } from "@/lib/dashboard/data";
+import { roleCovers } from "@/lib/dashboard/division-access";
 import { newCount } from "@/lib/dashboard/recruitment";
 import type { TestViewer } from "@/lib/dashboard/viewer";
 import { dummyDashboardData } from "./index";
@@ -124,7 +125,8 @@ test("Access lists the other leads with their role's access, never the viewer (b
   // One role row per division a lead leads: Marco leads both of the department's (#185).
   assert.deepEqual(head.roleAccess.map((r) => r.person.name).sort(), ["Marco Bianchi", "Marco Bianchi", "Paolo Conti", "Pietro Ricci"]);
   assert.ok(head.grants.some((g) => g.place.kind === "department"), "a grant across the whole department");
-  assert.ok(head.grants.every((g) => g.person.standing === "member"));
+  // A lead's grants may show beside their role row, but never an area their role already gives (issue #591).
+  assert.ok(head.grants.every((g) => !roleCovers(g.person, g.place, g.target)));
 });
 
 test("the operations lead's Access and Orders cover the whole team (issue #238)", async () => {

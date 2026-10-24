@@ -4,11 +4,15 @@ import {
   checkRemoveAllAccess,
   checkRemoveGrant,
   checkSaveAccess,
+  LEAD_ROLE_HELD_ACCESS,
+  mergeHeld,
   NO_APPROVE_ORDERS,
+  NO_ROLE,
   placesOf,
+  roleAccessOf,
+  roleCovers,
   samePlace,
   UNIT_TARGETS,
-  WHOLE_TEAM_PLACE,
   type AccessDepartmentUnit,
   type AccessDivision,
   type AccessGrant,
@@ -20,7 +24,7 @@ import {
   type AccessUnit,
   type ApproveOrdersAccess,
   type HeldAccess,
-  type RoleAccess,
+  type PersonRole,
   type UnitTarget,
 } from "@/lib/dashboard/division-access";
 import type { HeldSeat } from "@/lib/dashboard/hand-over";
@@ -195,9 +199,11 @@ function departmentUnit(departmentId: number, closed: ReadonlySet<number> = new 
 
 /** What a lead holds in their divisions ("Your access" on board 60): the same areas in each one they lead. */
 function leadHeld(viewer: DummyPerson): readonly HeldAccess[] {
-  return UNIT_TARGETS.flatMap((target) =>
+  // The role's own areas first (issue #591), then what they hold on top.
+  const granted = UNIT_TARGETS.flatMap((target) =>
     heldAccess.filter((h) => h.personId === viewer.id && h.target === target).map((h) => ({ target, level: h.level })),
   );
+  return mergeHeld(LEAD_ROLE_HELD_ACCESS, granted);
 }
 
 /**
@@ -253,11 +259,23 @@ function inUnit(entry: RosterEntry, unit: AccessUnit): boolean {
 function accessPerson(entry: RosterEntry, unit: AccessUnit): AccessPerson {
   const memberships = membershipsInUnit(entry, unit);
   const shown = memberships.find((m) => m.role === "lead") ?? memberships[0];
-  const seated = unit.kind === "team" && entry.placement.role !== "divisions";
+  const [firstLed, ...moreLed] = memberships.filter((m) => m.role === "lead").map((m) => accessDivision(m.divisionId));
+  // What their role gives on this page (issue #591), as the database side reads it.
+  const seat = unit.kind === "team" ? seatOfPlacement(entry.placement) : null;
+  const placement = entry.placement;
+  const headed = unit.kind === "team" && placement.role === "head" ? unit.departments.find((d) => d.department.id === placement.departmentId) : undefined;
+  const role: PersonRole =
+    seat !== null
+      ? { kind: "full", seat }
+      : headed !== undefined
+        ? { kind: "head", department: headed }
+        : firstLed !== undefined
+          ? { kind: "lead", divisions: [firstLed, ...moreLed] }
+          : NO_ROLE;
   return {
     id: entry.id,
     name: entry.name,
-    standing: shown?.role === "lead" || seated ? "lead" : "member",
+    role,
     division: shown === undefined ? null : accessDivision(shown.divisionId),
   };
 }
@@ -309,23 +327,13 @@ export function dummyAccessPage(
   if (unit === null) return null;
   const inside = roster.filter((e) => e.id !== viewer.id && inUnit(e, unit));
   const onTeam = new Map(inside.map((e) => [e.id, accessPerson(e, unit)]));
-  const roleAccess = inside.flatMap((e): RoleAccess[] => {
-    const person = onTeam.get(e.id)!;
-    // A full-access seat covers the whole team on a team page (board 71); it is read off the role they hold now (issue #501).
-    const seat = unit.kind === "team" ? seatOfPlacement(e.placement) : null;
-    if (seat !== null) return [{ person, place: WHOLE_TEAM_PLACE, seat }];
-    // A head's role covers their department on a team page.
-    if (unit.kind === "team" && e.placement.role === "head") {
-      return [{ person, place: { kind: "department", department: departmentUnit(e.placement.departmentId).department } }];
-    }
-    return membershipsInUnit(e, unit)
-      .filter((m) => m.role === "lead")
-      .map((m) => ({ person, place: { kind: "division", division: accessDivision(m.divisionId) } }));
-  });
+  // A full-access seat covers the whole team on a team page (board 71), read off the role they hold now (issue #501); a head's their department; a lead each division they lead.
+  const roleAccess = inside.flatMap((e) => roleAccessOf(onTeam.get(e.id)!));
   const grants = accessGrants.flatMap((g): AccessGrant[] => {
     const person = onTeam.get(g.personId);
     const place = placeOf(unit, g.place);
-    if (person === undefined || person.standing === "lead" || place === null) return [];
+    // A lead's or head's grants show beside their role row (issue #591); never an area their role gives.
+    if (person === undefined || place === null || roleCovers(person, place, g.target)) return [];
     return [
       {
         id: g.id,

@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { nonAdditiveStatements } from "./journal";
 
-// Migration 0056 (issue #589) gives each holder of the old Alumni grant a
+// Migration 0058 (issue #589) gives each holder of the old Alumni grant a
 // Content grant, now that the Alumni page is site content. This builds the
 // schema from the journaled migrations on an in-memory Postgres (PGlite),
 // loads `website` rows of every kind, and runs the migration file itself: it
@@ -13,7 +13,7 @@ import { nonAdditiveStatements } from "./journal";
 // every old row, and add nothing on a second run.
 
 const root = join(__dirname, "..", "..");
-const TAG = "0056_alumni_grants_to_content";
+const TAG = "0058_alumni_grants_to_content";
 const journal = JSON.parse(readFileSync(join(root, "drizzle", "meta", "_journal.json"), "utf8")) as {
   entries: { tag: string }[];
 };
@@ -23,7 +23,7 @@ async function run(db: PGlite, sql: string) {
   for (const statement of sql.split("--> statement-breakpoint")) if (statement.trim()) await db.exec(statement);
 }
 
-/** A database built from every journaled migration before 0056. */
+/** A database built from every journaled migration before 0058. */
 async function schemaBefore(): Promise<PGlite> {
   const db = new PGlite();
   const tags = journal.entries.map((e) => e.tag);
@@ -55,13 +55,13 @@ async function rows(db: PGlite): Promise<Row[]> {
   return rows;
 }
 
-test("0056 only inserts: no DELETE, no UPDATE and no DROP", () => {
+test("0058 only inserts: no DELETE, no UPDATE and no DROP", () => {
   const sql = file(TAG);
   assert.deepEqual(nonAdditiveStatements(sql), []);
   assert.doesNotMatch(sql.replace(/--.*$/gm, ""), /\b(DELETE|UPDATE|DROP)\b/i);
 });
 
-test("0056 gives each old Alumni grant holder with no Content grant one Content grant at Can edit, keeps every old row, and adds nothing on a second run", async () => {
+test("0058 gives each old Alumni grant holder with no Content grant one Content grant at Can edit, keeps every old row, and adds nothing on a second run", async () => {
   const db = await schemaBefore();
   await db.exec(ROWS);
   const before = await rows(db);
