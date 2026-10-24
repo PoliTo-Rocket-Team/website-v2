@@ -491,3 +491,63 @@ test("each seeded advisor is one the Advisors panel would keep as it is", () => 
     assert.deepEqual(advisorOfFields(advisorFields(advisor)), advisor, item.version.published.name);
   }
 });
+
+// The plain test seats (issue #595): the seven seated people a check views
+// as hold exactly what their kind names and no scope row, so an access check
+// on a re-seeded preview starts from a clean seat.
+
+type SeatRole = (typeof data.roles)[number];
+
+/** What each seat's kind names, checked against the seat's active roles. */
+const SEAT_KIND: Readonly<Record<(typeof TEST_VIEWERS)[number], { readonly label: string; readonly holds: (active: readonly SeatRole[], ended: readonly SeatRole[]) => boolean }>> = {
+  "team-leader": { label: "Team leader", holds: (active) => active.length === 1 && active[0].type === "president" },
+  "operations-lead": { label: "Operations lead", holds: (active) => active.length === 1 && active[0].fullAccess === "operations_lead" },
+  "department-head": { label: "Department head", holds: (active) => active.length === 1 && active[0].type === "head" && active[0].divisionId == null },
+  "division-lead": { label: "Division lead", holds: (active) => active.length === 1 && active[0].type === "lead" && active[0].divisionId != null },
+  member: { label: "Member", holds: (active) => active.length === 1 && active[0].type === "core" && active[0].divisionId != null },
+  alumni: { label: "Alumnus", holds: (active, ended) => active.length === 0 && ended.length > 0 },
+  "non-member": { label: "Applicant", holds: (active, ended) => active.length === 0 && ended.length === 0 },
+};
+
+function unitName(role: SeatRole): string {
+  if (role.divisionId != null) return data.divisions.find((d) => d.id === role.divisionId)!.name!;
+  if (role.deptId != null) return data.departments.find((d) => d.id === role.deptId)!.name!;
+  return "the team";
+}
+
+function seatRoles(viewer: (typeof TEST_VIEWERS)[number]) {
+  const memberId = memberOfUser(data, TEST_VIEWER_PEOPLE[viewer]);
+  const theirs = memberId === null ? [] : data.roles.filter((r) => r.memberId === memberId);
+  return { memberId, active: theirs.filter(isActive), ended: theirs.filter((r) => !isActive(r)) };
+}
+
+/** One row of docs/seed-cases.md's "Test seats" table, read off the seed. */
+function seatDocRow(viewer: (typeof TEST_VIEWERS)[number]): string {
+  const user = data.users.find((u) => u.id === TEST_VIEWER_PEOPLE[viewer])!;
+  const { memberId, active, ended } = seatRoles(viewer);
+  const person = `${user.firstName} ${user.lastName}: ${memberId === null ? "no member row" : `member ${memberId}`}, user \`${user.id}\``;
+  const role = (r: SeatRole) => `${r.title} (\`${r.type}\`${r.fullAccess ? `, full access \`${r.fullAccess}\`` : ""}) in ${unitName(r)}`;
+  const roles =
+    active.length > 0 ? active.map(role).join("; ") : ended.length > 0 ? `none now; ended: ${ended.map(role).join("; ")}` : "none";
+  return `| ${SEAT_KIND[viewer].label} | ${person} | ${roles} | none: no \`scopes\` row |`;
+}
+
+test("each of the seven test seats holds exactly the roles its kind names and no scopes row", () => {
+  for (const viewer of TEST_VIEWERS) {
+    const { memberId, active, ended } = seatRoles(viewer);
+    assert.ok(SEAT_KIND[viewer].holds(active, ended), `${viewer}: ${JSON.stringify(active)}`);
+    assert.deepEqual(memberId === null ? [] : data.scopes.filter((s) => s.memberId === memberId), [], `${viewer} holds a scopes row`);
+  }
+  assert.equal(seatRoles("non-member").memberId, null, "the applicant is no member");
+  assert.ok(data.alumniEntries.some((e) => e.memberId === seatRoles("alumni").memberId), "the alumnus keeps an Alumni entry");
+});
+
+test("docs/seed-cases.md lists each test seat with its seeded person, roles and grants, as the seed holds them", () => {
+  const doc = readFileSync(resolve(process.cwd(), "docs/seed-cases.md"), "utf8");
+  const start = doc.indexOf("## Test seats");
+  assert.ok(start >= 0, "docs/seed-cases.md has a Test seats section");
+  const section = doc.slice(start, doc.indexOf("\n## ", start + 1));
+  const labels = Object.values(SEAT_KIND).map((k) => k.label);
+  const rows = section.split("\n").filter((line) => labels.some((label) => line.startsWith(`| ${label} |`)));
+  assert.deepEqual(rows, TEST_VIEWERS.map(seatDocRow));
+});

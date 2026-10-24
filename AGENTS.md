@@ -14,6 +14,13 @@ Tailwind 3.
   `pnpm dev`.
 - Change the schema in `db/schema/`, then `pnpm db:generate`, read the new SQL in `drizzle/`, and
   `pnpm db:migrate`. Keep generated migrations as generated.
+- Databases ([ADR 0016](.decisions/0016-previews-read-their-own-seeded-branch.md), amendment of
+  2026-10-24): you may write to the shared `preview` database through a preview deployment to
+  set up and check a state, and a test write needs no revert migration. It is re-seeded on
+  demand, never on every build: the owner sets `PREVIEW_RESEED_REQUEST` and redeploys a preview
+  ([docs/seed-cases.md](docs/seed-cases.md#re-seed-the-preview-branch)). Never write to, seed or
+  migrate production. Never run a Neon "reset from parent" on `preview`: its parent is
+  production. Do not run the seed against a real database, set that variable or read env files.
 - The check every change passes is `pnpm exec tsc --noEmit`, the same one CI runs
   ([ci.yml](.github/workflows/ci.yml)). `pnpm build` prerenders pages that query Neon, so it
   needs `DATABASE_URL`.

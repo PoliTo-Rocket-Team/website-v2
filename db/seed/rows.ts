@@ -99,8 +99,13 @@ export function insertStatements(seed: TableSeed): SeedStatement[] {
   ];
 }
 
+/** Sends one statement through the seed's transaction. */
+export async function runStatement(tx: SeedTx, sql: string, params: readonly unknown[]): Promise<void> {
+  await tx.unsafe(sql, params as never[]);
+}
+
 async function run(tx: SeedTx, statements: readonly SeedStatement[]): Promise<void> {
-  for (const { sql, params } of statements) await tx.unsafe(sql, params as never[]);
+  for (const { sql, params } of statements) await runStatement(tx, sql, params);
 }
 
 export function tableSeedModule(seed: TableSeed): SeedModule<SeedTx> & { readonly seed: TableSeed } {

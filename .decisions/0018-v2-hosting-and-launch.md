@@ -48,6 +48,8 @@ These lines of 0003 still stand: the pooled `DATABASE_URL`, with the direct stri
 
 Everything else in 0016 still stands: Decisions 1 to 8, the `preview` branch and its endpoint `PREVIEW_ENDPOINT` in [lib/seed/target.ts](../lib/seed/target.ts), the seed guard, the other binding constraints and every later amendment. The `preview` branch is the same one 0016 describes (created 2026-10-16 from `main` in this project), so its endpoint is unchanged.
 
+Because production now has its own branch, [ADR 0016's amendment of 2026-10-24](0016-previews-read-their-own-seeded-branch.md#amendment-2026-10-24-agents-write-to-preview-for-checks-and-the-owner-asks-for-a-re-seed) treats `preview` as a test database again: agents may write to it for checks, the owner asks for a re-seed with `PREVIEW_RESEED_REQUEST`, production is never written to or seeded by agents, and `preview` is never reset from its parent.
+
 **Binding constraints.**
 - Production reads only the Neon `main` branch, and its connection strings are set for the Vercel Production environment only.
 - The Vercel Development environment reads the `development` branch, never `main`.

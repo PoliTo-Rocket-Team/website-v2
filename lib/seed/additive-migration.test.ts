@@ -5,7 +5,8 @@ import { test } from "node:test";
 import { nonAdditiveStatements } from "./journal";
 
 // Every preview build applies pending migrations to the shared preview
-// database, which is treated like production. The alias request migration
+// database before a pull request merges, while other previews' code still
+// reads it, so a migration only adds (ADR 0016). The alias request migration
 // (issue #541) must only add: a new type, a new table with its index and audit
 // trigger, and nullable columns on `members`.
 
@@ -22,6 +23,13 @@ test("0053_prt_email_from_email_alias.sql only copies the alias into an empty PR
   assert.deepEqual(nonAdditiveStatements(sql), [
     `UPDATE "members" SET "prt_email" = "email_alias" WHERE "email_alias" IS NOT NULL AND ("prt_email" IS NULL OR "prt_email" = '')`,
   ]);
+});
+
+// The re-seed ledger (issue #595) is one new table and nothing else.
+test("0055_preview_reseeds.sql drops, renames and rewrites nothing", () => {
+  const sql = readFileSync(resolve(process.cwd(), "drizzle/0055_preview_reseeds.sql"), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  assert.match(sql, /CREATE TABLE "preview_reseeds"/);
 });
 
 test("the check catches each statement that is not additive, and no foreign key action", () => {

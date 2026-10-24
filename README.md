@@ -51,7 +51,7 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ver
 - `pnpm deploy` - Deploy the app to Vercel
 - `pnpm db:generate` - Generate Drizzle migrations from the TypeScript schema
 - `pnpm db:migrate` - Apply Drizzle migrations in `drizzle/`
-- `pnpm db:seed` - Seed a local database or a preview branch with the dummy set; it refuses any other target ([`docs/seed-cases.md`](docs/seed-cases.md))
+- `pnpm db:seed` - Seed a local database with the dummy set; the `preview` branch is seeded only by a Vercel preview build, and re-seeded only when the owner asks with `PREVIEW_RESEED_REQUEST`; it refuses any other target ([`docs/seed-cases.md`](docs/seed-cases.md))
 
 ## Database Workflow
 
@@ -106,8 +106,21 @@ The Neon project has three branches ([ADR 0018](.decisions/0018-v2-hosting-and-l
   itself when it is empty.
 
 It refuses every other target, the `development` and `main` branches among
-them, and no flag turns a refusal into a pass. To work with the dummy set,
-run a local Postgres, set `DATABASE_URL` to it, then:
+them, and no flag turns a refusal into a pass.
+
+The `preview` branch is a test database ([ADR 0016](.decisions/0016-previews-read-their-own-seeded-branch.md),
+amendment of 2026-10-24):
+
+- Agents may write to it through a preview deployment to set up and check a
+  state.
+- It is re-seeded on demand, never on every build. The owner sets the Vercel
+  Preview variable `PREVIEW_RESEED_REQUEST` to a new value and redeploys a
+  preview; that one build empties the branch and loads the dummy set again
+  ([Re-seed the preview branch](docs/seed-cases.md#re-seed-the-preview-branch)).
+- Production is never written to or seeded by agents.
+- Never use a Neon "reset from parent" on `preview`: its parent is production.
+
+To work with the dummy set, run a local Postgres, set `DATABASE_URL` to it, then:
 
 ```bash
 pnpm db:migrate
@@ -148,10 +161,13 @@ answer 404. Sign-in there stays Google only.
 | Tester | `key` | Who it is | What it can see |
 | --- | --- | --- | --- |
 | Tester Applicant | `applicant` | Not a member, no scopes | The application form on an open position, for example `/apply/15-mission-analyst` |
-| Tester Member | `member` | Member in Mission Analysis, no scopes | `/dashboard`, with no edit rights |
-| Tester Division Lead | `division-lead` | Leads Mission Analysis; division-level `edit` on everything in it | `/dashboard`, and that division's positions and applications |
-| Tester Department Head | `department-head` | Head of Aerodynamics; no scope rows, the head role covers the department | `/dashboard`, with every Aerodynamics division under division tabs |
-| Tester Operations Lead | `operations-lead` | In Operations; org-level `edit` on `positions` | `/dashboard`, including the site-wide recruitment switch |
+| Tester Member | `member` | Member in Test Bench, no scopes | `/dashboard`, with no edit rights |
+| Tester Division Lead | `division-lead` | Leads Test Bench; no scope rows, the lead role covers the division | `/dashboard`, and that division's positions and applications |
+| Tester Department Head | `department-head` | Head of Research and Development; no scope rows, the head role covers the department | `/dashboard`, with that department's one division |
+| Tester Operations Lead | `operations-lead` | The operations lead's full-access seat; no scope rows | `/dashboard`, with every page full access reaches |
+
+No tester holds a scope row: each holds only what its role gives
+([`docs/seed-cases.md`](docs/seed-cases.md#test-seats)).
 
 The testers' ids, emails and names live in `lib/dev-tester.ts` and
 `db/seed/people.ts`; nothing comes from `.env`. The gate is `testerSignInOn()` in
