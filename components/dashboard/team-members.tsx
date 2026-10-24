@@ -85,7 +85,8 @@ export function ScopedMembersView({
   const [department, setDepartment] = useState<string | null>(null);
   const [divisionId, setDivisionId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<View>("list");
+  // Table first wherever the page offers it (Owner decision, 2026-10-24).
+  const [view, setView] = useState<View>(() => (page.tools.includes("table-view") ? "table" : "list"));
   const [listPage, setListPage] = useState(1);
   const [picks, setPicks] = useState<ColumnPicks>(NO_PICKS);
   const [openId, setOpenId] = useState<number | null>(null);
