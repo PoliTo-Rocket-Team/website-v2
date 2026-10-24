@@ -95,7 +95,7 @@ export function PersonSelect({
     <PersonCombobox
       id={id}
       label={label}
-      people={people}
+      people={people.map((p) => ({ id: p.id, name: p.name, photoUrl: p.photo }))}
       value={value}
       onChoose={onChange}
       placeholder="Search the team"

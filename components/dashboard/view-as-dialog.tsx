@@ -172,7 +172,7 @@ function ViewAsBody({ opening }: { opening: ViewAsOpening }) {
               onClick={() => setChosenId(person.id)}
               className={`flex h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 transition-colors duration-300 ease-out ${selected ? "bg-white-5" : "hover:bg-white-5"}`}
             >
-              <Avatar photoUrl={person.photoUrl} />
+              <Avatar person={person} />
               <span className="min-w-0">
                 <span className="block truncate text-[14px] leading-5 text-prt-text">{person.name}</span>
                 <span className="block truncate text-[12px] leading-4 text-prt-muted">{person.line}</span>

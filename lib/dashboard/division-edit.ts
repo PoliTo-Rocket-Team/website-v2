@@ -131,6 +131,13 @@ export type TeamPerson = {
 };
 
 /**
+ * Someone on the team as a picker finds them: as the rules read them, with
+ * the stored photo (`members.picture`) the picker and the drawers show beside
+ * their name (issue #656). The rules never read the photo.
+ */
+export type FoundPerson = TeamPerson & { readonly photoUrl: string | null };
+
+/**
  * The division a save is about: a new one in a department, or an open one. A
  * closed division is never a subject: no save opens it again.
  */
@@ -422,6 +429,8 @@ export type TeamPick = {
   readonly id: number;
   readonly name: string;
   readonly email: string;
+  /** Their stored photo, on their row and once picked (issue #656); null for the PRT mark. */
+  readonly photoUrl: string | null;
   /** "Aerodynamics · Mission Analysis": their home division and its department; null when they are in none. */
   readonly place: string | null;
   /** "Member", "Lead · Parachutes" for someone who leads a division, or their seat: "Team Leader", "Head of Recovery". */
@@ -439,7 +448,7 @@ export type TeamSearch =
 
 const SEARCH_LIMIT = 6;
 
-function pickOf(person: TeamPerson, org: OrgChart): TeamPick {
+function pickOf(person: FoundPerson, org: OrgChart): TeamPick {
   const label = (divisionId: number | null) => {
     const division = org.divisions.find((d) => d.id === divisionId);
     return division ? divisionLabel(division.name) : null;
@@ -453,6 +462,7 @@ function pickOf(person: TeamPerson, org: OrgChart): TeamPick {
     id: person.id,
     name: person.name,
     email: person.emails[0] ?? "",
+    photoUrl: person.photoUrl,
     place: home === null || !department ? null : `${department.name} · ${label(home)}`,
     role: seat !== undefined ? beyondTitle(seat, org) : ledLabel === null ? "Member" : `Lead · ${ledLabel}`,
     divisionIds: person.memberships.map((m) => m.divisionId),
@@ -466,7 +476,7 @@ function pickOf(person: TeamPerson, org: OrgChart): TeamPick {
  * else searches names. Everyone on the team is listed, the team leader, the
  * board and the heads included (`pickError`).
  */
-export function searchTeam(query: string, team: readonly TeamPerson[], org: OrgChart): TeamSearch {
+export function searchTeam(query: string, team: readonly FoundPerson[], org: OrgChart): TeamSearch {
   const text = query.trim();
   if (z.email().safeParse(text).success) {
     const email = text.toLowerCase();

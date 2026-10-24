@@ -5,6 +5,8 @@ import {
   nextStepOf,
   type ApplicantApplications,
   type NextStep,
+  type OverviewPerson,
+  type OverviewViewer,
 } from "./applicant-overview";
 import type { MyApplications } from "./my-applications";
 import type { Link } from "./overview";
@@ -133,17 +135,18 @@ export function alumniCardOf(me: MyAlumni): AlumniCard {
  */
 export type AlumniOverview = {
   readonly shape: "alumni";
-  readonly person: { readonly name: string; readonly line: string };
+  readonly person: OverviewPerson;
   readonly card: AlumniCard;
   readonly nextStep: NextStep | null;
   readonly applications: Extract<ApplicantApplications, { kind: "rows" }> | null;
 };
 
-export function alumniOverview(name: string, me: MyAlumni, mine: MyApplications): AlumniOverview {
+/** Their circle shows their stored photo, the one the sidebar shows (issue #656). */
+export function alumniOverview(viewer: OverviewViewer, me: MyAlumni, mine: MyApplications): AlumniOverview {
   const applications = applicantApplicationsOf(mine);
   return {
     shape: "alumni",
-    person: { name, line: formerMemberLine(me) },
+    person: { name: viewer.name, photoUrl: viewer.photoUrl, line: formerMemberLine(me) },
     card: alumniCardOf(me),
     nextStep: nextStepOf(mine.active),
     applications: applications.kind === "rows" ? applications : null,

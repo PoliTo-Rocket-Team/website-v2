@@ -46,7 +46,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </Suspense>
       }
       account={
-        <Suspense fallback={<Avatar accent />}>
+        <Suspense fallback={<Avatar person={null} accent />}>
           <TopBarAccount chrome={chrome} />
         </Suspense>
       }

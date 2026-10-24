@@ -39,9 +39,9 @@ const msa = { id: 1, name: "Mission Analysis Division" };
 const aoa = { id: 2, name: "Optimization and Analysis Division" };
 const aerodynamics = { id: 1, name: "Aerodynamics" };
 
-const pietro: AccessPerson = { id: 6, name: "Pietro Ricci", role: NO_ROLE, division: msa };
-const sofia: AccessPerson = { id: 3, name: "Sofia Neri", role: NO_ROLE, division: msa };
-const coLead: AccessPerson = { id: 9, name: "Luca Bianchi", role: { kind: "lead", divisions: [msa] }, division: msa };
+const pietro: AccessPerson = { id: 6, name: "Pietro Ricci", photoUrl: null, role: NO_ROLE, division:msa };
+const sofia: AccessPerson = { id: 3, name: "Sofia Neri", photoUrl: null, role: NO_ROLE, division:msa };
+const coLead: AccessPerson = { id: 9, name: "Luca Bianchi", photoUrl: null, role: { kind: "lead", divisions:[msa] }, division: msa };
 const people = [pietro, sofia, coLead];
 
 const inMsa: AccessPlace = { kind: "division", division: msa };
@@ -159,9 +159,9 @@ test("the table shows one row per person, areas in the order given, with the lat
 const departmentUnit: AccessUnit = { kind: "department", department: aerodynamics, divisions: [msa, aoa] };
 const wholeDepartment: AccessPlace = { kind: "department", department: aerodynamics };
 const inAoa: AccessPlace = { kind: "division", division: aoa };
-const luca: AccessPerson = { id: 4, name: "Luca Marino", role: NO_ROLE, division: aoa };
-const laura: AccessPerson = { id: 20, name: "Laura Greco", role: { kind: "lead", divisions: [aoa] }, division: aoa };
-const marco: AccessPerson = { id: 2, name: "Marco Bianchi", role: { kind: "lead", divisions: [msa] }, division: msa };
+const luca: AccessPerson = { id: 4, name: "Luca Marino", photoUrl: null, role: NO_ROLE, division:aoa };
+const laura: AccessPerson = { id: 20, name: "Laura Greco", photoUrl: null, role: { kind: "lead", divisions:[aoa] }, division: aoa };
+const marco: AccessPerson = { id: 2, name: "Marco Bianchi", photoUrl: null, role: { kind: "lead", divisions:[msa] }, division: msa };
 const headPeople = [sofia, luca, laura, marco];
 const head = (grants: AccessGrant[] = []) => ({
   unit: departmentUnit,
@@ -211,7 +211,7 @@ test("a head never changes a lead's role access, and gives, changes and removes 
 });
 
 test("a lead's role covers Orders in each division they lead and nowhere else (issue #632)", () => {
-  const twoDivisions: AccessPerson = { id: 21, name: "Giorgia Galli", role: { kind: "lead", divisions: [msa, aoa] }, division: msa };
+  const twoDivisions: AccessPerson = { id: 21, name: "Giorgia Galli", photoUrl: null, role: { kind: "lead", divisions:[msa, aoa] }, division: msa };
   assert.deepEqual(LEAD_ROLE_HELD_ACCESS, ["positions", "applications", "members", "orders"].map((target) => ({ target, level: "edit" })));
   for (const place of [inMsa, inAoa]) assert.equal(roleCovers(twoDivisions, place, "orders"), true);
   assert.equal(roleCovers(laura, inMsa, "orders"), false, "a division Laura does not lead");
@@ -302,7 +302,7 @@ const teamUnit: AccessUnit = {
     { department: structures, divisions: [dm] },
   ],
 };
-const giulio: AccessPerson = { id: 31, name: "Giulio Russo", role: NO_ROLE, division: dm };
+const giulio: AccessPerson = { id: 31, name: "Giulio Russo", photoUrl: null, role: NO_ROLE, division:dm };
 const team = (grants: AccessGrant[] = [], approveOrders: ApproveOrdersAccess = NO_APPROVE_ORDERS) => ({
   unit: teamUnit,
   people: [...headPeople, giulio],
@@ -497,7 +497,7 @@ test("a holder of Approve orders gets a row of their own, with the chip before t
 // A lead of several divisions (issue #185) ---------------------------------------
 
 test("a lead of two divisions gives access in the division of the person they edit, up to what they hold there", () => {
-  const sara: AccessPerson = { id: 32, name: "Sara Fontana", role: NO_ROLE, division: aoa };
+  const sara: AccessPerson = { id: 32, name: "Sara Fontana", photoUrl: null, role: NO_ROLE, division:aoa };
   const viewInAoa: HeldAccess[] = [{ target: "applications", level: "view" }];
   const twoDivisions: AccessUnit = { kind: "division", divisions: [{ division: msa, held }, { division: aoa, held: viewInAoa }] };
   const access = { unit: twoDivisions, people: [...people, sara], grants: [], approveOrders: NO_APPROVE_ORDERS };
@@ -520,7 +520,7 @@ test("a lead of two divisions gives access in the division of the person they ed
 });
 
 test("a lead of two divisions has a role row in each, each in its own division, not their primary one", () => {
-  const marco: AccessPerson = { id: 2, name: "Marco Bianchi", role: { kind: "lead", divisions: [msa] }, division: msa };
+  const marco: AccessPerson = { id: 2, name: "Marco Bianchi", photoUrl: null, role: { kind: "lead", divisions:[msa] }, division: msa };
   assert.equal(roleDivision({ person: marco, place: { kind: "division", division: msa } }), msa);
   assert.equal(roleDivision({ person: marco, place: { kind: "division", division: aoa } }), aoa);
   // A head's role is in a department: the row stays with the person's own division, if any.

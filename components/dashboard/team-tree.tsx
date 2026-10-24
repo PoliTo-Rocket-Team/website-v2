@@ -120,7 +120,7 @@ function TreeCard({
         onPath ? "border-accent/70 bg-accent/[0.06]" : "border-hairline bg-panel"
       } ${found ? "ring-1 ring-accent" : ""}`}
     >
-      {person && <Avatar size="sm" accent photoUrl={person.photoUrl} />}
+      {person && <Avatar size="sm" accent person={person} />}
       <span className="min-w-0 flex-1">
         <span className="block break-words text-[13px] font-semibold leading-tight text-prt-text">
           {title}
@@ -149,7 +149,7 @@ function MemberRow({ person, onPath, found }: { person: TreePerson; onPath: bool
         onPath ? "border-accent/70 bg-accent/[0.08]" : "border-transparent"
       } ${found ? "ring-1 ring-accent" : ""}`}
     >
-      <Avatar size="xs" accent={onPath} photoUrl={person.photoUrl} />
+      <Avatar size="xs" accent={onPath} person={person} />
       <span className={`min-w-0 break-words text-[12px] leading-tight ${person.self ? "font-semibold text-prt-text" : "text-text-2"}`}>
         {person.name}
         {person.self && " · you"}

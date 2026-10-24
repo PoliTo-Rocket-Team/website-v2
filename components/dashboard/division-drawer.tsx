@@ -470,7 +470,7 @@ function OldLeadRow({
   const goneLine = replacedBy !== null ? `Replaced by ${replacedBy}` : removed ? "Removed as lead" : null;
   return (
     <li className={`flex items-center gap-3 px-3.5 py-2.5 ${goneLine ? "opacity-60" : ""}`}>
-      <Avatar size="md" photoUrl={lead.photoUrl} />
+      <Avatar size="md" person={lead} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[14px] text-prt-text">{lead.name}</span>
         <span className="block truncate text-[12px] text-prt-muted">{goneLine ?? short}</span>
@@ -516,7 +516,7 @@ function NewLeadRow({ added, divisionId, short, onUndo }: { added: NewLead; divi
   const { pick } = added;
   return (
     <li className="flex items-center gap-3 bg-accent/[0.05] px-3.5 py-2.5">
-      <Avatar size="md" />
+      <Avatar size="md" person={pick} />
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate text-[14px] text-prt-text">{pick.name}</span>
@@ -536,12 +536,11 @@ function ReplacesSelect({ added, leads, onChange }: { added: NewLead; leads: rea
       {(id) => (
         <PersonCombobox
           id={id}
-          people={leads.map((l) => ({ id: l.id, name: l.name }))}
+          people={leads.map((l) => ({ id: l.id, name: l.name, photoUrl: l.photoUrl }))}
           value={added.replaces}
           onChoose={onChange}
           placeholder="Search the leads"
           nobody={{ label: "Nobody, add as an extra lead", onChoose: () => onChange(null) }}
-          photo={<Avatar size="sm" photoUrl={leads.find((l) => l.id === added.replaces)?.photoUrl ?? null} />}
         />
       )}
     </Field>
@@ -700,7 +699,7 @@ export function PeoplePicker({
       <div className="min-w-0 flex-1">
         <PersonCombobox
           id={id}
-          people={people.map((p) => ({ id: p.id, name: p.name, aside: p.place, line: p.role, taken: taken(p) }))}
+          people={people.map((p) => ({ id: p.id, name: p.name, photoUrl: p.photoUrl, aside: p.place, line: p.role, taken: taken(p) }))}
           value={null}
           onChoose={choose}
           placeholder={mode === "member" ? "Name or email" : "Search the team"}
@@ -886,7 +885,7 @@ function MemberItem({
   const others = person.divisions.filter((d) => d.divisionId !== divisionId).map((d) => d.name);
   return (
     <li className="flex items-center gap-3 px-3.5 py-2.5">
-      <Avatar size="md" photoUrl={person.photoUrl} />
+      <Avatar size="md" person={person} />
       <span className="flex min-w-0 flex-1 items-baseline gap-2">
         <span className="shrink-0 text-[14px] text-prt-text">{person.name}</span>
         <span className="truncate text-[12px] text-prt-muted">{memberLine(person)}</span>
@@ -950,7 +949,7 @@ function DraftMembers({
         <ul className={`${LIST} mt-2.5 divide-y divide-hairline`}>
           {members.map((m) => (
             <li key={m.id} className="flex items-center gap-3 px-3.5 py-2.5">
-              <Avatar size="md" />
+              <Avatar size="md" person={m} />
               <span className="flex min-w-0 flex-1 items-baseline gap-2">
                 <span className="shrink-0 text-[14px] text-prt-text">{m.name}</span>
                 {m.place !== null && <span className="truncate text-[12px] text-prt-muted">Also in {m.place}</span>}

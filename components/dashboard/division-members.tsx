@@ -374,7 +374,7 @@ export function JoiningBanner({ joining, division, editable }: { joining: Joinin
     <li className="flex flex-col gap-3 rounded-xl border border-success/40 bg-success/[0.06] px-4 py-3.5 md:flex-row md:items-center md:gap-4">
       <span className="flex min-w-0 flex-1 items-center gap-3.5">
         <span className="hidden md:block">
-          <Avatar />
+          <Avatar person={joining} />
         </span>
         <span className="min-w-0">
           <span className="block text-[15px] font-semibold">{joining.name} is joining</span>

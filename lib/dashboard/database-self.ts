@@ -226,6 +226,7 @@ async function readAccount(identity: DashboardIdentity): Promise<MyAccount | nul
   ]);
   return {
     name: identity.name,
+    photoUrl: identity.picture,
     signIn: { provider: "google", email: identity.email },
     details,
     openApplications: open.length,

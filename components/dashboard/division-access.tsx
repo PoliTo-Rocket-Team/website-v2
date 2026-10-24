@@ -568,7 +568,7 @@ function PersonCard({
   const inner = (
     <>
       <span className="flex items-center gap-3">
-        <Avatar size="md" />
+        <Avatar size="md" person={person} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px] font-semibold">{person.name}</span>
           <span className="block truncate text-[13px] text-prt-muted">{line}</span>
@@ -645,7 +645,7 @@ function AccessTable({
           const cells = (
             <>
               <span className="flex min-w-0 items-center gap-3">
-                <Avatar size="md" />
+                <Avatar size="md" person={person} />
                 <span className="min-w-0">
                   <span className="block truncate text-[14px] font-medium">{person.name}</span>
                   <span className="block truncate text-[12px] text-prt-muted">{personLine(row, unit)}</span>
@@ -874,7 +874,7 @@ function AccessDrawer({
           <Field label="Person" hint="can't be changed">
             {(id) => (
               <div id={id} className={`${LOCKED_INPUT} gap-3 bg-white-5 pl-3 text-prt-text`}>
-                <Avatar size="sm" />
+                <Avatar size="sm" person={editing} />
                 <span className="truncate text-[15px]">{editing.name}</span>
                 <Lock aria-label="Locked" className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
               </div>

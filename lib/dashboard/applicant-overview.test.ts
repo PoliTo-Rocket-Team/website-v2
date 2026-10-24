@@ -4,6 +4,7 @@ import { applicantOverview } from "./applicant-overview";
 import type { ActiveApplication, ActiveStage, MyApplications, PastApplication, PastOutcome } from "./my-applications";
 
 const slot = { id: 1, start: "2026-10-14T18:00:00+02:00", end: "2026-10-14T18:30:00+02:00" };
+const CHIARA = { name: "Chiara", photoUrl: null };
 
 function active(id: number, stage: ActiveStage): ActiveApplication {
   return {
@@ -33,11 +34,11 @@ const interview = (chosen: typeof slot | null, slots = [slot]): ActiveStage => (
 });
 
 test("the Next step card waits only on an interview with offered times and none picked", () => {
-  assert.equal(applicantOverview("Chiara", mine([active(1, { kind: "in-review" })])).nextStep, null);
-  assert.equal(applicantOverview("Chiara", mine([active(1, interview(slot))])).nextStep, null);
-  assert.equal(applicantOverview("Chiara", mine([active(1, interview(null, []))])).nextStep, null);
+  assert.equal(applicantOverview(CHIARA,mine([active(1, { kind: "in-review" })])).nextStep, null);
+  assert.equal(applicantOverview(CHIARA,mine([active(1, interview(slot))])).nextStep, null);
+  assert.equal(applicantOverview(CHIARA,mine([active(1, interview(null, []))])).nextStep, null);
 
-  const step = applicantOverview("Chiara", mine([active(1, { kind: "received" }), active(2, interview(null))])).nextStep;
+  const step = applicantOverview(CHIARA,mine([active(1, { kind: "received" }), active(2, interview(null))])).nextStep;
   assert.deepEqual(step, {
     title: "Pick an interview time for Role 2",
     detail: "The Mission Analysis lead offered 1 time. Pick the one that suits you.",
@@ -47,7 +48,7 @@ test("the Next step card waits only on an interview with offered times and none 
 
 test("rows read open then past, each with its pill and its My applications anchor; a withdrawn one is not listed", () => {
   const overview = applicantOverview(
-    "Chiara",
+    CHIARA,
     mine(
       [active(1, interview(null)), active(2, { kind: "in-review" }), active(3, { kind: "received" }), active(4, { kind: "accepted" })],
       [past(5, { kind: "not-selected" }), past(6, { kind: "withdrawn" })],
@@ -70,12 +71,12 @@ test("rows read open then past, each with its pill and its My applications ancho
 });
 
 test("someone whose only applications are withdrawn gets the No applications panel, not an empty list", () => {
-  const overview = applicantOverview("Chiara", mine([], [past(5, { kind: "withdrawn" }), past(6, { kind: "withdrawn" })]));
+  const overview = applicantOverview(CHIARA,mine([], [past(5, { kind: "withdrawn" }), past(6, { kind: "withdrawn" })]));
   assert.deepEqual(overview.applications, { kind: "none" });
   assert.equal(overview.person.line, "Applicant · chiara@example.com");
 });
 
 test("with no application shown, the Overview names the person by their address alone and says there are none (board 50f, issue #317)", () => {
-  const overview = applicantOverview("Chiara", mine([]));
-  assert.deepEqual(overview, { shape: "applicant", person: { name: "Chiara", line: "chiara@example.com" }, nextStep: null, applications: { kind: "none" } });
+  const overview = applicantOverview(CHIARA,mine([]));
+  assert.deepEqual(overview, { shape: "applicant", person: { name: "Chiara", photoUrl: null, line: "chiara@example.com" }, nextStep: null, applications: { kind: "none" } });
 });

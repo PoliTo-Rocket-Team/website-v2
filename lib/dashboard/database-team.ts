@@ -242,12 +242,14 @@ async function readJoining(identity: DashboardIdentity, divisionIds: readonly nu
       first_name: users.firstName,
       last_name: users.lastName,
       email: users.email,
+      picture: members.picture,
       position: applyPositions.title,
       nda_arrived_at: applications.ndaArrivedAt,
     })
     .from(applications)
     .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
     .innerJoin(users, eq(users.id, applications.userId))
+    .leftJoin(members, eq(members.memberId, users.member))
     .where(
       and(
         inArray(applyPositions.divisionId, [...units.keys()]),
@@ -264,6 +266,7 @@ async function readJoining(identity: DashboardIdentity, divisionIds: readonly nu
     listed.push({
       applicationId: r.application_id,
       name: nameOf(r),
+      photoUrl: r.picture,
       position: r.position ?? "a position",
       ndaArrived: r.nda_arrived_at !== null,
       canConfirm: mayChangePositionIn(identity, "applications", unit),
@@ -499,6 +502,7 @@ export async function findForAdd(identity: DashboardIdentity, divisionId: number
     id: r.id,
     name: r.name,
     emails: [r.signInEmail, r.details.prtEmail].filter((e) => e !== ""),
+    photoUrl: r.photoUrl,
     memberships: r.memberships,
   }));
   const waiting = await readWaiting(divisionId);

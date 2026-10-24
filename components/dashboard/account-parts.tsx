@@ -11,6 +11,7 @@ import {
   deleteConfirmed,
   REMOVE_FROM_ALUMNI_HINT,
   REMOVE_FROM_ALUMNI_LABEL,
+  type MyAccount,
   type SignIn,
 } from "@/lib/dashboard/self";
 import type { WriteResult } from "@/lib/dashboard/write";
@@ -55,12 +56,13 @@ export function Card({
   );
 }
 
-/** Board 51's Sign-in card: who they are and the Google account. Sign out lives in the user menu. */
-export function SignInCard({ name, signIn }: { name: string; signIn: SignIn }) {
+/** Board 51's Sign-in card: who they are, with their stored photo, and the Google account. Sign out lives in the user menu. */
+export function SignInCard({ account }: { account: Pick<MyAccount, "name" | "photoUrl" | "signIn"> }) {
+  const { name, signIn } = account;
   return (
     <Card title="Sign-in">
       <div className="flex items-center gap-4 px-5 py-5 md:px-6">
-        <Avatar size="panel" accent />
+        <Avatar size="panel" accent person={account} />
         <span className="min-w-0">
           <span className="block text-[16px] font-semibold">{name}</span>
           <span className="block truncate text-[13px] text-prt-muted">

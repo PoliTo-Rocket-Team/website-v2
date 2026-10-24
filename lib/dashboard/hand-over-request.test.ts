@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { TeamPerson } from "./division-edit";
+import type { FoundPerson, TeamPerson } from "./division-edit";
 import {
   answerNoticeOf,
   approverIdsOf,
@@ -33,9 +33,10 @@ const org: OrgChart = {
   ],
 };
 
-const person = (id: number, name: string, rest: Partial<Pick<TeamPerson, "memberships" | "beyond">>): TeamPerson => ({
+const person = (id: number, name: string, rest: Partial<Pick<TeamPerson, "memberships" | "beyond">>): FoundPerson => ({
   id,
   name,
+  photoUrl: null,
   emails: [],
   memberships: rest.memberships ?? membershipsOf([]),
   beyond: rest.beyond ?? [],
@@ -52,7 +53,7 @@ const DAVIDE = 16; // Head of Structures
 const ALESSANDRO = 14; // the team leader
 const RICCARDO = 22; // a member of Design & Manufacturing
 
-const team: TeamPerson[] = [
+const team: FoundPerson[] = [
   person(MARCO, "Marco Bianchi", { memberships: lead(1) }),
   person(PIETRO, "Pietro Ricci", { memberships: lead(1) }),
   person(SARA, "Sara Conti", { memberships: member(1) }),

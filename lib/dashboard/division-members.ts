@@ -468,6 +468,8 @@ export type TeamMatch = {
   readonly id: number;
   readonly name: string;
   readonly email: string;
+  /** Their stored photo (`members.picture`), on their row and once picked (issue #656); null for the PRT mark. */
+  readonly photoUrl: string | null;
   readonly chips: readonly DivisionChip[];
   /** Already in the division being added to. */
   readonly here: boolean;
@@ -485,6 +487,7 @@ export type TeamCandidate = {
   readonly id: number;
   readonly name: string;
   readonly emails: readonly string[];
+  readonly photoUrl: string | null;
   readonly memberships: Memberships;
 };
 
@@ -513,7 +516,7 @@ export function lookupForAdd(
       id: c.id,
       name: c.name,
       signInEmail: c.emails[0] ?? "",
-      photoUrl: null,
+      photoUrl: c.photoUrl,
       since: 0,
       memberships: c.memberships,
       beyondDivisions: [],
@@ -526,6 +529,7 @@ export function lookupForAdd(
       id: c.id,
       name: c.name,
       email: c.emails[0] ?? "",
+      photoUrl: c.photoUrl,
       chips: chipsOf(personDivisions(record, org, departmentId)),
       here: roleIn(c.memberships, divisionId) !== null,
     };

@@ -3,10 +3,11 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Check, ChevronDown, CornerDownLeft, MailPlus } from "lucide-react";
 import { activeAt, filtering, shownPeople, stepActive } from "@/lib/dashboard/person-combobox";
+import type { Pictured } from "@/lib/dashboard/stored-photo";
 import { Avatar } from "./avatar";
 
-/** Someone the field can offer, already in the place's reach. */
-export type ComboboxPerson = {
+/** Someone the field can offer, already in the place's reach, with their stored photo for their row and the box (issue #656). */
+export type ComboboxPerson = Pictured & {
   readonly id: number;
   readonly name: string;
   /** Beside the name: their place or unit ("Aerodynamics · Mission Analysis"). */
@@ -81,7 +82,7 @@ export function PersonCombobox({
   note?: string | null;
   /** At the list's foot: what a pick here does. */
   hint?: string;
-  /** The chosen person's own photo in the box, in place of the PRT mark. */
+  /** The box's circle drawn the place's own way, in place of the chosen person's avatar. */
   photo?: ReactNode;
   /** Each choice adds one person, so the box empties for the next. */
   multi?: boolean;
@@ -188,12 +189,14 @@ export function PersonCombobox({
     }
   };
 
-  const boxPhoto = chosen !== undefined && !open;
+  // Who the box shows, with their avatar before the name, while the list is closed.
+  const boxPerson = open ? undefined : chosen;
+  const boxPhoto = boxPerson !== undefined;
   const padded = rows.length > 0 || noOne || Boolean(note);
 
   return (
     <div className="relative">
-      {boxPhoto && <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">{photo ?? <Avatar size="sm" />}</span>}
+      {boxPerson && <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">{photo ?? <Avatar size="sm" person={boxPerson} />}</span>}
       <input
         ref={inputRef}
         id={id ?? ownId}
@@ -289,7 +292,7 @@ function ComboboxRow({
         taken ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       } ${active ? (row.kind === "extra" ? "bg-white-10" : "bg-white-5") : row.kind === "extra" ? "bg-white-5" : ""}`}
     >
-      {row.kind === "person" && <Avatar size="md" />}
+      {row.kind === "person" && <Avatar size="md" person={row.person} />}
       {row.kind === "nobody" && <span aria-hidden className="h-8 w-8 shrink-0 rounded-full border border-dashed border-white-10" />}
       {row.kind === "extra" && (
         <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
