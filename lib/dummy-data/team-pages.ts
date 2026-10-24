@@ -57,6 +57,7 @@ import {
   homeFirst,
   inDivisions,
   isIn,
+  leadActor,
   ledDivisionsOf,
   mayChangeDivision,
   mayLeaveTeam,
@@ -80,9 +81,9 @@ import {
   type RosterEntry,
   type TeamActor,
 } from "@/lib/dashboard/team";
-import { editableDivisionIds, teamStructure } from "@/lib/dashboard/team-structure";
+import { editableDivisionIds, editsStructure, teamStructure } from "@/lib/dashboard/team-structure";
 import { kindOfTestViewer, readsArea, seatOf, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
-import { grantActors, testGrantAreas, type TestGrant } from "./test-grant";
+import { grantActors, testGrantAreas, withTestGrant, type TestGrant } from "./test-grant";
 import { wholeTeamMembers } from "@/lib/dashboard/team-members";
 import { opensWholeTeam } from "@/lib/dashboard/members-view";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
@@ -498,8 +499,9 @@ function actorOf(kind: TestViewer, org: OrgChart, grant: TestGrant | null): Team
   if (kindOfTestViewer(kind) === "operations-lead") return { kind: "team" };
   const department = myDepartment(kind);
   if (department !== null) return { kind: "head", departmentIds: [department] };
+  // The test lead leads every division they reach by role: each opens Edit division to them (issue #594).
   const divisions = myDivisions(kind);
-  return divisions.length === 0 ? null : { kind: "lead", divisionIds: divisions };
+  return leadActor(divisions, divisions);
 }
 
 /** One roster entry as the Members page shows it, with the details and titles the test developer saved. */
@@ -607,6 +609,8 @@ function writesFor(
   const find = (id: number) => team.find((e) => e.id === id);
   const thisYear = new Date().getUTCFullYear();
   const actor = actorOf(kind, org, grant);
+  // The Alumni page follows the Content grant (issue #589), so a test grant can open it.
+  const reachesAlumni = canReach(withTestGrant(testDeveloperStanding(kind), grant), "alumni");
   const changeOf = (id: number): MemberChange => edits.members[id] ?? { pageTitle: find(id)?.pageTitle ?? null, roles: {} };
   const withChange = (id: number, change: MemberChange): TeamEdits => ({ ...edits, members: { ...edits.members, [id]: change } });
   /**
@@ -627,7 +631,7 @@ function writesFor(
   };
   /** Someone the Alumni page lists, for a viewer who reaches it (#257); never someone who asked to be removed. */
   const alumnus = (key: AlumnusKey) => {
-    if (!canReach(testDeveloperStanding(kind), "alumni")) return null;
+    if (!reachesAlumni) return null;
     return dummyAlumni(editedAlumniRecord(edits, joiners)).find((a) => a.key === key && !a.removed) ?? null;
   };
   const saveAlumniEntry = (key: AlumnusKey, change: Omit<EntryChange, "photo">) =>
@@ -877,7 +881,7 @@ function writesFor(
       return error === null ? written(null) : refused(error);
     },
     async addAdvisor(input, photo) {
-      if (!canReach(testDeveloperStanding(kind), "alumni")) return refused("You cannot edit the Alumni page.");
+      if (!reachesAlumni) return refused("You cannot edit the Alumni page.");
       const advisor = checkAdvisor(input, DUMMY_ALUMNI_YEAR);
       if (!advisor.ok) return advisor;
       const error = photo === null ? null : checkPhoto({ type: photo.contentType, size: photo.bytes.byteLength });
@@ -1112,13 +1116,13 @@ export function dummyTeamPages(
       return lookupForAdd(query, team, waitingIn(edits, divisionId).map((w) => w.email), divisionId, org);
     },
     findPeople: async (query) => {
-      // The pickers are New division's and Edit division's: a head's or the team's (#232).
-      if (actor === null || actor.kind === "lead") return { kind: "none" };
+      // The pickers are New division's and Edit division's: the team's, a head's (#232) or a lead's on their own division (#594).
+      if (!editsStructure(actor, org)) return { kind: "none" };
       return searchTeam(query, teamPeople(editedRoster(edits, joiners), edits), org);
     },
     alumni: async () =>
       alumniDirectory(
-        canReach(testDeveloperStanding(kind), "alumni") ? dummyAlumni(editedAlumniRecord(edits, joiners)) : [],
+        canReach(withTestGrant(testDeveloperStanding(kind), grant), "alumni") ? dummyAlumni(editedAlumniRecord(edits, joiners)) : [],
         DUMMY_ALUMNI_YEAR,
       ),
     teamTree: async () =>

@@ -8,7 +8,6 @@ import {
   ChevronDown,
   ChevronRight,
   CircleCheck,
-  GraduationCap,
   Inbox,
   Info,
   Layers,
@@ -97,7 +96,6 @@ const TARGET_ICONS: Readonly<Record<AccessTarget, LucideIcon>> = {
   positions: BriefcaseBusiness,
   applications: Inbox,
   members: Users,
-  alumni: GraduationCap,
   content: PenLine,
   orders: ShoppingCart,
 };

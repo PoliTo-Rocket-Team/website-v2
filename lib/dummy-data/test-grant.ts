@@ -8,8 +8,9 @@ import {
   type GrantArea,
   type ScopeUnitRow,
   type ScopedRole,
+  type ViewerStanding,
 } from "@/lib/dashboard/viewer";
-import type { OrgChart, TeamActor } from "@/lib/dashboard/team";
+import { leadActor, type OrgChart, type TeamActor } from "@/lib/dashboard/team";
 
 // A grant the member test viewer can hold, so a preview shows a page as a
 // grant holder sees it: Members (issue #351), or Content (issue #504). The
@@ -49,6 +50,16 @@ export function testGrantHoldsContent(grant: TestGrant): boolean {
   return holdsContentGrant([SCOPE_ROW[grant]]);
 }
 
+/**
+ * The standing of the member holding `grant`: their areas and Content, as a
+ * member with that scope row holds them (issues #351, #471, #504). Content
+ * opens the Alumni page too (issue #589). Anyone else, or no grant, keeps
+ * `standing` as it is.
+ */
+export function withTestGrant(standing: ViewerStanding, grant: TestGrant | null): ViewerStanding {
+  return standing.kind === "member" && grant !== null ? { ...standing, grantedAreas: testGrantAreas(grant), siteContent: testGrantHoldsContent(grant) } : standing;
+}
+
 /** The member's own role: a member of Mission Analysis, which changes nobody. */
 const MEMBER_ROLE: ScopedRole = { type: null, divisionId: MISSION_ANALYSIS, departmentId: AERODYNAMICS };
 
@@ -66,6 +77,7 @@ export function grantActors(grant: TestGrant, org: OrgChart): { readonly viewing
     const division = org.divisions.find((d) => d.id === divisionId);
     return division !== undefined && mayChange(authority, "members", { divisionId, departmentId: division.departmentId });
   });
-  const lead = (divisionIds: number[]): TeamActor | null => (divisionIds.length === 0 ? null : { kind: "lead", divisionIds });
+  // A grant leads no division: it opens no Edit division (issue #594).
+  const lead = (divisionIds: number[]): TeamActor | null => leadActor(divisionIds, []);
   return { viewing: lead(covered.filter((id) => org.divisions.some((d) => d.id === id))), changing: lead(changes) };
 }

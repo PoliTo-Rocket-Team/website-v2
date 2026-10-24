@@ -48,6 +48,7 @@ import {
 import {
   headDepartmentOf,
   isDivisionRole,
+  leadActor,
   mayChangeDivision,
   mayLeaveTeam,
   membershipsOfRoles,
@@ -90,7 +91,7 @@ import {
   planDepartmentCreate,
   planDepartmentSave,
 } from "./department-edit";
-import { editableDivisionIds, teamStructure, type TeamStructure } from "./team-structure";
+import { editableDivisionIds, editsStructure, teamStructure, type TeamStructure } from "./team-structure";
 import {
   checkDivisionSave,
   closeRefusal,
@@ -193,7 +194,9 @@ async function actorOf(
   if (headOf.length > 0) return { kind: "head", departmentIds: [...new Set(headOf)] };
   // A grant across a department covers each of its divisions (issue #351).
   const divisionIds = coveredDivisionIds(identity, org.divisions).filter((id) => leads(id, org));
-  return divisionIds.length === 0 ? null : { kind: "lead", divisionIds };
+  // The divisions they lead by role, never by a grant: only those open Edit division (issue #594).
+  const led = rows.flatMap((r) => (r.type === "lead" && r.division_id !== null ? [r.division_id] : []));
+  return leadActor(divisionIds, led);
 }
 
 /** The divisions a division lead's Members page lists, the one it opens on first. A head's page is their department's. */
@@ -403,7 +406,7 @@ export async function readTeamStructure(identity: DashboardIdentity): Promise<Te
   const snapshotRead = readTeamSnapshot();
   const [snapshot, actor] = await Promise.all([snapshotRead, readActor(identity, snapshotRead.then((s) => s.org))]);
   const ids = editableDivisionIds(actor, snapshot.org);
-  if (actor === null || actor.kind === "lead") return null;
+  if (!editsStructure(actor, snapshot.org)) return null;
   const [perDivision, openPositions] = await Promise.all([readPerDivision(identity, ids, snapshot.org), readOpenPositions(ids)]);
   return teamStructure({
     records: recordsOf(snapshot),
@@ -588,8 +591,9 @@ const today = () => new Date().toISOString().slice(0, 10);
  * Lead or member in one division, from Edit details' position part (issue
  * #584): the person's lead or member rows there change type, nothing else.
  * Only for someone the viewer may edit, in a division they reach, and only
- * where `mayChangeDivision` lets them change its leads: never a division lead
- * (#231). The panel offers the switch by the same rule (`positionOf`).
+ * where `mayChangeDivision` lets them change its leads: a division lead only in
+ * a division they lead by role (issue #594). The panel offers the switch by
+ * the same rule (`positionOf`).
  */
 async function saveMember(identity: DashboardIdentity, personId: number, edit: MemberEdit): Promise<boolean> {
   const { org } = await readTeamSnapshot();
@@ -927,11 +931,11 @@ async function setMemberPhoto(identity: DashboardIdentity, personId: number, pho
 // below runs what they allow in one audited batch. Nothing here clears a
 // division's `closed_at`: a closed division never opens again.
 
-/** The lead and member pickers (boards 68b2, 69d): the whole team, for whoever manages a division. */
+/** The lead and member pickers (boards 68b2, 69d): the whole team, for whoever edits a division, its lead included (issue #594). */
 export async function findPeople(identity: DashboardIdentity, query: string): Promise<TeamSearch> {
   const snapshot = await readTeamSnapshot();
   const actor = await readActor(identity, snapshot.org);
-  if (actor === null || actor.kind === "lead") return { kind: "none" };
+  if (!editsStructure(actor, snapshot.org)) return { kind: "none" };
   return searchTeam(query, teamPeopleOf(snapshot), snapshot.org);
 }
 

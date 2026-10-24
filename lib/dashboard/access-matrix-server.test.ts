@@ -12,7 +12,7 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
 import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
-import { members, scopes } from "@/db/schema";
+import { divisions, members, roles, scopes } from "@/db/schema";
 import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
 import { areaLevelsOf, canChangePerson, checkRemoveGrant, grantablePeople, heldIn, holdsAny, placeKey, placesOf, removalOf, type AccessPage } from "./division-access";
@@ -23,6 +23,7 @@ import { readSheet } from "./access-matrix/xlsx";
 import { openDashboard } from "./open";
 import { canEditOrder, type OrdersPage } from "./orders";
 import type { TeamSideOverview } from "./overview";
+import type { TeamStructure } from "./team-structure";
 import { applicationsModelOf } from "./applications-view";
 import { positionsModelOf } from "./positions-view";
 import type { ApplicationsPage, PositionsPage } from "./recruitment";
@@ -520,15 +521,17 @@ const ACTION_CASES: readonly ActionCase[] = [
     control: by("team leader"),
   },
 
-  // The Alumni page.
-  { action: "team-actions.setAlumnusShown", run: () => teamActions.setAlumnusShown(ALUMNUS, false), may: reaches("alumni"), control: by("team leader") },
-  { action: "team-actions.fixAlumnus", run: () => teamActions.fixAlumnus(ALUMNUS, { shown: true, name: "Alum", founder: null, roles: [] }), may: reaches("alumni"), control: by("team leader") },
-  { action: "team-actions.setAlumnusPhoto", run: () => teamActions.setAlumnusPhoto(ALUMNUS, form({ photo: PHOTO() })), may: reaches("alumni"), control: by("team leader") },
+  // The Alumni page: site content under the Content grant (issue #589). The
+  // control is a member holding Content at Can edit, so each write is proven
+  // to land for them, and every Can view `website` row is refused above.
+  { action: "team-actions.setAlumnusShown", run: () => teamActions.setAlumnusShown(ALUMNUS, false), may: reaches("alumni"), control: by("member with a Content grant") },
+  { action: "team-actions.fixAlumnus", run: () => teamActions.fixAlumnus(ALUMNUS, { shown: true, name: "Alum", founder: null, roles: [] }), may: reaches("alumni"), control: by("member with a Content grant") },
+  { action: "team-actions.setAlumnusPhoto", run: () => teamActions.setAlumnusPhoto(ALUMNUS, form({ photo: PHOTO() })), may: reaches("alumni"), control: by("member with a Content grant") },
   {
     action: "team-actions.addAdvisor",
     run: () => teamActions.addAdvisor({ group: "Advisors", name: "Ada Advisor", role: "Advisor", from: 2022, to: 2023 }, null),
     may: reaches("alumni"),
-    control: by("team leader"),
+    control: by("member with a Content grant"),
   },
 
   // Access, on someone in DM. A lead's Access page covers only the divisions they lead by role (#488).
@@ -668,6 +671,41 @@ describe("every server action refuses every viewer the matrix keeps out, and wri
       }
     });
   }
+});
+
+// The Alumni page is site content (issue #589) --------------------------------
+//
+// Owner decision, 2026-10-22: the Alumni page follows the site-content rule,
+// so it opens to full access and a Content grant, which is an edit grant. A
+// Can view `website` row, on `all` (the old Alumni grant) or on `content`,
+// opens neither the page nor any of its writes.
+
+const ALUMNI_WRITES = ["team-actions.setAlumnusShown", "team-actions.fixAlumnus", "team-actions.setAlumnusPhoto", "team-actions.addAdvisor"] as const;
+const alumniWrite = (action: (typeof ALUMNI_WRITES)[number]) => ACTION_CASES.find((c) => c.action === action)!;
+
+describe("the Alumni page and its writes follow the Content grant at Can edit, and no Can view website row (issue #589)", () => {
+  for (const name of ["member with a Can view website row on all", "member with a Can view website row on content"]) {
+    test(`${name}: no Alumni page, and every Alumni write refused`, async () => {
+      const data = await open(name);
+      assert.deepEqual((await data.alumni()).rows, [], `${name}: the Alumni page answers rows`);
+      for (const action of ALUMNI_WRITES) {
+        const { answer, writes } = await attempt(accountOf(name).userId, alumniWrite(action).run);
+        assert.ok(isRefusal(answer), `${name}: ${action} not refused: ${JSON.stringify(answer)}`);
+        assert.deepEqual(writes, [], `${name}: ${action} wrote`);
+      }
+    });
+  }
+
+  test("member with a Content grant: the Alumni page, and every Alumni write lands", async () => {
+    const name = "member with a Content grant";
+    const data = await open(name);
+    assert.ok((await data.alumni()).rows.length > 0, `${name}: the Alumni page answers no rows`);
+    for (const action of ALUMNI_WRITES) {
+      const { answer, writes } = await attempt(accountOf(name).userId, alumniWrite(action).run);
+      assert.ok(!isRefusal(answer), `${name}: ${action} refused: ${JSON.stringify(answer)}`);
+      assert.ok(writes.length > 0, `${name}: ${action} wrote nothing`);
+    }
+  });
 });
 
 // Email alias requests (epic #538) ------------------------------------------
@@ -964,7 +1002,7 @@ describe("leads and heads hold grants beyond their role, and their role access s
       ["team leader", { personId: IT(), where: `department-${IDS.department("MA")}`, areas: { members: "view" } }],
       ["team leader", { personId: IT(), where: IDS.division("MA"), areas: { positions: "edit" }, approveOrders: true }],
       ["team leader", { personId: SEAT(), where: "team", areas: {} }],
-      [FULL, { personId: IT(), where: "team", areas: { alumni: "view" } }],
+      [FULL, { personId: IT(), where: "team", areas: { content: "view" } }],
     ];
     for (const [name, save] of saves) {
       seedKeeping();
@@ -1020,11 +1058,10 @@ describe("leads and heads hold grants beyond their role, and their role access s
 
   test("the delegation limits still hold with a lead or head as the target", async () => {
     const cases: [string, unknown][] = [
-      // Nothing above the viewer's own: a head holds no Content and no Alumni.
+      // Nothing above the viewer's own: a head holds no Content.
       ["department head", { personId: IDS.lead("OA"), where: "department-1", areas: { content: "edit" } }],
-      ["department head", { personId: IDS.lead("OA"), where: "department-1", areas: { alumni: "view" } }],
-      // Alumni and Content go to the whole team only, Content at Can edit only.
-      [FULL, { personId: LEAD, where: `department-${IDS.department("MA")}`, areas: { alumni: "view" } }],
+      // Content goes to the whole team only, and only at Can edit.
+      [FULL, { personId: LEAD, where: `department-${IDS.department("MA")}`, areas: { content: "edit" } }],
       [FULL, { personId: HEAD, where: "team", areas: { content: "view" } }],
       // Approve orders only from the team leader.
       [FULL, { personId: LEAD, where: "team", areas: {}, approveOrders: true }],
@@ -1127,6 +1164,168 @@ describe("a division lead with no scope row edits their own division's orders by
   });
 });
 
+// A lead's own division, in the Team tree ------------------------------------
+
+describe("a division lead with no scope row edits their own division in the Team tree (issue #594)", () => {
+  const LEAD = "division lead";
+  const MA: Unit = "MA";
+  const OA: Unit = "OA";
+  const self = () => accountOf(LEAD).memberId!;
+  type Extra = { readonly scopes?: readonly (typeof scopes.$inferInsert)[]; readonly roles?: readonly (typeof roles.$inferInsert)[] };
+  /** Seeds the database with `extra` added, keeps what each write leaves behind, signs in as the matrix's plain lead of MA and runs `run`. */
+  async function asLead(run: (data: DashboardData) => Promise<unknown>, extra: Extra = {}) {
+    seedFixture();
+    resetFiles();
+    insertRows(scopes, extra.scopes ?? []);
+    insertRows(roles, extra.roles ?? []);
+    keepWrites();
+    signInAs(accountOf(LEAD).userId);
+    const opening = await openDashboard();
+    assert.equal(opening.kind, "open");
+    const answer = await answerOf(() => run((opening as { data: DashboardData }).data));
+    return { answer, writes: recordedWrites() };
+  }
+  const save = (u: Unit, change: { name?: string; code?: string; newLeads?: number[]; oldLeads?: unknown[] } = {}) => {
+    const division = rowsIn(divisions).find((d) => d.id === IDS.division(u))!;
+    return { name: String(division.name), code: String(division.code), newLeads: [], oldLeads: [], members: [], emails: [], ...change };
+  };
+  /** The type of each open role `memberId` holds in the unit's division. */
+  const rolesIn = (memberId: number, u: Unit) =>
+    rowsIn(roles)
+      .filter((r) => r.memberId === memberId && r.divisionId === IDS.division(u) && r.leavedAt === null)
+      .map((r) => r.type)
+      .sort();
+  const extraRole = (id: number, memberId: number, u: Unit | number, type: "lead" | "core"): typeof roles.$inferInsert => ({
+    id,
+    memberId,
+    divisionId: typeof u === "number" ? u : IDS.division(u),
+    title: type === "lead" ? "Division Lead" : "Member",
+    startedAt: "2025-10-01",
+    type,
+  });
+  const membersGrant = (u: Unit): typeof scopes.$inferInsert => ({ id: 9_200, memberId: self(), scope: "division", target: "members", accessLevel: "edit", divisionId: IDS.division(u) });
+  const writes = async (label: string, run: (data: DashboardData) => Promise<unknown>, extra: Extra = {}) => {
+    const result = await asLead(run, extra);
+    assert.ok(!isRefusal(result.answer), `${label}: ${JSON.stringify(result.answer)}`);
+    assert.ok(result.writes.length > 0, `${label}: wrote nothing`);
+  };
+  const refuses = async (label: string, run: (data: DashboardData) => Promise<unknown>, extra: Extra = {}) => {
+    const result = await asLead(run, extra);
+    assert.ok(isRefusal(result.answer), `${label}: not refused: ${JSON.stringify(result.answer)}`);
+    assert.deepEqual(result.writes, [], `${label}: wrote`);
+    /** The reason given, where the action answers one. */
+    return typeof result.answer === "object" && result.answer !== null ? String((result.answer as { error?: string }).error ?? "") : "";
+  };
+
+  test("the lead holds no scope row: the matrix seeds none for them", async () => {
+    await asLead(async () => null);
+    assert.deepEqual(rowsIn(scopes).filter((r) => r.memberId === self()), []);
+  });
+
+  test("Edit division saves a new name and a new code on the led division", async () => {
+    await writes("rename and recode MA", () => teamActions.saveDivision(IDS.division(MA), save(MA, { name: "Flight Analysis", code: "FLA" })));
+    const division = rowsIn(divisions).find((d) => d.id === IDS.division(MA))!;
+    assert.deepEqual([division.name, division.code], ["Flight Analysis Division", "FLA"]);
+  });
+
+  test("Edit division adds a lead, replaces a lead and removes a lead on the led division", async () => {
+    await writes("add MA's member as a lead", () => teamActions.saveDivision(IDS.division(MA), save(MA, { newLeads: [IDS.person(MA)] })));
+    assert.deepEqual(rolesIn(IDS.person(MA), MA), ["lead"]);
+
+    await writes("add someone from DM as a lead", () => teamActions.saveDivision(IDS.division(MA), save(MA, { newLeads: [EXTRA.mover] })));
+    assert.deepEqual(rolesIn(EXTRA.mover, MA), ["lead"]);
+
+    const replaced = { personId: IDS.lead(MA), via: "replaced", outcome: "advisor" };
+    await writes("replace MA's other lead", () => teamActions.saveDivision(IDS.division(MA), save(MA, { newLeads: [EXTRA.mover], oldLeads: [replaced] })));
+    assert.deepEqual([rolesIn(EXTRA.mover, MA), rolesIn(IDS.lead(MA), MA)], [["lead"], ["advisor"]], "the replaced lead becomes an advisor in MA");
+
+    const removed = { personId: IDS.lead(MA), via: "removed", outcome: "member" };
+    await writes("remove MA's other lead", () => teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: [removed] })));
+    assert.deepEqual(rolesIn(IDS.lead(MA), MA), ["core"], "the removed lead stays as a member");
+  });
+
+  test("every rule of Edit division still holds for the lead's save", async () => {
+    const out = (personId: number, outcome: string) => ({ personId, via: "removed", outcome });
+    // Every lead of MA as seeded: the matrix's leads of it, MA's own lead among them.
+    seedFixture();
+    const every = rowsIn(roles)
+      .filter((r) => r.type === "lead" && r.divisionId === IDS.division(MA) && r.leavedAt === null)
+      .map((r) => out(Number(r.memberId), "member"));
+    assert.ok(every.length >= 2);
+    assert.equal(await refuses("remove every lead", () => teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: every }))), "A division needs at least one lead.");
+    const leaves = await refuses("take MA's other lead out of their only division", () =>
+      teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: [out(IDS.lead(MA), "leave-division")] })),
+    );
+    assert.match(leaves, /only division/);
+    const alsoInDM = { roles: [extraRole(9_300, IDS.lead(MA), "DM", "core")] };
+    await refuses("move MA's other lead, who is also in DM, to alumni", () => teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: [out(IDS.lead(MA), "leave-team")] })), alsoInDM);
+    await writes("move MA's other lead, in MA alone, to alumni", () => teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: [out(IDS.lead(MA), "leave-team")] })));
+    assert.equal(await refuses("take OA's code", () => teamActions.saveDivision(IDS.division(MA), save(MA, { code: "OPT" }))), "Optimization already uses OPT.");
+    await refuses("replace a lead with no new lead", () =>
+      teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: [{ personId: IDS.lead(MA), via: "replaced", outcome: "advisor" }] })),
+    );
+  });
+
+  test("the drawer's member actions add someone from the team, invite an email and remove a member in the led division", async () => {
+    await writes("add OA's member to MA", () => teamActions.addMember({ kind: "member", divisionId: IDS.division(MA), personId: IDS.person(OA), title: "Member" }));
+    assert.deepEqual(rolesIn(IDS.person(OA), MA), ["core"]);
+    await writes("invite an email to MA", () =>
+      teamActions.addMember({ kind: "email", divisionId: IDS.division(MA), email: "new@mail.test", firstName: "New", lastName: "Person", title: "Member", details: MEMBER_DETAILS }),
+    );
+    const moverInMA = { roles: [extraRole(9_301, EXTRA.mover, MA, "core")] };
+    await writes("remove a member of MA", () => teamActions.removeFromDivision(EXTRA.mover, IDS.division(MA)), moverInMA);
+    assert.deepEqual(rolesIn(EXTRA.mover, MA), []);
+  });
+
+  test("on a division they do not lead, every one of those is refused and writes nothing", async () => {
+    for (const u of [OA, DM]) {
+      await refuses(`rename ${u}`, () => teamActions.saveDivision(IDS.division(u), save(u, { name: "Renamed", code: "REN" })));
+      await refuses(`add a lead to ${u}`, () => teamActions.saveDivision(IDS.division(u), save(u, { newLeads: [IDS.person(u)] })));
+      await refuses(`remove ${u}'s lead`, () => teamActions.saveDivision(IDS.division(u), save(u, { newLeads: [IDS.person(u)], oldLeads: [{ personId: IDS.lead(u), via: "removed", outcome: "member" }] })));
+      await refuses(`add someone to ${u}`, () => teamActions.addMember({ kind: "member", divisionId: IDS.division(u), personId: EXTRA.head, title: "Member" }));
+      await refuses(`invite an email to ${u}`, () =>
+        teamActions.addMember({ kind: "email", divisionId: IDS.division(u), email: "new@mail.test", firstName: "New", lastName: "Person", title: "Member", details: MEMBER_DETAILS }),
+      );
+      await refuses(`remove a member of ${u}`, () => teamActions.removeFromDivision(EXTRA.mover, IDS.division(u)), { roles: [extraRole(9_302, EXTRA.mover, OA, "core")] });
+    }
+  });
+
+  test("a Members (Can edit) grant on DM gives no Edit division there: no pencil, no save, no lead change", async () => {
+    const grant = { scopes: [membersGrant(DM)] };
+    const { answer } = await asLead((data) => data.teamStructure(), grant);
+    const dm = (answer as TeamStructure).departments.flatMap((d) => d.divisions).find((d) => d.id === IDS.division(DM))!;
+    assert.equal(dm.page, null, "no pencil on DM");
+    await refuses("rename DM", () => teamActions.saveDivision(IDS.division(DM), save(DM, { name: "Renamed", code: "REN" })), grant);
+    await refuses("add a lead to DM", () => teamActions.saveDivision(IDS.division(DM), save(DM, { newLeads: [EXTRA.mover] })), grant);
+    const leadAlsoInOA = { scopes: [membersGrant(DM)], roles: [extraRole(9_303, IDS.lead(DM), OA, "core")] };
+    await refuses("take DM's lead out of DM", () => teamActions.removeFromDivision(IDS.lead(DM), IDS.division(DM)), leadAlsoInOA);
+  });
+
+  test("a lead of two divisions edits both, and the Team tree gives each a pencil", async () => {
+    const leadsOA = { roles: [extraRole(9_304, self(), OA, "lead")] };
+    await writes("rename MA", () => teamActions.saveDivision(IDS.division(MA), save(MA, { name: "Flight Analysis", code: "FLA" })), leadsOA);
+    await writes("rename OA", () => teamActions.saveDivision(IDS.division(OA), save(OA, { name: "Shape Work", code: "SHW" })), leadsOA);
+    const { answer } = await asLead((data) => data.teamStructure(), leadsOA);
+    const editable = (answer as TeamStructure).departments.flatMap((d) => d.divisions).filter((d) => d.page !== null).map((d) => d.id);
+    assert.deepEqual(editable, [IDS.division(MA), IDS.division(OA)]);
+  });
+
+  test("the Team tree's edit view gives the lead a pencil on MA alone, and no department pencil, Add division or Add department", async () => {
+    const { answer } = await asLead((data) => data.teamStructure());
+    const structure = answer as TeamStructure | null;
+    assert.ok(structure !== null, "the edit view opens for the lead");
+    assert.equal(structure.departmentsEditable, false);
+    assert.deepEqual(structure.departments.filter((d) => d.divisionsEditable).map((d) => d.id), [], "no Add division and no Close division anywhere");
+    assert.deepEqual(structure.departments.flatMap((d) => d.divisions).filter((d) => d.page !== null).map((d) => d.id), [IDS.division(MA)]);
+  });
+
+  test("New division and Close division stay refused for the lead, in their own department and on their own division", async () => {
+    const closing = await refuses("close MA", () => teamActions.closeDivision(IDS.division(MA)));
+    assert.equal(closing, "Only the Head of Aerodynamics or the team leader can do this.", "refused by who may close, not by who is in it");
+    await refuses("create a division in Aerodynamics", () => teamActions.createDivision(IDS.department(MA), { name: "Avionics", code: "AVI", newLeads: [self()], oldLeads: [], members: [], emails: [] }));
+  });
+});
+
 // The Members export --------------------------------------------------------
 
 // Every field the member drawer shows, written out by hand so a column
@@ -1181,7 +1380,7 @@ describe("one Edit details panel: whoever may edit a member in scope saves their
     assert.ok(lead.writes.length > 0);
   });
 
-  test("a head edits their department's people only, and a division lead never changes who leads", async () => {
+  test("a head edits their department's people only, and a division lead changes who leads their own division alone (#594)", async () => {
     const head = accountOf("department head").userId;
     assert.deepEqual((await attempt(head, () => teamActions.saveMemberDetails({ kind: "person", id: IDS.person("MA") }, IDS.division("MA"), SAVE))).answer, { ok: true });
     for (const run of [
@@ -1194,8 +1393,11 @@ describe("one Edit details panel: whoever may edit a member in scope saves their
       assert.deepEqual(writes, []);
     }
     const lead = await attempt(accountOf("division lead").userId, () => teamActions.saveMember(IDS.person("MA"), IDS.division("MA"), "division-lead"));
-    assert.ok(isRefusal(lead.answer));
-    assert.deepEqual(lead.writes, []);
+    assert.deepEqual(lead.answer, { ok: true }, "a new lead of the division they lead");
+    assert.ok(lead.writes.length > 0);
+    const elsewhere = await attempt(accountOf("division lead").userId, () => teamActions.saveMember(IDS.person(DM), IDS.division(DM), "division-lead"));
+    assert.ok(isRefusal(elsewhere.answer), "never in a division they do not lead");
+    assert.deepEqual(elsewhere.writes, []);
   });
 });
 

@@ -393,6 +393,13 @@
       "when": 1793640000000,
       "tag": "0055_preview_reseeds",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1793985600000,
+      "tag": "0058_alumni_grants_to_content",
+      "breakpoints": true
     }
   ]
 }

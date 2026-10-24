@@ -59,7 +59,7 @@ test("every role that opens Members gets the same tools; the operations lead ope
 test("a division lead lists only their own division, with every division each person is in", async () => {
   const page = divisionPage(await pages("division-lead").view.members());
   assert.equal(page.division.name, "Mission Analysis Division");
-  assert.equal(page.division.leadsHint, "Leads are changed by the Head of Aerodynamics");
+  assert.equal(page.division.leadsHint, null, "the lead changes their own division's leads (#594)");
   const sofia = page.people.find((p) => p.name === "Sofia Neri")!;
   assert.deepEqual(sofia.chips.map((c) => [c.label, c.code]), [["MA", true], ["Structures", false]]);
   assert.deepEqual(sofia.divisions.map((d) => d.title), ["Mission Analyst", "CAD Engineer"]);
@@ -68,19 +68,20 @@ test("a division lead lists only their own division, with every division each pe
   assert.ok(page.people.every((p) => p.divisions[0].divisionId === MISSION_ANALYSIS));
 });
 
-test("a lead's Edit details sets titles but never a role: only the head changes leads (#231)", async () => {
+test("a lead's Edit details sets titles, and a role only in a division they lead (#594)", async () => {
   const { view, saved } = pages("division-lead");
   const writes = view.teamWrites!;
   const titled = { title: "Mission Analyst", details: NO_MEMBER_DETAILS };
   assert.equal((await writes.saveMemberDetails({ kind: "person", id: 7 }, MISSION_ANALYSIS, titled)).ok, true);
-  assert.equal(await writes.saveMember(7, { divisionId: MISSION_ANALYSIS, role: "division-lead" }), false, "no new lead");
+  assert.equal(await writes.saveMember(7, { divisionId: MISSION_ANALYSIS, role: "division-lead" }), true, "a new lead of their own division");
+  assert.equal(await writes.saveMember(38, { divisionId: 3, role: "division-lead" }), false, "not in a division they do not lead");
   assert.equal((await writes.saveMemberDetails({ kind: "person", id: 2 }, MISSION_ANALYSIS, titled)).ok, false, "never themselves");
   // Ahmed is only in Optimization and Analysis, the lead's second division (#185); Matteo Riva only in Design & Manufacturing.
   assert.equal((await writes.saveMemberDetails({ kind: "person", id: 33 }, 2, { ...titled, title: "Optimization Analyst" })).ok, true);
   assert.equal((await writes.saveMemberDetails({ kind: "person", id: 38 }, 3, titled)).ok, false, "not a division they lead");
   assert.equal((await writes.saveMemberDetails({ kind: "person", id: 38 }, null, titled)).ok, false, "nor anyone outside them, with no division named");
   assert.equal((await writes.setMemberPhoto(38, null)).ok, false);
-  assert.equal(saved.length, 2);
+  assert.equal(saved.length, 3);
 });
 
 test("the whole team's Edit details saves a seat's details, never their seat or its title, and the team leader keeps their place (#584)", async () => {

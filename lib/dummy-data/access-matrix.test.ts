@@ -292,13 +292,13 @@ describe("the test-developer path follows the access matrix", () => {
     assert.deepEqual(saved, [], "a refused Save saved something");
   });
 
-  test("the Content test grant opens the five editors and nothing else; no other test grant or lead opens them (issue #504)", async () => {
+  test("the Content test grant opens the six editors, Alumni among them, and nothing else; no other test grant or lead opens them (issues #504, #589)", async () => {
     const { data, viewer } = session("member", "content");
     assert.equal(maySiteContent(viewer), true);
-    for (const page of ["projects", "outreach", "partners", "faq", "team-page"] as const) assert.equal(canReach(viewer, page), true, page);
-    for (const page of ["alumni", "positions", "applications", "members", "division-access", "orders"] as const) assert.equal(canReach(viewer, page), false, page);
+    for (const page of ["projects", "outreach", "partners", "alumni", "faq", "team-page"] as const) assert.equal(canReach(viewer, page), true, page);
+    for (const page of ["positions", "applications", "members", "division-access", "orders"] as const) assert.equal(canReach(viewer, page), false, page);
     assert.notEqual(await data.partners.list(), null);
-    assert.deepEqual((await data.alumni()).rows, [], "no Alumni page from Content");
+    assert.notDeepEqual((await data.alumni()).rows, [], "the Alumni page from Content");
     for (const grant of TEST_GRANTS.filter((g) => g !== "content")) assert.equal(maySiteContent(session("member", grant).viewer), false, grant);
     for (const lead of ["division-lead", "department-head"] as const) assert.equal(maySiteContent(session(lead).viewer), false, lead);
   });
