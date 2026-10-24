@@ -46,7 +46,7 @@ const records = [
   record(3, "Davide Russo", [[1, "member"], [3, "member"]]),
   record(4, "Laura Greco", [[2, "lead"]]),
   record(5, "Federica Leone", [[3, "lead"]]),
-  record(6, "Chiara Ferri", [], [{ kind: "head", departmentId: 1 }]),
+  record(6, "Chiara Ferri", [], [{ kind: "head", departmentId: 1, title: "" }]),
   record(7, "Alessandro Greco", [], [{ kind: "team-leader" }]),
 ];
 

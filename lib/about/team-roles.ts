@@ -1,7 +1,7 @@
 import type { PersonRecord } from "@/lib/dashboard/division-members";
 import {
-  BOARD_SEAT_TITLES,
-  BOARD_SEATS,
+  boardTitleOf,
+  bySeatOrder,
   DEPARTMENT_KINDS,
   divisionLabel,
   roleIn,
@@ -11,6 +11,7 @@ import {
 } from "@/lib/dashboard/team";
 import {
   applyLayer,
+  arcSeatOf,
   ARC_LEADERS,
   NO_TEAM_LAYER,
   type BuiltDepartment,
@@ -109,23 +110,28 @@ function upTo<T, N extends number>(list: readonly T[], n: N): UpTo<T, N> | null 
   return list.length === 0 ? null : (list.slice(0, n) as unknown as UpTo<T, N>);
 }
 
-/** The board seats, in the order the Team tree draws them; two people in one seat by name. */
+/**
+ * The team-level seats, in the order the Team tree draws them (`bySeatOrder`),
+ * each by its stored title; two people flagged as one seat by name.
+ */
 function arcOf(people: readonly TeamPerson[]): BuiltLeader[] {
-  return BOARD_SEATS.flatMap((seat) =>
-    people
-      .filter((p) => p.placement.role === "board" && p.placement.seat === seat)
-      .sort(byName)
-      .map((p, n): BuiltLeader => ({ spot: `arc:${seat}:${n}`, person: p, role: titleOf(p) ?? BOARD_SEAT_TITLES[seat] })),
-  );
+  const seated = people
+    .flatMap((p) => (p.placement.role === "board" ? [{ seat: p.placement.seat, arc: arcSeatOf(p.placement.seat), person: p }] : []))
+    .sort((a, b) => (a.arc === b.arc ? byName(a.person, b.person) : bySeatOrder(a.seat, b.seat)));
+  return seated.map(({ seat, arc, person }, i): BuiltLeader => {
+    const n = seated.slice(0, i).filter((s) => s.arc === arc).length;
+    return { spot: `arc:${arc}:${n}`, person, role: boardTitleOf(seat) };
+  });
 }
 
 /** Each open department with a head: its heads by name, and the leads of its divisions in division order, co-leads by name. */
 function departmentsOf(roles: TeamRoles): BuiltDepartment[] {
   return roles.org.departments.flatMap((department): BuiltDepartment[] => {
+    // A head reads their head role's stored title; a blank one reads "Head of" the department (./team-layer.ts).
     const heads = roles.people
-      .filter((p) => p.placement.role === "head" && p.placement.departmentId === department.id)
-      .sort(byName)
-      .map((p, n) => ({ spot: `head:${department.id}:${n}` as const, person: p, title: titleOf(p) }));
+      .flatMap((p) => (p.placement.role === "head" && p.placement.departmentId === department.id ? [{ person: p, title: p.placement.title.trim() }] : []))
+      .sort((a, b) => byName(a.person, b.person))
+      .map(({ person, title }, n) => ({ spot: `head:${department.id}:${n}` as const, person, title: title === "" ? undefined : title }));
     if (heads.length === 0) return [];
     const leads = roles.org.divisions
       .filter((d) => d.departmentId === department.id)

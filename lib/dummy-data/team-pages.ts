@@ -51,6 +51,7 @@ import { alumniDirectory, alumnusRow, checkAdvisor, checkAlumnusFix } from "@/li
 import { checkPhoto } from "@/lib/dashboard/self";
 import {
   buildTeamTree,
+  defaultHeadTitle,
   DIVISION_ROLE_OF,
   homeDivision,
   homeDivisionOf,
@@ -392,10 +393,19 @@ function entryWithChanges(entry: RosterEntry, change: MemberChange | undefined):
 function withDepartmentSeat(entry: RosterEntry, edits: TeamEdits): RosterEntry {
   const { placement } = entry;
   const headed = Object.entries(edits.departments).find(([, d]) => d.headId === entry.id && d.closedOn === null);
-  if (headed && placement.role === "divisions") return { ...entry, placement: { role: "head", departmentId: Number(headed[0]), memberships: placement.memberships } };
+  if (headed && placement.role === "divisions") {
+    // A new head's role is written with the default title, as every head write does (`defaultHeadTitle`).
+    const [id, department] = headed;
+    return { ...entry, placement: { role: "head", departmentId: Number(id), title: defaultHeadTitle(department.name), memberships: placement.memberships } };
+  }
   const department = placement.role === "head" ? edits.departments[placement.departmentId] : undefined;
   if (department && (department.closedOn !== null || (department.headId !== null && department.headId !== entry.id))) {
     return { ...entry, placement: { role: "divisions", memberships: placement.memberships } };
+  }
+  // A rename reaches a head title still at the old default; one renamed by hand is kept (issue #625).
+  const was = placement.role === "head" ? departments.find((d) => d.id === placement.departmentId)?.name : undefined;
+  if (department && placement.role === "head" && was !== undefined && placement.title === defaultHeadTitle(was)) {
+    return { ...entry, placement: { ...placement, title: defaultHeadTitle(department.name) } };
   }
   return entry;
 }

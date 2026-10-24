@@ -40,6 +40,12 @@ const org: OrgChart = {
   ],
 };
 
+/** An active role row as the data sources read it; no full-access flag unless one is given. */
+let rowIds = 0;
+function row(r: Omit<RoleSeat, "id" | "fullAccess"> & Partial<Pick<RoleSeat, "fullAccess">>): RoleSeat {
+  return { id: ++rowIds, fullAccess: null, ...r };
+}
+
 function person(id: number, name: string, placement: RosterEntry["placement"]): RosterEntry {
   return { id, name, email: `${name.split(" ")[0].toLowerCase()}@prt.it`, placement, pageTitle: null, joined: 2024, program: null, study: null, access: [] };
 }
@@ -49,7 +55,7 @@ const member = (divisionId: number | null, since = "2024-10-01") => inDivisions(
 
 const roster: RosterEntry[] = [
   person(1, "Alessandro Greco", { role: "team-leader", memberships: NO_MEMBERSHIPS }),
-  person(2, "Chiara Rinaldi", { role: "head", departmentId: 1, memberships: NO_MEMBERSHIPS }),
+  person(2, "Chiara Rinaldi", { role: "head", departmentId: 1, title: "Head of Aerodynamics", memberships: NO_MEMBERSHIPS }),
   person(3, "Marco Bianchi", lead(10)),
   person(4, "Elif Kaya", member(10)),
   person(5, "Bruno Valli", lead(20)),
@@ -168,11 +174,14 @@ test('"Leaves the team" follows the permission rule for lead, head and team lead
 
 test('"Leaves the team" counts every active role: a role in no division is only the team leader\'s to end (#231)', () => {
   // Rows as the server reads them: each person's one division role is in Mission Analysis.
-  const missionRole: RoleSeat = { type: "core", divisionId: 10, departmentId: 1, title: "Mission Analyst", since: "2024-10-01" };
+  const missionRole = row({ type: "core", divisionId: 10, departmentId: 1, title: "Mission Analyst", since: "2024-10-01" });
   const people: [RoleSeat, string][] = [
-    [{ type: "president", divisionId: null, departmentId: null, title: "Team Leader", since: "2025-10-01" }, "the team leader"],
-    [{ type: "head", divisionId: null, departmentId: 1, title: "Head", since: "2025-10-01" }, "Head of Aerodynamics"],
-    [{ type: null, divisionId: null, departmentId: null, title: "Chief Engineer", since: "2025-10-01" }, "Chief Engineer"],
+    [row({ type: "president", divisionId: null, departmentId: null, title: "Team Leader", since: "2025-10-01" }), "the team leader"],
+    [row({ type: "head", divisionId: null, departmentId: 1, title: "Head of Aerodynamics", since: "2025-10-01" }), "Head of Aerodynamics"],
+    [row({ type: null, divisionId: null, departmentId: null, title: "Chief Engineer", since: "2025-10-01", fullAccess: "chief-engineer" }), "Chief Engineer"],
+    // A renamed seat or head is named by its stored title (issue #625).
+    [row({ type: "head", divisionId: null, departmentId: 1, title: "Chief of Aerodynamics", since: "2025-10-01" }), "Chief of Aerodynamics"],
+    [row({ type: "core", divisionId: null, departmentId: null, title: "Chief of Propulsion", since: "2025-10-01", fullAccess: "chief-engineer" }), "Chief of Propulsion"],
   ];
   for (const [beyond, label] of people) {
     const standing = standingOfRoles([missionRole, beyond], twoDepartments);
@@ -186,7 +195,7 @@ test('"Leaves the team" counts every active role: a role in no division is only 
 
 test('"Leaves the team" reads a head role kept on a division row as head of its department (#231, review round 2)', () => {
   // The row the actor reader and the roster both read as Head of Aerodynamics: type head, kept on Mission Analysis.
-  const headOnMission: RoleSeat = { type: "head", divisionId: 10, departmentId: null, title: "Head", since: "2025-10-01" };
+  const headOnMission = row({ type: "head", divisionId: 10, departmentId: null, title: "Head of Aerodynamics", since: "2025-10-01" });
   const standing = standingOfRoles([headOnMission], twoDepartments);
   const refused = { allowed: false, reason: "Also Head of Aerodynamics, so only the team leader can do this" };
   assert.deepEqual(mayLeaveTeam(missionLead, standing, twoDepartments), refused);
@@ -210,13 +219,13 @@ test('"Remove from <division>" is not offered for the only division, and a lead 
 
 test("a seat kept on a division row is the seat, never a lead or member role there (#232, review round 3)", () => {
   const seats: RoleSeat[] = [
-    { type: "president", divisionId: 10, departmentId: null, title: "Team Leader", since: "2025-10-01" },
-    { type: "head", divisionId: 10, departmentId: null, title: "Head", since: "2025-10-01" },
+    row({ type: "president", divisionId: 10, departmentId: null, title: "Team Leader", since: "2025-10-01" }),
+    row({ type: "head", divisionId: 10, departmentId: null, title: "Head", since: "2025-10-01" }),
   ];
   const divisionRows: RoleSeat[] = [
-    { type: "lead", divisionId: 10, departmentId: null, title: "", since: "2025-10-01" },
-    { type: "core", divisionId: 10, departmentId: null, title: "", since: "2025-10-01" },
-    { type: null, divisionId: 10, departmentId: null, title: "", since: "2025-10-01" },
+    row({ type: "lead", divisionId: 10, departmentId: null, title: "", since: "2025-10-01" }),
+    row({ type: "core", divisionId: 10, departmentId: null, title: "", since: "2025-10-01" }),
+    row({ type: null, divisionId: 10, departmentId: null, title: "", since: "2025-10-01" }),
   ];
   for (const role of seats) assert.equal(isDivisionRole(role), false);
   for (const role of divisionRows) assert.equal(isDivisionRole(role), true);
@@ -235,7 +244,7 @@ test("a seat kept on a division row is the seat, never a lead or member role the
 });
 
 test("a seat holder may leave their only division, since they keep a place on the team (#232, review round 3)", () => {
-  const head = { memberships: inMission, beyond: [{ kind: "head" as const, departmentId: 1 }] };
+  const head = { memberships: inMission, beyond: [{ kind: "head" as const, departmentId: 1, title: "" }] };
   const plain = { memberships: inMission, beyond: [] };
   assert.equal(mayLeaveDivision(head, 10), true);
   assert.equal(mayLeaveDivision(plain, 10), false);

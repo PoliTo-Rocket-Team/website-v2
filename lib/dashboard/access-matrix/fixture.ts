@@ -17,7 +17,7 @@ import {
   teamJoins,
   users,
 } from "@/db/schema";
-import { BOARD_SEAT_TITLES } from "../team";
+import { BOARD_FLAG_TITLES } from "../team";
 import type { FlaggedSeat, GrantArea } from "../viewer";
 import { insertRows, resetFakeDb } from "./fake-db";
 import { ALL, UNITS, VIEWERS, type Role, type Unit } from "./matrix";
@@ -92,7 +92,7 @@ const DB_SEAT = {
 
 /** A role's title as stored: a board seat's role is titled by the seat (Project Manager, Chief Engineer), as on the real data. */
 function titleOf(r: Role): string {
-  if (r.fullAccess === "project-manager" || r.fullAccess === "chief-engineer") return BOARD_SEAT_TITLES[r.fullAccess];
+  if (r.fullAccess === "project-manager" || r.fullAccess === "chief-engineer") return BOARD_FLAG_TITLES[r.fullAccess];
   return r.type === "president" ? "Team Leader" : r.type === "head" ? "Head" : r.type === "lead" ? "Division Lead" : "Member";
 }
 

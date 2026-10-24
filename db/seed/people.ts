@@ -321,7 +321,10 @@ export const USER_ROWS = rowsOf(users, [
 const { propulsion, structures, aerodynamics, recovery, electronics, operations, research } = DEPARTMENT;
 const D = DIVISION;
 
-/** Every role lib/about/team.ts gives, started on the first day of this year; the IT lead's carries their seat. */
+/** The two board seats' flags, by holder: their team-level role row carries it, as migration 0047 marked the real rows (issue #625). */
+const BOARD_SEAT_FLAG: Readonly<Record<number, "project_manager" | "chief_engineer">> = { [PROJECT_MANAGER]: "project_manager", [CHIEF_ENGINEER]: "chief_engineer" };
+
+/** Every role lib/about/team.ts gives, started on the first day of this year; the IT lead's and the two board seats' carry their seat. */
 const PUBLIC_ROLE_ROWS = PUBLIC_TEAM.flatMap((p) =>
   p.roles.map((r) => ({
     memberId: p.memberId,
@@ -331,6 +334,7 @@ const PUBLIC_ROLE_ROWS = PUBLIC_TEAM.flatMap((p) =>
     startedAt: PUBLIC_ROLES_START,
     type: r.type,
     ...(p.memberId === IT_LEAD && r.divisionId === D.informationTechnology && { fullAccess: "it_lead" as const }),
+    ...(BOARD_SEAT_FLAG[p.memberId] !== undefined && r.deptId === null && r.divisionId === null && { fullAccess: BOARD_SEAT_FLAG[p.memberId] }),
   })),
 );
 

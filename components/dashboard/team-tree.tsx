@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronDown, LocateFixed, Maximize2, Minus, Pencil, Plus } from "lucide-react";
-import { BOARD_SEAT_TITLES, divisionLabel, matchesQuery, type TeamTree, type TreePerson } from "@/lib/dashboard/team";
+import { divisionLabel, matchesQuery, type TeamTree, type TreePerson } from "@/lib/dashboard/team";
 import { boxOf, layoutTeamTree, type Box, type TreeLayout, type TreeNode } from "@/lib/dashboard/tree-layout";
 import { Avatar } from "./avatar";
 import { SearchField } from "./directory";
@@ -551,13 +551,13 @@ function PhoneTree({ tree, found, target }: { tree: TeamTree; found: number | nu
           <span aria-hidden className={`absolute left-[25%] right-[25%] border-t border-border-strong ${tree.leader ? "top-3" : "top-0"}`} />
           <span aria-hidden className={`absolute bottom-0 left-1/2 border-l ${line(trunkOnPath)} ${tree.leader ? "top-3" : "top-0"}`} />
           <div className="grid grid-cols-2 gap-3 pt-3">
-            {tree.board.map(({ seat, person }, i) => (
+            {tree.board.map(({ title, person }, i) => (
               <div key={person.id} ref={keep(person)} className="relative flex min-h-[52px]">
                 <span aria-hidden className={`absolute -top-3 left-1/2 h-3 border-l ${line(person.self)}`} />
                 {person.self && (
                   <span aria-hidden className={`absolute -top-3 border-t border-accent ${i === 0 ? "left-1/2 -right-1.5" : "-left-1.5 right-1/2"}`} />
                 )}
-                <TreeCard person={person} title={person.name} subtitle={BOARD_SEAT_TITLES[seat]} onPath={person.self} found={atFirstPlace(person, found)} />
+                <TreeCard person={person} title={person.name} subtitle={title} onPath={person.self} found={atFirstPlace(person, found)} />
               </div>
             ))}
           </div>
@@ -593,7 +593,7 @@ function PhoneTree({ tree, found, target }: { tree: TeamTree; found: number | nu
                       <TreeCard
                         person={department.head}
                         title={department.head?.name ?? department.name}
-                        subtitle={department.head ? `Head of ${department.name}` : null}
+                        subtitle={department.head?.title ?? null}
                         onPath={onDepartment}
                         found={atFirstPlace(department.head, found)}
                         trailing={<Chevron open={isOpen} />}

@@ -58,9 +58,9 @@ const team: TeamPerson[] = [
   person(DAVIDE, "Davide Russo", { memberships: member(1) }),
   person(LENA, "Lena Fischer", { memberships: member(2) }),
   person(RICCARDO, "Riccardo Lombardi", { memberships: member(3) }),
-  person(CHIARA, "Chiara Rinaldi", { beyond: [{ kind: "head", departmentId: 1 }] }),
+  person(CHIARA, "Chiara Rinaldi", { beyond: [{ kind: "head", departmentId: 1, title: "" }] }),
   person(ALESSANDRO, "Alessandro Greco", { beyond: [{ kind: "team-leader" }] }),
-  person(GIULIA, "Giulia Rossi", { beyond: [{ kind: "head", departmentId: null }] }),
+  person(GIULIA, "Giulia Rossi", { beyond: [{ kind: "head", departmentId: null, title: "" }] }),
 ];
 
 const request = (id: number, memberId: number, requesterId: number | null, sentAt = "2026-10-22T09:00:00+02:00"): AliasRequest => ({ id, memberId, requesterId, sentAt });

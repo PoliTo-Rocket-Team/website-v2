@@ -63,7 +63,7 @@ import type { TeamPerson } from "@/lib/dashboard/division-edit";
 import { steppingDown } from "@/lib/dashboard/hand-over";
 import { attentionOf, noticeOf } from "@/lib/dashboard/notices";
 import { handOverAttentionFor, hasLapsed, successorsFor, type HandOverRequest, type RequestedRole } from "@/lib/dashboard/hand-over-request";
-import { boardSeatOf, headDepartmentOf, membershipsOfRoles, roleBeyondDivisions, type OrgChart, type Placement, type RoleSeat } from "@/lib/dashboard/team";
+import { isTeamSeat, membershipsOfRoles, roleBeyondDivisions, type OrgChart, type Placement, type RoleSeat } from "@/lib/dashboard/team";
 import {
   kindOfTestViewer,
   seatOf,
@@ -176,6 +176,23 @@ export const SEED_DATA: SeedData = {
 export const SEED_CURRENT_YEAR = 2026;
 
 type Role = SeedData["roles"][number];
+
+/**
+ * A seeded role row of `data` as `RoleSeat`, the way lib/dashboard/team-database.ts
+ * reads a stored one. A row seeded with no id gets the one a fresh database
+ * gives it: its place in `data.roles`, from 1.
+ */
+function seatOfRole(data: SeedData, role: Role): RoleSeat {
+  return {
+    id: role.id ?? data.roles.indexOf(role) + 1,
+    type: role.type ?? null,
+    divisionId: role.divisionId ?? null,
+    since: role.startedAt!,
+    departmentId: role.deptId ?? null,
+    title: role.title,
+    fullAccess: role.fullAccess == null ? null : SEAT_OF_FLAG[role.fullAccess],
+  };
+}
 
 export function isActive(role: Role): boolean {
   return (role.leavedAt ?? null) === null;
@@ -431,7 +448,7 @@ export function teamOf(data: SeedData): TeamPerson[] {
   return [...onTeam(data)].map((memberId) => {
     const active = data.roles
       .filter((r) => r.memberId === memberId && isActive(r))
-      .map((r): RoleSeat => ({ type: r.type ?? null, divisionId: r.divisionId ?? null, since: r.startedAt!, departmentId: r.deptId ?? null, title: r.title }));
+      .map((r) => seatOfRole(data, r));
     const user = data.users.find((u) => u.member === memberId);
     const inOpenDivision = (r: RoleSeat) => org.divisions.some((d) => d.id === r.divisionId);
     return {
@@ -625,26 +642,22 @@ function outreachVersionsOf(data: SeedData): OutreachDraft[] {
 /** A role's rank when the roster picks where someone sits, as lib/dashboard/team-database.ts ranks it. */
 function placementRank(role: Role): number {
   if (role.type === "president") return 0;
-  if (role.deptId == null && role.divisionId == null && boardSeatOf(role.title) !== null) return 1;
+  if (isTeamSeat({ type: role.type ?? null, departmentId: role.deptId ?? null, divisionId: role.divisionId ?? null })) return 1;
   const ranks: Readonly<Record<string, number>> = { head: 2, lead: 3, core: 4, advisor: 4 };
   return ranks[role.type ?? ""] ?? 5;
 }
 
-function seatOfRole(role: Role): RoleSeat {
-  return { type: role.type ?? null, divisionId: role.divisionId ?? null, since: role.startedAt!, departmentId: role.deptId ?? null, title: role.title };
-}
-
 /** Where someone's active roles put them, highest first, as `placementOf` in lib/dashboard/team-database.ts. */
-function placementOfRoles(active: readonly Role[], org: OrgChart): Placement {
+function placementOfRoles(data: SeedData, active: readonly Role[], org: OrgChart): Placement {
   const [top] = active;
-  const open = active.filter((r) => org.divisions.some((d) => d.id === r.divisionId)).map(seatOfRole);
+  const open = active.filter((r) => org.divisions.some((d) => d.id === r.divisionId)).map((r) => seatOfRole(data, r));
   const beside = () => membershipsOfRoles(open.filter((r) => roleBeyondDivisions(r, org) === null));
-  if (top.type === "president") return { role: "team-leader", memberships: beside() };
-  const seat = placementRank(top) === 1 ? boardSeatOf(top.title) : null;
-  if (seat !== null) return { role: "board", seat, memberships: beside() };
-  if (top.type === "head") {
-    const departmentId = headDepartmentOf(seatOfRole(top), org);
-    if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId, memberships: beside() };
+  const seat = roleBeyondDivisions(seatOfRole(data, top), org);
+  if (seat?.kind === "team-leader") return { role: "team-leader", memberships: beside() };
+  if (seat?.kind === "board") return { role: "board", seat: seat.seat, memberships: beside() };
+  if (seat?.kind === "head") {
+    const { departmentId, title } = seat;
+    if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId, title, memberships: beside() };
   }
   return { role: "divisions", memberships: membershipsOfRoles(open) };
 }
@@ -661,7 +674,7 @@ export function teamRolesOf(data: SeedData): TeamRoles {
       {
         id: memberId,
         name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email,
-        placement: placementOfRoles(active, org),
+        placement: placementOfRoles(data, active, org),
         pageTitle: active[0].title || null,
         photo: member?.picture ?? null,
         linkedin: user.linkedin ?? null,
@@ -778,15 +791,18 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "people",
-    case: "A Project Manager and a Chief Engineer, the two board seats, so the roles fill every section of the Team page",
+    case: "A Project Manager and a Chief Engineer, the two flagged board seats, then the Head of R&D's team-level seat, so the roles fill every section of the Team page",
     data: "public",
-    rows: "`roles` titled by the seat, members 52 and 53",
-    exercisedBy: `${issue(282)}, ${issue(311)}`,
+    rows: "`roles` in no department or division, members 52 and 53 flagged by `roles.full_access`, member 9",
+    exercisedBy: `${issue(282)}, ${issue(311)}, ${issue(625)}`,
     holds: (data) => {
       const roles = teamRolesOf(data);
       const { build } = teamPageOfSeed(data);
+      const [pm, ce, ...others] = build.arc;
       return (
-        build.arc.map((l) => l.spot).join(",") === "arc:project-manager:0,arc:chief-engineer:0" &&
+        pm?.spot === "arc:project-manager:0" &&
+        ce?.spot === "arc:chief-engineer:0" &&
+        others.map((l) => [l.person.id, l.role].join(" ")).join(",") === "9 Head of R&D" &&
         teamPageFromRoles(roles, teamRecord) !== null
       );
     },

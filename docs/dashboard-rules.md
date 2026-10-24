@@ -253,6 +253,14 @@ These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
   reads "Also in another division · shown once" (board 54e).
 - The division a person is drawn under, and the one a page names when it shows only one, is
   their home division: the oldest division they lead, else their oldest membership.
+- A role title is stored (`roles.title`) and every page shows it as stored (#625). A head row is
+  written with "Head of {department}"; a department rename rewrites only head titles still at
+  the old default. The default shows only for a blank title. No page decides a seat or a
+  headship by a title's text, so a rename never moves anyone or changes any access.
+- The Team tree's seat row, under the team leader, holds every team-level seat: an active role in
+  no department and no division that is not the team leader's, a head's or an advisor's. The
+  Project Manager and the Chief Engineer, read from their `roles.full_access` flag, come first;
+  any other seat follows by start date. The Team page's arc lists them in the same order.
 - **Superseded:** rule 7 of [0011](../.decisions/0011-applicant-journey-received-to-joining.md),
   "one person, one division", no longer holds. [0014](../.decisions/0014-several-divisions-one-nda.md)
   replaces it, and also amends 0011's Confirm join rule for someone already on the team.

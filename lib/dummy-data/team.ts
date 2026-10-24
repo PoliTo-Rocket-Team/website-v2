@@ -4,7 +4,7 @@
 // the Overview read the same people. Later dashboard pages add their arrays
 // beside these.
 
-import { inDivisions, NO_MEMBERSHIPS, seasonAt, type BoardSeat, type DivisionRole, type OrgDepartment, type OrgDivision, type Placement } from "@/lib/dashboard/team";
+import { inDivisions, NO_MEMBERSHIPS, seasonAt, type BoardFlag, type DivisionRole, type OrgDepartment, type OrgDivision, type Placement } from "@/lib/dashboard/team";
 
 export type DummyDepartment = OrgDepartment;
 
@@ -60,12 +60,16 @@ export const closedDivisions = [
   { id: 15, name: "Wind Tunnel Division", departmentId: 1, code: "WT", closedOn: "2025-07-15" },
 ] as const satisfies readonly (DummyDivision & { readonly closedOn: string })[];
 
-/** Where a row places someone, given the day they joined the team. */
-type Place = (since: string) => Placement;
+/** Where a row places someone, given the day they joined the team, the row's title and its id (a seat's role is its row). */
+type Place = (since: string, title: string, id: number) => Placement;
 
 const leader: Place = () => ({ role: "team-leader", memberships: NO_MEMBERSHIPS });
-const board = (seat: BoardSeat): Place => () => ({ role: "board", seat, memberships: NO_MEMBERSHIPS });
-const head = (departmentId: number): Place => () => ({ role: "head", departmentId, memberships: NO_MEMBERSHIPS });
+const board =
+  (flag: BoardFlag | null): Place =>
+  (since, title, id) => ({ role: "board", seat: { roleId: id, title, flag, since }, memberships: NO_MEMBERSHIPS });
+const head =
+  (departmentId: number): Place =>
+  (_since, title) => ({ role: "head", departmentId, title, memberships: NO_MEMBERSHIPS });
 const lead = (divisionId: number): Place => (since) => inDivisions([{ divisionId, role: "lead", since }]);
 /** A member of one division, or of none yet (null): added to the roster, not placed. */
 const member = (divisionId: number | null): Place => (since) => inDivisions(divisionId === null ? [] : [{ divisionId, role: "member", since }]);
@@ -103,7 +107,7 @@ function person([id, name, place, title, joined, extra = {}]: Row): DummyPerson 
     id,
     name,
     email: extra.email ?? `${first[0]}.${rest.join("")}@politorocketteam.it`,
-    placement: place(since),
+    placement: place(since, title, id),
     title,
     pageTitle: extra.pageTitle ?? null,
     since,
