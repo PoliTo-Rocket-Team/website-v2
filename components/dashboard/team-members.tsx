@@ -333,7 +333,7 @@ function DivisionBar({ division, people }: { division: MembersUnit["divisions"][
             <span className={EYEBROW}>Leads</span>
             {leads.map((lead) => (
               <span key={lead.id} className="flex items-center gap-2 text-[14px] text-prt-text">
-                <Avatar size="xs" photoUrl={lead.photoUrl} />
+                <Avatar size="xs" person={lead} />
                 {lead.name}
               </span>
             ))}
@@ -458,7 +458,7 @@ function PersonRow({
     <tr onClick={onOpen} className={`cursor-pointer transition-colors duration-300 ease-out ${selected ? "bg-accent/[0.08]" : "hover:bg-white-5"}`}>
       <td className="px-5 py-2.5">
         <span className="flex min-w-0 items-center gap-3.5">
-          <Avatar photoUrl={person.photoUrl} />
+          <Avatar person={person} />
           <span className="min-w-0">
             <span className="block truncate text-[14px] text-prt-text">{person.name}</span>
             <span className="block truncate text-[12px] text-prt-muted">{person.details.prtEmail || person.signInEmail}</span>
@@ -582,7 +582,7 @@ function PhoneCards({
             onClick={() => onOpen(p.id)}
             className={`${PANEL} flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`}
           >
-            <Avatar size="ml" photoUrl={p.photoUrl} />
+            <Avatar size="ml" person={p} />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[16px] font-semibold">{p.name}</span>
               <span className={`block truncate text-[13px] ${p.role === "member" ? "text-prt-muted" : "text-accent"}`}>{p.roleLabel}</span>
@@ -712,7 +712,7 @@ function TableView({
                   }`}
                 >
                   <span className="flex min-w-0 items-center gap-2.5">
-                    <Avatar size="xs" photoUrl={p.photoUrl} />
+                    <Avatar size="xs" person={p} />
                     <span className="truncate text-[13px] text-prt-text">{p.name}</span>
                   </span>
                 </td>

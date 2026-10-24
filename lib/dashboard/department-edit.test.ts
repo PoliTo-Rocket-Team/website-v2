@@ -89,7 +89,7 @@ test("Edit department saves a new name or code under the same rules, for an open
 const DM: Unit = { kind: "division", divisionId: 3 };
 const STRUCTURES: Unit = { kind: "department", departmentId: 2 };
 
-const record = (r: Partial<ClosingRecord> & Pick<ClosingRecord, "id" | "name">): ClosingRecord => ({ memberships: membershipsOf([]), beyondDivisions: [], advising: [], ...r });
+const record = (r: Partial<ClosingRecord> & Pick<ClosingRecord, "id" | "name">): ClosingRecord => ({ photoUrl: null, memberships: membershipsOf([]), beyondDivisions: [], advising: [], ...r });
 
 /** Aerodynamics: its head, a lead, a member also in Design & Manufacturing, an advisor in a division and one on the department; and someone only in Structures. */
 const records: ClosingRecord[] = [

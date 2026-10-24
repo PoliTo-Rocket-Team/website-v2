@@ -35,7 +35,7 @@ const byRole: Record<string, AccessUnit> = {
   "division lead of several divisions": twoDivisions,
 };
 
-const person = (id: number, name: string, division: AccessPerson["division"]): AccessPerson => ({ id, name, role: NO_ROLE, division });
+const person = (id: number, name: string, division: AccessPerson["division"]): AccessPerson => ({ id, name, photoUrl: null, role: NO_ROLE, division });
 const grants = (p: AccessPerson, givenOn: string, approveOrders = false): AccessRow => ({
   kind: "grants",
   access: {
@@ -50,7 +50,7 @@ const grants = (p: AccessPerson, givenOn: string, approveOrders = false): Access
 const seat: AccessRow = {
   kind: "role",
   role: {
-    person: { id: 10, name: "Giulia Ferri", role: { kind: "full", seat: "operations-lead", title: "Operations lead" }, division: null },
+    person: { id: 10, name: "Giulia Ferri", photoUrl: null, role: { kind: "full", seat: "operations-lead", title: "Operations lead" }, division: null },
     place: { kind: "team" },
     seat: "operations-lead",
     title: "Operations lead",

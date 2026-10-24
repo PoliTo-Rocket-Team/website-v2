@@ -48,12 +48,12 @@ async function overviewOf(data: DashboardData): Promise<Overview> {
     case "non-member": {
       const mine = await data.myApplications();
       if (mine === null) notFound();
-      return applicantOverview(data.viewer.name, mine);
+      return applicantOverview(data.viewer, mine);
     }
     case "alumni": {
       const [mine, me] = await Promise.all([data.myApplications(), data.myAlumni()]);
       if (mine === null || me === null) notFound();
-      return alumniOverview(data.viewer.name, me, mine);
+      return alumniOverview(data.viewer, me, mine);
     }
     default:
       return data.overview();

@@ -343,6 +343,8 @@ export const NO_ROLE = { kind: "member" } as const satisfies PersonRole;
 export type AccessPerson = {
   readonly id: number;
   readonly name: string;
+  /** Their stored photo, wherever the page names them (issue #656); null for the PRT mark. */
+  readonly photoUrl: string | null;
   /** What their role gives them here (`roleCovers`). */
   readonly role: PersonRole;
   /** The division they are in; null for someone placed in none, such as another head. */

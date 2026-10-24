@@ -240,8 +240,12 @@ export type ApplicationEntry = {
   readonly id: number;
   /** Where it stands; ./application-flow.ts says what can happen next. */
   readonly state: ApplicationState;
-  /** Their name, and every field they gave on the apply form and in "Your details" (issue #406). */
-  readonly applicant: ApplicantDetails & { readonly name: string };
+  /**
+   * Their name, and every field they gave on the apply form and in "Your
+   * details" (issue #406). `photoUrl` is the stored photo of their member
+   * record (issue #656): null for the PRT mark, as for anyone with no record.
+   */
+  readonly applicant: ApplicantDetails & { readonly name: string; readonly photoUrl: string | null };
   /** Where the applicant stands with the team: a member joins with no NDA wait (board 58h2). */
   readonly standing: ApplicantStanding;
   readonly position: { readonly ref: PositionRef; readonly title: string; readonly division: string };

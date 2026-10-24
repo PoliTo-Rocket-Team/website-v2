@@ -50,7 +50,7 @@ export function SeatDrawer({ target, structure, onClose }: { target: SeatDrawerT
 function PickedHolder({ pick, isNew, onUndo }: { pick: TeamPick; isNew: boolean; onUndo: () => void }) {
   return (
     <div className="flex items-center gap-3 bg-accent/[0.05] px-3.5 py-2.5">
-      <Avatar size="md" />
+      <Avatar size="md" person={pick} />
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate text-[14px] text-prt-text">{pick.name}</span>
@@ -152,13 +152,13 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
             <h3 className={SECTION_LABEL}>Holder</h3>
             {next === null ? (
               <div className={`${LIST} mt-2.5 flex items-center gap-3 px-3.5 py-3`}>
-                <Avatar size="md" accent />
+                <Avatar size="md" accent person={holder} />
                 <span className="min-w-0 flex-1 truncate text-[15px] text-prt-text">{holder.name}</span>
               </div>
             ) : (
               <ul className={`${LIST} mt-2.5 divide-y divide-hairline`}>
                 <li className="flex items-center gap-3 px-3.5 py-2.5 opacity-60">
-                  <Avatar size="md" />
+                  <Avatar size="md" person={holder} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[14px] text-prt-text">{holder.name}</span>
                     <span className="block truncate text-[12px] text-prt-muted">Replaced by {next.name}</span>

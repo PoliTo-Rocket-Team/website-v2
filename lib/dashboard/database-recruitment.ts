@@ -466,6 +466,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
       origin: users.origin,
       linkedin: users.linkedin,
       referral: users.referralSource,
+      picture: members.picture,
       cv_file_id: cvFiles.id,
       cv_file_name: cvFiles.originalFilename,
       cv_file_size: cvFiles.fileSize,
@@ -475,6 +476,8 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
     })
     .from(applications)
     .innerJoin(users, eq(applications.userId, users.id))
+    // An applicant with a member record shows its stored photo (issue #656).
+    .leftJoin(members, eq(members.memberId, users.member))
     .leftJoin(cvFiles, eq(applications.cvFileId, cvFiles.id))
     .leftJoin(letterFiles, eq(applications.coverLetterFileId, letterFiles.id))
     // A withdrawn application leaves the lead's list at once (issue #169).
@@ -500,6 +503,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
           state: stateOf(r, slots.get(r.id) ?? []),
           applicant: {
             name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email,
+            photoUrl: r.picture,
             email: r.email,
             phone: r.phone,
             politoId: r.polito_id,

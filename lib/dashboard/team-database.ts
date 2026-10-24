@@ -8,7 +8,7 @@ import { DEGREE_PROGRAMMES, GENDERS, STUDY_PROGRAMMES } from "@/lib/apply/applic
 import { TEAM_ROSTER_CACHE_TAG } from "@/lib/cache-tags";
 import { actingTitleOf, attributedName } from "./acting-account";
 import type { MemberDetails } from "./details";
-import type { TeamPerson } from "./division-edit";
+import type { FoundPerson } from "./division-edit";
 import type { PersonRecord } from "./division-members";
 import type { HeldSeat } from "./hand-over";
 import { normalizeLinkedin } from "./self";
@@ -309,11 +309,16 @@ export function seatsOf(snapshot: TeamSnapshot): HeldSeat[] {
   });
 }
 
-/** Everyone on the team as the division and hand-over rules read them (./division-edit.ts, ./hand-over-request.ts). */
-export function teamPeopleOf(snapshot: TeamSnapshot): TeamPerson[] {
+/**
+ * Everyone on the team as the division and hand-over rules read them
+ * (./division-edit.ts, ./hand-over-request.ts), with the stored photo their
+ * pickers show (issue #656).
+ */
+export function teamPeopleOf(snapshot: TeamSnapshot): FoundPerson[] {
   return recordsOf(snapshot).map((r) => ({
     id: r.id,
     name: r.name,
+    photoUrl: r.photoUrl,
     emails: [r.signInEmail, r.details.prtEmail].filter((e) => e !== ""),
     memberships: r.memberships,
     beyond: r.beyondDivisions,

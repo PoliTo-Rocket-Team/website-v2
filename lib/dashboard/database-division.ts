@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/db/client";
-import { departments, divisions, logs, orders, roles, scopes, users } from "@/db/schema";
+import { departments, divisions, logs, members, orders, roles, scopes, users } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
 import { privatePathname, type PrivatePathname } from "@/lib/storage/pathname";
@@ -242,12 +242,14 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
         first_name: users.firstName,
         last_name: users.lastName,
         email: users.email,
+        picture: members.picture,
         giver_first_name: giver.firstName,
         giver_last_name: giver.lastName,
         giver_email: giver.email,
       })
       .from(scopes)
       .innerJoin(users, eq(users.member, scopes.memberId))
+      .leftJoin(members, eq(members.memberId, scopes.memberId))
       .leftJoin(giver, eq(giver.member, scopes.givenBy))
       .where(and(unitRows, ne(scopes.memberId, me)))
       .orderBy(desc(scopes.id)),
@@ -262,9 +264,11 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
         first_name: users.firstName,
         last_name: users.lastName,
         email: users.email,
+        picture: members.picture,
       })
       .from(roles)
       .innerJoin(users, eq(users.member, roles.memberId))
+      .leftJoin(members, eq(members.memberId, roles.memberId))
       .where(
         and(
           isNull(roles.leavedAt),
@@ -305,10 +309,10 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
   // department they head, else each division of the unit they lead. They are placed in the first division they
   // lead, else the first they are in. A head carries their head role's title as stored (issue #625).
   type Headed = { readonly department: AccessDepartmentUnit; readonly title: string };
-  const placements = new Map<number, { name: string; led: AccessDivision[]; in: AccessDivision[]; headed: Headed | null }>();
+  const placements = new Map<number, { name: string; photoUrl: string | null; led: AccessDivision[]; in: AccessDivision[]; headed: Headed | null }>();
   for (const t of team) {
     if (t.member_id === null) continue;
-    const seen = placements.get(t.member_id) ?? { name: nameOf(t), led: [], in: [], headed: null };
+    const seen = placements.get(t.member_id) ?? { name: nameOf(t), photoUrl: t.picture, led: [], in: [], headed: null };
     placements.set(t.member_id, seen);
     if (t.type === "head" && t.division_id === null && seen.headed === null) {
       const department = unitDepartments.find((d) => d.department.id === t.dept_id);
@@ -334,10 +338,10 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
           : firstLed !== undefined
             ? { kind: "lead", divisions: [firstLed, ...moreLed] }
             : NO_ROLE;
-    byMember.set(id, { id, name: seen.name, role, division: seen.led[0] ?? seen.in[0] ?? null });
+    byMember.set(id, { id, name: seen.name, photoUrl: seen.photoUrl, role, division: seen.led[0] ?? seen.in[0] ?? null });
   }
-  const personOf = (memberId: number, row: { first_name: string | null; last_name: string | null; email: string }): AccessPerson =>
-    byMember.get(memberId) ?? { id: memberId, name: nameOf(row), role: NO_ROLE, division: null };
+  const personOf = (memberId: number, row: { first_name: string | null; last_name: string | null; email: string; picture: string | null }): AccessPerson =>
+    byMember.get(memberId) ?? { id: memberId, name: nameOf(row), photoUrl: row.picture, role: NO_ROLE, division: null };
 
   const roleAccess = [...byMember.values()]
     .flatMap((person) => (person.id === me ? [] : roleAccessOf(person)))

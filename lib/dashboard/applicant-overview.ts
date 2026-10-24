@@ -1,5 +1,6 @@
 import { hasNoneShown, unitName, type ActiveApplication, type MyApplications, type PastApplication } from "./my-applications";
 import type { Link } from "./overview";
+import type { Pictured } from "./stored-photo";
 
 // The Overview of a non-member (boards 50e and 50f, issues #211 and #317):
 // who they are, what waits on them, and their applications, or, with none
@@ -53,9 +54,15 @@ export const NO_APPLICATIONS = {
   detail: "Apply for an open position and follow it here.",
 } as const;
 
+/** Who an Overview off the team is for, as `DashboardViewer` reads them: their name and their stored photo. */
+export type OverviewViewer = Pictured & { readonly name: string };
+
+/** The person at the top of an Overview off the team (boards 50e, 56): the viewer, with the line under their name. */
+export type OverviewPerson = OverviewViewer & { readonly line: string };
+
 export type ApplicantOverview = {
   readonly shape: "applicant";
-  readonly person: { readonly name: string; readonly line: string };
+  readonly person: OverviewPerson;
   readonly nextStep: NextStep | null;
   readonly applications: ApplicantApplications;
 };
@@ -126,12 +133,13 @@ export function applicantApplicationsOf(mine: MyApplications): ApplicantApplicat
 /**
  * A non-member's Overview. While one of their applications is shown they
  * read as an applicant (board 50e); with none shown, by their sign-in
- * address alone (board 50f).
+ * address alone (board 50f). Their circle shows their stored photo (issue
+ * #656), which only someone with a member record has.
  */
-export function applicantOverview(name: string, mine: MyApplications): ApplicantOverview {
+export function applicantOverview(viewer: OverviewViewer, mine: MyApplications): ApplicantOverview {
   return {
     shape: "applicant",
-    person: { name, line: hasNoneShown(mine) ? mine.email : `Applicant · ${mine.email}` },
+    person: { name: viewer.name, photoUrl: viewer.photoUrl, line: hasNoneShown(mine) ? mine.email : `Applicant · ${mine.email}` },
     nextStep: nextStepOf(mine.active),
     applications: applicantApplicationsOf(mine),
   };

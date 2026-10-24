@@ -272,7 +272,7 @@ function AlumnusCard({ row, editable, onOpen }: { row: AlumnusRow; editable: boo
   return (
     <li className={`${PANEL} flex items-center gap-3.5 px-4 py-3.5`}>
       <button type="button" onClick={onOpen} className={`flex min-w-0 flex-1 items-center gap-3.5 rounded-lg text-left ${FOCUS}`}>
-        <Avatar size="ml" photoUrl={row.photo} />
+        <Avatar size="ml" person={{ photoUrl: row.photo }} />
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-[16px] font-semibold">{row.name}</span>
@@ -307,7 +307,7 @@ function AlumnusTableRow({
     <tr className={`transition-colors duration-300 ease-out ${selected ? "bg-accent/[0.08]" : "hover:bg-white-5"}`}>
       <td className="px-5 py-2.5">
         <span className="flex min-w-0 items-center gap-3.5">
-          <Avatar photoUrl={row.photo} />
+          <Avatar person={{ photoUrl: row.photo }} />
           {/* The name goes first: when it and its tags do not fit on one line (a side panel open
               at 1280px), the tags wrap under it instead of squeezing it (board 78b). */}
           <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3.5 gap-y-1">

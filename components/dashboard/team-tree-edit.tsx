@@ -304,7 +304,7 @@ function SeatBox({ seat, editable, found, onOpen }: { seat: StructureSeat; edita
   const frame = `relative flex h-[112px] w-[200px] flex-col items-center justify-center rounded-xl border px-3 text-center ${boxMark(found, seat.yours)}`;
   const body = (
     <>
-      <Avatar size="ml" accent photoUrl={seat.holder.photoUrl} />
+      <Avatar size="ml" accent person={seat.holder} />
       <span className="mt-2 max-w-full truncate text-[14px] font-semibold text-prt-text">{seat.holder.name}</span>
       <span className="max-w-full truncate text-[12px] text-prt-muted">{seat.title}</span>
     </>
@@ -339,7 +339,7 @@ function LeaderBox({ leader, found, onHandOver }: { leader: StructureLeader; fou
   const frame = `relative flex h-[112px] w-[200px] flex-col items-center justify-center rounded-xl border px-3 text-center ${boxMark(found, leader.yours)}`;
   const body = (
     <>
-      <Avatar size="ml" accent photoUrl={leader.photoUrl} />
+      <Avatar size="ml" accent person={leader} />
       <span className="mt-2 max-w-full truncate text-[14px] font-semibold text-prt-text">{leader.name}</span>
       <span className="text-[12px] text-prt-muted">Team Leader</span>
     </>
@@ -436,7 +436,7 @@ function DepartmentColumn({
 function BoxPerson({ person, name, line }: { person: StructurePerson | null; name: string; line: string }) {
   return (
     <span className="mt-1 flex items-center gap-2.5">
-      {person && <Avatar size="sm" accent photoUrl={person.photoUrl} />}
+      {person && <Avatar size="sm" accent person={person} />}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-semibold leading-tight text-prt-text">{name}</span>
         <span className="mt-0.5 block truncate text-[12px] text-prt-muted">{line}</span>

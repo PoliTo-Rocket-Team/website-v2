@@ -86,7 +86,7 @@ export function HandOverDialog({
             <>
               <PersonCombobox
                 id={id}
-                people={offer.successors.map((s) => ({ id: s.id, name: s.name, aside: s.unit }))}
+                people={offer.successors.map((s) => ({ id: s.id, name: s.name, photoUrl: s.photoUrl, aside: s.unit }))}
                 value={to}
                 onChoose={setTo}
                 placeholder="Pick who takes over"

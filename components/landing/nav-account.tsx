@@ -91,7 +91,7 @@ function AccountMenu({ viewer }: { viewer: NavViewer }) {
         aria-label="Account menu"
         className="flex shrink-0 rounded-full ring-offset-1 ring-offset-ground transition-shadow duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white-10 data-[state=open]:ring-2 data-[state=open]:ring-accent"
       >
-        <Avatar photoUrl={viewer.photoUrl} size="nav" accent />
+        <Avatar person={viewer} size="nav" accent />
       </DropdownMenuTrigger>
       <DropdownMenuPortal>
         <DropdownMenuPrimitive.Content

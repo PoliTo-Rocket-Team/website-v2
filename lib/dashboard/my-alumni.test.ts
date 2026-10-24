@@ -44,9 +44,10 @@ function record(entry: Partial<AlumniEntry> | null = null): AlumniRecord {
 
 const luca = (entry: Partial<AlumniEntry> | null = null) => myAlumniOf(alumniOf(record(entry), 2026)[0]!);
 const noApplications: MyApplications = { firstName: "Luca", email: "luca@example.com", active: [], past: [] };
+const LUCA = { name: "Luca Moretti", photoUrl: null };
 
 test("the alumni Overview reads Former member, the last unit and the years, from the ended roles (board 56)", () => {
-  const overview = alumniOverview("Luca Moretti", luca(), noApplications);
+  const overview = alumniOverview(LUCA,luca(), noApplications);
   assert.equal(overview.person.line, "Former member · Mission Analysis Division · 2022 – 2025");
   assert.deepEqual(overview.card, {
     title: "You are on the Alumni page",
@@ -57,8 +58,8 @@ test("the alumni Overview reads Former member, the last unit and the years, from
 });
 
 test("the card never claims the Alumni page lists someone who asked to be left off, or whom the team hid", () => {
-  assert.equal(alumniOverview("Luca Moretti", luca({ removed: true }), noApplications).card.title, "You are not on the Alumni page");
-  assert.equal(alumniOverview("Luca Moretti", luca({ shown: false }), noApplications).card.title, "You are not on the Alumni page");
+  assert.equal(alumniOverview(LUCA,luca({ removed: true }), noApplications).card.title, "You are not on the Alumni page");
+  assert.equal(alumniOverview(LUCA,luca({ shown: false }), noApplications).card.title, "You are not on the Alumni page");
 });
 
 test("My alumni lists the roles by academic year, newest first (board 56b)", () => {
