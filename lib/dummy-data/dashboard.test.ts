@@ -106,6 +106,12 @@ test("the lead of two divisions has one Access list over both, and gives access 
   assert.equal(access.unit.kind, "division");
   if (access.unit.kind !== "division") return;
   assert.deepEqual(access.unit.divisions.map((d) => d.division.name), ["Mission Analysis Division", "Optimization and Analysis Division"]);
+  // The role holds Orders at Can edit in each division led, beside Positions, Applications and Members (issue #632).
+  for (const d of access.unit.divisions) {
+    for (const target of ["positions", "applications", "members", "orders"] as const) {
+      assert.ok(d.held.some((h) => h.target === target && h.level === "edit"), `${d.division.name}: ${target} at Can edit`);
+    }
+  }
   assert.ok(access.grants.some((g) => g.person.name === "Sara Fontana"), "a grant in Optimization and Analysis is listed too");
   // Sara Fontana is in Optimization and Analysis (2), Sara Conti in Mission Analysis (1).
   const given = await data.saveAccess({ personId: 32, areas: { positions: "edit" } });

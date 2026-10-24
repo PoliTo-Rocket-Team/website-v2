@@ -12,13 +12,16 @@ import {
   checkRemoveGrant,
   checkSaveAccess,
   departmentOfPlace,
+  grantablePeople,
   grantRowOf,
   heldLines,
+  LEAD_ROLE_HELD_ACCESS,
   NO_APPROVE_ORDERS,
   NO_ROLE,
   placeKey,
   placesOf,
   ROLE_HELD_ACCESS,
+  roleCovers,
   roleDivision,
   SEAT_LABELS,
   shownAreas,
@@ -189,20 +192,43 @@ test("a head gives every unit area their role holds, and only inside their depar
 });
 
 test("a head never changes a lead's role access, and gives, changes and removes their other grants (issue #591)", () => {
-  // Members in the division Laura leads comes with her role.
+  // Members and Orders in the division Laura leads come with her role (#632).
   assert.equal(checkSaveAccess(head(), { personId: 20, where: 2, areas: { members: "view" } }).ok, false);
-  // Orders there, and Members across the whole department, are grants like anyone's.
-  assert.equal(checkSaveAccess(head(), { personId: 20, where: 2, areas: { orders: "view" } }).ok, true);
+  assert.equal(checkSaveAccess(head(), { personId: 20, where: 2, areas: { orders: "view" } }).ok, false);
+  // Members and Orders across the whole department are grants like anyone's.
   assert.equal(checkSaveAccess(head(), { personId: 20, where: "department-1", areas: { members: "view" } }).ok, true);
-  const marcosGrant = grant(9, marco, "orders", "edit");
+  assert.equal(checkSaveAccess(head(), { personId: 20, where: "department-1", areas: { orders: "view" } }).ok, true);
+  const marcosGrant = grant(9, marco, "orders", "edit", wholeDepartment);
   assert.deepEqual(checkRemoveAllAccess(head([marcosGrant]), 2), {
     ok: true,
-    value: [{ personId: 2, place: inMsa, changes: [{ kind: "remove", target: "orders", from: "edit" }], approveOrders: null }],
+    value: [{ personId: 2, place: wholeDepartment, changes: [{ kind: "remove", target: "orders", from: "edit" }], approveOrders: null }],
   });
-  // The drawer reads the same rule: Members in Laura's division is locked, Orders is offered.
+  // The drawer reads the same rule: every unit area in Laura's division is locked, and nothing is offered there.
   assert.equal(areaRule(ROLE_HELD_ACCESS, laura, inAoa, "members", null).changeable, false);
-  assert.equal(areaRule(ROLE_HELD_ACCESS, laura, inAoa, "orders", null).changeable, true);
-  assert.deepEqual(shownAreas(ROLE_HELD_ACCESS, laura, inAoa, {}), ["orders"]);
+  assert.equal(areaRule(ROLE_HELD_ACCESS, laura, inAoa, "orders", null).changeable, false);
+  assert.deepEqual(shownAreas(ROLE_HELD_ACCESS, laura, inAoa, {}), []);
+  assert.deepEqual(shownAreas(ROLE_HELD_ACCESS, laura, wholeDepartment, {}), ["positions", "applications", "members", "orders"]);
+});
+
+test("a lead's role covers Orders in each division they lead and nowhere else (issue #632)", () => {
+  const twoDivisions: AccessPerson = { id: 21, name: "Giorgia Galli", role: { kind: "lead", divisions: [msa, aoa] }, division: msa };
+  assert.deepEqual(LEAD_ROLE_HELD_ACCESS, ["positions", "applications", "members", "orders"].map((target) => ({ target, level: "edit" })));
+  for (const place of [inMsa, inAoa]) assert.equal(roleCovers(twoDivisions, place, "orders"), true);
+  assert.equal(roleCovers(laura, inMsa, "orders"), false, "a division Laura does not lead");
+  assert.equal(roleCovers(laura, wholeDepartment, "orders"), false, "the whole department");
+  assert.equal(roleCovers(laura, WHOLE_TEAM_PLACE, "orders"), false, "the whole team");
+});
+
+test("Access offers no Orders for a lead in a division they lead: locked, left out, and no Give access entry for that alone (issue #632)", () => {
+  // A lead's page where the viewer could give only Orders: their co-lead is not listed.
+  const ordersOnly: AccessUnit = { kind: "division", divisions: [{ division: msa, held: [{ target: "orders", level: "edit" }] }] };
+  const access = { unit: ordersOnly, people: [pietro, coLead], grants: [], approveOrders: NO_APPROVE_ORDERS };
+  assert.deepEqual(grantablePeople(access).map((p) => p.id), [pietro.id]);
+  assert.deepEqual(areaRule(held, coLead, inMsa, "orders", null), { changeable: false });
+  assert.deepEqual(shownAreas(held, coLead, inMsa, {}), []);
+  assert.equal(checkSaveAccess(lead(), { personId: coLead.id, areas: { orders: "view" } }).ok, false);
+  // A member there is offered Orders as before.
+  assert.deepEqual(areaRule(held, pietro, inMsa, "orders", null), { changeable: true, highest: "edit" });
 });
 
 test("a grant in one place leaves the same area in another place alone; Remove all takes every place", () => {
