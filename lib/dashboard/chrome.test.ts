@@ -14,19 +14,20 @@ function viewerOf(kind: Parameters<typeof testDeveloperStanding>[0], role: strin
 test("an applicant with nothing shown reads Signed in, with the sidebar and menu their standing gives", () => {
   const viewer = viewerOf("non-member", "Applicant");
   const facts = { counts: {}, hasShownApplications: false };
-  assert.deepEqual(openChrome(viewer, facts, null), {
+  assert.deepEqual(openChrome(viewer, facts, null, null), {
     kind: "open",
     viewer: { ...viewer, role: "Signed in" },
     sections: sidebarFor(viewer, facts),
     menuPage: userMenuPageFor("non-member"),
     viewAs: null,
+    viewingAs: null,
   });
 });
 
 test("a lead keeps their role's title and the new-application count on their sidebar", () => {
   const viewer = viewerOf("division-lead", "Avionics Lead");
   const facts = { counts: { applications: 3 }, hasShownApplications: false };
-  const chrome = openChrome(viewer, facts, null);
+  const chrome = openChrome(viewer, facts, null, null);
   assert.equal(chrome.kind, "open");
   if (chrome.kind !== "open") return;
   assert.equal(chrome.viewer.role, "Avionics Lead");
