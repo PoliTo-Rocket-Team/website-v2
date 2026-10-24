@@ -793,7 +793,7 @@ export const SEED_CASES: readonly SeedCase[] = [
     area: "people",
     case: "A Project Manager and a Chief Engineer, the two flagged board seats, so the roles fill every section of the Team page; the Head of R&D heads a department with no divisions, a core member there",
     data: "public",
-    rows: "`roles` in no department or division, members 52 and 53 flagged by `roles.full_access`; member 9's head row on department 9",
+    rows: "`roles` in no department or division, members 52 and 53 flagged by `roles.full_access`; member 9's head row on department 8",
     exercisedBy: `${issue(282)}, ${issue(311)}, ${issue(625)}, ${issue(627)}`,
     holds: (data) => {
       const roles = teamRolesOf(data);

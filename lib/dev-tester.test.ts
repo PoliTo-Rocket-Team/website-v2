@@ -51,12 +51,12 @@ test("both sign-ins offer a department head (issue #230)", () => {
   assert.match(signIn.headers.get("Set-Cookie") ?? "", /prt_test_developer=department-head;/);
 });
 
-test("the seed gives the department head tester a head role in Research and Development and no scope row", () => {
+test("the seed gives the department head tester a head role in Payload, a test department, and no scope row", () => {
   const memberId = TESTER_MEMBER["department-head"];
   const held = ROLE_ROWS.rows.filter((r) => r.memberId === memberId);
   assert.deepEqual(
     held.map((r) => [r.type, r.deptId, r.divisionId ?? null, r.title, r.leavedAt ?? null]),
-    [["head", DEPARTMENT.research, null, "Head of Research and Development", null]],
+    [["head", DEPARTMENT.payload, null, "Head of Payload", null]],
   );
   assert.ok(!SCOPE_ROWS.rows.some((s) => s.memberId === memberId));
 });

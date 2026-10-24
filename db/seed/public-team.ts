@@ -97,10 +97,14 @@ const CORE_DIVISION: Readonly<Record<string, number>> = {
   "Desktop App Developer": D.informationTechnology,
 };
 
+/** The short names team.ts gives a seeded department: "Head of R&D" heads Research and Development (issue #600). */
+const SHORT_DEPARTMENT_NAMES: Readonly<Record<string, string>> = { "R&D": "Research and Development" };
+
 /** The seeded department a "Head of <name>" role heads; null for any other role. */
 function departmentNamedBy(role: string): number | null {
   if (!role.startsWith("Head of ")) return null;
-  const name = role.slice("Head of ".length);
+  const short = role.slice("Head of ".length);
+  const name = SHORT_DEPARTMENT_NAMES[short] ?? short;
   return DEPARTMENT_ROWS.rows.find((d) => d.name === name)?.id ?? null;
 }
 
