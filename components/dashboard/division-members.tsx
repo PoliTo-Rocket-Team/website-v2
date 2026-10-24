@@ -341,17 +341,22 @@ const BANNER_ACTION =
  * (`Joining.canConfirm`, issue #584). While the NDA waits, the same viewer
  * records it here with Mark NDA received: the Applications tick's own move
  * (`set-nda`), so the banner adds no rule or write path of its own (issue #601).
+ * The server's yes is what readies Confirm join: the banner holds it at once,
+ * so it does not wait on the page's refresh to show the NDA arrived.
  */
 export function JoiningBanner({ joining, division, editable }: { joining: Joining; division: string; editable: boolean }) {
   const [asking, setAsking] = useState(false);
   const [pending, startTransition] = useTransition();
   const [marking, startMarking] = useTransition();
+  const [marked, setMarked] = useState(false);
+  const ndaArrived = joining.ndaArrived || marked;
   const firstName = joining.name.split(" ")[0];
 
   const markNda = () =>
     startMarking(async () => {
       const result = await moveApplication(joining.applicationId, { kind: "set-nda", arrived: true });
-      if (!result.ok) toast.error(result.error);
+      if (result.ok) setMarked(true);
+      else toast.error(result.error);
     });
 
   const confirm = () =>
@@ -374,18 +379,18 @@ export function JoiningBanner({ joining, division, editable }: { joining: Joinin
         <span className="min-w-0">
           <span className="block text-[15px] font-semibold">{joining.name} is joining</span>
           <span className="block text-[13px] text-prt-muted">
-            Accepted for {joining.position} · {joining.ndaArrived ? "signed NDA arrived" : "waiting for the signed NDA"}
+            Accepted for {joining.position} · {ndaArrived ? "signed NDA arrived" : "waiting for the signed NDA"}
           </span>
         </span>
       </span>
       {editable && (
         <span className="flex shrink-0 flex-wrap items-center gap-2">
-          {!joining.ndaArrived && (
+          {!ndaArrived && (
             <button type="button" onClick={markNda} disabled={marking} className={BANNER_ACTION}>
               Mark NDA received
             </button>
           )}
-          <button type="button" onClick={() => setAsking(true)} disabled={!joining.ndaArrived} className={BANNER_ACTION}>
+          <button type="button" onClick={() => setAsking(true)} disabled={!ndaArrived} className={BANNER_ACTION}>
             Confirm join
           </button>
         </span>
