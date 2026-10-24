@@ -203,8 +203,8 @@ export type DivisionHeader = {
   readonly name: string;
   readonly code: string | null;
   readonly department: string;
-  /** "Leads are changed by the Head of Aerodynamics" */
-  readonly leadsHint: string;
+  /** "Leads are changed by the Head of Aerodynamics"; null where the viewer changes them (`mayChangeDivision`, issue #594). */
+  readonly leadsHint: string | null;
 };
 
 export type DivisionMembers = {
@@ -345,7 +345,7 @@ export function divisionMembers(input: {
       name: division.name,
       code: division.code ?? null,
       department: departmentNameOf(org, division.departmentId),
-      leadsHint: leadsChangedBy(division.id, org),
+      leadsHint: changer !== null && mayChangeDivision(changer, division.id, org).allowed ? null : leadsChangedBy(division.id, org),
     },
     divisions: input.reach.flatMap((id) => {
       const d = org.divisions.find((x) => x.id === id);

@@ -10,7 +10,7 @@ import { canGiveApproveOrders } from "./division-access";
 import { mayManageDivisionsIn } from "./division-edit";
 import { opensWholeTeam } from "./members-view";
 import { canEditOrder, ordersScopeOf, type OrderUnit, type OrdersScopeRow } from "./orders";
-import { mayLeaveTeam, membershipsOf, reachesDivision, removalFrom, type DivisionRole, type OrgChart, type TeamActor, type TeamStanding } from "./team";
+import { mayChangeDivision, mayLeaveTeam, membershipsOf, reachesDivision, removalFrom, type DivisionRole, type OrgChart, type TeamActor, type TeamStanding } from "./team";
 import { showsTreeEdit } from "./team-structure";
 import {
   isTeamLeader,
@@ -142,7 +142,7 @@ function person(list: readonly (readonly [number, DivisionRole])[]): TeamStandin
 
 const TEAM: TeamActor = { kind: "team" };
 const HEAD: TeamActor = { kind: "head", departmentIds: [1] };
-const LEAD: TeamActor = { kind: "lead", divisionIds: [1] };
+const LEAD: TeamActor = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] };
 
 test("members: the team leader edits and removes anyone; a head only in their department; a lead only in their division(s)", () => {
   assert.equal(opensWholeTeam(teamLeader.standing), true, "the whole team, with Edit details on every row");
@@ -216,15 +216,17 @@ test("orders: the team leader edits every order and decides; a head their depart
   assert.equal(scopeOf(member), null);
 });
 
-test("structure: the team leader edits every department and division; a head their department's divisions; a lead and a member nothing", () => {
+test("structure: the team leader edits every department and division; a head their department's divisions; a lead only their own division; a member nothing", () => {
   assert.equal(showsTreeEdit(teamLeader.standing), true);
   assert.equal(mayManageDepartments(TEAM), true);
   assert.deepEqual([1, 2].map((d) => mayManageDivisionsIn(TEAM, d)), [true, true]);
   assert.equal(showsTreeEdit(head.standing), true);
   assert.equal(mayManageDepartments(HEAD), false);
   assert.deepEqual([1, 2].map((d) => mayManageDivisionsIn(HEAD, d)), [true, false]);
-  assert.equal(showsTreeEdit(lead.standing), false);
+  // A lead edits the division they lead and creates or closes none (issue #594).
+  assert.equal(showsTreeEdit(lead.standing), true);
   assert.deepEqual([1, 2].map((d) => mayManageDivisionsIn(LEAD, d)), [false, false]);
+  assert.deepEqual([1, 2, 3].map((d) => mayChangeDivision(LEAD, d, org).allowed), [true, false, false]);
   assert.equal(showsTreeEdit(member.standing), false);
 });
 

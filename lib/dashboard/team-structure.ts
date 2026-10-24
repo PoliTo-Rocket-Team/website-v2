@@ -1,7 +1,7 @@
 import { closingPeople, mayManageDepartments, type ClosingPerson } from "./department-edit";
 import { mayManageDivisionsIn } from "./division-edit";
 import { divisionMembers, type DivisionMembers, type PersonRecord, type WaitingPerson } from "./division-members";
-import { boardTitleOf, bySeatOrder, divisionLabel, roleIn, type BoardFlag, type DepartmentKind, type Joining, type OrgChart, type TeamActor } from "./team";
+import { boardTitleOf, bySeatOrder, divisionLabel, mayChangeDivision, roleIn, type BoardFlag, type DepartmentKind, type Joining, type OrgChart, type OrgDivision, type TeamActor } from "./team";
 import { mayHandOverTeamLeader, type HeldSeat } from "./hand-over";
 import type { FullAccessSeat, ViewerStanding } from "./viewer";
 
@@ -9,8 +9,9 @@ import type { FullAccessSeat, ViewerStanding } from "./viewer";
 // department with its head, and every open division under it with its lead,
 // each box collapsed with a count. Structure is edited here and nowhere else:
 // the team leader and full access edit every department and division, a
-// department head only their own department's divisions. Both sides of the
-// data interface build it here from their own records.
+// department head only their own department's divisions, and a division lead
+// only the divisions they lead (issue #594). Both sides of the data interface
+// build it here from their own records.
 
 export type StructurePerson = { readonly id: number; readonly name: string };
 
@@ -46,7 +47,11 @@ export type StructureDepartment = {
   readonly head: (StructurePerson & { readonly divisions: readonly string[] }) | null;
   /** Everyone in it, head included, each once. */
   readonly size: number;
-  /** Pencils on its divisions and its Add division: its head, the team leader and full access. */
+  /**
+   * Its Add division, and Close division on each of its divisions: its head,
+   * the team leader and full access. A division's pencil is its `page`, which
+   * a lead also gets on the divisions they lead (issue #594).
+   */
   readonly divisionsEditable: boolean;
   readonly divisions: readonly StructureDivision[];
   /** Everyone Close department moves (`closingPeople`, issue #441); none where the viewer may not close departments. */
@@ -89,25 +94,56 @@ export type TeamStructure = {
   readonly seats: readonly HeldSeat[];
 };
 
-/** Whether the actor edits any structure at all: a division lead and a member get no Edit button (boards 77, 66t). */
-export function editsStructure(actor: TeamActor | null): actor is Exclude<TeamActor, { kind: "lead" }> {
-  return actor !== null && actor.kind !== "lead";
+/**
+ * Whether the actor may open Edit division on the division, by the rule its
+ * save is checked with (`mayChangeDivision`): the team, its department's
+ * head, or a lead of it by role (issue #594). A Members grant opens none.
+ */
+function editsDivision(actor: TeamActor, division: OrgDivision, org: OrgChart): boolean {
+  return mayChangeDivision(actor, division.id, org).allowed;
+}
+
+/** The divisions whose page the edit view needs: those the actor may open Edit division on. */
+export function editableDivisionIds(actor: TeamActor | null, org: OrgChart): number[] {
+  if (actor === null) return [];
+  return org.divisions.filter((d) => editsDivision(actor, d, org)).map((d) => d.id);
+}
+
+/**
+ * Whether the actor edits any structure at all: the team, a head, and a lead
+ * of an open division (issue #594). A member, and someone a Members grant
+ * alone makes an actor, get no Edit button (boards 77, 66t).
+ */
+export function editsStructure(actor: TeamActor | null, org: OrgChart): actor is TeamActor {
+  return actor !== null && (actor.kind !== "lead" || editableDivisionIds(actor, org).length > 0);
 }
 
 /**
  * Whether the Team tree shows the viewer its Edit button (boards 77 and 66t):
- * full access (the team leader, the operations lead, the IT lead) and a
- * department head. The data source answers who they act as
- * (`teamStructure`), and the server checks every write again.
+ * full access (the team leader, the operations lead, the IT lead), a
+ * department head and a division lead (issue #594). The data source answers
+ * who they act as (`teamStructure`), and the server checks every write again.
  */
 export function showsTreeEdit(viewer: ViewerStanding): boolean {
-  return viewer.kind === "operations-lead" || viewer.kind === "department-head";
+  return viewer.kind === "operations-lead" || viewer.kind === "department-head" || viewer.kind === "division-lead";
 }
 
-/** The divisions whose page the edit view needs: those the actor may change. */
-export function editableDivisionIds(actor: TeamActor | null, org: OrgChart): number[] {
-  if (!editsStructure(actor)) return [];
-  return org.divisions.filter((d) => mayManageDivisionsIn(actor, d.departmentId)).map((d) => d.id);
+/** "A", "A and B", "A, B and C". */
+function andList(names: readonly string[]): string {
+  return names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/**
+ * The line under the edit view's title: what the viewer may change. A lead's
+ * names the divisions they may edit (issue #594), which `teamStructure` never
+ * leaves empty: a lead who may edit none gets no edit view.
+ */
+export function editViewIntro(structure: Pick<TeamStructure, "departmentsEditable" | "departments">): string {
+  if (structure.departmentsEditable) return "Click a box to change who holds a seat, rename a unit, change its head or lead, or close it.";
+  const departments = structure.departments.filter((d) => d.divisionsEditable).map((d) => d.name);
+  if (departments.length > 0) return `You can edit the divisions of ${andList(departments)}. Ask the team leader to change a department or a seat.`;
+  const divisions = structure.departments.flatMap((d) => d.divisions.filter((v) => v.page !== null).map((v) => `${divisionLabel(v.name)} Division`));
+  return `You can edit ${andList(divisions)}. Ask your department head to add or close a division.`;
 }
 
 const byName = (a: StructurePerson, b: StructurePerson) => a.name.localeCompare(b.name);
@@ -131,7 +167,7 @@ export function teamStructure(input: {
   readonly seats?: readonly HeldSeat[];
 }): TeamStructure | null {
   const { records, org, actor } = input;
-  if (!editsStructure(actor)) return null;
+  if (!editsStructure(actor, org)) return null;
   const person = (r: PersonRecord): StructurePerson => ({ id: r.id, name: r.name });
   const leader = records.find((r) => r.beyondDivisions.some((b) => b.kind === "team-leader"));
   // The viewer's own record: their box is the one the edit view marks (issue #405).
@@ -155,7 +191,7 @@ export function teamStructure(input: {
         code: division.code ?? null,
         lead: lead ?? null,
         size: people.length,
-        page: editable
+        page: editsDivision(actor, division, org)
           ? divisionMembers({
               records,
               org,

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 
-// Migration 0058 (issues #627 and #600) attaches the Head of R&D's role, kept
+// Migration 0059 (issues #627 and #600) attaches the Head of R&D's role, kept
 // in no unit, to the R&D department as its head (Owner decision on #600,
 // https://github.com/PoliTo-Rocket-Team/website-v2/issues/600#issuecomment-6385921817).
 // This builds the schema from the journaled migrations before it on an
@@ -14,7 +14,7 @@ import { PGlite } from "@electric-sql/pglite";
 // start date, and a second run changes nothing.
 
 const root = join(__dirname, "..", "..");
-const TAG = "0058_rd_department_head";
+const TAG = "0059_rd_department_head";
 const journal = JSON.parse(readFileSync(join(root, "drizzle", "meta", "_journal.json"), "utf8")) as {
   entries: { tag: string }[];
 };
@@ -24,7 +24,7 @@ async function run(db: PGlite, sql: string) {
   for (const statement of sql.split("--> statement-breakpoint")) if (statement.trim()) await db.exec(statement);
 }
 
-/** A database built from every journaled migration before 0058. */
+/** A database built from every journaled migration before 0059. */
 async function schemaBefore(): Promise<PGlite> {
   const db = new PGlite();
   const tags = journal.entries.map((e) => e.tag);

@@ -95,6 +95,7 @@ export function DivisionDrawer({
   editable,
   onClose,
   onFill,
+  mayClose,
   onCloseDivision,
 }: {
   target: DivisionDrawerTarget | null;
@@ -105,6 +106,8 @@ export function DivisionDrawer({
   onClose: () => void;
   /** Fill details on someone waiting for their NDA: the page's Edit details drawer. */
   onFill: (waiting: WaitingPerson, division: DivisionMembers) => void;
+  /** Whether the viewer may close the division: a lead's Edit division has no Close division (issue #594). */
+  mayClose: (division: DivisionMembers) => boolean;
   /** Close division in Edit division's footer (boards 77g, 68b): the page's Close division dialog. */
   onCloseDivision: (division: DivisionMembers) => void;
 }) {
@@ -123,6 +126,7 @@ export function DivisionDrawer({
       editable={editable}
       onClose={onClose}
       onFill={onFill}
+      mayClose={mayClose}
       onCloseDivision={onCloseDivision}
     />
   );
@@ -136,6 +140,7 @@ function DrawerForm({
   editable,
   onClose,
   onFill,
+  mayClose,
   onCloseDivision,
 }: {
   open: boolean;
@@ -145,6 +150,7 @@ function DrawerForm({
   editable: boolean;
   onClose: () => void;
   onFill: (waiting: WaitingPerson, division: DivisionMembers) => void;
+  mayClose: (division: DivisionMembers) => boolean;
   onCloseDivision: (division: DivisionMembers) => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(target));
@@ -251,7 +257,7 @@ function DrawerForm({
       detail={detail}
       footer={
         <>
-          {tab ? (
+          {tab && mayClose(tab) ? (
             <button type="button" onClick={() => onCloseDivision(tab)} className={PANEL_DANGER_BUTTON}>
               Close division
             </button>

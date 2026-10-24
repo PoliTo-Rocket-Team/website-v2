@@ -199,10 +199,22 @@ test("a closed division never opens again: a save on it is refused, even with a 
   assert.equal(await tabOf(h.kept(), WIND_TUNNEL), undefined);
 });
 
-test("a division lead's division writes are refused on the server", async () => {
-  const lead = dummyTeamPages("division-lead", NO_EDITS, async () => assert.fail("nothing is saved"));
-  assert.equal((await lead.teamWrites!.saveDivision(MISSION_ANALYSIS, { ...keep, code: "MX" })).ok, false);
-  assert.equal((await lead.teamWrites!.createDivision(1, { ...keep, name: "Flight Dynamics", code: "FD", newLeads: [3] })).ok, false);
-  assert.equal((await lead.teamWrites!.closeDivision(MISSION_ANALYSIS)).ok, false);
-  assert.deepEqual(await lead.findPeople("Sara"), { kind: "none" });
+test("a division lead edits the divisions they lead, and creates, closes and edits no other on the server (#594)", async () => {
+  const refusing = dummyTeamPages("division-lead", NO_EDITS, async () => assert.fail("nothing is saved"));
+  const DESIGN = 3;
+  assert.equal((await refusing.teamWrites!.saveDivision(DESIGN, { ...keep, name: "Design", code: "DX" })).ok, false, "not a division they lead");
+  assert.equal((await refusing.teamWrites!.createDivision(1, { ...keep, name: "Flight Dynamics", code: "FD", newLeads: [3] })).ok, false);
+  assert.equal((await refusing.teamWrites!.closeDivision(MISSION_ANALYSIS)).ok, false);
+  assert.notDeepEqual(await refusing.findPeople("Sara"), { kind: "none" }, "Edit division's pickers search the team");
+
+  let kept = NO_EDITS;
+  const lead = dummyTeamPages("division-lead", NO_EDITS, async (next) => {
+    kept = parseEdits(serializeEdits(next));
+  });
+  assert.deepEqual(await lead.teamWrites!.saveDivision(MISSION_ANALYSIS, { ...keep, name: "Flight Analysis", code: "FLA" }), { ok: true, value: null });
+  assert.notEqual(kept, NO_EDITS, "the save is kept");
+  const structure = await dummyTeamPages("division-lead", kept, async () => {}).teamStructure();
+  const renamed = structure?.departments.flatMap((d) => d.divisions).find((v) => v.id === MISSION_ANALYSIS);
+  assert.deepEqual([renamed?.name, renamed?.code], ["Flight Analysis Division", "FLA"]);
+  assert.deepEqual(structure?.departments.flatMap((d) => d.divisions).filter((v) => v.page !== null).map((v) => v.id), [MISSION_ANALYSIS, OPTIMIZATION], "a pencil on each division they lead");
 });

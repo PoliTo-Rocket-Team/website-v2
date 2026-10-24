@@ -88,7 +88,7 @@ import { NO_TEAM_EDITS, type TeamEdits, type TeamEditsStore } from "./edits";
 import { dummyNoticeAttention, dummyNoticesOf, isDummyNoticeOpen, type DummyNotices } from "./notices";
 import { checkPhoto, HAND_OVER_FIRST, leaveReason, type LeaveState } from "@/lib/dashboard/self";
 import { NO_OWN_STORE, type OwnApplicationsStart, type OwnChangesStore } from "./own";
-import { testGrantAreas, testGrantHoldsContent, type TestGrant } from "./test-grant";
+import { testGrantHoldsContent, withTestGrant, type TestGrant } from "./test-grant";
 import { accessSummariesOf } from "@/lib/dashboard/access-summary";
 import { dummyDetails, ownApplicationsOf } from "./own-applications";
 import type { YourDetails } from "@/lib/dashboard/details";
@@ -245,9 +245,7 @@ export function dummyViewer(viewer: TestViewer, holders: readonly ApproveOrdersH
   }
   const person = personFor[viewer];
   const approveOrders = holders.some((h) => h.personId === person.id);
-  const standing = testDeveloperStanding(viewer, approveOrders);
-  const withGrant =
-    standing.kind === "member" && grant !== null ? { ...standing, grantedAreas: testGrantAreas(grant), siteContent: testGrantHoldsContent(grant) } : standing;
+  const withGrant = withTestGrant(testDeveloperStanding(viewer, approveOrders), grant);
   return { ...withGrant, name: person.name, role: person.title, photoUrl: null, session: "test-developer" };
 }
 

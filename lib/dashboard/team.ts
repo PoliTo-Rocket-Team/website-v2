@@ -471,12 +471,29 @@ export function memberRowOf(entry: RosterEntry, org: OrgChart, selfId: number | 
  * Who acts on the Members page, by what they lead. The team leader reaches
  * the whole team; the operations lead does too, as Move to alumni already let
  * them (#201). A head reaches their departments, a division lead their
- * divisions.
+ * divisions. A lead's `divisionIds` also holds every division a Members
+ * grant lets them change (#342), so `ledDivisionIds` names, apart, the ones
+ * they lead by role: only those open Edit division to them (issue #594).
  */
 export type TeamActor =
   | { readonly kind: "team" }
   | { readonly kind: "head"; readonly departmentIds: readonly number[] }
-  | { readonly kind: "lead"; readonly divisionIds: readonly number[] };
+  | {
+      readonly kind: "lead";
+      readonly divisionIds: readonly number[];
+      /** The divisions of `divisionIds` they lead by role; none for someone a grant alone puts here. */
+      readonly ledDivisionIds: readonly number[];
+    };
+
+/**
+ * A lead actor over `divisionIds`, leading by role the ones of `led` among
+ * them; null when they reach none. A led division they do not reach is
+ * dropped, so a lead never leads where they cannot act.
+ */
+export function leadActor(divisionIds: readonly number[], led: readonly number[]): TeamActor | null {
+  if (divisionIds.length === 0) return null;
+  return { kind: "lead", divisionIds, ledDivisionIds: led.filter((id) => divisionIds.includes(id)) };
+}
 
 /** Whether an action is open to the actor; when it is not, the reason the menu shows beside the lock. */
 export type Permission = { readonly allowed: true } | { readonly allowed: false; readonly reason: string };
@@ -715,8 +732,9 @@ export function mayLeaveTeam(actor: TeamActor, standing: TeamStanding, org: OrgC
  * "Remove from <division>" on a row (Owner decision, 2026-10-11): it ends
  * only that division's role. It is not offered for someone whose only
  * division it is and who holds no seat (nobody is on the team with neither:
- * they can only leave it, `mayLeaveDivision`), and a division lead cannot take
- * a lead out, since only the head changes a division's leads.
+ * they can only leave it, `mayLeaveDivision`), and a lead is taken out only by
+ * whoever may change the division's leads (`mayChangeDivision`): its lead
+ * (Owner decision, 2026-10-24, issue #594), its head or the team.
  */
 export type Removal =
   | { readonly kind: "offered" }
@@ -749,13 +767,14 @@ export function leadsChangedBy(divisionId: number, org: OrgChart): string {
 }
 
 /**
- * Renaming a division, changing its code or changing its leads (Owner
- * decision, 2026-10-11): only the head of its department, or the team. A
- * division lead never can, even of their own division; the reason is the
- * line their page shows.
+ * Renaming a division, changing its code or changing its leads: the head of
+ * its department or the team (Owner decision, 2026-10-11), and a lead of it
+ * by role (Owner decision, 2026-10-24, issue #594, replacing the #231 rule
+ * for a lead's own division). A Members grant never opens it: a lead changes
+ * only the divisions they lead, and the reason names who changes the rest.
  */
 export function mayChangeDivision(actor: TeamActor, divisionId: number, org: OrgChart): Permission {
-  if (actor.kind === "lead") return denied(leadsChangedBy(divisionId, org));
+  if (actor.kind === "lead") return actor.ledDivisionIds.includes(divisionId) ? ALLOWED : denied(leadsChangedBy(divisionId, org));
   return reachesDivision(actor, divisionId, org) ? ALLOWED : denied("Only the team leader can do this");
 }
 

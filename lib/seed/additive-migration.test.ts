@@ -39,8 +39,8 @@ test("0055_preview_reseeds.sql drops, renames and rewrites nothing", () => {
 // in no unit to the R&D department, only while that department has no head,
 // so a second run matches nothing and no department gets two heads. What it
 // does on each database shape is run in ./rd-department-head.test.ts.
-test("0058_rd_department_head.sql changes one row kind only: the Head of R&D role's type and department", () => {
-  const sql = readFileSync(resolve(process.cwd(), "drizzle/0058_rd_department_head.sql"), "utf8");
+test("0059_rd_department_head.sql changes one row kind only: the Head of R&D role's type and department", () => {
+  const sql = readFileSync(resolve(process.cwd(), "drizzle/0059_rd_department_head.sql"), "utf8");
   const changed = nonAdditiveStatements(sql);
   assert.equal(changed.length, 1);
   const [update] = changed;

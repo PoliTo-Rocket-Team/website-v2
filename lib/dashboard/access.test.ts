@@ -111,11 +111,9 @@ const EVERY_STANDING: readonly [string, ViewerStanding][] = [
   ["department head with Content", { kind: "department-head", siteContent: true, approveOrders: true }],
   ["division lead", { kind: "division-lead", siteContent: false, approveOrders: false }],
   ["division lead with Content", { kind: "division-lead", siteContent: true, approveOrders: true }],
-  ["division lead with Alumni", { kind: "division-lead", siteContent: false, alumniGrant: true, approveOrders: false }],
   ["member", { kind: "member", grantedAreas: [], siteContent: false, approveOrders: false }],
   ["member with a grant on every area", { kind: "member", grantedAreas: GRANT_AREAS, siteContent: false, approveOrders: false }],
   ["member with Content", { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false }],
-  ["member with Alumni", { kind: "member", grantedAreas: [], siteContent: false, alumniGrant: true, approveOrders: false }],
   ["member with Approve orders", { kind: "member", grantedAreas: [], siteContent: false, approveOrders: true }],
   ["alumni", { kind: "alumni", siteContent: false, approveOrders: false }],
   ["non-member", { kind: "non-member", siteContent: false, approveOrders: false }],
@@ -153,8 +151,8 @@ test("each dashboard page sits in the same sidebar group for every viewer who re
 
 test("the one sidebar structure leaves which pages each viewer reaches as it was (issue #408)", () => {
   const head = ["overview", "my-applications", "team-tree", "positions", "applications", "members", "division-access", "orders", "my-profile"];
-  // A Content grant opens the five editors, an Alumni grant the Alumni page alone (issue #504).
-  const content = ["projects", "outreach", "partners", "faq", "team-page"];
+  // A Content grant opens the six editors, the Alumni page among them (issues #504, #589).
+  const content = ["projects", "outreach", "partners", "alumni", "faq", "team-page"];
   const full = ["overview", "my-applications", "team-tree", "positions", "applications", "members", "projects", "outreach", "partners", "alumni", "faq", "team-page", "division-access", "orders", "my-profile"];
   const order = DASHBOARD_PAGES.map((page) => page.key);
   const inOrder = (keys: readonly string[]) => order.filter((key) => keys.includes(key));
@@ -169,12 +167,10 @@ test("the one sidebar structure leaves which pages each viewer reaches as it was
     "department head with Content": inOrder([...head, ...content]),
     "division lead": head,
     "division lead with Content": inOrder([...head, ...content]),
-    "division lead with Alumni": inOrder([...head, "alumni"]),
     member: ["overview", "my-applications", "team-tree", "my-profile"],
     // Access is no grant area, so a grant never opens it (issue #471).
     "member with a grant on every area": head.filter((key) => key !== "division-access"),
     "member with Content": inOrder(["overview", "my-applications", "team-tree", ...content, "my-profile"]),
-    "member with Alumni": inOrder(["overview", "my-applications", "team-tree", "alumni", "my-profile"]),
     "member with Approve orders": ["overview", "my-applications", "team-tree", "orders", "my-profile"],
     alumni: ["overview", "my-alumni", "my-applications", "my-account"],
     "non-member": ["overview", "my-applications", "my-account"],
@@ -199,34 +195,26 @@ test("only the IT lead reaches the Activity log, and no sidebar lists it until t
   assert.equal(listed, false);
 });
 
-test("the Alumni page is for full access and an Alumni grant, never from a lead's role or a Content grant (issues #234, #504)", () => {
+test("the Alumni page follows the site-content rule: full access and a Content grant, never a lead's role (issues #234, #589)", () => {
   const reaches: readonly [ViewerStanding, boolean][] = [
     [{ kind: "operations-lead", seat: "operations-lead", siteContent: false, approveOrders: false }, true],
     [{ kind: "division-lead", siteContent: false, approveOrders: false }, false],
-    [{ kind: "division-lead", siteContent: true, approveOrders: false }, false],
-    [{ kind: "division-lead", siteContent: false, alumniGrant: true, approveOrders: false }, true],
+    [{ kind: "division-lead", siteContent: true, approveOrders: false }, true],
     [{ kind: "member", grantedAreas: [], siteContent: false, approveOrders: false }, false],
-    [{ kind: "member", grantedAreas: [], siteContent: true, approveOrders: false }, false],
-    [{ kind: "member", grantedAreas: [], siteContent: false, alumniGrant: true, approveOrders: false }, true],
+    [{ kind: "member", grantedAreas: [], siteContent: true, approveOrders: false }, true],
     [{ kind: "non-member", siteContent: false, approveOrders: false }, false],
   ];
   for (const [viewer, reached] of reaches) {
     const listed = sidebarFor(viewer, withoutApplications).some((section) => section.items.some((item) => item.key === "alumni"));
     assert.equal(canReach(viewer, "alumni"), reached, JSON.stringify(viewer));
     assert.equal(listed, reached, JSON.stringify(viewer));
+    assert.equal(maySiteContent(viewer), reached, JSON.stringify(viewer));
   }
-  // A Content grant: the Content group with its five editors, and no Alumni.
+  // A Content grant: the Content group with its six editors, Alumni among them.
   assert.deepEqual(shape({ kind: "member", grantedAreas: [], siteContent: true, approveOrders: false }, withoutApplications), [
     [null, ["Overview", "Team tree"]],
-    ["Content", ["Projects", "Outreach", "Partners", "FAQ", "Team page"]],
+    ["Content", ["Projects", "Outreach", "Partners", "Alumni", "FAQ", "Team page"]],
   ]);
-  // An Alumni grant: the Alumni page alone, and no editor the site-content gate guards.
-  const alumni: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: false, alumniGrant: true, approveOrders: false };
-  assert.deepEqual(shape(alumni, withoutApplications), [
-    [null, ["Overview", "Team tree"]],
-    ["Content", ["Alumni"]],
-  ]);
-  assert.equal(maySiteContent(alumni), false);
 });
 
 test("the Outreach and Team page pages are for whoever the site-content gate admits, never from a lead's role, and sit in the Content group (issues #289, #284)", () => {
@@ -332,12 +320,12 @@ test("the Applications badge shows only to a viewer whose sidebar lists Applicat
   assert.equal(items(granted(["applications"])).find((item) => item.key === "applications")?.count, 8);
 });
 
-test("\"Approve orders\" with no area grant still opens Orders; a Content grant with no area grant opens the five editors only (issues #471, #504)", () => {
+test("\"Approve orders\" with no area grant still opens Orders; a Content grant with no area grant opens the six editors only (issues #471, #504, #589)", () => {
   const approver: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: false, approveOrders: true };
   assert.deepEqual(reachedGrantPages(approver), ["orders"]);
   const editor: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false };
   assert.deepEqual(reachedGrantPages(editor), []);
-  assert.deepEqual(listedKeys(editor), ["overview", "team-tree", "projects", "outreach", "partners", "faq", "team-page"]);
+  assert.deepEqual(listedKeys(editor), ["overview", "team-tree", "projects", "outreach", "partners", "alumni", "faq", "team-page"]);
 });
 
 test("heads, leads and every full-access seat reach and list the pages they did before grant areas, and the user menu is unchanged (issue #471)", () => {
