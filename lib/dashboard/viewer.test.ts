@@ -16,7 +16,7 @@ import {
   readsArea,
   readsAreaIn,
   standingIn,
-  testDeveloperStanding,
+  plainSeatStanding,
   viewerKindOf,
   viewerStandingOf,
   viewerUnitsOf,
@@ -78,7 +78,7 @@ test("with no active role, an Alumni record entry makes an alumnus and none a no
 });
 
 test("the user card reads Alumni for an alumnus, and Applicant or Signed in for a non-member (boards 56, 50e, 50f)", () => {
-  const off = (kind: "alumni" | "non-member") => ({ ...testDeveloperStanding(kind), name: "Luca Moretti", role: "Applicant", photoUrl: null, session: "account" as const });
+  const off = (kind: "alumni" | "non-member") => ({ ...plainSeatStanding(kind), name: "Luca Moretti", role: "Applicant", photoUrl: null });
   assert.equal(userCardRole(off("alumni"), false), "Alumni");
   assert.equal(userCardRole(off("non-member"), true), "Applicant");
   assert.equal(userCardRole(off("non-member"), false), "Signed in");
@@ -267,7 +267,7 @@ test("by default only the team leader decides orders; the operations lead and th
   assert.equal(decides(chiefEngineer, false), null);
   // Full access from a scope row alone is not the team leader either.
   assert.equal(isTeamLeader(viewerStandingOf({ scopes: [row("admin")], activeRoles: [role("core", 3)] })), false);
-  assert.equal(isTeamLeader(testDeveloperStanding("operations-lead")), false);
+  assert.equal(isTeamLeader(plainSeatStanding("operations-lead")), false);
 });
 
 // Issue #160: an area grant, at any area and level, makes nobody a division

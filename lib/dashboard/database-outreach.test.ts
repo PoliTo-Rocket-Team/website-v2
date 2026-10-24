@@ -3,7 +3,7 @@ import "./access-matrix/install";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { outreachPosts, outreachPostTags, outreachPostVersions, outreachTags } from "@/db/schema";
-import { dummyPhotoFiles } from "@/lib/dummy-data/outreach";
+import { memoryPhotoFiles } from "@/lib/outreach-memory";
 import { outreachRecord } from "@/lib/outreach";
 import { outreachEditor, publicOutreach } from "@/lib/outreach-editor";
 import { FEATURED_FULL, type FeaturedSlot } from "@/lib/outreach-featured";
@@ -93,7 +93,7 @@ test("featuring a post writes its slot while one is free, and a third is refused
 
 // Unpublish and Delete free a featured post's slot (Owner decision, issue #502).
 
-const editor = () => outreachEditor(admin, databaseOutreachStore, dummyPhotoFiles);
+const editor = () => outreachEditor(admin, databaseOutreachStore, memoryPhotoFiles);
 const slotOf = (id: number) => rowsIn(outreachPosts).find((row) => row.id === id)?.featuredSlot;
 
 test("unpublishing a featured post clears its slot in the same batch write as its version rows", async () => {

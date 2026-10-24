@@ -13,7 +13,6 @@ import {
   REMOVE_FROM_ALUMNI_LABEL,
   type SignIn,
 } from "@/lib/dashboard/self";
-import type { ViewerSession } from "@/lib/dashboard/viewer";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
@@ -150,14 +149,12 @@ export function RemoveFromAlumniBox({ checked, onChange }: { checked: boolean; o
 export function DeleteAccountDialog({
   open,
   onOpenChange,
-  session,
   openApplications,
   member,
   deleteAccount,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  session: ViewerSession;
   /** How many open applications an applicant has; null for a member. */
   openApplications: number | null;
   member: boolean;
@@ -167,7 +164,7 @@ export function DeleteAccountDialog({
   const [alsoWithdraw, setAlsoWithdraw] = useState(false);
   const [removeFromAlumni, setRemoveFromAlumni] = useState(false);
   const [pending, setPending] = useState(false);
-  const signOut = useSignOut(session);
+  const signOut = useSignOut();
   const inputId = useId();
   const boxId = useId();
 

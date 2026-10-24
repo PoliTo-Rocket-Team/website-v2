@@ -224,8 +224,8 @@ function PartnerRow({
 
 /**
  * A logo on the dark ground, drawn white when it is too dark for the page, as
- * the public pages draw it. A logo a preview did not keep (lib/dummy-data/
- * partners.ts) shows the partner's name, as the boards draw every logo.
+ * the public pages draw it. A logo the store did not keep shows the
+ * partner's name, as the boards draw every logo.
  */
 function LogoBox({
   logo,

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { ScopeInfo } from "@/app/actions/get-member-scopes";
-import { testDeveloperStanding, viewerStandingOf, type TestViewer, type ViewerStanding } from "@/lib/dashboard/viewer";
+import { viewerStandingOf, type ViewerStanding } from "@/lib/dashboard/viewer";
 import type { Recruitment } from "./positions";
-import { canSwitchRecruitment, canSwitchRecruitmentAs, switchRecruitment } from "./recruitment-switch";
+import { canSwitchRecruitment, switchRecruitment } from "./recruitment-switch";
 
 /** A positions scope: the empty one (no one signed in, or no scope row), plus the given fields. */
 function scope(fields: Partial<ScopeInfo> = {}): ScopeInfo {
@@ -72,23 +72,6 @@ describe("switchRecruitment", () => {
       assert.deepEqual(result, { status: "refused" });
       assert.deepEqual(saved, []);
       assert.equal(refreshed, 0);
-    });
-  }
-});
-
-describe("canSwitchRecruitmentAs (the test developer's switch)", () => {
-  const expected: Record<TestViewer, boolean> = {
-    "team-leader": true,
-    "operations-lead": true,
-    "department-head": false,
-    "division-lead": false,
-    member: false,
-    alumni: false,
-    "non-member": false,
-  };
-  for (const [viewer, may] of Object.entries(expected) as [TestViewer, boolean][]) {
-    test(`looking as ${viewer}, the switch is ${may ? "theirs to flip" : "read-only"}`, () => {
-      assert.equal(canSwitchRecruitmentAs(testDeveloperStanding(viewer)), may);
     });
   }
 });

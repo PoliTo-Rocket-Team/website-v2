@@ -17,8 +17,8 @@ import { isPhotoSrc } from "./outreach-photos";
 import type { Copy } from "./projects";
 
 // An Outreach post version as its rows hold it (db/schema, issue #287), and
-// back. The database side, the import migration and the dummy data's cookie
-// all go through this one mapping, so a post reads back the same. The body,
+// back. The database side, the import migration and the seed all go through
+// this one mapping, so a post reads back the same. The body,
 // the photos, the channels and the gallery are stored as
 // JSON; reading one back checks its shape and keeps only the known keys, so a
 // row no write of this code made cannot reach a page.

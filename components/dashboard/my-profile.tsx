@@ -16,7 +16,6 @@ import {
   type MyProfile,
 } from "@/lib/dashboard/self";
 import type { HandOverOffer, HandOverSend } from "@/lib/dashboard/hand-over-request";
-import type { ViewerSession } from "@/lib/dashboard/viewer";
 import type { OwnAlias } from "@/lib/dashboard/alias-setup";
 import { AliasSetupLink } from "./alias-setup";
 import { MarkFallback } from "@/components/mark-fallback";
@@ -47,9 +46,8 @@ type Actions = {
 export function MyProfileView({
   profile,
   alias = null,
-  session,
   ...actions
-}: { profile: MyProfile; alias?: OwnAlias | null; session: ViewerSession } & Actions) {
+}: { profile: MyProfile; alias?: OwnAlias | null } & Actions) {
   return (
     <>
       <PageHeader title="My profile" intro="How you appear on the site and to the team." />
@@ -67,7 +65,6 @@ export function MyProfileView({
         <LeaveOrDelete
           leave={profile.leave}
           handOver={profile.handOver}
-          session={session}
           leaveTeam={actions.leaveTeam}
           sendHandOver={actions.sendHandOver}
           deleteAccount={actions.deleteAccount}
@@ -467,14 +464,12 @@ const LEFT_TEXT = "You left the team and are on the Alumni list. You keep your a
 function LeaveOrDelete({
   leave: initial,
   handOver: initialOffer,
-  session,
   leaveTeam,
   sendHandOver,
   deleteAccount,
 }: {
   leave: LeaveState;
   handOver: HandOverOffer | null;
-  session: ViewerSession;
   leaveTeam: Actions["leaveTeam"];
   sendHandOver: Actions["sendHandOver"];
   deleteAccount: Actions["deleteAccount"];
@@ -549,7 +544,6 @@ function LeaveOrDelete({
       <DeleteAccountDialog
         open={asking === "delete"}
         onOpenChange={(open) => setAsking(open ? "delete" : null)}
-        session={session}
         openApplications={null}
         member
         deleteAccount={deleteAccount}

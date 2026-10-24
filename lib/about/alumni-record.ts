@@ -415,8 +415,8 @@ export function foundersOf(alumni: readonly Alumnus[]): Founder[] {
 export type EntryChange = Partial<Pick<AlumniEntry, "name" | "founder" | "photo" | "shown" | "removed" | "fixes">>;
 
 /**
- * The record with one person's entry changed: the dummy side keeps its fixes
- * this way, and the tests read what a fix does with it. Only `entries`
+ * The record with one person's entry changed: the tests read what a fix
+ * does with it this way. Only `entries`
  * changes; the roles, units and people are the same objects as before. A
  * member with no entry yet gets one, numbered after the last.
  */

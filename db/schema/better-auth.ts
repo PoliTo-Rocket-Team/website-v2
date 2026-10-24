@@ -30,6 +30,17 @@ export const betterAuthUsers = betterAuthSchema.table(
     })
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
+    // Better Auth's admin plugin (issue #604, drizzle/0060). `role` is
+    // "admin" only for a seeded admin tester, who may use View as on a
+    // preview or under `next dev`; production reads the IT lead seat from
+    // the roles instead (lib/dashboard/view-as.ts).
+    role: text("role"),
+    banned: boolean("banned").default(false),
+    banReason: text("banReason"),
+    banExpires: timestamp("banExpires", {
+      withTimezone: true,
+      mode: "date",
+    }),
   },
   (table) => ({
     emailKey: uniqueIndex("user_email_key").on(table.email),
@@ -98,6 +109,9 @@ export const betterAuthSessions = betterAuthSchema.table(
     userId: text("userId")
       .notNull()
       .references(() => betterAuthUsers.id, { onDelete: "cascade" }),
+    // The acting account behind a View as session (issue #604, drizzle/0060);
+    // null for a plain session. `userId` is the person viewed as.
+    impersonatedBy: text("impersonatedBy"),
   },
   (table) => ({
     tokenKey: uniqueIndex("session_token_key").on(table.token),

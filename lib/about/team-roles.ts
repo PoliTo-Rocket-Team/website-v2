@@ -32,7 +32,7 @@ import type { DepartmentGroup, GroupMember, Member, TeamPage, UpTo } from "./typ
 // the layer sets them, the intro text and the group photo stay the
 // hand-typed values of ./team.ts. The advisors come from the stored list
 // (./advisors.ts, issue #286), laid on by ./team-data.ts. Pure: the database
-// (lib/about/team-data.ts) and the dummy team read the same build.
+// (lib/about/team-data.ts) and the seed (db/seed/cases.ts) read the same build.
 
 export type { TeamPerson } from "./team-person";
 export { ARC_LEADERS } from "./team-layer";

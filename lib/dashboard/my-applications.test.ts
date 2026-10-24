@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isShownAt, oneMonthAfter, placeOf, withdrawnOnDelete, type OwnApplication, type StoredApplication } from "./my-applications";
+import {
+  canWithdraw,
+  isShownAt,
+  oneMonthAfter,
+  pickableSlot,
+  placeOf,
+  withdrawnOnDelete,
+  type ActiveApplication,
+  type ActiveStage,
+  type OwnApplication,
+  type StoredApplication,
+} from "./my-applications";
 
 const sent = (status: StoredApplication["status"], joinedAt: string | null = null): StoredApplication => ({
   status,
@@ -124,4 +135,29 @@ test("a file another application still uses stays", () => {
 
 test("with no open application, nothing is withdrawn or deleted", () => {
   assert.deepEqual(withdrawnOnDelete([application({ id: 3, status: "rejected", cvFileId: 30 })]), { applicationIds: [], fileIds: [] });
+});
+
+// Withdraw and the interview time on My applications (issues #171, #183): the
+// rules the database side's withdrawApplication and chooseInterviewSlot ask.
+
+test("an accepted application cannot be withdrawn; one still being decided can", () => {
+  assert.equal(canWithdraw({ kind: "accepted" }), false);
+  for (const stage of [{ kind: "received" }, { kind: "in-review" }, { kind: "interview", interview: { lead: "Lead", slots: [], chosen: null } }] as const) {
+    assert.equal(canWithdraw(stage), true, stage.kind);
+  }
+});
+
+test("the applicant picks one offered interview time: an unknown time, a second pick or no interview is refused", () => {
+  const slots = [
+    { id: 1, start: "2026-10-20T09:00:00.000Z", end: "2026-10-20T10:00:00.000Z" },
+    { id: 2, start: "2026-10-21T09:00:00.000Z", end: "2026-10-21T10:00:00.000Z" },
+  ];
+  const card = (stage: ActiveStage): ActiveApplication => ({ id: 7, code: "AER-MSA-007", title: "Engineer", department: "Aerodynamics", division: null, sent: "2026-10-01T09:00:00.000Z", stage, files: [], answers: [] });
+  const waiting = card({ kind: "interview", interview: { lead: "Lead", slots, chosen: null } });
+
+  assert.deepEqual(pickableSlot(waiting, 2), { ok: true, slot: slots[1] });
+  assert.deepEqual(pickableSlot(waiting, 9999), { ok: false, error: "That time is no longer offered." });
+  assert.deepEqual(pickableSlot(card({ kind: "interview", interview: { lead: "Lead", slots, chosen: slots[1] } }), 1), { ok: false, error: "You already picked a time." });
+  assert.deepEqual(pickableSlot(card({ kind: "received" }), 1), { ok: false, error: "This application has no interview to pick a time for." });
+  assert.deepEqual(pickableSlot(undefined, 1), { ok: false, error: "That application is not yours." });
 });

@@ -6,6 +6,7 @@ import { getDb } from "@/db/client";
 import { departments, divisions, members, roles, scopes, users } from "@/db/schema";
 import { DEGREE_PROGRAMMES, GENDERS, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
 import { TEAM_ROSTER_CACHE_TAG } from "@/lib/cache-tags";
+import { actingTitleOf, attributedName } from "./acting-account";
 import type { MemberDetails } from "./details";
 import type { TeamPerson } from "./division-edit";
 import type { PersonRecord } from "./division-members";
@@ -50,6 +51,8 @@ type RoleRow = {
 
 type PersonRow = {
   member_id: number;
+  /** Their account id: what an acting account is stored as (issue #605). */
+  user_id: string;
   first_name: string | null;
   last_name: string | null;
   /** The email they sign in with, or were added with. */
@@ -72,6 +75,7 @@ type PersonRow = {
   picture: string | null;
   nda_signed_at: string | null;
   nda_confirmed_by: number | null;
+  nda_confirmed_by_acting_account: string | null;
 };
 
 type ScopeRow = { member_id: number | null; target: string; access_level: string };
@@ -112,6 +116,7 @@ async function queryTeamSnapshot(): Promise<TeamSnapshot> {
     db
       .select({
         member_id: users.member,
+        user_id: users.id,
         first_name: users.firstName,
         last_name: users.lastName,
         email: users.email,
@@ -131,6 +136,7 @@ async function queryTeamSnapshot(): Promise<TeamSnapshot> {
         picture: members.picture,
         nda_signed_at: members.ndaSignedAt,
         nda_confirmed_by: members.ndaConfirmedBy,
+        nda_confirmed_by_acting_account: members.ndaConfirmedByActingAccount,
       })
       .from(users)
       .leftJoin(members, eq(members.memberId, users.member)),
@@ -316,11 +322,22 @@ export function teamPeopleOf(snapshot: TeamSnapshot): TeamPerson[] {
 /**
  * Everyone on the roster as the Members page reads them (issue #231): their
  * divisions with the title of their active role in each, their details, and
- * the NDA they signed, with who confirmed it.
+ * the NDA they signed, with who confirmed it: "IT lead as Sara Conti" when
+ * it was confirmed while viewing as Sara Conti (issue #605).
  */
 export function recordsOf(snapshot: TeamSnapshot): PersonRecord[] {
   const people = new Map(snapshot.people.map((p) => [p.member_id, p]));
   const byMember = rolesByMember(snapshot);
+  const actingTitle = (accountId: string | null): string | null => {
+    if (accountId === null) return null;
+    const acting = snapshot.people.find((p) => p.user_id === accountId);
+    const held = acting === undefined ? [] : (byMember.get(acting.member_id) ?? []);
+    return actingTitleOf(held.map((r) => (r.full_access === null ? null : SEAT_OF_FLAG[r.full_access])));
+  };
+  const confirmerOf = (person: PersonRow): string | null => {
+    const confirmer = person.nda_confirmed_by === null ? null : (nameOf(people.get(person.nda_confirmed_by))?.name ?? null);
+    return confirmer === null ? null : attributedName(confirmer, actingTitle(person.nda_confirmed_by_acting_account));
+  };
   return rosterOf(snapshot).map((entry): PersonRecord => {
     const person = people.get(entry.id)!;
     const active = (byMember.get(entry.id) ?? []).filter((r) => r.leaved_at === null);
@@ -344,7 +361,7 @@ export function recordsOf(snapshot: TeamSnapshot): PersonRecord[] {
           ? null
           : {
               signedOn: person.nda_signed_at.slice(0, 10),
-              confirmedBy: person.nda_confirmed_by === null ? null : (nameOf(people.get(person.nda_confirmed_by))?.name ?? null),
+              confirmedBy: confirmerOf(person),
             },
     };
   });

@@ -12,8 +12,7 @@ import type { ProjectRecord, UploadedSrc } from "@/lib/project-content/record";
 
 // The project editor's writes (boards 75 and 75c, issues #297 and #298). Each opens the
 // dashboard as the page did; the projects editor checks the site-content gate
-// and the fields again, and writes to the database or, for a test developer,
-// to their cookie. The database write refreshes the cached public read; every
+// and the fields again, and writes to the database. The write refreshes the cached public read; every
 // page that shows a project renders again.
 
 /** The pages a project shows on: its own page and /projects (both under the /projects layout), and Home. */

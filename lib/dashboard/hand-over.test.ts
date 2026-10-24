@@ -120,8 +120,8 @@ test("every drawer and dialog words Become an advisor the same way, for the edit
 });
 
 test("no hand-over, replacement or close path writes the Team page's advisory board: it is edited by hand only", () => {
-  // Both data sources' hand-over, replace and close writes live in these two files; the board is `team_page_advisors`.
-  for (const file of ["./database-team.ts", "../dummy-data/team-pages.ts"]) {
+  // The hand-over, replace and close writes live in this file; the board is `team_page_advisors`.
+  for (const file of ["./database-team.ts"]) {
     const source = readFileSync(new URL(file, import.meta.url), "utf8");
     assert.doesNotMatch(source, /teamPageAdvisor|team_page_advisor|database-team-advisors|AdvisorStore|advisorEditor/, file);
   }

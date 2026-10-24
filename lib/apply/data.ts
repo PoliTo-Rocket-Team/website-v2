@@ -8,8 +8,7 @@ import type { NewApplication, SubmitDeps } from "./submit";
 /**
  * The one way the apply pages and their submit read and write data (issue
  * #150), in the shape of the dashboard's (lib/dashboard/data.ts). The
- * database side is ./database.ts, the dummy side is lib/dummy-data/apply.ts,
- * and ./pick.ts picks one per request.
+ * database side is ./database.ts, which every apply page reads (issue #609).
  */
 export interface ApplyData {
   /** The positions /apply lists: public ones only. */

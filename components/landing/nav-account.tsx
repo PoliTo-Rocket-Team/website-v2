@@ -80,7 +80,7 @@ const ITEM =
  * the menu is open.
  */
 function AccountMenu({ viewer }: { viewer: NavViewer }) {
-  const signOut = useSignOut(viewer.session);
+  const signOut = useSignOut();
   const logOut = async () => {
     await signOut();
     ask();

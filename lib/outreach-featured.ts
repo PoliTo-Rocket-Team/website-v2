@@ -9,7 +9,7 @@ import type { OutreachContent, PostItem, PostVersions, UpToTwo } from "@/lib/out
 // The rule lives here and nowhere else: the outreach editor
 // (lib/outreach-editor.ts) checks it behind the site-content gate, each store
 // checks it again before it writes (lib/dashboard/database-outreach.ts,
-// lib/dummy-data/outreach.ts), and the database's two featured slots
+// lib/outreach-memory.ts), and the database's two featured slots
 // (migration 0048) cannot hold a third. The Outreach list's row menu and the
 // edit shell's Outreach list target both move it.
 

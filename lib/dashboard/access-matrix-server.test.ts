@@ -12,12 +12,18 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
 import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
-import { divisions, members, roles, scopes } from "@/db/schema";
+import { betterAuthUsers, divisions, logs, members, orders, projects, projectVersions, roles, scopes } from "@/db/schema";
 import { databaseTeamRoles } from "@/lib/about/team-data";
 import { teamBuildOf } from "@/lib/about/team-roles";
+import { importedProjects } from "@/lib/project-content/import";
+import { newRowContent } from "@/lib/project-content/row";
+import { readProjectStamps } from "./database-projects";
+import { readViewAsAccount, recordViewAs, viewAsRefusal } from "./database-view-as";
+import { viewAsSiteOf, type ViewAsSite } from "./view-as";
 import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
 import { areaLevelsOf, canChangePerson, checkRemoveGrant, grantablePeople, heldIn, holdsAny, placeKey, placesOf, removalOf, type AccessPage } from "./division-access";
+import type { TeamSearch } from "./division-edit";
 import { SEAT_TITLE_REQUIRED } from "./division-members";
 import { membersExportFileName, XLSX_TYPE } from "./members-export";
 import { filterTeam, NO_TEAM_FILTER } from "./team-members";
@@ -30,14 +36,14 @@ import type { TeamStructure } from "./team-structure";
 import { applicationsModelOf } from "./applications-view";
 import { positionsModelOf } from "./positions-view";
 import type { ApplicationsPage, PositionsPage } from "./recruitment";
-import { insertRows, keepWrites, recordedWrites, rowsIn, updateRows } from "./access-matrix/fake-db";
+import { insertRows, keepWrites, recordedAuditWriters, recordedWrites, rowsIn, updateRows } from "./access-matrix/fake-db";
 import type { OwnAlias } from "./alias-setup";
 import { isOffTeam } from "./viewer";
 import { fileReads, resetFiles } from "./access-matrix/fakes/files";
 import { ownPublicStoreHost } from "./access-matrix/fakes/public-store";
 import { accountOf, cvHash, EXTRA, IDS, MARKERS, seedFixture } from "./access-matrix/fixture";
 import { ALL, ORG, VIEWERS, type Expect, type MatrixRow, type Unit } from "./access-matrix/matrix";
-import { signInAs } from "./access-matrix/session";
+import { signInAs, viewAs } from "./access-matrix/session";
 
 // The server side of the dashboard access matrix (issue #477): every loader
 // the data interface hands the pages, every server action under
@@ -795,6 +801,9 @@ describe("the decision rows come to every Overview whose viewer decides orders (
     const board = (await (await open(name)).overview()) as TeamSideOverview;
     assert.ok(board.shape === "personal", `${name}: ${board.shape}`);
     assert.deepEqual(board.access, [{ area: "approve-orders", href: "/dashboard/orders", waiting: ALL.length }]);
+    const plain = (await (await open("member")).overview()) as TeamSideOverview;
+    assert.ok(plain.shape === "personal", `member: ${plain.shape}`);
+    assert.deepEqual(plain.access, [], "a member without it gets no Approve orders line");
   });
 });
 
@@ -1322,6 +1331,13 @@ describe("a division lead with no scope row edits their own division in the Team
     );
   });
 
+  test("Edit division's lead and member pickers search the whole team for the lead", async () => {
+    const { answer, writes } = await asLead(() => teamActions.findPeople("Mover"));
+    assert.ok(answer !== null && typeof answer === "object" && (answer as TeamSearch).kind === "people", `the pickers answered ${JSON.stringify(answer)}`);
+    assert.ok((answer as Extract<TeamSearch, { kind: "people" }>).people.some((p) => p.id === EXTRA.mover), "someone outside the led division is found");
+    assert.deepEqual(writes, []);
+  });
+
   test("the drawer's member actions add someone from the team, invite an email and remove a member in the led division", async () => {
     await writes("add OA's member to MA", () => teamActions.addMember({ kind: "member", divisionId: IDS.division(MA), personId: IDS.person(OA), title: "Member" }));
     assert.deepEqual(rolesIn(IDS.person(OA), MA), ["core"]);
@@ -1692,6 +1708,240 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
     assert.equal(cells.get(lead.name), address, "the DM lead's PRT email is the alias");
     cells.delete(lead.name);
     assert.deepEqual([...cells.values()].filter((v) => v !== ""), [], "every other member's PRT email cell is empty");
+  });
+});
+
+// View as ---------------------------------------------------------------------
+
+describe("View as: on production only the IT lead seat starts it, on a preview and under next dev a seeded admin tester too (issue #604)", () => {
+  const LIVE: ViewAsSite = "live";
+  const PREVIEW = viewAsSiteOf({ NODE_ENV: "production", VERCEL_ENV: "preview" });
+  const NEXT_DEV = viewAsSiteOf({ NODE_ENV: "development" });
+  const itLead = accountOf("IT lead");
+  const member = accountOf("member");
+  /** A plain member of MA, the person viewed as. */
+  const person = "person-ma";
+
+  /** The fixture, with a Better Auth account for every matrix viewer and the person: `admins` store the admin role, everyone else the plugin's default. */
+  function seedAccounts(admins: readonly string[] = []): void {
+    seedFixture();
+    const ids = [...VIEWERS.map(({ name }) => accountOf(name).userId), person];
+    insertRows(
+      betterAuthUsers,
+      ids.map((id) => ({ id, name: id, email: `${id}@auth.test`, emailVerified: true, role: admins.includes(id) ? "admin" : "user" })),
+    );
+  }
+
+  const start = (actingAccountId: string, personId = person, viewingAs = false) => ({ actingAccountId, viewingAs, personId });
+
+  test("production, previews and next dev are told apart by the environment, and anything unproven reads as production", () => {
+    assert.equal(viewAsSiteOf({ NODE_ENV: "production", VERCEL_ENV: "production" }), "live");
+    assert.equal(PREVIEW, "test");
+    assert.equal(NEXT_DEV, "test");
+    assert.equal(viewAsSiteOf({ NODE_ENV: "development", VERCEL_ENV: "production" }), "live");
+    assert.equal(viewAsSiteOf({ NODE_ENV: "production" }), "live");
+    assert.equal(viewAsSiteOf({ NODE_ENV: "test" }), "live");
+  });
+
+  test("on production the IT lead starts View as, and every other matrix viewer is refused, the team leader and a stored admin included", async () => {
+    seedAccounts([member.userId, accountOf("team leader").userId]);
+    for (const { name } of VIEWERS) {
+      assert.equal(await viewAsRefusal(start(accountOf(name).userId), LIVE), name === "IT lead" ? null : "not-allowed", name);
+    }
+    assert.deepEqual(recordedWrites(), [], "deciding writes nothing");
+  });
+
+  test("after an IT lead hand-over the new seat holder starts View as and the previous one is refused, with no stored flag", async () => {
+    seedAccounts();
+    // The hand-over: the IT lead leaves the seat's role, and the member takes a role flagged as the seat.
+    updateRows(roles, { memberId: itLead.memberId }, { leavedAt: "2026-10-20" });
+    insertRows(roles, [{ id: 9_000, memberId: member.memberId, title: "IT Lead", startedAt: "2026-10-20", type: "core", fullAccess: "it_lead" }]);
+    assert.equal(await viewAsRefusal(start(member.userId), LIVE), null, "the new seat holder");
+    assert.equal(await viewAsRefusal(start(itLead.userId), LIVE), "not-allowed", "the previous seat holder");
+    // Nothing per person decides it: both still store the plugin's default role.
+    assert.equal((await readViewAsAccount(member.userId))?.storedRole, "user");
+    assert.equal((await readViewAsAccount(itLead.userId))?.storedRole, "user");
+  });
+
+  test("on a preview and under next dev a seeded admin tester starts View as, and a plain member is refused", async () => {
+    const adminTester = accountOf("non-member").userId;
+    seedAccounts([adminTester]);
+    for (const [label, site] of [["preview", PREVIEW], ["next dev", NEXT_DEV]] as const) {
+      assert.equal(await viewAsRefusal(start(adminTester), site), null, `${label}: the admin tester`);
+      assert.equal(await viewAsRefusal(start(itLead.userId), site), null, `${label}: the IT lead`);
+      assert.equal(await viewAsRefusal(start(member.userId), site), "not-allowed", `${label}: a plain member`);
+    }
+    assert.equal(await viewAsRefusal(start(adminTester), LIVE), "not-allowed", "the same admin tester on production");
+  });
+
+  test("nobody views as themselves, as someone who may use View as, as an unknown account, or from inside a View as session", async () => {
+    const adminTester = accountOf("non-member").userId;
+    seedAccounts([adminTester]);
+    assert.equal(await viewAsRefusal(start(itLead.userId, itLead.userId), LIVE), "same-person");
+    assert.equal(await viewAsRefusal(start(itLead.userId, adminTester), PREVIEW), "person-may-view-as", "an admin tester on a preview");
+    assert.equal(await viewAsRefusal(start(adminTester, itLead.userId), PREVIEW), "person-may-view-as", "the IT lead");
+    assert.equal(await viewAsRefusal(start(itLead.userId, "nobody"), LIVE), "no-such-person");
+    assert.equal(await viewAsRefusal(start(itLead.userId, person, true), LIVE), "already-viewing-as");
+  });
+
+  test("starting and stopping View as each write one Activity log entry, under the acting account, naming both people", async () => {
+    seedAccounts();
+    keepWrites();
+    await recordViewAs({ event: "start", sessionId: "view-as-session", personId: person, actingAccountId: itLead.userId });
+    await recordViewAs({ event: "stop", sessionId: "view-as-session", personId: person, actingAccountId: itLead.userId });
+    const entries = rowsIn(logs).map(({ schemaName, tableName, operation, recordId, newData, changedBy }) => ({ schemaName, tableName, operation, recordId, newData, changedBy }));
+    const both = { personId: person, actingAccountId: itLead.userId };
+    assert.deepEqual(entries, [
+      { schemaName: "better_auth", tableName: "session", operation: "VIEW_AS_START", recordId: "view-as-session", newData: both, changedBy: itLead.userId },
+      { schemaName: "better_auth", tableName: "session", operation: "VIEW_AS_STOP", recordId: "view-as-session", newData: both, changedBy: itLead.userId },
+    ]);
+  });
+});
+
+// Writes made while viewing as someone ----------------------------------------
+//
+// Owner decisions on #597 (2026-10-24): a write made in a View as session
+// stores the person viewed as and the acting account, read from the session
+// on the server, and every "by" field shows it as "IT lead as <Name
+// Surname>". Each test signs in as a View as session of the team leader with
+// the IT lead behind it, or as the team leader alone, and reads what the
+// write stored, who the audit log would name, and what the page then shows.
+
+describe("a write made while viewing as someone records both people, from the session (issue #605)", () => {
+  const itLead = accountOf("IT lead");
+  const teamLeader = accountOf("team leader");
+  const asTeamLeader = `IT lead as Viewer ${teamLeader.userId}`;
+  /** A request body naming an acting account the session does not: the server never reads it. */
+  const FORGED = { actingAccountId: "forged-account", impersonatedBy: "forged-account" };
+
+  /** A fresh fixture that keeps its writes, signed in as the team leader: viewed as by the IT lead, or on their own. */
+  async function signedIn(viewedAs: boolean): Promise<DashboardData> {
+    seedFixture();
+    resetFiles();
+    keepWrites();
+    if (viewedAs) viewAs(teamLeader.userId, itLead.userId);
+    else signInAs(teamLeader.userId);
+    const opening = await openDashboard();
+    assert.equal(opening.kind, "open", "the dashboard opens");
+    return (opening as { data: DashboardData }).data;
+  }
+
+  const decidedOrder = () => rowsIn(orders).find((o) => o.id === IDS.order(DM))!;
+
+  test("an order approved while viewing as the team leader stores both ids, logs both, and reads as the IT lead as them", async () => {
+    await signedIn(true);
+    const answer = (await actions.decideOrder(IDS.order(DM), { kind: "approve" })) as { ok: boolean; value?: { answer?: { by: string; byYou: boolean } } };
+    assert.ok(answer.ok, JSON.stringify(answer));
+    assert.equal(decidedOrder().reviewedBy, teamLeader.memberId, "the person viewed as");
+    assert.equal(decidedOrder().reviewedByActingAccount, itLead.userId, "the acting account");
+    assert.deepEqual(recordedAuditWriters(), [{ userId: teamLeader.userId, actingAccountId: itLead.userId }], "the log names both");
+    assert.deepEqual(answer.value?.answer && { by: answer.value.answer.by, byYou: answer.value.answer.byYou }, { by: asTeamLeader, byYou: false });
+  });
+
+  test("a grant given and an NDA confirmed while viewing as the team leader store both ids and read as the IT lead as them", async () => {
+    const data = await signedIn(true);
+    assert.ok(!isRefusal(await actions.saveAccess({ personId: IDS.person(DM), areas: { positions: "edit" } })), "the grant is given");
+    const grant = rowsIn(scopes).find((s) => s.memberId === IDS.person(DM) && s.target === "positions")!;
+    assert.deepEqual({ givenBy: grant.givenBy, acting: grant.givenByActingAccount }, { givenBy: teamLeader.memberId, acting: itLead.userId });
+    assert.ok(JSON.stringify(await data.divisionAccess()).includes(asTeamLeader), "Access shows who gave it");
+
+    assert.deepEqual(await teamActions.confirmNda(IDS.join(DM)), { ok: true });
+    const joined = rowsIn(members).find((m) => m.ndaConfirmedByActingAccount !== null)!;
+    assert.deepEqual({ by: joined.ndaConfirmedBy, acting: joined.ndaConfirmedByActingAccount }, { by: teamLeader.memberId, acting: itLead.userId });
+    assert.ok(JSON.stringify(await data.members(null)).includes(asTeamLeader), "Members shows who confirmed the NDA");
+    assert.ok(recordedAuditWriters().every((w) => w.actingAccountId === itLead.userId), "every write is logged with the acting account");
+  });
+
+  test("a request naming another acting account changes nothing that is stored", async () => {
+    await signedIn(true);
+    assert.ok(!isRefusal(await actions.decideOrder(IDS.order(DM), { kind: "approve", ...FORGED })));
+    assert.equal(decidedOrder().reviewedByActingAccount, itLead.userId, "in a View as session, the session's acting account");
+    assert.deepEqual(recordedAuditWriters(), [{ userId: teamLeader.userId, actingAccountId: itLead.userId }]);
+    assert.ok(!JSON.stringify(rowsIn(orders)).includes(FORGED.actingAccountId), "the forged id is stored nowhere");
+
+    await signedIn(false);
+    assert.ok(!isRefusal(await actions.decideOrder(IDS.order(DM), { kind: "approve", actingAccountId: itLead.userId })));
+    assert.equal(decidedOrder().reviewedByActingAccount, null, "in a plain session, none");
+    assert.deepEqual(recordedAuditWriters(), [{ userId: teamLeader.userId, actingAccountId: null }]);
+  });
+
+  test("the Projects edited-by line names the IT lead as the person for an edit made while viewing as them", async () => {
+    await signedIn(true);
+    // What the audit trigger stores for two project edits: one made while
+    // viewing as the team leader, one the team leader made on their own.
+    const edit = (projectId: number, actingAccountId: string | null) => ({
+      schemaName: "public",
+      tableName: "project_versions",
+      operation: "UPDATE",
+      recordId: String(projectId),
+      newData: { project_id: projectId },
+      changedBy: teamLeader.userId,
+      changedByActingAccount: actingAccountId,
+      changedAt: "2026-10-24T09:00:00.000Z",
+    });
+    insertRows(logs, [edit(1, itLead.userId), edit(2, null)]);
+    const stamps = await readProjectStamps();
+    assert.equal(stamps.get(1)?.by, asTeamLeader, "an edit made while viewing as them");
+    assert.equal(stamps.get(2)?.by, `Viewer ${teamLeader.userId}`, "an edit made outside View as");
+  });
+
+  test("a write made outside View as stores no acting account and reads as before", async () => {
+    const data = await signedIn(false);
+    const answer = (await actions.decideOrder(IDS.order(DM), { kind: "approve" })) as { ok: boolean; value?: { answer?: { by: string; byYou: boolean } } };
+    assert.ok(answer.ok, JSON.stringify(answer));
+    assert.deepEqual({ by: decidedOrder().reviewedBy, acting: decidedOrder().reviewedByActingAccount }, { by: teamLeader.memberId, acting: null });
+    assert.deepEqual(answer.value?.answer && { by: answer.value.answer.by, byYou: answer.value.answer.byYou }, { by: `Viewer ${teamLeader.userId}`, byYou: true });
+    assert.ok(!isRefusal(await actions.saveAccess({ personId: IDS.person(DM), areas: { positions: "edit" } })));
+    assert.equal(rowsIn(scopes).find((s) => s.memberId === IDS.person(DM) && s.target === "positions")?.givenByActingAccount, null);
+    assert.ok(!JSON.stringify(await data.divisionAccess()).includes(" as Viewer"), "no grant names an acting seat");
+    assert.deepEqual(recordedAuditWriters(), [
+      { userId: teamLeader.userId, actingAccountId: null },
+      { userId: teamLeader.userId, actingAccountId: null },
+    ]);
+  });
+});
+
+// The Projects board ---------------------------------------------------------
+
+describe("moving a project card on the Projects page is not an edit (issue #297, #613)", () => {
+  test("projects.setSiteOrder writes the site order on projects and no project_versions row, so no card's edited-by line changes", async () => {
+    const data = await open("team leader");
+    keepWrites();
+    const items = importedProjects();
+    insertRows(projects, items.map((item) => ({ id: item.id, siteOrder: item.siteOrder })));
+    insertRows(
+      projectVersions,
+      items.map((item) => {
+        const record = item.version.state === "published" ? item.version.published : item.version.draft;
+        return { id: item.id, projectId: item.id, version: "published", content: newRowContent(record), page: record };
+      }),
+    );
+    // One earlier edit, as the audit trigger logs it, so a card has a line to keep.
+    insertRows(logs, [
+      {
+        schemaName: "public",
+        tableName: "project_versions",
+        operation: "UPDATE",
+        recordId: "1",
+        newData: { project_id: 1 },
+        changedBy: accountOf("team leader").userId,
+        changedAt: "2026-10-20T09:00:00.000Z",
+      },
+    ]);
+    const linesBefore = (await data.projects.board())?.edited;
+    assert.ok(linesBefore?.[1], "the edited card has a line before the move");
+    const stampsBefore = await readProjectStamps();
+    const ids = items.map((item) => item.id).reverse();
+
+    assert.ok((await data.projects.setSiteOrder(ids)).ok, "a site-content editor moves the cards");
+
+    const written = recordedWrites();
+    assert.ok(written.some((w) => w.table === "projects"), `the move writes the site order: ${JSON.stringify(written)}`);
+    assert.ok(!written.some((w) => w.table === "project_versions"), `the move writes no project version: ${JSON.stringify(written)}`);
+    const order = rowsIn(projects).sort((a, b) => Number(a.siteOrder) - Number(b.siteOrder)).map((p) => p.id);
+    assert.deepEqual(order, ids, "the cards stand in the new order");
+    assert.deepEqual(await readProjectStamps(), stampsBefore, "the audit log holds no new edit");
+    assert.deepEqual((await data.projects.board())?.edited, linesBefore, "every card's edited-by line reads as before");
   });
 });
 

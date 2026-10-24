@@ -3,17 +3,10 @@ import { test } from "node:test";
 import { memoryContentStore } from "@/lib/content/memory";
 import { editorVersion, type PublishStep, type Versioned } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import {
-  dummyOutreachStore,
-  dummyPhotoFiles,
-  parseOutreachEdits,
-  PREVIEW_PHOTO_SRC,
-  serializeOutreachEdits,
-  type DummyOutreachEdits,
-} from "@/lib/dummy-data/outreach";
 import { postBySlug, slugOf } from "./outreach";
 import { outreachEditor, publicOutreach } from "./outreach-editor";
 import { importedOutreach } from "./outreach-import";
+import { memoryOutreachStore, memoryPhotoFiles } from "./outreach-memory";
 import { postFieldsOf } from "./outreach-post-fields";
 import { publicStorePhotoFiles, type CheckedPhoto, type PhotoFiles, type PublicFileWrites } from "./outreach-photos";
 import type { OutreachPost, PhotoSrc } from "./outreach-types";
@@ -22,9 +15,8 @@ import { publicStoreHost } from "@/lib/storage/pathname";
 // Post photos (issue #291): a post needs a photo, whose description is
 // optional (issue #430), the first photo is the cover, a gallery's photos
 // are checked as the post's are, uploads wait for the site-content
-// gate, a save takes files only from this deployment's own public store, a
-// file no version of any post shows is deleted, and a preview writes no file
-// anywhere.
+// gate, a save takes files only from this deployment's own public store, and a
+// file no version of any post shows is deleted.
 
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 const member: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: false, approveOrders: false };
@@ -32,22 +24,9 @@ const member: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: 
 const PNG = new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
 const upload = { name: "photo.png", contentType: "image/png", bytes: PNG };
 
-/** A cookie that keeps what was saved, read again by each new store as the next request would. */
-function cookie() {
-  let value: string | undefined;
-  return {
-    get current(): DummyOutreachEdits {
-      return parseOutreachEdits(value);
-    },
-    save: async (next: DummyOutreachEdits) => {
-      value = serializeOutreachEdits(next);
-    },
-  };
-}
-
 test("a photo's description is optional for Save draft and Publish, and the first photo is the post's cover on the public page", async () => {
-  const jar = cookie();
-  const editor = outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles);
+  const store = memoryOutreachStore();
+  const editor = outreachEditor(admin, store, memoryPhotoFiles);
   const item = (await editor.posts.list())![0];
   const fields = postFieldsOf(editorVersion(item.version));
 
@@ -60,16 +39,15 @@ test("a photo's description is optional for Save draft and Publish, and the firs
 
   // Owner decision (issue #430): no description is needed; the page draws the photo with alt="".
   assert.ok((await editor.savePost(item.id, "publish", undescribed)).ok);
-  const shown = (store: ReturnType<typeof dummyOutreachStore>) =>
-    store.posts.list().then((posts) => publicOutreach({ ...importedOutreach(), posts }));
-  const live = postBySlug((await shown(dummyOutreachStore(jar))).posts, slugOf(editorVersion(item.version)));
-  assert.deepEqual(live?.photos[0], { src: PREVIEW_PHOTO_SRC, alt: "" }, "the new first photo is the cover, with an empty description");
+  const shown = publicOutreach({ ...importedOutreach(), posts: await store.posts.list() });
+  const live = postBySlug(shown.posts, slugOf(editorVersion(item.version)));
+  assert.deepEqual(live?.photos[0], { src: uploaded.value, alt: "" }, "the new first photo is the cover, with an empty description");
   assert.deepEqual(live?.photos.slice(1), fields.photos, "the photos it had follow in order");
 });
 
 test("a post's gallery is saved with the post, its photos checked and kept as the post's are", async () => {
-  const jar = cookie();
-  const editor = outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles);
+  const store = memoryOutreachStore();
+  const editor = outreachEditor(admin, store, memoryPhotoFiles);
   const item = (await editor.posts.list())![0];
   const fields = postFieldsOf(editorVersion(item.version));
   assert.deepEqual(fields.gallery, [], "a post with no gallery opens on no photos");
@@ -86,9 +64,9 @@ test("a post's gallery is saved with the post, its photos checked and kept as th
 
   // A gallery has no switch and no title (issue #451): its photos are all it is.
   assert.ok((await editor.savePost(item.id, "publish", { ...fields, gallery: [photo] })).ok);
-  const posts = await dummyOutreachStore(jar).posts.list();
+  const posts = await store.posts.list();
   const live = postBySlug(publicOutreach({ ...importedOutreach(), posts }).posts, slugOf(editorVersion(item.version)));
-  assert.deepEqual(live?.gallery, { items: [{ src: PREVIEW_PHOTO_SRC, alt: "", caption: "At the stand" }] });
+  assert.deepEqual(live?.gallery, { items: [{ src: uploaded.value, alt: "", caption: "At the stand" }] });
   assert.deepEqual(live?.photos, editorVersion(item.version).photos, "the top photo and the photo grid stay as they were");
 });
 
@@ -103,11 +81,11 @@ test("a photo is uploaded only once the site-content gate admits the viewer, and
     drop: async () => {},
   };
 
-  const refused = outreachEditor(member, dummyOutreachStore(cookie()), files);
+  const refused = outreachEditor(member, memoryOutreachStore(), files);
   assert.equal((await refused.uploadPhoto(upload)).ok, false);
   assert.equal(put.length, 0, "nothing is stored for a viewer the gate refuses");
 
-  const editor = outreachEditor(admin, dummyOutreachStore(cookie()), files);
+  const editor = outreachEditor(admin, memoryOutreachStore(), files);
   assert.deepEqual(await editor.uploadPhoto({ ...upload, contentType: "image/png", bytes: new TextEncoder().encode("<html>") }), {
     ok: false,
     error: "The photo must be a JPEG, PNG or WebP file.",
@@ -155,7 +133,7 @@ test("a save accepts an uploaded photo only from this deployment's own public st
   await files.drop([...foreign, ownFile("a.jpg")]);
   assert.deepEqual(removed, ["post-photos/a.jpg"], "only the file in our own store is deleted");
 
-  const editor = outreachEditor(admin, dummyOutreachStore(cookie()), files);
+  const editor = outreachEditor(admin, memoryOutreachStore(), files);
   const uploaded = await editor.uploadPhoto(upload);
   assert.deepEqual(uploaded, { ok: true, value: ownFile("new.png") });
   const item = (await editor.posts.list())![0];
@@ -183,7 +161,7 @@ test("Save, Delete and Remove photo free a stored file only when no version of a
     { ...second, version: published(withPhotos(ownFile("a.jpg"))) },
   ];
   const { removed, writes } = recordedWrites();
-  const editor = outreachEditor(admin, { ...dummyOutreachStore(cookie()), posts: memoryContentStore(seed) }, publicStorePhotoFiles(OWN, writes, () => "new"));
+  const editor = outreachEditor(admin, { ...memoryOutreachStore(), posts: memoryContentStore(seed) }, publicStorePhotoFiles(OWN, writes, () => "new"));
   const save = (id: number, step: PublishStep, post: OutreachPost) => editor.posts.save(id, step, async () => ({ ok: true, value: post }));
 
   // A draft on A drops b: the published version still shows it.
@@ -198,11 +176,4 @@ test("Save, Delete and Remove photo free a stored file only when no version of a
   // Deleting B leaves a shown nowhere, so its file goes.
   assert.ok((await editor.posts.remove(second.id)).ok);
   assert.deepEqual(removed, ["post-photos/b.jpg", "post-photos/a.jpg"]);
-});
-
-test("a preview never writes a file: an upload comes back as a data URL, and a stored file cannot ride a preview save", async () => {
-  const uploaded = await outreachEditor(admin, dummyOutreachStore(cookie()), dummyPhotoFiles).uploadPhoto(upload);
-  assert.ok(uploaded.ok);
-  assert.match(uploaded.value, /^data:image\/png;base64,/);
-  assert.ok(!dummyPhotoFiles.owns("https://abc.public.blob.vercel-storage.com/post-photos/a.jpg"), "a preview save cannot carry a stored file");
 });
