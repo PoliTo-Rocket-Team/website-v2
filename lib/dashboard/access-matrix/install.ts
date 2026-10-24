@@ -5,9 +5,11 @@ import { pathToFileURL } from "node:url";
 // Import this first in a server-side access test (issue #477). It points the
 // modules a server call reaches outside this repo's own code at the fakes
 // beside it: the database client, the session, Next's cache and request
-// headers, the audited writes and the file stores. Everything else, every
-// loader, rule, action and route, runs as it does on the server. Node runs
-// each test file in its own process, so the swap ends with the file.
+// headers and the file stores. The database client answers a migrated
+// in-memory Postgres (./test-database.ts, issue #649), so every loader, rule,
+// action and route, the audited writes of lib/db-audit.ts included, runs as
+// it does on the server. Node runs each test file in its own process, so the
+// swap ends with the file.
 
 type ResolveHook = (
   specifier: string,
@@ -26,7 +28,6 @@ const FAKES: Readonly<Record<string, string>> = {
   "next/headers": fake("next-headers.ts"),
   "@/db/client": fake("db-client.ts"),
   "@/lib/current-user": fake("current-user.ts"),
-  "@/lib/db-audit": fake("db-audit.ts"),
   "@/lib/storage/private-store": fake("files.ts"),
   "@/lib/storage/public-store": fake("public-store.ts"),
   "@vercel/blob": fake("files.ts"),

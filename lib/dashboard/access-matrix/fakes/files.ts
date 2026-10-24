@@ -1,9 +1,9 @@
-import { recordWrite } from "../fake-db";
+import { noteFileWrite } from "../test-database";
 
 // Stands in for the private file store (`@/lib/storage/private-store`) and
 // `@vercel/blob` in the server-side access tests. A read is recorded as one
 // (`fileReads`), so a test can show a refused request never opened the file;
-// an upload or a delete is recorded as a write.
+// an upload or a delete is noted in the write journal.
 
 const opened: string[] = [];
 
@@ -21,21 +21,21 @@ export async function readPrivateFile(pathname: string) {
 }
 
 export async function uploadPrivateFile(pathname: string) {
-  recordWrite("upload", pathname);
+  await noteFileWrite("upload", pathname);
   return { pathname };
 }
 
 export async function deletePrivateFile(pathname: string) {
-  recordWrite("delete-file", pathname);
+  await noteFileWrite("delete-file", pathname);
 }
 
 export async function put(pathname: string) {
-  recordWrite("put", pathname);
+  await noteFileWrite("put", pathname);
   return { url: `https://blob.test/${pathname}`, pathname };
 }
 
 export async function del(pathname: string) {
-  recordWrite("del", String(pathname));
+  await noteFileWrite("del", String(pathname));
 }
 
 export async function get(pathname: string) {

@@ -2,13 +2,14 @@ import "./access-matrix/install";
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { outreachPosts, outreachPostTags, outreachPostVersions, outreachTags } from "@/db/schema";
+import { outreachPosts, outreachPostTags, outreachPostVersions, outreachSummitVersions, outreachTags, users } from "@/db/schema";
 import { memoryPhotoFiles } from "@/lib/outreach-memory";
 import { outreachRecord } from "@/lib/outreach";
 import { outreachEditor, publicOutreach } from "@/lib/outreach-editor";
 import { FEATURED_FULL, type FeaturedSlot } from "@/lib/outreach-featured";
 import { postColumns } from "@/lib/outreach-rows";
-import { insertRows, keepWrites, recordedBatches, recordedWrites, resetFakeDb, rowsIn } from "./access-matrix/fake-db";
+import { signInAs } from "./access-matrix/session";
+import { addRows, clearRows, databaseWrites, resetDatabase, tableRows, writesByTransaction } from "./access-matrix/test-database";
 import { databaseOutreachStore, readStoredOutreach } from "./database-outreach";
 import type { ViewerStanding } from "./viewer";
 
@@ -17,31 +18,37 @@ const admin: ViewerStanding = { kind: "operations-lead", seat: "operations-lead"
 // The database path of featured posts (issue #496): the store reads which
 // posts hold the two featured slots of `outreach_posts` (migration 0048),
 // with no summit read at all, and refuses a third before it writes. It runs
-// against the in-memory database of the access tests (./access-matrix/),
-// which stores the rows a test puts in and records every write.
+// against the migrated in-memory Postgres of the access tests
+// (./access-matrix/test-database.ts), whose write journal names every write.
 
 const NOW = "2026-10-21 10:00:00+00";
+const EDITOR = "editor";
 
 /** Posts 1, 2 and 3 of the record (May 4 2025, April 28 2025, November 22 2024), each holding the slot given, and nothing in the summit's table. */
-function seed(slots: readonly (FeaturedSlot | null)[]) {
-  resetFakeDb();
+async function seed(slots: readonly (FeaturedSlot | null)[]) {
+  await resetDatabase();
+  // The migrations import the record's posts (drizzle/0032): only the three below stay.
+  for (const table of [outreachPostTags, outreachPostVersions, outreachPosts, outreachTags, outreachSummitVersions]) await clearRows(table);
+  // An editor's write is audited under the signed-in account (lib/db-audit.ts), which must exist.
+  await addRows(users, [{ id: EDITOR, email: "editor@team.test", createdAt: NOW }]);
+  signInAs(EDITOR);
   const posts = outreachRecord.posts.slice(0, 3);
-  insertRows(
+  await addRows(
     outreachTags,
     outreachRecord.tags.map((tag, i) => ({ id: i + 1, name: tag.name, award: tag.award, listOrder: i + 1, createdAt: NOW })),
   );
-  insertRows(
+  await addRows(
     outreachPosts,
     posts.map((_, i) => ({ id: i + 1, siteOrder: i + 1, featuredSlot: slots[i] ?? null, createdAt: NOW })),
   );
-  insertRows(
+  await addRows(
     outreachPostVersions,
     posts.map((post, i) => {
       const c = postColumns(post);
       return { id: i + 1, postId: i + 1, version: "published", ...c, body: [...c.body], photos: [...c.photos], updatedAt: NOW };
     }),
   );
-  insertRows(
+  await addRows(
     outreachPostTags,
     posts.flatMap((post, i) => post.tags.map((tagName, at) => ({ postId: i + 1, version: "published", tagName, position: at + 1 }))),
   );
@@ -51,7 +58,7 @@ function seed(slots: readonly (FeaturedSlot | null)[]) {
 const titles = (posts: readonly { title: string }[]) => posts.map((p) => p.title);
 
 test("with no post featured the database read gives no Featured card and lists every post, with the summit's table empty", async () => {
-  const posts = seed([null, null, null]);
+  const posts = await seed([null, null, null]);
   const stored = await readStoredOutreach();
   assert.deepEqual(stored.featured, []);
   const shown = publicOutreach(stored);
@@ -60,7 +67,7 @@ test("with no post featured the database read gives no Featured card and lists e
 });
 
 test("one featured post gives one Featured card and leaves the list", async () => {
-  const [may, april, november] = seed([null, 1, null]);
+  const [may, april, november] = await seed([null, 1, null]);
   assert.deepEqual(await databaseOutreachStore.featured(), [2]);
   const shown = publicOutreach(await readStoredOutreach());
   assert.deepEqual(titles(shown.featured), [april.title]);
@@ -68,7 +75,7 @@ test("one featured post gives one Featured card and leaves the list", async () =
 });
 
 test("two featured posts give two Featured cards, newest first, whatever slot each holds", async () => {
-  const [may, april, november] = seed([2, 1, null]);
+  const [may, april, november] = await seed([2, 1, null]);
   assert.deepEqual(await databaseOutreachStore.featured(), [2, 1], "slot 1 first");
   const shown = publicOutreach(await readStoredOutreach());
   assert.deepEqual(titles(shown.featured), [may.title, april.title]);
@@ -76,66 +83,64 @@ test("two featured posts give two Featured cards, newest first, whatever slot ea
 });
 
 test("featuring a post writes its slot while one is free, and a third is refused with no write", async () => {
-  seed([1, null, null]);
+  await seed([1, null, null]);
   assert.deepEqual(await databaseOutreachStore.feature(2), { ok: true, value: null });
-  assert.deepEqual(recordedWrites(), [{ kind: "update", table: "outreach_posts" }]);
+  assert.deepEqual(await databaseWrites(), [{ kind: "update", table: "outreach_posts" }]);
 
-  seed([1, 2, null]);
+  await seed([1, 2, null]);
   assert.deepEqual(await databaseOutreachStore.feature(3), { ok: false, error: FEATURED_FULL });
-  assert.deepEqual(recordedWrites(), [], "a refused third writes nothing");
+  assert.deepEqual(await databaseWrites(), [], "a refused third writes nothing");
   // A featured post featured again changes nothing.
   assert.deepEqual(await databaseOutreachStore.feature(2), { ok: true, value: null });
-  assert.deepEqual(recordedWrites(), []);
+  assert.deepEqual(await databaseWrites(), []);
 
   assert.deepEqual(await databaseOutreachStore.unfeature(2), { ok: true, value: null });
-  assert.deepEqual(recordedWrites(), [{ kind: "update", table: "outreach_posts" }]);
+  assert.deepEqual(await databaseWrites(), [{ kind: "update", table: "outreach_posts" }]);
 });
 
 // Unpublish and Delete free a featured post's slot (Owner decision, issue #502).
 
 const editor = () => outreachEditor(admin, databaseOutreachStore, memoryPhotoFiles);
-const slotOf = (id: number) => rowsIn(outreachPosts).find((row) => row.id === id)?.featuredSlot;
+const slotOf = async (id: number) => (await tableRows(outreachPosts)).find((row) => row.id === id)?.featuredSlot;
 
 test("unpublishing a featured post clears its slot in the same batch write as its version rows", async () => {
-  seed([1, 2, null]);
-  keepWrites();
+  await seed([1, 2, null]);
   const unpublished = await editor().posts.unpublish(2);
   assert.ok(unpublished.ok, unpublished.ok ? "" : unpublished.error);
-  assert.equal(slotOf(2), null, "its slot is free");
-  assert.equal(slotOf(1), 1, "the other featured post keeps its slot");
-  assert.deepEqual(recordedBatches(), [
+  assert.equal(await slotOf(2), null, "its slot is free");
+  assert.equal(await slotOf(1), 1, "the other featured post keeps its slot");
+  // One transaction holds every write, the old versions' tags going with them (ON DELETE CASCADE).
+  assert.deepEqual(await writesByTransaction(), [
     [
       { kind: "delete", table: "outreach_post_versions" },
+      { kind: "delete", table: "outreach_post_tags" },
       { kind: "insert", table: "outreach_post_versions" },
       { kind: "insert", table: "outreach_post_tags" },
       { kind: "update", table: "outreach_posts" },
     ],
   ]);
-  assert.deepEqual(recordedWrites(), recordedBatches()[0], "nothing is written outside that batch");
+  assert.deepEqual(await databaseWrites(), (await writesByTransaction())[0], "nothing is written outside that batch");
   assert.deepEqual(await databaseOutreachStore.featured(), [1]);
 });
 
 test("unpublishing a post that is not featured writes only its version rows", async () => {
-  seed([1, null, null]);
-  keepWrites();
+  await seed([1, null, null]);
   assert.ok((await editor().posts.unpublish(3)).ok);
-  assert.ok(!recordedWrites().some((write) => write.table === "outreach_posts"));
-  assert.equal(slotOf(1), 1);
+  assert.ok(!(await databaseWrites()).some((write) => write.table === "outreach_posts"));
+  assert.equal(await slotOf(1), 1);
 });
 
 test("with two posts featured, unpublishing one frees its slot and a third published post can then be featured", async () => {
-  seed([1, 2, null]);
-  keepWrites();
+  await seed([1, 2, null]);
   assert.deepEqual(await databaseOutreachStore.feature(3), { ok: false, error: FEATURED_FULL });
   assert.ok((await editor().posts.unpublish(1)).ok);
   assert.deepEqual(await databaseOutreachStore.feature(3), { ok: true, value: null });
-  assert.equal(slotOf(3), 1, "the third takes the freed slot");
+  assert.equal(await slotOf(3), 1, "the third takes the freed slot");
   assert.deepEqual(await databaseOutreachStore.featured(), [3, 2]);
 });
 
 test("deleting a featured post frees its slot, so a third published post can then be featured", async () => {
-  seed([1, 2, null]);
-  keepWrites();
+  await seed([1, 2, null]);
   assert.ok((await editor().posts.remove(2)).ok);
   assert.deepEqual(await databaseOutreachStore.featured(), [1]);
   assert.deepEqual(await databaseOutreachStore.feature(3), { ok: true, value: null });
