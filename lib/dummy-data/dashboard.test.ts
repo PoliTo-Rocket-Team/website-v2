@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DashboardRefused } from "@/lib/dashboard/data";
 import { newCount } from "@/lib/dashboard/recruitment";
-import type { ViewerKind } from "@/lib/dashboard/viewer";
+import type { TestViewer } from "@/lib/dashboard/viewer";
 import { dummyDashboardData } from "./index";
 import { dummyRecruitmentCookieValue, dummyRecruitmentOf, type DummyRecruitmentStore } from "./recruitment";
 import { EMPTY_DUMMY_STATE, type DummyState } from "./state";
@@ -14,7 +14,7 @@ import { EMPTY_DUMMY_STATE, type DummyState } from "./state";
  * The dummy dashboard, with what a write saves kept for the next read: the
  * recruitment cookie (#121) and the changes cookie.
  */
-function session(kind: ViewerKind, state: DummyState = EMPTY_DUMMY_STATE, recruitmentCookie?: string) {
+function session(kind: TestViewer, state: DummyState = EMPTY_DUMMY_STATE, recruitmentCookie?: string) {
   let saved = state;
   let savedRecruitment = recruitmentCookie;
   const recruitment: DummyRecruitmentStore = {
@@ -387,4 +387,34 @@ test("the whole team's dummy page lists every division's waiting rows and joinin
   const joining = directory.queues.flatMap((q) => q.joining);
   assert.ok(joining.length > 0, "someone is joining");
   assert.ok(joining.every((j) => j.canConfirm), "full access changes Applications everywhere");
+});
+
+/** The whole team's joining banners, as the team leader's Members page lists them. */
+async function leaderJoining(state: DummyState) {
+  const directory = await session("team-leader", state).data.members();
+  assert.equal(directory.scope, "whole-team");
+  return directory.scope === "whole-team" ? directory.queues.flatMap((q) => q.joining) : [];
+}
+
+test("Mark NDA received on the team leader's Members banner is the Applications tick: it readies Confirm join, and a viewer who may not change the application is refused (#601)", async () => {
+  const waiting = (await leaderJoining(EMPTY_DUMMY_STATE)).find((j) => !j.ndaArrived);
+  assert.ok(waiting, "a joining banner waits for the signed NDA");
+  assert.equal(waiting.canConfirm, true, "the team leader may change every application");
+
+  // A viewer who may not change the application is refused the move, and nothing is saved.
+  const outsider = session("member");
+  await assert.rejects(outsider.data.moveApplication(waiting.applicationId, { kind: "set-nda", arrived: true }), DashboardRefused);
+  assert.deepEqual(outsider.saved(), EMPTY_DUMMY_STATE);
+
+  // Before the mark, Confirm join is refused.
+  const leader = session("team-leader");
+  assert.equal(await leader.data.teamWrites!.confirmJoin(waiting.applicationId), false);
+
+  // The banner's mark sends `set-nda`, and the banner then reads the NDA arrived.
+  assert.ok((await leader.data.moveApplication(waiting.applicationId, { kind: "set-nda", arrived: true })).ok);
+  const marked = (await leaderJoining(leader.saved())).find((j) => j.applicationId === waiting.applicationId);
+  assert.equal(marked?.ndaArrived, true);
+
+  // Confirm join now goes through.
+  assert.equal(await session("team-leader", leader.saved()).data.teamWrites!.confirmJoin(waiting.applicationId), true);
 });

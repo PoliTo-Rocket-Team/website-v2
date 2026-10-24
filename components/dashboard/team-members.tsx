@@ -163,7 +163,7 @@ export function ScopedMembersView({
 
       {shown.joining.length > 0 && (
         <ul className="mt-6 flex flex-col gap-2.5">
-          {/* Confirm join is the Applications area's (issue #584): the banner offers it where `canConfirm` says the server takes it. */}
+          {/* Confirm join and Mark NDA received are the Applications area's (issues #584, #601): the banner offers them where `canConfirm` says the server takes them. */}
           {shown.joining.map(({ joining, division }) => (
             <JoiningBanner key={joining.applicationId} joining={joining} division={division} editable={writes && joining.canConfirm} />
           ))}

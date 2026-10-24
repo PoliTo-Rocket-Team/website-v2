@@ -3,6 +3,7 @@
 import { useState, useTransition, type ReactNode } from "react";
 import { Copy, ExternalLink, Lock, Mail, MoreHorizontal, Pencil, UserCheck, UserMinus, UserX } from "lucide-react";
 import { toast } from "sonner";
+import { moveApplication } from "@/app/dashboard/recruitment-actions";
 import { cancelAdd, confirmJoin, confirmNda, removeFromDivision } from "@/app/dashboard/team-actions";
 import { noDetailsFilled } from "@/lib/dashboard/details";
 import type { DivisionPerson, WaitingPerson } from "@/lib/dashboard/division-members";
@@ -328,17 +329,30 @@ function RemoveDialog({
   );
 }
 
+/** The banner's outlined success pill: Confirm join's look, which Mark NDA received shares (issue #601). */
+const BANNER_ACTION =
+  "inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-success/60 px-4 text-[14px] font-semibold text-success transition-colors duration-300 ease-out hover:border-success hover:bg-success/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-success/60 disabled:hover:bg-transparent md:h-8 md:px-3.5 md:text-[13px]";
+
 /**
  * "Giulia Rossi is joining" (boards 59 and 59m): Confirm join, once "The signed
  * NDA arrived" is ticked on the application (58g). It is the Applications
  * page's own Confirm join, so the button waits for that tick here too, and
  * shows only where `editable`: the viewer may change applications there
- * (`Joining.canConfirm`, issue #584).
+ * (`Joining.canConfirm`, issue #584). While the NDA waits, the same viewer
+ * records it here with Mark NDA received: the Applications tick's own move
+ * (`set-nda`), so the banner adds no rule or write path of its own (issue #601).
  */
 export function JoiningBanner({ joining, division, editable }: { joining: Joining; division: string; editable: boolean }) {
   const [asking, setAsking] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [marking, startMarking] = useTransition();
   const firstName = joining.name.split(" ")[0];
+
+  const markNda = () =>
+    startMarking(async () => {
+      const result = await moveApplication(joining.applicationId, { kind: "set-nda", arrived: true });
+      if (!result.ok) toast.error(result.error);
+    });
 
   const confirm = () =>
     startTransition(async () => {
@@ -365,14 +379,16 @@ export function JoiningBanner({ joining, division, editable }: { joining: Joinin
         </span>
       </span>
       {editable && (
-        <button
-          type="button"
-          onClick={() => setAsking(true)}
-          disabled={!joining.ndaArrived}
-          className="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-success/60 px-4 text-[14px] font-semibold text-success transition-colors duration-300 ease-out hover:border-success hover:bg-success/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-success/60 disabled:hover:bg-transparent md:h-8 md:px-3.5 md:text-[13px]"
-        >
-          Confirm join
-        </button>
+        <span className="flex shrink-0 flex-wrap items-center gap-2">
+          {!joining.ndaArrived && (
+            <button type="button" onClick={markNda} disabled={marking} className={BANNER_ACTION}>
+              Mark NDA received
+            </button>
+          )}
+          <button type="button" onClick={() => setAsking(true)} disabled={!joining.ndaArrived} className={BANNER_ACTION}>
+            Confirm join
+          </button>
+        </span>
       )}
       <ConfirmDialog
         open={asking}
