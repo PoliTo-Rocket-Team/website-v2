@@ -8,7 +8,6 @@ import {
   ChevronDown,
   ChevronRight,
   CircleCheck,
-  GraduationCap,
   Inbox,
   Info,
   Layers,
@@ -34,6 +33,7 @@ import {
   areaRule,
   canChangePerson,
   checkRemoveGrant,
+  grantablePeople,
   heldIn,
   heldLevel,
   heldLines,
@@ -49,9 +49,9 @@ import {
   placesOf,
   removalOf,
   samePlace,
-  SEAT_LABELS,
   shortUnitName,
-  targetsAt,
+  shownAreas,
+  standingOf,
   unitLine,
   WHOLE_TEAM_PLACE,
   type AccessDepartmentUnit,
@@ -95,7 +95,6 @@ const TARGET_ICONS: Readonly<Record<AccessTarget, LucideIcon>> = {
   positions: BriefcaseBusiness,
   applications: Inbox,
   members: Users,
-  alumni: GraduationCap,
   content: PenLine,
   orders: ShoppingCart,
 };
@@ -134,19 +133,15 @@ function severalDivisions(unit: AccessUnit): boolean {
  */
 function standingLine(row: Row, unit: AccessUnit): string {
   const person = personOfRow(row);
-  const label = PERSON_STANDING_LABELS[person.standing];
+  const label = PERSON_STANDING_LABELS[standingOf(person)];
   const division = divisionOfRow(row);
-  const showDivision = division !== null && (person.standing === "lead" || severalDivisions(unit));
+  const showDivision = division !== null && (standingOf(person) === "lead" || severalDivisions(unit));
   return showDivision ? `${label} · ${shortUnitName(division.name)}` : label;
 }
 
-/** The line under a name: a role row names its seat or the department it heads (board 71), anyone else their standing. */
+/** The line under a name: a head's or a seat's role row its title (board 71, issue #625), anyone else their standing. */
 function personLine(row: Row, unit: AccessUnit): string {
-  if (row.kind === "role") {
-    const role = row.role;
-    if (role.place.kind === "team" && "seat" in role) return SEAT_LABELS[role.seat];
-    if (role.place.kind === "department") return `Head of ${role.place.department.name}`;
-  }
+  if (row.kind === "role" && "title" in row.role) return row.role.title;
   return standingLine(row, unit);
 }
 
@@ -167,7 +162,7 @@ function introOf(access: AccessPage): string {
 /** Whether the viewer may change anything of this person's access, in any place they hold it. */
 function changeableIn(access: AccessPage, grants: readonly AccessGrant[], person: AccessPerson): boolean {
   return placesHeldBy(access.unit, grants, person.id).some((place) =>
-    canChangePerson(heldIn(access.unit, place), person, areaLevelsOf(grants, person.id, place)),
+    canChangePerson(heldIn(access.unit, place), person, place, areaLevelsOf(grants, person.id, place)),
   );
 }
 
@@ -569,7 +564,7 @@ function PersonCard({
   const line =
     row.kind === "role"
       ? `${personLine(row, unit)} · with the role`
-      : (department ? givenByLine(row.access) : givenLine(row.access)) || PERSON_STANDING_LABELS[person.standing];
+      : (department ? givenByLine(row.access) : givenLine(row.access)) || PERSON_STANDING_LABELS[standingOf(person)];
   const inner = (
     <>
       <span className="flex items-center gap-3">
@@ -740,7 +735,8 @@ function AccessDrawer({
 }) {
   const unit = access.unit;
   const canGiveApprove = access.approveOrders.canGive;
-  const grantable = access.people.filter((p) => p.standing === "member");
+  // Leads and heads too, never the viewer (issue #591): anyone the viewer can give some area to.
+  const grantable = grantablePeople(access);
   // Give access opens with no person chosen (Owner decision, 2026-10-19); Edit access on the first place the person holds any.
   const [personId, setPersonId] = useState<number | undefined>(editing?.id);
   const [place, setPlace] = useState<AccessPlace>(() => {
@@ -759,8 +755,8 @@ function AccessDrawer({
   const person = access.people.find((p) => p.id === personId);
   const current = personId === undefined ? {} : areaLevelsOf(grants, personId, place);
   const held = heldIn(unit, place);
-  // The areas the place offers that the viewer holds, and any other the person holds there, which shows locked.
-  const shown = targetsAt(place).filter((t) => heldLevel(held, t) !== null || current[t] !== undefined);
+  // The areas the place offers that the viewer holds, and any other the person holds there, which shows locked; never one their role gives (issue #591).
+  const shown = shownAreas(held, person, place, current);
 
   const choosePerson = (id: number) => {
     // On a lead's page the place follows the person: their division (issue #185), unless Whole team is chosen for Content (issue #504).
@@ -861,7 +857,7 @@ function AccessDrawer({
     (canGiveApprove || !holdsApproveOrders(access, editing.id)) &&
     placesHeldBy(unit, grants, editing.id).every((at) => {
       const levels = areaLevelsOf(grants, editing.id, at);
-      return ACCESS_TARGETS.every((t) => levels[t] === undefined || areaRule(heldIn(unit, at), editing, t, levels[t]).changeable);
+      return ACCESS_TARGETS.every((t) => levels[t] === undefined || areaRule(heldIn(unit, at), editing, at, t, levels[t]).changeable);
     });
 
   return (
@@ -939,7 +935,7 @@ function AccessDrawer({
                   target={target}
                   placeName={placeLine(place)}
                   level={areas[target] ?? null}
-                  rule={person ? areaRule(held, person, target, current[target] ?? null) : { changeable: false }}
+                  rule={person ? areaRule(held, person, place, target, current[target] ?? null) : { changeable: false }}
                   onChange={(level) => setArea(target, level)}
                 />
               </li>

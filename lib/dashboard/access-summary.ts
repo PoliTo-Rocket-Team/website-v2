@@ -8,10 +8,11 @@ import { GRANT_AREAS, type GrantArea } from "./viewer";
 // counts only: names and details (applicants, interview times, people without
 // a photo, single orders) stay on the area's own page, and no summary can hold
 // one. A Content grant (issue #504) adds a last line naming the editors it
-// opens, linked to the first of them.
+// opens, linked to the first of them. "Approve orders" (issue #592) adds a
+// line before it counting the orders in the team waiting for a decision.
 
-/** The areas a "Your access" line is about: the grant areas, and Content. */
-export type SummaryArea = GrantArea | "content";
+/** The areas a "Your access" line is about: the grant areas, Approve orders, and Content. */
+export type SummaryArea = GrantArea | "approve-orders" | "content";
 
 /** One granted area's counts and the page that shows them. */
 export type AccessSummary =
@@ -19,6 +20,7 @@ export type AccessSummary =
   | { readonly area: "applications"; readonly href: "/dashboard/applications"; readonly fresh: number; readonly booked: number }
   | { readonly area: "members"; readonly href: "/dashboard/members"; readonly people: number; readonly divisions: number }
   | { readonly area: "orders"; readonly href: "/dashboard/orders"; readonly waiting: number; readonly total: Cents }
+  | { readonly area: "approve-orders"; readonly href: "/dashboard/orders"; readonly waiting: number }
   | { readonly area: "content"; readonly href: string; readonly pages: readonly string[] };
 
 /** The Content line: the editors a Content grant opens, in sidebar order (`siteContent` rows, ./access.ts). */
@@ -44,15 +46,22 @@ export type AccessFigures = {
   readonly orders?: { readonly count: number; readonly total: Cents };
   /** The people in the divisions they read Members in, each once, and how many divisions that is. */
   readonly members?: { readonly people: number; readonly divisions: number };
+  /** The orders in the team waiting for a decision, read only when the member decides orders (`decideRightOfStanding`). */
+  readonly approveOrders?: { readonly waiting: number };
 };
 
 /**
  * The "Your access" lines, in `GRANT_AREAS` order: one per area in `areas`
- * that was read, then Content when the member holds it. A figure read for an
- * area outside `areas` adds nothing.
+ * that was read, then Approve orders when its figure was read, then Content
+ * when the member holds it. A figure read for an area outside `areas` adds
+ * nothing.
  */
 export function accessSummariesOf(areas: readonly GrantArea[], figures: AccessFigures, content = false): AccessSummary[] {
-  return [...grantSummariesOf(areas, figures), ...(content ? [contentSummary()] : [])];
+  return [
+    ...grantSummariesOf(areas, figures),
+    ...(figures.approveOrders ? [{ area: "approve-orders", href: "/dashboard/orders", waiting: figures.approveOrders.waiting } as const] : []),
+    ...(content ? [contentSummary()] : []),
+  ];
 }
 
 function grantSummariesOf(areas: readonly GrantArea[], figures: AccessFigures): AccessSummary[] {
@@ -89,6 +98,7 @@ export const ACCESS_AREA_LABELS: Readonly<Record<SummaryArea, string>> = {
   applications: "Applications",
   members: "Members",
   orders: "Orders",
+  "approve-orders": "Approve orders",
   content: "Content",
 };
 
@@ -114,6 +124,8 @@ export function accessCounts(summary: AccessSummary): string {
     }
     case "orders":
       return `${summary.waiting} waiting · ${formatEuro(summary.total)} to be placed`;
+    case "approve-orders":
+      return `${summary.waiting} waiting for your decision`;
     case "content":
       return `Edit ${listed(summary.pages)}`;
   }

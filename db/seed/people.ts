@@ -13,7 +13,7 @@
 // in each academic year from 2021–22 to 2025–26. The alumni seed
 // (./alumni.ts) adds how they show on the Alumni page. The local testers
 // take seats lib/about/team.ts leaves empty: the Test Bench lead and the
-// head of Research and Development. The applicants' user ids keep the numbers the old SQL seed used;
+// head of Payload, a test department. The applicants' user ids keep the numbers the old SQL seed used;
 // the recruitment module names them.
 
 import { betterAuthUsers, members, roles, users } from "@/db/schema";
@@ -369,10 +369,13 @@ export const USER_ROWS = rowsOf(users, [
   ...ADMIN_TESTER_USERS,
 ]);
 
-const { propulsion, structures, aerodynamics, recovery, electronics, operations, research } = DEPARTMENT;
+const { propulsion, structures, aerodynamics, recovery, electronics, operations, payload } = DEPARTMENT;
 const D = DIVISION;
 
-/** Every role lib/about/team.ts gives, started on the first day of this year; the IT lead's carries their seat. */
+/** The two board seats' flags, by holder: their team-level role row carries it, as migration 0047 marked the real rows (issue #625). */
+const BOARD_SEAT_FLAG: Readonly<Record<number, "project_manager" | "chief_engineer">> = { [PROJECT_MANAGER]: "project_manager", [CHIEF_ENGINEER]: "chief_engineer" };
+
+/** Every role lib/about/team.ts gives, started on the first day of this year; the IT lead's and the two board seats' carry their seat. */
 const PUBLIC_ROLE_ROWS = PUBLIC_TEAM.flatMap((p) =>
   p.roles.map((r) => ({
     memberId: p.memberId,
@@ -382,6 +385,7 @@ const PUBLIC_ROLE_ROWS = PUBLIC_TEAM.flatMap((p) =>
     startedAt: PUBLIC_ROLES_START,
     type: r.type,
     ...(p.memberId === IT_LEAD && r.divisionId === D.informationTechnology && { fullAccess: "it_lead" as const }),
+    ...(BOARD_SEAT_FLAG[p.memberId] !== undefined && r.deptId === null && r.divisionId === null && { fullAccess: BOARD_SEAT_FLAG[p.memberId] }),
   })),
 );
 
@@ -410,12 +414,12 @@ export const ROLE_ROWS = rowsOf(roles, [
   { memberId: REMOVED_ALUMNUS, deptId: operations, divisionId: D.communications, title: "Video Editor", startedAt: "2024-10-01", leavedAt: "2026-06-30", type: "core" },
 
   // The local testers (issue #129). The public Test Engineers work in Test
-  // Bench too (./public-team.ts), but team.ts names no Test Bench lead and no
-  // head of Research and Development, so the testers' seats take no one's place.
+  // Bench too (./public-team.ts), but team.ts names no Test Bench lead, and
+  // Payload is a test department, so the testers' seats take no one's place.
   { memberId: TESTER_MEMBER.member, deptId: propulsion, divisionId: D.testBench, title: "Test Bench Engineer", startedAt: "2025-10-01", type: "core" },
   { memberId: TESTER_MEMBER["division-lead"], deptId: propulsion, divisionId: D.testBench, title: "Test Bench Lead", startedAt: "2025-10-01", type: "lead" },
   { memberId: TESTER_MEMBER["operations-lead"], deptId: operations, title: "Operations Lead", startedAt: "2025-10-01", type: "lead", fullAccess: "operations_lead" },
-  { memberId: TESTER_MEMBER["department-head"], deptId: research, title: "Head of Research and Development", startedAt: "2025-10-01", type: "head" },
+  { memberId: TESTER_MEMBER["department-head"], deptId: payload, title: "Head of Payload", startedAt: "2025-10-01", type: "head" },
   // The one-grant seats (issue #607): core members of Test Bench, beside the tester member.
   ...ONE_GRANT_SEATS.map((seat) => ({
     memberId: seat.memberId,

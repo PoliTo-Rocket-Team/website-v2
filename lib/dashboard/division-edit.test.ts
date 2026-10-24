@@ -47,9 +47,9 @@ const team: TeamPerson[] = [
   person(3, "Sara Conti", [[1, "member"]]),
   person(4, "Laura Greco", [[2, "lead"]]),
   person(5, "Davide Russo", [[1, "member"], [3, "member"]]),
-  person(6, "Chiara Rinaldi", [], [{ kind: "head", departmentId: 1 }]),
-  person(7, "Alessandro Greco", [], [{ kind: "team-leader" }]),
-  person(8, "Federica Moretti", [[3, "member"]], [{ kind: "board", seat: "chief-engineer" }]),
+  person(6, "Chiara Rinaldi", [], [{ kind: "head", departmentId: 1, title: "Head of Aerodynamics" }]),
+  person(7, "Alessandro Greco", [], [{ kind: "team-leader", title: "" }]),
+  person(8, "Federica Moretti", [[3, "member"]], [{ kind: "board", seat: { roleId: 28, title: "Chief Engineer", flag: "chief-engineer", since: "2025-10-01" } }]),
 ];
 
 const head: TeamActor = { kind: "head", departmentIds: [1] };
@@ -72,17 +72,35 @@ test("a division code is 2 or 3 letters, unique among open divisions; its own co
   assert.equal(plan({ code: "DM" }).ok, false, "unique across departments too");
 });
 
-test("only the department's head, the team leader or full access may create, edit or close a division", () => {
+test("only the department's head, the team leader or full access may create or close a division; they and its own lead edit it (#594)", () => {
+  const missionLead: TeamActor = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] };
+  const missionGrant: TeamActor = { kind: "lead", divisionIds: [1], ledDivisionIds: [] };
   assert.ok(plan({}).ok);
   assert.ok(plan({}, missionAnalysis, { kind: "team" }).ok);
-  assert.equal(plan({}, missionAnalysis, { kind: "lead", divisionIds: [1] }).ok, false, "not even its own lead");
+  assert.ok(plan({ name: "Flight Analysis", code: "FA" }, missionAnalysis, missionLead).ok, "its own lead");
+  assert.equal(plan({}, { kind: "open", division: org.divisions[1] }, missionLead).ok, false, "not a division they do not lead");
+  assert.equal(plan({}, missionAnalysis, missionGrant).ok, false, "not a Members grant on it");
   assert.equal(plan({}, missionAnalysis, { kind: "head", departmentIds: [2] }).ok, false, "not another department's head");
   const create = { name: "Flight Dynamics", code: "FD", newLeads: [3] };
   assert.equal(plan(create, { kind: "new", departmentId: 1 }, { kind: "head", departmentIds: [2] }).ok, false);
   assert.ok(plan(create, { kind: "new", departmentId: 1 }).ok, "the head of its own department");
-  assert.equal(plan(create, { kind: "new", departmentId: 1 }, { kind: "lead", divisionIds: [1] }).ok, false);
-  assert.equal(closeRefusal({ kind: "lead", divisionIds: [1] }, org, 1, { people: 0, waiting: 0 }), "Leads are changed by the Head of Aerodynamics");
-  assert.equal(closeRefusal({ kind: "head", departmentIds: [2] }, org, 1, { people: 0, waiting: 0 }), "Only the team leader can do this");
+  assert.equal(plan(create, { kind: "new", departmentId: 1 }, missionLead).ok, false, "a lead creates none");
+  assert.equal(closeRefusal(missionLead, org, 1, { people: 0, waiting: 0 }), "Only the Head of Aerodynamics or the team leader can do this.", "its own lead never closes it");
+  assert.equal(closeRefusal({ kind: "head", departmentIds: [2] }, org, 1, { people: 0, waiting: 0 }), "Only the Head of Aerodynamics or the team leader can do this.");
+  assert.equal(closeRefusal(head, org, 1, { people: 0, waiting: 0 }), null);
+});
+
+test("a lead's save keeps every rule of Edit division (#594)", () => {
+  const missionLead: TeamActor = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] };
+  const asLead = (save: Partial<DivisionSave>) => plan(save, missionAnalysis, missionLead);
+  const removed = (personId: number, outcome: "member" | "leave-division" | "leave-team") => ({ personId, via: "removed" as const, outcome });
+  assert.deepEqual(asLead({ oldLeads: [removed(1, "member"), removed(2, "member")] }), { ok: false, error: "A division needs at least one lead." });
+  assert.deepEqual(asLead({ code: "OA" }), { ok: false, error: "Optimization and Analysis already uses OA." });
+  assert.equal(asLead({ oldLeads: [removed(1, "leave-division")] }).ok, false, "Marco's only division");
+  assert.ok(asLead({ oldLeads: [removed(2, "leave-division")] }).ok, "Pietro is also in Optimization and Analysis");
+  assert.equal(asLead({ oldLeads: [removed(2, "leave-team")] }).ok, false, "Pietro is also in a division the lead does not reach");
+  const replaced = asLead({ newLeads: [3], oldLeads: [{ personId: 1, via: "replaced", outcome: "advisor" }] });
+  assert.ok(replaced.ok && replaced.plan.advise.includes(1) && replaced.plan.promote.includes(3), "a replaced lead becomes an advisor");
 });
 
 test("an open division always keeps a lead: an edit or a create with none is refused", () => {
@@ -163,7 +181,7 @@ const seatRows: readonly DivisionRow[] = [
   { id: 105, memberId: 6, type: "lead" },
   { id: 106, memberId: 7, type: "president" },
 ];
-const headLeads = [...team.slice(0, 5), person(6, "Chiara Rinaldi", [[1, "lead"]], [{ kind: "head", departmentId: 1 }]), ...team.slice(6)];
+const headLeads = [...team.slice(0, 5), person(6, "Chiara Rinaldi", [[1, "lead"]], [{ kind: "head", departmentId: 1, title: "Head of Aerodynamics" }]), ...team.slice(6)];
 const planWithHead = (save: Partial<DivisionSave>, subject: DivisionSubject = missionAnalysis) =>
   planDivisionSave({ actor: { kind: "team" }, org, subject, save: { ...keep, ...save }, team: headLeads });
 
@@ -184,7 +202,7 @@ test("every division write touches only lead and member rows: a seat kept on the
 
   // Promote: Chiara's only row here is the seat, so she is no member to promote; she joins as a lead and the seat row is untouched.
   const seatOnly = seatRows.filter((r) => r.id !== 105);
-  const team6 = [...team.slice(0, 5), person(6, "Chiara Rinaldi", [], [{ kind: "head", departmentId: 1 }]), ...team.slice(6)];
+  const team6 = [...team.slice(0, 5), person(6, "Chiara Rinaldi", [], [{ kind: "head", departmentId: 1, title: "Head of Aerodynamics" }]), ...team.slice(6)];
   const picked = planDivisionSave({ actor: head, org, subject: missionAnalysis, save: { ...keep, newLeads: [6] }, team: team6 });
   assert.ok(picked.ok && picked.plan.joinAsLead.join() === "6");
   assert.deepEqual(divisionRowWrites(picked.plan, 1, seatOnly), { end: [], toLead: [], toMember: [] });

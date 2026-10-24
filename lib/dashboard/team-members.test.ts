@@ -55,8 +55,8 @@ const records = [
   record("Zoe Member", [[20, "member"]], { title: "CAD Engineer", details: { programme: "Mechanical Engineering", gender: "Female", country: "Italy" } }),
   record("Anna Villa", [[10, "member"], [11, "member"]], { title: "Mission Analyst", details: { phone: "+39 340 556 1209", gender: "Female", level: "Year 1 Master's" }, nda: false }),
   record("Marco Bianchi", [[10, "lead"]], { details: { gender: "Male", country: "Italy" } }),
-  record("Chiara Ferri", [], { beyond: [{ kind: "head", departmentId: 1 }], details: { gender: "Female" } }),
-  record("Alessandro Greco", [], { beyond: [{ kind: "team-leader" }] }),
+  record("Chiara Ferri", [], { beyond: [{ kind: "head", departmentId: 1, title: "Head of Aerodynamics" }], details: { gender: "Female" } }),
+  record("Alessandro Greco", [], { beyond: [{ kind: "team-leader", title: "" }] }),
 ];
 
 const page = wholeTeamMembers({ records, org, selfId: records[4].id });
@@ -66,13 +66,44 @@ test("heads and leads come first, then members, by name within each (board 73)",
     page.people.map((p) => [p.name, p.roleLabel]),
     [
       ["Alessandro Greco", "Team Leader"],
-      ["Chiara Ferri", "Head of Department"],
+      ["Chiara Ferri", "Head of Aerodynamics"],
       ["Marco Bianchi", "Division Lead"],
       ["Anna Villa", "Mission Analyst"],
       ["Zoe Member", "CAD Engineer"],
     ],
   );
   assert.equal(wholeTeamLine(page), "Whole team · 5 people in 2 departments");
+});
+
+test("the Role column shows a head's and a seat's stored title, and a rename moves nobody (issue #625)", () => {
+  const seat = (title: string): RoleBeyondDivisions => ({ kind: "board", seat: { roleId: 28, title, flag: "chief-engineer", since: "2025-10-01" } });
+  const head = (title: string): RoleBeyondDivisions => ({ kind: "head", departmentId: 1, title });
+  const rows = (headTitle: string, seatTitle: string) =>
+    wholeTeamMembers({
+      records: [...records, record("Federica Moretti", [], { beyond: [seat(seatTitle)] })].map((r) =>
+        r.name === "Chiara Ferri" ? { ...r, beyondDivisions: [head(headTitle)] } : r,
+      ),
+      org,
+      selfId: null,
+    }).people.map((p) => [p.name, p.role, p.roleLabel, p.departmentIds, p.divisionIds]);
+  const before = rows("Head of Aerodynamics", "Chief Engineer");
+  const after = rows("Chief of Aerodynamics", "Chief of Propulsion");
+  assert.deepEqual(
+    after.map(([name, role, label]) => [name, role, label]).slice(0, 3),
+    [
+      ["Alessandro Greco", "team-leader", "Team Leader"],
+      ["Federica Moretti", "board", "Chief of Propulsion"],
+      ["Chiara Ferri", "head", "Chief of Aerodynamics"],
+    ],
+  );
+  // Same rank, same department and divisions: only the label changed.
+  assert.deepEqual(
+    after.map(([name, role, , departments, divisions]) => [name, role, departments, divisions]),
+    before.map(([name, role, , departments, divisions]) => [name, role, departments, divisions]),
+  );
+  // A blank stored title reads the default.
+  assert.equal(rows(" ", "")[2][2], "Head of Aerodynamics");
+  assert.equal(rows("", "")[1][2], "Chief Engineer");
 });
 
 test("a head shows their department's division codes; everyone else their own divisions' codes", () => {

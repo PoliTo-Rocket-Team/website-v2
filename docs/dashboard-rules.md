@@ -39,7 +39,7 @@ An admin column comes later. **Planned**, no issue yet.
 | Members | No | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
 | Projects | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it first under Content |
 | Partners | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it under Content |
-| Alumni | No | No | Only with Alumni | Only with Alumni | Only with Alumni | Yes; the team leader's sidebar shows it under Content |
+| Alumni | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it under Content |
 | FAQ | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it under Content |
 | Access | No | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
 | Orders | No | No | Only with "Approve orders": every order in the team, under Team; decides, edits nothing | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
@@ -156,26 +156,27 @@ An admin column comes later. **Planned**, no issue yet.
     page. It adds no Access page there, and the lead cannot give or remove access there (Owner
     decision, #478; #488).
   - A department head's Members page holds every division of their department (#235).
-- **Alumni** is where the team checks the public site's alumni content. By default the full
-  admins see it: the operations lead, the team leader and the IT lead. Anyone else sees it only
-  with an **Alumni** grant, which the full admins can give to anyone. A division lead or
-  department head gets nothing from their role here (Owner decision, #234). The sidebar item and
-  the page read one rule, and the page answers "not found" to everyone else.
-  - The Alumni grant is the **Alumni** area of the full admins' Access page (#247). It is a
-    `website` scope row on `all`, given to the whole team only, at Can view or Can edit. Either
-    level opens the Alumni page and its actions, and nothing else (Owner decision, 2026-10-21,
-    #504). It opens no content editor.
+- **Alumni** is where the team checks the public site's alumni content. It is site content, so
+  it follows the site-content rule: the full admins (the operations lead, the team leader and the
+  IT lead) and anyone with a **Content** grant. A division lead or department head gets nothing
+  from their role here (Owner decision, #234). The sidebar item, the page and every Alumni write
+  read one rule, and the page answers "not found" to everyone else.
+  - Owner decision (2026-10-22, #589), in place of the 2026-10-21 rule of #504 that kept Alumni
+    a separate grant: there is no Alumni grant and no Alumni area on the Access page. A Content
+    grant opens the Alumni page and its actions with the other content editors. The old Alumni
+    rows (a `website` scope row on `all`, at either level) open nothing and nothing reads them;
+    each holder of one was given a Content grant, so nobody lost access (`drizzle/0058`).
 - **Content** is the team leader's sidebar group of the pages that change the public site:
   Projects, Outreach, Partners, Alumni, FAQ, then Team page (boards 72, 74, 75, 76, 79 and 80).
-  Projects, Outreach, Partners, FAQ and Team page follow the site-content rule: the full admins,
-  and anyone with a **Content** grant. Whoever may edit may also publish. The server checks the
-  same rule on every write (`maySiteContent`, `lib/content/gate.ts`). See "6. Site content".
+  All six follow the site-content rule: the full admins, and anyone with a **Content** grant.
+  Whoever may edit may also publish. The server checks the same rule on every write
+  (`maySiteContent`, `lib/content/gate.ts`). See "6. Site content".
   - The Content grant is its own Access area (Owner decision, 2026-10-21, #504). It is a
-    `website` scope row on `content`, given to the whole team only and at Can edit only. It opens
-    those five editors and their actions and nothing else, and no other grant opens them. Only a
-    viewer with full access or a Content grant gives, changes or removes it. A member holding it
-    sees the Content group with those five pages, and a "Content" line under "Your access" on
-    their Overview.
+    `website` scope row on `content`, given to the whole team only and at Can edit only; a
+    `website` row at Can view is no grant (#589). It opens those six editors and their actions
+    and nothing else, and no other grant opens them. Only a viewer with full access or a Content
+    grant gives, changes or removes it. A member holding it sees the Content group with those six
+    pages, and a "Content" line under "Your access" on their Overview.
 - **My account** (non-member and alumni) and **My profile** (member and up) open from the user menu only,
   never from the sidebar.
 - **Sign out** is in the user menu only. It is never in the sidebar or on the account pages.
@@ -253,6 +254,32 @@ These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
   reads "Also in another division · shown once" (board 54e).
 - The division a person is drawn under, and the one a page names when it shows only one, is
   their home division: the oldest division they lead, else their oldest membership.
+- A role title is stored (`roles.title`) and every page that names a head or a team-level seat by
+  its role shows it as stored (#625): Members, the Team tree, the Team page, the line under a name
+  on Access and Close department's head label. A hand-over's full-access line names the seat that
+  moves ("becomes Operations lead"), not the role's title. A head row is
+  written with "Head of {department}"; a department rename rewrites only head titles still at
+  the old default. The default shows only for a blank title. No page decides a seat or a
+  headship by a title's text, so a rename never moves anyone or changes any access.
+- The Team tree's seat row, under the team leader, holds every team-level seat: an active role in
+  no department and no division that is not the team leader's, a head's or an advisor's. The
+  Project Manager and the Chief Engineer, read from their `roles.full_access` flag, come first;
+  any other seat follows by start date. The Team page's arc lists them in the same order. Each
+  seat is drawn as a box built like the team leader's, in one row directly under it, on every
+  width (#627).
+- R&D is a department with a head and no divisions (Owner decision, 2026-10-24, #627). The Team
+  tree and Edit team tree draw it as a department box with its head, never on the seat row.
+  Department 8, Research and Development (code RND), is the real R&D department: its only head
+  is the Head of R&D, and it has no divisions (Owner decision, 2026-10-24, #600). The seed keeps
+  its department-head tester and the Payload Integration test division in a separate test
+  department, Payload (code PAY), so R&D stays as it is in reality.
+  Migration 0059 makes a Head of R&D role kept in no unit the head of the R&D department
+  (coded RND, or named R&D or Research and Development), only while that department has no
+  head, and adds the department only when none is open, so there is never a second R&D
+  department and no department gets two heads (Owner decision, 2026-10-24, #600). The public
+  Team page is laid out apart: a department with no division has no block on its departments
+  carousel, so its head shows as a core member, where the Team page editor can place them on
+  the arc, as before.
 - **Superseded:** rule 7 of [0011](../.decisions/0011-applicant-journey-received-to-joining.md),
   "one person, one division", no longer holds. [0014](../.decisions/0014-several-divisions-one-nda.md)
   replaces it, and also amends 0011's Confirm join rule for someone already on the team.
@@ -279,8 +306,8 @@ These rules come from the Owner decisions of 2026-10-16 on #253 (boards 77i, 77e
     lead included, and the server refuses them.
   - **Department head:** the team leader or full access, with Change head in Edit department
     (board 77e).
-  - **Division lead:** the department's head, the team leader or full access, when a new lead
-    replaces them in Edit division (board 68b4).
+  - **Division lead:** the department's head, the team leader, full access or a lead of the
+    division (#594), when a new lead replaces them in Edit division (board 68b4).
 - **Access after a hand-over** (Owner decision, 2026-10-16): a lead or head who becomes an
   advisor loses every access row they held; they keep only the Advisor role in their own unit.
   A former team leader who becomes an advisor keeps every access row they hold, and the full
@@ -375,12 +402,21 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   - Details (board 61g): photo, contact, studies and personal details, with the same field checks.
   - Role: the person's title in one division, shown on the Team page: the division the page lists
     them under, else their first division the editor reaches. Titles in their other divisions
-    show on the member panel, not in the form. A seat with no division the editor reaches (the
-    team leader, a board seat, a department head) shows their seat's title locked: it is set on
-    the Team tree, and Save never changes it.
+    show on the member panel, not in the form. Someone in no division the editor reaches who holds
+    a seat (the team leader, a department head, the Project Manager, the Chief Engineer or another
+    team-level seat) shows their seat's stored title as an editable Role, and only the team
+    leader and full access reach them (issue #626). A blank stored title shows as the seat's
+    default name ("Team Leader", "Head of Aerodynamics"). It may not be blank. Save writes that
+    seat row's title and nothing else: never its type, department, division or full access, so
+    the seat, the headship and every access stay. A save with the Role left as shown writes the
+    title back unchanged. The team leader's title is the one on the public Team page; the
+    Members Role column names that seat "Team Leader" whatever it stores.
+    Someone with no such seat (an Advisor role, a role kept on a department) shows their role
+    locked.
   - Lead or member: one choice per division of the person where the editor may change who leads
-    it (the department's head, the team leader or full access, as Edit division allows). A
-    division lead and a Members grant never see it, and the server refuses their change.
+    it, as Edit division allows: the department's head, the team leader, full access, and a lead
+    of that division by role (#594). A Members grant never shows it, and the server refuses its
+    change.
   - Leaving the team (board 46b): "Remove from {division}" for each of the person's divisions the
     editor reaches, and "Move to alumni", under the rules of the ⋯ menu below. An action the editor
     may not take is locked with the menu's reason, and opens the menu's own "are you sure".
@@ -405,16 +441,18 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
     the team leader can do this". The server checks the same rule on every request.
 - Confirm NDA, Cancel add, Remove from {division} and Leaves the team each ask "are you sure"
   first.
-- A lead cannot rename a division, change its code or change its leads; only the head can. The
-  lead's page shows "Leads are changed by the Head of {department}", and the server refuses a
-  lead's lead change.
+- A lead renames, recodes and changes the leads of each division they lead by role, in Edit
+  division (see Divisions below; Owner decision, 2026-10-24, on #594). A Members grant does not:
+  a page reached only through one shows "Leads are changed by the Head of {department}", and the
+  server refuses that lead change.
 
 - The role in Edit details is the person's title on the Team page. The public Team page is built
   from the team's roles, so a saved title shows there once the `team-roster` cache refreshes
   (ADR 0015).
 - A division's leads change through Edit division (see Divisions below), or through Edit
-  details' lead or member choice, for the same people: the department's head, the team leader or
-  full access (#231, #584). The Members page has no Promote (removed by #551).
+  details' lead or member choice, for the same people: the department's head, the team leader,
+  full access (#231, #584) and a lead of the division by role (#594). "Remove from {division}" on
+  a lead follows the same rule. The Members page has no Promote (removed by #551).
   - A "promoted" notice written while Promote existed (#188) still shows under "Needs your
     attention" until it is dismissed.
 - Move to alumni in Edit details is the same "Leaves the team": every role and every access ends,
@@ -473,8 +511,8 @@ These rules come from #235 (boards 69, 69b, 69c and 69m) and the Owner decisions
 These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77g, 66t and 66t-b).
 
 - Structure is edited in one place: the Team tree's edit view. The Team tree header shows one
-  **Edit** button to the team leader, to full access (#238) and to a department head. A division
-  lead and a member get none; a division lead keeps adding and removing members on Members.
+  **Edit** button to the team leader, to full access (#238), to a department head and to a
+  division lead (#594). A member gets none, and so does a Members grant on its own.
 - The edit view shows the team leader on top and one column per open department: its box (name,
   head, how many people), then each division's box (name, lead, how many people), every box
   collapsed. **Done** returns to the tree. There is no closed-divisions list.
@@ -484,11 +522,37 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
   Every other department is dimmed and read-only, and no department has a pencil or Add
   department (board 66t-b). The server refuses a division create, edit or close by a head outside
   their own department, not only the page.
-- A division's pencil opens Edit division (below), with **Close division** in its footer. Add
+- A division lead sees a pencil only on each division they lead by role, and no **+ Add
+  division**, department pencil or **+ Add department** (#594). Departments with none of their
+  divisions are dimmed. The intro line names the divisions they can edit. The server refuses
+  their edit of any other division, not only the page.
+- A division's pencil opens Edit division (below), with **Close division** in its footer for its
+  department's head, the team leader and full access; a lead's Edit division has none. Add
   division opens New division in the department of the column it is under.
 - The **Team Leader box** on top opens "Hand over your role" (board 77i, #253) for the team leader
   alone, with a pencil. For everyone else, full access included, it shows a lock and opens
   nothing (see "Handing over a role" above).
+- The **seat row** (#627) sits directly under the Team Leader box and above the department
+  columns: one box per team-level seat, built like the Team Leader box, with the holder's name
+  and the seat's stored title, in the Team tree's seat order. Everyone who opens the edit view
+  sees the same row. A row too wide for the frame shrinks to fit it, as the department row does.
+  - For the team leader and full access, each seat box has a pencil and opens **Change
+    holder**, and the row ends in **+ Add seat**, in the Add department style. For a head the
+    boxes open nothing and there is no Add seat. The server refuses both writes to everyone
+    but the team leader and full access.
+  - **Change holder** picks who holds the seat from the team. As in Change head, someone who
+    already holds a seat, or the holder themself, cannot be picked, and the successor keeps
+    their divisions. The holder gets "What happens to {name}?": Become an advisor (on the whole
+    team, their access ends) or Leave the team, with neither picked at first. On save the
+    holder's seat role ends and the successor's starts with the same title and the same
+    `roles.full_access` flag, so the Project Manager's and the Chief Engineer's full access
+    moves with the seat.
+  - A seat box changes who holds the seat, never its title: the title is changed on Members,
+    in Edit details (#626).
+  - **Add seat** takes a title and one person from the team who holds no seat yet. It starts an
+    active role in no department and no division with that title and no full-access flag, so a
+    new seat gives no access of its own. It shows on the Team tree's seat row, this row and the
+    public Team page's arc. Ending a seat with no successor is not offered.
 
 #### Departments
 
@@ -531,12 +595,21 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
 
 #### Divisions
 
-These rules come from the Owner decisions of 2026-10-11 on #232 (boards 68b to 68c and 69d) and
-of 2026-10-16 on #251.
+These rules come from the Owner decisions of 2026-10-11 on #232 (boards 68b to 68c and 69d), of
+2026-10-16 on #251 and of 2026-10-24 on #594.
 
-- Only the head of a division's department, the team leader or full access creates, edits or
-  closes it. A division lead never can, not even for their own division. The server refuses
-  everyone else.
+- Only the head of a division's department, the team leader or full access creates or closes it.
+  They edit it, and so does a **division lead**, for each division they lead by role: its name
+  (and so its code), who leads it (add, replace and remove leads) and its members (add from the
+  team, an email that waits for Confirm NDA, remove). This replaces the #231 rule, that only the
+  head changes a division's leads, for a lead's own division (Owner decision, 2026-10-24,
+  https://github.com/PoliTo-Rocket-Team/website-v2/issues/594#issuecomment-6385484701).
+  - A lead's right comes from their lead role, never from an access grant: a Members grant at
+    Can edit adds and removes members in the divisions it covers, as on Members, and opens no
+    Edit division there.
+  - A lead never creates or closes a division, not even their own.
+  - Every rule below holds for a lead's save as it does for a head's. The server refuses everyone
+    else.
 - **No reopen.** A closed division never opens again: there is no Reopen control, no Closed tab
   and no save that clears a division's `closed_at` (board 68e is dropped). Closed divisions stay
   only as names in history; a team that needs one back creates a new division.
@@ -665,8 +738,20 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
 - A person holds each area at one level or not at all. In both drawers each area has a tick; a
   ticked area takes its own level, and an unticked area means no access.
 - Delegation limit: a lead gives only an area they hold, and only up to their own level in it.
-  They cannot change or remove access held above their level, or another lead's access. The
+  They cannot change or remove access held above their level, or another lead's role access. The
   server checks every change, not only the drawer.
+- A division lead's role gives Positions, Applications and Members at Can edit in each division
+  they lead (#591). "Your access" counts them with no grant, so a lead with no grants still has
+  Give access. Grants the lead also holds there are added on top. The role also lets the lead
+  edit their own division's orders (#590), but Access still treats Orders as a grant (#632).
+- **Role access is locked; every other grant is a normal grant** (#591). The access a lead's or
+  head's role gives (their "With the role" row) is never given, changed or removed on Access, and
+  the server refuses any change that would touch it. Any other grant (Content, Orders, or
+  an area in a place their role does not cover) can be given to a lead or head, is listed in a row
+  of its own beside their role row, and can be changed or removed, within the usual delegation
+  limit. Give access lists the leads and heads in reach, never the viewer, and only when the viewer
+  can give them something their role does not already give. Full-access seats hold every area, so
+  nothing is given to them.
 - The table has one row per person, with a chip per area and its level, and "Given by".
   Clicking a row opens Edit access: the person and the division are locked, and Save writes
   the adds, level changes and removals in one go. While a side panel is open on a screen 1280px
@@ -677,8 +762,9 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
 - On a phone the table is a card per person with the same chips, and a tap opens the same
   drawer.
 - The other leads of the division are listed first, with "Whole division · Can edit", "With the
-  role" and a lock. Their access comes with the role and cannot be changed or removed here. A
-  lead's own page shows their co-leads, never the lead themselves (Owner decision, #230).
+  role" and a lock. Their role access cannot be changed or removed here; their other grants show
+  in a row of their own (#591). A lead's own page shows their co-leads, never the lead themselves
+  (Owner decision, #230).
 
 #### Department head
 
@@ -693,8 +779,10 @@ These rules come from #230 (boards 65, 65b, 65c and 65m).
   A grant for the whole department is a `scopes` row with only `dept_id` set, and its chip carries
   a "Whole department" tag. A person holds each area at one level per place.
 - The delegation limit is the lead's: a head gives only what they hold, at no higher level, and
-  only inside their department. A lead's role access cannot be removed. The server checks every
-  change.
+  only inside their department. A lead's role access cannot be changed or removed, but a head
+  gives the division leads of their department other grants, such as Orders in their division or
+  an area across the whole department, and changes or removes them (#591). The server checks
+  every change.
 - Edit access (board 65c) locks the person ("can't be changed") and keeps "Where" editable. It
   opens on the first place the person holds access in; changing "Where" shows their areas in
   that place. The foot has "Remove all access" and "Save". "Remove all access" removes every
@@ -707,7 +795,7 @@ These rules come from #238 and #247 (boards 71 and 71b).
 - The full-access seats are the team leader, the operations lead, the IT lead, the Project
   Manager and the Chief Engineer (#485). On the Full access tab each shows under its label:
   "Team leader", "Operations lead", "IT lead", "Project Manager", "Chief Engineer".
-- Full access holds every area at Can edit across the whole team, Alumni and Content included: "YOUR ACCESS ·
+- Full access holds every area at Can edit across the whole team, Content included: "YOUR ACCESS ·
   Full access, whole team", with one "Every area · Can edit" chip, and "Approve orders" for the
   team leader.
 - Above the table: Everyone, Full access and Approve orders tabs, each with its count, and an "All
@@ -715,18 +803,23 @@ These rules come from #238 and #247 (boards 71 and 71b).
   the role", locked), then the heads and division leads with their role's access, locked.
 - Give access picks a person from the whole team and a Where: the whole team (a `team` scope row
   in no unit, which covers every department and any added later), one department, or one division.
-  The areas are Positions, Applications, Members, Alumni, Content and Orders, each at Can view or
-  Can edit but Content. Alumni is the Alumni page only. Content (#504) has no level toggle: it is
-  given at Can edit only. Alumni and Content are given to the whole team only, and the server
-  refuses either in a department or a division, and Content at Can view.
+  The areas are Positions, Applications, Members, Content and Orders, each at Can view or Can
+  edit but Content. There is no Alumni area: the Alumni page comes with Content (Owner decision,
+  2026-10-22, #589). Content (#504) has no level toggle: it is given at Can edit only. Content is
+  given to the whole team only, and the server refuses it in a department or a division, refuses
+  it at Can view, and refuses an Alumni area from anyone.
 - A division lead or department head who holds a Content grant also gives Content: their Where
   adds the whole team, last, where they give Content alone. Nobody else is offered Content, and
   the server refuses it from them.
 - **Approve orders** is a checkbox in Give access that only the team leader sees; the server refuses
   it from anyone else. The other full-access seats give every other access. The Activity
   log is never given: it stays the IT lead's.
-- The delegation limit still holds: no area above the viewer's own level, and no lead's role
-  access changes here.
+- The delegation limit still holds: no area above the viewer's own level, and no lead's or head's
+  role access changes here. Every other grant can be given to, listed for and removed from leads
+  and heads (#591): a head's role covers the unit areas in their department and its divisions, so
+  Content or an area elsewhere on the team is a grant. Full-access seats take no other grant,
+  since their role holds every area, but the team leader can give them "Approve orders" and
+  remove it (#635): Give access lists them for the team leader only, and only with that checkbox.
 
 ## 4. Orders
 
@@ -761,6 +854,13 @@ and 67m).
   can give **"Approve orders"** to any number of people, from their Access page; there is no
   limit on how many hold it. Only the team leader gives or removes it. The server refuses a
   decision from anyone else, and a decision on a request that is not waiting.
+- **What waits on the Overview** (#592). Everyone who decides orders, the team leader and every
+  holder of "Approve orders" (a member, a lead, a head or a full-access seat), sees the team
+  leader's two rows under "Needs your attention" on their Overview, whatever its shape: "N orders
+  wait for your decision" and "N approved orders are not ordered yet", both counted across the
+  whole team and both linking to Orders. Nobody else gets either row. A member who holds
+  "Approve orders" also sees an "Approve orders" line under "Your access", with the count of
+  orders waiting for a decision, linking to Orders, in place of the access hint.
 - **Deciding on the page** (#247, boards 70 to 70e). A waiting order opened by someone who decides
   shows Reject, Ask for changes and Approve; Edit moves to the panel's head. While a panel is open
   the Department column is hidden. Ask for changes opens a "What should change" note, which is

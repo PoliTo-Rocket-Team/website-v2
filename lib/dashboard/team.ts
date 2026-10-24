@@ -3,6 +3,7 @@ import { academicYearStart, shortAcademicYearLabel } from "@/lib/about/academic-
 import type { DepartmentMembers } from "./department-members";
 import type { DivisionMembers, PersonPosition, WaitingPerson } from "./division-members";
 import type { WholeTeamMembers } from "./team-members";
+import type { FlaggedSeat } from "./viewer";
 
 // The Team pages of the dashboard (issue #143): Members (boards 46, 61g),
 // Alumni (46c) and the Team tree (42, 42b). Both sides of the data
@@ -10,19 +11,67 @@ import type { WholeTeamMembers } from "./team-members";
 // fetch nothing. The tree is built here from the roster alone, so a person
 // added to the roster is a node.
 
-/** The two seats beside the team leader (board 54c): the Project Manager and the Chief Engineer. */
-export const BOARD_SEATS = ["project-manager", "chief-engineer"] as const;
-export type BoardSeat = (typeof BOARD_SEATS)[number];
+// Team-level seats (board 54c, issue #625). A seat on the row under the team
+// leader is read from where its role sits, never from its title: an active
+// role in no department and no division that is not the team leader's, a
+// head's or an advisor's. Two of them are flagged as full-access seats
+// (`roles.full_access`, migration 0047): the Project Manager and the Chief
+// Engineer. A title is stored (`roles.title`) and shown as stored, so a
+// rename keeps the seat where it is.
 
-export const BOARD_SEAT_TITLES: Readonly<Record<BoardSeat, string>> = {
+/** The full-access flags a team-level seat's row can carry, in the order the row draws them: the Project Manager, then the Chief Engineer. */
+export const BOARD_FLAGS = ["project-manager", "chief-engineer"] as const;
+export type BoardFlag = (typeof BOARD_FLAGS)[number];
+
+/** The name a flagged seat reads when its stored title is blank. */
+export const BOARD_FLAG_TITLES: Readonly<Record<BoardFlag, string>> = {
   "project-manager": "Project Manager",
   "chief-engineer": "Chief Engineer",
 };
 
-/** The seat a role's title names, in any case and spacing; null for any other title. */
-export function boardSeatOf(title: string): BoardSeat | null {
-  const key = title.trim().replace(/\s+/g, " ").toLowerCase();
-  return BOARD_SEATS.find((seat) => BOARD_SEAT_TITLES[seat].toLowerCase() === key) ?? null;
+/** The name any other team-level seat reads when its stored title is blank. */
+export const BOARD_SEAT_FALLBACK = "Board";
+
+/** The board flag a row's full-access flag is; null for no flag or another seat's (the operations lead's, the IT lead's). */
+export function boardFlagOf(fullAccess: FlaggedSeat | null): BoardFlag | null {
+  return BOARD_FLAGS.find((flag) => flag === fullAccess) ?? null;
+}
+
+/** A team-level seat: the role it came from. */
+export type BoardRole = {
+  /** The `roles` row. */
+  readonly roleId: number;
+  /** Its stored title, trimmed; blank when none is stored. */
+  readonly title: string;
+  /** The full-access seat its row is flagged as; null for any further team-level seat. */
+  readonly flag: BoardFlag | null;
+  /** `started_at`: further seats are drawn by it. */
+  readonly since: string;
+};
+
+/** "Project Manager", "Chief of Propulsion": the seat's stored title, or its default name when none is stored. */
+export function boardTitleOf(seat: BoardRole): string {
+  if (seat.title !== "") return seat.title;
+  return seat.flag === null ? BOARD_SEAT_FALLBACK : BOARD_FLAG_TITLES[seat.flag];
+}
+
+const flagRank = (seat: BoardRole) => (seat.flag === null ? BOARD_FLAGS.length : BOARD_FLAGS.indexOf(seat.flag));
+
+/** The seat row's order: the flagged Project Manager, the flagged Chief Engineer, then every other team-level seat by start date. */
+export function bySeatOrder(a: BoardRole, b: BoardRole): number {
+  return flagRank(a) - flagRank(b) || a.since.localeCompare(b.since) || a.roleId - b.roleId;
+}
+
+/** The title a new head row is written with, and the one a blank head title reads: "Head of Aerodynamics". */
+export function defaultHeadTitle(department: string): string {
+  return `Head of ${department}`;
+}
+
+/** A head's stored title; for a blank one the default (`defaultHeadTitle`), or "Head" when the department is not on the chart. */
+export function headTitleOf(title: string, department: string | null): string {
+  const stored = title.trim();
+  if (stored !== "") return stored;
+  return department === null ? "Head" : defaultHeadTitle(department);
 }
 
 // Divisions per person (issue #229). One person can be in several divisions
@@ -169,8 +218,9 @@ export function membershipsOfRoles(roles: readonly RoleHeld[]): Memberships {
  */
 export type Placement =
   | { readonly role: "team-leader"; readonly memberships: Memberships }
-  | { readonly role: "board"; readonly seat: BoardSeat; readonly memberships: Memberships }
-  | { readonly role: "head"; readonly departmentId: number; readonly memberships: Memberships }
+  | { readonly role: "board"; readonly seat: BoardRole; readonly memberships: Memberships }
+  /** `title` is their head role's stored title (`headTitleOf` reads a blank one). */
+  | { readonly role: "head"; readonly departmentId: number; readonly title: string; readonly memberships: Memberships }
   /** In one or more divisions; none yet when they were added to the roster and not placed. */
   | { readonly role: "divisions"; readonly memberships: Memberships };
 
@@ -378,10 +428,9 @@ export type MemberDirectory =
 export const NO_MEMBERS: MemberDirectory = { scope: "none" };
 
 function roleLabelOf(placement: Placement, role: TeamRole, org: OrgChart): string {
-  if (placement.role === "board") return BOARD_SEAT_TITLES[placement.seat];
+  if (placement.role === "board") return boardTitleOf(placement.seat);
   if (placement.role === "head") {
-    const department = org.departments.find((d) => d.id === placement.departmentId);
-    return department ? `Head of ${department.name}` : "Head";
+    return headTitleOf(placement.title, org.departments.find((d) => d.id === placement.departmentId)?.name ?? null);
   }
   return role === "team-leader" ? "Team Leader" : role === "division-lead" ? "Division Lead" : "Member";
 }
@@ -422,12 +471,29 @@ export function memberRowOf(entry: RosterEntry, org: OrgChart, selfId: number | 
  * Who acts on the Members page, by what they lead. The team leader reaches
  * the whole team; the operations lead does too, as Move to alumni already let
  * them (#201). A head reaches their departments, a division lead their
- * divisions.
+ * divisions. A lead's `divisionIds` also holds every division a Members
+ * grant lets them change (#342), so `ledDivisionIds` names, apart, the ones
+ * they lead by role: only those open Edit division to them (issue #594).
  */
 export type TeamActor =
   | { readonly kind: "team" }
   | { readonly kind: "head"; readonly departmentIds: readonly number[] }
-  | { readonly kind: "lead"; readonly divisionIds: readonly number[] };
+  | {
+      readonly kind: "lead";
+      readonly divisionIds: readonly number[];
+      /** The divisions of `divisionIds` they lead by role; none for someone a grant alone puts here. */
+      readonly ledDivisionIds: readonly number[];
+    };
+
+/**
+ * A lead actor over `divisionIds`, leading by role the ones of `led` among
+ * them; null when they reach none. A led division they do not reach is
+ * dropped, so a lead never leads where they cannot act.
+ */
+export function leadActor(divisionIds: readonly number[], led: readonly number[]): TeamActor | null {
+  if (divisionIds.length === 0) return null;
+  return { kind: "lead", divisionIds, ledDivisionIds: led.filter((id) => divisionIds.includes(id)) };
+}
 
 /** Whether an action is open to the actor; when it is not, the reason the menu shows beside the lock. */
 export type Permission = { readonly allowed: true } | { readonly allowed: false; readonly reason: string };
@@ -456,27 +522,31 @@ function divisionName(org: OrgChart, divisionId: number): string {
 }
 
 /**
- * A role beyond every division's reach: the team leader, a board seat, a
- * department head (wherever its row is kept), an Advisor role kept on a
- * department or on the team, any other role kept on a department, or any
- * other role kept on the team. "Leaves the team" ends
- * these too, and no division lead or department head reaches them.
+ * A role beyond every division's reach: the team leader, a team-level seat
+ * (any other role kept on the team), a department head (wherever its row is
+ * kept), an Advisor role kept on a department or on the team, or any other
+ * role kept on a department. "Leaves the team" ends these too, and no
+ * division lead or department head reaches them.
  */
 export type RoleBeyondDivisions =
-  | { readonly kind: "team-leader" }
-  | { readonly kind: "board"; readonly seat: BoardSeat }
-  /** Null department when the row names none on the chart (`headDepartmentOf`). */
-  | { readonly kind: "head"; readonly departmentId: number | null }
+  /** `title` as stored on the team leader row, which the public Team page shows; blank where none is read (`seatTitleValue`). */
+  | { readonly kind: "team-leader"; readonly title: string }
+  | { readonly kind: "board"; readonly seat: BoardRole }
+  /** Null department when the row names none on the chart (`headDepartmentOf`); `title` as stored. */
+  | { readonly kind: "head"; readonly departmentId: number | null; readonly title: string }
   | { readonly kind: "department"; readonly departmentId: number }
   /** An Advisor role (issue #253) kept on a department (a former head's) or on the whole team (null: a former team leader's). */
-  | { readonly kind: "advisor"; readonly departmentId: number | null }
-  | { readonly kind: "team"; readonly title: string };
+  | { readonly kind: "advisor"; readonly departmentId: number | null };
 
 /** One active `roles` row with where it sits, as both data sources read it. */
 export type RoleSeat = RoleHeld & {
+  /** The `roles` row. */
+  readonly id: number;
   /** The department it is kept on; null for a role in a division or on the whole team. */
   readonly departmentId: number | null;
   readonly title: string;
+  /** The full-access seat the row is flagged as (`roles.full_access`); null for none. */
+  readonly fullAccess: FlaggedSeat | null;
 };
 
 /**
@@ -489,21 +559,24 @@ export function headDepartmentOf(role: Pick<RoleSeat, "departmentId" | "division
 }
 
 /**
- * The role as one beyond every division's reach, in the order the roster
- * places someone: the team leader, a board seat (a titled role in no
- * department or division), a department head wherever its row is kept
- * (`headDepartmentOf`), then any other role in no division. Null for any other
- * role in a division.
+ * The role as one beyond every division's reach: the team leader, a
+ * department head wherever its row is kept (`headDepartmentOf`), then any
+ * other role in no division: an Advisor role, a role kept on a department, or
+ * a team-level seat (in no department either). Read from the row's type and
+ * where it sits, never from its title. Null for any other role in a division.
  */
 export function roleBeyondDivisions(role: RoleSeat, org: OrgChart): RoleBeyondDivisions | null {
-  if (role.type === "president") return { kind: "team-leader" };
-  const seat = role.departmentId === null && role.divisionId === null ? boardSeatOf(role.title) : null;
-  if (seat !== null) return { kind: "board", seat };
-  if (role.type === "head") return { kind: "head", departmentId: headDepartmentOf(role, org) };
+  if (role.type === "president") return { kind: "team-leader", title: role.title.trim() };
+  if (role.type === "head") return { kind: "head", departmentId: headDepartmentOf(role, org), title: role.title.trim() };
   if (role.divisionId !== null) return null;
   if (role.type === "advisor") return { kind: "advisor", departmentId: role.departmentId };
   if (role.departmentId !== null) return { kind: "department", departmentId: role.departmentId };
-  return { kind: "team", title: role.title.trim() };
+  return { kind: "board", seat: { roleId: role.id, title: role.title.trim(), flag: boardFlagOf(role.fullAccess), since: role.since } };
+}
+
+/** Whether the row is a team-level seat: what `roleBeyondDivisions` reads as `board`, by type and place alone. */
+export function isTeamSeat(role: Pick<RoleSeat, "type" | "departmentId" | "divisionId">): boolean {
+  return role.departmentId === null && role.divisionId === null && role.type !== "president" && role.type !== "head" && role.type !== "advisor";
 }
 
 /** Everything "Leaves the team" ends: every division someone is in, and every role they hold in no division. */
@@ -536,32 +609,73 @@ export function standingOfPlacement(placement: Placement): TeamStanding {
   const { memberships } = placement;
   switch (placement.role) {
     case "team-leader":
-      return { memberships, beyond: [{ kind: "team-leader" }] };
+      // A placement keeps no title of the team leader row: blank, read by its default name.
+      return { memberships, beyond: [{ kind: "team-leader", title: "" }] };
     case "board":
       return { memberships, beyond: [{ kind: "board", seat: placement.seat }] };
     case "head":
-      return { memberships, beyond: [{ kind: "head", departmentId: placement.departmentId }] };
+      return { memberships, beyond: [{ kind: "head", departmentId: placement.departmentId, title: placement.title }] };
     case "divisions":
       return { memberships, beyond: [] };
   }
 }
 
-/** "Team Leader", "Project Manager", "Head of Aerodynamics": the role as a title names it. */
+function departmentNameOf(departmentId: number | null, org: OrgChart): string | null {
+  return org.departments.find((d) => d.id === departmentId)?.name ?? null;
+}
+
+/** "Team Leader", "Project Manager", "Head of Aerodynamics": the role as its title names it; a head or a seat by the stored title. */
 export function beyondTitle(role: RoleBeyondDivisions, org: OrgChart): string {
   switch (role.kind) {
     case "team-leader":
       return "Team Leader";
-    case "head": {
-      const name = org.departments.find((d) => d.id === role.departmentId)?.name;
-      return name ? `Head of ${name}` : "Head";
-    }
+    case "board":
+      return boardTitleOf(role.seat);
+    case "head":
+      return headTitleOf(role.title, departmentNameOf(role.departmentId, org));
     case "department":
-      return org.departments.find((d) => d.id === role.departmentId)?.name ?? "Department";
+      return departmentNameOf(role.departmentId, org) ?? "Department";
     case "advisor":
       return "Advisor";
-    default:
-      return beyondLabel(role, org);
   }
+}
+
+/** A role beyond every division whose stored title Edit details sets: the team leader's, a team-level seat's or a head's. */
+export type TitledSeat = Extract<RoleBeyondDivisions, { readonly kind: "team-leader" | "board" | "head" }>;
+
+const TITLED_SEAT_RANK: Readonly<Record<TitledSeat["kind"], number>> = { "team-leader": 0, head: 1, board: 2 };
+
+function isTitledSeat(role: RoleBeyondDivisions): role is TitledSeat {
+  return role.kind in TITLED_SEAT_RANK;
+}
+
+/**
+ * The seat whose stored title Edit details sets for someone in no division
+ * the viewer reaches (issue #626), with the role it came from: the team
+ * leader's, else a head's, else a team-level seat's (`bySeatOrder`). Both
+ * sides of the data interface pick it by this one rule, so the panel shows
+ * the title the save writes. Null for someone holding none of these (an
+ * Advisor role, a role kept on a department): no title of theirs is set here.
+ */
+export function titledSeatOf<T>(roles: readonly T[], beyondOf: (role: T) => RoleBeyondDivisions | null): { readonly role: T; readonly seat: TitledSeat } | null {
+  const seats = roles.flatMap((role) => {
+    const seat = beyondOf(role);
+    return seat !== null && isTitledSeat(seat) ? [{ role, seat }] : [];
+  });
+  const order = (a: TitledSeat, b: TitledSeat) =>
+    TITLED_SEAT_RANK[a.kind] - TITLED_SEAT_RANK[b.kind] || (a.kind === "board" && b.kind === "board" ? bySeatOrder(a.seat, b.seat) : 0);
+  return [...seats].sort((a, b) => order(a.seat, b.seat))[0] ?? null;
+}
+
+/**
+ * The title Edit details starts a seat's Role at, and so what a save with the
+ * Role left as shown writes back: the seat row's stored title, a blank one by
+ * its default name. The team leader's is their row's own title, never the
+ * "Team Leader" the dashboard names the seat by (`beyondTitle`), so a details
+ * save keeps the title the public Team page shows (issue #626).
+ */
+export function seatTitleValue(seat: TitledSeat, org: OrgChart): string {
+  return seat.kind === "team-leader" ? seat.title || "Team Leader" : beyondTitle(seat, org);
 }
 
 /** "the team leader", "Project Manager", "Head of Aerodynamics", "in Aerodynamics": what the lock reason says they also are. */
@@ -570,10 +684,10 @@ function beyondLabel(role: RoleBeyondDivisions, org: OrgChart): string {
     case "team-leader":
       return "the team leader";
     case "board":
-      return BOARD_SEAT_TITLES[role.seat];
+      return role.seat.title === "" && role.seat.flag === null ? "on the board" : boardTitleOf(role.seat);
     case "head": {
-      const name = org.departments.find((d) => d.id === role.departmentId)?.name;
-      return name ? `Head of ${name}` : "a department head";
+      const name = departmentNameOf(role.departmentId, org);
+      return role.title === "" && name === null ? "a department head" : headTitleOf(role.title, name);
     }
     case "department": {
       const name = org.departments.find((d) => d.id === role.departmentId)?.name;
@@ -583,8 +697,6 @@ function beyondLabel(role: RoleBeyondDivisions, org: OrgChart): string {
       const name = org.departments.find((d) => d.id === role.departmentId)?.name;
       return name ? `an advisor in ${name}` : "an advisor to the team";
     }
-    case "team":
-      return role.title === "" ? "on the board" : role.title;
   }
 }
 
@@ -620,8 +732,9 @@ export function mayLeaveTeam(actor: TeamActor, standing: TeamStanding, org: OrgC
  * "Remove from <division>" on a row (Owner decision, 2026-10-11): it ends
  * only that division's role. It is not offered for someone whose only
  * division it is and who holds no seat (nobody is on the team with neither:
- * they can only leave it, `mayLeaveDivision`), and a division lead cannot take
- * a lead out, since only the head changes a division's leads.
+ * they can only leave it, `mayLeaveDivision`), and a lead is taken out only by
+ * whoever may change the division's leads (`mayChangeDivision`): its lead
+ * (Owner decision, 2026-10-24, issue #594), its head or the team.
  */
 export type Removal =
   | { readonly kind: "offered" }
@@ -654,13 +767,14 @@ export function leadsChangedBy(divisionId: number, org: OrgChart): string {
 }
 
 /**
- * Renaming a division, changing its code or changing its leads (Owner
- * decision, 2026-10-11): only the head of its department, or the team. A
- * division lead never can, even of their own division; the reason is the
- * line their page shows.
+ * Renaming a division, changing its code or changing its leads: the head of
+ * its department or the team (Owner decision, 2026-10-11), and a lead of it
+ * by role (Owner decision, 2026-10-24, issue #594, replacing the #231 rule
+ * for a lead's own division). A Members grant never opens it: a lead changes
+ * only the divisions they lead, and the reason names who changes the rest.
  */
 export function mayChangeDivision(actor: TeamActor, divisionId: number, org: OrgChart): Permission {
-  if (actor.kind === "lead") return denied(leadsChangedBy(divisionId, org));
+  if (actor.kind === "lead") return actor.ledDivisionIds.includes(divisionId) ? ALLOWED : denied(leadsChangedBy(divisionId, org));
   return reachesDivision(actor, divisionId, org) ? ALLOWED : denied("Only the team leader can do this");
 }
 
@@ -806,23 +920,26 @@ export type TreeDivision = {
   readonly size: number;
 };
 
+/** A department's head, with their role's title as stored ("Head of Aerodynamics" for a blank one). */
+export type TreeHead = TreePerson & { readonly title: string };
+
 export type TreeDepartment = {
   readonly id: number;
   readonly name: string;
-  readonly head: TreePerson | null;
+  readonly head: TreeHead | null;
   readonly divisions: readonly TreeDivision[];
   /** Everyone in it, head included. */
   readonly size: number;
 };
 
-/** Someone in a board seat, under the team leader and over the heads. */
-export type TreeBoardMember = { readonly seat: BoardSeat; readonly person: TreePerson };
+/** Someone in a team-level seat, under the team leader and over the heads: the seat's role and its title (`boardTitleOf`). */
+export type TreeBoardMember = { readonly roleId: number; readonly title: string; readonly person: TreePerson };
 
 export type TeamTree = {
   /** "2026–27" */
   readonly season: string;
   readonly leader: TreePerson | null;
-  /** The Project Manager, then the Chief Engineer: whoever holds each seat. */
+  /** The team-level seats in seat order (`bySeatOrder`): the Project Manager, the Chief Engineer, then any other by start date. */
   readonly board: readonly TreeBoardMember[];
   readonly departments: readonly TreeDepartment[];
   /** Everyone on the roster. */
@@ -883,14 +1000,15 @@ export function buildTeamTree(
     // Someone in two of its divisions counts once, and its head once, also when they lead one of them.
     const people = new Set(roster.filter((e) => e !== head && divisions.some((d) => isIn(e.placement, d.id))).map((e) => e.id));
     const size = (head ? 1 : 0) + people.size;
-    return size === 0 ? [] : [{ id: department.id, name: department.name, head: head ? node(head, null) : null, divisions, size }];
+    const shownHead = head?.placement.role === "head" ? { ...node(head, null), title: headTitleOf(head.placement.title, department.name) } : null;
+    return size === 0 ? [] : [{ id: department.id, name: department.name, head: shownHead, divisions, size }];
   });
 
   const leader = roster.find((e) => e.placement.role === "team-leader");
-  const board = BOARD_SEATS.flatMap((seat): TreeBoardMember[] => {
-    const holder = roster.find((e) => e.placement.role === "board" && e.placement.seat === seat);
-    return holder ? [{ seat, person: node(holder, null) }] : [];
-  });
+  const board = roster
+    .flatMap((e) => (e.placement.role === "board" ? [{ seat: e.placement.seat, entry: e }] : []))
+    .sort((a, b) => bySeatOrder(a.seat, b.seat))
+    .map(({ seat, entry }): TreeBoardMember => ({ roleId: seat.roleId, title: boardTitleOf(seat), person: node(entry, null) }));
   const me = roster.find((e) => e.id === selfId);
   const myDivision = me ? firstDivision(me) : null;
   const myDepartment =

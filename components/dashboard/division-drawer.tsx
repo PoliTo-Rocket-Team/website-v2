@@ -95,6 +95,7 @@ export function DivisionDrawer({
   editable,
   onClose,
   onFill,
+  mayClose,
   onCloseDivision,
 }: {
   target: DivisionDrawerTarget | null;
@@ -105,6 +106,8 @@ export function DivisionDrawer({
   onClose: () => void;
   /** Fill details on someone waiting for their NDA: the page's Edit details drawer. */
   onFill: (waiting: WaitingPerson, division: DivisionMembers) => void;
+  /** Whether the viewer may close the division: a lead's Edit division has no Close division (issue #594). */
+  mayClose: (division: DivisionMembers) => boolean;
   /** Close division in Edit division's footer (boards 77g, 68b): the page's Close division dialog. */
   onCloseDivision: (division: DivisionMembers) => void;
 }) {
@@ -123,6 +126,7 @@ export function DivisionDrawer({
       editable={editable}
       onClose={onClose}
       onFill={onFill}
+      mayClose={mayClose}
       onCloseDivision={onCloseDivision}
     />
   );
@@ -136,6 +140,7 @@ function DrawerForm({
   editable,
   onClose,
   onFill,
+  mayClose,
   onCloseDivision,
 }: {
   open: boolean;
@@ -145,6 +150,7 @@ function DrawerForm({
   editable: boolean;
   onClose: () => void;
   onFill: (waiting: WaitingPerson, division: DivisionMembers) => void;
+  mayClose: (division: DivisionMembers) => boolean;
   onCloseDivision: (division: DivisionMembers) => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(target));
@@ -251,7 +257,7 @@ function DrawerForm({
       detail={detail}
       footer={
         <>
-          {tab ? (
+          {tab && mayClose(tab) ? (
             <button type="button" onClick={() => onCloseDivision(tab)} className={PANEL_DANGER_BUTTON}>
               Close division
             </button>
@@ -636,7 +642,7 @@ export function PeoplePicker({
   onClose,
   multi = false,
 }: {
-  mode: "lead" | "member" | "head" | "leader";
+  mode: "lead" | "member" | "head" | "leader" | "seat";
   /** The division or department the pick joins: "Mission Analysis", "the new department". */
   short: string;
   /** Why someone cannot be picked here ("Already a lead"), or null. */
@@ -666,6 +672,8 @@ export function PeoplePicker({
       ? "Search anyone in the team. They become Team Leader when you save and keep their roles."
       : mode === "head"
         ? `Search anyone in the team. They head ${short} and keep their divisions.`
+        : mode === "seat"
+          ? `Search anyone in the team. They hold ${short} and keep their divisions.`
         : mode === "lead"
           ? `Search anyone in the team. They join ${short} as a lead and keep their other divisions.`
           : newEmail !== null
@@ -681,7 +689,13 @@ export function PeoplePicker({
   return (
     <div className="mt-3 flex items-start gap-2">
       <label htmlFor={id} className="sr-only">
-        {mode === "member" ? "Search the team, or type an email" : mode === "leader" ? "Search the team for who takes over" : `Search the team for a ${mode}`}
+        {mode === "member"
+          ? "Search the team, or type an email"
+          : mode === "leader"
+            ? "Search the team for who takes over"
+            : mode === "seat"
+              ? "Search the team for who holds the seat"
+              : `Search the team for a ${mode}`}
       </label>
       <div className="min-w-0 flex-1">
         <PersonCombobox

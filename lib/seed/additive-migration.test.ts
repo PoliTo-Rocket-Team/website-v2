@@ -35,17 +35,34 @@ test("0055_preview_reseeds.sql drops, renames and rewrites nothing", () => {
   assert.match(sql, /CREATE TABLE "preview_reseeds"/);
 });
 
+// The R&D move (issues #627 and #600) is data only. Its one statement that
+// changes a row is the guarded UPDATE the Owner decision on #600 allows
+// (https://github.com/PoliTo-Rocket-Team/website-v2/issues/600#issuecomment-6385783494):
+// it attaches only the oldest active, unflagged core role titled "Head of R&D"
+// in no unit to the R&D department, only while that department has no head,
+// so a second run matches nothing and no department gets two heads. What it
+// does on each database shape is run in ./rd-department-head.test.ts.
+test("0059_rd_department_head.sql changes one row kind only: the Head of R&D role's type and department", () => {
+  const sql = readFileSync(resolve(process.cwd(), "drizzle/0059_rd_department_head.sql"), "utf8");
+  const changed = nonAdditiveStatements(sql);
+  assert.equal(changed.length, 1);
+  const [update] = changed;
+  assert.match(update, /^UPDATE "roles" AS r SET "type" = 'head', "dept_id" = \(/);
+  const [set] = update.split(` WHERE r."leaved_at"`);
+  assert.ok(!set.includes(`"title"`) && !set.includes(`"member_id"`) && !set.includes(`"started_at"`), "the title, holder and start date stay");
+});
+
 // The View as base (issue #604) adds the admin plugin's columns to Better
 // Auth's tables: each is new and nullable or defaulted, so it rewrites
 // nothing and every session already signed in stays valid.
-const VIEW_AS_TAG = "0056_view_as_admin_plugin";
+const VIEW_AS_TAG = "0060_view_as_admin_plugin";
 
-test("0056_view_as_admin_plugin.sql drops, renames and rewrites nothing", () => {
+test("0060_view_as_admin_plugin.sql drops, renames and rewrites nothing", () => {
   const sql = readFileSync(resolve(process.cwd(), `drizzle/${VIEW_AS_TAG}.sql`), "utf8");
   assert.deepEqual(nonAdditiveStatements(sql), []);
 });
 
-test("0056 keeps every existing account and session as it was, and a plain session names no acting account", async () => {
+test("0060 keeps every existing account and session as it was, and a plain session names no acting account", async () => {
   const journal = JSON.parse(readFileSync(resolve(process.cwd(), "drizzle/meta/_journal.json"), "utf8")) as { entries: { tag: string }[] };
   const tags = journal.entries.map((e) => e.tag);
   assert.ok(tags.includes(VIEW_AS_TAG), `${VIEW_AS_TAG} is journaled`);
@@ -78,7 +95,7 @@ test("0056 keeps every existing account and session as it was, and a plain sessi
 // Two-person write attribution (issue #605) adds a nullable acting-account
 // column to `logs` and beside each member-id "by" column, and replaces the
 // audit trigger function in place.
-const ATTRIBUTION_TAG = "0057_impersonated_write_attribution";
+const ATTRIBUTION_TAG = "0061_impersonated_write_attribution";
 
 /** A database with every journaled migration before `tag` applied, and a way to apply one more. */
 async function databaseBefore(tag: string) {
@@ -94,12 +111,12 @@ async function databaseBefore(tag: string) {
   return { db, apply: () => run(tag) };
 }
 
-test("0057_impersonated_write_attribution.sql drops, renames and rewrites nothing", () => {
+test("0061_impersonated_write_attribution.sql drops, renames and rewrites nothing", () => {
   const sql = readFileSync(resolve(process.cwd(), `drizzle/${ATTRIBUTION_TAG}.sql`), "utf8");
   assert.deepEqual(nonAdditiveStatements(sql), []);
 });
 
-test("0057 only adds nullable columns and replaces the trigger function: existing rows keep every value", async () => {
+test("0061 only adds nullable columns and replaces the trigger function: existing rows keep every value", async () => {
   const { db, apply } = await databaseBefore(ATTRIBUTION_TAG);
   await db.exec(`
     insert into better_auth."user" (id, name, email, "emailVerified") values ('u-1', 'Sara Conti', 'sara@example.com', true);
@@ -138,7 +155,7 @@ test("0057 only adds nullable columns and replaces the trigger function: existin
   assert.ok(added.rows.every((r) => r.is_nullable === "YES" && r.column_default === null), "each is nullable with no default");
 });
 
-test("after 0057 the audit trigger stores the acting account beside the writer, and none outside View as", async () => {
+test("after 0061 the audit trigger stores the acting account beside the writer, and none outside View as", async () => {
   const { db, apply } = await databaseBefore(ATTRIBUTION_TAG);
   await apply();
   const write = async (name: string, settings: Record<string, string>) => {
@@ -166,10 +183,11 @@ test("after 0057 the audit trigger stores the acting account beside the writer, 
   ]);
 });
 
-// The shared preview database may already hold the View as columns from an
-// earlier preview build of this epic, under the numbers these migrations had
-// before the trunk's 0055 took that number. Applying them again must succeed.
-test("0056 and 0057 apply again over a database that already holds them", async () => {
+// The shared preview database already holds the View as columns from earlier
+// preview builds of this epic, under the numbers these migrations had before
+// the trunk took them (0055/0056, then 0056/0057). Applying them again must
+// succeed.
+test("0060 and 0061 apply again over a database that already holds them", async () => {
   const { db, apply } = await databaseBefore(VIEW_AS_TAG);
   const attribution = readFileSync(resolve(process.cwd(), `drizzle/${ATTRIBUTION_TAG}.sql`), "utf8");
   const runAttribution = async () => {
@@ -186,61 +204,75 @@ test("0056 and 0057 apply again over a database that already holds them", async 
 });
 
 // The migrator applies only entries journaled later than the newest one a
-// database records, so every entry must be later than the one before it.
+// database records, so every entry must be later than the one before it. The
+// numbers 0056 and 0057 are not journaled: the trunk skipped them while this
+// epic held them, so the numbers only climb, each tag naming its own index.
 test("the journal is ordered by when, each entry later than the one before", () => {
   const journal = JSON.parse(readFileSync(resolve(process.cwd(), "drizzle/meta/_journal.json"), "utf8")) as {
     entries: { idx: number; when: number; tag: string }[];
   };
   journal.entries.forEach((entry, i) => {
-    assert.equal(entry.idx, i, `${entry.tag} has index ${i}`);
-    assert.ok(entry.tag.startsWith(String(i).padStart(4, "0")), `${entry.tag} is numbered ${i}`);
-    if (i > 0) assert.ok(entry.when > journal.entries[i - 1].when, `${entry.tag} is later than ${journal.entries[i - 1].tag}`);
+    assert.ok(entry.tag.startsWith(String(entry.idx).padStart(4, "0")), `${entry.tag} is numbered ${entry.idx}`);
+    if (i === 0) return;
+    const before = journal.entries[i - 1];
+    assert.ok(entry.idx > before.idx, `${entry.tag} is numbered after ${before.tag}`);
+    assert.ok(entry.when > before.when, `${entry.tag} is later than ${before.tag}`);
   });
 });
 
-// Earlier builds of the epic branch journaled the View as migrations as 0055
-// (1793640000000) and 0056 (1793726400000), before the trunk's 0055 took that
-// number. The shared preview database recorded the trunk's 0055 first, so the
-// old epic 0055 was skipped, and then the old epic 0056 (the write attribution)
-// applied: its newest recorded entry is 1793726400000. Drizzle's own migrator
-// applies only entries later than that, so both renumbered entries must be
-// later, or the admin plugin columns never reach that database.
-const OLD_EPIC_ATTRIBUTION_WHEN = 1793726400000;
+// Earlier builds of the epic branch journaled the View as migrations as
+// 0055/0056 (newest when 1793726400000) and then 0056/0057 (newest when
+// 1793899200000), and the shared preview database applied them. It may have
+// done so before or after recording the trunk's 0058 and 0059. Drizzle's own
+// migrator applies only entries later than the newest one recorded, so on
+// either shape both renumbered entries must still apply, and their second run
+// over columns that already exist must succeed.
+const OLD_EPIC_WHENS = [1793726400000, 1793812800000, 1793899200000];
 
-test("the migrator applies 0056 and 0057 over a database that recorded the old epic entries", async () => {
-  const journal = JSON.parse(readFileSync(resolve(process.cwd(), "drizzle/meta/_journal.json"), "utf8")) as {
-    entries: { when: number; tag: string }[];
-  };
-  const { db } = await databaseBefore(VIEW_AS_TAG);
-  const attribution = readFileSync(resolve(process.cwd(), `drizzle/${ATTRIBUTION_TAG}.sql`), "utf8");
-  for (const statement of attribution.split("--> statement-breakpoint")) if (statement.trim()) await db.exec(statement);
-  const recorded = journal.entries.slice(0, journal.entries.findIndex((e) => e.tag === VIEW_AS_TAG)).map((e) => e.when);
-  await db.exec(`
-    create schema drizzle;
-    create table drizzle.__drizzle_migrations (id serial primary key, hash text not null, created_at bigint);
-    insert into drizzle.__drizzle_migrations (hash, created_at) values
-      ${[...recorded, OLD_EPIC_ATTRIBUTION_WHEN].map((when) => `('recorded', ${when})`).join(", ")};
-  `);
+for (const [shape, lastRecordedTag] of [
+  ["recorded the old epic entries before the trunk's 0058", "0055_preview_reseeds"],
+  ["recorded the old epic entries and the trunk's 0058 and 0059", "0059_rd_department_head"],
+] as const) {
+  test(`the migrator applies 0060 and 0061 over a database that ${shape}`, async () => {
+    const journal = JSON.parse(readFileSync(resolve(process.cwd(), "drizzle/meta/_journal.json"), "utf8")) as {
+      entries: { when: number; tag: string }[];
+    };
+    const recordedEntries = journal.entries.slice(0, journal.entries.findIndex((e) => e.tag === lastRecordedTag) + 1);
+    const db = new PGlite();
+    const run = async (name: string) => {
+      const sql = readFileSync(resolve(process.cwd(), `drizzle/${name}.sql`), "utf8");
+      for (const statement of sql.split("--> statement-breakpoint")) if (statement.trim()) await db.exec(statement);
+    };
+    for (const entry of recordedEntries) await run(entry.tag);
+    await run(VIEW_AS_TAG);
+    await run(ATTRIBUTION_TAG);
+    await db.exec(`
+      create schema drizzle;
+      create table drizzle.__drizzle_migrations (id serial primary key, hash text not null, created_at bigint);
+      insert into drizzle.__drizzle_migrations (hash, created_at) values
+        ${[...recordedEntries.map((e) => e.when), ...OLD_EPIC_WHENS].map((when) => `('recorded', ${when})`).join(", ")};
+    `);
 
-  await migrate(drizzle(db), { migrationsFolder: resolve(process.cwd(), "drizzle") });
+    await migrate(drizzle(db), { migrationsFolder: resolve(process.cwd(), "drizzle") });
 
-  const columns = await db.query<{ column: string }>(`
-    select table_name || '.' || column_name as column from information_schema.columns
-    where table_schema = 'better_auth' and column_name in ('role', 'banned', 'banReason', 'banExpires', 'impersonatedBy')
-    order by 1
-  `);
-  assert.deepEqual(
-    columns.rows.map((r) => r.column),
-    ["session.impersonatedBy", "user.banExpires", "user.banReason", "user.banned", "user.role"],
-    "the admin plugin columns reached the database",
-  );
-  const newest = await db.query<{ created_at: string }>(`select created_at from drizzle.__drizzle_migrations order by created_at desc limit 1`);
-  assert.equal(Number(newest.rows[0].created_at), journal.entries.at(-1)?.when, "the newest recorded entry is the journal's last");
-  const constraints = await db.query<{ count: number }>(
-    `select count(*)::int as count from pg_constraint where conname like '%acting_account_users_id_fk'`,
-  );
-  assert.equal(constraints.rows[0].count, 8, "each acting-account foreign key exists once");
-});
+    const columns = await db.query<{ column: string }>(`
+      select table_name || '.' || column_name as column from information_schema.columns
+      where table_schema = 'better_auth' and column_name in ('role', 'banned', 'banReason', 'banExpires', 'impersonatedBy')
+      order by 1
+    `);
+    assert.deepEqual(
+      columns.rows.map((r) => r.column),
+      ["session.impersonatedBy", "user.banExpires", "user.banReason", "user.banned", "user.role"],
+      "the admin plugin columns reached the database",
+    );
+    const newest = await db.query<{ created_at: string }>(`select created_at from drizzle.__drizzle_migrations order by created_at desc limit 1`);
+    assert.equal(Number(newest.rows[0].created_at), journal.entries.at(-1)?.when, "the newest recorded entry is the journal's last");
+    const constraints = await db.query<{ count: number }>(
+      `select count(*)::int as count from pg_constraint where conname like '%acting_account_users_id_fk'`,
+    );
+    assert.equal(constraints.rows[0].count, 8, "each acting-account foreign key exists once");
+  });
+}
 
 test("the check catches each statement that is not additive, and no foreign key action", () => {
   const forbidden = [

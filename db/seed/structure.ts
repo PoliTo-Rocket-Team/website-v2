@@ -2,7 +2,10 @@
 // and 1–17 keep the numbers the old SQL seed used. The divisions the Team
 // page names (lib/about/team.ts) carry its names; Recovery's two are its
 // Recovery Systems and Parachutes (issue #326). Division 18 is closed and
-// kept as a name; division 19 is open with nobody in it. Test Bench holds the
+// kept as a name; division 19 is open with nobody in it. Department 8,
+// Research and Development (R&D), has a head and no divisions, as the real
+// one does (issue #627); department 9, Payload, is a test department that
+// holds division 19 and the department-head tester. Test Bench holds the
 // public Test Engineers; team.ts names no lead for it, so a local tester
 // holds that seat (./people.ts).
 
@@ -17,7 +20,10 @@ export const DEPARTMENT = {
   controls: 5,
   electronics: 6,
   operations: 7,
+  /** Research and Development (R&D): its head and no divisions, as the real department (Owner decision, 2026-10-24, issue #600). */
   research: 8,
+  /** A test department: the department-head tester and division 19, kept out of R&D (Owner decision, 2026-10-24, issue #600). */
+  payload: 9,
 } as const;
 
 export const DIVISION = {
@@ -55,6 +61,7 @@ export const DEPARTMENT_ROWS = rowsOf(departments, [
   // Operations sits on the Team page's "Operations" slide; the rest keep the default kind, technical (issue #325).
   { id: DEPARTMENT.operations, name: "Operations", startedAt: "2021-10-01", closedAt: null, code: "OPS", kind: "operations" },
   { id: DEPARTMENT.research, name: "Research and Development", startedAt: "2023-09-01", closedAt: null, code: "RND" },
+  { id: DEPARTMENT.payload, name: "Payload", startedAt: "2025-10-01", closedAt: null, code: "PAY" },
 ]);
 
 export const DIVISION_ROWS = rowsOf(divisions, [
@@ -77,7 +84,7 @@ export const DIVISION_ROWS = rowsOf(divisions, [
   { id: DIVISION.communications, deptId: DEPARTMENT.operations, name: "Communications", startedAt: "2022-09-01", closedAt: null, code: "CMS" },
   { id: DIVISION.informationTechnology, deptId: DEPARTMENT.operations, name: "Information Technology", startedAt: "2022-09-01", closedAt: null, code: "ITC" },
   { id: DIVISION.hybridMotors, deptId: DEPARTMENT.propulsion, name: "Hybrid Motors", startedAt: "2021-10-01", closedAt: "2023-09-30", code: "HYB" },
-  { id: DIVISION.payload, deptId: DEPARTMENT.research, name: "Payload Integration", startedAt: "2025-10-01", closedAt: null, code: "PLI" },
+  { id: DIVISION.payload, deptId: DEPARTMENT.payload, name: "Payload Integration", startedAt: "2025-10-01", closedAt: null, code: "PLI" },
 ]);
 
 export const structure = tableSeedModule({

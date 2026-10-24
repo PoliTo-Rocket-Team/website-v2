@@ -1,4 +1,4 @@
-import { BOARD_SEAT_TITLES, divisionLabel, type TeamTree, type TreePerson } from "./team";
+import { divisionLabel, type TeamTree, type TreePerson } from "./team";
 
 // Where every card, row and line of the Team tree canvas sits (board 54c),
 // in canvas pixels at 100% zoom. The tree reads top-down: the team leader,
@@ -169,11 +169,11 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
   const boardBus = bottom(leaderBox) + BOARD_BUS_DROP;
   const boardLeft = centre - boardWidth / 2;
   let boardBottom = boardY + CARD.h;
-  tree.board.forEach(({ seat, person }, i) => {
-    const h = cardHeight(shownName(person.name, person.self), BOARD_SEAT_TITLES[seat], CARD.w, CARD.h);
+  tree.board.forEach(({ title, person }, i) => {
+    const h = cardHeight(shownName(person.name, person.self), title, CARD.w, CARD.h);
     const box: Box = { x: boardLeft + i * (CARD.w + BOARD_GAP), y: boardY, w: CARD.w, h };
     boardBottom = Math.max(boardBottom, bottom(box));
-    nodes.push({ kind: "card", key: `board-${person.id}`, level: "board", ...box, person, title: person.name, subtitle: BOARD_SEAT_TITLES[seat], onPath: person.self });
+    nodes.push({ kind: "card", key: `board-${person.id}`, level: "board", ...box, person, title: person.name, subtitle: title, onPath: person.self });
     if (tree.leader) edges.push(elbow(leaderBox, box, boardBus, person.self));
   });
 
@@ -181,7 +181,7 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
   const headBus = headY - HEAD_BUS_RISE;
   const heads = columns.map(({ department }) => {
     const title = department.head?.name ?? department.name;
-    const subtitle = department.head ? `Head of ${department.name}` : null;
+    const subtitle = department.head?.title ?? null;
     const shown = department.head ? shownName(title, department.head.self) : title;
     return { title, subtitle, h: cardHeight(shown, subtitle, CARD.w, CARD.h) };
   });

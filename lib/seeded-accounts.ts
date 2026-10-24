@@ -71,26 +71,27 @@ function testerId(n: number): string {
 
 /**
  * One member per single grant: each Access page area at Can edit across the
- * whole team, held by an invented member of Test Bench (members 905 to 910)
- * beside the member seat.
+ * whole team, held by an invented member of Test Bench beside the member
+ * seat. Each keeps its own number (members 905 to 910, testers 11 to 16), so
+ * a seat's id and email stay put when an area leaves the Access page, as
+ * Alumni did (issue #589): 908 and tester 14 are its old numbers.
  */
 export const ONE_GRANT_SEATS: readonly (Seat & { readonly memberId: number })[] = (
   [
-    ["positions", "Positions"],
-    ["applications", "Applications"],
-    ["members", "Members"],
-    ["alumni", "Alumni"],
-    ["content", "Content"],
-    ["orders", "Orders"],
-  ] as const satisfies readonly (readonly [AccessTarget, string])[]
-).map(([area, title], i): Seat & { readonly memberId: number } => ({
+    ["positions", "Positions", 0],
+    ["applications", "Applications", 1],
+    ["members", "Members", 2],
+    ["content", "Content", 4],
+    ["orders", "Orders", 5],
+  ] as const satisfies readonly (readonly [AccessTarget, string, number])[]
+).map(([area, title, n]): Seat & { readonly memberId: number } => ({
   kind: "seat",
   key: `${area}-grant`,
   label: `${title} grant`,
-  id: testerId(11 + i),
+  id: testerId(11 + n),
   email: `${area}-grant.tester@example.com`,
   name: `Tester ${title} Grant`,
-  memberId: 905 + i,
+  memberId: 905 + n,
   roles: [role("core", "division")],
   former: false,
   grants: [{ area, level: "edit" }],

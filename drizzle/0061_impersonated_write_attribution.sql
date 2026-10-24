@@ -21,7 +21,7 @@ ALTER TABLE "alias_requests" ADD COLUMN IF NOT EXISTS "answered_by_acting_accoun
 ALTER TABLE "scopes" ADD COLUMN IF NOT EXISTS "given_by_acting_account" text;--> statement-breakpoint
 -- Each foreign key is added only when it is not there yet: the shared preview
 -- database may already hold them from a preview build that applied this file
--- under its earlier number (0056, before the trunk's 0055 took that number).
+-- under an earlier number (0056, then 0057, before the trunk took those).
 DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'logs_changed_by_acting_account_users_id_fk') THEN ALTER TABLE "logs" ADD CONSTRAINT "logs_changed_by_acting_account_users_id_fk" FOREIGN KEY ("changed_by_acting_account") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE cascade; END IF; END $$;--> statement-breakpoint
 DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'members_nda_confirmed_by_acting_account_users_id_fk') THEN ALTER TABLE "members" ADD CONSTRAINT "members_nda_confirmed_by_acting_account_users_id_fk" FOREIGN KEY ("nda_confirmed_by_acting_account") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE cascade; END IF; END $$;--> statement-breakpoint
 DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'orders_reviewed_by_acting_account_users_id_fk') THEN ALTER TABLE "orders" ADD CONSTRAINT "orders_reviewed_by_acting_account_users_id_fk" FOREIGN KEY ("reviewed_by_acting_account") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE cascade; END IF; END $$;--> statement-breakpoint

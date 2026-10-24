@@ -528,8 +528,8 @@ function seatRoleOf(r: SeedRole): SeatRole {
 /** A seeded `scopes` row, read as a seat's grant and where it holds. */
 function seatGrantOf(s: SeedScope): SeatGrant & { readonly across: string } {
   const across = s.scope === "department" ? `department ${s.deptId}` : s.scope === "division" ? `division ${s.divisionId}` : "team";
-  const area: SeatGrantArea =
-    s.scope === "website" ? (s.target === "content" ? "content" : "alumni") : (s.target as SeatGrantArea);
+  // A Content grant is the `website` row on `content`; every other grant names its area (lib/dashboard/division-access.ts, `grantRowOf`).
+  const area = s.target as SeatGrantArea;
   return { area, level: s.accessLevel!, across };
 }
 

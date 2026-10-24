@@ -5,10 +5,11 @@
 // The layer is published, so the public page shows it. Two of its edits put
 // on the arc the two leaders lib/about/team.ts draws there whom no board seat
 // places: the head of Operations, between the Project Manager and the Chief
-// Engineer, and the head of R&D after them. The other edits are invented,
+// Engineer, and the head of R&D, whose department has no divisions, after
+// them. The other edits are invented,
 // since the public data holds no editor's changes: a head's role text
-// changed, a division lead hidden, a division lead added to Research and
-// Development, whose one division has nobody in it, and the intro text and
+// changed, a division lead hidden, a division lead added to Payload, a test
+// department whose one division has nobody in it, and the intro text and
 // the group photo's caption changed. The team leader is left as the roles
 // build draws him, with his own photo: a stand-in photo there showed a plain
 // orange disc in his circle on every preview (issue #390). Every edit is
@@ -40,12 +41,12 @@ export const HIDDEN_LEAD_SPOT = `lead:${DIVISION.engineControl}:0` as const;
 export const ADDED_LEADER_AFTER = "arc:project-manager:0" as const;
 /** The head of Operations, whom team.ts draws on the arc: the layer puts them there. */
 const ARC_HEAD_OF_OPERATIONS = "Rocco Bellon";
-/** The head of R&D, whom team.ts draws on the arc in no department: the layer adds them at its end. */
+/** The head of R&D, whom team.ts draws on the arc: their department has no divisions, so the page has no block for it, and the layer adds them at the arc's end. */
 const ARC_HEAD_OF_RESEARCH = "Marco Dona";
 export const ADDED_LEADER_PERSON = publicMember(ARC_HEAD_OF_OPERATIONS);
 export const ADDED_LAST_LEADER_PERSON = publicMember(ARC_HEAD_OF_RESEARCH);
-/** The department the layer adds a division lead to: Research and Development, whose division has nobody yet. */
-export const ADDED_LEAD_DEPARTMENT = DEPARTMENT.research;
+/** The department the layer adds a division lead to: Payload, a test department whose division has nobody yet. */
+export const ADDED_LEAD_DEPARTMENT = DEPARTMENT.payload;
 /** The member shown as that division's lead: an engineer in Hardware, who leads nothing. */
 export const ADDED_LEAD_PERSON = publicMember("Paul Teo Devis");
 

@@ -17,10 +17,15 @@ import {
   checkRemoveGrant,
   checkSaveAccess,
   grantRowOf,
+  LEAD_ROLE_HELD_ACCESS,
+  mergeHeld,
   NO_APPROVE_ORDERS,
+  NO_ROLE,
+  roleAccessOf,
+  roleCovers,
+  seatLine,
   UNIT_TARGETS,
   WHOLE_TEAM_PLACE,
-  type AccessDepartment,
   type AccessDepartmentUnit,
   type AccessDivision,
   type AccessGrant,
@@ -33,9 +38,10 @@ import {
   type AccessWrite,
   type ApproveOrdersHolder,
   type HeldAccess,
-  type RoleAccess,
+  type PersonRole,
   type UnitTarget,
 } from "./division-access";
+import { headTitleOf } from "./team";
 import { fullAccessSeatOf, headDivisionsOf, isOffTeam, isTeamLeader, ledDivisionIds, SEAT_OF_FLAG, seatOf, type FullAccessSeat } from "./viewer";
 import {
   canEditOrder,
@@ -108,7 +114,8 @@ async function leadDivisions(identity: DashboardIdentity): Promise<Extract<Acces
     .orderBy(asc(divisions.name));
   const first = identity.role?.divisionId ?? null;
   const ordered = [...rows.filter((r) => r.id === first), ...rows.filter((r) => r.id !== first)];
-  const led = await Promise.all(ordered.map(async (division) => ({ division, held: await readHeld(memberId, division.id) })));
+  // The role gives Positions, Applications and Members at Can edit in each division led (issue #591); grants there add to it.
+  const led = await Promise.all(ordered.map(async (division) => ({ division, held: mergeHeld(LEAD_ROLE_HELD_ACCESS, await readHeld(memberId, division.id)) })));
   const [head, ...rest] = led;
   return head === undefined ? null : { kind: "division", divisions: [head, ...rest] };
 }
@@ -213,10 +220,11 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
   const unitTarget = inArray(scopes.target, [...UNIT_TARGETS]);
   const inUnitDivisions = and(eq(scopes.scope, "division"), inArray(scopes.divisionId, divisionIds.length ? divisionIds : [-1]), unitTarget);
   const inUnitDepartments = and(eq(scopes.scope, "department"), inArray(scopes.deptId, departmentIds.length ? departmentIds : [-1]), unitTarget);
-  // A team page also holds the grants across the whole team, Alumni and Content (`website` rows) and "Approve orders" (issue #247).
-  const acrossTeam = or(and(eq(scopes.scope, "team"), or(unitTarget, eq(scopes.target, "approve_orders"))), eq(scopes.scope, "website"));
   // A lead's or head's page holds the Content grants of the people in the unit when the viewer gives Content (issue #504).
+  // The old Alumni `website` rows on `all` are no grant and are never read (issue #589).
   const contentRows = and(eq(scopes.scope, "website"), eq(scopes.target, "content"));
+  // A team page also holds the grants across the whole team, Content and "Approve orders" (issue #247).
+  const acrossTeam = or(and(eq(scopes.scope, "team"), or(unitTarget, eq(scopes.target, "approve_orders"))), contentRows);
   const unitRows = unit.kind === "team" ? or(inUnitDivisions, inUnitDepartments, acrossTeam) : unit.content === true ? or(inUnitDivisions, inUnitDepartments, contentRows) : or(inUnitDivisions, inUnitDepartments);
 
   const [rows, team, mineApproves] = await Promise.all([
@@ -247,6 +255,7 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
       .select({
         member_id: roles.memberId,
         type: roles.type,
+        title: roles.title,
         full_access: roles.fullAccess,
         division_id: roles.divisionId,
         dept_id: roles.deptId,
@@ -292,32 +301,46 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
     }
   }
 
-  // One person per member: a lead in any of their roles stands as a lead, placed in that role's division.
-  const byMember = new Map<number, AccessPerson>();
-  // The department each head of the unit heads, which their role's access covers.
-  const headOf = new Map<number, AccessDepartment>();
+  // One person per member, with what their role gives them in the unit (issue #591): a full-access seat, the
+  // department they head, else each division of the unit they lead. They are placed in the first division they
+  // lead, else the first they are in. A head carries their head role's title as stored (issue #625).
+  type Headed = { readonly department: AccessDepartmentUnit; readonly title: string };
+  const placements = new Map<number, { name: string; led: AccessDivision[]; in: AccessDivision[]; headed: Headed | null }>();
   for (const t of team) {
     if (t.member_id === null) continue;
-    const headed = t.type === "head" && t.division_id === null ? departmentById(t.dept_id) : null;
-    if (headed !== null && !headOf.has(t.member_id)) headOf.set(t.member_id, headed);
-    const lead = isLeadRole(t.type) || seatByMember.has(t.member_id);
-    const division = unitDivisions.find((d) => d.id === t.division_id) ?? null;
-    const known = byMember.get(t.member_id);
-    if (known !== undefined && (known.standing === "lead" || !lead)) continue;
-    byMember.set(t.member_id, { id: t.member_id, name: nameOf(t), standing: lead ? "lead" : "member", division: division ?? known?.division ?? null });
+    const seen = placements.get(t.member_id) ?? { name: nameOf(t), led: [], in: [], headed: null };
+    placements.set(t.member_id, seen);
+    if (t.type === "head" && t.division_id === null && seen.headed === null) {
+      const department = unitDepartments.find((d) => d.department.id === t.dept_id);
+      if (department !== undefined) seen.headed = { department, title: headTitleOf(t.title, department.department.name) };
+    }
+    const division = unitDivisions.find((d) => d.id === t.division_id);
+    if (division === undefined) continue;
+    if (!seen.in.some((d) => d.id === division.id)) seen.in.push(division);
+    if (isLeadRole(t.type) && !seen.led.some((d) => d.id === division.id)) seen.led.push(division);
+  }
+  // The line under a seat holder's name: the title stored on the row the seat's flag is on (issue #625).
+  const seatTitleOf = (id: number, seat: FullAccessSeat) =>
+    seatLine(seat, team.find((t) => t.member_id === id && t.full_access !== null && SEAT_OF_FLAG[t.full_access] === seat)?.title ?? "");
+  const byMember = new Map<number, AccessPerson>();
+  for (const [id, seen] of placements) {
+    const seat = seatByMember.get(id);
+    const [firstLed, ...moreLed] = seen.led;
+    const role: PersonRole =
+      seat !== undefined
+        ? { kind: "full", seat, title: seatTitleOf(id, seat) }
+        : seen.headed !== null
+          ? { kind: "head", department: seen.headed.department, title: seen.headed.title }
+          : firstLed !== undefined
+            ? { kind: "lead", divisions: [firstLed, ...moreLed] }
+            : NO_ROLE;
+    byMember.set(id, { id, name: seen.name, role, division: seen.led[0] ?? seen.in[0] ?? null });
   }
   const personOf = (memberId: number, row: { first_name: string | null; last_name: string | null; email: string }): AccessPerson =>
-    byMember.get(memberId) ?? { id: memberId, name: nameOf(row), standing: "member", division: null };
+    byMember.get(memberId) ?? { id: memberId, name: nameOf(row), role: NO_ROLE, division: null };
 
   const roleAccess = [...byMember.values()]
-    .flatMap((person): RoleAccess[] => {
-      if (person.id === me || person.standing !== "lead") return [];
-      const seat = seatByMember.get(person.id);
-      if (seat !== undefined) return [{ person, place: WHOLE_TEAM_PLACE, seat }];
-      if (person.division !== null) return [{ person, place: { kind: "division", division: person.division } }];
-      const headed = headOf.get(person.id);
-      return headed === undefined ? [] : [{ person, place: { kind: "department", department: headed } }];
-    })
+    .flatMap((person) => (person.id === me ? [] : roleAccessOf(person)))
     // Full access first (board 71), then the heads and the leads.
     .sort((a, b) => Number(b.place.kind === "team") - Number(a.place.kind === "team"));
 
@@ -351,12 +374,10 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
   const grants = rows.flatMap((r): AccessGrant[] => {
     if (r.member_id === null) return [];
     const person = personOf(r.member_id, r);
-    // A lead's access comes with the role: their row is in `roleAccess`.
-    if (person.standing === "lead") return [];
     // Off a team page, a Content row counts only for someone in the unit (issue #504).
     if (r.scope === "website" && unit.kind !== "team" && !byMember.has(r.member_id)) return [];
-    // A `website` row is Content on `content`, else Alumni, across the whole team (#234, #247, #504).
-    const target = r.scope === "website" ? (r.target === "content" ? ("content" as const) : ("alumni" as const)) : isUnitTarget(r.target) ? r.target : null;
+    // A `website` row is Content on `content`, across the whole team (#247, #504); any other is no grant (#589).
+    const target = r.scope === "website" ? (r.target === "content" ? ("content" as const) : null) : isUnitTarget(r.target) ? r.target : null;
     if (target === null) return [];
     const division = unitDivisions.find((d) => d.id === r.division_id);
     const department = r.scope === "department" ? departmentById(r.dept_id) : null;
@@ -368,7 +389,8 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
           : division === undefined
             ? null
             : { kind: "division", division };
-    if (place === null) return [];
+    // A lead's or head's grants show beside their role row (issue #591); a stored row their role already gives adds nothing, so it is not one.
+    if (place === null || roleCovers(person, place, target)) return [];
     return [{ id: r.id, person, place, target, level: r.level, givenBy: giverOf(r), givenOn: givenOn.get(String(r.id)) ?? null }];
   });
 
@@ -383,16 +405,16 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
 
 /**
  * The stored grant one area in one place is (`grantRowOf`): a Content grant
- * is the person's `website` row on `content`; an Alumni grant is their other
- * `website` row, whatever its target (issue #504); any other is the row of
- * that scope, place and area.
+ * is the person's `website` row on `content` (issue #504), never their old
+ * Alumni `website` row on `all`, which stays unread (issue #589); any other
+ * is the row of that scope, place and area.
  */
 function grantWhere(personId: number, place: AccessPlace, target: AccessTarget) {
   const row = grantRowOf(place, target);
   const mine = eq(scopes.memberId, personId);
   switch (row.scope) {
     case "website":
-      return and(mine, eq(scopes.scope, "website"), row.target === "content" ? eq(scopes.target, "content") : ne(scopes.target, "content"));
+      return and(mine, eq(scopes.scope, "website"), eq(scopes.target, row.target));
     case "team":
       return and(mine, eq(scopes.scope, "team"), eq(scopes.target, row.target), isNull(scopes.deptId), isNull(scopes.divisionId));
     case "department":

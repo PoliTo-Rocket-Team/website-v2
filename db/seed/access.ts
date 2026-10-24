@@ -2,7 +2,8 @@
 // (issues #247, #270), as `scopes` rows. Each grant is written the way the
 // page writes it (`grantRowOf`, lib/dashboard/division-access.ts): an area
 // across the whole team, in a department or in a division, at view or edit;
-// Alumni access; and "Approve orders" held on its own.
+// Content, which opens the Alumni page (issue #589); and "Approve orders"
+// held on its own.
 
 import { scopes } from "@/db/schema";
 import {
@@ -23,8 +24,8 @@ import { DEPARTMENT, DIVISION, DEPARTMENT_ROWS, DIVISION_ROWS } from "./structur
 
 /** Holds "Approve orders" and no other grant (issue #270): a core member of Information Technology. */
 export const APPROVE_ORDERS_ONLY = publicMember("Claudia Sanna");
-/** Holds Alumni access: site-content access (issue #234). A core member of Communications. */
-export const ALUMNI_EDITOR = publicMember("Francesco Guerrini");
+/** Holds Content: site-content access, the Alumni page included (issues #234, #589). A core member of Communications. */
+export const CONTENT_EDITOR = publicMember("Francesco Guerrini");
 
 function department(id: number): AccessPlace {
   const row = DEPARTMENT_ROWS.rows.find((d) => d.id === id);
@@ -58,7 +59,7 @@ export const GRANTS: readonly Grant[] = [
   { memberId: publicMember("Dante Casaglia"), givenBy: TWO_DIVISION_MEMBER, place: department(DEPARTMENT.structures), target: "positions", level: "view" },
   { memberId: publicMember("Aurelio Amato"), givenBy: publicMember("Maria Angelica Fullone Penna"), place: division(DIVISION.missionAnalysis), target: "positions", level: "edit" },
   { memberId: publicMember("Federico Saviano"), givenBy: publicMember("Nicola Montagner"), place: division(DIVISION.flightControl), target: "members", level: "view" },
-  { memberId: ALUMNI_EDITOR, givenBy: TEAM_LEADER, place: WHOLE_TEAM_PLACE, target: "alumni", level: "edit" },
+  { memberId: CONTENT_EDITOR, givenBy: TEAM_LEADER, place: WHOLE_TEAM_PLACE, target: "content", level: "edit" },
 ];
 
 if (seatOf("approve-orders").memberId !== APPROVE_ORDERS_ONLY) throw new Error("the Approve-orders seat is not the member who holds it alone");

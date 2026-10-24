@@ -40,21 +40,26 @@ import {
   divisionMembers,
   lookupForAdd,
   positionsOf,
+  SEAT_TITLE_REQUIRED,
   type AddLookup,
   type AddStanding,
   type DetailsTarget,
   type WaitingPerson,
 } from "./division-members";
 import {
+  defaultHeadTitle,
   headDepartmentOf,
   isDivisionRole,
+  leadActor,
   mayChangeDivision,
   mayLeaveTeam,
   membershipsOfRoles,
   NO_MEMBERS,
   reachesDivision,
   removalFrom,
+  roleBeyondDivisions,
   standingOfRoles,
+  titledSeatOf,
   type Departure,
   type EditableRole,
   type Joining,
@@ -90,7 +95,8 @@ import {
   planDepartmentCreate,
   planDepartmentSave,
 } from "./department-edit";
-import { editableDivisionIds, teamStructure, type TeamStructure } from "./team-structure";
+import { editableDivisionIds, editsStructure, teamStructure, type TeamStructure } from "./team-structure";
+import { checkNewSeat, checkSeatHolderChange, planNewSeat, planSeatHolderChange } from "./team-seats";
 import {
   checkDivisionSave,
   closeRefusal,
@@ -193,7 +199,9 @@ async function actorOf(
   if (headOf.length > 0) return { kind: "head", departmentIds: [...new Set(headOf)] };
   // A grant across a department covers each of its divisions (issue #351).
   const divisionIds = coveredDivisionIds(identity, org.divisions).filter((id) => leads(id, org));
-  return divisionIds.length === 0 ? null : { kind: "lead", divisionIds };
+  // The divisions they lead by role, never by a grant: only those open Edit division (issue #594).
+  const led = rows.flatMap((r) => (r.type === "lead" && r.division_id !== null ? [r.division_id] : []));
+  return leadActor(divisionIds, led);
 }
 
 /** The divisions a division lead's Members page lists, the one it opens on first. A head's page is their department's. */
@@ -403,7 +411,7 @@ export async function readTeamStructure(identity: DashboardIdentity): Promise<Te
   const snapshotRead = readTeamSnapshot();
   const [snapshot, actor] = await Promise.all([snapshotRead, readActor(identity, snapshotRead.then((s) => s.org))]);
   const ids = editableDivisionIds(actor, snapshot.org);
-  if (actor === null || actor.kind === "lead") return null;
+  if (!editsStructure(actor, snapshot.org)) return null;
   const [perDivision, openPositions] = await Promise.all([readPerDivision(identity, ids, snapshot.org), readOpenPositions(ids)]);
   return teamStructure({
     records: recordsOf(snapshot),
@@ -545,7 +553,7 @@ function seatOnto(db: Tx, seat: SeatMove | null, rowId: number | undefined): Bat
 }
 
 function roleSeat(r: ActiveRole): RoleSeat {
-  return { type: r.type, divisionId: r.division_id, since: r.started_at, departmentId: r.dept_id, title: r.title };
+  return { id: r.id, type: r.type, divisionId: r.division_id, since: r.started_at, departmentId: r.dept_id, title: r.title, fullAccess: r.fullAccess };
 }
 
 /** The person's lead and member rows in `divisionId` (`isDivisionRole`): never a seat kept on its row. */
@@ -588,8 +596,9 @@ const today = () => new Date().toISOString().slice(0, 10);
  * Lead or member in one division, from Edit details' position part (issue
  * #584): the person's lead or member rows there change type, nothing else.
  * Only for someone the viewer may edit, in a division they reach, and only
- * where `mayChangeDivision` lets them change its leads: never a division lead
- * (#231). The panel offers the switch by the same rule (`positionOf`).
+ * where `mayChangeDivision` lets them change its leads: a division lead only in
+ * a division they lead by role (issue #594). The panel offers the switch by
+ * the same rule (`positionOf`).
  */
 async function saveMember(identity: DashboardIdentity, personId: number, edit: MemberEdit): Promise<boolean> {
   const { org } = await readTeamSnapshot();
@@ -851,8 +860,11 @@ const NOT_IN_SCOPE = "You can edit only people your Members page lets you change
  * lead reach everyone, a head their department's people, a division lead or a
  * Members grant at Can edit the people in the divisions it covers. `divisionId`
  * names the division whose role title the form sets, which the viewer must
- * reach and the person be in; null for someone in no division the viewer
- * reaches (a seat), whose details are saved and whose seat title is not.
+ * reach and the person be in. Null is someone in no division the viewer
+ * reaches: only the team (the team leader, full access) edits them, and the
+ * title is their seat's (`titledSeatOf`: the team leader's, a head's or a
+ * team-level seat's row), never blank (issue #626). It writes `roles.title`
+ * alone, so the seat, the headship and every access stay as they were.
  * Fill details, for someone waiting, names the division they wait for. Each
  * detail is written where it lives (`columnsFromMemberDetails`).
  */
@@ -886,8 +898,17 @@ async function saveMemberDetails(
   const actor = await readActor(identity, org);
   const active = await rolesTheViewerChanges(identity, actor, target.id);
   if (actor === null || active === null) return refused(NOT_IN_SCOPE);
-  const titled = divisionId === null ? [] : divisionRowsIn(active, divisionId).map((r) => r.id);
-  if (divisionId !== null && (titled.length === 0 || !reachesDivision(actor, divisionId, org))) return refused(NOT_IN_SCOPE);
+  let titled: number[];
+  if (divisionId === null) {
+    // A head or a division lead reaches division rows only, so a seat's title is never theirs to set.
+    if (actor.kind !== "team") return refused(NOT_IN_SCOPE);
+    const seat = titledSeatOf(active, (r) => roleBeyondDivisions(roleSeat(r), org));
+    if (seat !== null && title === null) return refused(SEAT_TITLE_REQUIRED);
+    titled = seat === null ? [] : [seat.role.id];
+  } else {
+    titled = divisionRowsIn(active, divisionId).map((r) => r.id);
+    if (titled.length === 0 || !reachesDivision(actor, divisionId, org)) return refused(NOT_IN_SCOPE);
+  }
   await runAuditBatch((db) => [
     db.update(users).set({ ...columns.user, updatedAt: sql`now()` }).where(eq(users.member, target.id)),
     db.update(members).set(columns.member).where(eq(members.memberId, target.id)),
@@ -928,11 +949,11 @@ async function setMemberPhoto(identity: DashboardIdentity, personId: number, pho
 // below runs what they allow in one audited batch. Nothing here clears a
 // division's `closed_at`: a closed division never opens again.
 
-/** The lead and member pickers (boards 68b2, 69d): the whole team, for whoever manages a division. */
+/** The lead and member pickers (boards 68b2, 69d): the whole team, for whoever edits a division, its lead included (issue #594). */
 export async function findPeople(identity: DashboardIdentity, query: string): Promise<TeamSearch> {
   const snapshot = await readTeamSnapshot();
   const actor = await readActor(identity, snapshot.org);
-  if (actor === null || actor.kind === "lead") return { kind: "none" };
+  if (!editsStructure(actor, snapshot.org)) return { kind: "none" };
   return searchTeam(query, teamPeopleOf(snapshot), snapshot.org);
 }
 
@@ -1189,9 +1210,6 @@ function closeDivisionWrites(tx: Tx, divisionId: number, on: string): [BatchItem
 // `planDepartmentClose` (./department-edit.ts) decide what may change; each
 // write below runs what they allow in one audited batch.
 
-/** The title a head's role carries, as every head row holds it: "Head of Aerodynamics". */
-const headTitle = (department: string) => `Head of ${department}`;
-
 /** New department (board 77d): the department and its head's role, in one batch. The head keeps every role they hold. */
 async function createDepartment(identity: DashboardIdentity, input: unknown): Promise<WriteResult<number>> {
   const checked = checkDepartmentCreate(input);
@@ -1208,14 +1226,18 @@ async function createDepartment(identity: DashboardIdentity, input: unknown): Pr
   const aliasAsked = await automaticAliasRequests([headId]);
   await runAuditBatch((db) => [
     db.insert(departments).values({ id: departmentId, name, code, kind }),
-    db.insert(roles).values({ memberId: headId, deptId: departmentId, divisionId: null, title: headTitle(name), type: "head", startedAt: today() }),
+    db.insert(roles).values({ memberId: headId, deptId: departmentId, divisionId: null, title: defaultHeadTitle(name), type: "head", startedAt: today() }),
     ...aliasAsked(db),
   ]);
   done();
   return written(departmentId);
 }
 
-/** Edit department's Save changes (board 77e): the name, the code and the kind; a new name reaches the head's title too. */
+/**
+ * Edit department's Save changes (board 77e): the name, the code and the
+ * kind. A new name reaches each head title still at the old default ("Head
+ * of <old name>"); a head title renamed by hand is kept (issue #625).
+ */
 async function saveDepartment(identity: DashboardIdentity, departmentId: number, input: unknown): Promise<WriteResult<null>> {
   const checked = checkDepartmentSave(input);
   if (!checked.ok) return refused(checked.error);
@@ -1226,6 +1248,7 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
   const planned = planDepartmentSave({ actor, org: snapshot.org, departmentId, save: checked.value, team: teamPeopleOf(snapshot), headIds });
   if (!planned.ok) return refused(planned.error);
   const { name, code, kind, nameChanged, head } = planned.value;
+  const oldName = snapshot.org.departments.find((d) => d.id === departmentId)?.name ?? null;
   const on = today();
   const stepping = head?.steppingDown ?? null;
   const replaced = head === null || stepping === null ? [] : await Promise.all(head.from.map(async (memberId) => ({ memberId, active: await activeRoles(memberId) })));
@@ -1240,19 +1263,19 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
       .update(departments)
       .set({ name, code, kind })
       .where(and(eq(departments.id, departmentId), isNull(departments.closedAt))),
-    ...(nameChanged
+    ...(nameChanged && oldName !== null
       ? [
           db
             .update(roles)
-            .set({ title: headTitle(name) })
-            .where(and(eq(roles.deptId, departmentId), eq(roles.type, "head"), isNull(roles.leavedAt))),
+            .set({ title: defaultHeadTitle(name) })
+            .where(and(eq(roles.deptId, departmentId), eq(roles.type, "head"), eq(roles.title, defaultHeadTitle(oldName)), isNull(roles.leavedAt))),
         ]
       : []),
     // Change head (issue #253): the head they replace steps down as the editor picked, then the new head's role starts.
     ...(stepping === null ? [] : replaced.flatMap((person) => steppingDownWrites(db, person, stepping, person.active.filter(isHeadRow).map((r) => r.id), on))),
     ...(head === null
       ? []
-      : [db.insert(roles).values({ memberId: head.to, deptId: departmentId, divisionId: null, title: headTitle(name), type: "head", startedAt: on, ...seatFor(seat, head.to) })]),
+      : [db.insert(roles).values({ memberId: head.to, deptId: departmentId, divisionId: null, title: defaultHeadTitle(name), type: "head", startedAt: on, ...seatFor(seat, head.to) })]),
     ...aliasAsked(db),
   ]);
   done();
@@ -1394,6 +1417,54 @@ async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): 
   return written(null);
 }
 
+// The seat row of Edit team tree (issue #627). `planSeatHolderChange` and
+// `planNewSeat` (./team-seats.ts) decide what may change; each write below
+// runs what they allow in one audited batch.
+
+/**
+ * Change holder on a seat box, in one batch: the holder's seat role ends, the
+ * successor's starts with the same type, title and full-access flag, so the
+ * flag moves with the seat and one active row holds it; then the holder
+ * becomes an advisor to the team, whose access rows go, or leaves the team
+ * (`steppingDownWrites`). The successor keeps every role they hold.
+ */
+async function changeSeatHolder(identity: DashboardIdentity, roleId: number, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkSeatHolderChange(input);
+  if (!checked.ok) return refused(checked.error);
+  const snapshot = await readTeamSnapshot();
+  const actor = await readActor(identity, snapshot.org);
+  const planned = planSeatHolderChange({ actor, org: snapshot.org, roleId, change: checked.value, team: teamPeopleOf(snapshot) });
+  if (!planned.ok) return refused(planned.error);
+  const { from, to, steppingDown: step } = planned.value;
+  const row = snapshot.roles.find((r) => r.id === roleId && r.leaved_at === null && r.member_id === from);
+  if (row === undefined) return refused("That seat is no longer held.");
+  // A full-access flag on the seat's row moves to the successor's (`seatHandOver`, issue #501).
+  const handed = seatHandOver([{ fullAccess: seatOfFlag(row.full_access) }], [to]);
+  if (!handed.ok) return refused(handed.error);
+  const active = await activeRoles(from);
+  const on = today();
+  await runAuditBatch((db) => [
+    db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: row.title, type: row.type, startedAt: on, ...seatFor(handed.value, to) }),
+    ...steppingDownWrites(db, { memberId: from, active }, step, [roleId], on),
+  ]);
+  done();
+  return written(null);
+}
+
+/** Add seat: one active role in no department and no division, with the title given and no full-access flag. */
+async function addSeat(identity: DashboardIdentity, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkNewSeat(input);
+  if (!checked.ok) return refused(checked.error);
+  const snapshot = await readTeamSnapshot();
+  const actor = await readActor(identity, snapshot.org);
+  const planned = planNewSeat({ actor, org: snapshot.org, add: checked.value, team: teamPeopleOf(snapshot) });
+  if (!planned.ok) return refused(planned.error);
+  const { personId, title } = planned.value;
+  await runAuditBatch((db) => [db.insert(roles).values({ memberId: personId, deptId: null, divisionId: null, title, type: "core", startedAt: today(), fullAccess: null })]);
+  done();
+  return written(null);
+}
+
 /**
  * What Confirm writes beyond the notice (board 62c, issue #262): the
  * successor takes the role, then the sender steps down as they chose
@@ -1435,7 +1506,7 @@ async function confirmedHandOverWrites(
   // The successor becomes a head, owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests([toId]);
   return (db) => [
-    db.insert(roles).values({ memberId: toId, deptId: role.departmentId, divisionId: null, title: headTitle(department), type: "head", startedAt: on, ...seatFor(seat, toId) }),
+    db.insert(roles).values({ memberId: toId, deptId: role.departmentId, divisionId: null, title: defaultHeadTitle(department), type: "head", startedAt: on, ...seatFor(seat, toId) }),
     ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
     ...aliasAsked(db),
   ];
@@ -1512,5 +1583,7 @@ export function databaseTeamWrites(
     saveDepartment: (departmentId, input) => saveDepartment(identity, departmentId, input),
     closeDepartment: (departmentId, input) => closeDepartment(identity, departmentId, input),
     handOverTeamLeader: (input) => handOverTeamLeader(identity, input),
+    changeSeatHolder: (roleId, input) => changeSeatHolder(identity, roleId, input),
+    addSeat: (input) => addSeat(identity, input),
   };
 }

@@ -151,19 +151,25 @@ describe("grants are independent (issue #477)", () => {
     }
   });
 
-  test("a Content grant reaches the five content editors and the site-content gate, and nothing else (issue #504)", () => {
+  test("a Content grant reaches the six content editors, Alumni among them, and the site-content gate, and nothing else (issues #504, #589)", () => {
     const { viewer } = VIEWERS.find((v) => v.name === "member with a Content grant")!;
     assert.equal(maySiteContent(viewer), true);
     assert.deepEqual(PAGE_KEYS.filter((page) => canReach(viewer, page)), [...TEAM_BASE, ...CONTENT].sort((a, b) => PAGE_KEYS.indexOf(a) - PAGE_KEYS.indexOf(b)));
-    assert.equal(canReach(viewer, "alumni"), false);
+    assert.equal(canReach(viewer, "alumni"), true);
     for (const area of GRANT_AREAS) assert.equal(readsArea(viewer, area), false, area);
   });
 
-  test("no other grant reaches the content editors or the site-content gate: Positions, Applications, Members, Alumni, Orders, Approve orders (issue #504)", () => {
+  test("no other grant reaches the content editors or the site-content gate: Positions, Applications, Members, Orders, Approve orders, and no Can view or old Alumni website row (issues #504, #589)", () => {
     const others = VIEWERS.filter((v) => v.viewer.kind === "member" && v.name !== "member with a Content grant" && v.viewer.rawRows.length > 0);
     const names = others.map((v) => v.name);
     for (const area of GRANT_AREAS) assert.ok(names.some((n) => n.startsWith(`member with a ${area} grant`)), area);
-    for (const name of ["member with an Alumni grant", "member with Approve orders"]) assert.ok(names.includes(name), name);
+    for (const name of [
+      "member with a Can view website row on content",
+      "member with a Can view website row on all",
+      "member with a Can edit website row on all",
+      "member with Approve orders",
+    ])
+      assert.ok(names.includes(name), name);
     for (const { name, viewer } of others) {
       assert.equal(maySiteContent(viewer), false, `${name}: site content`);
       for (const page of CONTENT) assert.equal(canReach(viewer, page), false, `${name}: ${page}`);
@@ -203,7 +209,7 @@ function aliasPersonOf(viewer: Viewer): TeamPerson {
     ),
   );
   const beyond = viewer.roles.flatMap((r): TeamPerson["beyond"] =>
-    r.type === "president" ? [{ kind: "team-leader" }] : r.type === "head" ? [{ kind: "head", departmentId: r.departmentId }] : [],
+    r.type === "president" ? [{ kind: "team-leader", title: "" }] : r.type === "head" ? [{ kind: "head", departmentId: r.departmentId, title: "Head" }] : [],
   );
   return { id: VIEWER_ID, name: "Viewer", emails: [], memberships, beyond };
 }

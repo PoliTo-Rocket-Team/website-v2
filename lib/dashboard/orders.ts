@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { PAGE_SIZE } from "./team";
-import type { ScopeKind } from "./viewer";
+import { isTeamLeader, type ScopeKind, type ViewerStanding } from "./viewer";
 
 // The Orders page (Dashboard v2 boards 61 to 61d, issue #172; boards 61m, 67,
 // 67b and 67m, issue #233): every purchase request in the team, what state
@@ -143,6 +143,15 @@ export type OrdersScope = {
 export function decideRightOf(viewer: { readonly teamLeader: boolean; readonly approveOrders: boolean }): DecideRight | null {
   if (viewer.teamLeader) return "team-leader";
   return viewer.approveOrders ? "approve-orders" : null;
+}
+
+/**
+ * The right a viewer decides orders with, from their standing: the team
+ * leader's seat, or "Approve orders" on any on-team kind. Their Overview
+ * says what waits for that decision, whatever its shape (issue #592).
+ */
+export function decideRightOfStanding(viewer: ViewerStanding): DecideRight | null {
+  return decideRightOf({ teamLeader: isTeamLeader(viewer), approveOrders: viewer.approveOrders });
 }
 
 /** An open department with its open divisions, for the Department filter (board 67b) and New order. */

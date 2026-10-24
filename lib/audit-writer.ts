@@ -10,7 +10,7 @@ import type { CurrentUser } from "@/lib/session-user";
  */
 export type AuditWriter = { readonly userId: string; readonly actingAccountId: string | null };
 
-/** The settings lib/db-audit.ts sets before an audited write, which `public.log_db_changes()` stores (drizzle/0057). */
+/** The settings lib/db-audit.ts sets before an audited write, which `public.log_db_changes()` stores (drizzle/0061). */
 export const AUDIT_SETTINGS = {
   writer: "request.jwt.claim.sub",
   actingAccount: "request.acting_account",
