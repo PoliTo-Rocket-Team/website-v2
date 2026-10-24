@@ -112,44 +112,32 @@ export const VIEW_AS_OPERATIONS: Readonly<Record<ViewAsEntry["event"], string>> 
 };
 
 // The View as banner (issue #611): what every dashboard page of a View as
-// session says across its top. The live site and a test site say different
-// things (boards 96b and 96c), so each variant carries only what its own line
-// names, chosen on the server from the site.
+// session says across its top. The live site and a test site open the line
+// differently (boards 96b and 96c), chosen on the server from the site; both
+// say how the session's changes show, since every write records both people.
 
-/** The banner of a View as session: the person viewed as, the line under their name, and what the variant's line names. */
-export type ViewAsBanner =
-  | {
-      readonly site: "live";
-      readonly name: string;
-      readonly role: string;
-      /** The acting account's title ("IT lead"), as its changes show ("IT lead as Elif Kaya"). */
-      readonly actingTitle: string;
-    }
-  | {
-      readonly site: "test";
-      readonly name: string;
-      readonly role: string;
-      /** The person's first name, as the changes save ("changes save as Elif"). */
-      readonly firstName: string;
-    };
-
-/** The first name of a shown name, for a person with none stored: its first word. */
-export function firstNameOf(name: string): string {
-  return name.trim().split(/\s+/)[0] ?? name;
-}
+/** The banner of a View as session: the site it runs on, the person viewed as, the line under their name, and the acting account's title. */
+export type ViewAsBanner = {
+  readonly site: ViewAsSite;
+  readonly name: string;
+  readonly role: string;
+  /** The acting account's title ("IT lead"), as its changes show ("IT lead as Elif Kaya"). */
+  readonly actingTitle: string;
+};
 
 /**
  * The banner's line. On the live site (board 96b): "Viewing as Elif Kaya ·
  * Member · changes show as “IT lead as Elif Kaya”". On a preview or under
  * `next dev` (board 96c): "Preview · editing as Elif Kaya · Member · changes
- * save as Elif".
+ * show as “IT lead as Elif Kaya”".
  */
 export function viewAsBannerLine(banner: ViewAsBanner): string {
+  const changes = `changes show as “${banner.actingTitle} as ${banner.name}”`;
   switch (banner.site) {
     case "live":
-      return `Viewing as ${banner.name} · ${banner.role} · changes show as “${banner.actingTitle} as ${banner.name}”`;
+      return `Viewing as ${banner.name} · ${banner.role} · ${changes}`;
     case "test":
-      return `Preview · editing as ${banner.name} · ${banner.role} · changes save as ${banner.firstName}`;
+      return `Preview · editing as ${banner.name} · ${banner.role} · ${changes}`;
   }
 }
 
