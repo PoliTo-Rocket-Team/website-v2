@@ -3,10 +3,8 @@ import { afterEach, test } from "node:test";
 import { SCOPE_ROWS } from "../db/seed/access";
 import { ROLE_ROWS, TESTER_AUTH_ROWS, TESTER_MEMBER, USER_ROWS } from "../db/seed/people";
 import { DEPARTMENT } from "../db/seed/structure";
-import { VIEWER_KINDS } from "./dashboard/viewer";
 import { TESTER_KEYS, TESTERS, isTesterKey, testerSignInOn } from "./dev-tester";
 import { BASE, GATE_OFF, GATE_ON, LOOKALIKE_DB, OTHER_DB, PREVIEW_DB, PREVIEW_DB_DIRECT, TEST_ENV, envRestorer, memoryAuth, setEnv } from "./dev-tester-fixture";
-import { testDeveloperSignIn } from "./test-developer";
 
 afterEach(envRestorer());
 
@@ -87,16 +85,9 @@ test("every tester key names a tester with its own id and email", () => {
   assert.equal(isTesterKey("admin"), false);
 });
 
-test("both sign-ins offer a department head (issue #230)", () => {
+test("the tester sign-in offers a department head (issue #230)", () => {
   assert.equal(isTesterKey("department-head"), true);
   assert.equal(TESTERS["department-head"].email, "department-head.tester@example.com");
-  // The preview's test developer sign-in lists every viewer kind, the department head among them.
-  assert.ok(VIEWER_KINDS.includes("department-head"));
-  const signIn = testDeveloperSignIn(new URL("https://preview.example/api/test-developer/sign-in?viewer=department-head"), {
-    VERCEL_ENV: "preview",
-  });
-  assert.equal(signIn.status, 303);
-  assert.match(signIn.headers.get("Set-Cookie") ?? "", /prt_test_developer=department-head;/);
 });
 
 test("the seed gives the department head tester a head role in Research and Development and no scope row", () => {

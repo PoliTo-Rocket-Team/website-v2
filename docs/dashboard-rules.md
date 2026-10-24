@@ -783,15 +783,13 @@ and 67m).
 
 ## 5. Data and testing
 
-- A preview with a database reads the shared, seeded `preview` branch (ADR 0016): a test
-  developer there is read as the viewer's seeded person, and their writes are saved to that
-  branch as that person and kept across preview builds; outside a preview they are
-  refused.
+- A preview with a database reads the shared, seeded `preview` branch (ADR 0016), and writes
+  made there are kept across preview builds.
   Every page reads a database under `next dev` (the Neon `development` branch) and on a preview
   (the `preview` branch); a run there with no database stops with a message naming the one it
-  needs (#609). Both offer the "Sign in as test developer" switch, with seven people: team
-  leader, operations lead, department head, division lead, member, alumni and non-member. The
-  alumni viewer is a former member with three years of ended roles, an Alumni entry, one
+  needs (#609). Both offer the tester sign-in, and a seeded admin tester uses View as to see the
+  dashboard as a plain seat: team leader, operations lead, department head, division lead,
+  member, alumni and non-member, among others (#608, #610, #612). The alumni seat is a former member with three years of ended roles, an Alumni entry, one
   application decided within the last month and one decided before it (#317). The operations
   lead there sits in the operations lead's seat, so they have full access and do not decide
   orders; the team leader decides orders and gives "Approve orders" (#247), and sees boards 72 to
@@ -822,9 +820,8 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - A logo is an 8-bit PNG of at most 1 MB. It is measured on upload: one too dark for the page is
   saved with the dark flag, and the panel and the public pages draw it white.
 - Remove asks "are you sure" first. It removes the partner and its draft at once.
-- On a preview with a database, a test developer reads the seeded `preview` branch as the
-  viewer's seeded person, and their partner changes are saved there as that person and kept
-  across preview builds (ADR 0016).
+- On a preview with a database, partner changes are saved to the seeded `preview` branch and
+  kept across preview builds (ADR 0016).
 
 ### FAQ (#258, boards 79 and 79b)
 
@@ -845,9 +842,8 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   being typed.
 - Remove asks "are you sure" first, and removes the question and its draft at once.
 - Every write renders /apply again (it is prerendered whole, #163).
-- On a preview with a database, a test developer reads the seeded `preview` branch as the
-  viewer's seeded person, and their question changes are saved there as that person and kept
-  across preview builds (ADR 0016).
+- On a preview with a database, question changes are saved to the seeded `preview` branch and
+  kept across preview builds (ADR 0016).
 
 ### Projects page (#297, board 75)
 
@@ -873,9 +869,8 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   it, and its address has no page, until it is published.
 - Only the full admins and holders of a Content grant reach the page or use New project;
   everyone else gets the dashboard's not found.
-- On a preview with the seeded `preview` branch, a test developer's new order and new projects
-  are saved there as the viewer's seeded person and kept across preview builds (ADR
-  0016).
+- On a preview with the seeded `preview` branch, a new order and new projects are saved there
+  and kept across preview builds (ADR 0016).
 
 ### Project pages (#298 and #299, boards 75b and 75c)
 
@@ -932,8 +927,8 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   published page as it is; Publish puts the changes on the public page.
 - Only the full admins and holders of a Content grant open the editor or save; everyone else
   gets the dashboard's not found.
-- On a preview with the seeded `preview` branch, a test developer's project changes are saved
-  there as the viewer's seeded person and kept across preview builds (ADR 0016).
+- On a preview with the seeded `preview` branch, project changes are saved there and kept
+  across preview builds (ADR 0016).
 
 ### Team page visual layer (#283, epic #259)
 
@@ -953,9 +948,8 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - Writes follow the site-content rule, and none writes a role, division, department, scope or
   member.
 - On a preview with the seeded `preview` branch (ADR 0016), the public Team page shows the seeded
-  published layer and advisors. A test developer's layer writes there are saved to the
-  `preview` branch as the viewer's seeded person and kept across preview builds
-  (ADR 0016).
+  published layer and advisors. Layer writes there are saved to the `preview` branch and kept
+  across preview builds (ADR 0016).
 - The editor (boards 80, 80b and 80h, #284) is "Team page" under Content, at
   `/dashboard/team-page`: the real page under the shared edit shell, with the "Visual changes
   only" tag and Reset to team on the bar. The team leader and each leader on the arc open the Edit
@@ -986,6 +980,5 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   they advised: the advisor leaves the Team page and an Alumni entry in the Advisors group takes
   their name, role, years and photo. It writes the advisor tables and that one `alumni_entries`
   row, never a role, division, department, scope or member. Reset to team never changes the
-  advisors. On a preview with the seeded `preview` branch, a test developer's advisor changes and
-  End advising are saved there as the viewer's seeded person and kept across preview builds
-  (ADR 0016).
+  advisors. On a preview with the seeded `preview` branch, advisor changes and End advising are
+  saved there and kept across preview builds (ADR 0016).

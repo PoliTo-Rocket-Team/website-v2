@@ -2,13 +2,11 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Check, ChevronsUpDown, Eye, LogOut, UserRound } from "lucide-react";
+import { ChevronsUpDown, Eye, LogOut, UserRound } from "lucide-react";
 import { Dialog, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import type { MenuPage } from "@/lib/dashboard/access";
-import { TEST_VIEWER_LABELS, TEST_VIEWERS, testViewerOf, type DashboardViewer } from "@/lib/dashboard/viewer";
-import { testDeveloperSignInHref } from "@/lib/test-developer";
+import type { DashboardViewer } from "@/lib/dashboard/viewer";
 import { useSignOut } from "@/components/use-sign-out";
 import { Avatar } from "./avatar";
 import { useViewAsHref } from "./view-as-dialog";
@@ -19,8 +17,6 @@ const ITEM =
   "flex h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[13px] outline-none transition-colors data-[highlighted]:bg-white-5";
 
 const SEPARATOR = "-mx-1.5 my-1 h-px bg-hairline";
-
-const VIEW_AS_LABEL = "font-mono text-[10px] uppercase tracking-[0.3em] text-dim";
 
 /** The user menu's entry to the View as dialog (board 96a). */
 const VIEW_AS_ENTRY = "View as…";
@@ -33,8 +29,7 @@ export type UserMenuForm = "dropdown" | "sheet";
 // the viewer's own page (My account for a non-member, My profile for the
 // team), then "View as…" for an account the View as gate allows (board 96a,
 // issue #610), which opens the View as dialog over this page, then a red
-// Sign out. A test developer also gets "View as", every
-// test view, each a sign-in link back to this page. From md it opens above the
+// Sign out. From md it opens above the
 // card, as wide as it; on phones (inside the menu sheet) it is a bottom sheet,
 // like every popup there.
 export function UserCard({
@@ -97,9 +92,8 @@ function UserDropdown({
   viewAs: boolean;
   onNavigate?: () => void;
 }) {
-  const pathname = usePathname();
   const viewAsHref = useViewAsHref();
-  const signOut = useSignOut(viewer.session);
+  const signOut = useSignOut();
   return (
     <DropdownMenuPrimitive.Content
       side="top"
@@ -124,25 +118,6 @@ function UserDropdown({
         </DropdownMenuPrimitive.Item>
       )}
       {(menuPage || viewAs) && <DropdownMenuPrimitive.Separator className={SEPARATOR} />}
-
-      {viewer.session === "test-developer" && (
-        <>
-          <DropdownMenuPrimitive.Label className={`${VIEW_AS_LABEL} px-2.5 pb-1.5 pt-1.5`}>View as</DropdownMenuPrimitive.Label>
-          {TEST_VIEWERS.map((kind) => (
-            <DropdownMenuPrimitive.Item key={kind} asChild>
-              <a
-                href={testDeveloperSignInHref(kind, pathname)}
-                aria-current={kind === testViewerOf(viewer) ? "true" : undefined}
-                className={`${ITEM} justify-between text-text-2 data-[highlighted]:text-prt-text`}
-              >
-                {TEST_VIEWER_LABELS[kind]}
-                {kind === testViewerOf(viewer) && <Check aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={2} />}
-              </a>
-            </DropdownMenuPrimitive.Item>
-          ))}
-          <DropdownMenuPrimitive.Separator className={SEPARATOR} />
-        </>
-      )}
 
       <DropdownMenuPrimitive.Item onSelect={() => void signOut()} className={`${ITEM} text-danger`}>
         <LogOut aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
@@ -175,9 +150,8 @@ export function UserSheet({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const pathname = usePathname();
   const viewAsHref = useViewAsHref();
-  const signOut = useSignOut(viewer.session);
+  const signOut = useSignOut();
   const navigate = () => {
     setOpen(false);
     onNavigate?.();
@@ -212,23 +186,6 @@ export function UserSheet({
                 <Eye aria-hidden className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
                 {VIEW_AS_ENTRY}
               </Link>
-            )}
-
-            {viewer.session === "test-developer" && (
-              <div className="mt-2 border-t border-hairline pt-3">
-                <p className={`${VIEW_AS_LABEL} px-3 pb-1`}>View as</p>
-                {TEST_VIEWERS.map((kind) => (
-                  <a
-                    key={kind}
-                    href={testDeveloperSignInHref(kind, pathname)}
-                    aria-current={kind === testViewerOf(viewer) ? "true" : undefined}
-                    className={`${SHEET_ROW} justify-between text-text-2 hover:text-prt-text`}
-                  >
-                    {TEST_VIEWER_LABELS[kind]}
-                    {kind === testViewerOf(viewer) && <Check aria-hidden className="h-4 w-4 text-accent" strokeWidth={2} />}
-                  </a>
-                ))}
-              </div>
             )}
 
             <div className="mt-2 border-t border-hairline pt-2">

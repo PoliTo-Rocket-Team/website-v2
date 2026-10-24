@@ -8,10 +8,9 @@ export { getCurrentUserId } from "@/lib/current-user";
 
 /**
  * Who the next write is logged under. Every signed-in write goes through
- * this file, so this is where a test developer's write is logged under their
- * seeded person on a preview, and refused before it is sent anywhere else
- * (lib/test-developer.ts, ADR 0016), and where a View as session's acting
- * account is read from the session for the log (issue #605).
+ * this file, so this is where the signed-in account is read from the session
+ * for the log, with a View as session's acting account beside it (issue
+ * #605).
  */
 async function writer(): Promise<AuditWriter | null> {
   return auditWriterFor(await getCurrentUser());

@@ -8,7 +8,7 @@ import { testDeveloperStanding, type DashboardViewer } from "./viewer";
 // the same sidebar, user card line and user menu the layout built before.
 
 function viewerOf(kind: Parameters<typeof testDeveloperStanding>[0], role: string): DashboardViewer {
-  return { ...testDeveloperStanding(kind), name: "Ada Lovelace", role, photoUrl: null, session: "account" };
+  return { ...testDeveloperStanding(kind), name: "Ada Lovelace", role, photoUrl: null };
 }
 
 test("an applicant with nothing shown reads Signed in, with the sidebar and menu their standing gives", () => {

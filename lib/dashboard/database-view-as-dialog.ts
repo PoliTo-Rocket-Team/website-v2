@@ -28,11 +28,11 @@ import { SEAT_OF_FLAG } from "./viewer";
 
 /**
  * The dialog's opening for this account, or null when it may not have one:
- * a test developer, a View as session (one is stopped before another starts)
- * and anyone the gate refuses on this site.
+ * a View as session (one is stopped before another starts) and anyone the
+ * gate refuses on this site.
  */
 export async function readViewAsOpening(user: CurrentUser | null, site: ViewAsSite = viewAsSiteOf()): Promise<ViewAsOpening | null> {
-  if (user === null || user.session !== "account" || user.actingAccountId !== null) return null;
+  if (user === null || user.actingAccountId !== null) return null;
   const account = await readViewAsAccount(user.id);
   if (account === null || !mayUseViewAs(account, site)) return null;
   const actingTitle = actingTitleIn(await readActingTitles([user.id]), user.id);

@@ -153,6 +153,16 @@ The Owner decision of 2026-10-24 on epic [#597](https://github.com/PoliTo-Rocket
 
 This amendment retires Decision 5 ("Dummy arrays only without a database"), the Consequences line "A preview with no `DATABASE_URL` stays on the dummy arrays", and the Gaps pointer to `dummyDataOn` in `lib/dummy-data/mode.ts`, which is gone; those lines stay as written.
 
+## Amendment, 2026-10-24: the test developer is retired
+
+The same Owner decision on epic [#597](https://github.com/PoliTo-Rocket-Team/website-v2/issues/597) puts every check on a real session, and the epic's approved plan (https://github.com/PoliTo-Rocket-Team/website-v2/issues/597#issuecomment-6383269347) retires the test developer once the tester sign-in, View as and its banner are in. Issue [#612](https://github.com/PoliTo-Rocket-Team/website-v2/issues/612) is that step:
+
+- **No cookie sign-in.** The test developer sign-in on `/login`, its `/api/test-developer/*` routes, its `prt_test_developer*` cookies and the viewer switch on the user card are gone. `lib/test-developer.ts` and `lib/test-viewer-people.ts` are removed.
+- **Only real sessions.** `getCurrentUser` in [lib/current-user.ts](../lib/current-user.ts) answers only a Better Auth session, plain or View as. A check signs in as a seeded tester (the amendment above) and views as a seeded seat with View as.
+- **One write rule.** Every write is logged under the session's account, with the acting account beside it in a View as session ([lib/audit-writer.ts](../lib/audit-writer.ts)); there is no separate test developer write gate.
+
+This amendment retires Decision 6 ("The test developer stays"), Decision 7's "never offers the test developer sign-in", the mapping lines for ADR 0009's Decision 3 and its test developer constraint, the binding constraint on a test developer's changes, and the amendment of 2026-10-17; those lines stay as written.
+
 ## Records
 
 Pattern: [.patterns/schema-migrations.md](../.patterns/schema-migrations.md) (how `pnpm db:seed` runs).

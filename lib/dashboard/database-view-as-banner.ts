@@ -19,7 +19,7 @@ export async function readViewAsBanner(
   person: { readonly name: string; readonly role: string },
   site: ViewAsSite = viewAsSiteOf(),
 ): Promise<ViewAsBanner | null> {
-  if (user === null || user.session !== "account" || user.actingAccountId === null) return null;
+  if (user === null || user.actingAccountId === null) return null;
   const { name, role } = person;
   if (site === "test") {
     const [stored] = await getDb().select({ firstName: users.firstName }).from(users).where(eq(users.id, user.id)).limit(1);

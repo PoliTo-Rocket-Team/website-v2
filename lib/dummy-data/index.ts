@@ -102,9 +102,7 @@ import {
   dummySaveLinkedin,
   dummySetPhoto,
   dummyWithdraw,
-  teamEmailOf,
 } from "./self";
-import type { NavViewer } from "@/lib/nav-viewer-shape";
 import {
   activity,
   applicant,
@@ -238,26 +236,17 @@ function headDepartment() {
  */
 export function dummyViewer(viewer: TestViewer, holders: readonly ApproveOrdersHolding[], grant: TestGrant | null = null): DashboardViewer {
   if (viewer === "non-member") {
-    return { ...testDeveloperStanding(viewer), name: applicant.name, role: "Applicant", photoUrl: null, session: "test-developer" };
+    return { ...testDeveloperStanding(viewer), name: applicant.name, role: "Applicant", photoUrl: null };
   }
   if (viewer === "alumni") {
-    return { ...testDeveloperStanding(viewer), name: formerMember.name, role: VIEWER_KIND_LABELS.alumni, photoUrl: null, session: "test-developer" };
+    return { ...testDeveloperStanding(viewer), name: formerMember.name, role: VIEWER_KIND_LABELS.alumni, photoUrl: null };
   }
   const person = personFor[viewer];
   const approveOrders = holders.some((h) => h.personId === person.id);
   const standing = testDeveloperStanding(viewer, approveOrders);
   const withGrant =
     standing.kind === "member" && grant !== null ? { ...standing, grantedAreas: testGrantAreas(grant), siteContent: testGrantHoldsContent(grant) } : standing;
-  return { ...withGrant, name: person.name, role: person.title, photoUrl: null, session: "test-developer" };
-}
-
-/** The navbar's account menu for a test developer (board 01b): the applicant has no team address, so their sign-in one. */
-export function dummyNavViewer(viewer: TestViewer): NavViewer {
-  if (viewer === "non-member") return { name: applicant.name, email: applicant.email, photoUrl: null, session: "test-developer" };
-  // Off the team, the alumnus has no team address any more: their sign-in one (issue #317).
-  if (viewer === "alumni") return { name: formerMember.name, email: formerMember.email, photoUrl: null, session: "test-developer" };
-  const person = personFor[viewer];
-  return { name: person.name, email: teamEmailOf(person), photoUrl: null, session: "test-developer" };
+  return { ...withGrant, name: person.name, role: person.title, photoUrl: null };
 }
 
 function divisionOf(id: number) {

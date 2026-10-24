@@ -33,7 +33,6 @@ async function LiveProfile() {
     <MyProfileView
       profile={profile}
       alias={alias}
-      session={data.viewer.session}
       saveLinkedin={saveLinkedin}
       uploadPhoto={uploadPhoto}
       removePhoto={removePhoto}

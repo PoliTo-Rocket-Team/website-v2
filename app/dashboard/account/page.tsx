@@ -30,6 +30,6 @@ async function LiveAccount() {
   const account = await data.myAccount();
   if (account === null) notFound();
   return (
-    <MyAccountView account={account} session={data.viewer.session} saveDetails={saveDetails} deleteAccount={deleteAccount} />
+    <MyAccountView account={account} saveDetails={saveDetails} deleteAccount={deleteAccount} />
   );
 }
