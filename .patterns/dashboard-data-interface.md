@@ -5,7 +5,8 @@ How dashboard pages and their server actions read and write data: through one in
 the Neon `development` branch, on a preview the shared `preview` branch, in production its own. A
 check reads it as a seeded person through a real session: the tester sign-in, then View as (issue
 #612). The in-memory copy of the dashboard that tests once read, `lib/dummy-data/`, is removed
-(issue #613); the tests run the real loaders and actions against an in-memory database instead. Why
+(issue #613); the tests run the real loaders and actions against a migrated in-memory Postgres
+(PGlite, issue #649) instead. Why
 a preview reads its own seeded database is
 [0016](../.decisions/0016-previews-read-their-own-seeded-branch.md), and its amendment of
 2026-10-24 retires the dummy fallback.
@@ -70,8 +71,8 @@ and [team-actions.ts](../app/dashboard/team-actions.ts). The `/apply` pages read
 `databaseApplyData` in [lib/apply/database.ts](../lib/apply/database.ts) directly. Domain rules
 live in plain modules the database side calls, for example `applyMove` in
 [lib/dashboard/application-flow.ts](../lib/dashboard/application-flow.ts), and are tested there.
-Tests of the interface itself run every loader and action against an in-memory database
-([lib/dashboard/access-matrix/](../lib/dashboard/access-matrix/)):
+Tests of the interface itself run every loader and action against a migrated in-memory Postgres
+(PGlite, [lib/dashboard/access-matrix/test-database.ts](../lib/dashboard/access-matrix/test-database.ts)):
 [lib/dashboard/access-matrix-server.test.ts](../lib/dashboard/access-matrix-server.test.ts),
 [lib/dashboard/dashboard-rules-server.test.ts](../lib/dashboard/dashboard-rules-server.test.ts),
 [lib/dashboard/opening.test.ts](../lib/dashboard/opening.test.ts) and
