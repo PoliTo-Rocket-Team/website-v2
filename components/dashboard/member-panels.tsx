@@ -797,7 +797,9 @@ function PhotoField({ person }: { person: Pick<EditPerson, "id" | "photoUrl"> })
         <Upload aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
         Upload photo
       </button>
-      <span className="text-[13px] text-prt-muted">Square JPEG, under 500 KB</span>
+      <span className="text-[13px] text-prt-muted">
+        Square JPEG, under <span className="whitespace-nowrap">500 KB</span>
+      </span>
       <PhotoCropDialog
         file={cropping}
         onOpenChange={(next) => !next && setCropping(null)}
