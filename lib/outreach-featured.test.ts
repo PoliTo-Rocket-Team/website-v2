@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { publicVersion } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import { dummyOutreachStore, dummyPhotoFiles, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
+import { memoryOutreachStore, memoryPhotoFiles } from "./outreach-memory";
 import { featuredCard, slugOf } from "./outreach";
 import { outreachEditor, publicOutreach } from "./outreach-editor";
 import {
@@ -27,22 +27,9 @@ import { titleOf } from "./outreach-types";
 
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 
-function cookie() {
-  const jar = {
-    value: undefined as string | undefined,
-    get current(): DummyOutreachEdits {
-      return parseOutreachEdits(jar.value);
-    },
-    save: async (next: DummyOutreachEdits) => {
-      jar.value = serializeOutreachEdits(next);
-    },
-  };
-  return jar;
-}
-
 /** The editor over a fresh store, and what the editor page is handed and shows from it. */
 async function opened() {
-  const editor = outreachEditor(admin, dummyOutreachStore(cookie()), dummyPhotoFiles);
+  const editor = outreachEditor(admin, memoryOutreachStore(), memoryPhotoFiles);
   const read = async () => {
     const posts = (await editor.posts.list())!;
     const featured = await editor.featured();

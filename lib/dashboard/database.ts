@@ -81,8 +81,8 @@ import { upcomingInterviews } from "./interview-slots";
 import { SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areaUnitsOf, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 
-// The signed-in account's side of the dashboard data interface: the same
-// answers as lib/dummy-data/, read from the database. Reads follow
+// The dashboard data interface for the signed-in account, read from the
+// database. Reads follow
 // .patterns/drizzle-reads.md: getDb() per call, closed units and deleted
 // positions left out.
 

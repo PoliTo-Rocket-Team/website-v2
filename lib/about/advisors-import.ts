@@ -5,7 +5,7 @@ import { team } from "./team";
 // each published with no draft, in the record's order and standing.
 // Migration drizzle/0035_team_page_advisors.sql holds exactly the SQL
 // `advisorImportSql` writes, which lib/about/advisors.test.ts checks, and the
-// dummy data (tests) starts from the same items.
+// tests start from the same items.
 
 /** The advisors as the store starts: today's, published. */
 export function importedAdvisors(): AdvisorItem[] {

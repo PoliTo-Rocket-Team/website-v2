@@ -6,13 +6,13 @@ import { memoryContentStore } from "@/lib/content/memory";
 import { statusOf, type ContentItem } from "@/lib/content/versioned";
 import { VIEWER_KINDS, type ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused } from "@/lib/dashboard/write";
-import { dummyTeamPagePhotos, dummyTeamRoles } from "@/lib/dummy-data/team-page";
+import { SEED_DATA, teamRolesOf } from "@/db/seed/cases";
 import { publicStoreHost } from "@/lib/storage/pathname";
 import { advisorRowsOf, publicAdvisors, withAdvisors, type AdvisorRow, type AdvisorVersion } from "./advisors";
 import { importedAdvisors } from "./advisors-import";
-import { addLeader, applyLayer, NO_TEAM_LAYER, type AddedDepartment, type TeamPageLayer } from "./team-layer";
+import { addLeader, applyLayer, NO_TEAM_LAYER, NO_UPLOADS, type AddedDepartment, type TeamPageLayer } from "./team-layer";
 import { hideHead } from "./team-page-add";
-import { HEADS_FULL, publishedLayer, publicTeamPage, SECTION_EMPTY, teamPageEditor, type TeamPageStore } from "./team-page-editor";
+import { HEADS_FULL, publishedLayer, publicTeamPage, SECTION_EMPTY, teamPageEditor, type TeamPagePhotos, type TeamPageStore } from "./team-page-editor";
 import { memoryTeamPageStore } from "./team-page-memory";
 import { publicStoreTeamPagePhotos } from "./team-page-photos";
 import { team } from "./team";
@@ -23,9 +23,12 @@ import type { PersonPhoto } from "./types";
 // #283 and #321): Save draft never reaches the public page, Publish does,
 // Reset to team is a draft, every write passes the site-content gate, the
 // layer and the advisors land together or not at all, and a layer the page
-// cannot draw as edited is refused.
+// cannot draw as edited is refused. The team is the seeded one, read as the
+// Team page reads it.
 
-const roles = dummyTeamRoles();
+const roles = teamRolesOf(SEED_DATA);
+/** Photos that store nothing: the tests below that upload bring their own. */
+const NO_PHOTOS: TeamPagePhotos = { put: async () => "/team/stand-in.webp", owns: NO_UPLOADS, drop: async () => {} };
 const build = teamBuildOf(roles);
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 const siteContent: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false };
@@ -36,7 +39,7 @@ function editorOver(viewer: ViewerStanding, seed: ContentItem<TeamPageLayer>[] =
   const layer = memoryContentStore(seed);
   const advisors = memoryContentStore<AdvisorVersion>(importedAdvisors());
   const store = memoryTeamPageStore(layer, advisors);
-  return { layer, advisors, store, editor: teamPageEditor(viewer, store, async () => roles, team, dummyTeamPagePhotos) };
+  return { layer, advisors, store, editor: teamPageEditor(viewer, store, async () => roles, team, NO_PHOTOS) };
 }
 
 /** The advisors as the panel holds them, unchanged. */
@@ -208,7 +211,7 @@ test("when the advisors are refused, or the store fails, the stored layer and ad
   const layer = memoryContentStore<TeamPageLayer>([]);
   const seed = importedAdvisors();
   const full = memoryContentStore<AdvisorVersion>(seed, async (items) => (items.length > seed.length + 1 ? "The store failed." : null));
-  const failing = teamPageEditor(admin, memoryTeamPageStore(layer, full), async () => roles, team, dummyTeamPagePhotos);
+  const failing = teamPageEditor(admin, memoryTeamPageStore(layer, full), async () => roles, team, NO_PHOTOS);
   const newAdvisor = (name: string): AdvisorRow => ({ id: null, fields: { name, role: "Propulsion", standing: "specialist", photo: null, linkedin: "", email: "" } });
   const result = await failing.save("publish", renamed, [...advisorRowsOf(seed), newAdvisor("Prof. Ada Rossi"), newAdvisor("Prof. Bea Neri")]);
   assert.deepEqual(result, refused("The store failed."));
@@ -225,7 +228,7 @@ test("the editor writes through the store's one save: never the layer or advisor
     advisors: async () => importedAdvisors(),
     save: async () => (saves++, refused("The database is down.")),
   };
-  const editor = teamPageEditor(admin, store, async () => roles, team, dummyTeamPagePhotos);
+  const editor = teamPageEditor(admin, store, async () => roles, team, NO_PHOTOS);
   assert.deepEqual(await editor.save("publish", renamed, advisorRowsOf(importedAdvisors())), refused("The database is down."));
   assert.equal(saves, 1);
 });

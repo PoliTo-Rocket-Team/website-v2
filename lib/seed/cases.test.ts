@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { publicItems, versionRows, type ContentItem } from "../content/versioned";
 import { ANONYMIZED_EMAIL, CLEARED_MEMBER } from "../dashboard/anonymize";
 import { APPLICATION_STAGES } from "../dashboard/application-flow";
-import { TEST_VIEWERS } from "../dashboard/viewer";
+import { PLAIN_SEATS } from "../dashboard/viewer";
 import { ACCESS_LEVEL_LABELS, ACCESS_TARGET_LABELS, ACCESS_TARGETS } from "../dashboard/division-access";
 import { TESTERS } from "../dev-tester";
 import {
@@ -55,7 +55,7 @@ import {
   waitingHandOversOf,
 } from "../../db/seed/cases";
 import { handOverAttentionFor } from "../dashboard/hand-over-request";
-import { ANONYMIZED_ALUMNUS, TESTER_AUTH_ROWS, TEST_VIEWER_PEOPLE } from "../../db/seed/people";
+import { ANONYMIZED_ALUMNUS, TESTER_AUTH_ROWS, PLAIN_SEAT_PEOPLE } from "../../db/seed/people";
 import { teamPageSeed } from "../../db/seed/team-page";
 import { getTableName } from "drizzle-orm";
 import { advisorOfFields, fieldsOf as advisorFields } from "../about/advisors";
@@ -79,18 +79,18 @@ test("docs/seed-cases.md lists every case, with the issue it exercises, and no o
 
 // Hand-overs (issue #308).
 
-test("the seed holds one waiting and one confirmed hand-over, and the department-head test viewer answers the waiting one", () => {
+test("the seed holds one waiting and one confirmed hand-over, and the department-head plain seat answers the waiting one", () => {
   assert.deepEqual(
     data.handOvers.map((r) => r.decision ?? null),
     ["confirmed", null],
   );
   const [waiting] = waitingHandOversOf(data);
-  const head = memberOfUser(data, TEST_VIEWER_PEOPLE["department-head"]);
+  const head = memberOfUser(data, PLAIN_SEAT_PEOPLE["department-head"]);
   const [row] = handOverAttentionFor(head, [waiting], teamOf(data), orgOf(data), new Date("2026-10-16T12:00:00Z"));
   assert.equal(row?.title, "Tester Division Lead wants to hand over Test Bench lead to Tester Member");
   assert.deepEqual(row?.action, { answerHandOver: waiting.id });
   for (const viewer of ["team-leader", "division-lead", "member"] as const) {
-    assert.deepEqual(handOverAttentionFor(memberOfUser(data, TEST_VIEWER_PEOPLE[viewer]), [waiting], teamOf(data), orgOf(data), new Date()), [], viewer);
+    assert.deepEqual(handOverAttentionFor(memberOfUser(data, PLAIN_SEAT_PEOPLE[viewer]), [waiting], teamOf(data), orgOf(data), new Date()), [], viewer);
   }
 });
 
@@ -145,9 +145,9 @@ test("the anonymized alumnus carries no personal data but keeps its alumni entry
   assert.equal(alumnus.email, ANONYMIZED_EMAIL);
 });
 
-test("every test viewer resolves to a seeded person read as that viewer", () => {
-  for (const viewer of TEST_VIEWERS) {
-    assert.ok(data.users.some((u) => u.id === TEST_VIEWER_PEOPLE[viewer]), `${viewer} has no seeded person`);
+test("every plain seat resolves to a seeded person read as that seat", () => {
+  for (const viewer of PLAIN_SEATS) {
+    assert.ok(data.users.some((u) => u.id === PLAIN_SEAT_PEOPLE[viewer]), `${viewer} has no seeded person`);
     assert.ok(resolvesTo(data, viewer), `${viewer} reads as someone else`);
   }
 });
@@ -557,7 +557,7 @@ test("the seats cover every kind the seed names: one per single grant and an App
   const oneGrant = SEATS.filter((s) => s.grants.length === 1 && s.grants[0].area !== "approve_orders").map((s) => s.grants[0].area);
   assert.deepEqual([...oneGrant].sort(), [...ACCESS_TARGETS].sort());
   assert.deepEqual(seatOf("approve-orders").grants, [{ area: "approve_orders", level: "edit" }]);
-  for (const viewer of TEST_VIEWERS) assert.equal(TEST_VIEWER_PEOPLE[viewer], seatOf(viewer).id, `${viewer} views as its seat`);
+  for (const viewer of PLAIN_SEATS) assert.equal(PLAIN_SEAT_PEOPLE[viewer], seatOf(viewer).id, `${viewer} views as its seat`);
 });
 
 test("the seeded admin testers are stored as admins and hold no team role and no grant", () => {

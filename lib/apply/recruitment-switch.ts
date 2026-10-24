@@ -8,9 +8,8 @@ import type { Recruitment } from "./positions";
 // org-wide positions editor, or an admin, may: a lead's edit rights on one
 // department or division do not reach the whole site. The permission, the
 // store and the cache are passed in, so the rule is tested without them
-// (recruitment-switch.test.ts). The dashboard data interface supplies them:
-// the database side from the caller's standing and scope rows, and, in tests,
-// the dummy side from the test developer's standing.
+// (recruitment-switch.test.ts). The dashboard data interface supplies them
+// from the caller's standing and scope rows.
 
 /**
  * Whether a member with this standing and positions scope may flip the
@@ -20,11 +19,6 @@ import type { Recruitment } from "./positions";
 export function canSwitchRecruitment(viewer: ViewerStanding, scope: ScopeInfo): boolean {
   if (isOffTeam(viewer.kind)) return false;
   return isTeamLeader(viewer) || scope.hasOrgEdit || scope.hasAdminEdit;
-}
-
-/** Whether a test developer looking as this standing may flip the dummy switch: the team leader and the operations lead. */
-export function canSwitchRecruitmentAs(viewer: ViewerStanding): boolean {
-  return isTeamLeader(viewer) || viewer.kind === "operations-lead";
 }
 
 /** What the dashboard shows: the switch's state and whether this member may change it. */

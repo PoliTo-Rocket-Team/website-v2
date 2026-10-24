@@ -108,9 +108,9 @@ recruitment switch does the same: its rule lives in
 and the cache refresh passed in, and [recruitment-switch.test.ts](../lib/apply/recruitment-switch.test.ts)
 tests each scope case. Its action reaches the write through the dashboard data interface
 (`setRecruitment` in [lib/dashboard/data.ts](../lib/dashboard/data.ts)): the database side upserts
-through `runAuditQuery`; the dummy side ([lib/dummy-data/recruitment.ts](../lib/dummy-data/recruitment.ts)),
-which keeps the state in a cookie and writes no row, is read only by tests. The other mutations have no
-automated tests.
+through `runAuditQuery`, and the server-side access tests
+([lib/dashboard/access-matrix-server.test.ts](../lib/dashboard/access-matrix-server.test.ts)) call it
+against an in-memory database. The other mutations have no automated tests.
 
 ## Why it is not obvious
 

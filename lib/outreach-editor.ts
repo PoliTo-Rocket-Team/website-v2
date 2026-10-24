@@ -24,7 +24,7 @@ import {
 // (lib/content/), the tag list, and which posts are featured at the top of
 // /outreach (issue #496, lib/outreach-featured.ts). Each side of the dashboard data interface brings an
 // `OutreachStore`: the database (lib/dashboard/database-outreach.ts), or, in
-// tests, the dummy data (lib/dummy-data/outreach.ts), and its place for photo files
+// tests, one held in memory (lib/outreach-memory.ts), and its place for photo files
 // (lib/outreach-photos.ts). The editor puts every write and every upload
 // behind the site-content gate and keeps a post's tags to the tag list.
 

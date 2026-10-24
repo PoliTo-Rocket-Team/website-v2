@@ -8,6 +8,8 @@ tags: [previews, dummy-data, test-developer, dashboard]
 
 # 0009 — Previews and next dev without a database run on dummy data with a test developer sign-in, never production
 
+> **Current state (2026-10-24):** superseded. There is no dummy mode and no test developer: every page reads a database through a real session, and `lib/dummy-data/` is removed ([ADR 0016](0016-previews-read-their-own-seeded-branch.md), amendments of 2026-10-24; issues #609, #612, #613). The text below is kept as written.
+
 **What this decides:** Vercel previews have no database. They, and `next dev` on a machine with no `DATABASE_URL`, show the site and the dashboard from dummy data. A reviewer signs in as "test developer" and switches which kind of viewer they look as. Production never does any of this.
 
 ## Context

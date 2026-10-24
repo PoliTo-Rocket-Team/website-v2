@@ -9,9 +9,8 @@ export interface MemoryContentStore<T extends D, D = T> extends ContentStore<T, 
 
 /**
  * A content store held in memory, starting from `seed`. Every write hands
- * the new list to `keep`, which may refuse it: tests keep everything, and the
- * dummy side, read only by tests, keeps changes in a cookie that can fill up
- * (lib/dummy-data/partners.ts). A refused write changes nothing.
+ * the new list to `keep`, which may refuse it, as a test of a failing store
+ * does. A refused write changes nothing.
  */
 export function memoryContentStore<T extends D, D = T>(
   seed: readonly ContentItem<T, D>[],

@@ -34,9 +34,8 @@ import type { Upload, WriteResult } from "./write";
  * The one way dashboard pages read and write data (issue #141). Every page
  * reads the database (./database.ts) as the signed-in account; ./open.ts
  * opens it and answers a DashboardOpening
- * (./opening.ts). The dummy implementation (lib/dummy-data/) is read only by
- * tests (issue #609). A later page adds one method here and to both
- * implementations.
+ * (./opening.ts). It is the one implementation (issue #613); a later page
+ * adds one method here and to it.
  *
  * Positions and Applications (issue #142) answer only what the viewer
  * reaches, and a read or write there the viewer does not reach rejects with
@@ -212,16 +211,13 @@ export interface DashboardData {
 
   /**
    * Boards 76 and 76b (issue #256): the partners and their writes, behind the
-   * site-content gate (lib/content/gate.ts). Each side brings its own store:
-   * the database, or, in tests, a cookie over the dummy partners.
+   * site-content gate (lib/content/gate.ts), over the database's store.
    */
   readonly partners: PartnerEditor;
 
   /**
    * Boards 79 and 79b (issue #258): the questions on /apply and their writes,
-   * behind the same gate. Each side brings its own store and clock: the
-   * database and the time now, or, in tests, a cookie over the dummy
-   * questions, seen from the dummy team's moment.
+   * behind the same gate, over the database's store and the time now.
    */
   readonly faqs: FaqEditor;
 
@@ -230,8 +226,7 @@ export interface DashboardData {
    * to team, behind the same gate. Save draft and Publish write the layer and
    * the advisor list together, in one step (issue #321); Reset to team writes
    * the layer alone. None writes a role, division, department, scope or
-   * member. Each side brings its own store and its own roles: the database's,
-   * or, in tests, cookies laid on the dummy team.
+   * member. Its store and its roles are the database's.
    */
   readonly teamPage: TeamPageEditor;
 
@@ -245,15 +240,14 @@ export interface DashboardData {
 
   /**
    * Boards 74 to 74h (issue #287): the Outreach posts, which of them are
-   * featured (issue #496), the tag list, and their writes, behind the same gate. Each side brings its
-   * own store: the database, or, in tests, a cookie over the dummy content.
+   * featured (issue #496), the tag list, and their writes, behind the same
+   * gate, over the database's store.
    */
   readonly outreach: OutreachEditor;
 
   /**
    * Boards 75 to 75d (issues #255 and #298): the projects and their writes,
-   * behind the same gate. Each side brings its own store: the database, or,
-   * in tests, a cookie over the dummy projects.
+   * behind the same gate, over the database's store.
    */
   readonly projects: ProjectEditor;
 

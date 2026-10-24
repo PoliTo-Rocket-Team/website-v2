@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { sidebarFor, userMenuPageFor } from "./access";
 import { openChrome } from "./chrome";
-import { testDeveloperStanding, type DashboardViewer } from "./viewer";
+import { plainSeatStanding, type DashboardViewer } from "./viewer";
 
 // The frame's chrome now streams in on its own (issue #397); it must carry
 // the same sidebar, user card line and user menu the layout built before.
 
-function viewerOf(kind: Parameters<typeof testDeveloperStanding>[0], role: string): DashboardViewer {
-  return { ...testDeveloperStanding(kind), name: "Ada Lovelace", role, photoUrl: null };
+function viewerOf(kind: Parameters<typeof plainSeatStanding>[0], role: string): DashboardViewer {
+  return { ...plainSeatStanding(kind), name: "Ada Lovelace", role, photoUrl: null };
 }
 
 test("an applicant with nothing shown reads Signed in, with the sidebar and menu their standing gives", () => {

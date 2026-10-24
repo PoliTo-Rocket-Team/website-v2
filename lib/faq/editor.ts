@@ -5,9 +5,9 @@ import { written, type WriteResult } from "@/lib/dashboard/write";
 import { checkFaqFields, type FaqFields, type FaqVersion } from "./faq";
 
 // The FAQ page's reads and writes (boards 79 and 79b, issue #258): the shared
-// content editor (lib/content/editor.ts) with the question's own fields. Both
-// sides of the dashboard data interface build it, each with its own store and
-// its own clock: the dummy side's is the moment its team is seen from.
+// content editor (lib/content/editor.ts) with the question's own fields. The
+// dashboard data interface builds it with the database's store and the time
+// now; a test brings its own store and clock.
 
 /** The list as the page opens it: every question, and the moment its Updated column counts from. */
 export type FaqList = { readonly items: readonly ContentItem<FaqVersion>[]; readonly now: string };

@@ -12,8 +12,8 @@ import type { DepartmentHead, DivisionLead, HeaderStats, Leader, Member, Person,
 // lead row), never to a person or a role, so they outlive changes to the real
 // team: an edit whose spot is gone from the roles build is kept and skipped,
 // and it shows again if the spot comes back. Only the editor or Reset to team
-// removes an edit. Pure: the database, the dummy data and the editor all lay
-// it on the same way.
+// removes an edit. Pure: the database, the seed and the editor all lay it on
+// the same way.
 
 /** The arc holds up to eight leaders. */
 export const ARC_LEADERS = 8;

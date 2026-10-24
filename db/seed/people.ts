@@ -19,7 +19,7 @@
 import { betterAuthUsers, members, roles, users } from "@/db/schema";
 import { clearedUser, CLEARED_MEMBER } from "@/lib/dashboard/anonymize";
 import { TESTERS } from "@/lib/dev-tester";
-import type { TestViewer } from "@/lib/dashboard/viewer";
+import type { PlainSeat } from "@/lib/dashboard/viewer";
 import { ADMIN_TESTERS, ONE_GRANT_SEATS, SEATS, seatOf } from "@/lib/seeded-accounts";
 import { PUBLIC_TEAM, publicMember, type PublicTeammate } from "./public-team";
 import { rowsOf, tableSeedModule, type SeedStatement } from "./rows";
@@ -136,7 +136,7 @@ export const JOINED_MEMBER = 32;
 export const LSA_SUCCESSOR = publicMember("Samuele Lombardi");
 /** The day that hand-over was confirmed: the advisor's lead row ends and their Advisor role starts. */
 export const LSA_HAND_OVER_DAY = "2025-10-10";
-/** Head of Propulsion (lib/about/team.ts): confirmed that hand-over, answers the waiting one, and is the department-head test viewer. */
+/** Head of Propulsion (lib/about/team.ts): confirmed that hand-over, answers the waiting one, and is the department-head plain seat. */
 export const PROPULSION_HEAD = publicMember("Marco Delogu");
 /** Heads Structures and leads both its divisions (lib/about/team.ts): a member of two divisions at once. */
 export const TWO_DIVISION_MEMBER = publicMember("Emir Topakci");
@@ -492,7 +492,7 @@ export const PUBLIC_SEAT_UPDATED_AT_FIX: SeedStatement = {
  * #317), and the local tester of each other kind. A check signs in as one, or
  * views as one, through a real session (issue #612).
  */
-export const TEST_VIEWER_PEOPLE: Readonly<Record<TestViewer, string>> = {
+export const PLAIN_SEAT_PEOPLE: Readonly<Record<PlainSeat, string>> = {
   "team-leader": seatOf("team-leader").id,
   "operations-lead": seatOf("operations-lead").id,
   "department-head": seatOf("department-head").id,

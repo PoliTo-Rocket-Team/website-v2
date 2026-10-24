@@ -134,15 +134,11 @@ function alumniGrantOf(holds: boolean): { readonly alumniGrant?: true } {
  * seat, so decides orders and gives "Approve orders". Each is also the key of
  * its plain seeded seat (lib/seeded-accounts.ts).
  */
-export const TEST_VIEWERS = ["team-leader", ...VIEWER_KINDS] as const;
-export type TestViewer = (typeof TEST_VIEWERS)[number];
+export const PLAIN_SEATS = ["team-leader", ...VIEWER_KINDS] as const;
+export type PlainSeat = (typeof PLAIN_SEATS)[number];
 
-export function isTestViewer(value: unknown): value is TestViewer {
-  return typeof value === "string" && (TEST_VIEWERS as readonly string[]).includes(value);
-}
-
-/** The viewer kind a test viewer is: the team leader is full access, the `operations-lead` kind. */
-export function kindOfTestViewer(viewer: TestViewer): ViewerKind {
+/** The viewer kind a plain seat is: the team leader is full access, the `operations-lead` kind. */
+export function kindOfPlainSeat(viewer: PlainSeat): ViewerKind {
   return viewer === "team-leader" ? "operations-lead" : viewer;
 }
 
@@ -153,7 +149,7 @@ export function kindOfTestViewer(viewer: TestViewer): ViewerKind {
  * which the team leader gives on the Access page (issue #270); someone off
  * the team never holds it.
  */
-export function testDeveloperStanding(viewer: TestViewer, approveOrders = false): ViewerStanding {
+export function plainSeatStanding(viewer: PlainSeat, approveOrders = false): ViewerStanding {
   switch (viewer) {
     case "non-member":
     case "alumni":
