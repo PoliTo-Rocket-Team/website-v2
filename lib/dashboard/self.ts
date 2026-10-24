@@ -1,4 +1,4 @@
-import type { YourDetails } from "./details";
+import type { DetailsEditor, YourDetails } from "./details";
 import type { HandOverOffer } from "./hand-over-request";
 import type { RoleType } from "./team";
 
@@ -67,6 +67,12 @@ export type MyProfile = {
   readonly signIn: SignIn;
   readonly leave: LeaveState;
   readonly details: YourDetails;
+  /**
+   * Who sets their name (issue #668): a `lead` renames themselves in "Your
+   * details", a `member`'s lead does. The server's save reads the same rule
+   * (`detailsEditorOf`).
+   */
+  readonly detailsEditor: Exclude<DetailsEditor, "applicant">;
   /**
    * A division lead's or a department head's "Hand over your role" (board
    * 55d, issue #262), in place of "Leave the team"; null for everyone else.

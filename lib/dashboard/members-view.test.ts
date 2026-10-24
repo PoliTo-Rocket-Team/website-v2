@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { departmentMembers } from "./department-members";
+import { NO_NAME } from "./person-name";
 import { NO_MEMBER_DETAILS } from "./details";
 import { divisionMembers, positionsOf, type PersonRecord, type WaitingPerson } from "./division-members";
 import { MEMBERS_TOOLS, membersModelOf, NO_MEMBERS_FILTER, opensWholeTeam, shownMembers, type MemberEntry, type MembersModel } from "./members-view";
@@ -28,6 +29,7 @@ function record(id: number, name: string, list: readonly (readonly [number, Divi
   return {
     id,
     name,
+    storedName: NO_NAME,
     signInEmail: `${name.split(" ")[0].toLowerCase()}@gmail.com`,
     photoUrl: null,
     since: 2024,

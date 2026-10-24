@@ -48,6 +48,7 @@ export function MyProfileView({
   alias = null,
   ...actions
 }: { profile: MyProfile; alias?: OwnAlias | null } & Actions) {
+  const router = useRouter();
   return (
     <>
       <PageHeader title="My profile" intro="How you appear on the site and to the team." />
@@ -60,7 +61,15 @@ export function MyProfileView({
           previews={PROFILE_PREVIEWS}
         />
         <DetailsCard profile={profile} alias={alias} saveLinkedin={actions.saveLinkedin} />
-        <YourDetailsCard details={profile.details} editor="member" saveDetails={actions.saveDetails} />
+        <YourDetailsCard
+          details={profile.details}
+          editor={profile.detailsEditor}
+          saveDetails={actions.saveDetails}
+          // A lead's new name shows in the Details card and the sidebar once the page reads again.
+          onSaved={(saved) => {
+            if (saved.firstName !== profile.details.firstName || saved.lastName !== profile.details.lastName) router.refresh();
+          }}
+        />
         <AccountCard signIn={profile.signIn} />
         <LeaveOrDelete
           leave={profile.leave}
@@ -226,8 +235,21 @@ function PhotoPreview({ url, size, caption }: { url: string | null; size: string
   );
 }
 
+/** Where the Details card's name is set: by the member's lead, or by a lead themselves in "Your details" (issue #668). */
+const NAME_HINT: Readonly<Record<MyProfile["detailsEditor"], string>> = {
+  member: "set by your lead",
+  lead: "edit it in Your details",
+};
+
+/** The Details panel's line on phones: what this card does not change. */
+const DETAILS_PANEL_LINE: Readonly<Record<MyProfile["detailsEditor"], string>> = {
+  member: "Your lead sets your name, role and team email.",
+  lead: "You edit your name in Your details. Your role and team email are set for you.",
+};
+
 /**
- * Name, role and team email are set by the lead; LinkedIn is the person's.
+ * Name, role and team email are set by the lead, the name by a lead
+ * themselves in "Your details" (issue #668); LinkedIn is the person's.
  * From md it is board 55's form; on phones board 55m's list, whose Edit opens
  * LinkedIn on a full page. Their email alias is their team email (issue
  * #563): once it is set, the team email carries a link to the alias setup
@@ -258,7 +280,7 @@ function DetailsCard({ profile, alias, saveLinkedin }: { profile: MyProfile; ali
       <div className="hidden md:block">
         <LinkedinForm profile={profile} alias={alias} saved={saved} onSaved={setSaved} saveLinkedin={saveLinkedin} />
       </div>
-      <LinkedinDrawer open={editing} onOpenChange={setEditing} saved={saved} onSaved={setSaved} saveLinkedin={saveLinkedin} />
+      <LinkedinDrawer open={editing} onOpenChange={setEditing} editor={profile.detailsEditor} saved={saved} onSaved={setSaved} saveLinkedin={saveLinkedin} />
     </Card>
   );
 }
@@ -331,7 +353,7 @@ function LinkedinForm({
   return (
     <form noValidate onSubmit={submit} className="px-6 py-5">
       <div className="grid grid-cols-2 gap-x-4 gap-y-5">
-        <Locked label="Name" hint="set by your lead" value={profile.name} />
+        <Locked label="Name" hint={NAME_HINT[profile.detailsEditor]} value={profile.name} />
         <Locked label={profile.roles.length === 1 ? "Role" : "Roles"} hint="set by your lead" value={profile.roles.map(profileRoleLine)} />
         {profile.teamEmail && (
           <Locked
@@ -376,11 +398,13 @@ function LinkedinForm({
 function LinkedinDrawer({
   open,
   onOpenChange,
+  editor,
   saved,
   onSaved,
   saveLinkedin,
 }: {
   open: boolean;
+  editor: MyProfile["detailsEditor"];
   onOpenChange: (open: boolean) => void;
   saved: string;
   onSaved: (value: string) => void;
@@ -403,7 +427,7 @@ function LinkedinDrawer({
         onOpenChange(next);
       }}
       title="Details"
-      detail="Your lead sets your name, role and team email."
+      detail={DETAILS_PANEL_LINE[editor]}
       submitLabel="Save changes"
       submitting={pending}
       onSubmit={async (e) => {

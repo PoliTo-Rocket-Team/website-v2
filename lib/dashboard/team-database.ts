@@ -354,6 +354,7 @@ export function recordsOf(snapshot: TeamSnapshot): PersonRecord[] {
     return {
       id: entry.id,
       name: entry.name,
+      storedName: { firstName: person.first_name ?? "", lastName: person.last_name ?? "" },
       signInEmail: entry.email,
       photoUrl: person.picture,
       since: entry.joined,

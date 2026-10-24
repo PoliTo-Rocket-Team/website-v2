@@ -37,12 +37,11 @@ import { opensWholeTeam } from "./members-view";
 import { databaseAlumniWrites, databaseOwnAlumni, readAlumniDirectory, readOwnAlumnus } from "./database-alumni";
 import { decideRightOfStanding, formatEuro, waitingOrders, type Order } from "./orders";
 import {
-  checklistProgress,
   divisionRoster,
   noPhotoItem,
   oldestLine,
+  pageChecklistOf,
   type AttentionItem,
-  type ChecklistItem,
   type DepartmentOverview,
   type DivisionOverview,
   type DivisionSummary,
@@ -713,22 +712,6 @@ const monthYear = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numer
  */
 async function personalPanelsOf(identity: Identity, teamOrders: Promise<Order[]> | null): Promise<PersonalPanels> {
   const role = identity.role;
-  const items: ChecklistItem[] = [
-    { label: "Name and division", detail: "Set by your division lead", done: role?.divisionId != null, action: null },
-    { label: "Email", detail: identity.email, done: true, action: null },
-    {
-      label: "Photo",
-      detail: "A clear, square photo of your face",
-      done: identity.picture !== null,
-      action: identity.picture !== null ? null : { label: "Upload", href: "/dashboard/profile" },
-    },
-    {
-      label: "LinkedIn",
-      detail: "Optional, shown as an icon on your card",
-      done: identity.linkedin !== null,
-      action: identity.linkedin !== null ? null : { label: "Add", href: "/dashboard/profile" },
-    },
-  ];
 
   // The grants' figures need nothing of the rosters, so they are read beside them.
   // "Approve orders" is a grant only where the viewer holds it: the team leader decides by their seat, and that is no grant.
@@ -743,11 +726,8 @@ async function personalPanelsOf(identity: Identity, teamOrders: Promise<Order[]>
       // The photo the sidebar shows, `DashboardViewer.photoUrl` (issue #599).
       photoUrl: identity.picture,
     },
-    checklist: {
-      title: "Your page on the site",
-      detail: `This is how you appear on The Team page. ${checklistProgress(items)}`,
-      items,
-    },
+    // Done from every seat they hold, not only a division role (issue #641).
+    checklist: pageChecklistOf({ roles: identity.roles, email: identity.email, photoUrl: identity.picture, linkedin: identity.linkedin }),
     rosters,
     access: accessSectionOf(lines, overviewAreasOf(identity).length > 0),
   };

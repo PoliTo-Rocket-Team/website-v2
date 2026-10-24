@@ -73,7 +73,6 @@ export const team: TeamPage = {
   },
 
   departments: {
-    eyebrow: "DEPARTMENTS",
     title: "Departments",
     intro: "Every head, with the leads of their divisions.",
     groups: [
