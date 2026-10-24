@@ -9,8 +9,8 @@ import { specRows } from "./types";
 // for why the folder is kept.
 
 // Whether a value read back is a project record (./record.ts): a stored JSON
-// document from the database, or a test developer's changes from their
-// cookie. The types promise every shape rule (a non-empty list, one to six
+// document from the database, or, in tests, the dummy side's changes from
+// its cookie. The types promise every shape rule (a non-empty list, one to six
 // key facts, the phone variants), so a value that breaks one is refused here
 // rather than drawn half-broken.
 
@@ -188,7 +188,7 @@ export function isProjectRecord(value: unknown): value is ProjectRecord {
  * Keys a record saved before may still carry, which nothing reads now:
  * `teaser`, the line of the next-project card the pages no longer draw
  * (issue #377). Migration 0037 imported it and every save until then kept it,
- * so stored versions and a test developer's cookie still hold it.
+ * so stored versions and the dummy side's cookie still hold it.
  */
 export const RETIRED_KEYS: ReadonlySet<string> = new Set(["teaser"]);
 

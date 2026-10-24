@@ -57,10 +57,10 @@ made stale. Client components import the action functions directly.
 6. **Call the actions from the client.** The dashboard's client components import them from
    [app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts), which checks the
    arguments and writes through the dashboard data interface
-   ([lib/dashboard/data.ts](../lib/dashboard/data.ts)): where no database is configured, a test
-   developer's write changes only a cookie; where one is (a preview reads the seeded `preview`
-   branch), the test developer is read as the viewer's seeded person, and `runAuditQuery` or
-   `runAuditBatch` saves the write as that person on a preview and refuses it anywhere else (ADR 0016). An account's write goes through `runAuditQuery` in
+   ([lib/dashboard/data.ts](../lib/dashboard/data.ts)), which reads the database under `next dev`
+   and on a preview (issue #609; a preview reads the seeded `preview` branch). A test developer is
+   read as the viewer's seeded person, and `runAuditQuery` or `runAuditBatch` saves the write as
+   that person on a preview and refuses it anywhere else (ADR 0016). An account's write goes through `runAuditQuery` in
    [lib/dashboard/database.ts](../lib/dashboard/database.ts) after a scope check. The client shows
    the change at once (`useOptimistic`) and a toast when the write is refused (see
    [client-form-submit.md](./client-form-submit.md)).
@@ -87,16 +87,14 @@ writes (issue #256) pass the site-content gate in `contentEditor`
 page editor's Save draft and Publish (issue #321) send the layer's rows and every advisor write in
 one `runAuditBatch` through
 [lib/dashboard/database-team-page-store.ts](../lib/dashboard/database-team-page-store.ts), so the
-two land together or not at all. Where no database is configured, a test developer's write goes to
-the dummy side, which checks the same rules and stores nothing; where one is, `runAuditQuery`
-and `runAuditBatch` both ask `auditWriterOf` in [lib/test-developer.ts](../lib/test-developer.ts)
+two land together or not at all. A test developer's write goes to the database like any other
+(issue #609): `runAuditQuery` and `runAuditBatch` both ask `auditWriterOf` in [lib/test-developer.ts](../lib/test-developer.ts)
 (through [lib/db-audit.ts](../lib/db-audit.ts)), which logs the write under the viewer's seeded
 person on a preview and refuses it before it is sent in production and under `next dev`
 (`testDeveloperMayWrite`, ADR 0016). The
 Positions and Applications writes ([app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts))
 leave the scope check to the data interface: its database side checks the viewer reaches the
-position or application before it writes through `runAuditQuery` or `runAuditBatch`, and a test developer's dummy
-side keeps the change in a cookie and writes no row. An application move (issue #171) first asks
+position or application before it writes through `runAuditQuery` or `runAuditBatch`. An application move (issue #171) first asks
 `applyMove` in [lib/dashboard/application-flow.ts](../lib/dashboard/application-flow.ts) whether
 it is legal, and each update is guarded on the status it was read in. Confirm join is one
 data-modifying `WITH` statement through `runAuditQuery` (`db.execute` with a `sql` template), because the
@@ -112,8 +110,8 @@ recruitment switch does the same: its rule lives in
 and the cache refresh passed in, and [recruitment-switch.test.ts](../lib/apply/recruitment-switch.test.ts)
 tests each scope case. Its action reaches the write through the dashboard data interface
 (`setRecruitment` in [lib/dashboard/data.ts](../lib/dashboard/data.ts)): the database side upserts
-through `runAuditQuery`; a test developer's dummy side keeps the state in a cookie and writes no row
-([lib/dummy-data/recruitment.ts](../lib/dummy-data/recruitment.ts)). The other mutations have no
+through `runAuditQuery`; the dummy side ([lib/dummy-data/recruitment.ts](../lib/dummy-data/recruitment.ts)),
+which keeps the state in a cookie and writes no row, is read only by tests. The other mutations have no
 automated tests.
 
 ## Why it is not obvious

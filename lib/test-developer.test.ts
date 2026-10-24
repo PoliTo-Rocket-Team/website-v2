@@ -99,41 +99,18 @@ test("on a preview, sign-in sets the viewer cookie and returns to a site path on
   assert.equal(offSite.headers.get("location"), "https://preview.example.org/dashboard");
 });
 
-test("sign-in with applications=none starts the viewer with none; a plain sign-in brings the sample set back", () => {
-  const none = testDeveloperSignIn(
-    new URL("https://preview.example.org/api/test-developer/sign-in?viewer=non-member&applications=none&cb=/dashboard"),
+test("sign-in sets only the viewer cookie and clears the applications and grant cookies no page reads any more (issue #609)", () => {
+  assert.equal(testDeveloperSignInHref("member", "/dashboard"), "/api/test-developer/sign-in?viewer=member&cb=%2Fdashboard");
+  const response = testDeveloperSignIn(
+    new URL("https://preview.example.org/api/test-developer/sign-in?viewer=member&applications=none&grant=members-view&cb=/dashboard"),
     PREVIEW,
   );
-  assert.equal(none.headers.get("location"), "https://preview.example.org/dashboard");
-  const [viewer, applications] = none.headers.getSetCookie();
-  assert.match(viewer ?? "", new RegExp(`^${TEST_DEVELOPER_COOKIE}=non-member;`));
-  assert.match(applications ?? "", new RegExp(`^${TEST_DEVELOPER_APPLICATIONS_COOKIE}=none;.*Max-Age=${7 * 24 * 60 * 60}`));
-  assert.equal(
-    testDeveloperSignInHref("non-member", "/dashboard", "none"),
-    "/api/test-developer/sign-in?viewer=non-member&applications=none&cb=%2Fdashboard",
-  );
-
-  // View as links carry no `applications`, so switching viewer clears it.
-  const plain = testDeveloperSignIn(new URL(`https://preview.example.org${testDeveloperSignInHref("non-member")}`), PREVIEW);
-  assert.match(plain.headers.getSetCookie()[1] ?? "", new RegExp(`^${TEST_DEVELOPER_APPLICATIONS_COOKIE}=;.*Max-Age=0`));
-});
-
-test("sign-in with a grant gives it to the member only; View as drops it (issue #351)", () => {
-  const grantCookie = (query: string) =>
-    testDeveloperSignIn(new URL(`https://preview.example.org/api/test-developer/sign-in?${query}`), PREVIEW)
-      .headers.getSetCookie()
-      .find((c) => c.startsWith(`${TEST_DEVELOPER_GRANT_COOKIE}=`)) ?? "";
-  assert.match(grantCookie("viewer=member&grant=members-view"), new RegExp(`^${TEST_DEVELOPER_GRANT_COOKIE}=members-view;`));
-  assert.match(grantCookie("viewer=division-lead&grant=members-view"), /=;.*Max-Age=0/);
-  assert.match(grantCookie("viewer=member&grant=everything"), /=;.*Max-Age=0/);
-  assert.match(grantCookie(new URL(`https://x.org${testDeveloperSignInHref("member")}`).search.slice(1)), /=;.*Max-Age=0/);
-});
-
-test("sign-in with applications=withdrawn starts the viewer with only withdrawn applications (issue #227)", () => {
-  const href = testDeveloperSignInHref("non-member", "/dashboard", "withdrawn");
-  assert.equal(href, "/api/test-developer/sign-in?viewer=non-member&applications=withdrawn&cb=%2Fdashboard");
-  const response = testDeveloperSignIn(new URL(`https://preview.example.org${href}`), PREVIEW);
-  assert.match(response.headers.getSetCookie()[1] ?? "", new RegExp(`^${TEST_DEVELOPER_APPLICATIONS_COOKIE}=withdrawn;`));
+  assert.equal(response.headers.get("location"), "https://preview.example.org/dashboard");
+  const [viewer, applications, grant, ...rest] = response.headers.getSetCookie();
+  assert.match(viewer ?? "", new RegExp(`^${TEST_DEVELOPER_COOKIE}=member;`));
+  assert.match(applications ?? "", new RegExp(`^${TEST_DEVELOPER_APPLICATIONS_COOKIE}=;.*Max-Age=0`));
+  assert.match(grant ?? "", new RegExp(`^${TEST_DEVELOPER_GRANT_COOKIE}=;.*Max-Age=0`));
+  assert.deepEqual(rest, []);
 });
 
 test("a value that is not one of the four viewers signs nobody in", () => {
@@ -162,23 +139,21 @@ const DB = `postgresql://app@${PREVIEW_ENDPOINT}-pooler.c-2.eu-central-1.aws.neo
 const DB_DIRECT = `postgresql://app@${PREVIEW_ENDPOINT}.c-2.eu-central-1.aws.neon.tech/neondb`;
 const OTHER_DB = "postgresql://app@ep-cool-darkness-123456-pooler.eu-central-1.aws.neon.tech/neondb";
 
-test("on a preview with its seeded database, each viewer is read as its seeded person", () => {
+test("on a preview, each viewer is read as its seeded person", () => {
   for (const viewer of TEST_VIEWERS) {
-    assert.deepEqual(
-      testDeveloperStandIn(viewer, { ...PREVIEW, DATABASE_URL: DB }),
-      { viewer, userId: TEST_VIEWER_PEOPLE[viewer] },
-      viewer,
-    );
+    assert.deepEqual(testDeveloperStandIn(viewer, PREVIEW), { viewer, userId: TEST_VIEWER_PEOPLE[viewer] }, viewer);
   }
-  assert.equal(testDeveloperStandIn("not-a-viewer", { ...PREVIEW, DATABASE_URL: DB }), null);
-  assert.equal(testDeveloperStandIn(undefined, { ...PREVIEW, DATABASE_URL: DB }), null);
+  assert.equal(testDeveloperStandIn("not-a-viewer", PREVIEW), null);
+  assert.equal(testDeveloperStandIn(undefined, PREVIEW), null);
 });
 
-test("a test developer is read as no one where pages read the dummy arrays or the gate is off", () => {
-  assert.equal(testDeveloperStandIn("member", PREVIEW), null, "preview with no database: the dummy dashboard serves it");
-  assert.equal(testDeveloperStandIn("member", LOCAL_DEV), null, "next dev with no database");
-  assert.equal(testDeveloperStandIn("member", { ...PRODUCTION, DATABASE_URL: DB }), null, "production");
-  assert.equal(testDeveloperStandIn("member", { NODE_ENV: "production", DATABASE_URL: DB }), null, "local production build");
+test("under next dev a viewer is read as its seeded person too: no page reads the dummy arrays (issue #609)", () => {
+  assert.deepEqual(testDeveloperStandIn("member", LOCAL_DEV), { viewer: "member", userId: TEST_VIEWER_PEOPLE.member });
+});
+
+test("a test developer is read as no one where the gate is off", () => {
+  assert.equal(testDeveloperStandIn("member", PRODUCTION), null, "production");
+  assert.equal(testDeveloperStandIn("member", { NODE_ENV: "production" }), null, "local production build");
 });
 
 test("an audited write by an account is logged under it, in every environment", () => {

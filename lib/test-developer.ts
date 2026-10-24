@@ -1,8 +1,5 @@
 import { callbackPath } from "@/lib/auth-callback";
 import { isTestViewer, type TestViewer, type ViewerSession } from "@/lib/dashboard/viewer";
-import { dummyDataOn, processDummyModeEnv, type DummyModeEnv } from "@/lib/dummy-data/mode";
-import { ownApplicationsStartOf, type OwnApplicationsStart } from "@/lib/dummy-data/own";
-import { testGrantOf } from "@/lib/dummy-data/test-grant";
 import { isPreviewDatabase } from "@/lib/seed/target";
 import { TEST_VIEWER_PEOPLE } from "@/lib/test-viewer-people";
 
@@ -10,10 +7,9 @@ import { TEST_VIEWER_PEOPLE } from "@/lib/test-viewer-people";
 // person or an agent can sign in as a test developer: no Google, no account
 // and no database session, only a cookie naming which viewer they look as
 // (team leader, operations lead, department head, division lead, member,
-// alumni, non-member). Where the pages read the dummy arrays
-// (lib/dummy-data/mode.ts), the dashboard reads them too. Where they read a
-// database, as on a preview with its seeded database (issue #307), the
-// test developer is read as that viewer's seeded person. On a preview that
+// alumni, non-member). Every page reads a database (issue #609), and the
+// test developer is read as that viewer's seeded person there (issue #307).
+// On a preview that
 // person may write to the shared preview database, where the rows last across
 // preview builds (a build seeds it only while it is empty); under `next dev`
 // they may not (ADR 0016).
@@ -74,14 +70,16 @@ export const TEST_DEVELOPER_OUTREACH_COOKIE = "prt_test_developer_outreach";
 export const TEST_DEVELOPER_PROJECTS_COOKIE = "prt_test_developer_projects";
 
 /**
- * Which own applications the test developer starts with (lib/dummy-data/own.ts):
- * "none" or "withdrawn" after a sign-in with that `applications` value, absent otherwise.
+ * Which own applications the dummy arrays started a test developer with
+ * (issue #179). No page reads it any more (issue #609); sign-in and sign-out
+ * clear one an earlier sign-in left.
  */
 export const TEST_DEVELOPER_APPLICATIONS_COOKIE = "prt_test_developer_applications";
 
 /**
- * The Members grant the member viewer holds (lib/dummy-data/test-grant.ts,
- * issue #351): set by a sign-in with that `grant` value, absent otherwise.
+ * The Members grant the dummy arrays gave the member viewer (issue #351). No
+ * page reads it any more (issue #609); sign-in and sign-out clear one an
+ * earlier sign-in left.
  */
 export const TEST_DEVELOPER_GRANT_COOKIE = "prt_test_developer_grant";
 
@@ -94,26 +92,17 @@ export function testDeveloperViewer(
   return isTestViewer(cookieValue) ? cookieValue : null;
 }
 
-/** What the stand-in gate reads: the test developer gate's variables and the database the pages read. */
-export type StandInEnv = GateEnv & DummyModeEnv;
-
-function processStandInEnv(): StandInEnv {
-  return processDummyModeEnv();
-}
-
 /**
- * Who a test developer is read as where the pages read a database (issue
- * #307, ADR 0016): the seeded person of the viewer the cookie names
- * (lib/test-viewer-people.ts). Null where the gate is off, where the pages
- * read the dummy arrays (the dummy dashboard serves the viewer there), or
- * when the cookie names no viewer. Whether a stand-in may also write is
+ * Who a test developer is read as (issue #307, ADR 0016): the seeded person
+ * of the viewer the cookie names (lib/test-viewer-people.ts), read from the
+ * database every page reads (issue #609). Null where the gate is off or when
+ * the cookie names no viewer. Whether a stand-in may also write is
  * `testDeveloperMayWrite` (lib/db-audit.ts asks it through `auditWriterOf`).
  */
 export function testDeveloperStandIn(
   cookieValue: string | null | undefined,
-  env: StandInEnv = processStandInEnv(),
+  env: GateEnv = processGateEnv(),
 ): { readonly viewer: TestViewer; readonly userId: string } | null {
-  if (dummyDataOn(env)) return null;
   const viewer = testDeveloperViewer(cookieValue, env);
   return viewer === null ? null : { viewer, userId: TEST_VIEWER_PEOPLE[viewer] };
 }
@@ -163,19 +152,9 @@ export function auditWriterOf(
   return user.id;
 }
 
-/**
- * The sign-in link for one viewer, back to `cb` (a site path) after. With
- * `applications` "none" the viewer starts with no own applications (issue
- * #179), with "withdrawn" only with withdrawn ones (issue #227); View as never
- * passes it, so switching viewer brings the sample set back.
- */
-export function testDeveloperSignInHref(
-  viewer: TestViewer,
-  cb?: string | null,
-  applications: OwnApplicationsStart = "sample",
-): string {
+/** The sign-in link for one viewer, back to `cb` (a site path) after. */
+export function testDeveloperSignInHref(viewer: TestViewer, cb?: string | null): string {
   const query = new URLSearchParams({ viewer });
-  if (applications !== "sample") query.set("applications", applications);
   if (cb) query.set("cb", callbackPath(cb));
   return `/api/test-developer/sign-in?${query}`;
 }
@@ -198,30 +177,22 @@ function redirect(to: string, url: URL, ...cookies: string[]): Response {
 }
 
 /**
- * GET /api/test-developer/sign-in?viewer=<kind>[&applications=none|withdrawn][&grant=<grant>][&cb=<path>]:
- * sets the cookie and goes to `cb`, else the dashboard. `applications=none`
- * starts the viewer with no own applications, `applications=withdrawn` with
- * only withdrawn ones; without it the sample set is back. `grant` gives the
- * member one of TEST_GRANTS (issue #351); without it, or for any other
- * viewer, they hold none. 404 when the gate is off, 400 for a viewer that is
- * not one of TEST_VIEWERS.
+ * GET /api/test-developer/sign-in?viewer=<kind>[&cb=<path>]: sets the cookie
+ * and goes to `cb`, else the dashboard. It clears the `applications` and
+ * `grant` cookies an earlier sign-in may have left: only the dummy arrays read
+ * them, and no page reads those any more (issue #609). 404 when the gate is
+ * off, 400 for a viewer that is not one of TEST_VIEWERS.
  */
 export function testDeveloperSignIn(url: URL, env: GateEnv = processGateEnv()): Response {
   if (!testDeveloperOn(env)) return notFound();
   const viewer = url.searchParams.get("viewer");
   if (!isTestViewer(viewer)) return new Response("Unknown viewer", { status: 400 });
-  const start = ownApplicationsStartOf(url.searchParams.get("applications"));
-  const grant = viewer === "member" ? testGrantOf(url.searchParams.get("grant")) : null;
   return redirect(
     callbackPath(url.searchParams.get("cb")),
     url,
     cookieHeader(viewer, TEST_DEVELOPER_COOKIE_MAX_AGE_S, url),
-    start !== "sample"
-      ? cookieHeader(start, TEST_DEVELOPER_COOKIE_MAX_AGE_S, url, TEST_DEVELOPER_APPLICATIONS_COOKIE)
-      : cookieHeader("", 0, url, TEST_DEVELOPER_APPLICATIONS_COOKIE),
-    grant !== null
-      ? cookieHeader(grant, TEST_DEVELOPER_COOKIE_MAX_AGE_S, url, TEST_DEVELOPER_GRANT_COOKIE)
-      : cookieHeader("", 0, url, TEST_DEVELOPER_GRANT_COOKIE),
+    cookieHeader("", 0, url, TEST_DEVELOPER_APPLICATIONS_COOKIE),
+    cookieHeader("", 0, url, TEST_DEVELOPER_GRANT_COOKIE),
   );
 }
 

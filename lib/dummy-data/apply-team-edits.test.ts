@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { pickApplyData, type ApplySides } from "@/lib/apply/pick";
 import { isPublic } from "@/lib/apply/positions";
 import { dummyApplyData, SentApplications } from "./apply";
-import { NO_EDITS, serializeEdits, type TeamEdits } from "./edits";
-import type { DummyModeEnv } from "./mode";
+import { NO_EDITS, parseEdits, serializeEdits, type TeamEdits } from "./edits";
 import { DEFAULT_DUMMY_RECRUITMENT } from "./recruitment";
 import { EMPTY_DUMMY_STATE } from "./state";
 import { divisions, positions } from "./team";
@@ -14,7 +12,6 @@ import { divisions, positions } from "./team";
 // /apply/<slug>, as the dashboard already closes them. The edits below are
 // the ones Close division and Close department write (./team-pages.ts).
 
-const PREVIEW: DummyModeEnv = { NODE_ENV: "production", VERCEL_ENV: "preview" };
 const CLOSED_ON = "2026-10-21";
 
 /** The edits Close division writes for `divisionId`. */
@@ -86,15 +83,9 @@ test("the /apply/<slug> page reads a position in a closed division as closed, so
   assert.equal(open?.position.status, true, "without the edits it is open");
 });
 
-test("a request carrying the Team page edits cookie reads the same closes (lib/apply/pick.ts)", async () => {
-  const sides: ApplySides = {
-    database: () => {
-      throw new Error("a preview with no database reads the dummy side");
-    },
-    dummy: (viewer, openSelector, recruitment, own, ownStart, dashboard, team) =>
-      dummyApplyData(viewer, openSelector, recruitment, new SentApplications(), own, ownStart, dashboard, team),
-  };
-  const data = pickApplyData({ env: PREVIEW, viewerCookie: null, openSelector: null, editsCookie: serializeEdits(closingDivision(1)) }, sides);
+test("the Team page edits cookie, read back, carries the same closes", async () => {
+  const team = parseEdits(serializeEdits(closingDivision(1)));
+  const data = dummyApplyData(null, null, DEFAULT_DUMMY_RECRUITMENT, new SentApplications(), undefined, undefined, undefined, team);
   const listed = (await data.publicPositions()).map((p) => p.id);
   for (const id of openIn([1])) assert.ok(!listed.includes(id), `position ${id} is not listed`);
 });

@@ -142,6 +142,17 @@ Checks sign in without Google as a seeded seat or a seeded admin tester and get 
 
 This amendment overrides Decision 8's "Signing in as them stays local only", which stays as written, and the line of ADR 0009's mapping above that restates it.
 
+## Amendment, 2026-10-24: every page reads a database under `next dev` and on previews
+
+The Owner decision of 2026-10-24 on epic [#597](https://github.com/PoliTo-Rocket-Team/website-v2/issues/597) replaces the fake-data path with real sessions on a real database, so a check never reads a second copy of the dashboard's rules. Issue [#609](https://github.com/PoliTo-Rocket-Team/website-v2/issues/609) is the step that stops pages from reading the arrays:
+
+- **No dummy fallback.** No page, route or loader reads `lib/dummy-data/`. Under `next dev` the pages read the Neon `development` branch; on a preview they read the shared `preview` branch.
+- **A run with no database stops.** Under `next dev` or on a preview with no `DATABASE_URL`, the first database read stops with a message naming the database the run needs ([lib/database-required.ts](../lib/database-required.ts), asked by `isDatabaseConfigured` and `getDb` in [db/client.ts](../db/client.ts)).
+- **Production unchanged.** Production, and a local production build, may still run with no database, and the pages that render without one still do.
+- **The arrays stay for tests** until a later child of #597 removes `lib/dummy-data/`.
+
+This amendment retires Decision 5 ("Dummy arrays only without a database"), the Consequences line "A preview with no `DATABASE_URL` stays on the dummy arrays", and the Gaps pointer to `dummyDataOn` in `lib/dummy-data/mode.ts`, which is gone; those lines stay as written.
+
 ## Records
 
 Pattern: [.patterns/schema-migrations.md](../.patterns/schema-migrations.md) (how `pnpm db:seed` runs).

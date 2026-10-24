@@ -9,8 +9,8 @@ import type { Recruitment } from "./positions";
 // department or division do not reach the whole site. The permission, the
 // store and the cache are passed in, so the rule is tested without them
 // (recruitment-switch.test.ts). The dashboard data interface supplies them:
-// the database side from the caller's standing and scope rows, the dummy side
-// from the test developer's standing.
+// the database side from the caller's standing and scope rows, and, in tests,
+// the dummy side from the test developer's standing.
 
 /**
  * Whether a member with this standing and positions scope may flip the

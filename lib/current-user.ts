@@ -10,8 +10,8 @@ import { TEST_DEVELOPER_COOKIE, testDeveloperStandIn } from "@/lib/test-develope
 export type { CurrentUser } from "@/lib/session-user";
 
 /**
- * The signed-in person, or null. A test developer where the pages read a
- * database is their viewer's seeded person (lib/test-developer.ts). Else the
+ * The signed-in person, or null. A test developer is their viewer's seeded
+ * person (lib/test-developer.ts). Else the
  * signed cookie cache answers first; it lives 10 minutes (lib/auth.ts) while
  * the session token lives 7 days, so once it lapses a request that still
  * holds a token asks Better Auth for the session. A View as session answers

@@ -12,7 +12,7 @@ import type { OutreachPost, OutreachRecord, PostItem } from "./outreach-types";
 // pinned after every record post (issue #392): migration
 // drizzle/0044_outreach_pinned_post.sql ends with exactly the SQL
 // `pinnedStoryImportSql` writes, and migration 0048 turns that pin into the
-// first featured slot (issue #496). The dummy data (previews) and the seed
+// first featured slot (issue #496). The dummy data (tests) and the seed
 // start from the same items.
 
 /** The record's posts as stored: ids and site order from 1, each published with no draft. */

@@ -1,7 +1,7 @@
 // What a dashboard write answers (issues #145, #146). Every write goes through
-// the dashboard data interface (./data.ts): a test developer's write changes
-// nothing on the server and answers what the page shows next, which the page
-// keeps in its own state; a real account's write lands in the database.
+// the dashboard data interface (./data.ts) and lands in the database (a test
+// developer's write only on a preview, ADR 0016). In tests the dummy side
+// changes nothing on the server and answers what the page shows next.
 
 export type WriteResult<T> =
   | { readonly ok: true; readonly value: T }
