@@ -665,8 +665,20 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
 - A person holds each area at one level or not at all. In both drawers each area has a tick; a
   ticked area takes its own level, and an unticked area means no access.
 - Delegation limit: a lead gives only an area they hold, and only up to their own level in it.
-  They cannot change or remove access held above their level, or another lead's access. The
+  They cannot change or remove access held above their level, or another lead's role access. The
   server checks every change, not only the drawer.
+- A division lead's role gives Positions, Applications and Members at Can edit in each division
+  they lead (#591). "Your access" counts them with no grant, so a lead with no grants still has
+  Give access. Grants the lead also holds there are added on top. Whether the role also gives
+  Orders is #590's question; until then Orders is a grant.
+- **Role access is locked; every other grant is a normal grant** (#591). The access a lead's or
+  head's role gives (their "With the role" row) is never given, changed or removed on Access, and
+  the server refuses any change that would touch it. Any other grant (Content, Alumni, Orders, or
+  an area in a place their role does not cover) can be given to a lead or head, is listed in a row
+  of its own beside their role row, and can be changed or removed, within the usual delegation
+  limit. Give access lists the leads and heads in reach, never the viewer, and only when the viewer
+  can give them something their role does not already give. Full-access seats hold every area, so
+  nothing is given to them.
 - The table has one row per person, with a chip per area and its level, and "Given by".
   Clicking a row opens Edit access: the person and the division are locked, and Save writes
   the adds, level changes and removals in one go. While a side panel is open on a screen 1280px
@@ -677,8 +689,9 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
 - On a phone the table is a card per person with the same chips, and a tap opens the same
   drawer.
 - The other leads of the division are listed first, with "Whole division · Can edit", "With the
-  role" and a lock. Their access comes with the role and cannot be changed or removed here. A
-  lead's own page shows their co-leads, never the lead themselves (Owner decision, #230).
+  role" and a lock. Their role access cannot be changed or removed here; their other grants show
+  in a row of their own (#591). A lead's own page shows their co-leads, never the lead themselves
+  (Owner decision, #230).
 
 #### Department head
 
@@ -693,8 +706,10 @@ These rules come from #230 (boards 65, 65b, 65c and 65m).
   A grant for the whole department is a `scopes` row with only `dept_id` set, and its chip carries
   a "Whole department" tag. A person holds each area at one level per place.
 - The delegation limit is the lead's: a head gives only what they hold, at no higher level, and
-  only inside their department. A lead's role access cannot be removed. The server checks every
-  change.
+  only inside their department. A lead's role access cannot be changed or removed, but a head
+  gives the division leads of their department other grants, such as Orders in their division or
+  an area across the whole department, and changes or removes them (#591). The server checks
+  every change.
 - Edit access (board 65c) locks the person ("can't be changed") and keeps "Where" editable. It
   opens on the first place the person holds access in; changing "Where" shows their areas in
   that place. The foot has "Remove all access" and "Save". "Remove all access" removes every
@@ -725,8 +740,11 @@ These rules come from #238 and #247 (boards 71 and 71b).
 - **Approve orders** is a checkbox in Give access that only the team leader sees; the server refuses
   it from anyone else. The other full-access seats give every other access. The Activity
   log is never given: it stays the IT lead's.
-- The delegation limit still holds: no area above the viewer's own level, and no lead's role
-  access changes here.
+- The delegation limit still holds: no area above the viewer's own level, and no lead's or head's
+  role access changes here. Every other grant can be given to, listed for and removed from leads
+  and heads (#591): a head's role covers the unit areas in their department and its divisions, so
+  Content, Alumni or an area elsewhere on the team is a grant. Full-access seats stay locked:
+  nothing is given to them.
 
 ## 4. Orders
 
