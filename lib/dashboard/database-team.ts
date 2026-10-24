@@ -868,7 +868,10 @@ const NOT_IN_SCOPE = "You can edit only people your Members page lets you change
  * reaches: only the team (the team leader, full access) edits them, and the
  * title is their seat's (`titledSeatOf`: the team leader's, a head's or a
  * team-level seat's row), never blank (issue #626). It writes `roles.title`
- * alone, so the seat, the headship and every access stay as they were.
+ * alone, so the seat, the headship and every access stay as they were. The
+ * first and last name, when sent, rename the person on their `users` row
+ * (issue #668), by the same reach and never the viewer themselves; `done`
+ * refreshes the cached team, so the Team page shows the new name.
  * Fill details, for someone waiting, names the division they wait for. Each
  * detail is written where it lives (`columnsFromMemberDetails`).
  */
@@ -880,10 +883,12 @@ async function saveMemberDetails(
 ): Promise<WriteResult<null>> {
   const checked = checkMemberEdit(input);
   if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
-  const { title, details } = checked.value;
+  const { title, details, name } = checked.value;
   const columns = columnsFromMemberDetails(details);
 
   if (target.kind === "waiting") {
+    // Someone waiting keeps the name they were added with; only Edit details renames, once they are on the team.
+    if (name !== null) return refused("Their name is set once they join.");
     if (divisionId === null || (await actingOn(identity, divisionId)) === null) return refused(NOT_IN_SCOPE);
     const [join] = await getDb()
       .select({ user_id: teamJoins.userId })
@@ -914,7 +919,10 @@ async function saveMemberDetails(
     if (titled.length === 0 || !reachesDivision(actor, divisionId, org)) return refused(NOT_IN_SCOPE);
   }
   await runAuditBatch((db) => [
-    db.update(users).set({ ...columns.user, updatedAt: sql`now()` }).where(eq(users.member, target.id)),
+    db
+      .update(users)
+      .set({ ...columns.user, ...(name === null ? {} : { firstName: name.firstName, lastName: name.lastName }), updatedAt: sql`now()` })
+      .where(eq(users.member, target.id)),
     db.update(members).set(columns.member).where(eq(members.memberId, target.id)),
     ...(titled.length === 0
       ? []

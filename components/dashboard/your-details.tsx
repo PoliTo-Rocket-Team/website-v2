@@ -56,10 +56,13 @@ export function YourDetailsCard({
   details,
   editor,
   saveDetails,
+  onSaved,
 }: {
   details: YourDetails;
   editor: DetailsEditor;
   saveDetails: (input: unknown) => Promise<WriteResult<YourDetails>>;
+  /** Runs once a save landed, with the details as saved: My profile reads the page again when a lead renamed themselves. */
+  onSaved?: (details: YourDetails) => void;
 }) {
   const keys = editableDetailKeys(editor);
   const [saved, setSaved] = useState(details);
@@ -81,6 +84,7 @@ export function YourDetailsCard({
         onSaved={(next) => {
           setSaved(next);
           setEditing(false);
+          onSaved?.(next);
         }}
       />
     </Card>

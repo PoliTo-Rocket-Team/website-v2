@@ -6,7 +6,9 @@ import {
   STUDY_PROGRAMMES,
   type FormDefaults,
 } from "@/lib/apply/application-form";
+import { nameRule, namesThemselves } from "./person-name";
 import { normalizeLinkedin } from "./self";
+import { isOffTeam, type ViewerKind } from "./viewer";
 
 // "Your details" (boards 51 and 55, issue #169): what a person keeps about
 // themselves for their applications. My account shows all of them; My profile
@@ -63,22 +65,33 @@ export const DETAIL_FIELDS: readonly { readonly key: DetailKey; readonly label: 
 /** The fields My profile's "Your details" shows (board 55): its Details card has the name and LinkedIn. */
 const MEMBER_DETAIL_KEYS: readonly DetailKey[] = ["politoId", "programme", "level", "phone", "country", "birthDate"];
 
+/** A lead's on My profile: their own name first, then a member's fields (issue #668). */
+const LEAD_DETAIL_KEYS: readonly DetailKey[] = ["firstName", "lastName", ...MEMBER_DETAIL_KEYS];
+
 /** Every field, for My account (board 51). */
 const ACCOUNT_DETAIL_KEYS: readonly DetailKey[] = DETAIL_FIELDS.map((f) => f.key);
 
 /**
- * Who saves "Your details": an applicant on My account, or a team member on
- * My profile. It decides which fields the save may write.
+ * Who saves "Your details": an applicant on My account, or someone on the
+ * team on My profile, who is a `lead` when they rename themselves
+ * (`namesThemselves`, issue #668) and a `member` when their lead sets their
+ * name. It decides which fields the save may write.
  */
-export type DetailsEditor = "applicant" | "member";
+export type DetailsEditor = "applicant" | "member" | "lead";
+
+/** The editor of a viewer's own "Your details", from their kind alone: the server decides it, never the form. */
+export function detailsEditorOf(kind: ViewerKind): DetailsEditor {
+  if (isOffTeam(kind)) return "applicant";
+  return namesThemselves(kind) ? "lead" : "member";
+}
 
 /**
  * The fields each editor's "Your details" writes. A member's name is set by
- * their lead and their LinkedIn by the Details card, so their save never
- * touches either.
+ * their lead, and anyone's LinkedIn on the team by the Details card, so a
+ * member's save never touches either, and a lead's only their name.
  */
 export function editableDetailKeys(editor: DetailsEditor): readonly DetailKey[] {
-  return editor === "member" ? MEMBER_DETAIL_KEYS : ACCOUNT_DETAIL_KEYS;
+  return editor === "member" ? MEMBER_DETAIL_KEYS : editor === "lead" ? LEAD_DETAIL_KEYS : ACCOUNT_DETAIL_KEYS;
 }
 
 /** A save of "Your details": only the fields the editor may write, each checked. */
@@ -134,6 +147,9 @@ const detailsSchema = z.object({
   linkedin: z.string(),
 });
 
+/** A lead's own name on My profile (issue #668). */
+const OWN_NAME = { firstName: nameRule("Enter your first name."), lastName: nameRule("Enter your last name.") };
+
 export type DetailErrors = Partial<Record<DetailKey, string>>;
 
 /** One message per bad field: the first the check found. */
@@ -168,7 +184,9 @@ export function parseDetailsChange(
   const picked: Record<string, unknown> = {};
   const sent = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
   for (const key of keys) picked[key] = sent[key];
-  const result = detailsSchema.pick(Object.fromEntries(keys.map((k) => [k, true] as const))).safeParse(picked);
+  const schema = detailsSchema.pick(Object.fromEntries(keys.map((k) => [k, true] as const)));
+  // An applicant's name may wait for the apply form; a lead's is on the Team page, so it is never blank.
+  const result = (editor === "lead" ? schema.extend(OWN_NAME) : schema).safeParse(picked);
   if (!result.success) return { ok: false, errors: errorsOf(result.error) };
   const change: DetailsChange = result.data;
   if (change.linkedin === undefined) return { ok: true, value: change };
