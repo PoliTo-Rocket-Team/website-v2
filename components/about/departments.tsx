@@ -292,7 +292,7 @@ export function Departments({ departments, frames = {} }: { departments: Departm
   return (
     <section className="px-5 pt-section md:px-16">
       <div className="mx-auto max-w-[1312px]">
-        <SectionHead eyebrow={departments.eyebrow} title={departments.title} intro={departments.intro} align="centre" />
+        <SectionHead title={departments.title} intro={departments.intro} align="centre" />
         <div className="mt-10 lg:mt-14">
           <Carousel groups={departments.groups} label={departments.title} frames={frames} />
         </div>
