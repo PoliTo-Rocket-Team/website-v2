@@ -14,10 +14,10 @@ import { signInAs } from "./access-matrix/session";
 // (the profile header with Edit profile, "Your page on the site" and their
 // division's roster), and anyone holding a grant gets "Your access" listing
 // it. Only the figures, rows and panels their scope reads differ. It runs on
-// the access matrix's in-memory database (./access-matrix/install.ts).
+// the access matrix's migrated in-memory Postgres (./access-matrix/test-database.ts).
 
 async function overviewOf(name: string): Promise<TeamSideOverview> {
-  seedFixture();
+  await seedFixture();
   signInAs(accountOf(name).userId);
   const opening = await openDashboard();
   assert.equal(opening.kind, "open", `${name}: the dashboard opens`);

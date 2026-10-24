@@ -112,7 +112,8 @@ tests each scope case. Its action reaches the write through the dashboard data i
 (`setRecruitment` in [lib/dashboard/data.ts](../lib/dashboard/data.ts)): the database side upserts
 through `runAuditQuery`, and the server-side access tests
 ([lib/dashboard/access-matrix-server.test.ts](../lib/dashboard/access-matrix-server.test.ts)) call it
-against an in-memory database. The other mutations have no automated tests.
+against a migrated in-memory Postgres (PGlite), where the audit trigger runs. The other mutations
+have no automated tests.
 
 ## Why it is not obvious
 
