@@ -3,6 +3,8 @@ import { test } from "node:test";
 import { maySiteContent } from "@/lib/content/gate";
 import { canReach } from "./access";
 import {
+  ACCESS_TARGET_LABELS,
+  ACCESS_TARGETS,
   accessByPerson,
   canGiveApproveOrders,
   checkRemoveAllAccess,
@@ -175,9 +177,8 @@ test("a head gives access in the whole department or in one of its divisions", (
   assert.ok(home.ok && home.value.place.kind === "department");
 });
 
-test("a head gives every unit area their role holds, never Alumni, and only inside their department", () => {
+test("a head gives every unit area their role holds, and only inside their department", () => {
   assert.equal(checkSaveAccess(head(), { personId: 3, where: "department-1", areas: { members: "edit", orders: "view" } }).ok, true);
-  assert.equal(checkSaveAccess(head(), { personId: 3, where: "department-1", areas: { alumni: "view" } }).ok, false);
   // A division of another department, and a person from another department, are refused.
   assert.equal(checkSaveAccess(head(), { personId: 3, where: 4, areas: { members: "view" } }).ok, false);
   assert.equal(checkSaveAccess(head(), { personId: 44, where: "department-1", areas: { members: "view" } }).ok, false);
@@ -330,34 +331,32 @@ test("Give access offers the whole team, one department or one division, every a
       }
     }
   }
-  const wholeTeam = checkSaveAccess(team(), { personId: 31, where: "team", areas: { positions: "view", alumni: "edit", orders: "edit" } });
-  assert.deepEqual(wholeTeam.ok && wholeTeam.value.changes.map((c) => c.target), ["positions", "alumni", "orders"]);
+  const wholeTeam = checkSaveAccess(team(), { personId: 31, where: "team", areas: { positions: "view", members: "edit", orders: "edit" } });
+  assert.deepEqual(wholeTeam.ok && wholeTeam.value.changes.map((c) => c.target), ["positions", "members", "orders"]);
 });
 
-test("the operations lead and the IT lead give every area but Approve orders, Alumni only across the whole team", () => {
-  for (const level of ["view", "edit"] as const) {
-    assert.equal(checkSaveAccess(team([], fullAccessOnly), { personId: 31, where: "team", areas: { alumni: level } }).ok, true, level);
+test("the Access page offers no Alumni area: the Alumni page is site content under Content (issue #589)", () => {
+  assert.deepEqual([...ACCESS_TARGETS], ["positions", "applications", "members", "content", "orders"]);
+  assert.equal(Object.values(ACCESS_TARGET_LABELS).includes("Alumni"), false);
+  // The drawer's schema refuses an Alumni key from anyone, full access included, in any place.
+  for (const facts of [team(), team([], fullAccessOnly), team([], teamLeaderGives), head()]) {
+    for (const where of ["team", "department-1", 3] as const) {
+      for (const level of ["view", "edit"] as const) {
+        assert.equal(checkSaveAccess(facts, { personId: 31, where, areas: { alumni: level } }).ok, false, `${where} ${level}`);
+      }
+    }
   }
-  // Alumni has no unit: it is never given in one department or division.
-  assert.equal(checkSaveAccess(team(), { personId: 31, where: "department-2", areas: { alumni: "view" } }).ok, false);
-  assert.equal(checkSaveAccess(team(), { personId: 31, where: 3, areas: { alumni: "edit" } }).ok, false);
-  // A head holds no Alumni, so never gives it.
-  assert.equal(checkSaveAccess(head(), { personId: 3, where: "department-1", areas: { alumni: "view" } }).ok, false);
+  // Full access's own summary lists every area but Alumni.
+  const [line] = heldLines(team().unit);
+  assert.deepEqual(
+    line.held.map((h) => h.target),
+    ["positions", "applications", "members", "content", "orders"],
+  );
 });
 
 test("the Activity log is never offered: it is no area of Give access", () => {
   assert.equal(checkSaveAccess(team([], teamLeaderGives), { personId: 31, where: "team", areas: { logs: "view" } }).ok, false);
   assert.equal(checkSaveAccess(team([], teamLeaderGives), { personId: 31, where: "team", areas: { "activity-log": "edit" } }).ok, false);
-});
-
-test("an Alumni grant gives the person Alumni page reach, and no content editor (issue #504)", () => {
-  const row = grantRowOf(WHOLE_TEAM_PLACE, "alumni");
-  assert.deepEqual(row, { scope: "website", target: "all", deptId: null, divisionId: null });
-  const member = { type: null, divisionId: 1, fullAccess: null } as const;
-  assert.equal(canReach(viewerStandingOf({ scopes: [], activeRoles: [member] }), "alumni"), false);
-  const holder = viewerStandingOf({ scopes: [{ scope: row.scope, target: "all", level: "view" }], activeRoles: [member] });
-  assert.equal(canReach(holder, "alumni"), true);
-  assert.equal(maySiteContent(holder), false);
 });
 
 // Content (Owner decision, 2026-10-21, issue #504) ------------------------------
@@ -369,9 +368,9 @@ test("full access gives Content across the whole team at Can edit only, never in
   for (const where of ["department-1", "department-2", 3] as const) {
     assert.deepEqual(checkSaveAccess(team(), { personId: 31, where, areas: { content: "edit" } }), { ok: false, error: "Content access is given to the whole team only." }, String(where));
   }
-  // It follows Alumni in the drawer's order.
-  const both = checkSaveAccess(team(), { personId: 31, where: "team", areas: { orders: "view", content: "edit", alumni: "view" } });
-  assert.deepEqual(both.ok && both.value.changes.map((c) => c.target), ["alumni", "content", "orders"]);
+  // It follows Members in the drawer's order.
+  const both = checkSaveAccess(team(), { personId: 31, where: "team", areas: { orders: "view", content: "edit", members: "view" } });
+  assert.deepEqual(both.ok && both.value.changes.map((c) => c.target), ["members", "content", "orders"]);
 });
 
 test("a lead or head who holds neither full access nor Content cannot give, change or remove Content", () => {
@@ -405,14 +404,13 @@ test("a lead or head who holds Content gives, keeps and removes it across the wh
   assert.equal(checkRemoveGrant(team([grant(82, giulio, "content", "edit", WHOLE_TEAM_PLACE)]), { personId: 31, where: "team", target: "content" }).ok, true, "full access removes it");
 });
 
-test("a Content grant is the website row on content: it opens the content editors, and never the Alumni page", () => {
+test("a Content grant is the website row on content: it opens the content editors, the Alumni page among them (issue #589)", () => {
   const row = grantRowOf(WHOLE_TEAM_PLACE, "content");
   assert.deepEqual(row, { scope: "website", target: "content", deptId: null, divisionId: null });
   const member = { type: null, divisionId: 1, fullAccess: null } as const;
   const holder = viewerStandingOf({ scopes: [{ scope: row.scope, target: row.target, level: "edit" }], activeRoles: [member] });
   assert.equal(maySiteContent(holder), true);
-  for (const page of ["projects", "outreach", "partners", "faq", "team-page"] as const) assert.equal(canReach(holder, page), true, page);
-  assert.equal(canReach(holder, "alumni"), false);
+  for (const page of ["projects", "outreach", "partners", "alumni", "faq", "team-page"] as const) assert.equal(canReach(holder, page), true, page);
 });
 
 test("an area given across the whole team opens its pages in every open department", () => {

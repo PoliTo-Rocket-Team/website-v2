@@ -86,10 +86,12 @@ test("no name read beside the counts reaches a summary", () => {
 test("a Content grant adds a Content line last, naming the editors it opens and linking to the first (issue #504)", () => {
   const holder = viewerStandingOf({ scopes: [{ scope: "website", target: "content", level: "edit" }], activeRoles: [core] });
   const [line] = accessSummariesOf(overviewAreasOf(holder), everything, holder.siteContent);
-  assert.equal(accessLine(line), "Content · Edit Projects, Outreach, Partners, FAQ and Team page");
+  assert.equal(accessLine(line), "Content · Edit Projects, Outreach, Partners, Alumni, FAQ and Team page");
   assert.equal(line.href, "/dashboard/projects");
   assert.deepEqual(accessSummariesOf(["orders"], everything, true).map((s) => s.area), ["orders", "content"]);
-  // An Alumni grant adds no line.
-  const alumni = viewerStandingOf({ scopes: [{ scope: "website", target: "all", level: "edit" }], activeRoles: [core] });
-  assert.deepEqual(accessSummariesOf(overviewAreasOf(alumni), everything, alumni.siteContent), []);
+  // The old Alumni row and a Can view row on content add no line (issue #589).
+  for (const target of ["all", "content"] as const) {
+    const old = viewerStandingOf({ scopes: [{ scope: "website", target, level: "view" }], activeRoles: [core] });
+    assert.deepEqual(accessSummariesOf(overviewAreasOf(old), everything, old.siteContent), [], target);
+  }
 });

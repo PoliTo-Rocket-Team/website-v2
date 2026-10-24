@@ -520,15 +520,17 @@ const ACTION_CASES: readonly ActionCase[] = [
     control: by("team leader"),
   },
 
-  // The Alumni page.
-  { action: "team-actions.setAlumnusShown", run: () => teamActions.setAlumnusShown(ALUMNUS, false), may: reaches("alumni"), control: by("team leader") },
-  { action: "team-actions.fixAlumnus", run: () => teamActions.fixAlumnus(ALUMNUS, { shown: true, name: "Alum", founder: null, roles: [] }), may: reaches("alumni"), control: by("team leader") },
-  { action: "team-actions.setAlumnusPhoto", run: () => teamActions.setAlumnusPhoto(ALUMNUS, form({ photo: PHOTO() })), may: reaches("alumni"), control: by("team leader") },
+  // The Alumni page: site content under the Content grant (issue #589). The
+  // control is a member holding Content at Can edit, so each write is proven
+  // to land for them, and every Can view `website` row is refused above.
+  { action: "team-actions.setAlumnusShown", run: () => teamActions.setAlumnusShown(ALUMNUS, false), may: reaches("alumni"), control: by("member with a Content grant") },
+  { action: "team-actions.fixAlumnus", run: () => teamActions.fixAlumnus(ALUMNUS, { shown: true, name: "Alum", founder: null, roles: [] }), may: reaches("alumni"), control: by("member with a Content grant") },
+  { action: "team-actions.setAlumnusPhoto", run: () => teamActions.setAlumnusPhoto(ALUMNUS, form({ photo: PHOTO() })), may: reaches("alumni"), control: by("member with a Content grant") },
   {
     action: "team-actions.addAdvisor",
     run: () => teamActions.addAdvisor({ group: "Advisors", name: "Ada Advisor", role: "Advisor", from: 2022, to: 2023 }, null),
     may: reaches("alumni"),
-    control: by("team leader"),
+    control: by("member with a Content grant"),
   },
 
   // Access, on someone in DM. A lead's Access page covers only the divisions they lead by role (#488).
@@ -668,6 +670,41 @@ describe("every server action refuses every viewer the matrix keeps out, and wri
       }
     });
   }
+});
+
+// The Alumni page is site content (issue #589) --------------------------------
+//
+// Owner decision, 2026-10-22: the Alumni page follows the site-content rule,
+// so it opens to full access and a Content grant, which is an edit grant. A
+// Can view `website` row, on `all` (the old Alumni grant) or on `content`,
+// opens neither the page nor any of its writes.
+
+const ALUMNI_WRITES = ["team-actions.setAlumnusShown", "team-actions.fixAlumnus", "team-actions.setAlumnusPhoto", "team-actions.addAdvisor"] as const;
+const alumniWrite = (action: (typeof ALUMNI_WRITES)[number]) => ACTION_CASES.find((c) => c.action === action)!;
+
+describe("the Alumni page and its writes follow the Content grant at Can edit, and no Can view website row (issue #589)", () => {
+  for (const name of ["member with a Can view website row on all", "member with a Can view website row on content"]) {
+    test(`${name}: no Alumni page, and every Alumni write refused`, async () => {
+      const data = await open(name);
+      assert.deepEqual((await data.alumni()).rows, [], `${name}: the Alumni page answers rows`);
+      for (const action of ALUMNI_WRITES) {
+        const { answer, writes } = await attempt(accountOf(name).userId, alumniWrite(action).run);
+        assert.ok(isRefusal(answer), `${name}: ${action} not refused: ${JSON.stringify(answer)}`);
+        assert.deepEqual(writes, [], `${name}: ${action} wrote`);
+      }
+    });
+  }
+
+  test("member with a Content grant: the Alumni page, and every Alumni write lands", async () => {
+    const name = "member with a Content grant";
+    const data = await open(name);
+    assert.ok((await data.alumni()).rows.length > 0, `${name}: the Alumni page answers no rows`);
+    for (const action of ALUMNI_WRITES) {
+      const { answer, writes } = await attempt(accountOf(name).userId, alumniWrite(action).run);
+      assert.ok(!isRefusal(answer), `${name}: ${action} refused: ${JSON.stringify(answer)}`);
+      assert.ok(writes.length > 0, `${name}: ${action} wrote nothing`);
+    }
+  });
 });
 
 // Email alias requests (epic #538) ------------------------------------------

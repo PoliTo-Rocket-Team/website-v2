@@ -1003,11 +1003,11 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "access",
-    case: "Alumni access, given across the whole team",
+    case: "Content access, which opens the Alumni page, given across the whole team",
     data: "invented",
-    rows: "`scopes` scope `website`, member 144",
+    rows: "`scopes` scope `website` on `content`, member 144",
     exercisedBy: `${issue(247)}, ${issue(257)}`,
-    holds: (data) => data.scopes.some((s) => s.scope === "website"),
+    holds: (data) => data.scopes.some((s) => s.scope === "website" && s.target === "content" && s.accessLevel === "edit"),
   },
   {
     area: "orders",

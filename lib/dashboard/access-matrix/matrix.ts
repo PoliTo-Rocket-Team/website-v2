@@ -19,7 +19,7 @@ import type { RoleType } from "../team";
 
 // The dashboard access matrix (issue #477): every viewer kind against every
 // page, every area's reads and changes in every unit, the CV and letter
-// links, site content (a Content grant, apart from Alumni since issue #504),
+// links, site content (a Content grant, the Alumni page included since issue #589),
 // the recruitment switch and Orders. The matrix is data
 // (VIEWERS below). Two suites assert it: ../access-matrix.test.ts against
 // each domain rule, cell by cell, and ../access-matrix-server.test.ts by
@@ -97,10 +97,10 @@ export function viewerOf(roles: readonly Role[], rows: readonly ScopeUnitRow[] =
 // The matrix ------------------------------------------------------------------
 
 export const TEAM_BASE: readonly DashboardPageKey[] = ["overview", "my-applications", "team-tree", "my-profile"];
-/** The editors a Content grant opens (issue #504): the Alumni page is not one of them. */
-export const CONTENT: readonly DashboardPageKey[] = ["projects", "outreach", "partners", "faq", "team-page"];
+/** The editors a Content grant opens (issue #504), the Alumni page among them (Owner decision, 2026-10-22, issue #589). */
+export const CONTENT: readonly DashboardPageKey[] = ["projects", "outreach", "partners", "alumni", "faq", "team-page"];
 export const LEADING: readonly DashboardPageKey[] = ["positions", "applications", "members", "division-access", "orders"];
-export const FULL: readonly DashboardPageKey[] = [...TEAM_BASE, ...LEADING, ...CONTENT, "alumni"];
+export const FULL: readonly DashboardPageKey[] = [...TEAM_BASE, ...LEADING, ...CONTENT];
 export const PAGE_OF_AREA: Readonly<Record<GrantArea, DashboardPageKey>> = { positions: "positions", applications: "applications", members: "members", orders: "orders" };
 export const CHANGE_AREAS: readonly ChangeArea[] = ["positions", "applications", "members"];
 
@@ -288,18 +288,30 @@ export const VIEWERS: readonly MatrixRow[] = [
     viewer: viewerOf([MEMBER_ROLE], [row("division", "applications", "edit", { divisionId: 1 }), row("division", "applications", "view", { divisionId: 3 })]),
     expect: { ...singleGrant("applications", ["MA", "DM"]), changes: { positions: NONE, applications: ["MA"], members: NONE } },
   },
-  // Content and Alumni are separate grants (Owner decision, 2026-10-21, issue
-  // #504): Content opens the five editors and their actions, Alumni the
-  // Alumni page alone, and neither opens the other.
+  // The Alumni page is site content (Owner decision, 2026-10-22, issue #589,
+  // replacing #504's separate Alumni grant): a Content grant, an edit grant,
+  // opens the six editors and their actions, the Alumni page among them. No
+  // Can view `website` row is a Content grant, and the old Alumni row (a
+  // `website` row on `all`) opens nothing at either level.
   {
     name: "member with a Content grant",
     viewer: viewerOf([MEMBER_ROLE], [row("website", "content", "edit")]),
     expect: { ...PLAIN_MEMBER, pages: [...TEAM_BASE, ...CONTENT], siteContent: true },
   },
   {
-    name: "member with an Alumni grant",
+    name: "member with a Can view website row on content",
+    viewer: viewerOf([MEMBER_ROLE], [row("website", "content", "view")]),
+    expect: PLAIN_MEMBER,
+  },
+  {
+    name: "member with a Can view website row on all",
+    viewer: viewerOf([MEMBER_ROLE], [row("website", "all", "view")]),
+    expect: PLAIN_MEMBER,
+  },
+  {
+    name: "member with a Can edit website row on all",
     viewer: viewerOf([MEMBER_ROLE], [row("website", "all", "edit")]),
-    expect: { ...PLAIN_MEMBER, pages: [...TEAM_BASE, "alumni"] },
+    expect: PLAIN_MEMBER,
   },
   {
     name: "division lead with a Content grant",

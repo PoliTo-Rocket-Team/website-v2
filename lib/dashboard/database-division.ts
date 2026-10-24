@@ -206,10 +206,11 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
   const unitTarget = inArray(scopes.target, [...UNIT_TARGETS]);
   const inUnitDivisions = and(eq(scopes.scope, "division"), inArray(scopes.divisionId, divisionIds.length ? divisionIds : [-1]), unitTarget);
   const inUnitDepartments = and(eq(scopes.scope, "department"), inArray(scopes.deptId, departmentIds.length ? departmentIds : [-1]), unitTarget);
-  // A team page also holds the grants across the whole team, Alumni and Content (`website` rows) and "Approve orders" (issue #247).
-  const acrossTeam = or(and(eq(scopes.scope, "team"), or(unitTarget, eq(scopes.target, "approve_orders"))), eq(scopes.scope, "website"));
   // A lead's or head's page holds the Content grants of the people in the unit when the viewer gives Content (issue #504).
+  // The old Alumni `website` rows on `all` are no grant and are never read (issue #589).
   const contentRows = and(eq(scopes.scope, "website"), eq(scopes.target, "content"));
+  // A team page also holds the grants across the whole team, Content and "Approve orders" (issue #247).
+  const acrossTeam = or(and(eq(scopes.scope, "team"), or(unitTarget, eq(scopes.target, "approve_orders"))), contentRows);
   const unitRows = unit.kind === "team" ? or(inUnitDivisions, inUnitDepartments, acrossTeam) : unit.content === true ? or(inUnitDivisions, inUnitDepartments, contentRows) : or(inUnitDivisions, inUnitDepartments);
 
   const [rows, team, mineApproves] = await Promise.all([
@@ -345,8 +346,8 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
     if (person.standing === "lead") return [];
     // Off a team page, a Content row counts only for someone in the unit (issue #504).
     if (r.scope === "website" && unit.kind !== "team" && !byMember.has(r.member_id)) return [];
-    // A `website` row is Content on `content`, else Alumni, across the whole team (#234, #247, #504).
-    const target = r.scope === "website" ? (r.target === "content" ? ("content" as const) : ("alumni" as const)) : isUnitTarget(r.target) ? r.target : null;
+    // A `website` row is Content on `content`, across the whole team (#247, #504); any other is no grant (#589).
+    const target = r.scope === "website" ? (r.target === "content" ? ("content" as const) : null) : isUnitTarget(r.target) ? r.target : null;
     if (target === null) return [];
     const division = unitDivisions.find((d) => d.id === r.division_id);
     const department = r.scope === "department" ? departmentById(r.dept_id) : null;
@@ -373,16 +374,16 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
 
 /**
  * The stored grant one area in one place is (`grantRowOf`): a Content grant
- * is the person's `website` row on `content`; an Alumni grant is their other
- * `website` row, whatever its target (issue #504); any other is the row of
- * that scope, place and area.
+ * is the person's `website` row on `content` (issue #504), never their old
+ * Alumni `website` row on `all`, which stays unread (issue #589); any other
+ * is the row of that scope, place and area.
  */
 function grantWhere(personId: number, place: AccessPlace, target: AccessTarget) {
   const row = grantRowOf(place, target);
   const mine = eq(scopes.memberId, personId);
   switch (row.scope) {
     case "website":
-      return and(mine, eq(scopes.scope, "website"), row.target === "content" ? eq(scopes.target, "content") : ne(scopes.target, "content"));
+      return and(mine, eq(scopes.scope, "website"), eq(scopes.target, row.target));
     case "team":
       return and(mine, eq(scopes.scope, "team"), eq(scopes.target, row.target), isNull(scopes.deptId), isNull(scopes.divisionId));
     case "department":

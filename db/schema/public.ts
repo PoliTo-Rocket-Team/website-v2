@@ -78,8 +78,9 @@ export const targetTypeEnum = pgEnum("target_type", [
   "logs",
   // "Approve orders", given by the team leader on scope `team` (issue #233).
   "approve_orders",
-  // The Content grant, on scope `website` (issue #504, drizzle/0049): told
-  // apart from the Alumni grant, the `website` row on `all`.
+  // The Content grant, on scope `website` (issue #504, drizzle/0049). It opens
+  // the Alumni page too; the old Alumni `website` rows on `all` are read as
+  // nothing (issue #589, drizzle/0056).
   "content",
 ]);
 

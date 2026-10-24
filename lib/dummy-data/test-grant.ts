@@ -8,6 +8,7 @@ import {
   type GrantArea,
   type ScopeUnitRow,
   type ScopedRole,
+  type ViewerStanding,
 } from "@/lib/dashboard/viewer";
 import type { OrgChart, TeamActor } from "@/lib/dashboard/team";
 
@@ -47,6 +48,16 @@ export function testGrantAreas(grant: TestGrant): readonly GrantArea[] {
 /** Whether the member holding `grant` holds Content, read off its scope row as the database side reads it (issue #504). */
 export function testGrantHoldsContent(grant: TestGrant): boolean {
   return holdsContentGrant([SCOPE_ROW[grant]]);
+}
+
+/**
+ * The standing of the member holding `grant`: their areas and Content, as a
+ * member with that scope row holds them (issues #351, #471, #504). Content
+ * opens the Alumni page too (issue #589). Anyone else, or no grant, keeps
+ * `standing` as it is.
+ */
+export function withTestGrant(standing: ViewerStanding, grant: TestGrant | null): ViewerStanding {
+  return standing.kind === "member" && grant !== null ? { ...standing, grantedAreas: testGrantAreas(grant), siteContent: testGrantHoldsContent(grant) } : standing;
 }
 
 /** The member's own role: a member of Mission Analysis, which changes nobody. */
