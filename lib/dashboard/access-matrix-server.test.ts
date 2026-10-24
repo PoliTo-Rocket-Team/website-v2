@@ -12,7 +12,7 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
 import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
-import { members, scopes } from "@/db/schema";
+import { divisions, members, roles, scopes } from "@/db/schema";
 import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
 import { placeKey, placesOf, type AccessPage } from "./division-access";
@@ -23,6 +23,7 @@ import { readSheet } from "./access-matrix/xlsx";
 import { openDashboard } from "./open";
 import { canEditOrder, type OrdersPage } from "./orders";
 import type { TeamSideOverview } from "./overview";
+import type { TeamStructure } from "./team-structure";
 import { applicationsModelOf } from "./applications-view";
 import { positionsModelOf } from "./positions-view";
 import type { ApplicationsPage, PositionsPage } from "./recruitment";
@@ -871,6 +872,163 @@ describe("a division lead with no scope row edits their own division's orders by
       assert.ok(isRefusal(answer), `not refused: ${JSON.stringify(answer)}`);
       assert.deepEqual(writes, []);
     }
+  });
+});
+
+// A lead's own division, in the Team tree ------------------------------------
+
+describe("a division lead with no scope row edits their own division in the Team tree (issue #594)", () => {
+  const LEAD = "division lead";
+  const MA: Unit = "MA";
+  const OA: Unit = "OA";
+  const self = () => accountOf(LEAD).memberId!;
+  type Extra = { readonly scopes?: readonly (typeof scopes.$inferInsert)[]; readonly roles?: readonly (typeof roles.$inferInsert)[] };
+  /** Seeds the database with `extra` added, keeps what each write leaves behind, signs in as the matrix's plain lead of MA and runs `run`. */
+  async function asLead(run: (data: DashboardData) => Promise<unknown>, extra: Extra = {}) {
+    seedFixture();
+    resetFiles();
+    insertRows(scopes, extra.scopes ?? []);
+    insertRows(roles, extra.roles ?? []);
+    keepWrites();
+    signInAs(accountOf(LEAD).userId);
+    const opening = await openDashboard();
+    assert.equal(opening.kind, "open");
+    const answer = await answerOf(() => run((opening as { data: DashboardData }).data));
+    return { answer, writes: recordedWrites() };
+  }
+  const save = (u: Unit, change: { name?: string; code?: string; newLeads?: number[]; oldLeads?: unknown[] } = {}) => {
+    const division = rowsIn(divisions).find((d) => d.id === IDS.division(u))!;
+    return { name: String(division.name), code: String(division.code), newLeads: [], oldLeads: [], members: [], emails: [], ...change };
+  };
+  /** The type of each open role `memberId` holds in the unit's division. */
+  const rolesIn = (memberId: number, u: Unit) =>
+    rowsIn(roles)
+      .filter((r) => r.memberId === memberId && r.divisionId === IDS.division(u) && r.leavedAt === null)
+      .map((r) => r.type)
+      .sort();
+  const extraRole = (id: number, memberId: number, u: Unit | number, type: "lead" | "core"): typeof roles.$inferInsert => ({
+    id,
+    memberId,
+    divisionId: typeof u === "number" ? u : IDS.division(u),
+    title: type === "lead" ? "Division Lead" : "Member",
+    startedAt: "2025-10-01",
+    type,
+  });
+  const membersGrant = (u: Unit): typeof scopes.$inferInsert => ({ id: 9_200, memberId: self(), scope: "division", target: "members", accessLevel: "edit", divisionId: IDS.division(u) });
+  const writes = async (label: string, run: (data: DashboardData) => Promise<unknown>, extra: Extra = {}) => {
+    const result = await asLead(run, extra);
+    assert.ok(!isRefusal(result.answer), `${label}: ${JSON.stringify(result.answer)}`);
+    assert.ok(result.writes.length > 0, `${label}: wrote nothing`);
+  };
+  const refuses = async (label: string, run: (data: DashboardData) => Promise<unknown>, extra: Extra = {}) => {
+    const result = await asLead(run, extra);
+    assert.ok(isRefusal(result.answer), `${label}: not refused: ${JSON.stringify(result.answer)}`);
+    assert.deepEqual(result.writes, [], `${label}: wrote`);
+    return result.answer as { error?: string } | false;
+  };
+
+  test("the lead holds no scope row: the matrix seeds none for them", async () => {
+    await asLead(async () => null);
+    assert.deepEqual(rowsIn(scopes).filter((r) => r.memberId === self()), []);
+  });
+
+  test("Edit division saves a new name and a new code on the led division", async () => {
+    await writes("rename and recode MA", () => teamActions.saveDivision(IDS.division(MA), save(MA, { name: "Flight Analysis", code: "FLA" })));
+    const division = rowsIn(divisions).find((d) => d.id === IDS.division(MA))!;
+    assert.deepEqual([division.name, division.code], ["Flight Analysis Division", "FLA"]);
+  });
+
+  test("Edit division adds a lead, replaces a lead and removes a lead on the led division", async () => {
+    await writes("add MA's member as a lead", () => teamActions.saveDivision(IDS.division(MA), save(MA, { newLeads: [IDS.person(MA)] })));
+    assert.deepEqual(rolesIn(IDS.person(MA), MA), ["lead"]);
+
+    await writes("add someone from DM as a lead", () => teamActions.saveDivision(IDS.division(MA), save(MA, { newLeads: [EXTRA.mover] })));
+    assert.deepEqual(rolesIn(EXTRA.mover, MA), ["lead"]);
+
+    const replaced = { personId: IDS.lead(MA), via: "replaced", outcome: "advisor" };
+    await writes("replace MA's other lead", () => teamActions.saveDivision(IDS.division(MA), save(MA, { newLeads: [EXTRA.mover], oldLeads: [replaced] })));
+    assert.deepEqual([rolesIn(EXTRA.mover, MA), rolesIn(IDS.lead(MA), MA)], [["lead"], ["advisor"]], "the replaced lead becomes an advisor in MA");
+
+    const removed = { personId: IDS.lead(MA), via: "removed", outcome: "member" };
+    await writes("remove MA's other lead", () => teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: [removed] })));
+    assert.deepEqual(rolesIn(IDS.lead(MA), MA), ["core"], "the removed lead stays as a member");
+  });
+
+  test("every rule of Edit division still holds for the lead's save", async () => {
+    const out = (personId: number, outcome: string) => ({ personId, via: "removed", outcome });
+    const both = [out(self(), "member"), out(IDS.lead(MA), "member")];
+    assert.equal((await refuses("remove both leads", () => teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: both }))))!.error, "A division needs at least one lead.");
+    const leaves = await refuses("take MA's other lead out of their only division", () =>
+      teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: [out(IDS.lead(MA), "leave-division")] })),
+    );
+    assert.match(leaves ? (leaves.error ?? "") : "", /only division/);
+    const alsoInDM = { roles: [extraRole(9_300, IDS.lead(MA), "DM", "core")] };
+    await refuses("move MA's other lead, who is also in DM, to alumni", () => teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: [out(IDS.lead(MA), "leave-team")] })), alsoInDM);
+    await writes("move MA's other lead, in MA alone, to alumni", () => teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: [out(IDS.lead(MA), "leave-team")] })));
+    const taken = await refuses("take OA's code", () => teamActions.saveDivision(IDS.division(MA), save(MA, { code: "OPT" })));
+    assert.equal(taken ? taken.error : null, "Optimization already uses OPT.");
+    await refuses("replace a lead with no new lead", () =>
+      teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: [{ personId: IDS.lead(MA), via: "replaced", outcome: "advisor" }] })),
+    );
+  });
+
+  test("the drawer's member actions add someone from the team, invite an email and remove a member in the led division", async () => {
+    await writes("add OA's member to MA", () => teamActions.addMember({ kind: "member", divisionId: IDS.division(MA), personId: IDS.person(OA), title: "Member" }));
+    assert.deepEqual(rolesIn(IDS.person(OA), MA), ["core"]);
+    await writes("invite an email to MA", () =>
+      teamActions.addMember({ kind: "email", divisionId: IDS.division(MA), email: "new@mail.test", firstName: "New", lastName: "Person", title: "Member", details: MEMBER_DETAILS }),
+    );
+    const moverInMA = { roles: [extraRole(9_301, EXTRA.mover, MA, "core")] };
+    await writes("remove a member of MA", () => teamActions.removeFromDivision(EXTRA.mover, IDS.division(MA)), moverInMA);
+    assert.deepEqual(rolesIn(EXTRA.mover, MA), []);
+  });
+
+  test("on a division they do not lead, every one of those is refused and writes nothing", async () => {
+    for (const u of [OA, DM]) {
+      await refuses(`rename ${u}`, () => teamActions.saveDivision(IDS.division(u), save(u, { name: "Renamed", code: "REN" })));
+      await refuses(`add a lead to ${u}`, () => teamActions.saveDivision(IDS.division(u), save(u, { newLeads: [IDS.person(u)] })));
+      await refuses(`remove ${u}'s lead`, () => teamActions.saveDivision(IDS.division(u), save(u, { newLeads: [IDS.person(u)], oldLeads: [{ personId: IDS.lead(u), via: "removed", outcome: "member" }] })));
+      await refuses(`add someone to ${u}`, () => teamActions.addMember({ kind: "member", divisionId: IDS.division(u), personId: EXTRA.head, title: "Member" }));
+      await refuses(`invite an email to ${u}`, () =>
+        teamActions.addMember({ kind: "email", divisionId: IDS.division(u), email: "new@mail.test", firstName: "New", lastName: "Person", title: "Member", details: MEMBER_DETAILS }),
+      );
+      await refuses(`remove a member of ${u}`, () => teamActions.removeFromDivision(EXTRA.mover, IDS.division(u)), { roles: [extraRole(9_302, EXTRA.mover, OA, "core")] });
+    }
+  });
+
+  test("a Members (Can edit) grant on DM gives no Edit division there: no pencil, no save, no lead change", async () => {
+    const grant = { scopes: [membersGrant(DM)] };
+    const { answer } = await asLead((data) => data.teamStructure(), grant);
+    const dm = (answer as TeamStructure).departments.flatMap((d) => d.divisions).find((d) => d.id === IDS.division(DM))!;
+    assert.equal(dm.page, null, "no pencil on DM");
+    await refuses("rename DM", () => teamActions.saveDivision(IDS.division(DM), save(DM, { name: "Renamed", code: "REN" })), grant);
+    await refuses("add a lead to DM", () => teamActions.saveDivision(IDS.division(DM), save(DM, { newLeads: [EXTRA.mover] })), grant);
+    const leadAlsoInOA = { scopes: [membersGrant(DM)], roles: [extraRole(9_303, IDS.lead(DM), OA, "core")] };
+    await refuses("take DM's lead out of DM", () => teamActions.removeFromDivision(IDS.lead(DM), IDS.division(DM)), leadAlsoInOA);
+  });
+
+  test("a lead of two divisions edits both, and the Team tree gives each a pencil", async () => {
+    const leadsOA = { roles: [extraRole(9_304, self(), OA, "lead")] };
+    await writes("rename MA", () => teamActions.saveDivision(IDS.division(MA), save(MA, { name: "Flight Analysis", code: "FLA" })), leadsOA);
+    await writes("rename OA", () => teamActions.saveDivision(IDS.division(OA), save(OA, { name: "Shape Work", code: "SHW" })), leadsOA);
+    const { answer } = await asLead((data) => data.teamStructure(), leadsOA);
+    const editable = (answer as TeamStructure).departments.flatMap((d) => d.divisions).filter((d) => d.page !== null).map((d) => d.id);
+    assert.deepEqual(editable, [IDS.division(MA), IDS.division(OA)]);
+  });
+
+  test("the Team tree's edit view gives the lead a pencil on MA alone, and no department pencil, Add division or Add department", async () => {
+    const { answer } = await asLead((data) => data.teamStructure());
+    const structure = answer as TeamStructure | null;
+    assert.ok(structure !== null, "the edit view opens for the lead");
+    assert.equal(structure.departmentsEditable, false);
+    assert.deepEqual(structure.departments.filter((d) => d.divisionsEditable).map((d) => d.id), [], "no Add division and no Close division anywhere");
+    assert.deepEqual(structure.departments.flatMap((d) => d.divisions).filter((d) => d.page !== null).map((d) => d.id), [IDS.division(MA)]);
+  });
+
+  test("New division and Close division stay refused for the lead, in their own department and on their own division", async () => {
+    const closing = await refuses("close MA", () => teamActions.closeDivision(IDS.division(MA)));
+    assert.doesNotMatch(closing ? (closing.error ?? "") : "", /still in/, "refused by who may close, not by who is in it");
+    await refuses("create a division in Aerodynamics", () => teamActions.createDivision(IDS.department(MA), { name: "Avionics", code: "AVI", newLeads: [self()], oldLeads: [], members: [], emails: [] }));
   });
 });
 
