@@ -476,3 +476,41 @@ test("a Members grant at Can view opens no editor, and every Edit details write 
   assert.equal(await writes.moveToAlumni(7, { from: 2024, to: 2026, reason: null }), false);
   assert.deepEqual(saved, []);
 });
+
+// The seat row of Edit team tree (issue #627), as the dummy dashboard keeps it.
+
+/** A member of Safety who holds no seat. */
+const SAFETY_MEMBER = 88;
+const PROJECT_MANAGER = 93;
+
+test("Change holder moves the Project Manager's seat, its title and flag to the successor, and the old holder holds it no more", async () => {
+  const leader = pages("team-leader");
+  const [pm] = (await leader.view.teamStructure())!.board;
+  assert.deepEqual([pm.holder.id, pm.title, pm.flag], [PROJECT_MANAGER, "Project Manager", "project-manager"]);
+  assert.deepEqual(await leader.view.teamWrites!.changeSeatHolder(pm.roleId, { to: SAFETY_MEMBER, outcome: "advisor" }), { ok: true, value: null });
+  const after = pages("team-leader", reread(leader.saved[0]));
+  const [seat] = (await after.view.teamStructure())!.board;
+  assert.deepEqual([seat.holder.id, seat.title, seat.flag], [SAFETY_MEMBER, "Project Manager", "project-manager"]);
+  const board = (await after.view.teamTree()).board.map((b) => b.person.id);
+  assert.equal(board[0], SAFETY_MEMBER);
+  assert.ok(!board.includes(PROJECT_MANAGER));
+});
+
+test("Add seat puts a new seat with no flag on both tree rows; a head is refused both seat writes", async () => {
+  const leader = pages("team-leader");
+  assert.deepEqual(await leader.view.teamWrites!.addSeat({ personId: SAFETY_MEMBER, title: "Safety Officer" }), { ok: true, value: null });
+  const after = pages("team-leader", reread(leader.saved[0]));
+  assert.deepEqual(
+    (await after.view.teamStructure())!.board.map((s) => [s.holder.id, s.title, s.flag]).at(-1),
+    [SAFETY_MEMBER, "Safety Officer", null],
+  );
+  assert.deepEqual(
+    (await after.view.teamTree()).board.map((b) => [b.person.id, b.title]).at(-1),
+    [SAFETY_MEMBER, "Safety Officer"],
+  );
+  const head = pages("department-head");
+  const [pm] = (await head.view.teamStructure())!.board;
+  assert.equal((await head.view.teamWrites!.changeSeatHolder(pm.roleId, { to: SAFETY_MEMBER, outcome: "advisor" })).ok, false);
+  assert.equal((await head.view.teamWrites!.addSeat({ personId: SAFETY_MEMBER, title: "Safety Officer" })).ok, false);
+  assert.deepEqual(head.saved, []);
+});

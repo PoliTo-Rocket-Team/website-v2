@@ -393,6 +393,13 @@
       "when": 1793640000000,
       "tag": "0055_preview_reseeds",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1793726400000,
+      "tag": "0056_rd_department_head",
+      "breakpoints": true
     }
   ]
 }

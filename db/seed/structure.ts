@@ -2,7 +2,8 @@
 // and 1–17 keep the numbers the old SQL seed used. The divisions the Team
 // page names (lib/about/team.ts) carry its names; Recovery's two are its
 // Recovery Systems and Parachutes (issue #326). Division 18 is closed and
-// kept as a name; division 19 is open with nobody in it. Test Bench holds the
+// kept as a name; division 19 is open with nobody in it. Department 9, R&D,
+// has a head and no divisions (issue #627). Test Bench holds the
 // public Test Engineers; team.ts names no lead for it, so a local tester
 // holds that seat (./people.ts).
 
@@ -18,6 +19,8 @@ export const DEPARTMENT = {
   electronics: 6,
   operations: 7,
   research: 8,
+  /** R&D: a head and no divisions (Owner decision, 2026-10-24, issue #627). Not the testers' Research and Development. */
+  rd: 9,
 } as const;
 
 export const DIVISION = {
@@ -55,6 +58,7 @@ export const DEPARTMENT_ROWS = rowsOf(departments, [
   // Operations sits on the Team page's "Operations" slide; the rest keep the default kind, technical (issue #325).
   { id: DEPARTMENT.operations, name: "Operations", startedAt: "2021-10-01", closedAt: null, code: "OPS", kind: "operations" },
   { id: DEPARTMENT.research, name: "Research and Development", startedAt: "2023-09-01", closedAt: null, code: "RND" },
+  { id: DEPARTMENT.rd, name: "R&D", startedAt: "2025-10-01", closedAt: null, code: "RD" },
 ]);
 
 export const DIVISION_ROWS = rowsOf(divisions, [

@@ -501,6 +501,57 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
+/**
+ * The seat row on a phone (board 54c-m, issue #627): every team-level seat in
+ * one row directly under the team leader, each card built like the leader's,
+ * hung from one bus, with the trunk running down from its middle to the
+ * heads. The viewer's own seat is joined to the trunk in accent.
+ */
+function SeatRow({
+  board,
+  hasLeader,
+  trunk,
+  down,
+  found,
+  keep,
+}: {
+  board: TeamTree["board"];
+  hasLeader: boolean;
+  /** The line from the leader down to the bus, and from the bus down to the heads. */
+  trunk: string;
+  down: string;
+  found: number | null;
+  keep: (person: TreePerson | null) => (el: HTMLElement | null) => void;
+}) {
+  const n = board.length;
+  // Each card's middle, as a share of the row; the trunk runs down the row's middle.
+  const middleOf = (i: number) => ((i + 0.5) / n) * 100;
+  const mine = board.findIndex((b) => b.person.self);
+  const top = hasLeader ? "top-3" : "top-0";
+  return (
+    <div className="relative">
+      {hasLeader && <span aria-hidden className={`mx-auto block h-3 w-0 border-l ${trunk}`} />}
+      <span aria-hidden className={`absolute border-t border-border-strong ${top}`} style={{ left: `${middleOf(0)}%`, right: `${100 - middleOf(n - 1)}%` }} />
+      {mine >= 0 && (
+        <span
+          aria-hidden
+          className={`absolute border-t border-accent ${top}`}
+          style={{ left: `${Math.min(50, middleOf(mine))}%`, right: `${100 - Math.max(50, middleOf(mine))}%` }}
+        />
+      )}
+      <span aria-hidden className={`absolute bottom-0 left-1/2 border-l ${down} ${top}`} />
+      <div className="grid gap-3 pt-3" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
+        {board.map(({ roleId, title, person }) => (
+          <div key={roleId} ref={keep(person)} className="relative flex min-h-[52px]">
+            <span aria-hidden className={`absolute -top-3 left-1/2 h-3 border-l ${person.self ? "border-accent" : "border-border-strong"}`} />
+            <TreeCard person={person} title={person.name} subtitle={title} onPath={person.self} found={atFirstPlace(person, found)} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PhoneTree({ tree, found, target }: { tree: TeamTree; found: number | null; target: Target | null }) {
   const [opened, setOpened] = useState<Opened>(() => openedOnPath(tree));
   const nodes = useRef(new Map<number, HTMLElement>());
@@ -545,23 +596,14 @@ function PhoneTree({ tree, found, target }: { tree: TeamTree; found: number | nu
       )}
 
       {tree.board.length > 0 && (
-        <div className="relative">
-          {tree.leader && <span aria-hidden className={`mx-auto block h-3 w-0 border-l ${line(trunkOnPath || aboveDepartments)}`} />}
-          {/* The bus to the two seats, and the trunk running down between them to the heads. */}
-          <span aria-hidden className={`absolute left-[25%] right-[25%] border-t border-border-strong ${tree.leader ? "top-3" : "top-0"}`} />
-          <span aria-hidden className={`absolute bottom-0 left-1/2 border-l ${line(trunkOnPath)} ${tree.leader ? "top-3" : "top-0"}`} />
-          <div className="grid grid-cols-2 gap-3 pt-3">
-            {tree.board.map(({ title, person }, i) => (
-              <div key={person.id} ref={keep(person)} className="relative flex min-h-[52px]">
-                <span aria-hidden className={`absolute -top-3 left-1/2 h-3 border-l ${line(person.self)}`} />
-                {person.self && (
-                  <span aria-hidden className={`absolute -top-3 border-t border-accent ${i === 0 ? "left-1/2 -right-1.5" : "-left-1.5 right-1/2"}`} />
-                )}
-                <TreeCard person={person} title={person.name} subtitle={title} onPath={person.self} found={atFirstPlace(person, found)} />
-              </div>
-            ))}
-          </div>
-        </div>
+        <SeatRow
+          board={tree.board}
+          hasLeader={tree.leader !== null}
+          trunk={line(trunkOnPath || aboveDepartments)}
+          down={line(trunkOnPath)}
+          found={found}
+          keep={keep}
+        />
       )}
 
       {tree.departments.length > 0 && (

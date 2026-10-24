@@ -5,7 +5,8 @@
 // The layer is published, so the public page shows it. Two of its edits put
 // on the arc the two leaders lib/about/team.ts draws there whom no board seat
 // places: the head of Operations, between the Project Manager and the Chief
-// Engineer, and the head of R&D after them. The other edits are invented,
+// Engineer, and the head of R&D, whose department has no divisions, after
+// them. The other edits are invented,
 // since the public data holds no editor's changes: a head's role text
 // changed, a division lead hidden, a division lead added to Research and
 // Development, whose one division has nobody in it, and the intro text and
@@ -40,7 +41,7 @@ export const HIDDEN_LEAD_SPOT = `lead:${DIVISION.engineControl}:0` as const;
 export const ADDED_LEADER_AFTER = "arc:project-manager:0" as const;
 /** The head of Operations, whom team.ts draws on the arc: the layer puts them there. */
 const ARC_HEAD_OF_OPERATIONS = "Rocco Bellon";
-/** The head of R&D, whom team.ts draws on the arc in no department: the layer adds them at its end. */
+/** The head of R&D, whom team.ts draws on the arc: their department has no divisions, so the page has no block for it, and the layer adds them at the arc's end. */
 const ARC_HEAD_OF_RESEARCH = "Marco Dona";
 export const ADDED_LEADER_PERSON = publicMember(ARC_HEAD_OF_OPERATIONS);
 export const ADDED_LAST_LEADER_PERSON = publicMember(ARC_HEAD_OF_RESEARCH);
