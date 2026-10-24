@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
 import type { BatchItem, BatchResponse } from "drizzle-orm/batch";
 import { getDb } from "@/db/client";
+import { AUDIT_SETTINGS, auditWriterFor, type AuditWriter } from "@/lib/audit-writer";
 import { getCurrentUser } from "@/lib/current-user";
-import { auditWriterOf } from "@/lib/test-developer";
 
 export { getCurrentUserId } from "@/lib/current-user";
 
@@ -10,34 +10,40 @@ export { getCurrentUserId } from "@/lib/current-user";
  * Who the next write is logged under. Every signed-in write goes through
  * this file, so this is where a test developer's write is logged under their
  * seeded person on a preview, and refused before it is sent anywhere else
- * (lib/test-developer.ts, ADR 0016).
+ * (lib/test-developer.ts, ADR 0016), and where a View as session's acting
+ * account is read from the session for the log (issue #605).
  */
-async function writerId(): Promise<string | null> {
-  return auditWriterOf(await getCurrentUser());
+async function writer(): Promise<AuditWriter | null> {
+  return auditWriterFor(await getCurrentUser());
 }
 
 type AuditDb = ReturnType<typeof getDb>;
 type AuditQuery<TResult> = BatchItem<"pg"> & Promise<TResult>;
 
-function buildAuditSetupQuery(db: AuditDb, userId: string) {
+/**
+ * Sets who the batch's writes are logged under, for this transaction only.
+ * The acting account is always set, empty outside View as, so no write is
+ * logged under an acting account its own session does not name.
+ */
+function buildAuditSetupQuery(db: AuditDb, by: AuditWriter) {
   return db.execute(
-    sql`select set_config('request.jwt.claim.sub', ${userId}, true) as audit_user`,
+    sql`select set_config(${AUDIT_SETTINGS.writer}, ${by.userId}, true) as audit_user, set_config(${AUDIT_SETTINGS.actingAccount}, ${by.actingAccountId ?? ""}, true) as audit_acting_account`,
   );
 }
 
 export async function runAuditQuery<TResult>(
   buildQuery: (db: AuditDb) => AuditQuery<TResult>,
 ): Promise<TResult> {
-  const userId = await writerId();
+  const by = await writer();
   const db = getDb();
   const query = buildQuery(db);
 
-  if (!userId) {
+  if (!by) {
     return query;
   }
 
   const [, result] = await db.batch([
-    buildAuditSetupQuery(db, userId),
+    buildAuditSetupQuery(db, by),
     query,
   ] as const);
 
@@ -57,11 +63,11 @@ type AuditBatch = [BatchItem<"pg">, ...BatchItem<"pg">[]];
 export async function runAuditBatch<TBatch extends AuditBatch>(
   buildQueries: (db: AuditDb) => TBatch,
 ): Promise<BatchResponse<TBatch>> {
-  const userId = await writerId();
+  const by = await writer();
   const db = getDb();
-  if (!userId) {
+  if (!by) {
     throw new Error("runAuditBatch needs a signed-in user");
   }
-  const [, ...results] = await db.batch([buildAuditSetupQuery(db, userId), ...buildQueries(db)]);
+  const [, ...results] = await db.batch([buildAuditSetupQuery(db, by), ...buildQueries(db)]);
   return results as BatchResponse<TBatch>;
 }

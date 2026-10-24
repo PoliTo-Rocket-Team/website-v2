@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { attributedName } from "./acting-account";
 import type { Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
 import { sentWhen } from "./hand-over-request";
@@ -33,6 +34,8 @@ export type AliasRequest = {
   readonly id: number;
   readonly memberId: number;
   readonly requesterId: number | null;
+  /** The acting seat's title when it was sent while viewing as the requester (issue #605); absent or null otherwise. */
+  readonly requesterActingTitle?: string | null;
   /** When it was sent, an ISO timestamp. */
   readonly sentAt: string;
 };
@@ -185,7 +188,7 @@ export function owedAliasRequests(input: {
   /** Each member's PRT email, by member id; a member missing, or whose PRT email is empty, has none. */
   readonly addresses: ReadonlyMap<number, string>;
   /** The open requests; only those of `becoming` are read. */
-  readonly open: readonly AliasRequest[];
+  readonly open: readonly Pick<AliasRequest, "memberId">[];
 }): AutomaticAliasRequest[] {
   const { addresses, open } = input;
   return [...new Set(input.becoming)]
@@ -278,15 +281,24 @@ export type MemberAlias =
 /** Every member's alias the Members page shows, by member id. */
 export type MemberAliases = Readonly<Record<number, MemberAlias>>;
 
-/** "by you · 22 Oct", "by Marco Bianchi · 22 Oct", "automatic · 22 Oct": who sent a request, and when (board 94b). */
+/**
+ * "by you · 22 Oct", "by Marco Bianchi · 22 Oct", "automatic · 22 Oct": who
+ * sent a request, and when (board 94b). One sent while viewing as the
+ * requester reads "by IT lead as Marco Bianchi", even to Marco (issue #605).
+ */
 export function requestedLine(request: AliasRequest, viewerId: number | null, team: readonly TeamPerson[], now: Date): string {
   const by =
     request.requesterId === null
       ? "automatic"
-      : request.requesterId === viewerId
+      : request.requesterId === viewerId && !request.requesterActingTitle
         ? "by you"
-        : `by ${team.find((p) => p.id === request.requesterId)?.name ?? "someone"}`;
+        : `by ${requesterName(request, team, "someone")}`;
   return `${by} · ${shortDate(request.sentAt, now.getUTCFullYear())}`;
+}
+
+/** The requester's name, after the acting seat's title when it was sent while viewing as them. */
+function requesterName(request: AliasRequest, team: readonly TeamPerson[], unknown: string): string {
+  return attributedName(team.find((p) => p.id === request.requesterId)?.name ?? unknown, request.requesterActingTitle ?? null);
 }
 
 /** The alias of each of `memberIds` on the team, as `viewerId` sees it on the member drawer's PRT email row. */
@@ -357,7 +369,7 @@ export function aliasAttention(request: AliasRequest, team: readonly TeamPerson[
       action,
     };
   }
-  const requester = team.find((p) => p.id === request.requesterId)?.name ?? "Someone";
+  const requester = requesterName(request, team, "Someone");
   return {
     kind: "alias-request",
     title: `${requester} asks for an email alias for ${name}`,

@@ -757,6 +757,7 @@ async function addMember(identity: DashboardIdentity, input: unknown): Promise<W
       prtEmail: columns.member.prtEmail,
       discord: columns.member.discord,
       addedBy: identity.memberId,
+      addedByActingAccount: identity.actingAccountId,
     }),
   ]);
   return written("waiting");
@@ -781,7 +782,7 @@ async function confirmNda(identity: DashboardIdentity, joinId: number): Promise<
     .limit(1);
   if (!row || (await actingOn(identity, row.division_id)) === null) return false;
   const now = new Date().toISOString();
-  const nda = { ndaSignedAt: now, ndaConfirmedBy: confirmer };
+  const nda = { ndaSignedAt: now, ndaConfirmedBy: confirmer, ndaConfirmedByActingAccount: identity.actingAccountId };
   const contact = { prtEmail: row.prt_email, discord: row.discord };
   const existing = row.member_id;
 
@@ -1461,7 +1462,12 @@ export async function answerHandOver(identity: DashboardIdentity, requestId: num
   const claimed = await runAuditQuery((db) =>
     db
       .update(handOverRequests)
-      .set({ decision: answer === "confirm" ? "confirmed" : "declined", decidedBy: viewerId, decidedAt: new Date().toISOString() })
+      .set({
+        decision: answer === "confirm" ? "confirmed" : "declined",
+        decidedBy: viewerId,
+        decidedByActingAccount: identity.actingAccountId,
+        decidedAt: new Date().toISOString(),
+      })
       .where(and(eq(handOverRequests.id, requestId), isNull(handOverRequests.decision)))
       .returning({ id: handOverRequests.id }),
   );
@@ -1474,7 +1480,10 @@ export async function answerHandOver(identity: DashboardIdentity, requestId: num
     ]);
   } catch (error) {
     await runAuditQuery((db) =>
-      db.update(handOverRequests).set({ decision: null, decidedBy: null, decidedAt: null }).where(eq(handOverRequests.id, requestId)),
+      db
+        .update(handOverRequests)
+        .set({ decision: null, decidedBy: null, decidedByActingAccount: null, decidedAt: null })
+        .where(eq(handOverRequests.id, requestId)),
     );
     throw error;
   }

@@ -20,7 +20,7 @@ import {
 } from "@/db/schema";
 import type { Recruitment } from "@/lib/apply/positions";
 import { canSwitchRecruitment, switchRecruitment } from "@/lib/apply/recruitment-switch";
-import { getCurrentUser } from "@/lib/current-user";
+import { getCurrentUser, type CurrentUser } from "@/lib/current-user";
 import { runAuditQuery } from "@/lib/db-audit";
 import { canReach, LANDING_AFTER_LEAVING, type NavCounts } from "./access";
 import { isShownAt } from "./my-applications";
@@ -101,6 +101,12 @@ type ActiveRole = {
 
 type Identity = {
   userId: string;
+  /**
+   * The account behind a View as session, read from the session on the
+   * server (issue #605): `userId` is then the person viewed as. Each write
+   * that names its author stores it beside them; null for a plain session.
+   */
+  actingAccountId: string | null;
   name: string;
   email: string;
   linkedin: string | null;
@@ -129,7 +135,7 @@ export type DashboardIdentity = Identity;
  * the open departments go out together, since none needs another's answer.
  * Only someone with no active role waits for one more read, the Alumni record.
  */
-async function readIdentity(userId: string): Promise<Identity | null> {
+async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "id" | "actingAccountId">): Promise<Identity | null> {
   const db = getDb();
   const [[user], scopeRows, roleRows, openDepartments] = await Promise.all([
     db
@@ -181,6 +187,7 @@ async function readIdentity(userId: string): Promise<Identity | null> {
   const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email;
   const base = {
     userId,
+    actingAccountId,
     name,
     email: user.email,
     linkedin: user.linkedin,
@@ -871,7 +878,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
   if (!isDatabaseConfigured()) return null;
   const user = await getCurrentUser();
   if (!user) return null;
-  const identity = await readIdentity(user.id);
+  const identity = await readIdentity(user);
   if (!identity) return null;
 
   const viewer: DashboardViewer = {
