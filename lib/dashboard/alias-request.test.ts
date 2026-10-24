@@ -59,7 +59,7 @@ const team: TeamPerson[] = [
   person(LENA, "Lena Fischer", { memberships: member(2) }),
   person(RICCARDO, "Riccardo Lombardi", { memberships: member(3) }),
   person(CHIARA, "Chiara Rinaldi", { beyond: [{ kind: "head", departmentId: 1, title: "" }] }),
-  person(ALESSANDRO, "Alessandro Greco", { beyond: [{ kind: "team-leader" }] }),
+  person(ALESSANDRO, "Alessandro Greco", { beyond: [{ kind: "team-leader", title: "" }] }),
   person(GIULIA, "Giulia Rossi", { beyond: [{ kind: "head", departmentId: null, title: "" }] }),
 ];
 

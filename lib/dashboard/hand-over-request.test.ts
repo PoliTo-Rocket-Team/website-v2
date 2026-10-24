@@ -60,7 +60,7 @@ const team: TeamPerson[] = [
   person(PAOLO, "Paolo Conti", { memberships: lead(2) }),
   person(CHIARA, "Chiara Rinaldi", { beyond: [{ kind: "head", departmentId: 1, title: "" }] }),
   person(DAVIDE, "Davide Russo", { beyond: [{ kind: "head", departmentId: 2, title: "" }] }),
-  person(ALESSANDRO, "Alessandro Greco", { beyond: [{ kind: "team-leader" }] }),
+  person(ALESSANDRO, "Alessandro Greco", { beyond: [{ kind: "team-leader", title: "" }] }),
   person(RICCARDO, "Riccardo Moretti", { memberships: member(3) }),
 ];
 

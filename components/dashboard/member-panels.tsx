@@ -491,7 +491,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
       : title?.kind === "division"
         ? { id: title.divisionId, short: title.short }
         : null;
-  const startTitle = waiting?.title ?? (title?.kind === "division" ? title.value : null);
+  const startTitle = waiting?.title ?? (title?.kind === "division" || title?.kind === "seat" ? title.value : null);
   const { draft, errors, setErrors, set } = useDraft(draftOf(startTitle, person?.details ?? waiting?.details ?? NO_MEMBER_DETAILS));
   const [leads, setLeads] = useState<Readonly<Record<number, DivisionRole>>>(() =>
     Object.fromEntries((position?.leads ?? []).map((l) => [l.divisionId, l.role])),
@@ -502,7 +502,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const input = { title: draft.title, details: detailsOf(draft) };
-    const checked = checkMemberEdit(input);
+    const checked = checkMemberEdit(input, title?.kind === "seat" ? "required" : "optional");
     if (!checked.ok) return setErrors(checked.errors);
     setPending(true);
     try {
@@ -551,13 +551,15 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         )}
 
         <Section title="Role">
-          {titleDivision !== null ? (
-            <Field label={`Role in ${titleDivision.short}`} hint="shown on the Team page" error={errors.title}>
+          {titleDivision !== null || title?.kind === "seat" ? (
+            // A division's title, or a seat's: the head's, the team leader's or a team-level seat's (issue #626).
+            <Field label={titleDivision !== null ? `Role in ${titleDivision.short}` : "Role"} hint="shown on the Team page" error={errors.title}>
               {(id, describedBy) => (
                 <input
                   id={id}
                   value={draft.title}
                   maxLength={80}
+                  aria-required={titleDivision === null}
                   aria-describedby={describedBy}
                   aria-invalid={errors.title !== undefined}
                   onChange={(e) => set("title", e.target.value)}
@@ -566,7 +568,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
               )}
             </Field>
           ) : (
-            title?.kind === "seat" && (
+            title?.kind === "fixed" && (
               <Field label="Role" hint="set on the Team tree">
                 {(id) => (
                   <span id={id} className={LOCKED_INPUT}>

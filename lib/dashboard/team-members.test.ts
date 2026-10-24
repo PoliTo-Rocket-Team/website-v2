@@ -56,7 +56,7 @@ const records = [
   record("Anna Villa", [[10, "member"], [11, "member"]], { title: "Mission Analyst", details: { phone: "+39 340 556 1209", gender: "Female", level: "Year 1 Master's" }, nda: false }),
   record("Marco Bianchi", [[10, "lead"]], { details: { gender: "Male", country: "Italy" } }),
   record("Chiara Ferri", [], { beyond: [{ kind: "head", departmentId: 1, title: "Head of Aerodynamics" }], details: { gender: "Female" } }),
-  record("Alessandro Greco", [], { beyond: [{ kind: "team-leader" }] }),
+  record("Alessandro Greco", [], { beyond: [{ kind: "team-leader", title: "" }] }),
 ];
 
 const page = wholeTeamMembers({ records, org, selfId: records[4].id });

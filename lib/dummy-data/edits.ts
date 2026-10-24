@@ -30,6 +30,8 @@ export type MemberChange = {
   readonly roles: Readonly<Record<number, DivisionRole>>;
   /** Division id to the title Edit details set there. */
   readonly titles?: Readonly<Record<number, string | null>>;
+  /** The title Edit details set on their seat, a head's or a team-level seat's (issue #626); never blank. */
+  readonly seatTitle?: string;
   /** Division id to the day Add member put them in it. */
   readonly joined?: Readonly<Record<number, string>>;
   /** Divisions Remove from <division> took them out of. */
@@ -234,12 +236,14 @@ function readTitles(value: unknown): Record<number, string | null> {
 
 function readMemberChange(value: unknown): MemberChange | null {
   if (!isRecord(value)) return null;
-  const { roles, pageTitle, titles, joined, left } = value;
+  const { roles, pageTitle, titles, seatTitle, joined, left } = value;
   if (pageTitle !== null && typeof pageTitle !== "string") return null;
+  const seat = typeof seatTitle === "string" ? cleanTitle(seatTitle) : null;
   return {
     pageTitle: cleanTitle(pageTitle),
     roles: entriesOf(roles, (r) => (r === "lead" || r === "member" ? r : null)),
     titles: readTitles(titles),
+    ...(seat !== null && { seatTitle: seat }),
     joined: entriesOf(joined, (d) => (isDay(d) ? d : null)),
     left: Array.isArray(left) ? left.filter((id): id is number => Number.isInteger(id) && id > 0) : [],
   };
