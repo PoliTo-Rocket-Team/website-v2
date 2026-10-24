@@ -112,7 +112,7 @@ function TeamView({ overview, aliasCard }: { overview: TeamSideOverview; aliasCa
   return (
     <>
       <section className={PERSON_FRAME}>
-        <PersonLines name={person.name} line={person.line} since={person.since} />
+        <PersonLines name={person.name} line={person.line} since={person.since} photoUrl={person.photoUrl} />
         {person.edit && (
           <Link
             href={person.edit.href}
@@ -524,7 +524,7 @@ function RosterPanel({ roster }: { roster: Roster }) {
           key={p.name}
           className={`flex items-center gap-3 px-4 py-2.5 md:px-5 ${p.self ? "max-md:rounded-b-xl max-md:bg-accent/[0.08]" : ""}`}
         >
-          <Avatar size="sm" accent={p.lead} />
+          <Avatar size="sm" accent={p.lead} photoUrl={p.photoUrl} />
           <span className="min-w-0 flex-1">
             <span className="block text-[13px] font-medium">{p.name}</span>
             <span className="block text-[12px] text-prt-muted">
@@ -549,10 +549,12 @@ function RosterPanel({ roster }: { roster: Roster }) {
 const PERSON_FRAME =
   "flex flex-col gap-4 sm:flex-row sm:items-center md:rounded-xl md:border md:border-hairline md:bg-panel/60 md:px-6 md:py-6";
 
-function PersonLines({ name, line, since }: { name: string; line: string; since: string | null }) {
+// The circle shows their stored photo, else the PRT mark (issue #599). Only
+// a team seat's header passes one; the applicant and alumni ones draw the mark.
+function PersonLines({ name, line, since, photoUrl = null }: { name: string; line: string; since: string | null; photoUrl?: string | null }) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-4 md:gap-5">
-      <Avatar size="person" />
+      <Avatar size="person" photoUrl={photoUrl} />
       <div className="min-w-0">
         <h1 className="text-[20px] font-bold leading-tight tracking-[-0.01em] md:text-[24px]">{name}</h1>
         <p className="mt-1 break-words text-[14px] text-text-2">{line}</p>

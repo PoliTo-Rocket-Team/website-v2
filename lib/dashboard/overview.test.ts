@@ -6,10 +6,10 @@ const division = { title: "Mission Analysis Division", department: "Aerospace" }
 
 test("a member with two active rows in the division is listed and counted once", () => {
   const rows: RosterRow[] = [
-    { memberId: 1, name: "Ada Head", type: "head" },
-    { memberId: 1, name: "Ada Head", type: "member" },
-    { memberId: 2, name: "Bo Member", type: "member" },
-    { memberId: 3, name: "Viewer", type: "member" },
+    { memberId: 1, name: "Ada Head", type: "head", photoUrl: null },
+    { memberId: 1, name: "Ada Head", type: "member", photoUrl: null },
+    { memberId: 2, name: "Bo Member", type: "member", photoUrl: null },
+    { memberId: 3, name: "Viewer", type: "member", photoUrl: null },
   ];
   const roster = divisionRoster(division, rows, 3);
   assert.deepEqual(
@@ -26,8 +26,8 @@ test("a member with two active rows in the division is listed and counted once",
 
 test("a member is a division lead when any of their rows is, whatever the row order", () => {
   const rows: RosterRow[] = [
-    { memberId: 1, name: "Ada", type: "member" },
-    { memberId: 1, name: "Ada", type: "lead" },
+    { memberId: 1, name: "Ada", type: "member", photoUrl: null },
+    { memberId: 1, name: "Ada", type: "lead", photoUrl: null },
   ];
   const roster = divisionRoster(division, rows, 9);
   assert.equal(roster.people.length, 1);

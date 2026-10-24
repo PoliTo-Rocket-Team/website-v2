@@ -217,6 +217,8 @@ export type PersonHeader = {
   /** "In the team since October 2025" */
   readonly since: string | null;
   readonly edit: Link | null;
+  /** The viewer's stored photo, the one the sidebar shows (`DashboardViewer.photoUrl`); null draws the PRT mark (issue #599). */
+  readonly photoUrl: string | null;
 };
 
 export type ChecklistItem = {
@@ -238,6 +240,8 @@ export type RosterPerson = {
   readonly role: string;
   readonly lead: boolean;
   readonly self: boolean;
+  /** Their stored photo; null draws the PRT mark (issue #599). */
+  readonly photoUrl: string | null;
 };
 
 export type Roster = {
@@ -254,6 +258,7 @@ export type RosterRow = {
   readonly name: string;
   /** The row's position type; "lead" or "head" makes the member a division lead. */
   readonly type: string | null;
+  readonly photoUrl: string | null;
 };
 
 /**
@@ -276,6 +281,7 @@ export function divisionRoster(
       role: lead ? "Division lead" : "Member",
       lead,
       self: row.memberId === viewerId,
+      photoUrl: row.photoUrl,
     });
   }
   const people = [...byMember.values()];
