@@ -181,8 +181,9 @@ export async function cancelAliasRequest(identity: DashboardIdentity, requestId:
  * Decline or Mark created (boards 94c, 94d), checked by `planAliasAnswer`.
  * The request is closed first, so a second answer finds it gone; then one
  * batch saves the address as the member's PRT email (Mark created) and
- * writes the notices. If that batch fails, the request is open again. The
- * PRT email is in the cached team snapshot, so Mark created refreshes it.
+ * writes the notices. If that batch fails, the request is open again, or,
+ * when a newer request for the member came in meanwhile, the answer is
+ * refused (`undoAliasClaim`). The PRT email is in the cached team snapshot, so Mark created refreshes it.
  */
 export async function answerAlias(identity: DashboardIdentity, requestId: number, input: unknown): Promise<WriteResult<null>> {
   const checked = checkAliasAnswer(input);
@@ -214,16 +215,38 @@ export async function answerAlias(identity: DashboardIdentity, requestId: number
         : [first!, ...rest];
     });
   } catch (error) {
+    if ((await undoAliasClaim(requestId)) === "superseded") return refused(SUPERSEDED_ANSWER);
+    throw error;
+  }
+  if (plan.kind === "created") refreshAfter("team", updateTag);
+  return written(null);
+}
+
+/** What the approver reads when their answer failed and a newer request for the member came in meanwhile (issue #547). */
+const SUPERSEDED_ANSWER = "Your answer was not saved: a newer alias request for this member is open. Answer that one instead.";
+
+/**
+ * Takes back a claim whose follow-up batch failed: the request is open
+ * again. While it was claimed the member had no open request, so a newer
+ * one may have landed (Request alias, or a role change's automatic one);
+ * then `alias_requests_one_open` refuses the reopen, the newer request is
+ * kept, and the claimed one closes as cancelled, so no row says an answer
+ * was saved that was not (issue #547).
+ */
+async function undoAliasClaim(requestId: number): Promise<"reopened" | "superseded"> {
+  try {
     await runAuditQuery((db) =>
       db
         .update(aliasRequests)
         .set({ outcome: null, answeredBy: null, answeredByActingAccount: null, answeredAt: null })
         .where(eq(aliasRequests.id, requestId)),
     );
-    throw error;
+    return "reopened";
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
   }
-  if (plan.kind === "created") refreshAfter("team", updateTag);
-  return written(null);
+  await runAuditQuery((db) => db.update(aliasRequests).set({ outcome: "cancelled" }).where(eq(aliasRequests.id, requestId)));
+  return "superseded";
 }
 
 // The member's own alias (issue #542, boards 94f and 94g) ---------------------
