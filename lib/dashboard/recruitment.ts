@@ -5,8 +5,8 @@ import { areaUnitsOf, type AreaReader } from "./viewer";
 
 // What the Positions and Applications pages show (Dashboard v2 boards 57 and
 // 58, issue #171, after boards 41 to 41c of issue #142). The dashboard data
-// interface (./data.ts) answers these shapes from the dummy arrays or the
-// database; the components in components/dashboard/ render them and fetch
+// interface (./data.ts) answers these shapes from the database (the dummy
+// arrays only in tests); the components in components/dashboard/ render them and fetch
 // nothing. Where an application stands, and how it moves, is
 // ./application-flow.ts.
 

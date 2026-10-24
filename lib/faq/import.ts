@@ -6,7 +6,7 @@ import type { FaqVersion } from "./faq";
 // #258): each one published, in the record's order. Migration
 // drizzle/0025_faqs_audit_and_import.sql holds exactly the SQL
 // `faqImportSql` writes, which lib/faq/faq.test.ts checks; the database
-// dates each version when the migration runs. The dummy data (previews)
+// dates each version when the migration runs. The dummy data (tests)
 // starts from the same items.
 
 /** The record's questions as stored items: ids and site order from 1, each published with no draft, dated `updatedAt`. */

@@ -24,9 +24,9 @@ session cookie; server code reads the user id from that cookie, then turns the m
 3. **Dashboard pages read through one data interface.** `openDashboard()` in
    [lib/dashboard/open.ts](../lib/dashboard/open.ts) returns a `DashboardOpening`
    ([lib/dashboard/opening.ts](../lib/dashboard/opening.ts)). It is `open` with the viewer and
-   their data: the dummy arrays in `lib/dummy-data/` for a test developer where no database is
-   configured, else the database rows ([lib/dashboard/database.ts](../lib/dashboard/database.ts))
-   of the signed-in account, or of the viewer's seeded person for a test developer, whose writes
+   their data: the database rows ([lib/dashboard/database.ts](../lib/dashboard/database.ts)) of
+   the signed-in account, or of the viewer's seeded person for a test developer (issue #609: no
+   page reads the dummy arrays in `lib/dummy-data/`), whose writes
    are saved as that person on a preview and refused anywhere else ([lib/db-audit.ts](../lib/db-audit.ts)). With no session
    token it is `signed-out`, and the page sends the visitor to `/login`. With a token but no
    account it is `account-unresolved`, and the shell shows a sign-out screen: `/login` would send

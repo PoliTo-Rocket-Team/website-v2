@@ -11,8 +11,8 @@ import { checkDeparture, type EditableRole } from "@/lib/dashboard/team";
 import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
 
 // The Team pages' writes (issues #143 and #172). Each goes through the dashboard data
-// interface, so a test developer's change lands in their cookie and nowhere
-// else; a source that stores none answers false.
+// interface, which writes to the database (a test developer's change only on
+// a preview, ADR 0016); a source that stores none answers false.
 
 export type TeamActionResult = { readonly ok: true } | { readonly ok: false; readonly error: string };
 

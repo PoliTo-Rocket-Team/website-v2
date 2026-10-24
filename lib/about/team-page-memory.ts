@@ -7,8 +7,8 @@ import type { TeamPageStore } from "./team-page-editor";
 
 // The Team page's store held in memory (issue #321): the layer document and
 // the advisors, each in its own memory content store (lib/content/memory.ts).
-// Tests keep everything; a preview keeps a test developer's changes in two
-// cookies that can fill up (lib/dummy-data/team-page.ts).
+// Tests keep everything; the dummy side, read only by tests, keeps changes in
+// two cookies that can fill up (lib/dummy-data/team-page.ts).
 
 /**
  * A Team page store over `layer` and `advisors`. A save first asks `refusal`

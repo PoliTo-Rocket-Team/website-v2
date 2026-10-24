@@ -16,7 +16,7 @@ import { BACKGROUND_MAX_BYTES, backgroundUploads, isUploadedSrc, type ProjectRec
 // publish rules and the site order are the ones every content type has, plus
 // the Edit <project> panel's save and the dashboard Projects page's list.
 // Each side of the dashboard brings its store and its edit history: the
-// database and its audit log, or a test developer's cookie over the dummy
+// database and its audit log, or, in tests, a cookie over the dummy
 // projects, seen from the dummy team's moment. Photos of a launch or of the
 // gallery (issue #299) are uploaded the way Outreach's are
 // (lib/outreach-photos.ts): stored at once behind the gate, put on the

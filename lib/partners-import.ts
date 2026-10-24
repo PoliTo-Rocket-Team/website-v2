@@ -6,7 +6,7 @@ import { partnerColumns, type PartnerColumns } from "./partners-rows";
 // each one published, in the record's order, with its tier, texts and logo.
 // Migration drizzle/0023_partners_audit_and_import.sql holds exactly the SQL
 // `partnerImportSql` writes, which partners-editor.test.ts checks, and the
-// dummy data (previews) starts from the same items.
+// dummy data (tests) starts from the same items.
 
 /** The record's partners as stored items: ids and site order from 1, each published with no draft. */
 export function importedPartners(list: readonly Partner[] = record): ContentItem<Partner>[] {
