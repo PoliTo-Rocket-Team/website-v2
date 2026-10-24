@@ -21,6 +21,15 @@ Tailwind 3.
   ([docs/seed-cases.md](docs/seed-cases.md#re-seed-the-preview-branch)). Never write to, seed or
   migrate production. Never run a Neon "reset from parent" on `preview`: its parent is
   production. Do not run the seed against a real database, set that variable or read env files.
+- Check a signed-in page with a real session. The test developer cookie and the dummy-data
+  pages are gone, and every page reads a database. Under `next dev` and on a preview
+  of the shared `preview` database, sign in with no Google account at `/api/auth/dev-tester` as a
+  seeded seat or admin tester (keys in [lib/seeded-accounts.ts](lib/seeded-accounts.ts),
+  [README.md](README.md#sign-in-as-a-tester)); on production those routes answer 404. To see
+  another person's dashboard, sign in as an admin tester and open "View as…" in the user menu, and
+  pick a seeded seat. On production only the IT lead seat may use View as. The seats and admin testers,
+  with what each holds, are listed in [docs/seed-cases.md](docs/seed-cases.md#test-seats)
+  (Test seats, Admin testers).
 - The check every change passes is `pnpm exec tsc --noEmit`, the same one CI runs
   ([ci.yml](.github/workflows/ci.yml)). `pnpm build` prerenders pages that query Neon, so it
   needs `DATABASE_URL`.

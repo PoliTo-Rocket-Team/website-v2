@@ -35,8 +35,8 @@ export const EVERY_CHANNEL_POST = 15;
 export const DRAFT_ONLY_POST = 16;
 
 /**
- * The every-channel post's cover: the seed uploads no file, so it uses the
- * warm stand-in a preview shows for an upload (public/outreach/), with two
+ * The every-channel post's cover: the seed uploads no file, so it uses a
+ * warm stand-in image (public/outreach/), with two
  * school-day photos of the record beside it to fill the photo grid.
  */
 const STAND_IN_PHOTO = {
