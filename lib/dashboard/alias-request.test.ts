@@ -214,3 +214,14 @@ test("the member drawer's alias: set, requested, or none with Request alias only
   const asSender = memberAliasesFor({ viewerId: CHIARA, memberIds: [LENA], team, org, addresses: new Map(), open: [request(1, LENA, CHIARA, "2026-10-22T08:00:00Z")], now });
   assert.deepEqual(asSender[LENA], { kind: "requested", requestId: 1, line: "by you · 22 Oct", cancellable: true });
 });
+
+test("a request sent while viewing as the requester names the acting seat, to the requester too (issue #605)", () => {
+  const now = new Date("2026-10-22T12:00:00+02:00");
+  const viewedAs: AliasRequest = { ...request(1, LENA, CHIARA, "2026-10-22T08:00:00Z"), requesterActingTitle: "IT lead" };
+  for (const viewerId of [CHIARA, MARCO]) {
+    const aliases = memberAliasesFor({ viewerId, memberIds: [LENA], team, org, addresses: new Map(), open: [viewedAs], now });
+    assert.equal((aliases[LENA] as { line: string }).line, "by IT lead as Chiara Rinaldi · 22 Oct", `as ${viewerId}`);
+  }
+  const [row] = aliasAttentionFor(testDeveloperStanding("team-leader"), [viewedAs], team, org, now);
+  assert.equal(row.title, "IT lead as Chiara Rinaldi asks for an email alias for Lena Fischer");
+});

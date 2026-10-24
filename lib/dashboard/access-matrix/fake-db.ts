@@ -19,17 +19,32 @@ type Ctx = { readonly row?: Joined; readonly group?: readonly Joined[] };
 /** A write a loader started: its kind and its table. */
 export type RecordedWrite = { readonly kind: string; readonly table: string };
 
+/** Who an audited write was logged under: the settings lib/db-audit.ts sets before it (lib/audit-writer.ts). */
+export type RecordedAuditWriter = { readonly userId: string; readonly actingAccountId: string | null };
+
 const store = new Map<string, DbRow[]>();
 const writes: RecordedWrite[] = [];
 const batches: RecordedWrite[][] = [];
+const auditWriters: RecordedAuditWriter[] = [];
 let keeping = false;
 
-/** Empties every table, the write record and the batch record, and stores writes no more. */
+/** Empties every table, the write record, the batch record and the audit writer record, and stores writes no more. */
 export function resetFakeDb(): void {
   store.clear();
   writes.length = 0;
   batches.length = 0;
+  auditWriters.length = 0;
   keeping = false;
+}
+
+/** Notes who an audited write is logged under, as the database's audit trigger would read it. */
+export function recordAuditWriter(writer: RecordedAuditWriter): void {
+  auditWriters.push(writer);
+}
+
+/** Who each audited write since the last reset was logged under, in order. */
+export function recordedAuditWriters(): readonly RecordedAuditWriter[] {
+  return [...auditWriters];
 }
 
 /**
