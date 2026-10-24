@@ -49,7 +49,7 @@ const grants = (p: AccessPerson, givenOn: string, approveOrders = false): Access
 
 const seat: AccessRow = {
   kind: "role",
-  role: { person: { id: 10, name: "Giulia Ferri", standing: "lead", division: null }, place: { kind: "team" }, seat: "operations-lead" },
+  role: { person: { id: 10, name: "Giulia Ferri", standing: "lead", division: null }, place: { kind: "team" }, seat: "operations-lead", title: "Operations lead" },
 };
 const sofia = grants(person(1, "Sofia Neri", msa), "2026-10-02");
 const carlo = grants(person(2, "Carlo Rossi", aoa), "2026-10-05", true);

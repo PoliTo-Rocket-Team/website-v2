@@ -253,7 +253,10 @@ These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
   reads "Also in another division · shown once" (board 54e).
 - The division a person is drawn under, and the one a page names when it shows only one, is
   their home division: the oldest division they lead, else their oldest membership.
-- A role title is stored (`roles.title`) and every page shows it as stored (#625). A head row is
+- A role title is stored (`roles.title`) and every page that names a head or a team-level seat by
+  its role shows it as stored (#625): Members, the Team tree, the Team page, the line under a name
+  on Access and Close department's head label. A hand-over's full-access line names the seat that
+  moves ("becomes Operations lead"), not the role's title. A head row is
   written with "Head of {department}"; a department rename rewrites only head titles still at
   the old default. The default shows only for a blank title. No page decides a seat or a
   headship by a title's text, so a rename never moves anyone or changes any access.

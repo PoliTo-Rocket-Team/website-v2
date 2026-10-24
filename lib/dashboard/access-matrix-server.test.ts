@@ -1171,6 +1171,34 @@ describe("a renamed role title changes no access, no seat and no headship (issue
     assert.deepEqual([aerodynamics?.head?.id, aerodynamics?.head?.title], [head, "Chief of Aerodynamics"]);
   });
 
+  test("the Access page's line under a renamed head and a renamed Chief Engineer, and Close department's head label, read the stored title", async () => {
+    const [head, ce] = [accountOf("department head").memberId, accountOf("Chief Engineer").memberId];
+    const lines = async (titles?: { readonly head: string; readonly ce: string }) => {
+      const data = await openAfter("team leader", () => {
+        if (titles !== undefined) {
+          rename("department head", titles.head);
+          rename("Chief Engineer", titles.ce);
+        }
+      });
+      const access = await data.divisionAccess();
+      const titleOf = (id: number | null) => {
+        const role = access?.roleAccess.find((r) => r.person.id === id);
+        return role !== undefined && "title" in role ? role.title : null;
+      };
+      const aerodynamics = (await data.teamStructure())?.departments.find((d) => d.id === IDS.department("MA"));
+      const closing = aerodynamics?.closing.find((p) => p.id === head);
+      return { head: titleOf(head), ce: titleOf(ce), close: closing?.standing === "head" ? closing.title : null, department: aerodynamics?.name };
+    };
+    // The fixture stores the head's title as "Head" and the Chief Engineer's as "Chief Engineer": each reads as stored.
+    const seeded = await lines();
+    assert.deepEqual([seeded.head, seeded.ce, seeded.close], ["Head", "Chief Engineer", "Head"]);
+    const renamed = await lines({ head: "Chief of Aerodynamics", ce: RENAMED });
+    assert.deepEqual([renamed.head, renamed.ce, renamed.close], ["Chief of Aerodynamics", RENAMED, "Chief of Aerodynamics"]);
+    // A blank title reads the default.
+    const blank = await lines({ head: "", ce: "" });
+    assert.deepEqual([blank.head, blank.ce, blank.close], [`Head of ${blank.department}`, "Chief Engineer", `Head of ${blank.department}`]);
+  });
+
   test("a department rename rewrites a head title still at the old default and keeps a renamed one", async () => {
     const renameStructures = async (headTitle: string) => {
       seedFixture();
