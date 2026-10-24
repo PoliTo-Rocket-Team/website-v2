@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { use, useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Search } from "lucide-react";
@@ -51,6 +51,7 @@ function ViewAsDialog({ opening }: { opening: ViewAsOpening }) {
   const router = useRouter();
   const pathname = usePathname() ?? "/dashboard";
   const open = params?.has(VIEW_AS_PARAM) ?? false;
+  const search = useRef<HTMLInputElement>(null);
 
   const close = () => {
     const rest = new URLSearchParams(params?.toString());
@@ -63,16 +64,23 @@ function ViewAsDialog({ opening }: { opening: ViewAsOpening }) {
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
       <DialogPortal>
         <DialogOverlay className={SHEET_OVERLAY} />
-        <DialogPrimitive.Content className="fixed inset-x-0 bottom-0 z-50 max-h-[92svh] overflow-y-auto rounded-t-2xl border-t border-hairline bg-panel px-5 pb-6 pt-3 text-prt-text shadow-[0_-16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 max-sm:motion-safe:data-[state=open]:slide-in-from-bottom sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-[15vh] sm:w-[500px] sm:-translate-x-1/2 sm:rounded-2xl sm:border sm:p-6 sm:shadow-[0_16px_40px_rgba(0,0,0,0.6)]">
+        {/* Radix moves focus to the content on open, past an `autoFocus` inside
+            it; the search field takes it instead, so typing searches at once (issue #650). */}
+        <DialogPrimitive.Content
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            search.current?.focus();
+          }}
+          className="fixed inset-x-0 bottom-0 z-50 max-h-[92svh] overflow-y-auto rounded-t-2xl border-t border-hairline bg-panel px-5 pb-6 pt-3 text-prt-text shadow-[0_-16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 max-sm:motion-safe:data-[state=open]:slide-in-from-bottom sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-[15vh] sm:w-[500px] sm:-translate-x-1/2 sm:rounded-2xl sm:border sm:p-6 sm:shadow-[0_16px_40px_rgba(0,0,0,0.6)]">
           <SheetGrabber />
-          {open && <ViewAsBody opening={opening} />}
+          {open && <ViewAsBody opening={opening} search={search} />}
         </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>
   );
 }
 
-function ViewAsBody({ opening }: { opening: ViewAsOpening }) {
+function ViewAsBody({ opening, search }: { opening: ViewAsOpening; search: RefObject<HTMLInputElement | null> }) {
   const listId = useId();
   const [text, setText] = useState("");
   const [found, setFound] = useState<Found>({ kind: "searching" });
@@ -150,8 +158,8 @@ function ViewAsBody({ opening }: { opening: ViewAsOpening }) {
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={chosen === null ? undefined : optionId(chosen)}
+          ref={search}
           autoComplete="off"
-          autoFocus
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={onKeyDown}

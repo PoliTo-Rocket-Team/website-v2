@@ -88,6 +88,7 @@ async function readCandidates(actingAccountId: string, text: string): Promise<Vi
           .select({
             memberId: roles.memberId,
             type: roles.type,
+            title: roles.title,
             fullAccess: roles.fullAccess,
             startedAt: roles.startedAt,
             unitName: sql<string | null>`coalesce(${divisions.name}, ${departments.name})`,
@@ -101,7 +102,7 @@ async function readCandidates(actingAccountId: string, text: string): Promise<Vi
   return accounts.map((a) => {
     const held: ViewAsRole[] = roleRows
       .filter((r) => a.memberId !== null && r.memberId === a.memberId)
-      .map((r) => ({ type: r.type, seat: r.fullAccess === null ? null : SEAT_OF_FLAG[r.fullAccess], startedAt: r.startedAt, unitName: r.unitName }));
+      .map((r) => ({ type: r.type, title: r.title, seat: r.fullAccess === null ? null : SEAT_OF_FLAG[r.fullAccess], startedAt: r.startedAt, unitName: r.unitName }));
     return {
       id: a.id,
       name: a.name,

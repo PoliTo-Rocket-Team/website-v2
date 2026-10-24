@@ -8,7 +8,14 @@ import { VIEW_AS_SHOWN, viewAsLineOf, viewAsPeopleOf, type ViewAsCandidate, type
 // the acting account is offered. A row the gate would refuse is a dead end in
 // the dialog.
 
-const role = (over: Partial<ViewAsRole>): ViewAsRole => ({ type: "core", seat: null, startedAt: "2024-10-01", unitName: "Mission Analysis", ...over });
+const role = (over: Partial<ViewAsRole>): ViewAsRole => ({
+  type: "core",
+  title: "Trajectory Analyst",
+  seat: null,
+  startedAt: "2024-10-01",
+  unitName: "Mission Analysis",
+  ...over,
+});
 
 function candidate(id: string, over: Partial<ViewAsCandidate> = {}): ViewAsCandidate {
   return { id, name: id, photoUrl: null, roles: [role({})], alumnus: null, ...over };
@@ -39,10 +46,13 @@ test("one search shows at most VIEW_AS_SHOWN people, in the order read", () => {
   );
 });
 
-test("the line names the highest role with its unit, a seat alone, or the year an alumnus left", () => {
-  const memberAndLead = [role({ startedAt: "2023-10-01" }), role({ type: "lead", unitName: "Ground Station", startedAt: "2024-10-01" })];
-  assert.equal(viewAsLineOf({ roles: memberAndLead, alumnus: null }), "Division lead · Ground Station");
-  assert.equal(viewAsLineOf({ roles: [role({ type: "president", unitName: "Board" })], alumnus: null }), "Team leader");
+test("the line names the highest role's title with its unit, a seat alone, or the year an alumnus left", () => {
+  const memberAndLead = [
+    role({ startedAt: "2023-10-01" }),
+    role({ type: "lead", title: "Ground Station Lead", unitName: "Ground Station", startedAt: "2024-10-01" }),
+  ];
+  assert.equal(viewAsLineOf({ roles: memberAndLead, alumnus: null }), "Ground Station Lead · Ground Station");
+  assert.equal(viewAsLineOf({ roles: [role({ type: "president", title: "Team Leader", unitName: "Board" })], alumnus: null }), "Team Leader");
   assert.equal(viewAsLineOf({ roles: [], alumnus: { teamTo: 2024 } }), "Alumni · 2024");
   assert.equal(viewAsLineOf({ roles: [], alumnus: null }), "Non-member");
 });

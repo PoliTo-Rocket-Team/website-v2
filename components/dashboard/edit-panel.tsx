@@ -39,7 +39,7 @@ export function EditPanel<Section extends string>({
   return (
     <aside
       aria-label={label}
-      className="flex flex-col border-l border-hairline bg-panel max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:top-[60px] max-md:z-50 md:w-[480px] md:shrink-0"
+      className="flex flex-col border-l border-hairline bg-panel max-md:h-full md:w-[480px] md:shrink-0"
     >
       <header className="flex shrink-0 items-center justify-between border-b border-hairline px-6 py-[18px]">
         <div className="min-w-0">

@@ -82,6 +82,7 @@ import { answerAlias, cancelAliasRequest, confirmAliasSetUp, readAliasAttention,
 import { upcomingInterviews } from "./interview-slots";
 import { SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type ViewerStanding } from "./viewer";
 import { written } from "./write";
+import { primaryRoleOf, roleLabelOf } from "./role-label";
 
 // The dashboard data interface for the signed-in account, read from the
 // database. Reads follow
@@ -220,21 +221,13 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
   const units = viewerUnitsOf(unitRows, activeRoles);
   return {
     ...base,
-    role: primaryRole(activeRoles),
+    role: primaryRoleOf(activeRoles),
     roles: activeRoles,
     divisionIds: [...units.divisionIds],
     departmentIds: [...units.departmentIds],
     grants: areaGrantsOf(unitRows),
     ...standing,
   };
-}
-
-const ROLE_RANK: Readonly<Record<NonNullable<ActiveRole["type"]>, number>> = { president: 0, head: 1, lead: 2, core: 3, advisor: 3 };
-
-/** Their highest role, the oldest of those when they hold several: a lead role over a member role. */
-function primaryRole(active: readonly ActiveRole[]): ActiveRole | null {
-  const rank = (r: ActiveRole) => (r.type === null ? 4 : ROLE_RANK[r.type]);
-  return [...active].sort((a, b) => rank(a) - rank(b) || a.startedAt.localeCompare(b.startedAt))[0] ?? null;
 }
 
 type LivePosition = {
@@ -925,16 +918,17 @@ async function membersOf(identity: Identity, divisionId: number | null): Promise
 /**
  * The line under the name on the user card: "Alumni" or "Applicant" off the
  * team (the layout reads "Signed in" for an applicant with nothing shown,
- * `userCardRole`, ./viewer.ts), else the role's title.
+ * `userCardRole`, ./viewer.ts), else their role label (`roleLabelOf`,
+ * ./role-label.ts), which the View as dialog reads too.
  */
-function roleLabelOf(identity: Identity): string {
+function cardRoleOf(identity: Identity): string {
   switch (identity.kind) {
     case "alumni":
       return VIEWER_KIND_LABELS.alumni;
     case "non-member":
       return "Applicant";
     default:
-      return identity.role?.title ?? "Member";
+      return roleLabelOf(identity.roles);
   }
 }
 
@@ -949,7 +943,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
   const viewer: DashboardViewer = {
     ...standingOf(identity),
     name: identity.name,
-    role: roleLabelOf(identity),
+    role: cardRoleOf(identity),
     photoUrl: identity.picture,
   };
   const self = databaseSelfPages(identity);
