@@ -237,7 +237,20 @@ export const roles = pgTable("roles", {
   // Manager's and the Chief Engineer's (issue #485) seats; null on every
   // other role. The team leader is the `president` type and needs none.
   fullAccess: fullAccessSeatEnum("full_access"),
-});
+}, (table) => ({
+  // One active holder per seat (issue #667, drizzle/0062): one team leader,
+  // one holder of each full-access seat and one head per department. Only
+  // active rows count, so ended rows beside an active one are kept.
+  oneActiveTeamLeader: uniqueIndex("roles_one_active_team_leader")
+    .on(table.type)
+    .where(sql`${table.leavedAt} is null and ${table.type} = 'president'`),
+  oneActiveFullAccessSeat: uniqueIndex("roles_one_active_full_access_seat")
+    .on(table.fullAccess)
+    .where(sql`${table.leavedAt} is null and ${table.fullAccess} is not null`),
+  oneActiveDepartmentHead: uniqueIndex("roles_one_active_department_head")
+    .on(table.deptId)
+    .where(sql`${table.leavedAt} is null and ${table.type} = 'head' and ${table.deptId} is not null`),
+}));
 
 export const orders = pgTable("orders", {
   id: serial("id").primaryKey(),

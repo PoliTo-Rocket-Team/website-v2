@@ -421,6 +421,13 @@
       "when": 1794244800000,
       "tag": "0061_impersonated_write_attribution",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1794331200000,
+      "tag": "0062_roles_one_active_seat_holder",
+      "breakpoints": true
     }
   ]
 }

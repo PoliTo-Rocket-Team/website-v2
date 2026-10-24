@@ -203,6 +203,42 @@ test("0060 and 0061 apply again over a database that already holds them", async 
   assert.equal(constraints.rows[0].count, 8, "each acting-account foreign key exists once");
 });
 
+// One active holder per seat (issue #667) only creates partial unique
+// indexes on `roles`: no column, type or row changes. What the indexes refuse
+// is run in lib/dashboard/roles-one-active-seat-server.test.ts.
+const SEAT_TAG = "0062_roles_one_active_seat_holder";
+
+test("0062_roles_one_active_seat_holder.sql only creates indexes, and its header links the issue", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${SEAT_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  const statements = sql
+    .split("--> statement-breakpoint")
+    .map((s) => s.replace(/--.*$/gm, "").trim())
+    .filter(Boolean);
+  assert.equal(statements.length, 3);
+  assert.ok(statements.every((s) => /^CREATE UNIQUE INDEX IF NOT EXISTS "roles_one_active_\w+" ON "roles" USING btree \("\w+"\) WHERE "roles"\."leaved_at" is null and /.test(s)), "each is a unique index over active roles");
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/667/);
+});
+
+test("0062 keeps every existing role row as it was, and applies again over a database that already holds it", async () => {
+  const { db, apply } = await databaseBefore(SEAT_TAG);
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id) values (1), (2);
+    insert into departments (id, name) values (1, 'Aerodynamics');
+    insert into roles (id, member_id, dept_id, title, started_at, leaved_at, type) values
+      (1, 1, 1, 'Head', '2025-10-01', null, 'head'),
+      (2, 2, 1, 'Head', '2024-10-01', '2025-09-30', 'head');
+    set session_replication_role = origin;
+  `);
+  const before = await db.query(`select * from roles order by id`);
+  await apply();
+  await apply();
+  assert.deepEqual((await db.query(`select * from roles order by id`)).rows, before.rows);
+  const indexes = await db.query<{ name: string }>(`select indexname as name from pg_indexes where tablename = 'roles' and indexname like 'roles_one_active_%' order by 1`);
+  assert.deepEqual(indexes.rows.map((r) => r.name), ["roles_one_active_department_head", "roles_one_active_full_access_seat", "roles_one_active_team_leader"]);
+});
+
 // The migrator applies only entries journaled later than the newest one a
 // database records, so every entry must be later than the one before it. The
 // numbers 0056 and 0057 are not journaled: the trunk skipped them while this

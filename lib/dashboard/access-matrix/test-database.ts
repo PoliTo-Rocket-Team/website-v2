@@ -239,6 +239,11 @@ export async function clearRows(table: Table): Promise<void> {
   await setUp(table, (tx) => tx.delete(table as PgTable));
 }
 
+/** Deletes the rows `match` picks, written with the schema's field names: a test's setup, never a write the journal notes. */
+export async function removeRows(table: Table, match: Record<string, unknown>): Promise<void> {
+  await setUp(table, (tx) => tx.delete(table as PgTable).where(matching(table, match)));
+}
+
 /** Changes the rows `match` picks, both written with the schema's field names: the way a test lays a value over a seeded row. */
 export async function changeRows(table: Table, match: Record<string, unknown>, fields: Record<string, unknown>): Promise<void> {
   await setUp(table, (tx) => tx.update(table as PgTable).set(fields).where(matching(table, match)));

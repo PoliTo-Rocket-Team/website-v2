@@ -18,8 +18,8 @@ import {
   users,
 } from "@/db/schema";
 import { BOARD_FLAG_TITLES } from "../team";
-import type { FlaggedSeat, GrantArea } from "../viewer";
-import { addRows, changeRows, restore } from "./test-database";
+import type { FlaggedSeat, GrantArea, SeatFlag } from "../viewer";
+import { addRows, changeRows, removeRows, restore, tableRows } from "./test-database";
 import { ALL, UNITS, VIEWERS, type Role, type Unit } from "./matrix";
 
 // The database the server-side access tests read (issue #477): the matrix's
@@ -96,15 +96,38 @@ function titleOf(r: Role): string {
   return r.type === "president" ? "Team Leader" : r.type === "head" ? "Head" : r.type === "lead" ? "Division Lead" : "Member";
 }
 
-async function seedViewers(): Promise<void> {
+type RoleRow = typeof roles.$inferInsert;
+
+/**
+ * The seats a role row holds that only one active role may hold
+ * (drizzle/0062, issue #667): the team leader's, a full-access seat, a
+ * department's head.
+ */
+function seatsOf(r: Pick<RoleRow, "type" | "deptId" | "fullAccess">): string[] {
+  return [
+    ...(r.type === "president" ? ["team-leader"] : []),
+    ...(r.fullAccess != null ? [`full-access:${r.fullAccess}`] : []),
+    ...(r.type === "head" && r.deptId != null ? [`head:${r.deptId}`] : []),
+  ];
+}
+
+/**
+ * Each matrix viewer's role rows, split by seat. Several viewers hold one
+ * seat (the operations lead with and without Approve orders, the department
+ * head with each grant), and the database keeps one active holder per seat.
+ * The first viewer in the matrix to hold a seat sits in it in the fixture;
+ * a later one's row is `benched`, kept out of the fixture until they sign in
+ * (`seatSignedIn`).
+ */
+const VIEWER_ROLES = (() => {
+  const taken = new Set<string>();
+  const seated: RoleRow[] = [];
+  const benched = new Map<string, RoleRow[]>();
   for (const { name, viewer } of VIEWERS) {
     const { userId, memberId } = accountOf(name);
-    if (memberId !== null) await addRows(members, [{ memberId, ndaSignedAt: SINCE }]);
-    await addRows(users, [{ id: userId, email: `${userId}@team.test`, firstName: "Viewer", lastName: userId, member: memberId, createdAt: SINCE }]);
     if (memberId === null) continue;
-    await addRows(
-      roles,
-      viewer.heldRoles.map((r, i) => ({
+    viewer.heldRoles.forEach((r, i) => {
+      const row: RoleRow = {
         id: 1_000 + memberId * 10 + i,
         memberId,
         deptId: r.type === "head" ? r.departmentId : null,
@@ -113,8 +136,57 @@ async function seedViewers(): Promise<void> {
         startedAt: SINCE,
         type: r.type,
         fullAccess: r.fullAccess === null ? null : DB_SEAT[r.fullAccess],
-      })),
-    );
+      };
+      const seats = seatsOf(row);
+      if (seats.some((s) => taken.has(s))) benched.set(userId, [...(benched.get(userId) ?? []), row]);
+      else {
+        seats.forEach((s) => taken.add(s));
+        seated.push(row);
+      }
+    });
+  }
+  return { seated, benched };
+})();
+
+/**
+ * Puts a signed-in matrix viewer in the seat they share with an earlier
+ * viewer: the seat's holder's role row is removed and theirs added, so the
+ * database still has one active holder and it is them. The fake session
+ * (./fakes/current-user.ts) calls this as each server call reads who is
+ * signed in. A viewer already seated, or whose row a test has changed, is
+ * left as it is.
+ */
+export async function seatSignedIn(userId: string): Promise<void> {
+  const benched = VIEWER_ROLES.benched.get(userId);
+  if (benched === undefined) return;
+  const stored = (await tableRows(roles)) as RoleRow[];
+  const memberIds = new Set((await tableRows(members)).map((m) => m.memberId));
+  for (const row of benched) {
+    if (stored.some((r) => r.id === row.id) || !memberIds.has(row.memberId)) continue;
+    const seats = seatsOf(row);
+    const holders = stored.filter((r) => r.leavedAt === null && seatsOf(r).some((s) => seats.includes(s)));
+    for (const holder of holders) await removeRows(roles, { id: holder.id });
+    await addRows(roles, [row]);
+  }
+}
+
+/**
+ * Moves the full-access seat `flag` onto role row `rowId`: the flag comes
+ * off the row holding it (a matrix viewer's), so one active row holds it
+ * (drizzle/0062). A test's setup, as `changeRows` is.
+ */
+export async function moveSeatOnto(rowId: number, flag: SeatFlag): Promise<void> {
+  await changeRows(roles, { fullAccess: flag }, { fullAccess: null });
+  await changeRows(roles, { id: rowId }, { fullAccess: flag });
+}
+
+async function seedViewers(): Promise<void> {
+  for (const { name, viewer } of VIEWERS) {
+    const { userId, memberId } = accountOf(name);
+    if (memberId !== null) await addRows(members, [{ memberId, ndaSignedAt: SINCE }]);
+    await addRows(users, [{ id: userId, email: `${userId}@team.test`, firstName: "Viewer", lastName: userId, member: memberId, createdAt: SINCE }]);
+    if (memberId === null) continue;
+    await addRows(roles, VIEWER_ROLES.seated.filter((r) => r.memberId === memberId));
     if (viewer.onAlumniRecord) {
       // An alumnus: a role they left, and their entry on the Alumni record.
       await addRows(roles, [{ id: 1_000 + memberId * 10, memberId, divisionId: 1, title: "Member", startedAt: SINCE, leavedAt: "2026-06-01", type: "core" }]);

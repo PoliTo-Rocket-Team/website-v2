@@ -2198,10 +2198,13 @@ describe("View as: on production only the IT lead seat starts it, on a preview o
     // On a test site every account may use View as, so who could is no reason to refuse.
     assert.equal(await viewAsRefusal(start(itLead.userId, adminTester), PREVIEW), null, "an admin tester on a preview");
     assert.equal(await viewAsRefusal(start(member.userId, itLead.userId), PREVIEW), null, "the IT lead on a preview");
-    // On production a second IT lead seat holder may use View as, so nobody views as them.
-    await addRows(roles, [{ id: 9_001, memberId: member.memberId, title: "IT Lead", startedAt: "2026-10-20", type: "core", fullAccess: "it_lead" }]);
-    assert.equal(await viewAsRefusal(start(itLead.userId, member.userId), LIVE), "person-may-view-as", "another IT lead seat on production");
-    assert.equal(await viewAsRefusal(start(itLead.userId, member.userId), PREVIEW), null, "the same person on a preview");
+    // On production an account that holds the IT lead seat may use View as, so nobody views as it. The
+    // database keeps one active IT lead (issue #667), so it is a second account of the IT lead's own member.
+    const secondAccount = "it-lead-second-account";
+    await addRows(users, [{ id: secondAccount, email: `${secondAccount}@team.test`, firstName: "Viewer", lastName: secondAccount, member: itLead.memberId, createdAt: "2025-10-01" }]);
+    await addRows(betterAuthUsers, [{ id: secondAccount, name: secondAccount, email: `${secondAccount}@team.test`, emailVerified: true, role: "user" }]);
+    assert.equal(await viewAsRefusal(start(itLead.userId, secondAccount), LIVE), "person-may-view-as", "another account holding the IT lead seat on production");
+    assert.equal(await viewAsRefusal(start(itLead.userId, secondAccount), PREVIEW), null, "the same account on a preview");
   });
 
   test("the user menu offers View as to a plain member on a test site and not on production (readViewAsOpening)", async () => {
@@ -2521,14 +2524,9 @@ describe("a renamed role title changes no access, no seat and no headship (issue
     signInAs(accountOf(name).userId);
     assert.deepEqual(await teamActions.saveMemberDetails({ kind: "person", id: IDS.person("MA") }, IDS.division("MA"), SAVE), { ok: true });
     assert.ok(isRefusal(await answerOf(() => teamActions.saveMemberDetails({ kind: "person", id: IDS.person(DM) }, IDS.division(DM), SAVE))));
-    // The team leader's roster and Team tree read them as Aerodynamics' head, under the stored title.
-    // The matrix seeds several heads of Aerodynamics for its viewers; a department has one, so the
-    // others' head rows end here and the tree has that one head to show.
-    const leader = await openAfter("team leader", async () => {
-      await rename(name, "Chief of Aerodynamics");
-      const others = (await tableRows(roles)).filter((r) => r.type === "head" && r.deptId === IDS.department("MA") && r.memberId !== head && r.leavedAt === null);
-      for (const r of others) await changeRows(roles, { id: r.id }, { leavedAt: "2026-10-01" });
-    });
+    // The team leader's roster and Team tree read them as Aerodynamics' head, under the stored title:
+    // the fixture keeps one active head per department (issue #667), and it is them.
+    const leader = await openAfter("team leader", () => rename(name, "Chief of Aerodynamics"));
     const roster = await leader.members(null);
     assert.equal(roster.scope, "whole-team");
     const row = roster.scope === "whole-team" ? roster.people.find((p) => p.id === head) : undefined;

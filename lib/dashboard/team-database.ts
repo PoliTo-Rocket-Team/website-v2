@@ -112,7 +112,10 @@ async function queryTeamSnapshot(): Promise<TeamSnapshot> {
         division_id: roles.divisionId,
         full_access: roles.fullAccess,
       })
-      .from(roles),
+      .from(roles)
+      // A stable order, so a pick among roles (a department's head) does
+      // not change when an update moves a row (issue #667).
+      .orderBy(asc(roles.startedAt), asc(roles.id)),
     db
       .select({
         member_id: users.member,

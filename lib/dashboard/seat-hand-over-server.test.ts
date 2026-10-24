@@ -5,8 +5,8 @@ import { describe, test } from "node:test";
 import * as actions from "@/app/dashboard/actions";
 import * as teamActions from "@/app/dashboard/team-actions";
 import { handOverRequests, roles } from "@/db/schema";
-import { addRows, changeRows, databaseWrites, tableRows } from "./access-matrix/test-database";
-import { accountOf, EXTRA, IDS, seedFixture } from "./access-matrix/fixture";
+import { addRows, databaseWrites, tableRows } from "./access-matrix/test-database";
+import { accountOf, EXTRA, IDS, moveSeatOnto, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 import { ONE_SUCCESSOR_FOR_SEAT } from "./hand-over";
 import type { RoleType } from "./team";
@@ -33,16 +33,16 @@ const TEAM_LEADER = accountOf("team leader").userId;
 const activeRows = async () => (await tableRows(roles)).filter((r) => r.leavedAt === null);
 
 /**
- * How many active rows carry the seat. The matrix's own viewers hold each
- * seat too, so a hand-over is checked to add none: the successor's row
- * carries it only as the predecessor's row ends.
+ * How many active rows carry the seat: one, since the database keeps one
+ * active holder (drizzle/0062), so a hand-over is checked to add none: the
+ * successor's row carries it only as the predecessor's row ends.
  */
 const holders = async (seat: FlaggedSeat) => (await activeRows()).filter((r) => r.fullAccess === FLAG_OF_SEAT[seat]).length;
 
-/** A freshly seeded database, with `rowId` flagged as `seat`; answers how many active rows hold the seat then. */
+/** A freshly seeded database, with the seat moved onto `rowId`; answers how many active rows hold the seat then. */
 async function seededWith(seat: FlaggedSeat, rowId: number): Promise<number> {
   await seedFixture();
-  await changeRows(roles, { id: rowId }, { fullAccess: FLAG_OF_SEAT[seat] });
+  await moveSeatOnto(rowId, FLAG_OF_SEAT[seat]);
   return holders(seat);
 }
 
