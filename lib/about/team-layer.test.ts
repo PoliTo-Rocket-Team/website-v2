@@ -179,6 +179,22 @@ test("added leaders land at their place in OrgChart.leaders reading order: eithe
   assert.deepEqual(names(layer, gone), ["Federica Moretti", "Simone Testa", "Marco Bianchi", "Irene Galli", "Pietro Ricci"]);
 });
 
+test("someone the editor added to the arc whose role then becomes a team-level seat shows once, where the editor put them", () => {
+  const rd: Placement = { role: "board", seat: { roleId: 27, title: "Head of R&D", flag: null, since }, memberships: NO_MEMBERSHIPS };
+  const withSeat = [...people, person(12, "Marco Dona", rd)];
+  const layer: TeamPageLayer = { ...NO_TEAM_LAYER, addedLeaders: [added(1, 12, { at: "start" }, "Head of R&D")] };
+  assert.deepEqual(
+    shownWith(layer, withSeat).leaders.map((l) => [l.at, l.shown.name, l.shown.role]),
+    [
+      ["added:1", "Marco Dona", "Head of R&D"],
+      ["arc:project-manager:0", "Lorenzo Gallo", "Project Manager"],
+      ["arc:chief-engineer:0", "Federica Moretti", "Chief Engineer"],
+    ],
+  );
+  // With no such entry the roles seat them after the flagged seats.
+  assert.deepEqual(names(NO_TEAM_LAYER, withSeat), ["Lorenzo Gallo", "Federica Moretti", "Marco Dona"]);
+});
+
 test("the arc holds at most eight: Add leader refuses the ninth, and the page draws only the first eight", () => {
   const build = teamBuildOf(roles());
   let layer = NO_TEAM_LAYER;

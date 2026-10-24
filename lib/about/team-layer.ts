@@ -224,19 +224,24 @@ function insertAt(slots: readonly { readonly ref: ArcRef }[], place: ArcPlace): 
  * added leader at its place. A hidden leader keeps their place while the
  * added ones are placed, so "after" a hidden neighbour still means where they
  * stood. An added leader whose neighbour is gone from the page goes at the
- * end; one who has left the team is skipped.
+ * end; one who has left the team is skipped. A person shows on the arc once:
+ * when the roles come to seat someone the editor already added (a role that
+ * became a team-level seat, issue #600), the editor's entry stays where they
+ * put it and the roles' spot is left off, as if hidden.
  */
 function arcOf(build: TeamBuild, layer: TeamPageLayer): Shown<ArcRef, Leader>[] {
-  const slots: { ref: ArcRef; leader: Leader | null }[] = build.arc.map((built) => {
-    const edit = layer.spots[built.spot];
-    return {
-      ref: built.spot,
-      leader: edit?.hidden ? null : { ...shownPerson(build, built.person, edit), role: edit?.role ?? built.role },
-    };
-  });
   let pending = layer.addedLeaders.flatMap((added) => {
     const person = shownAdded(build, added);
     return person === null ? [] : [{ added, leader: { ...person, role: added.role } }];
+  });
+  const addedPeople = new Set(pending.map(({ added }) => added.person));
+  const slots: { ref: ArcRef; leader: Leader | null }[] = build.arc.map((built) => {
+    const edit = layer.spots[built.spot];
+    const shownId = memberOf(build, edit?.person)?.id ?? built.person.id;
+    return {
+      ref: built.spot,
+      leader: edit?.hidden || addedPeople.has(shownId) ? null : { ...shownPerson(build, built.person, edit), role: edit?.role ?? built.role },
+    };
   });
   for (let placed = true; placed && pending.length > 0; ) {
     placed = false;
