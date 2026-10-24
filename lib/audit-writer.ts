@@ -11,7 +11,7 @@ import { auditWriterOf, type WriteGateEnv } from "@/lib/test-developer";
  */
 export type AuditWriter = { readonly userId: string; readonly actingAccountId: string | null };
 
-/** The settings lib/db-audit.ts sets before an audited write, which `public.log_db_changes()` stores (drizzle/0056). */
+/** The settings lib/db-audit.ts sets before an audited write, which `public.log_db_changes()` stores (drizzle/0057). */
 export const AUDIT_SETTINGS = {
   writer: "request.jwt.claim.sub",
   actingAccount: "request.acting_account",

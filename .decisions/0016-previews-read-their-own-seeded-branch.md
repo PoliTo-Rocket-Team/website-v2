@@ -112,6 +112,26 @@ This amendment overrides these earlier lines, which stay as written:
 - Decision 2's "re-seeds it";
 - the Consequences line "each preview build resets the rows every other preview reads".
 
+## Amendment, 2026-10-24: agents write to `preview` for checks, and the owner asks for a re-seed
+
+Production now runs on its own branch ([ADR 0018](0018-v2-hosting-and-launch.md)), so the shared `preview` branch is a test database again (Owner decisions of 2026-10-22, https://github.com/PoliTo-Rocket-Team/website-v2/issues/595#issuecomment-6344596809, and of 2026-10-24, https://github.com/PoliTo-Rocket-Team/website-v2/issues/595#issuecomment-6383217140). Treating it like production left reviews unable to reach the states they grade, and lanes spent migrations undoing harmless test writes. The rules are now:
+
+- **Agents may write to `preview` for checks.** An agent may set up and check a state on the `preview` branch through a preview deployment, for example by giving a seeded member a grant on the Access page. A test write needs no revert migration; the next re-seed clears it.
+- **`preview` is re-seeded on demand, never on every build.** An ordinary preview build migrates the branch and leaves its rows in place, as the amendment of 2026-10-21 says. Only a re-seed the owner asked for empties it and loads the dummy set again.
+- **The mechanism: a one-off request on the Preview environment.** The owner sets the Vercel Preview variable `PREVIEW_RESEED_REQUEST` to a new value (for example `2026-10-25`) and redeploys a preview. That build checks its target with the seed guard, takes the advisory lock, migrates, and then, when the branch's `preview_reseeds` table does not hold that value yet, empties every table of the `public` and `better_auth` schemas but `preview_reseeds`, loads the dummy set, and records the value, all in one transaction ([lib/seed/reseed.ts](../lib/seed/reseed.ts)). Every later build that carries the same value finds it recorded and leaves the rows in place, so one value re-seeds once; a new value asks for the next re-seed. The re-seed passes only a target the guard approves that is the `preview` branch's endpoint; production, every other endpoint and a local database are refused. Nobody holds a database credential for it: the build reads the Preview connection strings Vercel gives it.
+- **Production is never written to or seeded by agents.** No agent writes to, seeds or migrates the `main` branch, by hand or through a check.
+- **Never a Neon "reset from parent" on `preview`.** The `preview` branch's parent is production, so a reset from parent would copy production rows into it. The re-seed calls no Neon API and no branch operation; it empties tables with SQL on the branch itself.
+- **Agents do not run the re-seed.** Setting `PREVIEW_RESEED_REQUEST` and redeploying are owner actions. Agents do not read env files, change Vercel environment variables or run the seed against a real database.
+- **The seed guard is unchanged.** The endpoint allow-list, the refusal on `VERCEL_ENV=production` and the rule that the `preview` branch passes only on a Vercel preview build all stand; `pnpm db:seed` from a laptop still runs on a local database only.
+- **Plain test seats.** After a re-seed, the seven seats a check views as (the team leader, the operations lead, a department head, a division lead, a member, an alumnus and an applicant) hold only what their roles give and no `scopes` row ([docs/seed-cases.md](../docs/seed-cases.md#test-seats)).
+
+This amendment overrides these earlier lines, which stay as written:
+
+- the binding constraint "No agent runs a seed or a migration against any real database", restated: no agent runs a seed or a migration itself against a real database; the preview build migrates and seeds the `preview` branch, and agents may write to it through a preview deployment for checks;
+- the 2026-10-21 amendment's "Re-seeding the branch is a deliberate owner step, never part of a build", restated: re-seeding the branch is an owner request through `PREVIEW_RESEED_REQUEST`, performed once by the next preview build; an ordinary build never re-seeds;
+- the 2026-10-21 amendment's "Never reset. No preview build runs the seed's reset on the shared branch", narrowed: no preview build resets the branch unless it carries a re-seed request the branch has not served;
+- the 2026-10-21 amendment's "Rows made on a preview, by a test developer or anyone else, stay until someone removes them", extended: or until the next requested re-seed.
+
 ## Records
 
 Pattern: [.patterns/schema-migrations.md](../.patterns/schema-migrations.md) (how `pnpm db:seed` runs).

@@ -13,7 +13,7 @@ import type { SeedTx } from "./tx";
 // array. Drizzle's own postgres-js driver turns those serializers off for
 // these types; the seed's client does the same, so a seeded row is stored
 // exactly as the app would store it.
-const DRIZZLE_MAPPED_TYPES = [
+export const DRIZZLE_MAPPED_TYPES = [
   114, // json
   3802, // jsonb
   1082, // date
