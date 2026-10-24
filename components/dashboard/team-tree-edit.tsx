@@ -39,7 +39,8 @@ import { TeamLeaderDrawer } from "./team-leader-drawer";
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const BOX = `relative block w-full rounded-xl border px-3 py-2.5 text-left transition-colors duration-300 ease-out ${FOCUS}`;
-const ACCENT_BOX = `flex w-full items-center justify-center gap-1.5 rounded-xl border border-accent/60 text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:border-accent hover:bg-accent/10 ${FOCUS}`;
+// An add box sets its own width: Add seat is the Team Leader box's 200px, the others fill their column.
+const ACCENT_BOX = `flex items-center justify-center gap-1.5 rounded-xl border border-accent/60 text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:border-accent hover:bg-accent/10 ${FOCUS}`;
 
 /** The division panel that is open: New division in a department, or Edit division. */
 type DivisionPanel = { readonly kind: "new"; readonly departmentId: number } | { readonly kind: "edit"; readonly divisionId: number };
@@ -211,7 +212,7 @@ function StructureCanvas({
     columns.push({
       key: "add",
       node: (
-        <button type="button" onClick={onAddDepartment} className={`${ACCENT_BOX} h-[90px] flex-col bg-accent/[0.04]`}>
+        <button type="button" onClick={onAddDepartment} className={`${ACCENT_BOX} h-[90px] w-full flex-col bg-accent/[0.04]`}>
           <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
           Add department
         </button>
@@ -413,7 +414,7 @@ function DepartmentColumn({
         ))}
         {department.divisionsEditable && (
           <Linked>
-            <button type="button" onClick={() => onAddDivision(department.id)} className={`${ACCENT_BOX} h-9`}>
+            <button type="button" onClick={() => onAddDivision(department.id)} className={`${ACCENT_BOX} h-9 w-full`}>
               <Plus aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
               Add division
             </button>
