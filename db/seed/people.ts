@@ -12,9 +12,10 @@
 // stayed as an advisor in their division, and people whose last role ended
 // in each academic year from 2021–22 to 2025–26. The alumni seed
 // (./alumni.ts) adds how they show on the Alumni page. The local testers
-// take seats lib/about/team.ts leaves empty: the Test Bench lead and the
-// head of Payload, a test department. The applicants' user ids keep the numbers the old SQL seed used;
-// the recruitment module names them.
+// take seats lib/about/team.ts leaves empty, such as the Test Bench lead;
+// the department-head seat is the real head of Propulsion. The applicants'
+// user ids keep the numbers the old SQL seed used; the recruitment module
+// names them.
 
 import { betterAuthUsers, members, roles, users } from "@/db/schema";
 import { clearedUser, CLEARED_MEMBER } from "@/lib/dashboard/anonymize";
@@ -209,7 +210,6 @@ export const TESTER_MEMBER = {
   member: 901,
   "division-lead": 902,
   "operations-lead": 903,
-  "department-head": 904,
   ...Object.fromEntries(ONE_GRANT_SEATS.map((seat) => [seat.key, seat.memberId] as const)),
 } as const;
 
@@ -228,7 +228,6 @@ const TESTER_PEOPLE: readonly TesterPerson[] = [
   { memberId: TESTER_MEMBER.member, tester: TESTERS.member, first: "Tester", last: "Member", level: "Master", program: "Aerospace Engineering", politoId: "s900002" },
   { memberId: TESTER_MEMBER["division-lead"], tester: TESTERS["division-lead"], first: "Tester", last: "Division Lead", level: "Master", program: "Aerospace Engineering", politoId: "s900003" },
   { memberId: TESTER_MEMBER["operations-lead"], tester: TESTERS["operations-lead"], first: "Tester", last: "Operations Lead", level: "Master", program: "Management Engineering", politoId: "s900004" },
-  { memberId: TESTER_MEMBER["department-head"], tester: TESTERS["department-head"], first: "Tester", last: "Department Head", level: "Master", program: "Aerospace Engineering", politoId: "s900005" },
   // The one-grant seats (issue #607): members of Test Bench whose one grant
   // the access module gives (./access.ts).
   ...ONE_GRANT_SEATS.map((seat) => ({
@@ -369,7 +368,7 @@ export const USER_ROWS = rowsOf(users, [
   ...ADMIN_TESTER_USERS,
 ]);
 
-const { propulsion, structures, aerodynamics, recovery, electronics, operations, payload } = DEPARTMENT;
+const { propulsion, structures, aerodynamics, recovery, electronics, operations } = DEPARTMENT;
 const D = DIVISION;
 
 /** The two board seats' flags, by holder: their team-level role row carries it, as migration 0047 marked the real rows (issue #625). */
@@ -414,12 +413,11 @@ export const ROLE_ROWS = rowsOf(roles, [
   { memberId: REMOVED_ALUMNUS, deptId: operations, divisionId: D.communications, title: "Video Editor", startedAt: "2024-10-01", leavedAt: "2026-06-30", type: "core" },
 
   // The local testers (issue #129). The public Test Engineers work in Test
-  // Bench too (./public-team.ts), but team.ts names no Test Bench lead, and
-  // Payload is a test department, so the testers' seats take no one's place.
+  // Bench too (./public-team.ts), but team.ts names no Test Bench lead, so
+  // the testers' seats take no one's place.
   { memberId: TESTER_MEMBER.member, deptId: propulsion, divisionId: D.testBench, title: "Test Bench Engineer", startedAt: "2025-10-01", type: "core" },
   { memberId: TESTER_MEMBER["division-lead"], deptId: propulsion, divisionId: D.testBench, title: "Test Bench Lead", startedAt: "2025-10-01", type: "lead" },
   { memberId: TESTER_MEMBER["operations-lead"], deptId: operations, title: "Operations Lead", startedAt: "2025-10-01", type: "lead", fullAccess: "operations_lead" },
-  { memberId: TESTER_MEMBER["department-head"], deptId: payload, title: "Head of Payload", startedAt: "2025-10-01", type: "head" },
   // The one-grant seats (issue #607): core members of Test Bench, beside the tester member.
   ...ONE_GRANT_SEATS.map((seat) => ({
     memberId: seat.memberId,
