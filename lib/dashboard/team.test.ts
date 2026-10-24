@@ -49,7 +49,7 @@ function row(r: Omit<RoleSeat, "id" | "fullAccess"> & Partial<Pick<RoleSeat, "fu
 }
 
 function person(id: number, name: string, placement: RosterEntry["placement"]): RosterEntry {
-  return { id, name, email: `${name.split(" ")[0].toLowerCase()}@prt.it`, placement, pageTitle: null, joined: 2024, program: null, study: null, access: [] };
+  return { id, name, email: `${name.split(" ")[0].toLowerCase()}@prt.it`, photoUrl: null, placement, pageTitle: null, joined: 2024, program: null, study: null, access: [] };
 }
 
 const lead = (divisionId: number, since = "2024-10-01") => inDivisions([{ divisionId, role: "lead", since }]);
@@ -124,6 +124,36 @@ test("the tree is built from the roster: a person added to it is a node", () => 
   assert.equal(after.departments[0].size, before.departments[0].size + 1);
   assert.deepEqual(after.path, { departmentId: 1, divisionId: 10 });
   assert.equal(after.leader?.name, "Alessandro Greco");
+});
+
+test("every place on the tree carries that person's own stored photo, and null where none is stored (issue #622)", () => {
+  const photo = (id: number) => `https://blob.example/members/${id}.jpg`;
+  const pictured = [
+    ...roster.map((p) => ({ ...p, photoUrl: photo(p.id) })),
+    {
+      ...person(7, "Sara Conti", { role: "board", seat: { roleId: 70, title: "", flag: "project-manager", since: "2024-10-01" }, memberships: NO_MEMBERSHIPS }),
+      photoUrl: photo(7),
+    },
+    person(8, "Anna Villa", member(10)),
+  ];
+  const tree = buildTeamTree(pictured, org, "2026–27", null);
+  const [aerodynamics] = tree.departments;
+  const [missionAnalysis] = aerodynamics.divisions;
+  assert.equal(tree.leader?.photoUrl, photo(1));
+  assert.deepEqual(
+    tree.board.map((b) => [b.person.id, b.person.photoUrl]),
+    [[7, photo(7)]],
+  );
+  assert.equal(aerodynamics.head?.photoUrl, photo(2));
+  assert.equal(missionAnalysis.lead?.photoUrl, photo(3));
+  assert.equal(tree.departments[1].divisions[0].lead?.photoUrl, photo(5));
+  assert.deepEqual(
+    missionAnalysis.members.map((m) => [m.id, m.photoUrl]),
+    [
+      [8, null],
+      [4, photo(4)],
+    ],
+  );
 });
 
 test("the pager keeps the first pages, the current one and the last", () => {

@@ -133,3 +133,23 @@ test("each box counts its people once: the head and someone in two divisions cou
   assert.equal(structures.head, null);
   assert.equal(structures.size, 2);
 });
+
+test("each box carries its person's stored photo: the leader, a seat holder, a head and a lead; null where none is stored (issue #622)", () => {
+  const photo = (id: number) => `https://blob.example/members/${id}.jpg`;
+  const holder = record(7, "Luca Moretti", [], [{ kind: "board", seat: { roleId: 70, title: "", flag: "chief-engineer", since: "2024-10-01" } }]);
+  const pictured = [...records, holder].map((r) => (r.id === 6 ? r : { ...r, photoUrl: photo(r.id) }));
+  const structure = teamStructure({ records: pictured, org, actor: { kind: "team" }, selfId: null, seat: null, waiting: {}, joining: {}, openPositions: {} })!;
+  const [aero, structures] = structure.departments;
+  assert.equal(structure.leader?.photoUrl, photo(1));
+  assert.deepEqual(
+    structure.board.map((s) => [s.holder.id, s.holder.photoUrl]),
+    [[7, photo(7)]],
+  );
+  assert.equal(aero.head?.photoUrl, photo(2));
+  assert.deepEqual(
+    aero.divisions.map((v) => v.lead?.photoUrl),
+    [photo(3), photo(5)],
+  );
+  const manufacturing = structures.divisions.find((v) => v.id === 4);
+  assert.deepEqual([manufacturing?.lead?.id, manufacturing?.lead?.photoUrl], [6, null], "a lead with no stored photo carries null");
+});

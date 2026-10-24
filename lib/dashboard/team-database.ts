@@ -254,6 +254,7 @@ export function rosterOf(snapshot: TeamSnapshot): RosterEntry[] {
       {
         id: memberId,
         ...named,
+        photoUrl: person?.picture ?? null,
         placement: placementOf(active, snapshot.org),
         pageTitle: active[0].title || null,
         joined: Math.min(...memberRoles.map((r) => yearOf(r.started_at))),
