@@ -7,8 +7,10 @@ import { SidebarPages, SidebarPlaceholder } from "@/components/dashboard/sidebar
 import { ViewAsDialogSlot } from "@/components/dashboard/view-as-dialog";
 import { getCurrentUser } from "@/lib/current-user";
 import { openChrome, type DashboardChrome } from "@/lib/dashboard/chrome";
+import { readViewAsBanner } from "@/lib/dashboard/database-view-as-banner";
 import { readViewAsOpening } from "@/lib/dashboard/database-view-as-dialog";
 import { openDashboard } from "@/lib/dashboard/open";
+import { userCardRole } from "@/lib/dashboard/viewer";
 
 export const metadata: Metadata = {
   title: "Dashboard · PoliTo Rocket Team",
@@ -20,7 +22,8 @@ export const metadata: Metadata = {
 };
 
 // Every dashboard page sits in the shell: the viewer's sidebar, their user
-// menu, the View as dialog for an account allowed it, and the page.
+// menu, the View as dialog for an account allowed it, the View as banner in a
+// View as session, and the page.
 // Who the viewer is comes from the dashboard data interface, read on request
 // only, so a build never reads a cookie or the database. The frame does not
 // wait for it (issue #397): it paints at once, and each part that needs the
@@ -31,6 +34,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const chrome = chromeOf();
   return (
     <DashboardShell
+      chrome={chrome}
       sidebarPages={
         <Suspense fallback={<SidebarPlaceholder />}>
           <SidebarPages chrome={chrome} userMenu="dropdown" />
@@ -65,10 +69,9 @@ async function chromeOf(): Promise<DashboardChrome> {
   const opening = await openDashboard();
   if (opening.kind !== "open") return { kind: opening.kind };
   const { data } = opening;
-  const [counts, hasShownApplications, viewAs] = await Promise.all([
-    data.navCounts(),
-    data.hasShownApplications(),
-    getCurrentUser().then(readViewAsOpening),
-  ]);
-  return openChrome(data.viewer, { counts, hasShownApplications }, viewAs);
+  const [counts, hasShownApplications, user] = await Promise.all([data.navCounts(), data.hasShownApplications(), getCurrentUser()]);
+  // The banner names the person as their user card does (`userCardRole`).
+  const person = { name: data.viewer.name, role: userCardRole(data.viewer, hasShownApplications) };
+  const [viewAs, viewingAs] = await Promise.all([readViewAsOpening(user), readViewAsBanner(user, person)]);
+  return openChrome(data.viewer, { counts, hasShownApplications }, viewAs, viewingAs);
 }

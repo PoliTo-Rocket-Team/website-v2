@@ -12,6 +12,7 @@ import { Avatar } from "./avatar";
 import { Sidebar, SidebarNavigate } from "./sidebar";
 import { TopBarSlot } from "./top-bar-slot";
 import { UserSheet } from "./user-card";
+import { ViewAsBanner, ViewAsBannerChrome } from "./view-as-banner";
 
 /** A round icon button in the phone top bar: the menu, or a full page's back arrow. */
 export const ICON_BUTTON =
@@ -33,13 +34,17 @@ export const ICON_BUTTON =
 // bar's avatar (`account`) and the screen for a request that did not open
 // the dashboard (`closed`). The frame also records each page the tab visits,
 // so an editor's back arrow can return to where it was opened (issue #510).
+// In a View as session the page opens on the View as banner (issue #611); the
+// shell hands the chrome down so an editor over the page draws it too.
 export function DashboardShell({
+  chrome,
   sidebarPages,
   sheetPages,
   account,
   closed,
   children,
 }: {
+  chrome: Promise<DashboardChrome>;
   sidebarPages: ReactNode;
   sheetPages: ReactNode;
   account: ReactNode;
@@ -95,7 +100,10 @@ export function DashboardShell({
       </PhoneTopBar>
 
       <main className="px-4 pb-12 pt-4 md:ml-[248px] md:px-10 md:pb-16 md:pt-8">
-        <TopBarSlot.Provider value={actionSlot}>{children}</TopBarSlot.Provider>
+        <ViewAsBannerChrome.Provider value={chrome}>
+          <ViewAsBanner placement="page" />
+          <TopBarSlot.Provider value={actionSlot}>{children}</TopBarSlot.Provider>
+        </ViewAsBannerChrome.Provider>
       </main>
 
       {closed}
