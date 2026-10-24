@@ -37,7 +37,9 @@ import {
   checkMemberEdit,
   checkMemberPhoto,
   divisionMembers,
+  editsPerson,
   lookupForAdd,
+  positionsOf,
   signInEmailOf,
   type AddStanding,
   type PersonRecord,
@@ -66,7 +68,6 @@ import {
   removalFrom,
   roleIn,
   standingOfPlacement,
-  teamPageEditOf,
   withJoined,
   withoutDivision,
   type DivisionRole,
@@ -232,7 +233,7 @@ function entryOf(person: DummyPerson, change: MemberChange | undefined): RosterE
  * accepted it on the Applications page, and Confirm join on either page
  * moves the application to Joined.
  */
-export type DummyJoiner = Joining & {
+export type DummyJoiner = Omit<Joining, "canConfirm"> & {
   readonly email: string;
   readonly divisionId: number;
   readonly program: string;
@@ -501,27 +502,6 @@ function actorOf(kind: TestViewer, org: OrgChart, grant: TestGrant | null): Team
   return divisions.length === 0 ? null : { kind: "lead", divisionIds: divisions };
 }
 
-/**
- * Whether `kind` may change this person from the Members page, as `actor`
- * reaches them (`reachesDivision`): anyone for the team, someone in the
- * head's department or in a division the lead leads (Owner decisions,
- * 2026-10-19, issue #444); never themselves.
- */
-function mayEdit(kind: TestViewer, actor: TeamActor | null, entry: RosterEntry, org: OrgChart): boolean {
-  if (actor === null || !canReach(testDeveloperStanding(kind), "members") || entry.id === SELF_ID[kind]) return false;
-  if (actor.kind === "team") return true;
-  return membershipsIn(entry.placement).some((m) => reachesDivision(actor, m.divisionId, org));
-}
-
-/**
- * The division a drawer's role change is about: the person's home division
- * for the team, else their home one among the divisions `actor` reaches.
- */
-function drawerDivision(actor: TeamActor, entry: RosterEntry, org: OrgChart): number | null {
-  if (actor.kind === "team") return homeDivisionOf(entry.placement);
-  return homeFirst(membershipsIn(entry.placement)).find((m) => reachesDivision(actor, m.divisionId, org))?.divisionId ?? null;
-}
-
 /** One roster entry as the Members page shows it, with the details and titles the test developer saved. */
 function recordOf(entry: RosterEntry, edits: TeamEdits): PersonRecord {
   const person = people.find((p) => p.id === entry.id);
@@ -611,6 +591,9 @@ export type DummyMove = (applicationId: number, move: LeadMove) => Promise<Write
 /** Without the Applications page's store nothing moves. */
 const NO_MOVE: DummyMove = async () => ({ ok: false, error: "Nothing to move." });
 
+/** The refusal of an Edit details write for someone outside the viewer's scope, as the database side words it. */
+const NOT_IN_SCOPE = "You can edit only people your Members page lets you change.";
+
 function writesFor(
   kind: TestViewer,
   edits: TeamEdits,
@@ -626,6 +609,16 @@ function writesFor(
   const actor = actorOf(kind, org, grant);
   const changeOf = (id: number): MemberChange => edits.members[id] ?? { pageTitle: find(id)?.pageTitle ?? null, roles: {} };
   const withChange = (id: number, change: MemberChange): TeamEdits => ({ ...edits, members: { ...edits.members, [id]: change } });
+  /**
+   * Someone the viewer may edit from Edit details (issue #584), never the
+   * viewer: anyone for the team, else someone in a division the actor reaches
+   * (`editsPerson`), as the database side's `rolesTheViewerChanges` reads it.
+   */
+  const editable = (personId: number) => {
+    const entry = find(personId);
+    if (!entry || actor === null || entry.id === SELF_ID[kind]) return null;
+    return editsPerson(actor, { memberships: membershipsIn(entry.placement) }, org) ? entry : null;
+  };
   /** Someone in a division the actor reaches, never the actor. */
   const inReach = (personId: number, divisionId: number) => {
     const entry = find(personId);
@@ -893,20 +886,14 @@ function writesFor(
       return written(null);
     },
     async saveMember(personId, edit) {
-      const entry = find(personId);
-      if (!entry || actor === null || !mayEdit(kind, actor, entry, org)) return false;
-      const division = drawerDivision(actor, entry, org);
-      // The drawer sets the role in one division; a seat or head, or someone in no division, has none to set.
-      if (edit.role !== null && (division === null || !isIn(entry.placement, division))) return false;
+      const entry = editable(personId);
+      if (!entry || actor === null || !isIn(entry.placement, edit.divisionId) || !reachesDivision(actor, edit.divisionId, org)) return false;
+      // An Advisor role is no lead or member role (`positionOf`).
+      if (recordOf(entry, edits).advising.includes(edit.divisionId)) return false;
       // Changing who leads a division is the head's, never a division lead's (Owner decision on #231).
-      if (edit.role !== null && division !== null && !mayChangeDivision(actor, division, org).allowed) return false;
-      const before = edits.members[personId]?.roles ?? {};
-      const next: MemberChange = {
-        ...edits.members[personId],
-        pageTitle: cleanTitle(edit.pageTitle),
-        roles: edit.role === null || division === null ? before : { ...before, [division]: DIVISION_ROLE_OF[edit.role] },
-      };
-      await save(withChange(personId, next));
+      if (!mayChangeDivision(actor, edit.divisionId, org).allowed) return false;
+      const change = changeOf(personId);
+      await save(withChange(personId, { ...change, roles: { ...change.roles, [edit.divisionId]: DIVISION_ROLE_OF[edit.role] } }));
       return true;
     },
     async moveToAlumni(personId, departure) {
@@ -925,9 +912,10 @@ function writesFor(
       await save({ ...edits, movedToAlumni: { ...edits.movedToAlumni, [personId]: departure } });
       return true;
     },
+    // The Applications area decides Confirm join (issue #584): `move` asks its rule, and the Members area adds none.
     async confirmJoin(applicationId) {
       const joiner = joiners.find((j) => j.applicationId === applicationId);
-      if (!joiner || actor === null || !reachesDivision(actor, joiner.divisionId, org) || joiner.joinedIn !== null) return false;
+      if (!joiner || joiner.joinedIn !== null) return false;
       try {
         return (await move(applicationId, { kind: "confirm-join" })).ok;
       } catch (error) {
@@ -939,7 +927,7 @@ function writesFor(
       const checked = checkAddMember(input);
       if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
       const add = checked.value;
-      if (actor === null || !reachesDivision(actor, add.divisionId, org)) return refused("You can add people only to your own division.");
+      if (actor === null || !reachesDivision(actor, add.divisionId, org)) return refused("You can add people only to a division your Members page lets you change.");
       const candidates = team.map((e) => candidateOf(e, edits));
       const member =
         add.kind === "member"
@@ -1003,9 +991,9 @@ function writesFor(
     async saveMemberDetails(target, divisionId, input) {
       const checked = checkMemberEdit(input);
       if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
-      if (actor === null || !reachesDivision(actor, divisionId, org)) return refused("You can edit only people in your own division.");
       const { title, details } = checked.value;
       if (target.kind === "waiting") {
+        if (divisionId === null || actor === null || !reachesDivision(actor, divisionId, org)) return refused(NOT_IN_SCOPE);
         const added = waitingIn(edits, divisionId).find((w) => w.joinId === target.joinId);
         if (!added) return refused("They are not waiting to join this division.");
         await save({
@@ -1015,17 +1003,16 @@ function writesFor(
         });
         return written(null);
       }
-      const entry = inReach(target.id, divisionId);
-      if (!entry) return refused("You can edit only people in your own division.");
+      // Anyone the viewer may edit; the title only in a division they reach and the person is in, none for a seat.
+      const entry = editable(target.id);
+      if (!entry || (divisionId !== null && !inReach(target.id, divisionId))) return refused(NOT_IN_SCOPE);
       const change = changeOf(entry.id);
-      await save({
-        ...withChange(entry.id, { ...change, titles: { ...change.titles, [divisionId]: title } }),
-        details: { ...edits.details, [detailsKey(target)]: details },
-      });
+      const titled = divisionId === null ? edits : withChange(entry.id, { ...change, titles: { ...change.titles, [divisionId]: title } });
+      await save({ ...titled, details: { ...edits.details, [detailsKey(target)]: details } });
       return written(null);
     },
-    async setMemberPhoto(personId, divisionId, photo) {
-      if (!inReach(personId, divisionId)) return refused("You can edit only people in your own division.");
+    async setMemberPhoto(personId, photo) {
+      if (!editable(personId)) return refused(NOT_IN_SCOPE);
       if (photo === null) return written(null);
       const error = checkMemberPhoto({ type: photo.contentType, size: photo.bytes.byteLength });
       // A preview keeps no photos: the check runs as the database side runs it, and nothing is stored.
@@ -1040,6 +1027,8 @@ function writesFor(
  * Applications page's move, which Confirm join runs. `grant` is the member's
  * test grant (./test-grant.ts): the Members page then lists every division it
  * covers and offers changes only where it lets them change (issue #351).
+ * `mayMove` answers whether `move` takes a step on the application: the
+ * Members banner offers Confirm join only there (issue #584).
  */
 export function dummyTeamPages(
   kind: TestViewer,
@@ -1049,6 +1038,7 @@ export function dummyTeamPages(
   move: DummyMove = NO_MOVE,
   openPositionsIn: (divisionId: number) => number = () => 0,
   grant: TestGrant | null = null,
+  mayMove: (applicationId: number) => boolean = () => false,
 ): Pick<DashboardData, "members" | "findForAdd" | "findPeople" | "alumni" | "teamTree" | "teamStructure" | "teamWrites"> {
   const self = SELF_ID[kind];
   const joiners = dummyJoiners(current);
@@ -1067,17 +1057,25 @@ export function dummyTeamPages(
   const joiningIn = (team: readonly RosterEntry[], division: number): Joining[] =>
     joiners
       .filter((j) => j.divisionId === division && j.joinedIn === null && dummyStanding(j.email, j.divisionId, team).kind !== "member")
-      .map(({ applicationId, name, position, ndaArrived }) => ({ applicationId, name, position, ndaArrived }));
+      .map(({ applicationId, name, position, ndaArrived }) => ({ applicationId, name, position, ndaArrived, canConfirm: mayMove(applicationId) }));
   return {
     members: async (divisionId) => {
       const team = editedRoster(edits, joiners);
       // Every full-access seat's page lists every member field (boards 73 to 73c, issues #252 and #418),
-      // with the Team page panel's edits (board 46b) for every seat, the team leader included (issue #444).
+      // and opens the one Edit details panel for each person the actor may edit (issue #584), the team leader included (issue #444).
       if (opensWholeTeam(testDeveloperStanding(kind))) {
+        const records = team.map((entry) => recordOf(entry, edits));
+        // Every open division's people waiting for Confirm NDA and joining, as a head or a lead reads their own units' (issue #584).
         return {
           scope: "whole-team",
-          teamPageEdits: team.map((entry) => teamPageEditOf(entry, org)),
-          ...wholeTeamMembers({ records: team.map((entry) => recordOf(entry, edits)), org, selfId: self }),
+          positions: positionsOf(records, org, actor, self),
+          queues: org.divisions.map((d) => ({
+            divisionId: d.id,
+            waiting: waitingIn(edits, d.id),
+            joining: readsJoining ? joiningIn(team, d.id) : [],
+            editable: actor !== null && reachesDivision(actor, d.id, org),
+          })),
+          ...wholeTeamMembers({ records, org, selfId: self }),
         };
       }
       if (actor?.kind === "head") {
@@ -1090,7 +1088,7 @@ export function dummyTeamPages(
           actor,
           selfId: self,
           waiting: Object.fromEntries(ids.map((id) => [id, waitingIn(edits, id)])),
-          joining: Object.fromEntries(ids.map((id) => [id, joiningIn(team, id)])),
+          joining: Object.fromEntries(ids.map((id) => [id, readsJoining ? joiningIn(team, id) : []])),
         });
         return page === null ? NO_MEMBERS : { scope: "department", ...page };
       }

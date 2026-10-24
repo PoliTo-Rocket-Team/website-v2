@@ -1,10 +1,10 @@
 import type { positionTypeEnum } from "@/db/schema/public";
 import { academicYearStart, shortAcademicYearLabel } from "@/lib/about/academic-year-copy";
 import type { DepartmentMembers } from "./department-members";
-import type { DivisionMembers } from "./division-members";
+import type { DivisionMembers, PersonPosition, WaitingPerson } from "./division-members";
 import type { WholeTeamMembers } from "./team-members";
 
-// The Team pages of the dashboard (issue #143): Members (boards 46, 46b),
+// The Team pages of the dashboard (issue #143): Members (boards 46, 61g),
 // Alumni (46c) and the Team tree (42, 42b). Both sides of the data
 // interface hand these shapes to the pages; the components render them and
 // fetch nothing. The tree is built here from the roster alone, so a person
@@ -292,16 +292,16 @@ export type EditableRole = "division-lead" | "member";
 export const DIVISION_ROLE_OF: Readonly<Record<EditableRole, DivisionRole>> = { "division-lead": "lead", member: "member" };
 
 /**
- * What the member drawer saves (board 46b). `role` is null for a person whose
- * role the drawer does not set (the team leader, a head, someone in no
- * division): their placement stays and only the title changes.
+ * Lead or member in one division, from Edit details' position part (issue
+ * #584): offered, and saved, only where the viewer may change who leads that
+ * division (`mayChangeDivision`). The title is saved with the details.
  */
 export type MemberEdit = {
-  readonly role: EditableRole | null;
-  readonly pageTitle: string | null;
+  readonly divisionId: number;
+  readonly role: EditableRole;
 };
 
-// Members (boards 46 and 46b)
+// Members (board 46)
 
 export type MemberRow = {
   readonly id: number;
@@ -324,30 +324,6 @@ export type MemberRow = {
 };
 
 /**
- * What the Team page panel (board 46b) changes for one person, seen from the
- * whole team: the title the Team page shows under their name, and whether
- * they lead their home division. `role` is null where the panel does not set
- * it (the team leader, a board seat, a head, someone in no division); then
- * only the title changes (`MemberEdit`).
- */
-export type TeamPageEdit = {
-  readonly id: number;
-  readonly pageTitle: string | null;
-  readonly role: EditableRole | null;
-};
-
-export function teamPageEditOf(entry: RosterEntry, org: OrgChart): TeamPageEdit {
-  const role = teamRoleOf(entry.placement);
-  const home = homeDivisionOf(entry.placement);
-  const placed = org.divisions.some((d) => d.id === home);
-  return {
-    id: entry.id,
-    pageTitle: entry.pageTitle,
-    role: role === "division-lead" ? "division-lead" : role === "member" && placed ? "member" : null,
-  };
-}
-
-/**
  * Someone accepted for one of the division's positions who is not on the
  * team yet (board 59): the lead confirms they join once the signed NDA is in.
  */
@@ -359,6 +335,26 @@ export type Joining = {
   readonly position: string;
   /** "The signed NDA arrived" is ticked on the application: Confirm join waits for it. */
   readonly ndaArrived: boolean;
+  /**
+   * Whether the viewer may Confirm join it: the Applications area decides,
+   * by the one rule every move on an application asks (`mayChangePositionIn`,
+   * ./position-access.ts), never the Members area (Owner decision, 2026-10-22,
+   * issue #584).
+   */
+  readonly canConfirm: boolean;
+};
+
+/**
+ * One division's queue on the whole team's Members page (issue #584): the
+ * people added by email waiting for Confirm NDA, the accepted applicants
+ * joining it, and whether the viewer may change its people (Confirm NDA,
+ * Cancel add, Fill details).
+ */
+export type DivisionQueue = {
+  readonly divisionId: number;
+  readonly waiting: readonly WaitingPerson[];
+  readonly joining: readonly Joining[];
+  readonly editable: boolean;
 };
 
 /**
@@ -368,12 +364,12 @@ export type Joining = {
  * division lead, with every division they are in and what the lead may do to
  * each (boards 61e to 61h2, issue #231); every division of the department for
  * its head (boards 69 to 69c, issue #235); and nothing for anyone else. On
- * the whole team, `teamPageEdits` holds what the Team page panel changes for
- * each person: every full-access seat has that panel, the team leader
- * included (Owner decision, 2026-10-19, issue #444).
+ * the whole team, `positions` holds what the one Edit details panel may
+ * change for each person the viewer may edit (`positionsOf`), and `queues`
+ * every open division's people waiting for Confirm NDA and joining (issue #584).
  */
 export type MemberDirectory =
-  | ({ readonly scope: "whole-team"; readonly teamPageEdits: readonly TeamPageEdit[] } & WholeTeamMembers)
+  | ({ readonly scope: "whole-team"; readonly positions: readonly PersonPosition[]; readonly queues: readonly DivisionQueue[] } & WholeTeamMembers)
   | ({ readonly scope: "division" } & DivisionMembers)
   | ({ readonly scope: "department" } & DepartmentMembers)
   | { readonly scope: "none" };

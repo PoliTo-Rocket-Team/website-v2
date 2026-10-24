@@ -376,3 +376,15 @@ test("an accepted member joins a new division with no NDA wait, keeps their othe
   const places = listedIn.flatMap((v) => [v.lead, ...v.members]).filter((p) => p?.name === "Matteo Greco");
   assert.equal(places.filter((p) => p?.first).length, 1);
 });
+
+test("the whole team's dummy page lists every division's waiting rows and joining banners, Confirm join offered by the Applications rule (#584)", async () => {
+  const { data } = session("operations-lead");
+  const directory = await data.members();
+  assert.equal(directory.scope, "whole-team");
+  if (directory.scope !== "whole-team") return;
+  const waiting = directory.queues.flatMap((q) => q.waiting.map((w) => [w.email, q.divisionId, q.editable]));
+  assert.deepEqual(waiting, [["elena.marino@studenti.polito.it", 1, true]]);
+  const joining = directory.queues.flatMap((q) => q.joining);
+  assert.ok(joining.length > 0, "someone is joining");
+  assert.ok(joining.every((j) => j.canConfirm), "full access changes Applications everywhere");
+});

@@ -99,6 +99,10 @@ An admin column comes later. **Planned**, no issue yet.
     codes (a head shows the codes of their department's divisions) and their role. There is no
     Phone or Discord column; those stay in the member panel, which opens read only from a row.
     There is no New division, New department or Closed divisions control here. Pages of eight.
+    Every division's people waiting for their NDA are listed first, with Confirm NDA, Cancel add
+    and Fill details, and every division's "{name} is joining" banners show above the list, as a
+    head or a lead sees their own units' (#584, Owner decision, 2026-10-22). The selects narrow
+    both.
   - **Members, Table view (boards 73b, 73c):** every member field: name, divisions, role, PRT
     email, phone, Discord, PoliTo ID, program, level, from, date of birth, gender and NDA. The
     name column stays pinned; the table fills the screen and scrolls both ways, with no pages.
@@ -206,6 +210,13 @@ An admin column comes later. **Planned**, no issue yet.
   is confirmed. Only then does the person become a member.
   - **Gap:** the dashboard has no recruitment manager; only leads can do this step. Tracked in
     #194.
+- Confirm join, and ticking "The signed NDA arrived", is the last step of the application, so the
+  Applications area decides it wherever it appears (#584, Owner decision, 2026-10-22). On the
+  Applications page and on the Members page's "{name} is joining" banner it shows, and the server
+  accepts it, only for a viewer who may change applications in that division: the same rule as
+  every other move on an application. A Members grant alone neither sees the banner's button nor
+  confirms. Once the person has joined, everything about them (details, role, removal, alumni) is
+  the Members area's.
 - Confirm join for someone new asks "Confirm {name} joins {division}?" in neutral words (they,
   their), whatever the application form says (board 58h).
 - Confirm join for someone already on the team has no NDA wait: they signed the team's one NDA
@@ -354,9 +365,28 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   have to use the site.
 - The site sends no emails. An amber note tells the actor to let the person know, with Fill
   details, Copy email and Open email.
-- In Edit details, the role field is only for the editor's own division. Roles in other divisions
-  show on the member panel, not in the form.
-- The row ⋯ menu has "Remove from {division}" and "Leaves the team".
+- Edit details is one panel for every viewer who may edit a member (#584, Owner decision,
+  2026-10-22): the same panel opens from the member panel on the whole team, a department and a
+  division. Who may edit a member: the team leader, full access and the operations lead, anyone on
+  the team; a department head, the people in their department's divisions; a division lead, or a
+  member with a Members grant at Can edit, the people in the divisions it covers. Nobody edits
+  themselves here. A Members grant at Can view, or a grant on another area, opens no editor, and
+  the server refuses every write below from it.
+  - Details (board 61g): photo, contact, studies and personal details, with the same field checks.
+  - Role: the person's title in one division, shown on the Team page: the division the page lists
+    them under, else their first division the editor reaches. Titles in their other divisions
+    show on the member panel, not in the form. A seat with no division the editor reaches (the
+    team leader, a board seat, a department head) shows their seat's title locked: it is set on
+    the Team tree, and Save never changes it.
+  - Lead or member: one choice per division of the person where the editor may change who leads
+    it (the department's head, the team leader or full access, as Edit division allows). A
+    division lead and a Members grant never see it, and the server refuses their change.
+  - Leaving the team (board 46b): "Remove from {division}" for each of the person's divisions the
+    editor reaches, and "Move to alumni", under the rules of the ⋯ menu below. An action the editor
+    may not take is locked with the menu's reason, and opens the menu's own "are you sure".
+  - Save writes the details and the title, then each changed lead or member choice. The server
+    checks each against the same rules.
+- The row ⋯ menu has "Remove from {division}" and "Leaves the team", on every Members page.
   - "Remove from {division}" ends only that division's role and its division access; the person
     keeps their other divisions. When it is the person's only division and they hold no seat (the
     team leader, a board seat or a department head), the menu does not offer it, and the server
@@ -379,15 +409,16 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   lead's page shows "Leads are changed by the Head of {department}", and the server refuses a
   lead's lead change.
 
-- The role on the operations lead's member panel is the person's title on the Team page. The
-  public Team page is built from the team's roles, so a saved title shows there once the
-  `team-roster` cache refreshes (ADR 0015).
-- A division's leads change only through Edit division (see Divisions below): the department's
-  head, the team leader or full access (#231). The Members page has no Promote (removed by #551).
+- The role in Edit details is the person's title on the Team page. The public Team page is built
+  from the team's roles, so a saved title shows there once the `team-roster` cache refreshes
+  (ADR 0015).
+- A division's leads change through Edit division (see Divisions below), or through Edit
+  details' lead or member choice, for the same people: the department's head, the team leader or
+  full access (#231, #584). The Members page has no Promote (removed by #551).
   - A "promoted" notice written while Promote existed (#188) still shows under "Needs your
     attention" until it is dismissed.
-- Move to alumni from the operations lead's member panel is the same "Leaves the team": every role
-  and every access ends, after a confirm with the years and an optional reason.
+- Move to alumni in Edit details is the same "Leaves the team": every role and every access ends,
+  after a confirm with the years and an optional reason.
 - Leave the team (by the member) is confirmed, with an optional reason. The lead and the
   recruitment manager are told. The person moves to Alumni. A division lead or a department head
   hands their role over instead (see Handing over a role).
@@ -432,8 +463,8 @@ These rules come from #235 (boards 69, 69b, 69c and 69m) and the Owner decisions
 - Add member starts with a Division select. It lists only the department's open divisions and
   starts on the open division tab, else the first.
 - A head acts only on people in their department's divisions: adding, Confirm NDA, Cancel add,
-  Confirm join, Edit details, Remove from {division} and Leaves the team. The server refuses the
-  rest.
+  Edit details, Remove from {division} and Leaves the team. Confirm join follows the Applications
+  rule above. The server refuses the rest.
 - The page has no "+ New division", "Edit division", "Close division" or "Reopen": the head edits
   their divisions in the Team tree's edit view (below).
 

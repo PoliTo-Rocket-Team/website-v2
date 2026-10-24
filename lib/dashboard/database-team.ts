@@ -39,6 +39,7 @@ import {
   checkMemberPhoto,
   divisionMembers,
   lookupForAdd,
+  positionsOf,
   type AddLookup,
   type AddStanding,
   type DetailsTarget,
@@ -46,7 +47,6 @@ import {
 } from "./division-members";
 import {
   headDepartmentOf,
-  homeDivision,
   isDivisionRole,
   mayChangeDivision,
   mayLeaveTeam,
@@ -67,6 +67,7 @@ import {
   type TeamActor,
 } from "./team";
 import { departmentMembers } from "./department-members";
+import { wholeTeamMembers } from "./team-members";
 import {
   ADVISOR_TITLE,
   advisorAfterDivisionCloses,
@@ -104,6 +105,7 @@ import {
   type TeamSearch,
 } from "./division-edit";
 import { refreshAfter } from "@/lib/cache-tags";
+import { mayChangePositionIn } from "./position-access";
 import { readTeamSnapshot, recordsOf, seatsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
@@ -207,15 +209,28 @@ function nameOf(row: { first_name: string | null; last_name: string | null; emai
 }
 
 /**
- * Accepted applicants to the division's positions who are not members yet
- * (board 59). The application stays accepted; Confirm join, once the signed
- * NDA arrived, makes them a member. Someone already on the team joins from the
- * Applications page (board 58h2, issue #229) or from Add member (#231).
+ * Accepted applicants to each division's positions who are not members yet
+ * (board 59), by division, for the divisions of `divisionIds` where the
+ * viewer reads the Applications area (issue #471): they are applications
+ * data. The application stays accepted; Confirm join, once the signed NDA
+ * arrived, makes them a member, and the Applications area decides who may
+ * (`canConfirm`: the rule `moveApplication` asks, issue #584). Someone
+ * already on the team joins from the Applications page (board 58h2, issue
+ * #229) or from Add member (#231). One read for every division.
  */
-export async function readJoining(divisionId: number): Promise<Joining[]> {
+async function readJoining(identity: DashboardIdentity, divisionIds: readonly number[], org: OrgChart): Promise<Map<number, Joining[]>> {
+  const units = new Map(
+    org.divisions
+      .filter((d) => divisionIds.includes(d.id))
+      .map((d) => [d.id, { divisionId: d.id, departmentId: d.departmentId }] as const)
+      .filter(([, unit]) => readsAreaIn(identity, "applications", unit)),
+  );
+  const joining = new Map<number, Joining[]>();
+  if (units.size === 0) return joining;
   const rows = await getDb()
     .select({
       application_id: applications.id,
+      division_id: applyPositions.divisionId,
       first_name: users.firstName,
       last_name: users.lastName,
       email: users.email,
@@ -227,19 +242,27 @@ export async function readJoining(divisionId: number): Promise<Joining[]> {
     .innerJoin(users, eq(users.id, applications.userId))
     .where(
       and(
-        eq(applyPositions.divisionId, divisionId),
+        inArray(applyPositions.divisionId, [...units.keys()]),
         eq(applyPositions.isDeleted, false),
         eq(applications.status, "accepted"),
         isNull(users.member),
       ),
     )
     .orderBy(applications.appliedAt);
-  return rows.map((r) => ({
-    applicationId: r.application_id,
-    name: nameOf(r),
-    position: r.position ?? "a position",
-    ndaArrived: r.nda_arrived_at !== null,
-  }));
+  for (const r of rows) {
+    const unit = r.division_id === null ? undefined : units.get(r.division_id);
+    if (unit === undefined) continue;
+    const listed = joining.get(unit.divisionId) ?? [];
+    listed.push({
+      applicationId: r.application_id,
+      name: nameOf(r),
+      position: r.position ?? "a position",
+      ndaArrived: r.nda_arrived_at !== null,
+      canConfirm: mayChangePositionIn(identity, "applications", unit),
+    });
+    joining.set(unit.divisionId, listed);
+  }
+  return joining;
 }
 
 const waitingColumns = {
@@ -306,12 +329,21 @@ function waitingDetails(row: WaitingRow): MemberDetails {
 
 /** The people added to `divisionId` and waiting for Confirm NDA, oldest first. */
 async function readWaiting(divisionId: number): Promise<WaitingRow[]> {
-  return getDb()
+  return (await readWaitingIn([divisionId])).get(divisionId) ?? [];
+}
+
+/** The people added to each of `divisionIds` and waiting for Confirm NDA, by division, oldest first; one read for every division. */
+async function readWaitingIn(divisionIds: readonly number[]): Promise<Map<number, WaitingRow[]>> {
+  const waiting = new Map<number, WaitingRow[]>();
+  if (divisionIds.length === 0) return waiting;
+  const rows = await getDb()
     .select(waitingColumns)
     .from(teamJoins)
     .innerJoin(users, eq(users.id, teamJoins.userId))
-    .where(eq(teamJoins.divisionId, divisionId))
+    .where(inArray(teamJoins.divisionId, [...divisionIds]))
     .orderBy(asc(teamJoins.addedAt));
+  for (const row of rows) waiting.set(row.division_id, [...(waiting.get(row.division_id) ?? []), row]);
+  return waiting;
 }
 
 function waitingPerson(row: WaitingRow): WaitingPerson {
@@ -325,20 +357,20 @@ function waitingPerson(row: WaitingRow): WaitingPerson {
 }
 
 /**
+ * Each division's people joining (where the viewer reads Applications) and
+ * people waiting for Confirm NDA, both read at once.
+ */
+async function readPerDivision(identity: DashboardIdentity, divisionIds: readonly number[], org: OrgChart) {
+  const [joining, waiting] = await Promise.all([readJoining(identity, divisionIds, org), readWaitingIn(divisionIds)]);
+  return divisionIds.map((id) => ({ id, joining: joining.get(id) ?? [], waiting: waiting.get(id) ?? [] }));
+}
+
+/**
  * A department head's Members page (boards 69 to 69c, issue #235): every
  * open division of their department, each with the people waiting for
  * Confirm NDA and the accepted applicants joining. A head of several
  * departments sees the first.
  */
-/** Each division's people joining and people waiting for Confirm NDA, every read at once. */
-function readPerDivision(divisionIds: readonly number[]) {
-  return Promise.all(
-    divisionIds.map(async (id) => {
-      const [joining, waiting] = await Promise.all([readJoining(id), readWaiting(id)]);
-      return { id, joining, waiting };
-    }),
-  );
-}
 
 async function readDepartmentMembers(
   identity: DashboardIdentity,
@@ -348,7 +380,7 @@ async function readDepartmentMembers(
   const [departmentId] = actor.departmentIds;
   if (departmentId === undefined) return NO_MEMBERS;
   const divisionIds = snapshot.org.divisions.filter((d) => d.departmentId === departmentId).map((d) => d.id);
-  const perDivision = await readPerDivision(divisionIds);
+  const perDivision = await readPerDivision(identity, divisionIds, snapshot.org);
   const page = departmentMembers({
     records: recordsOf(snapshot),
     org: snapshot.org,
@@ -372,7 +404,7 @@ export async function readTeamStructure(identity: DashboardIdentity): Promise<Te
   const [snapshot, actor] = await Promise.all([snapshotRead, readActor(identity, snapshotRead.then((s) => s.org))]);
   const ids = editableDivisionIds(actor, snapshot.org);
   if (actor === null || actor.kind === "lead") return null;
-  const [perDivision, openPositions] = await Promise.all([readPerDivision(ids), readOpenPositions(ids)]);
+  const [perDivision, openPositions] = await Promise.all([readPerDivision(identity, ids, snapshot.org), readOpenPositions(ids)]);
   return teamStructure({
     records: recordsOf(snapshot),
     org: snapshot.org,
@@ -403,11 +435,9 @@ export async function readDivisionMembers(identity: DashboardIdentity, divisionI
   const division = reach.find((id) => id === divisionId) ?? reach[0];
   if (division === undefined) return NO_MEMBERS;
   // The accepted applicants joining are applications data: listed only for a
-  // viewer who reads the Applications area here (issue #471).
-  const departmentId = snapshot.org.divisions.find((d) => d.id === division)?.departmentId;
-  const readsJoining = departmentId !== undefined && readsAreaIn(identity, "applications", { divisionId: division, departmentId });
+  // viewer who reads the Applications area here (issue #471, `readJoining`).
   const [joining, waiting, actor] = await Promise.all([
-    readsJoining ? readJoining(division) : [],
+    readJoining(identity, [division], snapshot.org),
     readWaiting(division),
     readActor(identity, snapshot.org),
   ]);
@@ -419,9 +449,37 @@ export async function readDivisionMembers(identity: DashboardIdentity, divisionI
     selfId: identity.memberId,
     reach,
     waiting: waiting.map(waitingPerson),
-    joining,
+    joining: joining.get(division) ?? [],
   });
   return page === null ? NO_MEMBERS : { scope: "division", ...page };
+}
+
+/**
+ * The whole team's Members page (boards 73 to 73c, issue #418), for a viewer
+ * whose page is the whole team (`opensWholeTeam`), with what the one Edit
+ * details panel may change for each person they may edit (`positionsOf`),
+ * and every open division's people waiting for Confirm NDA and joining, as a
+ * head or a lead reads their own units' (Owner decision, 2026-10-22, issue
+ * #584). What it offers to change is read with the actor every Members write
+ * checks; Confirm join, with the Applications rule (`readJoining`).
+ */
+export async function readWholeTeamMembers(identity: DashboardIdentity): Promise<MemberDirectory> {
+  const snapshotRead = readTeamSnapshot();
+  const [snapshot, actor] = await Promise.all([snapshotRead, readActor(identity, snapshotRead.then((s) => s.org))]);
+  const records = recordsOf(snapshot);
+  const divisionIds = snapshot.org.divisions.map((d) => d.id);
+  const perDivision = await readPerDivision(identity, divisionIds, snapshot.org);
+  return {
+    scope: "whole-team",
+    positions: positionsOf(records, snapshot.org, actor, identity.memberId),
+    queues: perDivision.map((d) => ({
+      divisionId: d.id,
+      waiting: d.waiting.map(waitingPerson),
+      joining: d.joining,
+      editable: actor !== null && reachesDivision(actor, d.id, snapshot.org),
+    })),
+    ...wholeTeamMembers({ records, org: snapshot.org, selfId: identity.memberId }),
+  };
 }
 
 /** Add member's field (boards 61h, 69c): the team, searched by name or email, and who is waiting here. */
@@ -526,25 +584,26 @@ function done(): true {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+/**
+ * Lead or member in one division, from Edit details' position part (issue
+ * #584): the person's lead or member rows there change type, nothing else.
+ * Only for someone the viewer may edit, in a division they reach, and only
+ * where `mayChangeDivision` lets them change its leads: never a division lead
+ * (#231). The panel offers the switch by the same rule (`positionOf`).
+ */
 async function saveMember(identity: DashboardIdentity, personId: number, edit: MemberEdit): Promise<boolean> {
   const { org } = await readTeamSnapshot();
   const actor = await readActor(identity, org);
   const active = await rolesTheViewerChanges(identity, actor, personId);
   if (actor === null || active === null) return false;
-  // The panel's role is the role in one division: the home one among those
-  // the viewer reaches. Their other divisions keep their roles (issue #229).
-  const division = homeDivision(membershipsOfActive(active));
-  // Changing who leads a division is the head's, never a division lead's (#231).
-  if (edit.role !== null && division !== null && !mayChangeDivision(actor, division, org).allowed) return false;
-  const divisionRoles = active.filter((r) => r.division_id === division && (r.type === "lead" || r.type === "core"));
-  const target = edit.role === null ? active : divisionRoles;
-  if (target.length === 0) return false;
-  const ids = target.map((r) => r.id);
+  if (!org.divisions.some((d) => d.id === edit.divisionId) || !mayChangeDivision(actor, edit.divisionId, org).allowed) return false;
+  const ids = active.filter((r) => r.division_id === edit.divisionId && (r.type === "lead" || r.type === "core")).map((r) => r.id);
+  if (ids.length === 0) return false;
   await runAuditQuery((db) =>
     db
       .update(roles)
-      .set({ title: edit.pageTitle ?? "", ...(edit.role === null ? {} : { type: ROLE_TYPE[edit.role] }) })
-      .where(inArray(roles.id, ids)),
+      .set({ type: ROLE_TYPE[edit.role] })
+      .where(and(inArray(roles.id, ids), isNull(roles.leavedAt))),
   );
   return done();
 }
@@ -582,18 +641,12 @@ async function moveToAlumni(identity: DashboardIdentity, personId: number, depar
  * Confirm join from the Members page's banner (boards 59, 69m) is the
  * Applications page's Confirm join (58h): the same move, through the same
  * rule, so it waits for the NDA tick, marks the application joined and never
- * gives someone already on the team a second role. Only for a division the
- * viewer's Members page reaches: the lead's own, or the head's department's.
+ * gives someone already on the team a second role. The Applications area
+ * decides who may, here as there (Owner decision, 2026-10-22, issue #584):
+ * `moveApplication` asks its own rule, and the Members area adds none.
  */
 async function confirmJoin(identity: DashboardIdentity, applicationId: number): Promise<boolean> {
   if (identity.memberId === null) return false;
-  const [row] = await getDb()
-    .select({ division_id: applyPositions.divisionId })
-    .from(applications)
-    .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
-    .where(eq(applications.id, applicationId))
-    .limit(1);
-  if (!row || row.division_id === null || (await actingOn(identity, row.division_id)) === null) return false;
   try {
     return (await moveApplication(identity, applicationId, { kind: "confirm-join" })).ok;
   } catch (error) {
@@ -634,7 +687,7 @@ async function addMember(identity: DashboardIdentity, input: unknown): Promise<W
   const checked = checkAddMember(input);
   if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
   const add = checked.value;
-  if ((await actingOn(identity, add.divisionId)) === null) return refused("You can add people only to a division you lead.");
+  if ((await actingOn(identity, add.divisionId)) === null) return refused("You can add people only to a division your Members page lets you change.");
 
   const [account] =
     add.kind === "email"
@@ -789,24 +842,32 @@ async function removeFromDivision(identity: DashboardIdentity, personId: number,
   return done();
 }
 
+const NOT_IN_SCOPE = "You can edit only people your Members page lets you change.";
+
 /**
- * Edit details or Fill details (board 61g): the title of their role in this
- * division (never another division's), and their details, written where each
- * lives (`columnsFromMemberDetails`).
+ * Edit details (board 61g, issue #584) for anyone the viewer may edit
+ * (`rolesTheViewerChanges`): the team leader, full access and the operations
+ * lead reach everyone, a head their department's people, a division lead or a
+ * Members grant at Can edit the people in the divisions it covers. `divisionId`
+ * names the division whose role title the form sets, which the viewer must
+ * reach and the person be in; null for someone in no division the viewer
+ * reaches (a seat), whose details are saved and whose seat title is not.
+ * Fill details, for someone waiting, names the division they wait for. Each
+ * detail is written where it lives (`columnsFromMemberDetails`).
  */
 async function saveMemberDetails(
   identity: DashboardIdentity,
   target: DetailsTarget,
-  divisionId: number,
+  divisionId: number | null,
   input: unknown,
 ): Promise<WriteResult<null>> {
   const checked = checkMemberEdit(input);
   if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
-  if ((await actingOn(identity, divisionId)) === null) return refused("You can edit only people in a division you lead.");
   const { title, details } = checked.value;
   const columns = columnsFromMemberDetails(details);
 
   if (target.kind === "waiting") {
+    if (divisionId === null || (await actingOn(identity, divisionId)) === null) return refused(NOT_IN_SCOPE);
     const [join] = await getDb()
       .select({ user_id: teamJoins.userId })
       .from(teamJoins)
@@ -820,26 +881,32 @@ async function saveMemberDetails(
     return written(null);
   }
 
-  const active = await personIn(identity, target.id, divisionId);
-  if (active === null) return refused("You can edit only people in your division.");
-  const titled = divisionRowsIn(active, divisionId).map((r) => r.id);
+  const { org } = await readTeamSnapshot();
+  const actor = await readActor(identity, org);
+  const active = await rolesTheViewerChanges(identity, actor, target.id);
+  if (actor === null || active === null) return refused(NOT_IN_SCOPE);
+  const titled = divisionId === null ? [] : divisionRowsIn(active, divisionId).map((r) => r.id);
+  if (divisionId !== null && (titled.length === 0 || !reachesDivision(actor, divisionId, org))) return refused(NOT_IN_SCOPE);
   await runAuditBatch((db) => [
-    db
-      .update(roles)
-      .set({ title: title ?? "" })
-      .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
     db.update(users).set({ ...columns.user, updatedAt: sql`now()` }).where(eq(users.member, target.id)),
     db.update(members).set(columns.member).where(eq(members.memberId, target.id)),
+    ...(titled.length === 0
+      ? []
+      : [
+          db
+            .update(roles)
+            .set({ title: title ?? "" })
+            .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
+        ]),
   ]);
   done();
   return written(null);
 }
 
-/** The photo in Edit details (board 61g): a square JPEG under 500 KB in the public store, or none. */
-async function setMemberPhoto(identity: DashboardIdentity, personId: number, divisionId: number, photo: Upload | null): Promise<WriteResult<null>> {
-  if ((await actingOn(identity, divisionId)) === null || (await personIn(identity, personId, divisionId)) === null) {
-    return refused("You can edit only people in your division.");
-  }
+/** The photo in Edit details (board 61g): a square JPEG under 500 KB in the public store, or none; for anyone the viewer may edit. */
+async function setMemberPhoto(identity: DashboardIdentity, personId: number, photo: Upload | null): Promise<WriteResult<null>> {
+  const { org } = await readTeamSnapshot();
+  if ((await rolesTheViewerChanges(identity, await readActor(identity, org), personId)) === null) return refused(NOT_IN_SCOPE);
   if (photo !== null) {
     const error = checkMemberPhoto({ type: photo.contentType, size: photo.bytes.byteLength });
     if (error !== null) return refused(error);
@@ -1428,7 +1495,7 @@ export function databaseTeamWrites(
     cancelAdd: (joinId) => cancelAdd(identity, joinId),
     removeFromDivision: (personId, divisionId) => removeFromDivision(identity, personId, divisionId),
     saveMemberDetails: (target, divisionId, input) => saveMemberDetails(identity, target, divisionId, input),
-    setMemberPhoto: (personId, divisionId, photo) => setMemberPhoto(identity, personId, divisionId, photo),
+    setMemberPhoto: (personId, photo) => setMemberPhoto(identity, personId, photo),
     createDivision: (departmentId, input) => createDivision(identity, departmentId, input),
     saveDivision: (divisionId, input) => saveDivision(identity, divisionId, input),
     closeDivision: (divisionId) => closeDivision(identity, divisionId),

@@ -74,15 +74,11 @@ export async function addAdvisor(input: unknown, form: FormData | null): Promise
   return answered(await writes.addAdvisor(input, await photoIn(form)));
 }
 
-export async function saveMember(
-  personId: number,
-  role: EditableRole | null,
-  pageTitle: string | null,
-): Promise<TeamActionResult> {
+/** Edit details' lead or member switch for one division (issue #584). */
+export async function saveMember(personId: number, divisionId: number, role: EditableRole): Promise<TeamActionResult> {
   const writes = await writesOn("members");
-  if (!writes || !isId(personId) || (role !== null && role !== "division-lead" && role !== "member")) return REFUSED;
-  if (pageTitle !== null && typeof pageTitle !== "string") return REFUSED;
-  return done(await writes.saveMember(personId, { role, pageTitle }));
+  if (!writes || !isId(personId) || !isId(divisionId) || (role !== "division-lead" && role !== "member")) return REFUSED;
+  return done(await writes.saveMember(personId, { divisionId, role }));
 }
 
 /** Board 59d: the years as typed ("2024 – 2026") and the reason, or none. */
@@ -94,8 +90,14 @@ export async function moveToAlumni(personId: number, years: string, reason: stri
   return done(await writes.moveToAlumni(personId, departure.value));
 }
 
+/**
+ * The Members banner's Confirm join (board 59). The Applications area decides
+ * it, as on the Applications page (Owner decision, 2026-10-22, issue #584):
+ * no Members page gate here, and the write runs `moveApplication`'s own rule.
+ */
 export async function confirmJoin(applicationId: number): Promise<TeamActionResult> {
-  const writes = await writesOn("members");
+  const opening = await openDashboard();
+  const writes = opening.kind === "open" ? opening.data.teamWrites : null;
   if (!writes || !isId(applicationId)) return REFUSED;
   return done(await writes.confirmJoin(applicationId));
 }
@@ -144,21 +146,22 @@ export async function removeFromDivision(personId: number, divisionId: number): 
   return done(await writes.removeFromDivision(personId, divisionId));
 }
 
-export async function saveMemberDetails(target: DetailsTarget, divisionId: number, input: unknown): Promise<TeamActionResult> {
+/** Edit details: `divisionId` names the division whose title the form sets, or null for a seat with none (issue #584). */
+export async function saveMemberDetails(target: DetailsTarget, divisionId: number | null, input: unknown): Promise<TeamActionResult> {
   const writes = await writesOn("members");
-  if (!writes || !isDetailsTarget(target) || !isId(divisionId)) return REFUSED;
+  if (!writes || !isDetailsTarget(target) || (divisionId !== null && !isId(divisionId))) return REFUSED;
   return answered(await writes.saveMemberDetails(target, divisionId, input));
 }
 
 /** Edit details' photo: the cropped square JPEG in the form's `photo` field, or none to remove it. */
-export async function setMemberPhoto(personId: number, divisionId: number, form: FormData | null): Promise<TeamActionResult> {
+export async function setMemberPhoto(personId: number, form: FormData | null): Promise<TeamActionResult> {
   const writes = await writesOn("members");
-  if (!writes || !isId(personId) || !isId(divisionId)) return REFUSED;
+  if (!writes || !isId(personId)) return REFUSED;
   const file = form?.get("photo");
   const photo: Upload | null =
     file instanceof File && file.size > 0 ? { name: file.name, contentType: file.type, bytes: new Uint8Array(await file.arrayBuffer()) } : null;
   if (form !== null && photo === null) return { ok: false, error: "Choose a photo." };
-  return answered(await writes.setMemberPhoto(personId, divisionId, photo));
+  return answered(await writes.setMemberPhoto(personId, photo));
 }
 
 // New division, Edit division and Close division (issue #232), opened from

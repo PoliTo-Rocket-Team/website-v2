@@ -1062,6 +1062,10 @@ export function dummyDashboardData(
     ...dummyTeamPages(viewer, teamEdits.current, teamEdits.save, team.applications, moveApplication, (divisionId) =>
       team.positions.filter((p) => p.divisionId === divisionId && p.open).length,
       grant,
+      (id) => {
+        const base = baseApplications.find((a) => a.id === id);
+        return base !== undefined && changeable(base.positionId, "applications") !== null;
+      },
     ),
     positions: async () => positionsPage(kind, team),
     applications: async () => applicationsPage(kind, team, teamRoster),

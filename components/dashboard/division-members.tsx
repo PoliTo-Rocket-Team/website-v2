@@ -22,28 +22,38 @@ import { GHOST_PILL } from "./page-header";
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
-/** The "are you sure" a row or a note opened, with the division it is about. */
+/** Who a removal or a move to Alumni is about: a division page's person or one on the whole team. */
+type AskedPerson = Pick<DivisionPerson, "id" | "name" | "since" | "divisions">;
+
+/** The "are you sure" a row, a note or Edit details opened, with the division it is about. */
 export type Asking =
   | { readonly kind: "nda"; readonly waiting: WaitingPerson; readonly division: string }
   | { readonly kind: "cancel"; readonly waiting: WaitingPerson; readonly short: string }
-  | { readonly kind: "remove"; readonly person: DivisionPerson; readonly divisionId: number; readonly short: string }
-  | { readonly kind: "leave"; readonly person: DivisionPerson };
+  | { readonly kind: "remove"; readonly person: AskedPerson; readonly divisionId: number; readonly short: string }
+  | { readonly kind: "leave"; readonly person: AskedPerson };
 
 export { matchesWaiting } from "@/lib/dashboard/members-view";
 
-/** The "are you sure" dialogs a Members page's rows and notes open. */
-export function MemberDialogs({ asking, onClose }: { asking: Asking | null; onClose: () => void }) {
+/**
+ * The "are you sure" dialogs a Members page's rows, notes and Edit details
+ * open. `onDone` runs after a removal or a move to Alumni went through, so
+ * Edit details can close behind it.
+ */
+export function MemberDialogs({ asking, onClose, onDone }: { asking: Asking | null; onClose: () => void; onDone?: () => void }) {
   return (
     <>
       <ConfirmNdaDialog asking={asking?.kind === "nda" ? asking : null} onClose={onClose} />
       <CancelAddDialog asking={asking?.kind === "cancel" ? asking : null} onClose={onClose} />
-      <RemoveDialog asking={asking?.kind === "remove" ? asking : null} onClose={onClose} />
+      <RemoveDialog asking={asking?.kind === "remove" ? asking : null} onClose={onClose} onDone={onDone} />
       {asking?.kind === "leave" && (
         <AlumniDialog
           open
           onOpenChange={(next) => !next && onClose()}
           person={{ id: asking.person.id, name: asking.person.name, joined: asking.person.since }}
-          onDone={onClose}
+          onDone={() => {
+            onClose();
+            onDone?.();
+          }}
         />
       )}
     </>
@@ -273,7 +283,15 @@ function CancelAddDialog({ asking, onClose }: { asking: Extract<Asking, { kind: 
 }
 
 /** "Remove from <division>": an "are you sure" first; the person keeps their other divisions. */
-function RemoveDialog({ asking, onClose }: { asking: Extract<Asking, { kind: "remove" }> | null; onClose: () => void }) {
+function RemoveDialog({
+  asking,
+  onClose,
+  onDone,
+}: {
+  asking: Extract<Asking, { kind: "remove" }> | null;
+  onClose: () => void;
+  onDone?: () => void;
+}) {
   const [pending, startTransition] = useTransition();
   const [shownAsking, setShown] = useState(asking);
   if (asking !== null && asking !== shownAsking) setShown(asking);
@@ -292,6 +310,7 @@ function RemoveDialog({ asking, onClose }: { asking: Extract<Asking, { kind: "re
       }
       toast.success(`${shown.name} left ${short}`);
       onClose();
+      onDone?.();
     });
   return (
     <ConfirmDialog
@@ -312,7 +331,9 @@ function RemoveDialog({ asking, onClose }: { asking: Extract<Asking, { kind: "re
 /**
  * "Giulia Rossi is joining" (boards 59 and 59m): Confirm join, once "The signed
  * NDA arrived" is ticked on the application (58g). It is the Applications
- * page's own Confirm join, so the button waits for that tick here too.
+ * page's own Confirm join, so the button waits for that tick here too, and
+ * shows only where `editable`: the viewer may change applications there
+ * (`Joining.canConfirm`, issue #584).
  */
 export function JoiningBanner({ joining, division, editable }: { joining: Joining; division: string; editable: boolean }) {
   const [asking, setAsking] = useState(false);

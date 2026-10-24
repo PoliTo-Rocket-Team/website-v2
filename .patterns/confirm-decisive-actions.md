@@ -70,8 +70,8 @@ such as opening or closing a position.
 - **Some writes run with no confirm.** The site-wide recruitment switch and the position open/close
   toggle ([positions.tsx](../components/dashboard/positions.tsx)), the "signed NDA arrived" tick
   ([applications.tsx](../components/dashboard/applications.tsx)), Give access, the Alumni "shown on
-  site" toggle ([alumni.tsx](../components/dashboard/alumni.tsx)), and the member panel's Save,
-  which can change a lead's role ([member-drawer.tsx](../components/dashboard/member-drawer.tsx)).
+  site" toggle ([alumni.tsx](../components/dashboard/alumni.tsx)), and Edit details' Save,
+  which can change who leads a division ([member-panels.tsx](../components/dashboard/member-panels.tsx)).
   None of them is in the list at the top of this doc.
 - **The DELETE check has no test.** `deleteConfirmed` is not exercised in
   [lib/dashboard/self.test.ts](../lib/dashboard/self.test.ts).

@@ -358,9 +358,10 @@ export interface TeamWrites {
   /** Board 78c: an external advisor, always in the Advisors group (`checkAdvisor`, ./alumni.ts). */
   addAdvisor(input: unknown, photo: Upload | null): Promise<WriteResult<null>>;
   /**
-   * The operations lead's member panel (board 46b): the Team page title, and
-   * the role where the panel sets one. A division lead never changes a lead
-   * (Owner decision on #231), so their role change is refused.
+   * Lead or member in one division, from Edit details' position part (issue
+   * #584): for someone the viewer may edit, where `mayChangeDivision` lets
+   * them change that division's leads. A division lead never changes a lead
+   * (Owner decision on #231), so their change is refused.
    */
   saveMember(personId: number, edit: MemberEdit): Promise<boolean>;
   /**
@@ -369,7 +370,11 @@ export interface TeamWrites {
    * Refused unless `mayLeaveTeam` (./team.ts) allows it.
    */
   moveToAlumni(personId: number, departure: Departure): Promise<boolean>;
-  /** Board 59: the accepted applicant joins the division the position belongs to. */
+  /**
+   * Board 59: the accepted applicant joins the division the position belongs
+   * to. It is the Applications page's Confirm join, decided by the same rule
+   * (`moveApplication`), never by the Members area (issue #584).
+   */
   confirmJoin(applicationId: number): Promise<boolean>;
   /**
    * Add member (boards 61h, 61h2): someone on the team joins the division at
@@ -383,10 +388,15 @@ export interface TeamWrites {
   cancelAdd(joinId: number): Promise<boolean>;
   /** "Remove from <division>": only that division's role ends. Refused for someone whose only division it is. */
   removeFromDivision(personId: number, divisionId: number): Promise<boolean>;
-  /** Edit details or Fill details (board 61g): the title in `divisionId`, and the details. */
-  saveMemberDetails(target: DetailsTarget, divisionId: number, input: unknown): Promise<WriteResult<null>>;
-  /** The photo in Edit details: a square JPEG under 500 KB, or null to remove it. */
-  setMemberPhoto(personId: number, divisionId: number, photo: Upload | null): Promise<WriteResult<null>>;
+  /**
+   * Edit details or Fill details (board 61g, issue #584): the details of
+   * anyone the viewer may edit, and the title in `divisionId`, which they
+   * must reach and the person be in; null for someone in no division the
+   * viewer reaches (a seat), whose title is not set here.
+   */
+  saveMemberDetails(target: DetailsTarget, divisionId: number | null, input: unknown): Promise<WriteResult<null>>;
+  /** The photo in Edit details, for anyone the viewer may edit: a square JPEG under 500 KB, or null to remove it. */
+  setMemberPhoto(personId: number, photo: Upload | null): Promise<WriteResult<null>>;
   /**
    * New division (board 69d, #232): a division in the department with its
    * name, code, leads and members, checked by `planDivisionSave`

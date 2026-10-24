@@ -1,6 +1,15 @@
-import { departmentLine, type DepartmentMembers, type DepartmentPerson, type DivisionRemoval } from "./department-members";
-import { headcountLine, matchesPerson, type DivisionHeader, type DivisionMembers, type DivisionPerson, type WaitingPerson } from "./division-members";
-import { divisionLabel, type Joining, type MemberDirectory, type TeamPageEdit } from "./team";
+import { departmentLine, type DepartmentMembers, type DepartmentPerson } from "./department-members";
+import {
+  headcountLine,
+  matchesPerson,
+  type DivisionHeader,
+  type DivisionMembers,
+  type DivisionPerson,
+  type MemberPosition,
+  type PersonPosition,
+  type WaitingPerson,
+} from "./division-members";
+import type { DivisionQueue, Joining, MemberDirectory } from "./team";
 import { wholeTeamLine, type TeamMember, type WholeTeamMembers } from "./team-members";
 import type { ViewerStanding } from "./viewer";
 
@@ -28,38 +37,35 @@ export const MEMBERS_TOOLS = [
 ] as const;
 export type MembersTool = (typeof MEMBERS_TOOLS)[number];
 
+/** The person Edit details edits, as the division pages and the whole team list them alike. */
+export type EditPerson = Pick<DivisionPerson, "id" | "name" | "signInEmail" | "photoUrl" | "since" | "details" | "divisions">;
+
 /**
- * What the viewer may do to one row. On a department or a division: the
- * division page's person the menu acts on, where they may be removed from,
- * and where Edit details sets the title. On the whole team, for a seat with
- * the Team page panel (board 46b): its title, whether they lead their
- * division, and moving them to Alumni.
+ * What the viewer may do to one row, on every page alike (issue #584): open
+ * the one Edit details panel (board 61g) for the person, with its position
+ * part (role title, lead or member, Remove from a division, Move to alumni),
+ * and the row's ⋯ menu, which offers the same removals and leaving.
  */
-export type MemberActions = DivisionActions | TeamPageActions;
-
-export type DivisionActions = {
-  readonly kind: "division";
-  readonly person: DivisionPerson;
-  readonly removals: readonly DivisionRemoval[];
-  readonly division: DivisionHeader;
-};
-
-export type TeamPageActions = {
-  readonly kind: "team-page";
-  readonly edit: TeamPageEdit;
+export type MemberActions = {
+  readonly person: EditPerson;
+  readonly position: MemberPosition;
 };
 
 /** One person on the page, whichever role opens it; `actions` is null where the page offers no change to them. */
 export type MemberEntry = TeamMember & { readonly actions: MemberActions | null };
 
-/** One division the page holds as its own data: its people as that division lists them, and who waits to join it. */
-export type MembersDivision = {
+/** Who waits to join one division: the people waiting for Confirm NDA, and the accepted applicants joining. */
+export type MembersQueue = {
   readonly header: DivisionHeader;
-  readonly people: readonly MemberEntry[];
   readonly waiting: readonly WaitingPerson[];
   readonly joining: readonly Joining[];
-  /** Whether the viewer may change people in it (issue #351). */
+  /** Whether the viewer may change people in it (issue #351): Confirm NDA, Cancel add, Fill details. Confirm join asks `Joining.canConfirm`. */
   readonly editable: boolean;
+};
+
+/** One division the page holds as its own data: its people as that division lists them, and who waits to join it. */
+export type MembersDivision = MembersQueue & {
+  readonly people: readonly MemberEntry[];
 };
 
 /** A department as the department and division selects offer it. */
@@ -86,6 +92,11 @@ export type MembersModel = {
   /** The divisions held as their own data; empty on the whole team, where a division is a narrowing of `everyone`. */
   readonly divisions: readonly MembersDivision[];
   /**
+   * Who waits to join each division the page lists, on every page alike: the
+   * held divisions' own, and on the whole team every open division's (issue #584).
+   */
+  readonly queues: readonly MembersQueue[];
+  /**
    * The other divisions a division lead reaches, each loaded as its own page
    * (`?division=`); null when there is only one.
    */
@@ -110,9 +121,9 @@ export function memberIdsOf(page: MembersModel): number[] {
   return [...new Set([...page.everyone, ...page.divisions.flatMap((d) => d.people)].map((p) => p.id))];
 }
 
-/** The one place a model is made, so every role's model carries the same tools. */
-function model(parts: Omit<MembersModel, "tools">): MembersModel {
-  return { tools: MEMBERS_TOOLS, ...parts };
+/** The one place a model is made, so every role's model carries the same tools; a page's queues are its held divisions' unless it names others. */
+function model(parts: Omit<MembersModel, "tools" | "queues"> & { readonly queues?: readonly MembersQueue[] }): MembersModel {
+  return { tools: MEMBERS_TOOLS, ...parts, queues: parts.queues ?? parts.divisions };
 }
 
 /** The page for whatever the viewer's directory holds; null for no list at all. */
@@ -131,22 +142,31 @@ export function membersModelOf(directory: MemberDirectory): MembersModel | null 
 
 /**
  * A full-access seat's page (boards 73 to 73c, issue #418): the whole team,
- * with Add member. Each row offers the Team page panel's edits the directory
- * holds for it (board 46b), for every full-access seat alike, the team leader
- * included (Owner decision, 2026-10-19, issue #444).
+ * with Add member. Each person the viewer may edit opens the same Edit
+ * details panel a division page opens (issue #584), with the position the
+ * directory holds for them; the team leader included (Owner decision,
+ * 2026-10-19, issue #444). Every open division's people waiting for Confirm
+ * NDA and joining are listed too, as a head or a lead sees their own units'
+ * (Owner decision, 2026-10-22, issue #584).
  */
-export function wholeTeamModel(page: WholeTeamMembers & { readonly teamPageEdits: readonly TeamPageEdit[] }): MembersModel {
-  const edits = page.teamPageEdits;
-  const actionsOf = (id: number): TeamPageActions | null => {
-    const edit = edits.find((e) => e.id === id);
-    return edit === undefined ? null : { kind: "team-page", edit };
+export function wholeTeamModel(
+  page: WholeTeamMembers & { readonly positions: readonly PersonPosition[]; readonly queues: readonly DivisionQueue[] },
+): MembersModel {
+  const actionsOf = (person: EditPerson): MemberActions | null => {
+    const position = page.positions.find((e) => e.id === person.id);
+    return position === undefined ? null : { person, position };
   };
+  const queues = page.queues.flatMap((q): MembersQueue[] => {
+    const header = page.divisions.find((d) => d.id === q.divisionId);
+    return header === undefined ? [] : [{ header, waiting: q.waiting, joining: q.joining, editable: q.editable }];
+  });
   return model({
     intro: wholeTeamLine(page),
     notice: null,
     units: page.departments.map((d) => ({ name: d.name, divisions: d.divisions })),
-    everyone: page.people.map((p) => ({ ...p, actions: actionsOf(p.id) })),
+    everyone: page.people.map((p) => ({ ...p, actions: actionsOf(p) })),
     divisions: [],
+    queues,
     switcher: null,
     add: page.divisions.length === 0 ? null : { kind: "department", department: "the team", divisions: page.divisions },
     panelEdits: true,
@@ -156,16 +176,11 @@ export function wholeTeamModel(page: WholeTeamMembers & { readonly teamPageEdits
 /** A department head's page (boards 69 to 69c): every division of the department, each as its lead's page. */
 export function departmentModel(page: DepartmentMembers): MembersModel {
   const headers = page.tabs.map((t) => t.division);
-  const divisionFor = (person: DepartmentPerson): DivisionHeader | null =>
-    page.tabs.find((t) => t.division.id === person.divisions[0]?.divisionId)?.division ?? null;
   return model({
     intro: departmentLine(page),
     notice: null,
     units: [{ name: page.department.name, divisions: headers.map(unitDivision) }],
-    everyone: page.everyone.map((p) => {
-      const division = divisionFor(p);
-      return entryOf(p, division === null ? null : { kind: "division", person: p, removals: p.removals, division });
-    }),
+    everyone: page.everyone.map((p: DepartmentPerson) => entryOf(p, actionsOf(p))),
     divisions: page.tabs.map((tab) => sliceOf(tab)),
     switcher: null,
     add: headers.length === 0 ? null : { kind: "department", department: page.department.name, divisions: headers },
@@ -193,16 +208,15 @@ function unitDivision(d: DivisionHeader): MembersUnit["divisions"][number] {
   return { id: d.id, name: d.name, code: d.code };
 }
 
+/** A division page's person's actions: none on a page at Can view, or on their own row (`position` is null there). */
+function actionsOf(person: DivisionPerson): MemberActions | null {
+  return person.position === null ? null : { person, position: person.position };
+}
+
 function sliceOf(page: DivisionMembers): MembersDivision {
-  const short = divisionLabel(page.division.name);
   return {
     header: page.division,
-    people: page.people.map((p) =>
-      entryOf(
-        p,
-        page.editable ? { kind: "division", person: p, removals: [{ divisionId: page.division.id, short, removal: p.removal }], division: page.division } : null,
-      ),
-    ),
+    people: page.people.map((p) => entryOf(p, page.editable ? actionsOf(p) : null)),
     waiting: page.waiting,
     joining: page.joining,
     editable: page.editable,
@@ -210,7 +224,7 @@ function sliceOf(page: DivisionMembers): MembersDivision {
 }
 
 /** A division page's person as a row of the shared list and table. */
-function entryOf(person: DivisionPerson, actions: DivisionActions | null): MemberEntry {
+function entryOf(person: DivisionPerson, actions: MemberActions | null): MemberEntry {
   const lead = person.role === "lead";
   return {
     id: person.id,
@@ -258,7 +272,7 @@ export type ShownMembers = {
   readonly division: MembersUnit["divisions"][number] | null;
   readonly people: readonly MemberEntry[];
   readonly waiting: readonly { readonly waiting: WaitingPerson; readonly division: DivisionHeader; readonly editable: boolean }[];
-  readonly joining: readonly { readonly joining: Joining; readonly division: string; readonly editable: boolean }[];
+  readonly joining: readonly { readonly joining: Joining; readonly division: string }[];
 };
 
 /**
@@ -279,13 +293,13 @@ export function shownMembers(page: MembersModel, filter: MembersFilter): ShownMe
       (divisionId === null || slice !== null || p.divisionIds.includes(divisionId)) &&
       matchesPerson(p, filter.query),
   );
-  const slices = slice ? [slice] : page.divisions.filter((d) => inDepartment(d.header.id));
+  const queues = page.queues.filter((q) => (divisionId === null ? inDepartment(q.header.id) : q.header.id === divisionId));
   return {
     division: options.find((d) => d.id === divisionId) ?? null,
     people,
-    waiting: slices.flatMap((s) =>
+    waiting: queues.flatMap((s) =>
       s.waiting.filter((w) => matchesWaiting(w, filter.query)).map((w) => ({ waiting: w, division: s.header, editable: s.editable })),
     ),
-    joining: slices.flatMap((s) => s.joining.map((j) => ({ joining: j, division: s.header.name, editable: s.editable }))),
+    joining: queues.flatMap((s) => s.joining.map((j) => ({ joining: j, division: s.header.name }))),
   };
 }
