@@ -22,7 +22,7 @@ import { readViewAsAccount, recordViewAs, viewAsRefusal } from "./database-view-
 import { viewAsSiteOf, type ViewAsSite } from "./view-as";
 import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
-import { areaLevelsOf, canChangePerson, checkRemoveGrant, grantablePeople, heldIn, holdsAny, placeKey, placesOf, removalOf, type AccessPage } from "./division-access";
+import { areaLevelsOf, canChangePerson, checkRemoveGrant, grantablePeople, heldIn, heldLines, holdsAny, placeKey, placesOf, removalOf, type AccessPage } from "./division-access";
 import type { TeamSearch } from "./division-edit";
 import { SEAT_TITLE_REQUIRED } from "./division-members";
 import { membersExportFileName, XLSX_TYPE } from "./members-export";
@@ -1115,10 +1115,115 @@ describe("leads and heads hold grants beyond their role, and their role access s
     if (page.unit.kind !== "division") return;
     assert.deepEqual(
       page.unit.divisions.map((d) => [d.division.id, d.held]),
-      [[IDS.division("MA"), ["positions", "applications", "members"].map((target) => ({ target, level: "edit" }))]],
+      [[IDS.division("MA"), ["positions", "applications", "members", "orders"].map((target) => ({ target, level: "edit" }))]],
     );
     assert.ok(holdsAny(page.unit), "Your access and Give access show");
     assert.ok(grantablePeople(page).some((p) => p.id === IDS.person("MA")), "Give access lists the member of Mission Analysis");
+  });
+
+  test("a lead of two divisions holds Orders at Can edit by role in each, and reads one Your access line (issue #632)", async () => {
+    seedKeeping();
+    const self = accountOf("division lead").memberId!;
+    insertRows(roles, [{ id: 9_400, memberId: self, divisionId: IDS.division("OA"), title: "Division Lead", startedAt: "2025-10-01", type: "lead" }]);
+    const page = await pageAs("division lead");
+    assert.equal(page.unit.kind, "division");
+    if (page.unit.kind !== "division") return;
+    const roleAreas = ["positions", "applications", "members", "orders"].map((target) => ({ target, level: "edit" }));
+    assert.deepEqual(
+      page.unit.divisions.map((d) => [d.division.id, d.held]),
+      [
+        [IDS.division("MA"), roleAreas],
+        [IDS.division("OA"), roleAreas],
+      ],
+    );
+    assert.deepEqual(heldLines(page.unit).length, 1, "one Your access line over both divisions");
+  });
+
+  test("a lead with no Orders grant gives Orders, at Can view or Can edit, to a member of their own division (issue #632)", async () => {
+    for (const level of ["view", "edit"] as const) {
+      seedKeeping();
+      signInAs(accountOf("division lead").userId);
+      const answer = await answerOf(() => actions.saveAccess({ personId: IDS.person("MA"), areas: { orders: level } }));
+      assert.ok(!isRefusal(answer), `${level}: ${JSON.stringify(answer)}`);
+      assert.deepEqual(
+        scopeRowsOf(IDS.person("MA")).map((r) => `${r.scope} ${r.divisionId} ${r.target} ${r.accessLevel}`),
+        [`division ${IDS.division("MA")} orders ${level}`],
+      );
+    }
+    // Still within the limit: nothing outside the led division, no member of another division, and no area the lead does not hold.
+    seedKeeping();
+    signInAs(accountOf("division lead").userId);
+    for (const save of [
+      { personId: IDS.person("MA"), where: IDS.division(DM), areas: { orders: "view" } },
+      { personId: IDS.person("OA"), areas: { orders: "view" } },
+      { personId: IDS.person("OA"), where: IDS.division("OA"), areas: { orders: "edit" } },
+      { personId: IDS.person("MA"), areas: { content: "edit" } },
+    ]) {
+      const answer = await answerOf(() => actions.saveAccess(save as Parameters<typeof actions.saveAccess>[0]));
+      assert.ok(isRefusal(answer), `${JSON.stringify(save)}: not refused: ${JSON.stringify(answer)}`);
+    }
+    assert.deepEqual(recordedWrites(), []);
+  });
+
+  test("nobody gives, changes or removes a lead's Orders in a division they lead, and a refusal writes nothing (issue #632)", async () => {
+    const STORED = { id: 9_500, memberId: IDS.lead("OA"), scope: "division", target: "orders", accessLevel: "view", divisionId: IDS.division("OA") };
+    const cases: [string, readonly Record<string, unknown>[], () => Promise<unknown>][] = [
+      ["department head", [], () => actions.saveAccess({ personId: IDS.lead("OA"), where: IDS.division("OA"), areas: { orders: "view" } })],
+      ["department head", [STORED], () => actions.saveAccess({ personId: IDS.lead("OA"), where: IDS.division("OA"), areas: { orders: "edit" } })],
+      ["department head", [STORED], () => actions.removeGrant({ personId: IDS.lead("OA"), where: IDS.division("OA"), target: "orders" })],
+      [FULL, [], () => actions.saveAccess({ personId: LEAD, where: IDS.division("MA"), areas: { orders: "edit" } })],
+      [FULL, [STORED], () => actions.saveAccess({ personId: IDS.lead("OA"), where: IDS.division("OA"), areas: { orders: "edit" } })],
+      [FULL, [STORED], () => actions.removeGrant({ personId: IDS.lead("OA"), where: IDS.division("OA"), target: "orders" })],
+    ];
+    for (const [name, rows, run] of cases) {
+      seedKeeping(rows);
+      signInAs(accountOf(name).userId);
+      const before = rowsIn(scopes).length;
+      const answer = await answerOf(run);
+      assert.ok(isRefusal(answer), `${name}: not refused: ${JSON.stringify(answer)}`);
+      assert.deepEqual(recordedWrites(), [], `${name}: wrote`);
+      assert.equal(rowsIn(scopes).length, before, `${name}: the scope rows changed`);
+    }
+  });
+
+  test("a stored Orders row for a lead in a division they lead is no grant, Remove all leaves it, and it changes nothing on Orders (issue #632)", async () => {
+    const self = () => accountOf("division lead").memberId!;
+    const stored = () => ({ id: 9_600, memberId: self(), scope: "division", target: "orders", accessLevel: "view", divisionId: IDS.division("MA") });
+    // The lead's Orders page, without the row and with it.
+    seedKeeping();
+    signInAs(accountOf("division lead").userId);
+    const without = (await ((await openDashboard()) as { data: DashboardData }).data.orders()) as OrdersPage;
+    seedKeeping([stored()]);
+    signInAs(accountOf("division lead").userId);
+    const withRow = (await ((await openDashboard()) as { data: DashboardData }).data.orders()) as OrdersPage;
+    assert.deepEqual(withRow.scope, without.scope, "the row changes what the lead does on Orders");
+    // Not listed on Access, and Remove all access leaves it.
+    for (const viewer of [FULL, "department head"]) {
+      seedKeeping([stored()]);
+      const page = await pageAs(viewer);
+      assert.equal(page.grants.some((g) => g.person.id === self()), false, `${viewer}: the row is listed as a grant`);
+      assert.ok(!isRefusal(await actions.removeAllAccess(self())), `${viewer}: Remove all refused`);
+      assert.deepEqual(recordedWrites(), [], `${viewer}: Remove all wrote`);
+      assert.deepEqual(scopeRowsOf(self()).map((r) => r.id), [9_600], `${viewer}: the row was not left in place`);
+    }
+  });
+
+  test("once the person no longer leads the division, the same stored Orders row is a grant again and Remove takes it away (issue #632)", async () => {
+    const self = () => accountOf("division lead").memberId!;
+    seedKeeping([{ id: 9_600, memberId: self(), scope: "division", target: "orders", accessLevel: "view", divisionId: IDS.division("MA") }]);
+    const listed = (page: AccessPage) => page.grants.filter((g) => g.person.id === self()).map((g) => `${placeKey(g.place)} ${g.target} ${g.level}`);
+    assert.deepEqual(listed(await pageAs(FULL)), [], "listed while they lead MA");
+    // They stay in Mission Analysis as a member.
+    updateRows(roles, { memberId: self(), type: "lead" }, { type: "core", title: "Member" });
+    const page = await pageAs(FULL);
+    const grant = page.grants.find((g) => g.person.id === self() && g.target === "orders");
+    assert.ok(grant !== undefined, "the row is not listed once they no longer lead");
+    assert.deepEqual(listed(page), [`${IDS.division("MA")} orders view`]);
+    assert.ok(checkRemoveGrant(page, removalOf(grant)).ok, "Remove is not offered");
+    const answer = await actions.removeGrant({ personId: self(), where: IDS.division("MA"), target: "orders" });
+    assert.ok(!isRefusal(answer), JSON.stringify(answer));
+    assert.deepEqual(scopeRowsOf(self()), []);
+    assert.deepEqual(listed(await pageAs(FULL)), []);
   });
 
   test("the delegation limits still hold with a lead or head as the target", async () => {
@@ -1130,6 +1235,8 @@ describe("leads and heads hold grants beyond their role, and their role access s
       [FULL, { personId: HEAD, where: "team", areas: { content: "view" } }],
       // Approve orders only from the team leader.
       [FULL, { personId: LEAD, where: "team", areas: {}, approveOrders: true }],
+      // Orders in a division the lead leads comes with their role (issue #632).
+      ["department head", { personId: IDS.lead("OA"), where: IDS.division("OA"), areas: { orders: "view" } }],
     ];
     for (const [name, save] of cases) {
       seedKeeping();
@@ -1138,10 +1245,8 @@ describe("leads and heads hold grants beyond their role, and their role access s
       assert.ok(isRefusal(answer), `${name} ${JSON.stringify(save)}: not refused: ${JSON.stringify(answer)}`);
       assert.deepEqual(recordedWrites(), [], `${name}: wrote`);
     }
-    // Within the limits it lands: a head gives a lead of their department Orders, the team leader gives Approve orders.
+    // Within the limits it lands: the team leader gives Approve orders.
     seedKeeping();
-    signInAs(accountOf("department head").userId);
-    assert.ok(!isRefusal(await actions.saveAccess({ personId: IDS.lead("OA"), where: IDS.division("OA"), areas: { orders: "view" } })));
     signInAs(accountOf("team leader").userId);
     assert.ok(!isRefusal(await actions.saveAccess({ personId: LEAD, where: "team", areas: {}, approveOrders: true })));
     assert.deepEqual(scopeRowsOf(LEAD).map((r) => r.target), ["approve_orders"]);
