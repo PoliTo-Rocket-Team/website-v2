@@ -74,22 +74,32 @@ export function VisualOnlyNote({ children }: { children: ReactNode }) {
   );
 }
 
-/** A team member picker, the shared person field (issue #511), with their own photo in the box. */
+/**
+ * A team member picker, the shared person field (issue #511), with their own
+ * photo in the box. It reads empty until the editor picks someone (issue #618).
+ */
 export function PersonSelect({
   id,
   label,
   people,
   value,
   onChange,
+  describedBy,
+  invalid = false,
+  autoFocus = false,
 }: {
   id?: string;
   label?: string;
   /** Everyone on the team, by name. */
   people: readonly TeamPerson[];
-  value: number;
+  /** Who is picked; null while nobody is. */
+  value: number | null;
   onChange: (id: number) => void;
+  describedBy?: string;
+  invalid?: boolean;
+  autoFocus?: boolean;
 }) {
-  const chosen = people.find((p) => p.id === value);
+  const chosen = value === null ? undefined : people.find((p) => p.id === value);
   const own = chosen === undefined ? undefined : personOf(chosen);
   return (
     <PersonCombobox
@@ -98,8 +108,11 @@ export function PersonSelect({
       people={people.map((p) => ({ id: p.id, name: p.name, photoUrl: p.photo }))}
       value={value}
       onChoose={onChange}
-      placeholder="Search the team"
-      photo={<Avatar photo={own?.photo} sizeClass="h-6 w-6" sizes="24px" />}
+      placeholder="Choose a person"
+      photo={own === undefined ? undefined : <Avatar photo={own.photo} sizeClass="h-6 w-6" sizes="24px" />}
+      describedBy={describedBy}
+      invalid={invalid}
+      autoFocus={autoFocus}
     />
   );
 }

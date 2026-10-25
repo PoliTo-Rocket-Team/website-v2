@@ -661,7 +661,8 @@ export function PeoplePicker({
     const timer = setTimeout(async () => {
       const answer = await findPeople(query);
       if (ask === asked.current) setFound(answer);
-    }, 250);
+      // An empty field asks at once: the team is listed as the field opens (issue #618).
+    }, query === "" ? 0 : 250);
     return () => clearTimeout(timer);
   }, [query]);
 

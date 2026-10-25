@@ -45,6 +45,8 @@ import {
   leaderGaps,
   newDepartmentFields,
   newLeaderFields,
+  pickedHead,
+  pickedLeader,
   teamByName,
   withHeadPerson,
   withLeaderPerson,
@@ -144,13 +146,21 @@ const PLACE = "Org chart";
 /** The bar's arrow and the breadcrumb's first step. */
 const BACK = { label: "Dashboard", href: "/dashboard" } as const;
 
-/** The layer with the open panel's edit laid on: the page shows it as the editor types, and Cancel drops it. */
+/**
+ * The layer with the open panel's edit laid on: the page shows it as the
+ * editor types, and Cancel drops it. A leader or head with nobody picked
+ * adds nothing yet (issue #618).
+ */
 function previewOf(build: TeamBuild, layer: TeamPageLayer, panel: Panel | null): TeamPageLayer {
   if (panel === null) return layer;
   if (panel.kind === "person") return withSpotEdit(layer, panel.spot, editOfFields(build, panel.spot, panel.fields));
-  if (panel.kind === "leader") return layerWithLeader(build, layer, panel.id, panel.fields);
+  if (panel.kind === "leader") {
+    const picked = pickedLeader(panel.fields);
+    return picked === null ? layer : layerWithLeader(build, layer, panel.id, picked);
+  }
   if (panel.kind === "advisors") return layer;
-  return layerWithHead(build, layer, panel.at, panel.fields);
+  const picked = pickedHead(panel.fields);
+  return picked === null ? layer : layerWithHead(build, layer, panel.at, picked);
 }
 
 /** What the open panel refuses before it keeps its edit, as one message; null when nothing is refused. */
@@ -249,7 +259,7 @@ export function TeamPageEdit({
       const fields = headFieldsOf(build, layer, at);
       if (fields === null) return;
       setInPlace(null);
-      setPanel({ kind: "head", at, fields: addLead ? withNewLead(build, fields) : fields });
+      setPanel({ kind: "head", at, fields: addLead ? withNewLead(fields) : fields });
     },
     [build, layer],
   );
@@ -286,17 +296,13 @@ export function TeamPageEdit({
   );
 
   const addLeader = (gap: number) => {
-    const fields = newLeaderFields(build, layer, gap);
-    if (fields === null) return;
     setInPlace(null);
-    setPanel({ kind: "leader", id: null, fields });
+    setPanel({ kind: "leader", id: null, fields: newLeaderFields(gap) });
   };
 
   const addDepartment = () => {
-    const fields = newDepartmentFields(build);
-    if (fields === null) return;
     setInPlace(null);
-    setPanel({ kind: "head", at: null, fields });
+    setPanel({ kind: "head", at: null, fields: newDepartmentFields() });
   };
 
   const adding = panel === null && shown !== null;
@@ -648,7 +654,9 @@ function HeadPanel({
   const { at, fields } = panel;
   const record = at === null ? null : headRecord(build, at);
   const roles = at !== null && !isAddedRef(at) ? at : null;
-  const edited = roles !== null && (isHeadEdited(build, layer, roles) || isHeadEdited(build, layerWithHead(build, layer, roles, fields), roles));
+  const picked = pickedHead(fields);
+  const edited =
+    roles !== null && (isHeadEdited(build, layer, roles) || (picked !== null && isHeadEdited(build, layerWithHead(build, layer, roles, picked), roles)));
   return (
     <TeamHeadPanel
       kind={at === null ? "new" : roles === null ? "added" : "roles"}
@@ -659,7 +667,7 @@ function HeadPanel({
       photoChoices={photoChoices}
       onChange={onChange}
       onPerson={(id) => onChange(withHeadPerson(build, fields, id))}
-      onAddLead={() => onChange(withNewLead(build, fields))}
+      onAddLead={() => onChange(withNewLead(fields))}
       onDone={onDone}
       onCancel={onCancel}
       onHide={at === null ? null : () => onHide(at)}
