@@ -8,7 +8,7 @@ import { Avatar } from "@/components/dashboard/avatar";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useSignOut } from "@/components/use-sign-out";
 import { parseNavViewer, type NavViewer } from "@/lib/nav-viewer-shape";
-import { PAGES } from "@/lib/landing-links";
+import { PAGES, WIKI, opensOf } from "@/lib/landing-links";
 
 // The navbar's account end. A visitor sees "Sign in" (issue #157). Once
 // signed in, the viewer's round avatar opens a menu with Dashboard, Wiki and
@@ -72,9 +72,6 @@ export function NavAccount() {
 const ITEM =
   "flex h-8 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[13px] outline-none transition-colors data-[highlighted]:bg-white-5";
 
-// The team wiki is another site, so it opens in a new tab (issue #683).
-const WIKI = "https://wiki.politorocketteam.it";
-
 /**
  * Board 01b: a 38px avatar (photo, else the PRT mark on the accent) that opens a
  * menu below it, aligned right: who is signed in (the sign-in address), then
@@ -116,7 +113,7 @@ function AccountMenu({ viewer }: { viewer: NavViewer }) {
             </Link>
           </DropdownMenuPrimitive.Item>
           <DropdownMenuPrimitive.Item asChild>
-            <a href={WIKI} target="_blank" rel="noopener noreferrer" className={`${ITEM} text-text-2 data-[highlighted]:text-prt-text`}>
+            <a href={WIKI} {...opensOf(WIKI)} className={`${ITEM} text-text-2 data-[highlighted]:text-prt-text`}>
               <ExternalLink aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
               Wiki
             </a>

@@ -25,6 +25,9 @@ export type NavLink = NavPage | NavSection;
 export const TEAM_EMAIL = "info@politorocketteam.it";
 export const TEAM_MAIL: MailLink = `mailto:${TEAM_EMAIL}`;
 
+/** The team wiki, from the navbar account menu (issue #683). Another site, so it opens in a new tab. */
+export const WIKI: ExternalUrl = "https://wiki.politorocketteam.it";
+
 /** The pages the landing page links to by name. */
 export const PAGES = {
   home: "/",
@@ -113,6 +116,7 @@ export function landingHrefs(): readonly LandingHref[] {
     ...INSIDE_TEAM_LINKS.map((l) => l.href),
     ...footerColumns([]).flatMap((c) => c.links.map(([, href]) => href)),
     TEAM_MAIL,
+    WIKI,
   ];
 }
 
