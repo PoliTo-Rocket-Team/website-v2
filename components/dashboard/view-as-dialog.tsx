@@ -1,16 +1,15 @@
 "use client";
 
-import { use, useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { use, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Search } from "lucide-react";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { findViewAsPeople } from "@/app/dashboard/view-as-actions";
 import { authClient } from "@/lib/auth-client";
 import type { DashboardChrome } from "@/lib/dashboard/chrome";
 import { VIEW_AS_PARAM, type ViewAsOpening, type ViewAsPerson } from "@/lib/dashboard/view-as";
-import { Avatar } from "./avatar";
 import { SHEET_OVERLAY, SheetGrabber } from "./confirm-dialog";
+import { PersonCombobox } from "./person-combobox";
 
 /** How long typing rests before the search asks the server. */
 const SEARCH_REST_MS = 200;
@@ -38,8 +37,9 @@ export function ViewAsDialogSlot({ chrome }: { chrome: Promise<DashboardChrome> 
 type Found = { readonly kind: "searching" } | { readonly kind: "people"; readonly people: readonly ViewAsPerson[] } | { readonly kind: "failed"; readonly message: string };
 
 // The View as dialog (board 96, issue #610): who the dashboard is opened as.
-// A search field over the people it finds by name, the chosen row on
-// white-5, and Cancel beside "View as <name>", which starts a View as session
+// The dashboard's one person field (issue #618) over the people the server
+// finds by name, nobody chosen until the viewer picks someone, and Cancel
+// beside "View as <name>", which starts a View as session
 // through Better Auth's admin plugin and lands on the dashboard as that
 // person. The server's View as gate decides the start and the search alike.
 // It opens from "View as…" in the user menu, as the `view-as` parameter of the
@@ -51,7 +51,7 @@ function ViewAsDialog({ opening }: { opening: ViewAsOpening }) {
   const router = useRouter();
   const pathname = usePathname() ?? "/dashboard";
   const open = params?.has(VIEW_AS_PARAM) ?? false;
-  const search = useRef<HTMLInputElement>(null);
+  const fieldId = useId();
 
   const close = () => {
     const rest = new URLSearchParams(params?.toString());
@@ -69,22 +69,27 @@ function ViewAsDialog({ opening }: { opening: ViewAsOpening }) {
         <DialogPrimitive.Content
           onOpenAutoFocus={(event) => {
             event.preventDefault();
-            search.current?.focus();
+            document.getElementById(fieldId)?.focus();
           }}
           className="fixed inset-x-0 bottom-0 z-50 max-h-[92svh] overflow-y-auto rounded-t-2xl border-t border-hairline bg-panel px-5 pb-6 pt-3 text-prt-text shadow-[0_-16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 max-sm:motion-safe:data-[state=open]:slide-in-from-bottom sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-[15vh] sm:w-[500px] sm:-translate-x-1/2 sm:rounded-2xl sm:border sm:p-6 sm:shadow-[0_16px_40px_rgba(0,0,0,0.6)]">
           <SheetGrabber />
-          {open && <ViewAsBody opening={opening} search={search} />}
+          {open && <ViewAsBody opening={opening} fieldId={fieldId} />}
         </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>
   );
 }
 
-function ViewAsBody({ opening, search }: { opening: ViewAsOpening; search: RefObject<HTMLInputElement | null> }) {
-  const listId = useId();
+/**
+ * The dialog's body: the person field, why View as could not start, and the
+ * buttons. Nobody is chosen when it opens; a pick chooses someone, typing
+ * other text unchooses them, and View as starts, by its button or by Enter,
+ * only once someone is chosen (issue #618).
+ */
+export function ViewAsBody({ opening, fieldId }: { opening: ViewAsOpening; fieldId: string }) {
   const [text, setText] = useState("");
   const [found, setFound] = useState<Found>({ kind: "searching" });
-  const [chosenId, setChosenId] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<ViewAsPerson | null>(null);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const asked = useRef(0);
@@ -108,9 +113,8 @@ function ViewAsBody({ opening, search }: { opening: ViewAsOpening; search: RefOb
   }, [text]);
 
   const people = found.kind === "people" ? found.people : [];
-  // The chosen row stays chosen while a search still finds it, else the first row is.
-  const chosen = people.find((p) => p.id === chosenId) ?? people[0] ?? null;
-  const optionId = (person: ViewAsPerson) => `${listId}-${person.id}`;
+  const note =
+    found.kind === "failed" ? found.message : found.kind === "people" && people.length === 0 ? (text.trim() === "" ? "There is no one to view as." : "No one by that name.") : null;
 
   const start = async () => {
     if (chosen === null || starting) return;
@@ -126,18 +130,11 @@ function ViewAsBody({ opening, search }: { opening: ViewAsOpening; search: RefOb
     window.location.assign("/dashboard");
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      void start();
-      return;
-    }
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  // Enter the open list did not take (it chooses there) starts View as for whoever is chosen.
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" || event.defaultPrevented) return;
     event.preventDefault();
-    if (people.length === 0) return;
-    const at = chosen === null ? -1 : people.indexOf(chosen);
-    const next = Math.min(people.length - 1, Math.max(0, at + (event.key === "ArrowDown" ? 1 : -1)));
-    setChosenId(people[next].id);
+    void start();
   };
 
   return (
@@ -148,57 +145,33 @@ function ViewAsBody({ opening, search }: { opening: ViewAsOpening; search: RefOb
         and stop goes to the Activity log.
       </DialogPrimitive.Description>
 
-      <label className="relative mt-5 block">
-        <span className="sr-only">Search people by name</span>
-        <Search aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
-        <input
-          type="text"
-          role="combobox"
-          aria-expanded="true"
-          aria-controls={listId}
-          aria-autocomplete="list"
-          aria-activedescendant={chosen === null ? undefined : optionId(chosen)}
-          ref={search}
-          autoComplete="off"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={onKeyDown}
+      <div className="mt-5" onKeyDown={onKeyDown}>
+        <label htmlFor={fieldId} className="sr-only">
+          Search people by name
+        </label>
+        <PersonCombobox<string>
+          id={fieldId}
+          people={people.map((p) => ({ id: p.id, name: p.name, photoUrl: p.photoUrl, line: p.line }))}
+          value={chosen?.id ?? null}
+          onChoose={(id) => {
+            const person = people.find((p) => p.id === id);
+            if (person === undefined) return;
+            setChosen(person);
+            setText(person.name);
+            setStartError(null);
+          }}
           placeholder="Search by name"
-          className="h-10 w-full rounded-xl border border-hairline bg-transparent pl-10 pr-3 text-[14px] text-prt-text outline-none transition-colors duration-300 ease-out placeholder:text-prt-muted hover:border-border-strong focus:border-border-strong"
+          search={{
+            text,
+            onText: (next) => {
+              setText(next);
+              if (chosen !== null && next !== chosen.name) setChosen(null);
+            },
+          }}
+          note={note}
+          inline
         />
-      </label>
-
-      <ul id={listId} role="listbox" aria-label="People" aria-busy={found.kind === "searching"} className="mt-4 flex min-h-12 flex-col gap-0.5">
-        {people.map((person) => {
-          const selected = person === chosen;
-          return (
-            <li
-              key={person.id}
-              id={optionId(person)}
-              role="option"
-              aria-selected={selected}
-              onClick={() => setChosenId(person.id)}
-              className={`flex h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 transition-colors duration-300 ease-out ${selected ? "bg-white-5" : "hover:bg-white-5"}`}
-            >
-              <Avatar person={person} />
-              <span className="min-w-0">
-                <span className="block truncate text-[14px] leading-5 text-prt-text">{person.name}</span>
-                <span className="block truncate text-[12px] leading-4 text-prt-muted">{person.line}</span>
-              </span>
-            </li>
-          );
-        })}
-        {found.kind === "people" && people.length === 0 && (
-          <li role="presentation" className="flex h-12 items-center px-2.5 text-[13px] text-prt-muted">
-            {text.trim() === "" ? "There is no one to view as." : "No one by that name."}
-          </li>
-        )}
-        {found.kind === "failed" && (
-          <li role="presentation" className="flex h-12 items-center px-2.5 text-[13px] text-danger">
-            {found.message}
-          </li>
-        )}
-      </ul>
+      </div>
 
       {startError !== null && (
         <p role="alert" className="mt-3 text-[13px] text-danger">

@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { test } from "node:test";
 import { JSDOM } from "jsdom";
 
@@ -93,7 +95,7 @@ async function mount(render: (react: typeof import("react"), field: Field, drawe
 
 test("typing narrows the list by name, case-insensitive; the chosen name in the box shows the whole list", async () => {
   const ui = await mount(({ createElement }, { PersonCombobox }) =>
-    createElement(PersonCombobox, { people: TEAM, value: 2, onChoose: () => {}, placeholder: "Choose a person" }),
+    createElement(PersonCombobox<number>, { people: TEAM, value: 2, onChoose: () => {}, placeholder: "Choose a person" }),
   );
   await ui.focus();
   assert.equal(ui.input().value, "Grace Hopper");
@@ -110,7 +112,7 @@ test("the arrow keys move the active row and Enter chooses it without submitting
     createElement(
       "form",
       { onSubmit: (e: Event) => (e.preventDefault(), submitted++) },
-      createElement(PersonCombobox, { people: TEAM, value: undefined, onChoose: (id: number) => chosen.push(id), placeholder: "Choose a person" }),
+      createElement(PersonCombobox<number>, { people: TEAM, value: undefined, onChoose: (id: number) => chosen.push(id), placeholder: "Choose a person" }),
     ),
   );
   await ui.focus();
@@ -130,7 +132,7 @@ test("a taken row shows its reason and cannot be chosen, by click or by the arro
   const chosen: number[] = [];
   const people = [TEAM[0], { ...TEAM[1], taken: "Already a lead" }, TEAM[2]];
   const ui = await mount(({ createElement }, { PersonCombobox }) =>
-    createElement(PersonCombobox, { people, value: undefined, onChoose: (id: number) => chosen.push(id), placeholder: "Choose a person" }),
+    createElement(PersonCombobox<number>, { people, value: undefined, onChoose: (id: number) => chosen.push(id), placeholder: "Choose a person" }),
   );
   await ui.focus();
   assert.deepEqual(ui.options(), ["Ada Lovelace", "Grace HopperAlready a lead", "Alan Turing"]);
@@ -151,7 +153,7 @@ test("Escape closes the list and leaves the drawer around it open", async () => 
         open,
         onOpenChange: setOpen,
         title: "Give access",
-        children: createElement(PersonCombobox, { people: TEAM, value: undefined, onChoose: () => {}, placeholder: "Choose a person" }),
+        children: createElement(PersonCombobox<number>, { people: TEAM, value: undefined, onChoose: () => {}, placeholder: "Choose a person" }),
       });
     }
     return createElement(Drawer);
@@ -182,7 +184,7 @@ test("results that a server search sends after the typing are shown and can be c
         const timer = setTimeout(() => setFound(text.length < 2 ? [] : TEAM.filter((p) => p.name.startsWith(text))), 20);
         return () => clearTimeout(timer);
       }, [text]);
-      return createElement(PersonCombobox, {
+      return createElement(PersonCombobox<number>, {
         people: found,
         value: null,
         onChoose: (id: number) => chosen.push(id),
@@ -200,4 +202,15 @@ test("results that a server search sends after the typing are shown and can be c
   await ui.press("Enter");
   assert.deepEqual(chosen, [3]);
   await ui.unmount();
+});
+
+// Issue #618: a person field built by hand drifts from this one (the View as
+// dialog chose its first row on open). The ARIA combobox role is what makes
+// a field a picker, so the dashboard's views may draw it only through this one.
+test("no dashboard view but the shared person field draws its own combobox", () => {
+  const dir = join(__dirname, "..", "..", "components", "dashboard");
+  const views = (path: string): string[] =>
+    readdirSync(path, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? views(join(path, e.name)) : /\.tsx?$/.test(e.name) ? [join(path, e.name)] : []));
+  const own = views(dir).filter((file) => !file.endsWith("person-combobox.tsx") && /role=\{?["']combobox["']\}?/.test(readFileSync(file, "utf8")));
+  assert.deepEqual(own.map((file) => relative(dir, file)), [], "render PersonCombobox instead");
 });

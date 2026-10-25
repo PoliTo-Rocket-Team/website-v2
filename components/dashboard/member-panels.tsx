@@ -898,7 +898,8 @@ function AddForm({ open, onOpenChange, target }: { open: boolean; onOpenChange: 
     const timer = setTimeout(async () => {
       const answer = await findForAdd(division.id, query);
       if (ask === asked.current) setLookup(answer);
-    }, 250);
+      // An empty field asks at once: the team is listed as the field opens (issue #618).
+    }, query === "" ? 0 : 250);
     return () => clearTimeout(timer);
   }, [query, picked, division.id]);
 
