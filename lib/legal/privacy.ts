@@ -6,8 +6,11 @@ import type { LegalDocument } from "./types";
 // application form (lib/apply/application-form.ts), the private file store
 // (ADR 0010), the member record (db/schema/public.ts), who sees what
 // (docs/dashboard-rules.md), and how long it is kept (ADR 0011 rule 8,
-// ADR 0012, lib/dashboard/anonymize.ts, issue #257). A change to what the site
-// stores changes this text with it.
+// ADR 0012, lib/dashboard/anonymize.ts, issue #257). The data controller, the
+// legal bases and the outside services follow the owner decisions on issue
+// #742; the services are the ones the code uses (vercel.json, lib/storage,
+// app/layout.tsx, lib/auth.ts, package.json). A change to what the site
+// stores, or to the services it runs on, changes this text with it.
 
 const APPLICATION_READERS =
   "The team members who handle recruitment for the role you applied to.";
@@ -31,7 +34,7 @@ export const privacyPolicy: LegalDocument = {
       blocks: [
         {
           kind: "paragraph",
-          text: `${TEAM_NAME} is a student rocketry team at Politecnico di Torino (${TEAM_ADDRESS}). We run this site, and we decide how the personal data it collects is used. This policy follows the EU General Data Protection Regulation (GDPR).`,
+          text: `${TEAM_NAME} is the data controller for the personal data this site collects: we run the site, and we decide how that data is used. We are a student rocketry team at Politecnico di Torino (${TEAM_ADDRESS}), and Politecnico di Torino is responsible for the team as its university. This policy follows the EU General Data Protection Regulation (GDPR).`,
         },
         {
           kind: "paragraph",
@@ -117,14 +120,17 @@ export const privacyPolicy: LegalDocument = {
         {
           kind: "list",
           items: [
-            "To handle your application and, if you join, your place on the team. You ask us to do this when you apply (GDPR Article 6(1)(b)).",
-            "To keep statistics on who applies and who joins, so we can run fair recruitment and report on the team. This is our legitimate interest (Article 6(1)(f)), and the statistics never name you.",
-            "To keep the site and your account secure. This is our legitimate interest (Article 6(1)(f)).",
+            "Your Google account: to sign you in and link you to your applications and your place on the team. We need it to give you the account you ask for (GDPR Article 6(1)(b)).",
+            "Your application: to handle the application you send us. You ask us to do this when you apply (Article 6(1)(b)).",
+            "Your files: to read your CV and motivation letter as part of your application (Article 6(1)(b)).",
+            "If you join the team: to manage your place on the team (Article 6(1)(b)). Showing your name, photo and role on the public Team page while you are on the team is our legitimate interest in showing who builds the team (Article 6(1)(f)).",
+            "Statistics answers: to keep statistics on who applies and who joins, so we can run fair recruitment and report on the team. This is our legitimate interest (Article 6(1)(f)), and the statistics never name you.",
+            "Sign-in and security records: to keep you signed in and keep the site and your account secure. This is our legitimate interest (Article 6(1)(f)).",
           ],
         },
         {
           kind: "paragraph",
-          text: "We do not sell your data, and we do not use it for advertising or for any decision made only by a machine.",
+          text: "We do not share your personal data with anyone. We do not sell it, and we do not use it for advertising or for any decision made only by a machine. The outside services listed below only store the data and run the site for us.",
         },
       ],
     },
@@ -134,14 +140,16 @@ export const privacyPolicy: LegalDocument = {
       blocks: [
         {
           kind: "paragraph",
-          text: "A few services run parts of the site for us. They handle your data only to provide their service, under their data processing terms:",
+          text: "We share your data with no one. A few outside services run parts of the site for us: they only store the data and run the site on our behalf, under their data processing terms, and use it for nothing else.",
         },
         {
           kind: "list",
           items: [
-            "Google, for sign-in.",
-            "Vercel, which hosts the site and the file stores, and provides the visit and speed counts.",
+            "Vercel, which hosts the site and runs its scheduled clean-up jobs.",
+            "Vercel Blob, which holds our two file stores: a private one for application files and a public one for profile photos.",
+            "Vercel Web Analytics and Speed Insights, which count page visits and measure how fast pages load.",
             "Neon, which hosts our database.",
+            "Google, for sign-in.",
           ],
         },
         {
@@ -157,6 +165,7 @@ export const privacyPolicy: LegalDocument = {
         {
           kind: "list",
           items: [
+            "We delete personal data once we no longer need it for the reasons above.",
             "While your account is open, we keep what you gave us, so you can follow your applications and we can manage the team.",
             "If you withdraw an application, the leads stop seeing it at once, and its files are deleted 30 days later.",
             "If you delete your account, your data is kept for at least one year. Then it is anonymized and kept only for statistics. Your files and photos are deleted at that point.",
