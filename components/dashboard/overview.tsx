@@ -105,14 +105,11 @@ function boardParts(overview: ScopeBoard): {
   }
 }
 
-// One Overview for every team seat (issue #593), in the order boards 99 and
-// 99b set for every leader (issue #652). Board 52's person leads it, with
-// Edit profile from md, and board 94f's alias card under it until the alias
-// is set up. The seat's figures follow, then two columns: on the left what
-// needs attention, their page on the site (gone once every step is done,
-// issue #641) and the panel the seat's scope reads (Departments for the team
-// leader, Divisions for a department head, Upcoming interviews for a division
-// lead); on the right the roster of their own unit, then recent activity.
+// One Overview for every team seat (issue #593). Board 52's person leads it,
+// with Edit profile from md, and board 94f's alias card under it until the
+// alias is set up. The seat's figures follow, then its panels: in the two
+// columns boards 99 and 99b set for every leader (issue #652), or board
+// first, then their page on the site beside the roster, for every other seat.
 // "Your access" closes the page: each grant, the access hint for a member
 // who reads no area, or nothing for a seat that reads its areas by role and
 // holds no grant. Board 52m: the person sits on the page with no frame and no
@@ -156,62 +153,27 @@ export function OverviewAliasSection({ alias }: { alias: OwnAlias }) {
   );
 }
 
-// Everything under the person (boards 99 and 99b, issue #652): the seat's
-// figures (boards 40, 56, 62, 72), then the two columns. Left: what needs
-// attention, their page on the site, then Departments (board 72), Divisions
-// (board 62) or Upcoming interviews (board 56); a department head's phone
-// board 62m keeps the interviews, which board 62 leaves out. Right: the
-// roster of their own unit, then recent activity, which phones on boards
-// 56m and 62m drop. With one column empty the other takes the whole width,
-// so no empty column is left (Owner decision, 2026-10-21). A board with no
-// figure (a member who holds no area grant) shows no figure row.
+// Everything under the person: the seat's figures (boards 40, 56, 62, 72),
+// then its panels in the layout the seat reads (`overviewLayoutOf`), then
+// "Your access". A board with no figure (a member who holds no area grant)
+// shows no figure row.
 export function OverviewBodySection({ board, panels }: { board: ScopeBoard; panels: Omit<PersonalPanels, "person"> }) {
-  const { divisions, departments, interviews, phone } = boardParts(board);
-  const { stats, attention, activity } = board;
-  const { checklist, rosters, access } = panels;
-  const compact = phone === "board-56m";
-  const left =
-    attention.length > 0 ||
-    checklist !== null ||
-    interviews.length > 0 ||
-    (divisions !== null && divisions.length > 0) ||
-    (departments !== null && departments.list.length > 0);
-  const right = rosters.length > 0 || activity.length > 0;
+  const parts = boardParts(board);
+  const { access } = panels;
+  const compact = parts.phone === "board-56m";
   return (
     <>
-      {stats.length > 0 && (
+      {board.stats.length > 0 && (
         <div className="mt-5 grid grid-cols-2 gap-3 md:mt-6 md:gap-4 xl:grid-cols-4">
-          {stats.map((stat, index) => (
+          {board.stats.map((stat, index) => (
             <StatCard key={stat.label} stat={stat} compact={compact} hiddenOnPhone={compact && index >= 2} />
           ))}
         </div>
       )}
-      {(left || right) && (
-        <div className={left && right ? GRID : STACK}>
-          {left && (
-            <div className="flex min-w-0 flex-col gap-4">
-              {attention.length > 0 && <AttentionPanel attention={attention} compact={compact} />}
-              {checklist !== null && <ChecklistPanel checklist={checklist} />}
-              {divisions !== null && divisions.length > 0 && <DivisionsPanel divisions={divisions} />}
-              {departments !== null && departments.list.length > 0 && (
-                <DepartmentsPanel departments={departments.list} people={departments.people} />
-              )}
-              {interviews.length > 0 && (
-                <div className={divisions !== null ? "md:hidden" : undefined}>
-                  <InterviewsPanel interviews={interviews} />
-                </div>
-              )}
-            </div>
-          )}
-          {right && (
-            <div className="flex min-w-0 flex-col gap-4">
-              {rosters.map((roster) => (
-                <RosterPanel key={roster.title} roster={roster} />
-              ))}
-              {activity.length > 0 && <ActivityPanel activity={activity} compact={compact} />}
-            </div>
-          )}
-        </div>
+      {panels.layout === "leader-columns" ? (
+        <LeaderColumns board={board} parts={parts} panels={panels} />
+      ) : (
+        <BoardFirst board={board} parts={parts} panels={panels} />
       )}
 
       {access.kind === "lines" && <AccessPanel access={access.lines} />}
@@ -225,9 +187,106 @@ export function OverviewBodySection({ board, panels }: { board: ScopeBoard; pane
   );
 }
 
-function ActivityPanel({ activity, compact }: { activity: readonly ActivityItem[]; compact: boolean }) {
+type BodyProps = { board: ScopeBoard; parts: ReturnType<typeof boardParts>; panels: Omit<PersonalPanels, "person"> };
+
+/** Whether the scope board has a panel of its own to show: attention rows, Divisions, Departments or interviews. */
+function hasScopePanels({ board, parts }: Pick<BodyProps, "board" | "parts">): boolean {
   return (
-    <Panel title="Recent activity" className={compact ? "max-md:hidden" : ""}>
+    board.attention.length > 0 ||
+    parts.interviews.length > 0 ||
+    (parts.divisions !== null && parts.divisions.length > 0) ||
+    (parts.departments !== null && parts.departments.list.length > 0)
+  );
+}
+
+/**
+ * The scope board's own panels: what needs attention, then Departments
+ * (board 72), Divisions (board 62) or Upcoming interviews (board 56); a
+ * department head's phone board 62m keeps the interviews, which board 62
+ * leaves out. `checklist` slots their page on the site under the attention
+ * rows (boards 99 and 99b).
+ */
+function ScopePanels({ board, parts, checklist }: Pick<BodyProps, "board" | "parts"> & { checklist: Checklist | null }) {
+  const { divisions, departments, interviews } = parts;
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      {board.attention.length > 0 && <AttentionPanel attention={board.attention} compact={parts.phone === "board-56m"} />}
+      {checklist !== null && <ChecklistPanel checklist={checklist} />}
+      {divisions !== null && divisions.length > 0 && <DivisionsPanel divisions={divisions} />}
+      {departments !== null && departments.list.length > 0 && <DepartmentsPanel departments={departments.list} people={departments.people} />}
+      {interviews.length > 0 && (
+        <div className={divisions !== null ? "md:hidden" : undefined}>
+          <InterviewsPanel interviews={interviews} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Boards 99 and 99b (issue #652), for the team leader, a department head and
+// a division lead. Left: what needs attention, their page on the site (gone
+// once every step is done, issue #641), then the scope's own panel. Right:
+// the roster of their own unit, then recent activity, which phones on boards
+// 56m and 62m drop. With one column empty the other takes the whole width,
+// so no empty column is left (Owner decision, 2026-10-21).
+function LeaderColumns({ board, parts, panels }: BodyProps) {
+  const { checklist, rosters } = panels;
+  const left = hasScopePanels({ board, parts }) || checklist !== null;
+  const right = rosters.length > 0 || board.activity.length > 0;
+  if (!left && !right) return null;
+  return (
+    <div className={left && right ? GRID : STACK}>
+      {left && <ScopePanels board={board} parts={parts} checklist={checklist} />}
+      {right && (
+        <div className="flex min-w-0 flex-col gap-4">
+          {rosters.map((roster) => (
+            <RosterPanel key={roster.title} roster={roster} />
+          ))}
+          {board.activity.length > 0 && <ActivityPanel activity={board.activity} compact={parts.phone === "board-56m"} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Every other team seat (boards 40 and 52): the scope board's panels beside
+// the recent activity, then their page on the site beside their roster (the
+// roster on its own once every step of the page is done, issue #641). With
+// no recent activity the panels take the whole width, so no empty column is
+// left on the right (Owner decision, 2026-10-21).
+function BoardFirst({ board, parts, panels }: BodyProps) {
+  const { checklist, rosters } = panels;
+  const left = hasScopePanels({ board, parts });
+  const activity = board.activity.length > 0;
+  return (
+    <>
+      {(left || activity) && (
+        <div className={left && !activity ? STACK : GRID}>
+          {left && <ScopePanels board={board} parts={parts} checklist={null} />}
+          {activity && (
+            <ActivityPanel activity={board.activity} compact={parts.phone === "board-56m"} className={left ? "" : "lg:col-start-2"} />
+          )}
+        </div>
+      )}
+      {(checklist !== null || rosters.length > 0) && (
+        <div className={checklist !== null && rosters.length > 0 ? GRID : "mt-5 md:mt-6"}>
+          {checklist !== null && <ChecklistPanel checklist={checklist} />}
+          {rosters.length > 0 && (
+            <div className="flex min-w-0 flex-col gap-4">
+              {rosters.map((roster) => (
+                <RosterPanel key={roster.title} roster={roster} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function ActivityPanel({ activity, compact, className = "" }: { activity: readonly ActivityItem[]; compact: boolean; className?: string }) {
+  return (
+    <Panel title="Recent activity" className={`${className} ${compact ? "max-md:hidden" : ""}`}>
       {activity.map((item) => (
         <li key={`${item.text}-${item.when}`} className="flex items-start gap-3 px-5 py-3.5">
           {/* An activity item carries no person to read a photo off, so the row keeps the PRT mark it always drew. */}

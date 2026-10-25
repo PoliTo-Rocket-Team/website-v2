@@ -20,7 +20,7 @@ import type { AccessSection } from "./access-summary";
 import type { ApplicantOverview } from "./applicant-overview";
 import type { AlumniOverview } from "./my-alumni";
 import type { RoleType } from "./team";
-import type { FlaggedSeat } from "./viewer";
+import { isTeamLeader, type FlaggedSeat, type ViewerStanding } from "./viewer";
 
 export type Link = { readonly label: string; readonly href: string };
 
@@ -461,11 +461,33 @@ export function departmentRoster(
  */
 export type PersonalPanels = {
   readonly person: PersonHeader;
+  /** Where these panels sit beside the scope board (`overviewLayoutOf`). */
+  readonly layout: OverviewLayout;
   /** "Your page on the site" (`pageChecklistOf`); null once every step is done (issue #641). */
   readonly checklist: Checklist | null;
   readonly rosters: readonly Roster[];
   readonly access: AccessSection;
 };
+
+/**
+ * How a team seat's Overview sets its panels out. `leader-columns` is boards
+ * 99 and 99b (issue #652): what needs attention, their page on the site and
+ * the scope's own panel on the left, the roster then recent activity on the
+ * right. `board-first` is the order from before: the scope board's attention
+ * beside its activity, then their page on the site beside the roster.
+ */
+export type OverviewLayout = "leader-columns" | "board-first";
+
+/**
+ * Boards 99 and 99b are for the three leaders the issue names: the team
+ * leader, a department head and a division lead. Every other team seat (a
+ * member, with or without grants, and a full-access seat that is not the team
+ * leader) keeps the board-first order.
+ */
+export function overviewLayoutOf(viewer: ViewerStanding): OverviewLayout {
+  if (viewer.kind === "department-head" || viewer.kind === "division-lead" || isTeamLeader(viewer)) return "leader-columns";
+  return "board-first";
+}
 
 /** The one-line strip under a member's panels when they hold no grant and read no area (board 40m). */
 export const ACCESS_HINT = "Need to work on recruitment or site content? Ask your division lead or the admin team for access.";

@@ -63,6 +63,20 @@ test("a member with a Members grant across the team gets their own division's ro
   assert.match(granted[0].seeAll?.href ?? "", /^\/dashboard\/members\?division=\d+$/);
 });
 
+// Boards 99 and 99b are the three leaders' layout (issue #652); every other seat keeps the board first.
+test("the team leader, a department head and a division lead get the leader columns; every other seat keeps the board first", async () => {
+  const layouts = [
+    ["team leader", "leader-columns"],
+    ["department head", "leader-columns"],
+    ["division lead", "leader-columns"],
+    ["member", "board-first"],
+    ["member with a positions grant across the team", "board-first"],
+    ["member with a members grant across the team", "board-first"],
+    ["operations lead", "board-first"],
+  ] as const;
+  for (const [seat, layout] of layouts) assert.equal((await overviewOf(seat)).layout, layout, seat);
+});
+
 // "Name and division" is done from the seat the viewer holds and names who sets it (issue #641).
 test("every seat's Name and division step is done and names who sets it for that seat", async () => {
   const setters = [

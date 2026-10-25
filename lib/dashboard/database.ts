@@ -43,6 +43,7 @@ import {
   divisionRoster,
   noPhotoItem,
   oldestLine,
+  overviewLayoutOf,
   overviewOfSections,
   pageChecklistOf,
   type AttentionItem,
@@ -751,6 +752,7 @@ async function personalPanelsOf(identity: Identity, teamOrders: Promise<Order[]>
   const [rosters, lines] = await Promise.all([readRosters(identity), readAccessSummaries(identity, identity.approveOrders ? teamOrders : null)]);
 
   return {
+    layout: overviewLayoutOf(identity),
     // Done from every seat they hold, not only a division role (issue #641).
     checklist: pageChecklistOf({ roles: identity.roles, email: identity.email, photoUrl: identity.picture, linkedin: identity.linkedin }),
     rosters,
