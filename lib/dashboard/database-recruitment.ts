@@ -23,12 +23,13 @@ import {
   joinChange,
   memberStanding,
   NEW_APPLICANT,
+  OPEN_STATUSES,
   type ApplicantStanding,
-  type ApplicationState,
   type JoinChange,
   type LeadMove,
-  type OfferedSlots,
+  type SlotTime,
 } from "./application-flow";
+import type { BuiltInStatusKey } from "./application-status";
 import { membershipsOfRoles } from "./team";
 import { DashboardRefused } from "./data";
 import type { DashboardIdentity } from "./database";
@@ -463,7 +464,7 @@ function otherApplicationsOf(row: { id: number; user_id: string | null }, { all,
       title: a.title ?? "Untitled position",
       department: a.dept_name,
       division: a.division_name,
-      stage: stateOf(a, slots.get(a.id) ?? []).stage,
+      status: stateOf(a, slots.get(a.id) ?? []).status,
     }));
 }
 
@@ -671,78 +672,83 @@ function statusAsRead(row: ReadStatus): SQL | undefined {
   );
 }
 
-/** The old status column each state writes; it is no longer read for the state (issue #748). */
-const statusFor: Readonly<Record<Exclude<ApplicationState["stage"], "withdrawn">, DbStatus>> = {
+/** The old status column each status writes beside its status reference; it is no longer read for the state (issue #748). */
+const statusFor: Readonly<Record<Exclude<BuiltInStatusKey, "withdrawn">, DbStatus>> = {
   new: "received",
-  "in-review": "pending",
   interview: "interview",
-  accepted: "accepted",
+  accepted_email_to_be_sent: "accepted",
+  accepted_email_sent: "accepted",
+  nda_received: "accepted",
   joined: "joined",
-  rejected: "rejected",
+  rejected_email_to_be_sent: "rejected",
+  rejected_email_sent: "rejected",
+  accepted_for_another_position: "accepted_by_another_team",
 };
 
+/**
+ * One lead move, from an action button (and, from issue #750, the Status
+ * picker's hand pick): ./application-flow.ts says whether the move is legal
+ * from the application's status and which built-in status it sets, and this
+ * writes that status beside what it keeps.
+ */
 export async function moveApplication(identity: Identity, applicationId: number, move: LeadMove): Promise<WriteResult<null>> {
   const row = await readApplicationFor(identity, applicationId);
   const [slots, standings] = await Promise.all([readSlots([row.id]), readStandings(eq(applications.id, row.id))]);
   const before = stateOf(row, slots.get(row.id) ?? []);
   const standing = standings.get(row.id) ?? NEW_APPLICANT;
   const now = new Date();
-  const result = applyMove(before, move, now, standing);
+  const result = applyMove(before, move, now);
   if (!result.ok) return refused(result.reason);
-  // A move that changes nothing writes nothing: "open" on an interview keeps its times and booking.
+  // A move that changes nothing writes nothing: Change times to the same times keeps the booking.
   if (!result.changed) return written(null);
   const after = result.state;
+  const statusKey = statusKeyAfter(row, after);
   // Every write is guarded on the status it was read in, so two leads acting at once do not both land.
   const unchanged = and(eq(applications.id, row.id), statusAsRead(row), isNull(applications.withdrawnAt));
+  const write = async (set: Partial<typeof applications.$inferInsert>) => {
+    const changed = await runAuditQuery((db) => db.update(applications).set(set).where(unchanged).returning({ id: applications.id }));
+    return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
+  };
 
-  switch (after.stage) {
+  switch (after.status) {
     case "withdrawn":
-      // Withdrawing is the applicant's (issue #169), never a lead move.
-      return refused("Only the applicant can withdraw an application.");
+    case "accepted_for_another_position":
+      // Withdrawing is the applicant's (issue #169), and another position is Confirm join's own write: never a lead move.
+      return refused("That status is not set by this step.");
 
     case "interview":
-      return (await offerSlots(row, statusKeyAfter(row, after), after.offered)) ? written(null) : refused(APPLICATION_CHANGED);
+      return (await offerSlots(row, statusKey, after.offered)) ? written(null) : refused(APPLICATION_CHANGED);
 
-    case "accepted": {
-      const changed = await runAuditQuery((db) =>
-        db
-          .update(applications)
-          .set({
-            status: "accepted",
-            statusKey: statusKeyAfter(row, after),
-            acceptedAt: after.acceptedAt,
-            rejectedAt: null,
-            ndaArrivedAt: after.ndaArrived ? (row.nda_arrived_at ?? now.toISOString()) : null,
-          })
-          .where(unchanged)
-          .returning({ id: applications.id }),
-      );
-      return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
-    }
+    case "accepted_email_to_be_sent":
+    case "accepted_email_sent":
+    case "nda_received":
+      return write({
+        status: statusFor[after.status],
+        statusKey,
+        acceptedAt: after.acceptedAt,
+        rejectedAt: null,
+        // NDA received records the day the signed NDA arrived; Confirm join reads it.
+        ndaArrivedAt: after.status === "nda_received" ? (row.nda_arrived_at ?? now.toISOString()) : null,
+      });
 
     case "joined": {
       if (!result.joinsTeam) return refused("That move does not add anyone to the team.");
-      const change = joinChange(standing);
-      if (!(await confirmJoin(identity, row.id, after.joinedAt, change))) return refused(APPLICATION_CHANGED);
+      if (!(await confirmJoin(identity, row, after.joinedAt, joinChange(standing)))) return refused(APPLICATION_CHANGED);
       refreshAfter("team", updateTag);
       return written(null);
     }
 
     case "new":
-    case "in-review":
-    case "rejected": {
-      // Reject records when it was decided, the time the applicant's pages
-      // count a month from (issue #317); moving it back clears it.
-      const rejectedAt = after.stage === "rejected" ? now.toISOString() : null;
-      const changed = await runAuditQuery((db) =>
-        db
-          .update(applications)
-          .set({ status: statusFor[after.stage], statusKey: statusKeyAfter(row, after), rejectedAt })
-          .where(unchanged)
-          .returning({ id: applications.id }),
-      );
-      return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
-    }
+      // Withdraw acceptance: back to New, with nothing of the acceptance kept.
+      return write({ status: statusFor.new, statusKey, acceptedAt: null, ndaArrivedAt: null, rejectedAt: null });
+
+    case "rejected_email_to_be_sent":
+      // Reject records when it was decided, the time the applicant's pages count a month from (issue #317).
+      return write({ status: statusFor[after.status], statusKey, rejectedAt: now.toISOString() });
+
+    case "rejected_email_sent":
+      // Mark email sent keeps the day it was rejected.
+      return write({ status: statusFor[after.status], statusKey });
   }
 }
 
@@ -756,7 +762,8 @@ const APPLICATION_CHANGED = "This application changed. Reload the page.";
  * slots are cleared and written only for the row the status update matched,
  * so a move another lead beat changes no slot. True when the move landed.
  */
-async function offerSlots(read: ReadStatus, statusKey: string, offered: OfferedSlots): Promise<boolean> {
+async function offerSlots(read: ReadStatus, statusKey: string, offered: readonly SlotTime[]): Promise<boolean> {
+  if (offered.length === 0) return false;
   const times = sql.join(
     offered.map((s) => sql`(${s.start}::timestamptz, ${s.end}::timestamptz)`),
     sql`, `,
@@ -836,20 +843,29 @@ async function readStandings(which: SQL): Promise<Map<number, ApplicantStanding>
  * Confirm join (58h and 58h2, and the Members page's banner, 59): the one
  * write that adds a person to the team, doing what `joinChange`
  * (./application-flow.ts) decided. In one statement, and only while the
- * application is still accepted with the NDA arrived, or the applicant is on
- * the team already and so signed the team's one NDA: a new `members` row (the
+ * application is still in the status it was read in (NDA received, or a
+ * status added under it) with the signed NDA's day recorded, whoever the
+ * applicant is (ADR 0014, amendment of 2026-10-25): a new `members` row (the
  * NDA date, the name and the confirming lead on it) linked from their `users`
  * row for a new person, a member role titled with the position in its
  * division unless they already hold an active role in that division, then the
  * application marked joined. A member keeps every other role they hold and no
  * NDA date is written for them (issue #229). The guards are repeated in the
  * statement so a person who joined the division meanwhile still gets no
- * second role in it. Their other applications are not touched. True when the
- * application was marked joined.
+ * second role in it. The person's other open applications (their status
+ * behaves like one of `OPEN_STATUSES`, ./application-flow.ts, or they have no
+ * status reference, which reads as New) are set to "Accepted for another
+ * position", with the join's day as their decision day; their decided and
+ * withdrawn ones keep their status (issue #749). True when the application
+ * was marked joined.
  */
-async function confirmJoin(identity: Identity, applicationId: number, joinedAt: string, change: JoinChange): Promise<boolean> {
+async function confirmJoin(identity: Identity, read: ReadStatus, joinedAt: string, change: JoinChange): Promise<boolean> {
   const addMember = change === "new-member";
   const addRole = change !== "nothing";
+  const open = sql.join(
+    OPEN_STATUSES.map((key) => sql`${key}`),
+    sql`, `,
+  );
   const result = await runAuditQuery((db) =>
     db.execute(sql`
       with app as (
@@ -859,11 +875,9 @@ async function confirmJoin(identity: Identity, applicationId: number, joinedAt: 
         join ${users} u on u.id = a.user_id
         join ${applyPositions} p on p.id = a.apply_position_id
         join ${divisions} d on d.id = p.division_id
-        where a.id = ${applicationId} and a.status = 'accepted' and a.withdrawn_at is null
-          and (
-            a.nda_arrived_at is not null
-            or exists (select 1 from ${roles} r where r.member_id = u.member and r.leaved_at is null)
-          )
+        where a.id = ${read.id} and a.status = ${read.status}
+          and a.status_key is not distinct from ${read.status_key}::text
+          and a.withdrawn_at is null and a.nda_arrived_at is not null
       ),
       new_member as (
         insert into ${members} (nda_signed_at, nda_name, nda_confirmed_by, nda_confirmed_by_acting_account)
@@ -890,9 +904,22 @@ async function confirmJoin(identity: Identity, applicationId: number, joinedAt: 
             select 1 from ${roles} r where r.member_id = app.member_id and r.division_id = app.division_id and r.leaved_at is null
           )
         returning id
+      ),
+      taken_elsewhere as (
+        update ${applications} other
+        set status = 'accepted_by_another_team', status_key = 'accepted_for_another_position', rejected_at = ${joinedAt}
+        where other.user_id = (select user_id from app) and other.id <> ${read.id}
+          and other.withdrawn_at is null
+          and exists (select 1 from the_member)
+          and (
+            other.status_key is null
+            or other.status_key in (${open})
+            or exists (select 1 from ${applicationStatuses} s where s.key = other.status_key and s.parent_key in (${open}))
+          )
+        returning other.id
       )
       update ${applications} set status = 'joined', status_key = 'joined', joined_at = ${joinedAt}
-      where id = ${applicationId} and exists (select 1 from the_member)
+      where id = ${read.id} and exists (select 1 from the_member)
       returning id
     `),
   );

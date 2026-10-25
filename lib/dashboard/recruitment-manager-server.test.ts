@@ -27,7 +27,7 @@ import { openDashboard } from "./open";
 const LOGISTICS_LEAD_MEMBER = 23;
 const TEST_BENCH_LEAD = seatOf("division-lead");
 
-/** Communications applications: one in review, and one accepted that waits for the signed NDA. */
+/** Communications applications: one New, and one accepted that waits for the acceptance email and the signed NDA. */
 const IN_REVIEW = APPLICATION.inReview;
 const WAITING_FOR_NDA = APPLICATION.waitingForNda;
 /** A Logistics application (position 7), still pending in the seed. */
@@ -76,11 +76,9 @@ describe("the recruitment manager, the Logistics lead, on the whole seed (issue 
       const document = await data.applicationDocument(IN_REVIEW, kind);
       assert.notEqual(document, null, `the ${kind} opens`);
     }
-    signInAs(await logisticsLead());
-    assert.deepEqual(await recruitmentActions.moveApplication(IN_REVIEW, { kind: "open" }), { ok: true, value: null }, "opening it in the panel");
   });
 
-  test("a move, the NDA tick and Confirm join on another division's application are accepted by the server", async () => {
+  test("a move, NDA received and Confirm join on another division's application are accepted by the server", async () => {
     await seeded();
     assert.notEqual(positionDivision((await stored(IN_REVIEW)).applyPositionId as number), DIVISION.logistics);
     assert.notEqual(positionDivision((await stored(WAITING_FOR_NDA)).applyPositionId as number), DIVISION.logistics);
@@ -90,8 +88,10 @@ describe("the recruitment manager, the Logistics lead, on the whole seed (issue 
     assert.deepEqual(await recruitmentActions.moveApplication(IN_REVIEW, { kind: "reject" }), { ok: true, value: null });
     assert.equal((await stored(IN_REVIEW)).status, "rejected");
 
+    // The acceptance email went out (the team leader's step); NDA received is the next button.
+    await changeRows(applications, { id: WAITING_FOR_NDA }, { statusKey: "accepted_email_sent" });
     signInAs(lead);
-    assert.deepEqual(await recruitmentActions.moveApplication(WAITING_FOR_NDA, { kind: "set-nda", arrived: true }), { ok: true, value: null });
+    assert.deepEqual(await recruitmentActions.moveApplication(WAITING_FOR_NDA, { kind: "nda-received" }), { ok: true, value: null });
     assert.notEqual((await stored(WAITING_FOR_NDA)).ndaArrivedAt, null);
 
     signInAs(lead);
@@ -99,7 +99,7 @@ describe("the recruitment manager, the Logistics lead, on the whole seed (issue 
     assert.equal((await stored(WAITING_FOR_NDA)).status, "joined");
   });
 
-  test("the Test Bench lead is refused a move, the NDA tick and Confirm join on a Logistics application", async () => {
+  test("the Test Bench lead is refused a move, NDA received and Confirm join on a Logistics application", async () => {
     await seeded();
     assert.equal(positionDivision((await stored(LOGISTICS_APPLICATION)).applyPositionId as number), DIVISION.logistics);
     await changeRows(applications, { id: LOGISTICS_APPLICATION }, { status: "accepted", statusKey: "accepted_email_sent", acceptedAt: "2026-10-06 17:00:00+02", ndaArrivedAt: null });
@@ -108,8 +108,8 @@ describe("the recruitment manager, the Logistics lead, on the whole seed (issue 
     const reject = await recruitmentActions.moveApplication(LOGISTICS_APPLICATION, { kind: "reject" });
     assert.equal(reject.ok, false, `the move: ${JSON.stringify(reject)}`);
     signInAs(TEST_BENCH_LEAD.id);
-    const nda = await recruitmentActions.moveApplication(LOGISTICS_APPLICATION, { kind: "set-nda", arrived: true });
-    assert.equal(nda.ok, false, `the NDA tick: ${JSON.stringify(nda)}`);
+    const nda = await recruitmentActions.moveApplication(LOGISTICS_APPLICATION, { kind: "nda-received" });
+    assert.equal(nda.ok, false, `NDA received: ${JSON.stringify(nda)}`);
     assert.deepEqual(await databaseWrites(), [], "no write");
 
     // With the NDA in, only the access check is left to refuse Confirm join.

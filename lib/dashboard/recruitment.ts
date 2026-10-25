@@ -1,5 +1,6 @@
 import type { ApplicantDetails } from "./applicant-details";
-import type { ApplicantStanding, ApplicationStage, ApplicationState } from "./application-flow";
+import type { ApplicantStanding, ApplicationState } from "./application-flow";
+import type { BuiltInStatusKey } from "./application-status";
 import type { DivisionChoice, PositionContent } from "./new-position";
 import { areaUnitsOf, type AreaReader } from "./viewer";
 
@@ -233,7 +234,8 @@ export type OtherApplication = {
   readonly title: string;
   readonly department: string;
   readonly division: string;
-  readonly stage: ApplicationStage;
+  /** The built-in status it behaves like. */
+  readonly status: BuiltInStatusKey;
 };
 
 export type ApplicationEntry = {
@@ -246,7 +248,7 @@ export type ApplicationEntry = {
    * record (issue #656): null for the PRT mark, as for anyone with no record.
    */
   readonly applicant: ApplicantDetails & { readonly name: string; readonly photoUrl: string | null };
-  /** Where the applicant stands with the team: a member joins with no NDA wait (board 58h2). */
+  /** Where the applicant stands with the team: what Confirm join adds, and how its confirm reads (58h, 58h2). */
   readonly standing: ApplicantStanding;
   readonly position: { readonly ref: PositionRef; readonly title: string; readonly division: string };
   /** "Today" in the list, "today, 14:32" in the detail panel. */
@@ -259,7 +261,7 @@ export type ApplicationEntry = {
    * Whether the viewer may move this application (issue #577), by the rule
    * every application write asks (`mayChangePositionIn` on Applications in
    * its position's unit, ./position-access.ts). Where false the panel shows
-   * its stage and offers no step.
+   * its status and offers no button.
    */
   readonly canChange: boolean;
 };
@@ -291,7 +293,7 @@ export type ApplicationsPage = {
 
 /** How many applications wait for a first look: the sidebar's count and the New tab's. */
 export function newCount(applications: readonly { readonly state: ApplicationState }[]): number {
-  return applications.filter((a) => a.state.stage === "new").length;
+  return applications.filter((a) => a.state.status === "new").length;
 }
 
 /** "CV + letter" or "CV", as the Documents column reads (board 58b). */

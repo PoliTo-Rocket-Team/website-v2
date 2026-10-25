@@ -34,70 +34,33 @@ export function readsAsNew(row: Pick<StoredApplicationRow, "status_key" | "statu
 }
 
 /**
- * Where a stored application stands. Both acceptance email statuses read as
- * Accepted waiting for the NDA, and NDA received as Accepted with the NDA
- * arrived. Both refusal email statuses and "Accepted for another position"
- * read as Rejected: this team did not take them. An interview row reads as
- * ./interview-slots.ts says.
+ * Where a stored application stands: the built-in status its status behaves
+ * like, with what that status keeps. The accepted statuses keep the day it was
+ * accepted, Joined the day it joined, and an Interview its stored times
+ * (./interview-slots.ts).
  */
 export function storedApplicationState(row: StoredApplicationRow, slots: readonly SlotRow[]): ApplicationState {
   const status = storedBuiltInStatus(row);
   switch (status) {
-    case "new":
-      return { stage: "new" };
     case "interview":
       return interviewStateOf(slots);
     case "accepted_email_to_be_sent":
     case "accepted_email_sent":
     case "nda_received":
-      return { stage: "accepted", acceptedAt: row.accepted_at ?? row.applied_at, ndaArrived: status === "nda_received" };
+      return { status, acceptedAt: row.accepted_at ?? row.applied_at };
     case "joined":
-      return { stage: "joined", joinedAt: row.joined_at ?? row.accepted_at ?? row.applied_at };
-    case "rejected_email_to_be_sent":
-    case "rejected_email_sent":
-    case "accepted_for_another_position":
-      return { stage: "rejected" };
-    case "withdrawn":
-      return { stage: "withdrawn" };
+      return { status, joinedAt: row.joined_at ?? row.accepted_at ?? row.applied_at };
+    default:
+      return { status };
   }
 }
 
 /**
- * The built-in status a lead's move writes for the state it reaches from a
- * row whose status behaves like `before`. In review is no status (ruling R1.2
- * on #745), so it writes New. Accept writes "Accepted · email to be sent",
- * the NDA tick "NDA received", and Reject "Rejected · email to be sent".
- * Taking the NDA tick back returns to the acceptance email status the row
- * had, so a sent email stays sent.
+ * The status reference a lead's move writes on `row`: the built-in status the
+ * move set, or the row's own status when the move keeps the built-in status it
+ * already behaves like, so Change times on an added status under Interview
+ * keeps the added status.
  */
-export function statusKeyOf(state: Exclude<ApplicationState, { stage: "withdrawn" }>, before: BuiltInStatusKey): BuiltInStatusKey {
-  switch (state.stage) {
-    case "new":
-    case "in-review":
-      return "new";
-    case "interview":
-      return "interview";
-    case "accepted":
-      if (state.ndaArrived) return "nda_received";
-      return before === "accepted_email_sent" ? "accepted_email_sent" : "accepted_email_to_be_sent";
-    case "joined":
-      return "joined";
-    case "rejected":
-      return "rejected_email_to_be_sent";
-  }
-}
-
-/**
- * The status reference a lead's move writes on `row`: the built-in status
- * `statusKeyOf` names, or the row's own status when that is the built-in
- * status it already behaves like, so Change times on an added status under
- * Interview keeps the added status.
- */
-export function statusKeyAfter(
-  row: Pick<StoredApplicationRow, "status_key" | "status_parent_key">,
-  state: Exclude<ApplicationState, { stage: "withdrawn" }>,
-): string {
-  const before = storedBuiltInStatus(row);
-  const next = statusKeyOf(state, before);
-  return next === before && row.status_key !== null ? row.status_key : next;
+export function statusKeyAfter(row: Pick<StoredApplicationRow, "status_key" | "status_parent_key">, state: ApplicationState): string {
+  return state.status === storedBuiltInStatus(row) && row.status_key !== null ? row.status_key : state.status;
 }

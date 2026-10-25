@@ -42,7 +42,7 @@ export async function setPositionOpen(positionId: number, open: boolean): Promis
   return write((data) => data.setPositionOpen(positionId, open));
 }
 
-/** One step on an application: open it, offer interview times, accept, reject, tick the NDA, confirm the join. */
+/** One action button on an application (lib/dashboard/application-flow.ts, `LEAD_STEPS`): the move it runs, checked there and in the data source. */
 export async function moveApplication(applicationId: number, move: unknown): Promise<WriteResult<null>> {
   const parsed = parseLeadMove(move);
   if (!isId(applicationId) || parsed === null) return refused("That change is not valid.");
