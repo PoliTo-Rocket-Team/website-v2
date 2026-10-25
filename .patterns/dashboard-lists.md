@@ -1,8 +1,9 @@
 # Dashboard lists
 
-How a dashboard list opens a row's side view, and how every dashboard search looks. Two rules,
-one per section: a click on the row opens its side view, and every search is the one
-`SearchField`. Issue #616 set both.
+How a dashboard list opens a row, and how every dashboard search looks. Three rules, one per
+section: a click on a record row opens its side view, a click on a content row or its Edit chip
+opens its editor, and every search is the one `SearchField`. Issue #616 set the first and the
+last, issue #617 the second.
 
 ## A row click opens the side view
 
@@ -20,9 +21,8 @@ one per section: a click on the row opens its side view, and every search is the
    - **The row takes the click and its name is a `RowOpen`.** A table row or a draggable item
      cannot be a button, so the `<tr>` or `<li>` has `onClick`, and the name inside it is
      `RowOpen` from [row-open.tsx](../components/dashboard/row-open.tsx). Members (the List and
-     Table views), Alumni (the desktop table), Partners
-     ([partners.tsx](../components/dashboard/partners.tsx)) and FAQ
-     ([faq.tsx](../components/dashboard/faq.tsx)).
+     Table views) and Alumni (the desktop table). The content lists Partners and FAQ take the
+     click on the row too, and their keyboard way in is the Edit chip (next section).
 
 2. **The keyboard reaches every row.** Each of the three shapes above has a focusable button that
    opens the side view on Enter or Space: the row itself, the covering title, or `RowOpen`.
@@ -54,6 +54,51 @@ one per section: a click on the row opens its side view, and every search is the
 ```
 ([components/dashboard/alumni.tsx](../components/dashboard/alumni.tsx))
 
+## A row click or its Edit chip opens a content editor
+
+The content lists hold what the public site shows: Projects
+([projects.tsx](../components/dashboard/projects.tsx)), Outreach
+([outreach.tsx](../components/dashboard/outreach.tsx)), Partners
+([partners.tsx](../components/dashboard/partners.tsx)) and FAQ
+([faq.tsx](../components/dashboard/faq.tsx)). Their rows open an editor, not a side view.
+
+1. **A click anywhere on the row, or on a phone card, opens the editor.** That is the editor page
+   for Projects (`/dashboard/projects/<slug>`) and Outreach (`/dashboard/outreach/<slug>`), and
+   the edit side panel for Partners and FAQ. No row has a separate "Edit page" button.
+
+2. **Each row ends in an Edit chip, `EditChip` from
+   [row-open.tsx](../components/dashboard/row-open.tsx).** It is the edit shell's accent Edit
+   chip with a pencil; on phones it is the pencil alone. It is the row's keyboard way in: Tab
+   reaches it, and Enter or Space opens the editor. Where a row has a three-dot menu, the chip
+   sits just before it. `EditChip` takes one of two targets:
+   - **`{ href }`, an editor page.** The chip is a link whose `::after` covers the row, so the
+     `<li>` is `relative`, and each control in it that does its own thing (the Projects
+     "View on site" link, the Outreach row menu) is `relative z-10` to sit above the cover.
+   - **`{ onOpen }`, a side panel.** A draggable row cannot be a link, so the `<li>` has
+     `onClick` and `group/row`, and the chip is a button that stops its own click, so the panel
+     opens once.
+
+3. **A control that does its own thing stops the click.** The row menus, the Projects
+   "View on site" link (above the cover) and the drag grip (`DragGrip` in
+   [content-parts.tsx](../components/dashboard/content-parts.tsx)) never open the editor. The
+   whole Partners or FAQ row still drags to a new order; the grip only shows where.
+
+4. **The three-dot menu holds only secondary actions.** Outreach: View on site, Feature or
+   Unfeature, Unpublish, Delete. Partners and FAQ: Move up, Move down, Remove. No menu offers
+   Edit. Projects has no menu (Owner decision on #506).
+
+```tsx
+<li className="relative … hover:bg-white-5">
+  <span>{title}</span>
+  <StatusPill status={status} short />
+  <EditChip label={`Edit ${title}`} target={{ href: `/dashboard/outreach/${row.slug}` }} />
+  <span className="relative z-10 shrink-0">
+    <RowMenu label={`More for ${title}`}>…</RowMenu>
+  </span>
+</li>
+```
+([components/dashboard/outreach.tsx](../components/dashboard/outreach.tsx))
+
 ## One search bar
 
 Every search under [components/dashboard/](../components/dashboard/) is `SearchField` from
@@ -72,8 +117,8 @@ Positions, the Edit division drawer's Members section
 
 ## When this applies
 
-Every dashboard list whose row opens a side view, and every search input under
-`components/dashboard/`. A list inside a drawer or panel that opens no side view (the leads and
+Every dashboard list whose row opens a side view, every content list whose row opens an editor,
+and every search input under `components/dashboard/`. A list inside a drawer or panel that opens no side view (the leads and
 members in the Edit division drawer) is not covered by the first rule.
 
 Not covered: person pickers (`PersonCombobox` in
@@ -88,6 +133,9 @@ design.
   button inside it, and that button must stop its click or the row opens twice.
 - A three-dot button that only opens the side view reads as "menu" on one row and "open" on the
   next.
+- A whole row cannot be a link while it holds another link and a menu (nested interactive
+  elements). The Edit chip's `::after` covers the row instead, and the row's own controls sit
+  above it.
 - Search inside a popover looks like a different control, so a smaller hand-made input is easy to
   add there. It is the same `SearchField`, at full width.
 

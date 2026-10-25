@@ -8,12 +8,12 @@ import { moveTo } from "@/lib/content/order";
 import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
 import { FAQ_QUESTION_MAX, faqFieldErrors, fieldsOf, placeOnApplyPage, updatedLabel, type FaqFieldErrors, type FaqVersion } from "@/lib/faq/faq";
 import { ConfirmDialog } from "./confirm-dialog";
-import { CONTENT_FOCUS, PublishFooter, RowMenu, StatusPill, TextField, useDragOrder, type DragRow } from "./content-parts";
+import { CONTENT_FOCUS, DragGrip, PublishFooter, RowMenu, StatusPill, TextField, useDragOrder, type DragRow } from "./content-parts";
 import { DrawerPage, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
-import { RowOpen } from "./row-open";
+import { EDIT_CHIP_WIDTH, EditChip } from "./row-open";
 
 // The FAQ page (boards 79 and 79b, issue #258): the questions at the bottom of
 // /apply in site order, each row dragged to its place; a row or New question
@@ -124,6 +124,7 @@ function FaqTable({
         <span className="flex-1">Question</span>
         <span className={`hidden w-[150px] shrink-0 md:block ${squeezed}`}>Updated</span>
         <span className="w-[120px] shrink-0">Status</span>
+        <span aria-hidden className={`${EDIT_CHIP_WIDTH} shrink-0`} />
         <span aria-hidden className="w-8 shrink-0" />
       </div>
       {items.length === 0 ? (
@@ -182,21 +183,20 @@ function FaqRow({
       onDragOver={drag.onDragOver}
       onDragEnd={drag.onDragEnd}
       onClick={onOpen}
-      className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors duration-300 ease-out md:gap-4 md:px-5 ${
+      className={`group/row flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors duration-300 ease-out md:gap-4 md:px-5 ${
         selected ? "bg-accent/[0.08]" : "hover:bg-white-5"
       } ${drag.dragged ? "opacity-50" : ""}`}
     >
-      <GripVertical aria-hidden className="hidden h-4 w-4 shrink-0 cursor-grab text-dim md:block" strokeWidth={1.75} />
+      <DragGrip />
       <span className="min-w-0 flex-1">
-        <RowOpen label={`Open ${faq.question}`} onOpen={onOpen} className="block truncate text-[15px] text-prt-text">
-          {faq.question}
-        </RowOpen>
+        <span className="block truncate text-[15px] text-prt-text">{faq.question}</span>
         <span className="block truncate text-[13px] text-prt-muted">{faq.answer[0]}</span>
       </span>
       <span className={`hidden w-[150px] shrink-0 text-[13px] text-text-2 md:block ${squeezed}`}>{updatedLabel(faq.updatedAt, now)}</span>
       <span className="w-[120px] shrink-0">
         <StatusPill status={statusOf(item.version)} />
       </span>
+      <EditChip label={`Edit ${faq.question}`} target={{ onOpen }} />
       <RowMenu name={faq.question} onUp={onUp} onDown={onDown} onRemove={onRemove} />
     </li>
   );

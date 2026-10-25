@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState, type DragEvent } from "react";
-import { ArrowDown, ArrowUp, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, GripVertical, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { moveTo } from "@/lib/content/order";
 import { textLength } from "@/lib/content/text";
 import { CONTENT_STATUS_LABELS, type ContentStatus, type PublishStep } from "@/lib/content/versioned";
@@ -99,6 +99,18 @@ export function RowMenu({
           </DropdownMenuPrimitive.Content>
         </DropdownMenuPortal>
       </DropdownMenu>
+    </span>
+  );
+}
+
+/**
+ * A draggable list row's grip, from md. The whole row drags; a click on the
+ * grip stops there, so it does not open the row's editor (issue #617).
+ */
+export function DragGrip({ className = "" }: { className?: string }) {
+  return (
+    <span aria-hidden onClick={(e) => e.stopPropagation()} className={`hidden shrink-0 cursor-grab text-dim md:block ${className}`}>
+      <GripVertical className="h-4 w-4" strokeWidth={1.75} />
     </span>
   );
 }
