@@ -214,10 +214,12 @@ describe("email alias requests: who asks, who manages, who answers, and the appr
   const open: AliasRequest[] = ALL.map((u, i) => ({ id: i + 1, memberId: personIn(u), requesterId: null, sentAt: "2026-10-22T09:00:00Z" }));
   for (const { name, viewer, expect } of VIEWERS) {
     test(name, () => {
+      // The break-glass admin has no member row (`readIdentity`): no requester id, and not on the team.
       const me = aliasPersonOf(viewer);
-      const team = [...ALIAS_TEAM, me];
+      const team = viewer.breakGlass ? ALIAS_TEAM : [...ALIAS_TEAM, me];
+      const requesterId = viewer.breakGlass ? null : me.id;
       assert.deepEqual(
-        ALL.filter((u) => planAliasRequest({ requesterId: me.id, standing: viewer, memberId: personIn(u), team, org: ALIAS_ORG, prtEmail: null, open: [] }).ok),
+        ALL.filter((u) => planAliasRequest({ requesterId, standing: viewer, memberId: personIn(u), team, org: ALIAS_ORG, prtEmail: null, open: [] }).ok),
         expect.aliases.requests,
         `${name}: Request alias`,
       );
