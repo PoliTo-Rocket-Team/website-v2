@@ -8,6 +8,7 @@ import { cachedReadTags, refreshAfter } from "@/lib/cache-tags";
 import { getDb, isDatabaseConfigured } from "@/db/client";
 import {
   applications,
+  applicationStatuses,
   applyPositions,
   betterAuthUsers,
   departments,
@@ -57,7 +58,8 @@ import {
   type UpcomingInterview,
 } from "./overview";
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
-import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
+import { databaseRecruitmentPages, readSlots, STATUS_COLUMNS, STATUS_JOIN } from "./database-recruitment";
+import { readsAsNew } from "./stored-application";
 import { divisionOverviewOf, membersScopeOf, overviewAreasOf, type DivisionFigures } from "./division-overview";
 import { accessSectionOf, accessSummariesOf, type AccessFigures, type AccessSummary } from "./access-summary";
 import { answerHandOver, databaseTeamWrites, findForAdd, findPeople, readDivisionMembers, readTeamStructure, readWholeTeamMembers } from "./database-team";
@@ -332,16 +334,24 @@ async function scopedPositions(identity: Identity, area: "positions" | "applicat
 
 /**
  * The unread applications on every position: how many, and when the oldest
- * came in. Applications change by the minute, so this is read on request,
- * beside the cached positions rather than after them.
+ * came in. An application is unread while its status reference reads as New
+ * (`readsAsNew`, issue #748). Applications change by the minute, so this is
+ * read on request, beside the cached positions rather than after them.
  */
 async function readUnread(): Promise<Map<number | null, { n: number; oldest: string | null }>> {
-  const unread = await getDb()
-    .select({ position_id: applications.applyPositionId, n: count(), oldest: min(applications.appliedAt) })
+  const tallies = await getDb()
+    .select({ position_id: applications.applyPositionId, ...STATUS_COLUMNS, n: count(), oldest: min(applications.appliedAt) })
     .from(applications)
-    .where(and(eq(applications.status, "received"), isNull(applications.withdrawnAt)))
-    .groupBy(applications.applyPositionId);
-  return new Map(unread.map((u) => [u.position_id, u]));
+    .leftJoin(applicationStatuses, STATUS_JOIN)
+    .where(isNull(applications.withdrawnAt))
+    .groupBy(applications.applyPositionId, applications.statusKey, applicationStatuses.parentKey);
+  const unread = new Map<number | null, { n: number; oldest: string | null }>();
+  for (const t of tallies.filter(readsAsNew)) {
+    const sofar = unread.get(t.position_id) ?? { n: 0, oldest: null };
+    const oldest = sofar.oldest === null || (t.oldest !== null && t.oldest < sofar.oldest) ? t.oldest : sofar.oldest;
+    unread.set(t.position_id, { n: sofar.n + t.n, oldest });
+  }
+  return unread;
 }
 
 /** The live positions in the units where the viewer reads Applications. */

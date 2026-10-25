@@ -206,6 +206,28 @@ describe("an applicant's applications", () => {
     assert.deepEqual([stored?.status, stored?.statusKey], ["rejected", "rejected_email_to_be_sent"], "both columns are written");
   });
 
+  test("the new-application counts read the status reference, not the old column (issue #748)", async () => {
+    await open("team leader");
+    await addRows(applicationStatuses, [{ key: "first_look", name: "First look", colour: "#8A8A8F", sortOrder: 1, parentKey: "new" }]);
+    await addRows(applications, [
+      // Old column pending (In review), reference New: counted.
+      { id: 990, applyPositionId: IDS.position("MA"), userId: "interviewee-dm", appliedAt: daysAgo(2), status: "pending", statusKey: "new", customAnswers: [] },
+      // A status added under New: counted.
+      { id: 991, applyPositionId: IDS.position("MA"), userId: "person-ma", appliedAt: daysAgo(4), status: "received", statusKey: "first_look", customAnswers: [] },
+      // Old column received, reference Interview: not counted.
+      { id: 992, applyPositionId: IDS.position("MA"), userId: "joining-dm", appliedAt: daysAgo(1), status: "received", statusKey: "interview", customAnswers: [] },
+    ]);
+    const data = await reopen("team leader");
+    const positions = await data.positions();
+    const ma = positions?.positions.find((p) => p.id === IDS.position("MA"));
+    // The fixture's own New application, plus 990 and 991.
+    assert.equal(ma?.applications?.fresh, 3, "the Positions tally");
+    const overview = await data.overview();
+    const fresh = overview && "stats" in overview ? overview.stats.find((s) => s.label === "New applications") : undefined;
+    // One fixture New application in each unit, plus 990 and 991.
+    assert.equal(fresh?.value, String(ALL.length + 2), "the Overview count");
+  });
+
   test("an accepted application cannot be withdrawn, and the refusal writes nothing", async () => {
     await open("joining-dm");
     const writes = (await databaseWrites()).length;

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { ApplicationState } from "./application-flow";
 import { BUILT_IN_STATUS_KEYS, type BuiltInStatusKey } from "./application-status";
 import type { SlotRow } from "./interview-slots";
-import { statusKeyAfter, statusKeyOf, storedApplicationState, type StoredApplicationRow } from "./stored-application";
+import { readsAsNew, statusKeyAfter, statusKeyOf, storedApplicationState, type StoredApplicationRow } from "./stored-application";
 
 const APPLIED = "2026-09-10T10:00:00.000Z";
 const ACCEPTED = "2026-10-05T10:00:00.000Z";
@@ -100,4 +100,12 @@ test("every state a move writes reads back as that state", () => {
     if (state.stage === "withdrawn") continue;
     assert.deepEqual(storedApplicationState(row(statusKeyAfter(row(key), state)), SLOTS), state, key);
   }
+});
+
+test("a row counts as new exactly when its status reads as New (issue #748)", () => {
+  assert.equal(readsAsNew(row(null)), true, "no status reference");
+  assert.equal(readsAsNew(row("new")), true, "New");
+  assert.equal(readsAsNew(row("first_look", "new")), true, "a status added under New");
+  for (const key of BUILT_IN_STATUS_KEYS.filter((k) => k !== "new")) assert.equal(readsAsNew(row(key)), false, key);
+  assert.equal(readsAsNew(row("second_interview", "interview")), false, "a status added under Interview");
 });

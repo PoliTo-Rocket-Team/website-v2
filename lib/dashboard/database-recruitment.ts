@@ -35,7 +35,7 @@ import type { DashboardIdentity } from "./database";
 import { readHeadDepartment } from "./database-division";
 import { positionCode } from "@/lib/apply/positions";
 import type { SlotRow } from "./interview-slots";
-import { statusKeyAfter, storedApplicationState, type StoredApplicationRow } from "./stored-application";
+import { readsAsNew, statusKeyAfter, storedApplicationState, type StoredApplicationRow } from "./stored-application";
 import { checkNewPosition, checkPositionContent, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
 import {
   ago,
@@ -144,10 +144,11 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
       .orderBy(desc(applyPositions.createdAt)),
     readsRecruitment(identity, "applications")
       ? db
-          .select({ position_id: applications.applyPositionId, status: applications.status, n: count(), last: max(applications.appliedAt) })
+          .select({ position_id: applications.applyPositionId, ...STATUS_COLUMNS, n: count(), last: max(applications.appliedAt) })
           .from(applications)
+          .leftJoin(applicationStatuses, STATUS_JOIN)
           .where(isNull(applications.withdrawnAt))
-          .groupBy(applications.applyPositionId, applications.status)
+          .groupBy(applications.applyPositionId, applications.statusKey, applicationStatuses.parentKey)
       : [],
   ]);
   // The same rule the document route checks (`readsRecruitmentIn`, ./application-documents.ts).
@@ -171,7 +172,7 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
       applications: tallied
         ? {
             total: own.reduce((sum, t) => sum + t.n, 0),
-            fresh: own.filter((t) => t.status === "received").reduce((sum, t) => sum + t.n, 0),
+            fresh: own.filter(readsAsNew).reduce((sum, t) => sum + t.n, 0),
             quiet: quietNote(quietDays(r.status, latest === null ? created : new Date(latest), now)),
           }
         : null,
@@ -349,13 +350,13 @@ const stateOf = storedApplicationState;
  * `application_statuses` on the application's status reference
  * (`STATUS_JOIN`): the status's key and its parent's (issue #748).
  */
-const STATUS_COLUMNS = {
+export const STATUS_COLUMNS = {
   status_key: applications.statusKey,
   status_parent_key: applicationStatuses.parentKey,
 } as const;
 
 /** The join that reads an application's status row beside it; no reference joins nothing and reads as New. */
-const STATUS_JOIN = eq(applicationStatuses.key, applications.statusKey);
+export const STATUS_JOIN = eq(applicationStatuses.key, applications.statusKey);
 
 /** The statuses that behave like Interview: the built-in one and every status added under it. */
 function interviewStatuses() {

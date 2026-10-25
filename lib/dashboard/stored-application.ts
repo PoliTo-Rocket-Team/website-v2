@@ -26,6 +26,14 @@ export function storedBuiltInStatus(row: Pick<StoredApplicationRow, "status_key"
 }
 
 /**
+ * A stored row counts as a new application: its status behaves like New, or
+ * it has no status reference. The old status column is not read (issue #748).
+ */
+export function readsAsNew(row: Pick<StoredApplicationRow, "status_key" | "status_parent_key">): boolean {
+  return storedBuiltInStatus(row) === "new";
+}
+
+/**
  * Where a stored application stands. Both acceptance email statuses read as
  * Accepted waiting for the NDA, and NDA received as Accepted with the NDA
  * arrived. Both refusal email statuses and "Accepted for another position"
