@@ -69,7 +69,7 @@ import {
 } from "./self";
 import { refreshAfter } from "@/lib/cache-tags";
 import { namesThemselves } from "./person-name";
-import { isOffTeam } from "./viewer";
+import { hasOwnProfile, isOffTeam } from "./viewer";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
 // The viewer's own pages read from and written to the database (boards 50 to
@@ -102,8 +102,8 @@ async function readLeaveState(memberId: number): Promise<LeaveState> {
 }
 
 async function readProfile(identity: DashboardIdentity): Promise<MyProfile | null> {
+  if (!hasOwnProfile(identity)) return null;
   const memberId = identity.memberId;
-  if (isOffTeam(identity.kind) || memberId === null) return null;
   const [[member], details, leave, handOver] = await Promise.all([
     getDb().select({ prt_email: members.prtEmail }).from(members).where(eq(members.memberId, memberId)).limit(1),
     readDetails(identity.userId),
