@@ -485,6 +485,11 @@ export const dashboardNotices = pgTable("dashboard_notices", {
     .references(() => members.memberId, { onDelete: "cascade" })
     .notNull(),
   data: jsonb("data").default(sql`'{}'::jsonb`).notNull(),
+  /**
+   * The acting account behind the View as session that wrote the notice
+   * (issue #628); null for one written outside View as.
+   */
+  writtenByActingAccount: actingAccount("written_by_acting_account"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
     .defaultNow()
     .notNull(),

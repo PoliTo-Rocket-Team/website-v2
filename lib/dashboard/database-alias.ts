@@ -207,7 +207,13 @@ export async function answerAlias(identity: DashboardIdentity, requestId: number
   try {
     await runAuditBatch((db) => {
       const told = notices.map(({ recipientId, notice }) =>
-        db.insert(dashboardNotices).values({ recipientId, subjectId: request.memberId, kind: notice.kind, data: notice.data }),
+        db.insert(dashboardNotices).values({
+          recipientId,
+          subjectId: request.memberId,
+          kind: notice.kind,
+          data: notice.data,
+          writtenByActingAccount: identity.actingAccountId,
+        }),
       );
       const [first, ...rest] = told;
       return plan.kind === "created"

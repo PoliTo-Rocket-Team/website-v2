@@ -428,6 +428,13 @@
       "when": 1794331200000,
       "tag": "0062_roles_one_active_seat_holder",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1794417600000,
+      "tag": "0063_notice_acting_account",
+      "breakpoints": true
     }
   ]
 }

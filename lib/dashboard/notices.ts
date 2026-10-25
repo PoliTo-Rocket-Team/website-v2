@@ -1,3 +1,4 @@
+import { attributedName } from "./acting-account";
 import type { AttentionItem } from "./overview";
 import { isPromoteMode, type PromoteMode } from "./team";
 import { shortDate } from "./write";
@@ -50,16 +51,22 @@ export type Notice = {
     readonly subject: string;
     /** When it was written, an ISO timestamp. */
     readonly createdAt: string;
+    /**
+     * The title of the acting account behind the View as session that wrote
+     * it (`actingTitleOf`, issue #628); null for one written outside View as.
+     */
+    readonly actingTitle: string | null;
     readonly data: NoticeData[K];
   };
 }[NoticeKind];
 
-/** A `dashboard_notices` row as read, with the subject's name. */
+/** A `dashboard_notices` row as read, with the subject's name and its acting account's title, absent or null when it records none. */
 export type StoredNotice = {
   readonly id: number;
   readonly kind: string;
   readonly subject: string;
   readonly createdAt: string;
+  readonly actingTitle?: string | null;
   readonly data: unknown;
 };
 
@@ -105,7 +112,7 @@ export function noticeOf(row: StoredNotice): Notice | null {
   if (!isNoticeKind(row.kind)) return null;
   const read = <K extends NoticeKind>(kind: K) => {
     const data = READ[kind](row.data);
-    return data === null ? null : { id: row.id, kind, subject: row.subject, createdAt: row.createdAt, data };
+    return data === null ? null : { id: row.id, kind, subject: row.subject, createdAt: row.createdAt, actingTitle: row.actingTitle ?? null, data };
   };
   switch (row.kind) {
     case "member-left":
@@ -159,7 +166,7 @@ export function attentionOf(notice: Notice, now: Date): AttentionItem {
       const { role, successor, answer } = notice.data;
       return {
         kind: "notice",
-        title: `${notice.subject} ${answer} your hand-over`,
+        title: `${attributedName(notice.subject, notice.actingTitle)} ${answer} your hand-over`,
         detail: [`${role} to ${successor}`, shortDate(notice.createdAt, now.getUTCFullYear()), answer === "declined" ? "you keep the role" : null]
           .filter(Boolean)
           .join(" · "),
@@ -177,7 +184,7 @@ export function attentionOf(notice: Notice, now: Date): AttentionItem {
     case "alias-declined":
       return {
         kind: "notice",
-        title: `${notice.data.by} declined the email alias for ${notice.subject}`,
+        title: `${attributedName(notice.data.by, notice.actingTitle)} declined the email alias for ${notice.subject}`,
         detail: [shortDate(notice.createdAt, now.getUTCFullYear()), "you can ask again"].join(" · "),
         action,
         iconKind: "alias-request",

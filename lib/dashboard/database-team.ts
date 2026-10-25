@@ -1620,7 +1620,13 @@ export async function answerHandOver(identity: DashboardIdentity, requestId: num
   try {
     const writes = plan.answer === "confirm" ? await confirmedHandOverWrites(plan, snapshot.org, on) : () => [];
     await runAuditBatch((db) => [
-      db.insert(dashboardNotices).values({ recipientId, subjectId: viewerId, kind: notice.kind, data: notice.data }),
+      db.insert(dashboardNotices).values({
+        recipientId,
+        subjectId: viewerId,
+        kind: notice.kind,
+        data: notice.data,
+        writtenByActingAccount: identity.actingAccountId,
+      }),
       ...writes(db),
     ]);
   } catch (error) {

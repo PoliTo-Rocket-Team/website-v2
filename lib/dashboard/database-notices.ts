@@ -5,6 +5,7 @@ import { getDb } from "@/db/client";
 import { dashboardNotices, divisions, roles, scopes, users } from "@/db/schema";
 import { runAuditQuery } from "@/lib/db-audit";
 import type { DashboardIdentity } from "./database";
+import { actingTitleIn, readActingTitles } from "./database-acting-account";
 import { attentionOf, memberLeftNotices, noticeOf, type AddressedNotice, type DivisionLead } from "./notices";
 import type { AttentionItem } from "./overview";
 import { refused, written, type WriteResult } from "./write";
@@ -22,6 +23,7 @@ export async function readNoticeAttention(identity: DashboardIdentity, now: Date
       kind: dashboardNotices.kind,
       data: dashboardNotices.data,
       created_at: dashboardNotices.createdAt,
+      acting_account: dashboardNotices.writtenByActingAccount,
       first_name: users.firstName,
       last_name: users.lastName,
       email: users.email,
@@ -30,9 +32,12 @@ export async function readNoticeAttention(identity: DashboardIdentity, now: Date
     .innerJoin(users, eq(users.member, dashboardNotices.subjectId))
     .where(and(eq(dashboardNotices.recipientId, identity.memberId), isNull(dashboardNotices.dismissedAt)))
     .orderBy(desc(dashboardNotices.createdAt));
+  // A notice written in a View as session names its acting account by title (issue #628).
+  const titles = await readActingTitles(rows.map((r) => r.acting_account));
   return rows.flatMap((r) => {
     const subject = [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email;
-    const notice = noticeOf({ id: r.id, kind: r.kind, subject, createdAt: r.created_at, data: r.data });
+    const actingTitle = actingTitleIn(titles, r.acting_account);
+    const notice = noticeOf({ id: r.id, kind: r.kind, subject, createdAt: r.created_at, actingTitle, data: r.data });
     return notice === null ? [] : [attentionOf(notice, now)];
   });
 }
