@@ -292,8 +292,8 @@ export interface DashboardData {
   memberAliases(memberIds: readonly number[]): Promise<MemberAliases>;
   /**
    * Request alias (board 94): checked by `planAliasRequest`; refused for
-   * anyone but a lead, head or the team leader who may manage the member,
-   * and while the member's PRT email is set or a request is open.
+   * anyone but a full-access holder (any member, themselves included) or a
+   * lead or head who manages the member (issue #721), and while the member's PRT email is set or a request is open.
    */
   requestAlias(memberId: number): Promise<WriteResult<null>>;
   /** Cancel request (board 94b): checked by `planAliasCancel`. */

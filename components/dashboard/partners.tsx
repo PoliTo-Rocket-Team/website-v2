@@ -15,6 +15,7 @@ import { Toggle } from "./controls";
 import { DrawerPage, PanelBody, SidePanel } from "./drawer";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
+import { RowOpen } from "./row-open";
 
 // The Partners page (boards 76 and 76b, issue #256): the partners in site
 // order, Main then Media, each row dragged to its place in its tier; a row or
@@ -202,7 +203,9 @@ function PartnerRow({
       <GripVertical aria-hidden className={`hidden h-4 w-4 shrink-0 cursor-grab text-dim md:block ${squeezed}`} strokeWidth={1.75} />
       <LogoBox logo={partner.logo} name={partner.name} size={panelOpen ? "row-narrow" : "row"} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[15px] text-prt-text">{partner.name}</span>
+        <RowOpen label={`Open ${partner.name}`} onOpen={onOpen} className="block truncate text-[15px] text-prt-text">
+          {partner.name}
+        </RowOpen>
         <span className="block truncate text-[13px] text-prt-muted">{partner.oneLiner}</span>
       </span>
       <span className={`hidden w-[200px] shrink-0 truncate text-[13px] lg:block ${squeezed} ${partner.website ? "text-text-2" : "text-dim"}`}>
@@ -213,7 +216,6 @@ function PartnerRow({
       </span>
       <RowMenu
         name={partner.name}
-        onEdit={onOpen}
         onUp={onMove && index > 0 ? () => onMove(index - 1) : null}
         onDown={onMove && index < last ? () => onMove(index + 1) : null}
         onRemove={onRemove}

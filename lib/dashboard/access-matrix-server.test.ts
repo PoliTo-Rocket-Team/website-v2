@@ -631,13 +631,13 @@ const ACTION_CASES: readonly ActionCase[] = [
   },
   // DM's lead asks; the head of Structures answers (board 62c), and nobody in the matrix is.
   { action: "actions.answerHandOver", run: () => actions.answerHandOver(IDS.handOver(DM), "decline"), may: nobody, control: by("head-str") },
-  // Email aliases (epic #538), for someone in DM: a lead, a head or the team leader who may manage them asks or cancels;
-  // only the team leader, the operations lead and the IT lead answer.
+  // Email aliases (epic #538), for someone in DM: full access (issue #721), or a lead or a head of them, asks;
+  // a lead or a head of them (the team leader included) cancels; only the team leader, the operations lead and the IT lead answer.
   { action: "actions.requestAlias", run: () => actions.requestAlias(IDS.person(DM)), may: (r) => r.expect.aliases.requests.includes(DM), control: by("team leader") },
   {
     action: "actions.cancelAliasRequest",
     run: () => actions.cancelAliasRequest(IDS.aliasRequest(DM)),
-    may: (r) => r.expect.aliases.requests.includes(DM),
+    may: (r) => r.expect.aliases.manages.includes(DM),
     control: by("team leader"),
   },
   { action: "actions.answerAlias", run: () => actions.answerAlias(IDS.aliasRequest(DM), { kind: "decline" }), may: (r) => r.expect.aliases.answers, control: by("IT lead") },

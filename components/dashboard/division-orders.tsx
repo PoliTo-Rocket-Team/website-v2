@@ -17,7 +17,6 @@ import {
   Minus,
   PackageCheck,
   Plus,
-  Search,
   Upload,
   X,
   XCircle,
@@ -80,6 +79,7 @@ import { Field, inputClass } from "./field";
 import { DivisionMenu } from "./new-position-drawer";
 import { PANEL } from "./panel";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
+import { SearchField } from "./search-field";
 
 export type OrderWrites = {
   placeOrder: (form: FormData) => Promise<WriteResult<Order>>;
@@ -539,17 +539,7 @@ function DepartmentFilter({
 
   return (
     <ColumnFilter variant={variant} label="Department" active={value !== null} align="start" open={open} onOpenChange={onOpenChange}>
-      <label className="relative mb-1 block">
-        <span className="sr-only">Search departments</span>
-        <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-prt-muted" strokeWidth={2} />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search departments"
-          className="h-9 w-full rounded-lg border border-hairline bg-white-5 pl-9 pr-3 text-[13px] text-prt-text outline-none transition-colors duration-300 ease-out placeholder:text-prt-muted focus:border-border-strong"
-        />
-      </label>
+      <SearchField value={query} onChange={setQuery} placeholder="Search departments" className="mb-1" />
       <ul className="max-h-[320px] overflow-y-auto max-md:max-h-[50svh]">
         {departments.filter(matches).map((d) => {
           const state = departmentTick(d, ticked);

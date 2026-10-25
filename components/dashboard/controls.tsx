@@ -1,14 +1,14 @@
 "use client";
 
 import * as SwitchPrimitive from "@radix-ui/react-switch";
-import { Check, ChevronDown, ListFilter, Search, type LucideIcon } from "lucide-react";
+import { Check, ChevronDown, ListFilter, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 // The small controls of the recruitment pages (boards 41, 41b, 41c): the
-// switch, the segmented filter with counts, the filter menu and the search
-// field. Built on the repo's Radix primitives, styled with the PRT tokens.
+// switch, the segmented filter with counts and the filter menu (search is
+// `search-field.tsx`). Built on the repo's Radix primitives, styled with the PRT tokens.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -214,29 +214,5 @@ export function ColumnFilterMenu({
         </DropdownMenuPrimitive.Content>
       </DropdownMenuPortal>
     </DropdownMenu>
-  );
-}
-
-export function SearchField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="relative block w-full md:w-[260px]">
-      <span className="sr-only">{label}</span>
-      <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-prt-muted" strokeWidth={2} />
-      <input
-        type="search"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={label}
-        className="h-8 w-full rounded-lg border border-hairline bg-transparent pl-9 pr-3 text-[13px] text-prt-text outline-none transition-colors duration-300 ease-out placeholder:text-prt-muted hover:border-border-strong focus:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-      />
-    </label>
   );
 }

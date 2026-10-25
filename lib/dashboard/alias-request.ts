@@ -9,9 +9,11 @@ import type { OrgChart } from "./team";
 import { seatOf, type FullAccessSeat, type ViewerStanding } from "./viewer";
 import { shortDate } from "./write";
 
-// Team email alias requests (epic #538, issue #541; boards 94 to 94e). A
-// division lead, a department head or the team leader asks for an alias for a
-// member they may manage, from the member drawer. The team leader, the
+// Team email alias requests (epic #538, issue #541; boards 94 to 94e). From
+// the member drawer, anyone with full access asks for an alias for any member
+// on the team, themselves included (Owner decision, 2026-10-25, issue #721),
+// and a division lead or a department head asks for a member they lead or
+// head. The team leader, the
 // operations lead and the IT lead see each open request on their Overview;
 // they create the alias by hand in Google Workspace, then mark the request
 // created with the address, or decline it. The site may also ask by itself
@@ -57,10 +59,13 @@ export type AliasOutcome = (typeof ALIAS_OUTCOMES)[number];
 // Who may ask ---------------------------------------------------------------------
 
 /**
- * Whether `requester` may ask for an alias for `member`: the team leader for
- * anyone else on the team, a department head for anyone in a division of
- * their department, a division lead for anyone in a division they lead.
- * Nobody asks for themselves, and a grant makes nobody a requester.
+ * Whether `requester` leads or heads `member`: the team leader for anyone
+ * else on the team, a department head for anyone in a division of their
+ * department, a division lead for anyone in a division they lead. Nobody
+ * manages themselves, and a grant makes nobody a manager. Who may ask is
+ * wider (`mayAskFor`): since the Owner decision of 2026-10-25 (issue #721),
+ * anyone with full access asks for any member, themselves included; everyone
+ * else asks only for the members this says they manage.
  */
 export function managesMember(requester: TeamPerson, member: TeamPerson, org: OrgChart): boolean {
   if (requester.id === member.id) return false;
@@ -72,10 +77,30 @@ export function managesMember(requester: TeamPerson, member: TeamPerson, org: Or
   );
 }
 
-function mayAskFor(requesterId: number | null, memberId: number, team: readonly TeamPerson[], org: OrgChart): boolean {
-  const requester = team.find((p) => p.id === requesterId);
+/** Whether `viewerId` leads or heads `memberId` on the team (`managesMember`). */
+function managesById(viewerId: number | null, memberId: number, team: readonly TeamPerson[], org: OrgChart): boolean {
+  const viewer = team.find((p) => p.id === viewerId);
   const member = team.find((p) => p.id === memberId);
-  return requester !== undefined && member !== undefined && managesMember(requester, member, org);
+  return viewer !== undefined && member !== undefined && managesMember(viewer, member, org);
+}
+
+/**
+ * Whether the requester may ask for an alias for `memberId` (Owner decision,
+ * 2026-10-25, issue #721): with full access, the `operations-lead` kind of
+ * their standing, for anyone on the team, themselves included; else only for
+ * a member they lead or head (`managesMember`). Request alias
+ * (`planAliasRequest`) and the drawer's button (`memberAliasesFor`) both read
+ * this one check, so the button shows exactly when the server would accept.
+ */
+function mayAskFor(
+  requesterId: number | null,
+  standing: ViewerStanding,
+  memberId: number,
+  team: readonly TeamPerson[],
+  org: OrgChart,
+): boolean {
+  if (standing.kind !== "operations-lead") return managesById(requesterId, memberId, team, org);
+  return team.some((p) => p.id === requesterId) && team.some((p) => p.id === memberId);
 }
 
 // Who may answer ------------------------------------------------------------------
@@ -144,12 +169,14 @@ export function checkAliasAddress(input: string): Checked<AliasAddress> {
 
 /**
  * Request alias as the rules allow it, or the first reason it is refused: the
- * requester may manage the member, whose PRT email is empty and who has no
- * open request. The database refuses a second open request too
+ * requester may ask for the member (`mayAskFor`), whose PRT email is empty
+ * and who has no open request. The database refuses a second open request too
  * (`alias_requests_one_open`).
  */
 export function planAliasRequest(input: {
   readonly requesterId: number | null;
+  /** The requester's standing: full access asks for anyone on the team. */
+  readonly standing: ViewerStanding;
   readonly memberId: number;
   readonly team: readonly TeamPerson[];
   readonly org: OrgChart;
@@ -158,9 +185,9 @@ export function planAliasRequest(input: {
   /** The open requests; only the member's is read. */
   readonly open: readonly AliasRequest[];
 }): Checked<{ readonly memberId: number; readonly requesterId: number }> {
-  const { requesterId, memberId, team, org } = input;
+  const { requesterId, standing, memberId, team, org } = input;
   const member = team.find((p) => p.id === memberId);
-  if (requesterId === null || member === undefined || !mayAskFor(requesterId, memberId, team, org)) {
+  if (requesterId === null || member === undefined || !mayAskFor(requesterId, standing, memberId, team, org)) {
     return { ok: false, error: "You can request an alias only for someone you lead or head." };
   }
   if (teamAddressOf(input.prtEmail) !== null) return { ok: false, error: `${member.name} already has a PRT email.` };
@@ -196,7 +223,11 @@ export function owedAliasRequests(input: {
     .map((memberId) => ({ memberId, requesterId: null }));
 }
 
-/** Cancel request (board 94b): whoever sent it, or anyone who may ask for the member. */
+/**
+ * Cancel request (board 94b): whoever sent it, or anyone who leads or heads
+ * the member. Full access alone cancels no one else's request: the Owner
+ * decision of 2026-10-25 (issue #721) widened who asks, not who cancels.
+ */
 export function planAliasCancel(input: {
   readonly viewerId: number | null;
   readonly request: AliasRequest;
@@ -204,7 +235,7 @@ export function planAliasCancel(input: {
   readonly org: OrgChart;
 }): Checked<AliasRequest> {
   const { viewerId, request, team, org } = input;
-  if (viewerId !== null && (viewerId === request.requesterId || mayAskFor(viewerId, request.memberId, team, org))) {
+  if (viewerId !== null && (viewerId === request.requesterId || managesById(viewerId, request.memberId, team, org))) {
     return { ok: true, value: request };
   }
   return { ok: false, error: "You can cancel only a request for someone you lead or head." };
@@ -304,6 +335,8 @@ function requesterName(request: AliasRequest, team: readonly TeamPerson[], unkno
 /** The alias of each of `memberIds` on the team, as `viewerId` sees it on the member drawer's PRT email row. */
 export function memberAliasesFor(input: {
   readonly viewerId: number | null;
+  /** The viewer's standing: full access may request for anyone on the team. */
+  readonly standing: ViewerStanding;
   readonly memberIds: readonly number[];
   readonly team: readonly TeamPerson[];
   readonly org: OrgChart;
@@ -312,13 +345,13 @@ export function memberAliasesFor(input: {
   readonly open: readonly AliasRequest[];
   readonly now: Date;
 }): MemberAliases {
-  const { viewerId, team, org, addresses, open, now } = input;
+  const { viewerId, standing, team, org, addresses, open, now } = input;
   const out: Record<number, MemberAlias> = {};
   for (const memberId of input.memberIds) {
     if (!team.some((p) => p.id === memberId)) continue;
     const address = teamAddressOf(addresses.get(memberId));
     const request = open.find((r) => r.memberId === memberId);
-    const mayAsk = viewerId !== null && mayAskFor(viewerId, memberId, team, org);
+    const mayAsk = viewerId !== null && mayAskFor(viewerId, standing, memberId, team, org);
     out[memberId] =
       address !== null
         ? { kind: "set", address }

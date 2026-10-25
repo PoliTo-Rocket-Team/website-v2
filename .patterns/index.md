@@ -32,6 +32,7 @@ Read only the rows that match your change.
 |---|---|---|
 | [client-form-submit.md](./client-form-submit.md) | Client forms: ui primitives, local state, validate, call auth client or action prop, toast | Building or changing a form or a control that submits to the server |
 | [confirm-decisive-actions.md](./confirm-decisive-actions.md) | ConfirmDialog and DecisionDialog before accept, reject, withdraw, delete, move to alumni, leave; type DELETE for account deletion | Adding a dashboard action that ends, removes or decides something for a person |
+| [dashboard-lists.md](./dashboard-lists.md) | Dashboard lists: a row click opens the side view, `RowOpen` for keyboard reach, the three-dot menu for secondary actions only; one 40px `SearchField` for every dashboard search | Building or changing a dashboard list, its row menu, or any search input under components/dashboard |
 | [phone-layouts.md](./phone-layouts.md) | Dashboard on phones: popups as bottom sheets, side panels as full pages with a back arrow and pinned actions, tables as stacked cards, panels closed at load | Building or changing a dashboard page, popup or panel |
 
 ## When to add a new pattern doc here

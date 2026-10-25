@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { Lock, Pencil, RefreshCw, Search, Undo2, UserMinus, UserX, X } from "lucide-react";
+import { Lock, Pencil, RefreshCw, Undo2, UserMinus, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { addMember, createDivision, findPeople, saveDivision } from "@/app/dashboard/team-actions";
 import {
@@ -26,6 +26,7 @@ import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBod
 import { Field, inputClass } from "./field";
 import { HandOverChoice } from "./hand-over-choice";
 import { PersonCombobox } from "./person-combobox";
+import { SearchField } from "./search-field";
 
 // New division (boards 77c, 69d) and Edit division (77g, 68b to 68b8): name
 // and code, the leads, and the members, in one drawer, opened from the Team
@@ -769,17 +770,7 @@ function LiveMembers({ tab, editable, onFill }: { tab: DivisionMembers; editable
         <span className="ml-1.5 text-prt-muted">{members.length}</span>
         {tab.waiting.length > 0 && <span className="ml-1.5 text-warning">· {tab.waiting.length} waiting</span>}
       </h3>
-      <label className="relative mt-2.5 flex h-10 items-center">
-        <span className="sr-only">Search members</span>
-        <Search aria-hidden className="pointer-events-none absolute left-3.5 h-4 w-4 text-prt-muted" strokeWidth={1.75} />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search members"
-          className="h-full w-full rounded-xl border border-hairline bg-transparent pl-10 pr-3.5 text-[14px] text-prt-text placeholder:text-prt-muted transition-colors duration-300 ease-out hover:border-border-strong focus:border-border-strong focus:outline-none"
-        />
-      </label>
+      <SearchField value={query} onChange={setQuery} placeholder="Search members" className="mt-2.5" />
       {rows.length > 0 && (
         <div className={`${LIST} mt-2.5`}>
           <ul className="divide-y divide-hairline">

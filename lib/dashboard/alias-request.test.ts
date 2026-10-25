@@ -55,6 +55,7 @@ const RICCARDO = 5; // a member of Design & Manufacturing
 const CHIARA = 15; // Head of Aerodynamics
 const ALESSANDRO = 14; // the team leader
 const GIULIA = 1; // the operations lead, a member of no division here
+const SARA = 16; // the IT lead, a member of Design & Manufacturing
 
 const team: AliasTeamPerson[] = [
   person(MARCO, "Marco Bianchi", { memberships: lead(1) }),
@@ -64,11 +65,24 @@ const team: AliasTeamPerson[] = [
   person(CHIARA, "Chiara Rinaldi", { beyond: [{ kind: "head", departmentId: 1, title: "" }] }),
   person(ALESSANDRO, "Alessandro Greco", { beyond: [{ kind: "team-leader", title: "" }] }),
   person(GIULIA, "Giulia Rossi", { beyond: [{ kind: "head", departmentId: null, title: "" }] }),
+  person(SARA, "Sara Conti", { memberships: member(3) }),
 ];
+
+const IT_LEAD: ViewerStanding = { kind: "operations-lead", seat: "it-lead", siteContent: false, approveOrders: false };
+
+/** Each person's standing as `viewerStandingOf` reads it: full access for the team leader, the operations lead and the IT lead. */
+function standingOf(id: number | null): ViewerStanding {
+  if (id === ALESSANDRO) return plainSeatStanding("team-leader");
+  if (id === GIULIA) return plainSeatStanding("operations-lead");
+  if (id === SARA) return IT_LEAD;
+  if (id === MARCO) return plainSeatStanding("division-lead");
+  if (id === CHIARA) return plainSeatStanding("department-head");
+  return plainSeatStanding(id === null ? "non-member" : "member");
+}
 
 const request = (id: number, memberId: number, requesterId: number | null, sentAt = "2026-10-22T09:00:00+02:00"): AliasRequest => ({ id, memberId, requesterId, sentAt });
 const ask = (requesterId: number | null, memberId: number, extra: { prtEmail?: string | null; open?: AliasRequest[] } = {}) =>
-  planAliasRequest({ requesterId, memberId, team, org, prtEmail: extra.prtEmail ?? null, open: extra.open ?? [] });
+  planAliasRequest({ requesterId, standing: standingOf(requesterId), memberId, team, org, prtEmail: extra.prtEmail ?? null, open: extra.open ?? [] });
 
 test("a lead asks for their division, a head for their department, the team leader for anyone", () => {
   assert.ok(ask(MARCO, DAVIDE).ok);
@@ -79,12 +93,41 @@ test("a lead asks for their division, a head for their department, the team lead
   for (const id of [DAVIDE, LENA, RICCARDO, MARCO, CHIARA]) assert.ok(ask(ALESSANDRO, id).ok, `team leader for ${id}`);
 });
 
-test("nobody else asks: a member, the operations lead without a lead role, nobody for themselves", () => {
-  assert.equal(ask(DAVIDE, LENA).ok, false);
-  assert.equal(ask(GIULIA, DAVIDE).ok, false);
-  assert.equal(ask(ALESSANDRO, ALESSANDRO).ok, false);
-  assert.equal(ask(null, DAVIDE).ok, false);
-  assert.equal(ask(MARCO, 999).ok, false, "someone not on the team");
+test("nobody else asks: a member, a lead or head for themselves, nobody for someone off the team", () => {
+  const refused = { ok: false, error: "You can request an alias only for someone you lead or head." };
+  assert.deepEqual(ask(DAVIDE, LENA), refused);
+  assert.deepEqual(ask(MARCO, MARCO), refused, "a lead for themselves");
+  assert.deepEqual(ask(CHIARA, CHIARA), refused, "a head for themselves");
+  assert.deepEqual(ask(null, DAVIDE), refused);
+  assert.deepEqual(ask(MARCO, 999), refused, "someone not on the team");
+  assert.deepEqual(ask(SARA, 999), refused, "full access, for someone not on the team");
+});
+
+test("anyone with full access asks for any member, themselves included (Owner decision, 2026-10-25, issue #721)", () => {
+  assert.ok(ask(SARA, DAVIDE).ok, "the IT lead, for a member outside their unit");
+  assert.ok(ask(SARA, SARA).ok, "the IT lead, for themselves");
+  assert.ok(ask(GIULIA, DAVIDE).ok, "the operations lead without a lead role");
+  assert.ok(ask(ALESSANDRO, ALESSANDRO).ok, "the team leader, for themselves");
+  for (const seat of ["project-manager", "chief-engineer", null] as const) {
+    const standing: ViewerStanding = { kind: "operations-lead", seat, siteContent: false, approveOrders: false };
+    assert.ok(planAliasRequest({ requesterId: LENA, standing, memberId: RICCARDO, team, org, prtEmail: null, open: [] }).ok, `seat ${seat}`);
+  }
+});
+
+test("full access asks for nobody who already has a PRT email or an open request", () => {
+  assert.deepEqual(ask(SARA, DAVIDE, { open: [request(1, DAVIDE, null)] }), { ok: false, error: "An alias for Davide Russo is already requested." });
+  assert.deepEqual(
+    ask(SARA, DAVIDE, { prtEmail: "", open: [request(1, DAVIDE, MARCO)] }),
+    { ok: false, error: "An alias for Davide Russo is already requested." },
+    "an empty PRT email with an open request",
+  );
+  assert.deepEqual(ask(SARA, DAVIDE, { prtEmail: "davide.russo@politorocketteam.it" }), { ok: false, error: "Davide Russo already has a PRT email." });
+  assert.equal(ask(ALESSANDRO, ALESSANDRO, { prtEmail: "alessandro.greco@politorocketteam.it" }).ok, false, "themselves, once set");
+});
+
+test("a plain division lead is still refused for a member outside their division", () => {
+  assert.deepEqual(ask(MARCO, LENA), { ok: false, error: "You can request an alias only for someone you lead or head." });
+  assert.deepEqual(ask(MARCO, RICCARDO), { ok: false, error: "You can request an alias only for someone you lead or head." });
 });
 
 test("a member with a PRT email or an open request gets no second one", () => {
@@ -104,18 +147,20 @@ test("a member whose PRT email was cleared can be requested again, by hand and b
   assert.deepEqual(owed(new Map()), [{ memberId: DAVIDE, requesterId: null }], "an automatic one once it is cleared");
   assert.deepEqual(owed(new Map([[DAVIDE, ""]])), [{ memberId: DAVIDE, requesterId: null }], "an empty PRT email is no address");
   assert.deepEqual(
-    memberAliasesFor({ viewerId: MARCO, memberIds: [DAVIDE], team, org, addresses: new Map([[DAVIDE, ""]]), open: [], now: new Date("2026-10-22T12:00:00Z") }),
+    memberAliasesFor({ viewerId: MARCO, standing: standingOf(MARCO), memberIds: [DAVIDE], team, org, addresses: new Map([[DAVIDE, ""]]), open: [], now: new Date("2026-10-22T12:00:00Z") }),
     { [DAVIDE]: { kind: "none", requestable: true } },
     "the drawer offers Request alias again",
   );
 });
 
-test("Cancel request: the sender, or anyone who may ask for the member", () => {
+test("Cancel request: the sender, or anyone who leads or heads the member", () => {
   const sent = request(1, DAVIDE, MARCO);
   assert.ok(planAliasCancel({ viewerId: MARCO, request: sent, team, org }).ok);
   assert.ok(planAliasCancel({ viewerId: CHIARA, request: sent, team, org }).ok);
   assert.equal(planAliasCancel({ viewerId: GIULIA, request: sent, team, org }).ok, false);
   assert.equal(planAliasCancel({ viewerId: LENA, request: sent, team, org }).ok, false);
+  assert.equal(planAliasCancel({ viewerId: SARA, request: sent, team, org }).ok, false, "full access alone cancels no one else's request");
+  assert.ok(planAliasCancel({ viewerId: SARA, request: request(3, SARA, SARA), team, org }).ok, "a full-access holder cancels their own");
   assert.ok(planAliasCancel({ viewerId: MARCO, request: request(2, DAVIDE, null), team, org }).ok, "an automatic one too");
 });
 
@@ -220,6 +265,7 @@ test("the member drawer's alias: set, requested, or none with Request alias only
   const now = new Date("2026-10-22T12:00:00+02:00");
   const aliases = memberAliasesFor({
     viewerId: MARCO,
+    standing: standingOf(MARCO),
     memberIds: [DAVIDE, LENA, RICCARDO, 999],
     team,
     org,
@@ -232,17 +278,37 @@ test("the member drawer's alias: set, requested, or none with Request alias only
     [LENA]: { kind: "requested", requestId: 1, line: "by Chiara Rinaldi · 20 Oct", cancellable: false },
     [RICCARDO]: { kind: "set", address: "riccardo.lombardi@politorocketteam.it" },
   });
-  const asMember = memberAliasesFor({ viewerId: LENA, memberIds: [DAVIDE], team, org, addresses: new Map(), open: [], now });
+  const asMember = memberAliasesFor({ viewerId: LENA, standing: standingOf(LENA), memberIds: [DAVIDE], team, org, addresses: new Map(), open: [], now });
   assert.deepEqual(asMember, { [DAVIDE]: { kind: "none", requestable: false } });
-  const asSender = memberAliasesFor({ viewerId: CHIARA, memberIds: [LENA], team, org, addresses: new Map(), open: [request(1, LENA, CHIARA, "2026-10-22T08:00:00Z")], now });
+  const asSender = memberAliasesFor({ viewerId: CHIARA, standing: standingOf(CHIARA), memberIds: [LENA], team, org, addresses: new Map(), open: [request(1, LENA, CHIARA, "2026-10-22T08:00:00Z")], now });
   assert.deepEqual(asSender[LENA], { kind: "requested", requestId: 1, line: "by you · 22 Oct", cancellable: true });
+});
+
+test("the drawer's Request alias shows exactly when Request alias would be accepted (issue #721)", () => {
+  const now = new Date("2026-10-22T12:00:00+02:00");
+  const open = [request(1, LENA, CHIARA)];
+  const addresses = new Map([[RICCARDO, "riccardo.lombardi@politorocketteam.it"]]);
+  const everyone = team.map((p) => p.id);
+  for (const viewerId of [...everyone, null]) {
+    const aliases = memberAliasesFor({ viewerId, standing: standingOf(viewerId), memberIds: everyone, team, org, addresses, open, now });
+    for (const memberId of everyone) {
+      const accepted = planAliasRequest({ requesterId: viewerId, standing: standingOf(viewerId), memberId, team, org, prtEmail: addresses.get(memberId) ?? null, open }).ok;
+      const alias = aliases[memberId]!;
+      assert.equal(alias.kind === "none" && alias.requestable, accepted, `viewer ${viewerId} for ${memberId}`);
+    }
+  }
+  const asItLead = memberAliasesFor({ viewerId: SARA, standing: IT_LEAD, memberIds: [DAVIDE, SARA, LENA, RICCARDO], team, org, addresses, open, now });
+  assert.deepEqual(asItLead[DAVIDE], { kind: "none", requestable: true });
+  assert.deepEqual(asItLead[SARA], { kind: "none", requestable: true });
+  assert.equal(asItLead[LENA]?.kind, "requested");
+  assert.equal(asItLead[RICCARDO]?.kind, "set");
 });
 
 test("a request sent while viewing as the requester names the acting seat, to the requester too (issue #605)", () => {
   const now = new Date("2026-10-22T12:00:00+02:00");
   const viewedAs: AliasRequest = { ...request(1, LENA, CHIARA, "2026-10-22T08:00:00Z"), requesterActingTitle: "IT lead" };
   for (const viewerId of [CHIARA, MARCO]) {
-    const aliases = memberAliasesFor({ viewerId, memberIds: [LENA], team, org, addresses: new Map(), open: [viewedAs], now });
+    const aliases = memberAliasesFor({ viewerId, standing: standingOf(viewerId), memberIds: [LENA], team, org, addresses: new Map(), open: [viewedAs], now });
     assert.equal((aliases[LENA] as { line: string }).line, "by IT lead as Chiara Rinaldi · 22 Oct", `as ${viewerId}`);
   }
   const [row] = aliasAttentionFor(plainSeatStanding("team-leader"), [viewedAs], team, org, now);

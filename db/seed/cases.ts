@@ -511,10 +511,12 @@ export function aliasApproversOf(data: SeedData): ViewerStanding[] {
   });
 }
 
-/** The alias of `memberId` in `viewer`'s member drawer. */
+/** The alias of `memberId` in `viewer`'s member drawer, with the viewer's standing as `readIdentity` builds it. */
 export function drawerAliasOf(data: SeedData, viewer: number | null, memberId: number) {
+  const user = viewer === null ? undefined : userOfMember(data, viewer);
   return memberAliasesFor({
     viewerId: viewer,
+    standing: (user === undefined ? null : standingOfUser(data, user)) ?? viewerStandingOf(null),
     memberIds: [memberId],
     team: teamOf(data),
     org: orgOf(data),

@@ -22,7 +22,8 @@ import {
 } from "@/lib/dashboard/positions-view";
 import { POSITION_TABS, type PositionApplications, type PositionRow, type PositionsPage } from "@/lib/dashboard/recruitment";
 import { ConfirmDialog } from "./confirm-dialog";
-import { FilterMenu, SearchField, Segmented, Toggle } from "./controls";
+import { FilterMenu, Segmented, Toggle } from "./controls";
+import { SearchField } from "./search-field";
 import { DrawerPage } from "./drawer";
 import { NewPositionDrawer } from "./new-position-drawer";
 import { PRIMARY_PILL } from "./page-header";
@@ -158,7 +159,7 @@ export function PositionsView({
           )}
           {has("search") && (
             <div className="min-w-0 flex-1 md:flex-none">
-              <SearchField label="Search positions" value={filter.query} onChange={(query) => narrow({ query })} />
+              <SearchField placeholder="Search positions" value={filter.query} onChange={(query) => narrow({ query })} className="md:w-[260px]" />
             </div>
           )}
         </div>
