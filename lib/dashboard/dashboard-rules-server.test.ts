@@ -162,6 +162,29 @@ describe("an applicant's applications", () => {
     assert.deepEqual((await tableRows(applications)).find((a) => a.id === 990), before, "the other application is unchanged");
   });
 
+  test("the Applications page gives each application its interview state, its applicant's other live applications and their standing", async () => {
+    await open("team leader");
+    await addRows(applications, [
+      // The person at interview in DM also applied for the MA role, still New there, and withdrew from OA.
+      { id: 990, applyPositionId: IDS.position("MA"), userId: "interviewee-dm", appliedAt: daysAgo(2), status: "received", customAnswers: [] },
+      { id: 991, applyPositionId: IDS.position("OA"), userId: "interviewee-dm", appliedAt: daysAgo(3), status: "received", customAnswers: [], withdrawnAt: daysAgo(1) },
+      // A member of MA applies to DM.
+      { id: 992, applyPositionId: IDS.position("DM"), userId: "person-ma", appliedAt: daysAgo(1), status: "received", customAnswers: [] },
+    ]);
+    const page = await (await reopen("team leader")).applications();
+    const entry = (id: number) => page.applications.find((a) => a.id === id)!;
+    assert.equal(entry(IDS.interview("DM")).state.stage, "interview", "the interview reads its stored times");
+    assert.deepEqual(
+      entry(IDS.interview("DM")).otherApplications.map((o) => o.stage),
+      ["new"],
+      "the other live application, at its stage; the withdrawn one is left out",
+    );
+    assert.deepEqual(entry(990).otherApplications.map((o) => o.stage), ["interview"], "the other application's interview reads its stored times");
+    assert.ok(!page.applications.some((a) => a.id === 991), "a withdrawn application is not listed");
+    assert.equal(entry(IDS.interview("DM")).standing.kind, "applicant");
+    assert.equal(entry(992).standing.kind, "member", "a member applying reads as on the team");
+  });
+
   test("an accepted application cannot be withdrawn, and the refusal writes nothing", async () => {
     await open("joining-dm");
     const writes = (await databaseWrites()).length;
