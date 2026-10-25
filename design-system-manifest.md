@@ -268,7 +268,9 @@ right. There is no Sign in on the bar: it is in the menu.
 38px round avatar at every width (the photo, else the PRT mark on `accent`), with no name text;
 on phones it sits beside the menu icon. Its accessible name is "Account menu". It opens the
 repo's Radix dropdown below it, aligned right: a `panel` card with a `hairline` edge, the full
-name and team email as header, then Dashboard (`text-2`) and Log out (`danger`). While open
+name and the sign-in Google address as header (never the team address, issue #683), then
+Dashboard (`text-2`), Wiki (`text-2`, the external-link icon, opens the team wiki in a new tab)
+and Log out (`danger`). While open
 the avatar wears a 2px `accent` ring. Signed in, the sidebar has no foot. Signed out nothing
 changes. Log out is the one shared sign-out (`components/use-sign-out.ts`).
 
