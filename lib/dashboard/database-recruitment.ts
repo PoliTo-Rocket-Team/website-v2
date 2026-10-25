@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, count, desc, eq, inArray, isNull, max, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, max, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
@@ -8,6 +8,7 @@ import { refreshAfter } from "@/lib/cache-tags";
 import {
   applicationFiles,
   applications,
+  applicationStatuses,
   applyPositions,
   departments,
   divisions,
@@ -34,7 +35,7 @@ import type { DashboardIdentity } from "./database";
 import { readHeadDepartment } from "./database-division";
 import { positionCode } from "@/lib/apply/positions";
 import type { SlotRow } from "./interview-slots";
-import { storedApplicationState, type StoredApplicationRow } from "./stored-application";
+import { statusKeyAfter, storedApplicationState, type StoredApplicationRow } from "./stored-application";
 import { checkNewPosition, checkPositionContent, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
 import {
   ago,
@@ -344,6 +345,27 @@ async function editPosition(identity: Identity, positionId: number, input: unkno
 const stateOf = storedApplicationState;
 
 /**
+ * The status columns `stateOf` reads, for a select that left-joins
+ * `application_statuses` on the application's status reference
+ * (`STATUS_JOIN`): the status's key and its parent's (issue #748).
+ */
+const STATUS_COLUMNS = {
+  status_key: applications.statusKey,
+  status_parent_key: applicationStatuses.parentKey,
+} as const;
+
+/** The join that reads an application's status row beside it; no reference joins nothing and reads as New. */
+const STATUS_JOIN = eq(applicationStatuses.key, applications.statusKey);
+
+/** The statuses that behave like Interview: the built-in one and every status added under it. */
+function interviewStatuses() {
+  return getDb()
+    .select({ key: applicationStatuses.key })
+    .from(applicationStatuses)
+    .where(or(eq(applicationStatuses.key, "interview"), eq(applicationStatuses.parentKey, "interview")));
+}
+
+/**
  * The applications a lead's list holds, as one condition: those on the given
  * positions, without the withdrawn ones, which leave the list at once (issue
  * #169). The reads after the list name them by it rather than by the ids the
@@ -394,7 +416,7 @@ async function readApplicantsApplications(listed: SQL): Promise<ApplicantsApplic
       .select({
         id: applications.id,
         user_id: applications.userId,
-        status: applications.status,
+        ...STATUS_COLUMNS,
         applied_at: applications.appliedAt,
         accepted_at: applications.acceptedAt,
         nda_arrived_at: applications.ndaArrivedAt,
@@ -404,13 +426,17 @@ async function readApplicantsApplications(listed: SQL): Promise<ApplicantsApplic
         dept_name: departments.name,
       })
       .from(applications)
+      .leftJoin(applicationStatuses, STATUS_JOIN)
       .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
       .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
       .innerJoin(departments, eq(divisions.deptId, departments.id))
       .where(and(live, eq(applyPositions.isDeleted, false)))
       .orderBy(desc(applications.appliedAt)),
     readSlotsWhere(
-      inArray(interviewSlots.applicationId, db.select({ id: applications.id }).from(applications).where(and(live, eq(applications.status, "interview")))),
+      inArray(
+        interviewSlots.applicationId,
+        db.select({ id: applications.id }).from(applications).where(and(live, inArray(applications.statusKey, interviewStatuses()))),
+      ),
     ),
   ]);
   return { all, slots };
@@ -486,7 +512,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
         user_id: applications.userId,
         position_id: applications.applyPositionId,
         applied_at: applications.appliedAt,
-        status: applications.status,
+        ...STATUS_COLUMNS,
         accepted_at: applications.acceptedAt,
         nda_arrived_at: applications.ndaArrivedAt,
         joined_at: applications.joinedAt,
@@ -515,6 +541,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
         letter_file_size: letterFiles.fileSize,
       })
       .from(applications)
+      .leftJoin(applicationStatuses, STATUS_JOIN)
       .innerJoin(users, eq(applications.userId, users.id))
       // An applicant with a member record shows its stored photo (issue #656).
       .leftJoin(members, eq(members.memberId, users.member))
@@ -612,12 +639,14 @@ async function readApplicationFor(identity: Identity, applicationId: number) {
       id: applications.id,
       position_id: applications.applyPositionId,
       status: applications.status,
+      ...STATUS_COLUMNS,
       applied_at: applications.appliedAt,
       accepted_at: applications.acceptedAt,
       nda_arrived_at: applications.ndaArrivedAt,
       joined_at: applications.joinedAt,
     })
     .from(applications)
+    .leftJoin(applicationStatuses, STATUS_JOIN)
     .where(and(eq(applications.id, applicationId), isNull(applications.withdrawnAt)))
     .limit(1);
   if (!row || row.position_id === null || !(await mayChangePosition(identity, "applications", row.position_id))) {
@@ -626,6 +655,22 @@ async function readApplicationFor(identity: Identity, applicationId: number) {
   return row;
 }
 
+/** The application as `readApplicationFor` read it: its old status and its status reference. */
+type ReadStatus = { readonly id: number; readonly status: DbStatus; readonly status_key: string | null };
+
+/**
+ * The application is still in the status it was read in: the old status
+ * column, which every move still writes (issue #748), and the status
+ * reference.
+ */
+function statusAsRead(row: ReadStatus): SQL | undefined {
+  return and(
+    eq(applications.status, row.status),
+    row.status_key === null ? isNull(applications.statusKey) : eq(applications.statusKey, row.status_key),
+  );
+}
+
+/** The old status column each state writes; it is no longer read for the state (issue #748). */
 const statusFor: Readonly<Record<Exclude<ApplicationState["stage"], "withdrawn">, DbStatus>> = {
   new: "received",
   "in-review": "pending",
@@ -647,7 +692,7 @@ export async function moveApplication(identity: Identity, applicationId: number,
   if (!result.changed) return written(null);
   const after = result.state;
   // Every write is guarded on the status it was read in, so two leads acting at once do not both land.
-  const unchanged = and(eq(applications.id, row.id), eq(applications.status, row.status), isNull(applications.withdrawnAt));
+  const unchanged = and(eq(applications.id, row.id), statusAsRead(row), isNull(applications.withdrawnAt));
 
   switch (after.stage) {
     case "withdrawn":
@@ -655,7 +700,7 @@ export async function moveApplication(identity: Identity, applicationId: number,
       return refused("Only the applicant can withdraw an application.");
 
     case "interview":
-      return (await offerSlots(row.id, row.status, after.offered)) ? written(null) : refused(APPLICATION_CHANGED);
+      return (await offerSlots(row, statusKeyAfter(row, after), after.offered)) ? written(null) : refused(APPLICATION_CHANGED);
 
     case "accepted": {
       const changed = await runAuditQuery((db) =>
@@ -663,6 +708,7 @@ export async function moveApplication(identity: Identity, applicationId: number,
           .update(applications)
           .set({
             status: "accepted",
+            statusKey: statusKeyAfter(row, after),
             acceptedAt: after.acceptedAt,
             rejectedAt: null,
             ndaArrivedAt: after.ndaArrived ? (row.nda_arrived_at ?? now.toISOString()) : null,
@@ -688,7 +734,11 @@ export async function moveApplication(identity: Identity, applicationId: number,
       // count a month from (issue #317); moving it back clears it.
       const rejectedAt = after.stage === "rejected" ? now.toISOString() : null;
       const changed = await runAuditQuery((db) =>
-        db.update(applications).set({ status: statusFor[after.stage], rejectedAt }).where(unchanged).returning({ id: applications.id }),
+        db
+          .update(applications)
+          .set({ status: statusFor[after.stage], statusKey: statusKeyAfter(row, after), rejectedAt })
+          .where(unchanged)
+          .returning({ id: applications.id }),
       );
       return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
     }
@@ -705,7 +755,7 @@ const APPLICATION_CHANGED = "This application changed. Reload the page.";
  * slots are cleared and written only for the row the status update matched,
  * so a move another lead beat changes no slot. True when the move landed.
  */
-async function offerSlots(applicationId: number, readStatus: DbStatus, offered: OfferedSlots): Promise<boolean> {
+async function offerSlots(read: ReadStatus, statusKey: string, offered: OfferedSlots): Promise<boolean> {
   const times = sql.join(
     offered.map((s) => sql`(${s.start}::timestamptz, ${s.end}::timestamptz)`),
     sql`, `,
@@ -713,8 +763,9 @@ async function offerSlots(applicationId: number, readStatus: DbStatus, offered: 
   const [result] = await runAuditBatch((db) => [
     db.execute(sql`
       with moved as (
-        update ${applications} set status = 'interview'
-        where id = ${applicationId} and status = ${readStatus} and withdrawn_at is null
+        update ${applications} set status = 'interview', status_key = ${statusKey}
+        where id = ${read.id} and status = ${read.status}
+          and status_key is not distinct from ${read.status_key}::text and withdrawn_at is null
         returning id
       ),
       cleared as (
@@ -839,7 +890,7 @@ async function confirmJoin(identity: Identity, applicationId: number, joinedAt: 
           )
         returning id
       )
-      update ${applications} set status = 'joined', joined_at = ${joinedAt}
+      update ${applications} set status = 'joined', status_key = 'joined', joined_at = ${joinedAt}
       where id = ${applicationId} and exists (select 1 from the_member)
       returning id
     `),

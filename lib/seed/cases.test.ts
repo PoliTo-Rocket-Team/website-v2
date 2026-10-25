@@ -249,8 +249,11 @@ test("each order is made by a member who holds a role in its division, and only 
   }
 });
 
-test("invariant: every application stage is present", () => {
-  for (const stage of APPLICATION_STAGES) assert.ok(data.applications.some((a) => stageOf(data, a) === stage), stage);
+test("invariant: every application stage but In review is present, and none reads as In review (ruling R1.2 on #745)", () => {
+  for (const stage of APPLICATION_STAGES) {
+    if (stage === "in-review") assert.ok(data.applications.every((a) => stageOf(data, a) !== stage), stage);
+    else assert.ok(data.applications.some((a) => stageOf(data, a) === stage), stage);
+  }
 });
 
 test("every position sits in an open division, and every application in a seeded position, after it opened", () => {
