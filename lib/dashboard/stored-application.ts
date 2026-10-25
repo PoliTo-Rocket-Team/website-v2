@@ -69,3 +69,45 @@ export function statusKeyAfter(
 ): string {
   return statusAfter(statusOfStored({ key: row.status_key, parentKey: row.status_parent_key }), state, via).key;
 }
+
+/** The days a stored row keeps beside its status: when it was accepted, when the signed NDA arrived, when it ended without a place, when it joined. */
+export type StoredDays = {
+  readonly accepted_at: string | null;
+  readonly nda_arrived_at: string | null;
+  readonly rejected_at: string | null;
+  readonly joined_at: string | null;
+};
+
+/**
+ * The days a hand pick of a status added under `parent` records (epic #588,
+ * review of PR #755): an added status behaves like its parent, so the row
+ * keeps the days its parent's state reads, and a day it lacks is the day of
+ * the pick. Nothing else is written: no team member, no interview times, no
+ * withdrawal. So an application picked into a status under "Accepted · email
+ * sent" from New has an acceptance day the applicant's month counts from, and
+ * one under NDA received has the NDA day Confirm join asks for. A day the row
+ * already has is kept, and a day the parent does not read is left as it is.
+ * A status the team added under Withdrawn is the team's decision, not the
+ * applicant's withdrawal, so its day is the day it ended without a place
+ * (`rejected_at`), as for "Accepted for another position"; the withdrawal day
+ * stays the applicant's Withdraw's, with its effects.
+ */
+export function daysOfAddedPick(parent: BuiltInStatusKey, row: StoredDays, now: string): Partial<StoredDays> {
+  switch (parent) {
+    case "accepted_email_to_be_sent":
+    case "accepted_email_sent":
+      return { accepted_at: row.accepted_at ?? now };
+    case "nda_received":
+      return { accepted_at: row.accepted_at ?? now, nda_arrived_at: row.nda_arrived_at ?? now };
+    case "joined":
+      return { joined_at: row.joined_at ?? now };
+    case "rejected_email_to_be_sent":
+    case "rejected_email_sent":
+    case "accepted_for_another_position":
+    case "withdrawn":
+      return { rejected_at: row.rejected_at ?? now };
+    case "new":
+    case "interview":
+      return {};
+  }
+}

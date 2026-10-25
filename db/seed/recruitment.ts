@@ -188,7 +188,8 @@ function answersTo(positionId: number, answers: readonly string[] = ANSWERS[posi
 export const SECOND_INTERVIEW = {
   key: "second_interview",
   name: "Second interview",
-  colour: "#FF7526",
+  // A colour the Statuses editor offers (`STATUS_COLOURS`), so renaming it alone saves.
+  colour: "#FF5E00",
   sortOrder: 1,
   parentKey: "interview",
 } as const;

@@ -98,7 +98,7 @@ Owner decisions of 2026-10-25 on epic #588 and the owner's rulings on its grilli
    The joining sentence of rule 5 is what the Accepted outcome shows, so the binding constraint on it still holds.
 9. **A person already on the team** follows the same statuses as any applicant ([ruling R1.3](https://github.com/PoliTo-Rocket-Team/website-v2/issues/745#issuecomment-6399754015)); see the 2026-10-25 amendment of [0014](./0014-several-divisions-one-nda.md).
 
-Existing applications are test data, so no stored row is mapped to the new list; the seed uses it, and schema changes stay additive ([ruling R1.4](https://github.com/PoliTo-Rocket-Team/website-v2/issues/745#issuecomment-6399754905)). The code that follows these rules is built by the children of epic #588; until they land, `lib/dashboard/application-flow.ts` still has the old stages. The rest of this record is unchanged.
+Existing applications are test data, so no stored row is mapped to the new list; the seed uses it, and schema changes stay additive ([ruling R1.4](https://github.com/PoliTo-Rocket-Team/website-v2/issues/745#issuecomment-6399754905)). The children of epic #588 built the code that follows these rules, in `lib/dashboard/application-flow.ts`. The rest of this record is unchanged.
 
 ## Records
 

@@ -126,7 +126,7 @@ export type StoredApplication = {
   readonly appliedAt: string;
   readonly withdrawnAt: string | null;
   readonly acceptedAt: string | null;
-  /** When it was rejected or another team took the person (`rejected_at`, drizzle/0030). */
+  /** When it was rejected, another team took the person, or the team picked a status added under Withdrawn (`rejected_at`, drizzle/0030). */
   readonly rejectedAt: string | null;
   readonly joinedAt: string | null;
 };
@@ -164,7 +164,8 @@ export function latestDecisionOf(application: StoredApplication): LatestDecision
     case "not-selected":
       return decidedAt(application.rejectedAt);
     case "withdrawn":
-      return decidedAt(application.withdrawnAt);
+      // The applicant's Withdraw has returned above. A status the team added under Withdrawn ends it on the day it was picked (`daysOfAddedPick`).
+      return decidedAt(application.rejectedAt);
   }
 }
 

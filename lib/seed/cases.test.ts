@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { test } from "node:test";
 import { publicItems, versionRows, type ContentItem } from "../content/versioned";
 import { ANONYMIZED_EMAIL, CLEARED_MEMBER } from "../dashboard/anonymize";
-import { BUILT_IN_STATUS_KEYS } from "../dashboard/application-status";
+import { BUILT_IN_STATUS_KEYS, isStatusColour } from "../dashboard/application-status";
 import { PLAIN_SEATS } from "../dashboard/viewer";
 import { ACCESS_LEVEL_LABELS, ACCESS_TARGET_LABELS } from "../dashboard/division-access";
 import {
@@ -251,6 +251,10 @@ test("each order is made by a member who holds a role in its division, and only 
 
 test("invariant: an application reads as each built-in status (issue #749)", () => {
   for (const status of BUILT_IN_STATUS_KEYS) assert.ok(data.applications.some((a) => applicationStatusOf(data, a) === status), status);
+});
+
+test("every seeded status has a colour the Statuses editor offers, so a rename alone saves (epic #588)", () => {
+  for (const status of data.applicationStatuses) assert.ok(isStatusColour(status.colour), `${status.key}: ${status.colour}`);
 });
 
 test("every position sits in an open division, and every application in a seeded position, after it opened", () => {

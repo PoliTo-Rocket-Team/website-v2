@@ -33,6 +33,7 @@ import {
 } from "./application-flow";
 import {
   addedStatusKey,
+  builtInOf,
   deleteRefusal,
   isBuiltInStatusKey,
   managesStatusList,
@@ -51,7 +52,7 @@ import type { DashboardIdentity } from "./database";
 import { readHeadDepartment } from "./database-division";
 import { positionCode } from "@/lib/apply/positions";
 import type { OfferedSlotRow } from "./interview-slots";
-import { readsAsNew, statusKeyAfter, storedApplicationState, type StoredApplicationRow } from "./stored-application";
+import { daysOfAddedPick, readsAsNew, statusKeyAfter, storedApplicationState, type StoredApplicationRow, type StoredDays } from "./stored-application";
 import { checkNewPosition, checkPositionContent, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
 import {
   ago,
@@ -375,7 +376,7 @@ export const STATUS_COLUMNS = {
 export const STATUS_JOIN = eq(applicationStatuses.key, applications.statusKey);
 
 /** The statuses that behave like Interview: the built-in one and every status added under it. */
-function interviewStatuses() {
+export function interviewStatuses() {
   return getDb()
     .select({ key: applicationStatuses.key })
     .from(applicationStatuses)
@@ -832,12 +833,14 @@ export async function moveApplication(identity: Identity, applicationId: number,
 
 /**
  * A saved hand pick of an added status (issue #750): the application's
- * status reference becomes that status and nothing else changes, only while
- * the key names a status added under a built-in one and the application is
- * still in the status it was read in. A status added under "Accepted · email
- * sent" is the team leader's to set, as its parent is (`maySetStatus`).
+ * status reference becomes that status, beside the days its parent's state
+ * reads that the row lacks (`daysOfAddedPick`), and nothing else changes,
+ * only while the key names a status added under a built-in one and the
+ * application is still in the status it was read in. A status added under
+ * "Accepted · email sent" is the team leader's to set, as its parent is
+ * (`maySetStatus`).
  */
-async function pickAddedStatus(row: ReadStatus, pick: AddedPick, setter: StatusSetterViewer): Promise<WriteResult<null>> {
+async function pickAddedStatus(row: ReadStatus & StoredDays, pick: AddedPick, setter: StatusSetterViewer): Promise<WriteResult<null>> {
   if (pick.key === row.status_key) return written(null);
   const [added] = await getDb()
     .select({ key: applicationStatuses.key, parentKey: applicationStatuses.parentKey })
@@ -845,11 +848,20 @@ async function pickAddedStatus(row: ReadStatus, pick: AddedPick, setter: StatusS
     .where(and(eq(applicationStatuses.key, pick.key), sql`${applicationStatuses.parentKey} is not null`))
     .limit(1);
   if (!added) return refused("That status is not in the list. Reload the page.");
-  if (!maySetStatus(statusOfStored({ key: added.key, parentKey: added.parentKey }), setter)) return refused(TEAM_LEADER_ONLY_REFUSAL);
+  const status = statusOfStored({ key: added.key, parentKey: added.parentKey });
+  if (!maySetStatus(status, setter)) return refused(TEAM_LEADER_ONLY_REFUSAL);
+  const days = daysOfAddedPick(builtInOf(status), row, new Date().toISOString());
   const changed = await runAuditQuery((db) =>
     db
       .update(applications)
-      .set({ statusKey: added.key })
+      // A day the pick does not record is undefined, which the update leaves as it is.
+      .set({
+        statusKey: added.key,
+        acceptedAt: days.accepted_at,
+        ndaArrivedAt: days.nda_arrived_at,
+        rejectedAt: days.rejected_at,
+        joinedAt: days.joined_at,
+      })
       .where(and(eq(applications.id, row.id), statusAsRead(row), isNull(applications.withdrawnAt)))
       .returning({ id: applications.id }),
   );

@@ -61,7 +61,7 @@ import {
   type UpcomingInterview,
 } from "./overview";
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
-import { databaseRecruitmentPages, readSlots, STATUS_COLUMNS, STATUS_JOIN } from "./database-recruitment";
+import { databaseRecruitmentPages, interviewStatuses, readSlots, STATUS_COLUMNS, STATUS_JOIN } from "./database-recruitment";
 import { readsAsNew } from "./stored-application";
 import { statusOfStored } from "./application-status";
 import { divisionOverviewOf, membersScopeOf, overviewAreasOf, type DivisionFigures } from "./division-overview";
@@ -520,9 +520,9 @@ async function readMembersWithoutPhoto(divisionIds: number[]): Promise<string[]>
 }
 
 /**
- * The upcoming interviews on the given positions: each live application at
- * status `interview` with times offered, booked or waiting for the
- * applicant, read the way the applications page reads them
+ * The upcoming interviews on the given positions: each live application in
+ * Interview or a status added under it, with times offered, booked or
+ * waiting for the applicant, read the way the applications page reads them
  * (./interview-slots.ts).
  */
 async function readInterviews(positions: readonly { id: number; title: string }[]): Promise<UpcomingInterview[]> {
@@ -540,7 +540,8 @@ async function readInterviews(positions: readonly { id: number; title: string }[
     .innerJoin(users, eq(applications.userId, users.id))
     .where(
       and(
-        eq(applications.status, "interview"),
+        // The status reference, not the old status column: a hand pick of an added status changes only the reference (#588).
+        inArray(applications.statusKey, interviewStatuses()),
         isNull(applications.withdrawnAt),
         inArray(applications.applyPositionId, [...titles.keys()]),
       ),

@@ -219,8 +219,7 @@ An admin column comes later. **Planned**, no issue yet.
 
 These rules come from the Owner decisions of 2026-10-25 on epic #588 and the rulings on its
 grilling session #745, recorded in the 2026-10-25 status-list amendment of
-[0011](../.decisions/0011-applicant-journey-received-to-joining.md). Until the children of #588
-land, the code still runs the older stages.
+[0011](../.decisions/0011-applicant-journey-received-to-joining.md). The code follows them.
 
 ### Application status
 
@@ -269,6 +268,11 @@ land, the code still runs the older stages.
   the button that sets it, with the same confirm: picking Joined runs Confirm join, and picking
   Interview starts the interview step. Both go through one server move
   ([ruling R1.1](https://github.com/PoliTo-Rocket-Team/website-v2/issues/745#issuecomment-6399752172)).
+  A hand pick of an added status sets the status and records the day its parent keeps when the
+  application has none yet: the acceptance day, the NDA day, the join day, or the day it ended
+  without a place. So the applicant sees the parent's public step for the usual month, and Confirm
+  join works under NDA received. It adds no one to the team, offers no times and is not a
+  withdrawal.
 - A hand pick is a draft until saved: the picker has Save and Cancel, and the action buttons are
   locked while the change is unsaved, with a hint to save or cancel it first
   ([Owner decision, 2026-10-25](https://github.com/PoliTo-Rocket-Team/website-v2/issues/588#issuecomment-6399407814),
