@@ -7,7 +7,8 @@ import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import { DRIZZLE_MAPPED_TYPES } from "../../db/seed/connection";
 import { SEED_MODULES } from "../../db/seed/registry";
 import type { TableSeed } from "../../db/seed/rows";
-import { SIGN_IN_ROWS } from "../../db/seed/people";
+import { ADDED_BY_EMAIL, SIGN_IN_RESET, SIGN_IN_ROWS, TEST_BENCH_LEAD } from "../../db/seed/people";
+import { DIVISION } from "../../db/seed/structure";
 import { seatOf } from "../seeded-accounts";
 import {
   RESEED_LEDGER_TABLE,
@@ -291,4 +292,57 @@ test("a seed run gives every seeded person one sign-in row, removes a retired te
   assert.deepEqual(accounts.rows.map((r) => r.id).sort(), [...seeded, "d3v3l0p3r-own-account"].sort());
   const sessions = await db.query<{ id: string }>(`select id from better_auth.session`);
   assert.deepEqual(sessions.rows.map((r) => r.id), ["own-session"], "the developer is still signed in");
+});
+
+// The person added by email who has not signed in (issue #746): a seed run
+// writes their `users` and `team_joins` rows as Add member does, and no
+// sign-in row, and a second run leaves both rows as they were, column by column.
+
+/** The added person's rows as stored, every column, so two runs compare whole. */
+async function addedPersonRows(db: PGlite) {
+  const users = await db.query<{ row: Record<string, unknown> }>(`select to_jsonb(u) as row from users u where id like 'added:%' order by id`);
+  const joins = await db.query<{ row: Record<string, unknown> }>(
+    `select to_jsonb(j) as row from team_joins j where user_id = $1 order by id`,
+    [ADDED_BY_EMAIL.userId],
+  );
+  return { users: users.rows.map((r) => r.row), joins: joins.rows.map((r) => r.row) };
+}
+
+test("a seed run holds one person added by email who waits in a division, with no member row and no sign-in row, the same on every run", async () => {
+  const db = await migrated();
+  const local = guardSeedTarget(LOCAL);
+  assert.ok(local.ok);
+  await runSeed(local.target, SEED_ON_PGLITE, onPglite(db));
+  await db.exec(`insert into better_auth."user" (id, name, email, "emailVerified") values ('d3v3l0p3r-own-account', 'A Developer', 'a.developer@gmail.com', true);`);
+
+  const once = await addedPersonRows(db);
+  assert.equal(once.users.length, 1, "exactly one seeded users row keyed added:");
+  const [user] = once.users;
+  assert.equal(user.id, ADDED_BY_EMAIL.userId);
+  assert.equal(user.email, ADDED_BY_EMAIL.email);
+  assert.match(String(user.email), /@example\.com$/);
+  assert.equal(user.member, null, "no member row");
+  assert.equal(once.joins.length, 1, "exactly one team_joins row");
+  const [join] = once.joins;
+  assert.equal(join.division_id, DIVISION.testBench);
+  assert.equal(join.added_by, TEST_BENCH_LEAD);
+  const lead = await db.query<{ n: number }>(
+    `select count(*)::int as n from roles r join divisions d on d.id = r.division_id where r.member_id = $1 and r.division_id = $2 and r.type = 'lead' and r.leaved_at is null and d.closed_at is null`,
+    [TEST_BENCH_LEAD, DIVISION.testBench],
+  );
+  assert.equal(lead.rows[0].n, 1, "the adder leads the open division the person waits in");
+  const members = await db.query<{ n: number }>(`select count(*)::int as n from members m join users u on u.member = m.member_id where u.id = $1`, [ADDED_BY_EMAIL.userId]);
+  assert.equal(members.rows[0].n, 0);
+
+  const signIn = `select count(*)::int as n from better_auth."user" where id = $1 or lower(email) = lower($2)`;
+  assert.equal((await db.query<{ n: number }>(signIn, [ADDED_BY_EMAIL.userId, ADDED_BY_EMAIL.email])).rows[0].n, 0, "no sign-in row");
+  assert.ok(!SIGN_IN_ROWS.rows.some((row) => row.id === ADDED_BY_EMAIL.userId || row.email === ADDED_BY_EMAIL.email));
+  assert.ok(!SIGN_IN_RESET.sql.includes(ADDED_BY_EMAIL.userId) && !ADDED_BY_EMAIL.email.endsWith(".tester@example.com"), "the sign-in reset names them nowhere");
+
+  await runSeed(local.target, SEED_ON_PGLITE, onPglite(db));
+
+  assert.deepEqual(await addedPersonRows(db), once, "a second run leaves the same rows, every column");
+  assert.equal((await db.query<{ n: number }>(signIn, [ADDED_BY_EMAIL.userId, ADDED_BY_EMAIL.email])).rows[0].n, 0, "still no sign-in row");
+  const own = await db.query<{ id: string }>(`select id from better_auth."user" where id = 'd3v3l0p3r-own-account'`);
+  assert.equal(own.rows.length, 1, "a developer's own sign-in row survives");
 });
