@@ -88,7 +88,8 @@ export function SidePanel({
               {leading}
               <div className="min-w-0">
                 <DialogTitle className="truncate text-[18px] font-semibold leading-8 md:text-[20px] md:leading-tight">{title}</DialogTitle>
-                {detail && <p className="mt-0.5 truncate text-[13px] text-prt-muted">{detail}</p>}
+                {/* Wraps rather than being cut on a narrow screen (issue #690). */}
+                {detail && <p className="mt-0.5 text-[13px] text-prt-muted">{detail}</p>}
                 {below}
               </div>
             </div>
