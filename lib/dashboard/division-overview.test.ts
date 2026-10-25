@@ -23,7 +23,7 @@ const everything: DivisionFigures = {
   positions: [{ id: 7, title: "Test Engineer", open: true, divisionName: "Mission Analysis" }],
   applications: {
     positions: [{ id: 7, title: "Test Engineer", open: true, divisionName: "Mission Analysis", newApplications: 2, oldestNew: new Date("2026-10-15T10:00:00Z") }],
-    interviews: [{ applicant: "Ada Applicant", position: "Test Engineer", state: "waiting" }],
+    interviews: [{ applicant: "Ada Applicant", position: "Test Engineer", setBy: null, state: "waiting" }],
   },
   orders: { count: 3, total: 12_000 },
   members: { count: 6, scope: { kind: "division", name: "Mission Analysis Division", own: true }, withoutPhoto: ["Mia Member"] },
