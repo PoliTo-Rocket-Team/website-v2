@@ -238,6 +238,7 @@ function entryOf(person: DivisionPerson, actions: MemberActions | null): MemberE
     divisionIds: person.divisions.map((d) => d.divisionId),
     chips: person.chips,
     divisions: person.divisions,
+    places: person.places,
     details: person.details,
     nda: person.nda,
     self: person.self,

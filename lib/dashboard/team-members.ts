@@ -10,6 +10,7 @@ import {
 export type { ColumnOption } from "./column-filters";
 import { levelLabel, type MemberDetails } from "./details";
 import { matchesPerson, type DivisionChip, type DivisionHeader, type PersonDivision, type PersonRecord, type SignedNda } from "./division-members";
+import { placesOf, type PersonPlace } from "./member-places";
 import { beyondTitle, BOARD_SEAT_FALLBACK, divisionLabel, homeFirst, leadsChangedBy, type OrgChart, type TeamRole } from "./team";
 
 // The team leader's Members page (boards 73 to 73c, issue #252): the whole
@@ -40,6 +41,8 @@ export type TeamMember = {
   readonly chips: readonly DivisionChip[];
   /** Every division they are in, for the member panel, each with its department. */
   readonly divisions: readonly PersonDivision[];
+  /** Every place they hold, with its stored title: the member panel's Placement (board 98, issue #647). */
+  readonly places: readonly PersonPlace[];
   readonly details: MemberDetails;
   readonly nda: SignedNda | null;
   /** The viewer's own row. */
@@ -129,6 +132,7 @@ export function teamMemberOf(record: PersonRecord, org: OrgChart, selfId: number
       role: membership.role,
       title: record.titles[division.id] ?? null,
     })),
+    places: placesOf(record, org),
     details: record.details,
     nda: record.nda,
     self: record.id === selfId,

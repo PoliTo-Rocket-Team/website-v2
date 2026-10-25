@@ -72,6 +72,7 @@ import {
   type TeamActor,
 } from "./team";
 import { departmentMembers } from "./department-members";
+import { checkMove, moveTargetsOf, planMove, type MoveLookup } from "./member-move";
 import { wholeTeamMembers } from "./team-members";
 import {
   ADVISOR_TITLE,
@@ -857,6 +858,92 @@ async function removeFromDivision(identity: DashboardIdentity, personId: number,
 }
 
 const NOT_IN_SCOPE = "You can edit only people your Members page lets you change.";
+
+/**
+ * Where Edit details and the Team tree may move `personId` (issue #647): the
+ * units the viewer may move them into (`moveTargetsOf`), for someone the
+ * viewer may edit (`rolesTheViewerChanges`), never the viewer themselves.
+ */
+export async function findMoveTargets(identity: DashboardIdentity, personId: number): Promise<MoveLookup> {
+  const snapshot = await readTeamSnapshot();
+  const actor = await readActor(identity, snapshot.org);
+  if (actor === null || (await rolesTheViewerChanges(identity, actor, personId)) === null) return { kind: "none" };
+  return { kind: "targets", departments: moveTargetsOf(recordsOf(snapshot), snapshot.org, actor) };
+}
+
+/**
+ * Move to another unit (issue #647; Owner decisions, 2026-10-24), as
+ * `planMove` (./member-move.ts) allows it, in one batch: the person's rows in
+ * the place they leave end and the access given them there goes; a head they
+ * replace steps down as the editor picked, before their headship starts, so a
+ * department never has two heads; the new row starts, with the full-access
+ * seat of the head it replaces (issue #501); and the head picked for the
+ * department they leave starts with that department's seat. A refused or
+ * failed move writes nothing, so the person stays exactly where they were.
+ */
+async function moveMember(identity: DashboardIdentity, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkMove(input);
+  if (!checked.ok) return refused(checked.error);
+  const request = checked.value;
+  const snapshot = await readTeamSnapshot();
+  const actor = await readActor(identity, snapshot.org);
+  if (actor === null || (await rolesTheViewerChanges(identity, actor, request.personId)) === null) return refused(NOT_IN_SCOPE);
+  const [active, headRows] = await Promise.all([
+    activeRoles(request.personId),
+    getDb()
+      .select({ id: roles.id, member_id: roles.memberId, dept_id: roles.deptId, division_id: roles.divisionId, full_access: roles.fullAccess })
+      .from(roles)
+      .where(and(eq(roles.type, "head"), isNull(roles.leavedAt))),
+  ]);
+  const planned = planMove({
+    actor,
+    org: snapshot.org,
+    viewerId: identity.memberId,
+    request,
+    roles: active.map(roleSeat),
+    heads: headRows.flatMap((r) =>
+      r.member_id === null ? [] : [{ id: r.id, memberId: r.member_id, departmentId: r.dept_id, divisionId: r.division_id, fullAccess: seatOfFlag(r.full_access) }],
+    ),
+    team: teamPeopleOf(snapshot),
+  });
+  if (!planned.ok) return refused(planned.error);
+  const plan = planned.value;
+  const on = today();
+  const replacedRoles = plan.replaced === null ? [] : await activeRoles(plan.replaced.memberId);
+  const aliasAsked = await automaticAliasRequests(plan.newLeads);
+  const { personId, start, leaves } = plan;
+  await runAuditBatch((db) => [
+    db.update(roles).set({ leavedAt: on }).where(and(inArray(roles.id, [...plan.end]), isNull(roles.leavedAt))),
+    leaves.kind === "division"
+      ? db.delete(scopes).where(and(eq(scopes.memberId, personId), eq(scopes.scope, "division"), eq(scopes.divisionId, leaves.divisionId)))
+      : db.delete(scopes).where(and(eq(scopes.memberId, personId), eq(scopes.scope, "department"), eq(scopes.deptId, leaves.departmentId), isNull(scopes.divisionId))),
+    // The head they replace steps down before their headship starts: the database keeps one active head per department.
+    ...(plan.replaced === null
+      ? []
+      : steppingDownWrites(db, { memberId: plan.replaced.memberId, active: replacedRoles }, plan.replaced.steppingDown, plan.replaced.rows, on)),
+    start.kind === "division"
+      ? db.insert(roles).values({ memberId: personId, divisionId: start.divisionId, title: start.title, type: start.type, startedAt: on })
+      : db
+          .insert(roles)
+          .values({ memberId: personId, deptId: start.departmentId, divisionId: null, title: start.title, type: "head", startedAt: on, ...seatFor(start.seat, personId) }),
+    ...(plan.successor === null
+      ? []
+      : [
+          db.insert(roles).values({
+            memberId: plan.successor.memberId,
+            deptId: plan.successor.departmentId,
+            divisionId: null,
+            title: plan.successor.title,
+            type: "head",
+            startedAt: on,
+            ...seatFor(plan.successor.seat, plan.successor.memberId),
+          }),
+        ]),
+    ...aliasAsked(db),
+  ]);
+  done();
+  return written(null);
+}
 
 /**
  * Edit details (board 61g, issue #584) for anyone the viewer may edit
@@ -1669,6 +1756,7 @@ export function databaseTeamWrites(
     confirmNda: (joinId) => confirmNda(identity, joinId),
     cancelAdd: (joinId) => cancelAdd(identity, joinId),
     removeFromDivision: (personId, divisionId) => removeFromDivision(identity, personId, divisionId),
+    moveMember: (input) => moveMember(identity, input),
     saveMemberDetails: (target, divisionId, input) => saveMemberDetails(identity, target, divisionId, input),
     setMemberPhoto: (personId, photo) => setMemberPhoto(identity, personId, photo),
     createDivision: (departmentId, input) => createDivision(identity, departmentId, input),
