@@ -275,6 +275,36 @@ test("0063 keeps every stored notice as it was, and applies again over a databas
   assert.equal(constraints.rows[0].count, 1, "the foreign key exists once");
 });
 
+// Who offered an interview's times (issue #652) is one nullable column on
+// `interview_slots` and its foreign key: every stored time keeps its values
+// and names no setter.
+const OFFERED_BY_TAG = "0064_interview_slots_offered_by";
+
+test("0064_interview_slots_offered_by.sql drops, renames and rewrites nothing", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${OFFERED_BY_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+});
+
+test("0064 keeps every stored interview time as it was, and applies again over a database that already holds it", async () => {
+  const { db, apply } = await databaseBefore(OFFERED_BY_TAG);
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into interview_slots (id, application_id, starts_at, ends_at, chosen) values
+      (1, 1, '2026-10-16T15:30:00Z', '2026-10-16T16:00:00Z', true),
+      (2, 2, '2026-10-17T16:00:00Z', '2026-10-17T16:30:00Z', false);
+    set session_replication_role = origin;
+  `);
+  const before = await db.query(`select * from interview_slots order by id`);
+  await apply();
+  await apply();
+  const after = await db.query(`select * from interview_slots order by id`);
+  assert.deepEqual(
+    after.rows,
+    before.rows.map((row) => ({ ...(row as object), offered_by: null })),
+    "every time is kept, naming no setter",
+  );
+});
+
 // The migrator applies only entries journaled later than the newest one a
 // database records, so every entry must be later than the one before it. The
 // numbers 0056 and 0057 are not journaled: the trunk skipped them while this
@@ -381,15 +411,15 @@ test("the check catches each statement that is not additive, and no foreign key 
 // built-in rows and one nullable reference on `applications`. Existing
 // applications are test data and keep every value; with no reference they
 // read as New (lib/dashboard/application-status.ts).
-const STATUS_TAG = "0064_application_statuses";
+const STATUS_TAG = "0065_application_statuses";
 
-test("0064_application_statuses.sql drops, renames and rewrites nothing", () => {
+test("0065_application_statuses.sql drops, renames and rewrites nothing", () => {
   const sql = readFileSync(resolve(process.cwd(), `drizzle/${STATUS_TAG}.sql`), "utf8");
   assert.deepEqual(nonAdditiveStatements(sql), []);
   assert.match(sql, /issue #748/);
 });
 
-test("0064 inserts the ten built-in statuses in order, keeps every application as it was, and applies again", async () => {
+test("0065 inserts the ten built-in statuses in order, keeps every application as it was, and applies again", async () => {
   const { db, apply } = await databaseBefore(STATUS_TAG);
   await db.exec(`
     set session_replication_role = replica;
@@ -417,7 +447,7 @@ test("0064 inserts the ten built-in statuses in order, keeps every application a
   );
 });
 
-test("after 0064 the table takes an added status only under a built-in parent, and keeps one in use", async () => {
+test("after 0065 the table takes an added status only under a built-in parent, and keeps one in use", async () => {
   const { db, apply } = await databaseBefore(STATUS_TAG);
   await apply();
   const refuses = async (sql: string, what: string) => {

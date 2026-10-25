@@ -2,7 +2,7 @@
 // on #745). Every application carries one status from a stored list: the ten
 // built-in statuses below, in this order, and the statuses approvers add
 // under one built-in parent. An added status behaves like its parent. The
-// list is stored in `application_statuses` (drizzle/0064), whose checks keep
+// list is stored in `application_statuses` (drizzle/0065), whose checks keep
 // a built-in row parentless and give every added row a built-in parent.
 // An application with no status reference reads as New.
 

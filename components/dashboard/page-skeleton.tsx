@@ -40,10 +40,8 @@ export function PageSkeleton({ kind }: { kind: PageSkeletonKind }) {
  * and each section below it shows its own placeholder until it arrives.
  */
 export type OverviewSkeletonSection =
-  /** The scope board: its figures, then the attention rows beside the recent activity. */
-  | "board"
-  /** Board 52's own panels under the board. */
-  | "panels";
+  /** Everything under the person: the figures, then the two columns of panels (boards 99 and 99b, issue #652). */
+  "board";
 
 export function OverviewSectionSkeleton({ section }: { section: OverviewSkeletonSection }) {
   return (
@@ -64,11 +62,6 @@ const OVERVIEW_SECTIONS: Readonly<Record<OverviewSkeletonSection, () => ReactNod
         <PanelSection rows={4} />
       </div>
     </>
-  ),
-  panels: () => (
-    <div className="mt-5 md:mt-6">
-      <PanelSection rows={3} />
-    </div>
   ),
 };
 

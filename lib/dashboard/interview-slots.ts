@@ -16,6 +16,9 @@ export type SlotRow = {
   created_at: string;
 };
 
+/** A stored time as the database sources read it, with the name of who offered it (issue #652); null for a time stored before that was recorded. */
+export type OfferedSlotRow = SlotRow & { offered_by: string | null };
+
 /** What an application at status `interview` reads as. */
 export type InterviewReading = Extract<ApplicationState, { status: "interview" }>;
 
@@ -43,20 +46,25 @@ export function interviewStateOf(slots: readonly SlotRow[]): InterviewReading {
 export type InterviewCandidate = {
   readonly applicant: string;
   readonly position: string;
-  readonly slots: readonly SlotRow[];
+  readonly slots: readonly OfferedSlotRow[];
 };
 
-/** Board 56's upcoming interviews: those with times offered, booked first and soonest first. */
+/**
+ * Board 56's upcoming interviews: those with times offered, booked first and
+ * soonest first, each with who offered its times (board 99b). One offer
+ * writes every time of an application at once, so any of them names the setter.
+ */
 export function upcomingInterviews(candidates: readonly InterviewCandidate[]): UpcomingInterview[] {
   return interviewOrder(
     candidates.flatMap(({ applicant, position, slots }): UpcomingInterview[] => {
       const state = interviewStateOf(slots);
       if (state.offered.length === 0) return [];
       const booked = state.booked;
+      const setBy = slots.find((s) => s.offered_by !== null)?.offered_by ?? null;
       return [
         booked === null
-          ? { applicant, position, state: "waiting" }
-          : { applicant, position, state: "booked", start: new Date(booked.slot.start), end: new Date(booked.slot.end) },
+          ? { applicant, position, setBy, state: "waiting" }
+          : { applicant, position, setBy, state: "booked", start: new Date(booked.slot.start), end: new Date(booked.slot.end) },
       ];
     }),
   );

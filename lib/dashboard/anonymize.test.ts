@@ -156,7 +156,7 @@ const application: InferSelectModel<typeof applications> = {
   appliedAt: "2024-09-02T10:00:00.000Z",
   status: "joined",
   statusKey: "joined",
-  customAnswers: [{ question: "Why?", answer: "Rockets" }],
+  customAnswers: [{ question: "Why?", answer: "I am Giulia Rossi, I led the Turin model rocket club" }],
   withdrawnAt: null,
   acceptedAt: "2024-09-20T10:00:00.000Z",
   rejectedAt: null,
@@ -178,6 +178,8 @@ test("anonymization clears the identifying fields", () => {
   for (const key of ["prtEmail", "mobileNumber", "discord", "ndaName", "picture"] as const) assert.equal(memberAfter[key], null, key);
   assert.equal(applicationAfter.mlName, null);
   assert.equal(applicationAfter.cvName, null);
+  // The free-text answers can name or describe the person (issue #729).
+  assert.equal(applicationAfter.customAnswers, null);
   assert.equal(userAfter.anonymizedAt, NOW.toISOString());
 });
 
@@ -193,7 +195,7 @@ test("anonymization keeps every statistics field and deletes no statistics row",
   for (const step of plan) {
     if (step.kind === "clear-user") assert.deepEqual(Object.keys(step.set).sort(), ["anonymizedAt", "email", "firstName", "lastName", "linkedin", "phone", "politoId"]);
     if (step.kind === "clear-member") assert.deepEqual(Object.keys(step.set).sort(), ["discord", "mobileNumber", "ndaName", "picture", "prtEmail"]);
-    if (step.kind === "clear-applications") assert.deepEqual(Object.keys(step.set).sort(), ["cvName", "mlName"]);
+    if (step.kind === "clear-applications") assert.deepEqual(Object.keys(step.set).sort(), ["customAnswers", "cvName", "mlName"]);
   }
   assert.ok(
     plan.every((step) =>
@@ -322,6 +324,12 @@ test("no log row about the person keeps a cleared value, the anonymizing updates
   ];
   const text = JSON.stringify(scrubbed);
   for (const value of cleared) assert.ok(!text.includes(JSON.stringify(value)), `${value} is still in the log`);
+  // No copy of the application keeps its free-text answers (issue #729).
+  assert.ok(!text.includes("Turin model rocket club"), "a custom answer is still in the log");
+  for (const row of scrubbed.filter((r) => r.tableName === "applications")) {
+    assert.ok(row.oldData === null || !("custom_answers" in row.oldData), "custom_answers is still in old_data");
+    assert.ok(row.newData === null || !("custom_answers" in row.newData), "custom_answers is still in new_data");
+  }
   // The statistics stay in the log too.
   for (const value of [user.gender, user.program, user.dateOfBirth, member.teamFrom, application.status]) {
     assert.ok(text.includes(JSON.stringify(value)), `${value} left the log`);
