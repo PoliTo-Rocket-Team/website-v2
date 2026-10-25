@@ -1,6 +1,7 @@
 import type { PageTarget } from "./content/edit-shell";
 import { cardLookFrom, type CardLook } from "./content/publish-hold";
 import { publicVersion } from "./content/versioned";
+import { featuredCard } from "./outreach";
 import { titleOf, type OutreachDraft, type PostItem } from "./outreach-types";
 
 // What the Outreach post editor's Publish hold checks (board 93e, issue #581;
@@ -9,7 +10,8 @@ import { titleOf, type OutreachDraft, type PostItem } from "./outreach-types";
 // draw, or a post going on the site for the first time, holds Publish until
 // the editor has ticked each of those pages. A featured post (issue #496)
 // shows in a Featured card on the list and on no home card, so only the list
-// is checked.
+// is checked, on what the Featured card draws. Featuring or unfeaturing a
+// post changes which card it shows in, so it clears the ticks.
 
 /** The page switch's pages (issue #294): the post's own page, then the two pages its card shows on. */
 export type PostPageId = "post" | "list" | "home";
@@ -37,19 +39,31 @@ export function postPagesToCheck(featured: boolean): readonly PostCheckedPage[] 
 }
 
 /**
- * How a post looks on the Outreach list and Home: what the list card, the
- * Featured card and the home cards draw. The title, date, summary and first
- * photo are on every one; the place is on the Featured card's eyebrow, and
- * the tags on the home cards.
+ * How a post looks on the pages its switch checks, built per card from what
+ * that card draws. A regular post is checked on the Outreach list card (the
+ * date, title, summary and first photo) and the home Track record cards
+ * (the same, plus the tags), so its look is made of those fields. A featured
+ * post is checked on the Featured card (the month and place eyebrow, title,
+ * summary and first photo), so its look is made of what that card draws.
+ * The card kind is part of the look: featuring or unfeaturing a post changes
+ * its look, so a tick given on one card never stands for the other.
  */
-export function postCardLookOf(post: OutreachDraft): CardLook {
+export function postCardLookOf(post: OutreachDraft, featured: boolean): CardLook {
   const photo = post.photos[0];
-  const drawn = [titleOf(post), post.date, post.place ?? "", post.summary.text, post.summary.phone ?? "", post.tags];
-  return cardLookFrom([...drawn, photo === undefined ? null : [photo.src, photo.alt]]);
+  const shownPhoto = photo === undefined ? null : [photo.src, photo.alt];
+  const summary = [post.summary.text, post.summary.phone ?? ""];
+  if (featured) {
+    const card = featuredCard(post);
+    return cardLookFrom(["featured", card.eyebrow, card.title, summary, shownPhoto]);
+  }
+  return cardLookFrom(["regular", titleOf(post), post.date, summary, post.tags, shownPhoto]);
 }
 
-/** The look the site shows now: the published version's, or none for a post never saved or never published. */
-export function livePostLookOf(item: PostItem | null): CardLook | null {
+/**
+ * The look the site shows now, on the card the post shows in (`featured`):
+ * the published version's, or none for a post never saved or never published.
+ */
+export function livePostLookOf(item: PostItem | null, featured: boolean): CardLook | null {
   const live = item === null ? null : publicVersion(item.version);
-  return live === null ? null : postCardLookOf(live);
+  return live === null ? null : postCardLookOf(live, featured);
 }

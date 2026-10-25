@@ -60,14 +60,28 @@ test("only the pages named are checked: one page to check lifts on one tick", ()
   assert.equal(holdsPublish(holdAfter(live, null, [tick("a")], ["a"])), false);
 });
 
-test("a further change resets the ticks, even back to a look once ticked", () => {
+test("a further change resets every tick to a cross, even back to a look once ticked", () => {
   const ticked = [edit(changed), tick("a"), tick("b")];
-  assert.equal(holdsPublish(holdAfter(live, live, [...ticked, edit(other)])), true);
-  assert.equal(holdsPublish(holdAfter(live, live, [...ticked, edit(other), edit(changed)])), true);
+  const crosses = {
+    kind: "checking",
+    pages: [
+      { page: "a", check: "unchecked" },
+      { page: "b", check: "unchecked" },
+    ],
+  };
+  assert.deepEqual(holdAfter(live, live, [...ticked, edit(other)]), crosses);
+  assert.deepEqual(holdAfter(live, live, [...ticked, edit(other), edit(changed)]), crosses);
 });
 
-test("an edit that keeps the look keeps the ticks, and putting the live look back lifts the hold", () => {
+test("an edit that keeps the look keeps the ticks, a partial set included, and putting the live look back lifts the hold", () => {
   assert.equal(holdsPublish(holdAfter(live, live, [edit(changed), tick("a"), tick("b"), edit(changed)])), false);
+  assert.deepEqual(holdAfter(live, live, [edit(changed), tick("a"), edit(changed)]), {
+    kind: "checking",
+    pages: [
+      { page: "a", check: "checked" },
+      { page: "b", check: "unchecked" },
+    ],
+  });
   assert.deepEqual(holdAfter(live, live, [edit(changed), edit(live)]), { kind: "free" });
 });
 

@@ -54,8 +54,10 @@ import { OutreachPostPanel, SECTION_OF, type PostSection } from "./outreach-post
 // #581). Publish is held (board 93e, issue #581) after a change to what the
 // post's card draws, and on a post never published, until the editor has
 // ticked the Outreach list and Home (the list alone for a featured post)
-// through the bar each of those tabs shows. The edit shell keeps the ticks;
-// the post names those pages and its card look (lib/outreach-card-look.ts).
+// through the bar each of those tabs shows. Featuring or unfeaturing the
+// post changes which card it shows in, and so clears the ticks. The edit
+// shell keeps the ticks; the post names those pages and its card look
+// (lib/outreach-card-look.ts).
 //
 // The pages themselves, drawn without the site's navbar and footer (issue
 // #495), are in outreach-post-pages.tsx.
@@ -209,8 +211,8 @@ export function OutreachPostEdit({
       pages={{ targets: postPageTargets(featuredHere), current: page, onSelect: setPage }}
       check={{
         pages: postPagesToCheck(featuredHere),
-        look: postCardLookOf(view),
-        live: livePostLookOf(item),
+        look: postCardLookOf(view, featuredHere),
+        live: livePostLookOf(item, featuredHere),
         notice: checkNotice(featuredHere),
         question: (checked) => `Is the ${titleOf(view)} card right on ${CHECKED_PLACE[checked]}?`,
       }}
