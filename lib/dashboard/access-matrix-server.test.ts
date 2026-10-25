@@ -38,7 +38,7 @@ import type { TeamStructure } from "./team-structure";
 import { applicationsModelOf } from "./applications-view";
 import { positionsModelOf } from "./positions-view";
 import type { ApplicationsPage, PositionsPage } from "./recruitment";
-import { addRows, changeRows, databaseWrites, loggedWriters, logRowsSinceSeed, tableRows } from "./access-matrix/test-database";
+import { addRows, changeRows, clearRows, databaseWrites, loggedWriters, logRowsSinceSeed, tableRows } from "./access-matrix/test-database";
 import type { OwnAlias } from "./alias-setup";
 import { isOffTeam } from "./viewer";
 import { fileReads, resetFiles } from "./access-matrix/fakes/files";
@@ -1179,6 +1179,39 @@ describe("leads and heads hold grants beyond their role, and their role access s
       ],
     );
     assert.deepEqual(heldLines(page.unit).length, 1, "one Your access line over both divisions");
+  });
+
+  test("a lead of two divisions reads each division's grants, with when and by whom each was given, from the one batched read (issue #397)", async () => {
+    const self = accountOf("division lead").memberId!;
+    const teamLeader = accountOf("team leader");
+    const itLead = accountOf("IT lead");
+    // No grant anywhere: the batched read answers an empty list, and the lead still holds their role's areas in both.
+    await seedKeeping();
+    await clearRows(scopes);
+    await addRows(roles, [{ id: 9_400, memberId: self, divisionId: IDS.division("OA"), title: "Division Lead", startedAt: "2025-10-01", type: "lead" }]);
+    const empty = await pageAs("division lead");
+    assert.deepEqual(empty.grants, [], "no grant in either led division");
+    assert.deepEqual(empty.unit.kind === "division" && empty.unit.divisions.map((d) => d.division.id), [IDS.division("MA"), IDS.division("OA")], "both led divisions");
+
+    // A grant in each led division, one given while viewing as the team leader, and one in a division the lead does not lead.
+    const given = { givenBy: teamLeader.memberId, scope: "division" };
+    await addRows(scopes, [
+      { ...given, id: 9_500, memberId: IDS.person("MA"), target: "members", accessLevel: "view", divisionId: IDS.division("MA") },
+      { ...given, id: 9_501, memberId: IDS.person("OA"), target: "positions", accessLevel: "edit", divisionId: IDS.division("OA"), givenByActingAccount: itLead.userId },
+      { ...given, id: 9_502, memberId: IDS.person("OA"), target: "orders", accessLevel: "view", divisionId: IDS.division(DM) },
+    ]);
+    await changeRows(logs, { tableName: "scopes", operation: "INSERT", recordId: "9500" }, { changedAt: "2026-10-01T09:00:00.000Z" });
+    await changeRows(logs, { tableName: "scopes", operation: "INSERT", recordId: "9501" }, { changedAt: "2026-10-02T09:00:00.000Z" });
+
+    const page = await pageAs("division lead");
+    assert.deepEqual(
+      page.grants.map((g) => ({ id: g.id, place: g.place.kind === "division" ? g.place.division.id : g.place.kind, target: g.target, level: g.level, givenOn: g.givenOn, givenBy: g.givenBy })),
+      [
+        { id: 9_501, place: IDS.division("OA"), target: "positions", level: "edit", givenOn: "2026-10-02", givenBy: `IT lead as Viewer ${teamLeader.userId}` },
+        { id: 9_500, place: IDS.division("MA"), target: "members", level: "view", givenOn: "2026-10-01", givenBy: `Viewer ${teamLeader.userId}` },
+      ],
+      "each led division's grant, newest first, with its own date and giver; none from a division not led",
+    );
   });
 
   test("a lead with no Orders grant gives Orders, at Can view or Can edit, to a member of their own division (issue #632)", async () => {

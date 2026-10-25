@@ -13,6 +13,7 @@ import { canReach, DASHBOARD_PAGES, sidebarFor, userMenuPageFor } from "./access
 import { sendRequestWith } from "./access-matrix/fakes/request-headers";
 import { restore, tableRows, testDb } from "./access-matrix/test-database";
 import type { DashboardData } from "./data";
+import { overviewOfSections } from "./overview";
 
 // View as shows a person exactly the dashboard their own session shows
 // (issue #653, Owner decision on the issue, 2026-10-24). The database is the
@@ -190,6 +191,8 @@ function readsOf(units: Awaited<ReturnType<typeof seedUnits>>): readonly (readon
     ["navCounts", (d) => d.navCounts()],
     ["hasShownApplications", (d) => d.hasShownApplications()],
     ["overview", (d) => d.overview()],
+    // The Overview page reads its sections apart (#397); joined, they are one answer to compare.
+    ["overviewSections", (d) => overviewOfSections(d.overviewSections())],
     ["myAlumni", (d) => d.myAlumni()],
     ["members(null)", (d) => d.members(null)],
     ...units.divisionIds.map((id): readonly [string, (data: DashboardData) => Promise<unknown>] => [`members(${id})`, (d) => d.members(id)]),
