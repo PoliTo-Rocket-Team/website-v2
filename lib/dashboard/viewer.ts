@@ -45,8 +45,8 @@ export function isViewerKind(value: unknown): value is ViewerKind {
  * (Owner decision, 2026-10-11, issue #238): the team leader, the operations
  * lead and the IT lead, and since issue #485 the Project Manager and the
  * Chief Engineer. Two things stay apart from full access: deciding orders is
- * the team leader's unless they gave "Approve orders" (./orders.ts), and only
- * the IT lead reaches the Activity log (./access.ts).
+ * the team leader's unless they gave "Approve orders" (./orders.ts), and of
+ * the seats only the IT lead reaches the Activity log (./access.ts).
  */
 export const FULL_ACCESS_SEATS = ["team-leader", "operations-lead", "it-lead", "project-manager", "chief-engineer"] as const;
 export type FullAccessSeat = (typeof FULL_ACCESS_SEATS)[number];
@@ -103,7 +103,10 @@ export type ViewerStanding =
       readonly seat: FullAccessSeat | null;
       readonly siteContent: boolean;
       readonly approveOrders: boolean;
+      /** Never set on a standing read from roles and scope rows: only `BreakGlassStanding` carries it. */
+      readonly breakGlass?: false;
     }
+  | BreakGlassStanding
   | { readonly kind: "department-head" | "division-lead"; readonly siteContent: boolean; readonly approveOrders: boolean }
   | {
       readonly kind: "member";
@@ -118,6 +121,22 @@ export type ViewerStanding =
       readonly siteContent: boolean;
       readonly approveOrders: boolean;
     };
+
+/**
+ * The standing the break-glass setting gives (issue #646): the team leader's
+ * seat, read from no role and no scope row, so no Content grant and no
+ * "Approve orders" row. `breakGlass` keeps it apart from a real team
+ * leader's standing in the type, so a rule can admit it without admitting
+ * the team leader's seat (issue #727), and no rule reads the environment
+ * again to tell the two apart.
+ */
+export type BreakGlassStanding = {
+  readonly kind: "operations-lead";
+  readonly seat: "team-leader";
+  readonly siteContent: false;
+  readonly approveOrders: false;
+  readonly breakGlass: true;
+};
 
 /**
  * The standings a check names by kind alone (issue #141): one of the viewer
@@ -164,6 +183,7 @@ export function standingOf(viewer: ViewerStanding): ViewerStanding {
     case "alumni":
       return { kind: viewer.kind, siteContent: false, approveOrders: false };
     case "operations-lead":
+      if (isBreakGlass(viewer)) return BREAK_GLASS_STANDING;
       return { kind: viewer.kind, seat: viewer.seat, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
     case "member":
       return {
@@ -259,16 +279,24 @@ export function isTeamLeader(viewer: ViewerStanding): boolean {
   return seatOf(viewer) === "team-leader";
 }
 
-/** The team leader's standing: full access in the team leader's seat. */
-export type TeamLeaderStanding = Extract<ViewerStanding, { readonly kind: "operations-lead" }> & { readonly seat: "team-leader" };
-
 /**
  * The standing the break-glass admin signs in with (issue #646): the team
  * leader's, read from no role and no scope row, so it holds no Content grant
  * and no "Approve orders" row; full access and the team leader's seat give
  * both rights anyway.
  */
-export const BREAK_GLASS_STANDING: TeamLeaderStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
+export const BREAK_GLASS_STANDING: BreakGlassStanding = {
+  kind: "operations-lead",
+  seat: "team-leader",
+  siteContent: false,
+  approveOrders: false,
+  breakGlass: true,
+};
+
+/** Whether the standing is the break-glass one (issue #727), never a real team leader's. */
+export function isBreakGlass(viewer: ViewerStanding): viewer is BreakGlassStanding {
+  return viewer.kind === "operations-lead" && viewer.breakGlass === true;
+}
 
 export type DashboardViewer = ViewerStanding & {
   readonly name: string;
