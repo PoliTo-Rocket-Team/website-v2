@@ -2,11 +2,11 @@ import { moveTo } from "@/lib/content/order";
 import type { BlockKind } from "@/lib/project-pages/types";
 import { blankBlock, blockPhotos, type BlockFields } from "./block-fields";
 
-// The Page blocks card of the Edit <project> panel (board 93, epic #522): the
-// page's blocks in order, each one added from the Add block menu (board
+// The page blocks of the Edit <project> panel (board 93, epics #522 and #614):
+// the page's blocks in order, each one added from the Add block menu (board
 // 93b), duplicated, hidden or shown, removed, and dragged or moved into a new
 // order. Each edit answers the new list; a block keeps its id through every
-// one of them, so the page's outline and the open block panel follow it.
+// one of them, so the page's outline and the block's open row follow it.
 
 /** The most blocks a page holds. */
 export const BLOCKS_MAX = 50;

@@ -36,24 +36,43 @@ import {
 // and the numbers of the blocks after it close up (`pageRowsOf`).
 
 /**
- * The panel's sections: the top of the page, the Page blocks card, one
- * block's panel by the block's id, and the home card. The top's Edit chip on
- * the page opens its panel, and each block's chip its block's panel.
+ * The panel's sections, each a row that opens where it sits, any of them at
+ * once (epic #614, rulings R1.2 and R2.1 on #720): the top of the page, one
+ * row per block by the block's id, and the home card. The top's Edit chip on
+ * the page opens its row, and each block's chip its block's row.
  */
-export type PanelSection = "top" | "blocks" | BlockSection | "card";
+export type PanelSection = PageSection | "card";
 
-/** The panel of one block. */
+/** The sections that edit a part of the project page, which the page outlines. */
+export type PageSection = "top" | BlockSection;
+
+/** The row of one block. */
 export type BlockSection = `block:${string}`;
 
 export const blockSection = (id: string): BlockSection => `block:${id}`;
 
-/** The block id a block's panel names; null for every other section. */
-export const blockIdOf = (section: PanelSection): string | null => (section.startsWith("block:") ? section.slice("block:".length) : null);
+/** The block id a block's row names; null for every other section. */
+export function blockIdOf(section: BlockSection): string;
+export function blockIdOf(section: PanelSection): string | null;
+export function blockIdOf(section: PanelSection): string | null {
+  return section.startsWith("block:") ? section.slice("block:".length) : null;
+}
 
-/** The sections whose panel opens in the cards' place (boards 93c and 93d): the top of the page and each block. */
-export type PlacedSection = "top" | BlockSection;
+/** The panel's rows in the order it draws them: the top of the page, each block in page order, then the card. */
+export const panelSections = (fields: ProjectFields): PanelSection[] => ["top", ...fields.blocks.map((b) => blockSection(b.id)), "card"];
 
-export const opensInPlace = (section: PanelSection): section is PlacedSection => section === "top" || blockIdOf(section) !== null;
+/**
+ * The section whose part of the page is outlined: of the open rows, the one
+ * opened last that edits the page. The card is drawn on Home and the Projects
+ * list, so it outlines nothing on the project page.
+ */
+export function outlinedSection(expanded: readonly PanelSection[]): PageSection | null {
+  for (let i = expanded.length - 1; i >= 0; i--) {
+    const section = expanded[i];
+    if (section !== "card") return section;
+  }
+  return null;
+}
 
 export type { BlockFields, CardFields, CopyFields, FactFields };
 
@@ -247,7 +266,8 @@ export function heldPhotos(fields: ProjectFields): string[] {
 }
 
 /**
- * One field the panel cannot save as it is: the section it sits in and its
+ * One field the panel cannot save as it is: the section whose row holds it,
+ * which a refused save opens, and its
  * path in the fields, such as "hero.facts.2.value" or, in a block, the block's
  * id and its path there ("blocks.gallery-2.gallery.title").
  */

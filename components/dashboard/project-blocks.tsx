@@ -3,7 +3,6 @@
 import { useId } from "react";
 import {
   ArrowDown,
-  ArrowLeft,
   ArrowUp,
   Copy,
   Eye,
@@ -36,32 +35,23 @@ import {
   type ReasonFields,
 } from "@/lib/project-content/block-fields";
 import { BLOCKS_MAX } from "@/lib/project-content/block-list";
+import type { BlockSection } from "@/lib/project-content/fields";
+import { BLOCK_LABELS } from "@/lib/project-content/page-parts";
 import { partNumber, twoDigits, type BlockKind, type TextWidth } from "@/lib/project-pages";
-import { CONTENT_FOCUS, TextField, useDragOrder } from "./content-parts";
-import { ErrorLine } from "./edit-panel";
+import { CONTENT_FOCUS, TextField, useDragOrder, type DragRow } from "./content-parts";
+import { ErrorLine, PanelSection } from "./edit-panel";
 import { PhotosSection, type PhotoUploads } from "./outreach-post-photos";
 import { GalleryEditor, LaunchesEditor, PlanEditor, VersionsEditor } from "./project-list-sections";
 import { CopyField, EditableList, type FieldErrors } from "./project-panel-parts";
 
-// The Page blocks card of the Edit <project> panel and each block's own panel
-// (boards 93, 93b and 93c, epic #522). The card lists the page's blocks in
-// order: a row per block with its grip, its kind and a one-line summary, and a
-// ⋯ menu to duplicate, hide, move or remove it; "+ Add block" opens the menu
-// of the eight kinds. Clicking a row opens the block's panel in the card's
-// place, with "Page blocks" to go back, and outlines the block on the page.
+// The page blocks' rows of the Edit <project> panel (boards 93, 93b and 93c,
+// epics #522 and #614): a row per block in page order with its grip, its kind
+// and a one-line summary, and a ⋯ menu to duplicate, hide, move or remove it;
+// "+ Add block" opens the menu of the eight kinds. A row opens the block's
+// fields where it sits, beside any other open row, and while it is the row
+// opened last the block is outlined on the page.
 // The list blocks' fields are in ./project-list-sections.tsx; the rules every
 // edit keeps are in lib/project-content/block-fields.ts and block-list.ts.
-
-export const BLOCK_LABELS: Readonly<Record<BlockKind, string>> = {
-  text: "Text",
-  facts: "Key facts",
-  photo: "Photo",
-  gallery: "Gallery",
-  versions: "Versions",
-  launches: "Launch history",
-  timeline: "Timeline",
-  points: "Numbered points",
-};
 
 /** The Add block menu's line under each kind (board 93b). */
 const BLOCK_HINTS: Readonly<Record<BlockKind, string>> = {
@@ -170,84 +160,107 @@ function BlockMenu({ name, hidden, actions }: { name: string; hidden: boolean; a
   );
 }
 
-/** The kind's label as the rows and the block panel show it: small mono capitals. */
-function KindLabel({ kind, tone = "dim" }: { kind: BlockKind; tone?: "dim" | "accent" }) {
-  return (
-    <span className={`font-mono text-[10px] uppercase tracking-[0.2em] ${tone === "accent" ? "text-accent" : "text-dim"}`}>{BLOCK_LABELS[kind]}</span>
-  );
+function HiddenTag() {
+  return <span className="rounded-full bg-white-5 px-2 py-0.5 text-[11px] font-normal text-prt-muted">Hidden</span>;
 }
 
-function HiddenTag() {
-  return <span className="rounded-full bg-white-5 px-2 py-0.5 text-[11px] text-prt-muted">Hidden</span>;
+/** The version names the blocks give, which a launch's version picker offers. */
+export function versionNamesOf(blocks: readonly BlockFields[]): string[] {
+  return blocks.flatMap((b) => (b.kind === "versions" ? b.items.map((v) => v.pill.trim()).filter((pill) => pill !== "") : []));
 }
 
 /**
- * The Page blocks card's body (board 93): the rows, the reorder hint and Add
- * block. `selected` is the block outlined on the page, whose row is outlined
- * too; `blocked` are the blocks a refused save named.
+ * One page block's row (board 93, ruling R1.2 on #720): its grip, its kind, a
+ * one-line summary and its ⋯ menu, opening the block's fields where it sits.
+ * The row is dragged by its grip, so the fields of an open row keep their
+ * text selection; `drag` is the row's part of the panel's drag order.
  */
-export function BlocksList({
-  blocks,
-  kinds,
-  selected,
-  blocked,
-  actionsOf,
-  onOpen,
-  onReorder,
-  onAdd,
+export function BlockRow({
+  block,
+  section,
+  number,
+  phone,
+  errors,
+  versionNames,
+  uploads,
+  cardRef,
+  drag,
+  actions,
+  onChange,
 }: {
-  blocks: readonly BlockFields[];
-  /** The kinds Add block offers: an engine's page has no launch history. */
-  kinds: readonly BlockKind[];
-  selected: string | null;
-  blocked: ReadonlySet<string>;
-  actionsOf: (id: string, index: number) => BlockActions;
-  onOpen: (id: string) => void;
-  onReorder: (ids: readonly string[]) => void;
-  onAdd: (kind: BlockKind) => void;
+  block: BlockFields;
+  section: BlockSection;
+  /** The block's place in the list, from 1, for the ⋯ menu's name. */
+  number: number;
+  phone: boolean;
+  /** Every field's error in the panel; the row takes its block's (`errorsIn`). */
+  errors: FieldErrors;
+  versionNames: readonly string[];
+  uploads: PhotoUploads;
+  cardRef: (node: HTMLDivElement | null) => void;
+  drag: DragRow;
+  actions: BlockActions;
+  onChange: (change: (block: BlockFields) => BlockFields) => void;
 }) {
-  const ids = blocks.map((b) => b.id);
-  const blockOf = new Map(blocks.map((b) => [b.id, b]));
-  const drag = useDragOrder(ids, onReorder);
+  const name = BLOCK_LABELS[block.kind];
+  return (
+    <div data-block-row onDragOver={drag.onDragOver} className={drag.dragged ? "opacity-50" : undefined}>
+      <PanelSection
+        value={section}
+        cardRef={cardRef}
+        title={name}
+        tag={block.hidden ? <HiddenTag /> : undefined}
+        summary={blockSummary(block)}
+        lead={
+          <span
+            draggable
+            onDragStart={(event) => {
+              drag.onDragStart(event);
+              // The whole row follows the pointer, not the grip alone.
+              const card = event.currentTarget.closest("[data-block-row]");
+              if (card !== null) event.dataTransfer.setDragImage(card, 16, 16);
+            }}
+            onDragEnd={drag.onDragEnd}
+            aria-hidden
+            className="cursor-grab text-dim"
+          >
+            <GripVertical className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </span>
+        }
+        control={<BlockMenu name={`${name} block ${number}`} hidden={block.hidden} actions={actions} />}
+      >
+        {block.hidden && (
+          <p className="rounded-[10px] bg-white-5 px-3.5 py-2.5 text-[12px] leading-relaxed text-text-2">
+            Hidden: the page leaves this block out. Its fields are kept; show it again from the ⋯ menu.
+          </p>
+        )}
+        <BlockFieldsEditor
+          block={block}
+          phone={phone}
+          errors={errorsIn(errors, block.id)}
+          versionNames={versionNames}
+          uploads={uploads}
+          onChange={onChange}
+        />
+      </PanelSection>
+    </div>
+  );
+}
+
+/**
+ * Where the block rows end: the empty page's line, the reorder hint and
+ * "+ Add block" (board 93b).
+ */
+export function BlockListEnd({ count, kinds, onAdd }: { count: number; kinds: readonly BlockKind[]; onAdd: (kind: BlockKind) => void }) {
   return (
     <>
-      {blocks.length === 0 ? (
-        <p className="text-[13px] text-prt-muted">The page has no blocks yet. Add one to start.</p>
-      ) : (
-        <ol className="space-y-2.5" {...drag.list}>
-          {drag.order.map((id, index) => {
-            const block = blockOf.get(id)!;
-            const row = drag.row(id, index);
-            const name = BLOCK_LABELS[block.kind];
-            return (
-              <li
-                key={id}
-                draggable
-                onDragStart={row.onDragStart}
-                onDragOver={row.onDragOver}
-                onDragEnd={row.onDragEnd}
-                className={`flex items-start gap-2 rounded-[10px] border bg-white-5 py-3 pl-2.5 pr-1.5 transition-colors duration-300 ease-out ${
-                  selected === id ? "border-accent" : blocked.has(id) ? "border-danger" : "border-hairline hover:border-border-strong"
-                } ${row.dragged ? "opacity-50" : ""}`}
-              >
-                <GripVertical aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-grab text-dim" strokeWidth={1.75} />
-                <button type="button" onClick={() => onOpen(id)} className={`block min-w-0 flex-1 rounded-md text-left ${CONTENT_FOCUS}`}>
-                  <span className="flex items-center gap-2">
-                    <KindLabel kind={block.kind} />
-                    {block.hidden && <HiddenTag />}
-                  </span>
-                  <span className={`mt-1 block truncate text-[14px] ${block.hidden ? "text-prt-muted" : "text-prt-text"}`}>{blockSummary(block)}</span>
-                </button>
-                <BlockMenu name={`${name} block ${index + 1}`} hidden={block.hidden} actions={actionsOf(id, index)} />
-              </li>
-            );
-          })}
-        </ol>
+      {count === 0 && <p className="px-1 text-[13px] text-prt-muted">The page has no blocks yet. Add one to start.</p>}
+      {(count > 1 || count < BLOCKS_MAX) && (
+        <div className="space-y-2.5 px-1">
+          {count > 1 && <p className="text-[12px] text-prt-muted">Drag to reorder · ⋯ to duplicate, hide or remove</p>}
+          {count < BLOCKS_MAX && <AddBlockMenu kinds={kinds} onAdd={onAdd} />}
+        </div>
       )}
-      <div className="space-y-2.5">
-        {blocks.length > 1 && <p className="text-[12px] text-prt-muted">Drag to reorder · ⋯ to duplicate, hide or remove</p>}
-        {blocks.length < BLOCKS_MAX && <AddBlockMenu kinds={kinds} onAdd={onAdd} />}
-      </div>
     </>
   );
 }
@@ -306,76 +319,10 @@ function changeOf<K extends BlockKind>(kind: K, onChange: BlockChange) {
     onChange((b) => (b.kind === kind ? (change(b as unknown as BlockFieldsOf<K>) as unknown as BlockFields) : b));
 }
 
-/** "Page blocks" over a panel opened in the cards' place (boards 93c and 93d): back to the cards. */
-export function BackToBlocks({ onBack }: { onBack: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onBack}
-      className={`inline-flex items-center gap-2 rounded-md text-[14px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text ${CONTENT_FOCUS}`}
-    >
-      <ArrowLeft aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-      Page blocks
-    </button>
-  );
-}
-
 /**
- * One block's panel (board 93c): "Page blocks" to go back, then the block's
- * card, its kind in accent with its ⋯ menu, and its fields. A hidden block
- * says so; its fields stay, and the page shows them again once it is shown.
+ * A block's fields in its row (board 93c). A hidden block's fields stay, and
+ * the page shows them again once it is shown.
  */
-export function BlockPanel({
-  block,
-  index,
-  phone,
-  errors,
-  versionNames,
-  uploads,
-  actions,
-  onChange,
-  onBack,
-}: {
-  block: BlockFields;
-  index: number;
-  phone: boolean;
-  /** The block's own errors (`errorsIn`). */
-  errors: FieldErrors;
-  /** Every version's name on the page, for a launch's Version. */
-  versionNames: readonly string[];
-  uploads: PhotoUploads;
-  actions: BlockActions;
-  onChange: BlockChange;
-  onBack: () => void;
-}) {
-  const name = BLOCK_LABELS[block.kind];
-  return (
-    <div className="space-y-4">
-      <BackToBlocks onBack={onBack} />
-      <section aria-label={`${name} block`} className="rounded-xl border border-accent px-4 pb-4 pt-3">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <span className="flex items-center gap-2">
-            <KindLabel kind={block.kind} tone="accent" />
-            {block.hidden && <HiddenTag />}
-          </span>
-          <BlockMenu name={`${name} block ${index + 1}`} hidden={block.hidden} actions={actions} />
-        </div>
-        {block.hidden && (
-          <p className="mb-4 rounded-[10px] bg-white-5 px-3.5 py-2.5 text-[12px] leading-relaxed text-text-2">
-            Hidden: the page leaves this block out. Its fields are kept; show it again from the ⋯ menu.
-          </p>
-        )}
-        <div className="space-y-4">
-          <BlockFieldsEditor block={block} phone={phone} errors={errors} versionNames={versionNames} uploads={uploads} onChange={onChange} />
-        </div>
-      </section>
-      <p className="text-[13px] leading-relaxed text-prt-muted">
-        Changes show on the page as you type. Back to Page blocks to add another block or move this one.
-      </p>
-    </div>
-  );
-}
-
 function BlockFieldsEditor({
   block,
   phone,

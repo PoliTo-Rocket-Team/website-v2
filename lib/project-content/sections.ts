@@ -3,8 +3,8 @@ import type { ProjectBlock, ProjectRecord } from "./record";
 // The blocks the fixed sections became: migration 0050 gave each section it
 // made a block the section's name as its id ("name", "versions", ...), and
 // New project does the same (./new-project.ts). The Edit <project> panel
-// edits every block alike through its Page blocks card (./block-fields.ts,
-// epic #522); these reads find a block by the section it was, as the
+// edits every block alike through its own row (./block-fields.ts, epics #522
+// and #614); these reads find a block by the section it was, as the
 // dashboard's "edited by" line names it (./edited.ts).
 
 /** Each section's block id, with the kind of block it is, in page order. */

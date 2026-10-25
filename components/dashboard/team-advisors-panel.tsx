@@ -64,13 +64,10 @@ export function TeamAdvisorsPanel({
       label="Advisors"
       title="Advisors"
       onClose={onCancel}
-      footer={
-        <>
-          <span />
-          <button type="button" onClick={onDone} className={PANEL_PRIMARY_BUTTON}>
-            Done
-          </button>
-        </>
+      footEnd={
+        <button type="button" onClick={onDone} className={PANEL_PRIMARY_BUTTON}>
+          Done
+        </button>
       }
     >
       <div role="note" className="flex gap-3 rounded-xl border border-hairline bg-ground/40 px-4 py-3.5">
@@ -238,7 +235,7 @@ function AdvisorRowItem({
             )}
           </Field>
           <StandingSwitch value={fields.standing} onChange={(standing) => set("standing", standing)} />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <Field label="LinkedIn" error={errors.linkedin}>
               {(id, describedBy) => (
                 <div className="relative">

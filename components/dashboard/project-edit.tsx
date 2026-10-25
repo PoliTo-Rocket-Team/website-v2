@@ -3,36 +3,39 @@
 import { useCallback, useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { toast } from "sonner";
 import { saveProject } from "@/app/dashboard/project-actions";
-import type { ProjectFrame, ProjectPart } from "@/components/project-page/view";
-import type { EditBlock, EditBlocks, EditDevice, PageTarget } from "@/lib/content/edit-shell";
+import type { ProjectFrame } from "@/components/project-page/view";
+import type { EditDevice, PageTarget } from "@/lib/content/edit-shell";
 import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
 import {
   blockSection,
   fieldProblems,
   fieldsAfterSave,
   fieldsOf,
-  opensInPlace,
+  outlinedSection,
   projectModelOf,
   projectViewOf,
   type PanelSection,
-  type PlacedSection,
   type ProjectFields,
 } from "@/lib/project-content/fields";
+import { editBlocksOf, outlinedPart, sectionOf, topPartOf } from "@/lib/project-content/page-parts";
 import { cardLookOf, liveLookOf, PROJECT_CHECKED_PAGES, type ProjectCheckedPage } from "@/lib/project-content/card-look";
 import { homeCardOf, lineupWith, type ProjectBlock, type ProjectPlace, type ProjectRecord } from "@/lib/project-content/record";
+import type { ProjectPart, TopPart } from "@/lib/project-pages";
 import { EditableBlock, EditShell, type BlockShape } from "./edit-shell";
-import { BLOCK_LABELS } from "./project-blocks";
 import { EditedProjectPage, ProjectCardPage, type ProjectPageId } from "./project-edit-pages";
-import { ProjectEditPanel, type FieldErrors, type PanelView } from "./project-edit-panel";
+import { ProjectEditPanel, type FieldErrors, type PanelScroll } from "./project-edit-panel";
 
 // A project on its real page under the edit shell (boards 75b, 75c and 93,
 // issue #298, epic #522). The page is drawn from the panel's fields, so it
 // changes as the editor types; Save draft and Publish on the bar send the
 // fields to the projects editor, which checks them again. Save draft leaves
-// the published page live. The top of the page and every page block is
-// outlined with its Edit chip, which opens its panel; the top or the block
-// whose panel is open, or which was picked last, is outlined strongest and
-// scrolled into view.
+// the published page live. Each part of the page is outlined round its
+// content with its name and an Edit chip, as the Edit post page's parts are
+// (epic #614): the top of the page in three parts, the title and its
+// details, the visual and the key facts, and every page block. A chip opens
+// the part's row in the panel (the one Top of the page row for the top's
+// three) and brings the part's fields into view; of the open rows, the part
+// whose row was opened last is outlined strongest and scrolled into view.
 //
 // The page switch (board 75d, issue #300): the project's own page, then Home
 // and the Projects list, each drawn from the fields being edited with the
@@ -49,32 +52,14 @@ import { ProjectEditPanel, type FieldErrors, type PanelView } from "./project-ed
 // The pages themselves, drawn without the site's navbar and footer (issue
 // #495), are in project-edit-pages.tsx.
 
-const HERO: EditBlock<PanelSection> = { name: "Top of the page", section: "top", chip: "Edit top of the page" };
-
-/** Each part of the page by its id: the top, and every block the page draws, its Edit chip opening the block's panel. */
-function editBlocksOf(record: ProjectRecord): EditBlocks<ProjectPart, PanelSection> {
-  const blocks: readonly ProjectBlock[] = record.blocks;
-  const parts = blocks.map((block): [ProjectPart, EditBlock<PanelSection>] => {
-    const name = BLOCK_LABELS[block.kind];
-    return [`block:${block.id}`, { name, section: blockSection(block.id), chip: `Edit ${name.toLowerCase()}` }];
-  });
-  return Object.fromEntries([["hero", HERO], ...parts]) as EditBlocks<ProjectPart, PanelSection>;
-}
-
 /**
- * The hero and every block but text fill the page's width, so their outlines
- * and chips sit inside them; a text block sits inside the page's column.
+ * Every part sits on the page's column, its outline round its content; the
+ * gallery's carousel runs past the column to the frame's edges, so its
+ * outline keeps to the column while the photos pass under its sides.
  */
 function shapeOf(record: ProjectRecord, part: ProjectPart): BlockShape {
   const blocks: readonly ProjectBlock[] = record.blocks;
-  const id = part === "hero" ? null : part.slice("block:".length);
-  return blocks.find((b) => b.id === id)?.kind === "text" ? "around" : "bleed";
-}
-
-/** The part of the page the panel's pick outlines: the top for the Top of the page card, else the block. */
-function partOf(section: PlacedSection | null): ProjectPart | undefined {
-  if (section === null) return undefined;
-  return section === "top" ? "hero" : section;
+  return blocks.find((b) => blockSection(b.id) === part)?.kind === "gallery" ? "column" : "around";
 }
 
 /** Brings the part into view when it becomes the selected one. */
@@ -118,23 +103,34 @@ export function ProjectEdit({
   const [refusedOnce, setRefusedOnce] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [expanded, setExpanded] = useState<PanelSection[]>([]);
-  const [scrollTo, setScrollTo] = useState<{ section: PanelSection } | null>(null);
-  const [blockView, setBlockView] = useState<PanelView>({ selected: null, open: false });
+  const [scrollTo, setScrollTo] = useState<PanelScroll | null>(null);
+  // The top part whose chip opened the Top of the page row last: outlined strongest while that row is.
+  const [topPart, setTopPart] = useState<TopPart>("title");
   const [device, setDevice] = useState<EditDevice>("desktop");
   const [page, setPage] = useState<ProjectPageId>("page");
   const [pending, startTransition] = useTransition();
 
   const view = projectViewOf(fields, opened);
 
-  const openSection = useCallback((section: PanelSection) => {
+  // An Edit chip, or a refused save, opens its row alone, as the Edit post panel does.
+  const openSection = useCallback((section: PanelSection, part: TopPart | null = null) => {
     setPanelOpen(true);
-    if (opensInPlace(section)) {
-      setBlockView({ selected: section, open: true });
-      return;
-    }
-    setBlockView((v) => ({ ...v, open: false }));
     setExpanded([section]);
-    setScrollTo({ section });
+    setScrollTo({ section, part });
+  }, []);
+  // A part's chip opens its row and brings that part's fields into view.
+  const openPart = useCallback(
+    (part: ProjectPart) => {
+      const top = topPartOf(part);
+      if (top !== null) setTopPart(top);
+      openSection(sectionOf(part), top);
+    },
+    [openSection],
+  );
+  // Add block opens its new block's row beside the open ones.
+  const openBeside = useCallback((section: PanelSection) => {
+    setExpanded((open) => [...open.filter((s) => s !== section), section]);
+    setScrollTo({ section, part: null });
   }, []);
 
   const save = (step: PublishStep) => {
@@ -159,11 +155,10 @@ export function ProjectEdit({
     });
   };
 
-  const selected = panelOpen ? partOf(blockView.selected) : undefined;
+  const selected = panelOpen ? (outlinedPart(outlinedSection(expanded), topPart) ?? undefined) : undefined;
   const outlined: ProjectFrame = (part, node) => (
     <InView when={part === selected}>
-      {/* On phones the hero leaves only 24px over its first line, so it keeps room there for its chip row. */}
-      <EditableBlock id={part} shape={shapeOf(view, part)} className={part === "hero" ? "max-md:pt-6" : ""}>
+      <EditableBlock id={part} shape={shapeOf(view, part)}>
         {node}
       </EditableBlock>
     </InView>
@@ -187,7 +182,7 @@ export function ProjectEdit({
       }}
       blocks={editBlocksOf(view)}
       selected={page === "page" ? selected : undefined}
-      onEdit={openSection}
+      onEdit={openPart}
       onDeviceChange={setDevice}
       // Beside the open panel the page keeps its desktop layout, scaled (board 93, issue #526).
       scalesDesktop
@@ -205,13 +200,9 @@ export function ProjectEdit({
             errors={refusedOnce ? errorsOf(fields) : {}}
             expanded={expanded}
             onExpandedChange={setExpanded}
+            onOpen={openBeside}
             scrollTo={scrollTo}
-            block={blockView}
-            onBlockChange={setBlockView}
-            onClose={() => {
-              setPanelOpen(false);
-              setBlockView({ selected: null, open: false });
-            }}
+            onClose={() => setPanelOpen(false)}
           />
         )
       }
