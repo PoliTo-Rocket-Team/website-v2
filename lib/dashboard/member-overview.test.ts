@@ -39,18 +39,42 @@ function personal(overview: TeamSideOverview) {
 
 const SEATS = ["member", "member with a positions grant across the team", "division lead", "department head", "team leader"] as const;
 
-test("every team seat gets the personal panels: profile with Edit profile, Your page on the site, and their division's roster", async () => {
+test("every team seat gets the personal panels: profile with Edit profile, Your page on the site, and their own unit's roster", async () => {
   const expected: Record<(typeof SEATS)[number], readonly string[]> = {
     member: ["Mission Analysis"],
     "member with a positions grant across the team": ["Mission Analysis"],
     "division lead": ["Mission Analysis"],
-    // The head's and the team leader's roles name no division, so there is no roster to show.
-    "department head": [],
+    // A head's roster is their department (issue #652).
+    "department head": ["Aerodynamics Department"],
+    // The whole team is on the Members page, so the team leader has no roster.
     "team leader": [],
   };
   for (const seat of SEATS) {
     assert.deepEqual(personal(await overviewOf(seat)), { edit: "Edit profile", checklist: "Your page on the site", rosters: expected[seat] }, seat);
   }
+});
+
+// Issue #652: a grant reaches more of the team on the Members page, never on the Overview's roster.
+test("a member with a Members grant across the team gets their own division's roster, with See all to the Members page", async () => {
+  const own = (await overviewOf("member")).rosters;
+  const granted = (await overviewOf("member with a members grant across the team")).rosters;
+  assert.deepEqual(granted.map((r) => [r.title, r.size]), own.map((r) => [r.title, r.size]));
+  assert.equal(own[0].seeAll, null, "a plain member does not reach the Members page");
+  assert.match(granted[0].seeAll?.href ?? "", /^\/dashboard\/members\?division=\d+$/);
+});
+
+// Boards 99 and 99b are the three leaders' layout (issue #652); every other seat keeps the board first.
+test("the team leader, a department head and a division lead get the leader columns; every other seat keeps the board first", async () => {
+  const layouts = [
+    ["team leader", "leader-columns"],
+    ["department head", "leader-columns"],
+    ["division lead", "leader-columns"],
+    ["member", "board-first"],
+    ["member with a positions grant across the team", "board-first"],
+    ["member with a members grant across the team", "board-first"],
+    ["operations lead", "board-first"],
+  ] as const;
+  for (const [seat, layout] of layouts) assert.equal((await overviewOf(seat)).layout, layout, seat);
 });
 
 // "Name and division" is done from the seat the viewer holds and names who sets it (issue #641).
