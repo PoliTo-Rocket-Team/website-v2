@@ -1,5 +1,5 @@
 import { inTab, leadSteps, tabCounts, type ApplicationState, type ApplicationTab, type LeadStep } from "./application-flow";
-import type { BuiltInStatusKey } from "./application-status";
+import { maySetStatus, type BuiltInStatusKey, type StatusSetterViewer } from "./application-status";
 import { departmentLabel, divisionsOf, placesPhrase, type ApplicationsPage, type PositionRef } from "./recruitment";
 
 // The Applications page as one view for every role that opens it (Owner
@@ -66,17 +66,22 @@ function introOf(page: ApplicationsPage): string {
 /**
  * The action buttons the detail panel offers on an application (issues #577
  * and #749): the buttons ./application-flow.ts gives its status, only where
- * the viewer may move it; where they may not, there are none. Change times
- * sits on the interview card beside Add to calendar (58d), so `changeTimes`
- * says whether the card offers it and the bottom bar carries the rest, the
- * outlined buttons before the main one.
+ * the viewer may move it; where they may not, there are none. A button that
+ * sets a status only the team leader sets (`maySetStatus`, board 97e) is
+ * offered to the team leader alone. Change times sits on the interview card
+ * beside Add to calendar (58d), so `changeTimes` says whether the card
+ * offers it and the bottom bar carries the rest, the outlined buttons before
+ * the main one.
  */
-export function panelStepsOf(application: { readonly state: ApplicationState; readonly canChange: boolean }): {
+export function panelStepsOf(
+  application: { readonly state: ApplicationState; readonly canChange: boolean },
+  viewer: StatusSetterViewer,
+): {
   readonly bar: readonly LeadStep[];
   readonly changeTimes: boolean;
 } {
   if (!application.canChange) return { bar: [], changeTimes: false };
-  const steps = leadSteps(application.state.status);
+  const steps = leadSteps(application.state.status).filter((s) => maySetStatus(s.sets, viewer));
   const changeTimes = application.state.status === "interview" && steps.some((s) => s.move === "offer-interview");
   const bar = changeTimes ? steps.filter((s) => s.move !== "offer-interview") : steps;
   return { bar: [...bar.filter((s) => s.emphasis === "secondary"), ...bar.filter((s) => s.emphasis === "primary")], changeTimes };

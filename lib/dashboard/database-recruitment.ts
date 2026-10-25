@@ -30,7 +30,15 @@ import {
   type JoinChange,
   type SlotTime,
 } from "./application-flow";
-import { statusListOf, statusOfStored, type BuiltInStatusKey, type ListedStatus } from "./application-status";
+import {
+  maySetStatus,
+  statusListOf,
+  statusOfStored,
+  TEAM_LEADER_ONLY_REFUSAL,
+  type BuiltInStatusKey,
+  type ListedStatus,
+  type StatusSetterViewer,
+} from "./application-status";
 import { membershipsOfRoles } from "./team";
 import { DashboardRefused } from "./data";
 import type { DashboardIdentity } from "./database";
@@ -56,7 +64,7 @@ import {
   type PositionRow,
   type PositionsPage,
 } from "./recruitment";
-import { mayChange, type DivisionUnit } from "./viewer";
+import { isTeamLeader, mayChange, type DivisionUnit } from "./viewer";
 import { mayChangePositionIn } from "./position-access";
 import {
   documentHref,
@@ -514,7 +522,8 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
   if (!readsRecruitment(identity, "applications")) throw new DashboardRefused("applications");
   const now = new Date();
   const [positions, scope, statuses] = await Promise.all([readPositionRows(identity, "applications", now), applicationsScope(identity), readStatusList()]);
-  if (positions.length === 0) return { scope, now: now.toISOString(), positions: [], statuses, applications: [] };
+  const { teamLeader } = setterViewerOf(identity);
+  if (positions.length === 0) return { scope, now: now.toISOString(), positions: [], statuses, teamLeader, applications: [] };
 
   const db = getDb();
   const cvFiles = alias(applicationFiles, "cv_files");
@@ -576,6 +585,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
     now: now.toISOString(),
     positions: positions.map((p) => ({ ref: p.ref, title: p.title, division: p.division, department: p.department })),
     statuses,
+    teamLeader,
     applications: rows.flatMap((r): ApplicationEntry[] => {
       const position = r.position_id === null ? undefined : byId.get(r.position_id);
       if (!position) return [];
@@ -713,7 +723,8 @@ const statusFor: Readonly<Record<Exclude<BuiltInStatusKey, "withdrawn">, DbStatu
  */
 export async function moveApplication(identity: Identity, applicationId: number, move: ApproverMove): Promise<WriteResult<null>> {
   const row = await readApplicationFor(identity, applicationId);
-  if (move.kind === "pick-added") return pickAddedStatus(row, move);
+  const setter = setterViewerOf(identity);
+  if (move.kind === "pick-added") return pickAddedStatus(row, move, setter);
   const [slots, standings] = await Promise.all([readSlots([row.id]), readStandings(eq(applications.id, row.id))]);
   const before = stateOf(row, slots.get(row.id) ?? []);
   const standing = standings.get(row.id) ?? NEW_APPLICANT;
@@ -724,6 +735,8 @@ export async function moveApplication(identity: Identity, applicationId: number,
   const statusKey = statusKeyAfter(row, after, move.kind === "pick" ? "pick" : "button");
   // A move that changes nothing writes nothing: Change times to the same times keeps the booking.
   if (!result.changed && statusKey === row.status_key) return written(null);
+  // Only the team leader sets "Accepted · email sent", by Mark email sent or by a hand pick (board 97e).
+  if (!maySetStatus(after.status, setter)) return refused(TEAM_LEADER_ONLY_REFUSAL);
   // Every write is guarded on the status it was read in, so two leads acting at once do not both land.
   const unchanged = and(eq(applications.id, row.id), statusAsRead(row), isNull(applications.withdrawnAt));
   const write = async (set: Partial<typeof applications.$inferInsert>) => {
@@ -780,16 +793,18 @@ export async function moveApplication(identity: Identity, applicationId: number,
  * A saved hand pick of an added status (issue #750): the application's
  * status reference becomes that status and nothing else changes, only while
  * the key names a status added under a built-in one and the application is
- * still in the status it was read in.
+ * still in the status it was read in. A status added under "Accepted · email
+ * sent" is the team leader's to set, as its parent is (`maySetStatus`).
  */
-async function pickAddedStatus(row: ReadStatus, pick: AddedPick): Promise<WriteResult<null>> {
+async function pickAddedStatus(row: ReadStatus, pick: AddedPick, setter: StatusSetterViewer): Promise<WriteResult<null>> {
   if (pick.key === row.status_key) return written(null);
   const [added] = await getDb()
-    .select({ key: applicationStatuses.key })
+    .select({ key: applicationStatuses.key, parentKey: applicationStatuses.parentKey })
     .from(applicationStatuses)
     .where(and(eq(applicationStatuses.key, pick.key), sql`${applicationStatuses.parentKey} is not null`))
     .limit(1);
   if (!added) return refused("That status is not in the list. Reload the page.");
+  if (!maySetStatus(statusOfStored({ key: added.key, parentKey: added.parentKey }), setter)) return refused(TEAM_LEADER_ONLY_REFUSAL);
   const changed = await runAuditQuery((db) =>
     db
       .update(applications)
@@ -798,6 +813,11 @@ async function pickAddedStatus(row: ReadStatus, pick: AddedPick): Promise<WriteR
       .returning({ id: applications.id }),
   );
   return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
+}
+
+/** The viewer as the status list's team-leader rule reads them (`maySetStatus`, ./application-status.ts). */
+function setterViewerOf(identity: Identity): StatusSetterViewer {
+  return { teamLeader: isTeamLeader(identity) };
 }
 
 /** A guarded application write that changed no row: another lead or the applicant moved it first. */

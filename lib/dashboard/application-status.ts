@@ -111,3 +111,46 @@ export function listedStatusOf(list: readonly ListedStatus[], status: Applicatio
   const builtIn = BUILT_IN_STATUSES.find((s) => s.key === builtInOf(status))!;
   return { status, name: status.kind === "built-in" ? builtIn.name : status.key, colour: builtIn.colour };
 }
+
+// Who sets a status ------------------------------------------------------------
+
+/**
+ * Who may set a status (owner decision on epic #588, 2026-10-25): anyone who
+ * may move the application sets every status but "Accepted · email sent",
+ * which the team leader alone sets, because the team leader sends the
+ * acceptance email with the NDA. An added status behaves like its parent, so
+ * it is set by whoever sets its parent. "Rejected · email sent" stays open to
+ * anyone who may move the application.
+ */
+export type StatusSetter = "approver" | "team-leader";
+
+/** Who sets `status`: the team leader for "Accepted · email sent" and the statuses added under it, else any approver. */
+export function setterOf(status: ApplicationStatus | BuiltInStatusKey): StatusSetter {
+  const builtIn = typeof status === "string" ? status : builtInOf(status);
+  return builtIn === "accepted_email_sent" ? "team-leader" : "approver";
+}
+
+/** The viewer as this rule reads them: whether they are the team leader. */
+export type StatusSetterViewer = { readonly teamLeader: boolean };
+
+/** Whether a viewer who may move the application may set it to `status`. */
+export function maySetStatus(status: ApplicationStatus | BuiltInStatusKey, viewer: StatusSetterViewer): boolean {
+  return setterOf(status) === "approver" || viewer.teamLeader;
+}
+
+/** What the server answers anyone else who tries to set a team-leader status. */
+export const TEAM_LEADER_ONLY_REFUSAL = "Only the team leader marks the acceptance email as sent.";
+
+/**
+ * Whether the viewer sees the do-not-email note on an application in
+ * `status` (board 97e): everyone but the team leader does while the
+ * acceptance email is to be sent or has gone out, so no second email reaches
+ * the applicant. From NDA received on, the email step is over.
+ */
+export function seesDoNotEmailNote(status: ApplicationStatus | BuiltInStatusKey, viewer: StatusSetterViewer): boolean {
+  const builtIn = typeof status === "string" ? status : builtInOf(status);
+  return !viewer.teamLeader && (builtIn === "accepted_email_to_be_sent" || builtIn === "accepted_email_sent");
+}
+
+/** The do-not-email note's words (board 97e). */
+export const DO_NOT_EMAIL_NOTE = "Don't email the applicant. The team leader sends the acceptance email with the NDA and marks it as sent.";

@@ -291,6 +291,12 @@ export type ApplicationsPage = {
   readonly positions: readonly { readonly ref: PositionRef; readonly title: string; readonly division: string; readonly department: string }[];
   /** The status list in the Status picker's order (board 97c, `statusListOf`): built-in statuses, each with its added ones under it. */
   readonly statuses: readonly ListedStatus[];
+  /**
+   * Whether the viewer is the team leader, the one who sets "Accepted · email
+   * sent" (`maySetStatus`, ./application-status.ts): the rule the move write
+   * asks, so the panel never offers that status to anyone else (board 97e).
+   */
+  readonly teamLeader: boolean;
   /** Newest first. */
   readonly applications: readonly ApplicationEntry[];
 };

@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BUILT_IN_STATUS_KEYS, BUILT_IN_STATUSES, builtInOf, isBuiltInStatusKey, statusOfStored } from "./application-status";
+import {
+  BUILT_IN_STATUS_KEYS,
+  BUILT_IN_STATUSES,
+  builtInOf,
+  isBuiltInStatusKey,
+  maySetStatus,
+  seesDoNotEmailNote,
+  statusOfStored,
+} from "./application-status";
 
 test("the built-in statuses come in the order the owner ruled (2026-10-25)", () => {
   assert.deepEqual(
@@ -50,6 +58,25 @@ test("a stored row the table's checks refuse is not a status", () => {
   assert.throws(() => statusOfStored({ key: "interview", parentKey: "new" }), /has a parent/);
   assert.throws(() => statusOfStored({ key: "second_interview", parentKey: null }), /no built-in parent/);
   assert.throws(() => statusOfStored({ key: "third_interview", parentKey: "second_interview" }), /no built-in parent/);
+});
+
+test("only the team leader sets Accepted · email sent and the statuses added under it; anyone else who moves it sets the rest (board 97e)", () => {
+  const leader = { teamLeader: true };
+  const approver = { teamLeader: false };
+  for (const key of BUILT_IN_STATUS_KEYS) {
+    assert.equal(maySetStatus(key, leader), true, key);
+    assert.equal(maySetStatus(key, approver), key !== "accepted_email_sent", key);
+  }
+  assert.equal(maySetStatus({ kind: "added", key: "courier_sent", parent: "accepted_email_sent" }, approver), false);
+  assert.equal(maySetStatus({ kind: "added", key: "courier_sent", parent: "accepted_email_sent" }, leader), true);
+  assert.equal(maySetStatus({ kind: "added", key: "second_interview", parent: "interview" }, approver), true);
+});
+
+test("everyone but the team leader sees the do-not-email note while the acceptance email is to be sent or has gone out", () => {
+  const noted = BUILT_IN_STATUS_KEYS.filter((key) => seesDoNotEmailNote(key, { teamLeader: false }));
+  assert.deepEqual(noted, ["accepted_email_to_be_sent", "accepted_email_sent"]);
+  assert.ok(BUILT_IN_STATUS_KEYS.every((key) => !seesDoNotEmailNote(key, { teamLeader: true })));
+  assert.equal(seesDoNotEmailNote({ kind: "added", key: "waiting_for_tl", parent: "accepted_email_to_be_sent" }, { teamLeader: false }), true);
 });
 
 test("only the ten keys are built-in", () => {

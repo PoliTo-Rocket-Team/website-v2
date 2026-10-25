@@ -14,7 +14,9 @@ import {
   ExternalLink,
   FileCheck2,
   FileText,
+  Lock,
   LogOut,
+  Mail,
   MailCheck,
   Signature,
   SlidersHorizontal,
@@ -52,7 +54,17 @@ import {
   type LeadStep,
   type Pronouns,
 } from "@/lib/dashboard/application-flow";
-import { listedStatusOf, sameStatus, type ApplicationStatus, type BuiltInStatusKey, type ListedStatus } from "@/lib/dashboard/application-status";
+import {
+  DO_NOT_EMAIL_NOTE,
+  listedStatusOf,
+  maySetStatus,
+  sameStatus,
+  seesDoNotEmailNote,
+  type ApplicationStatus,
+  type BuiltInStatusKey,
+  type ListedStatus,
+  type StatusSetterViewer,
+} from "@/lib/dashboard/application-status";
 import { applicantSections, type ApplicantField } from "@/lib/dashboard/applicant-details";
 import {
   APPLICATION_FILTER_LABELS,
@@ -363,6 +375,7 @@ export function ApplicationsView({
       <DetailPanel
         application={chosen}
         statuses={page.statuses}
+        viewer={{ teamLeader: page.teamLeader }}
         now={page.now}
         lead={lead}
         pending={pending}
@@ -391,6 +404,7 @@ type Move = (application: ApplicationEntry, step: ApproverMove, done?: () => voi
 function DetailPanel({
   application,
   statuses,
+  viewer,
   now,
   lead,
   pending,
@@ -399,6 +413,7 @@ function DetailPanel({
 }: {
   application: ApplicationEntry | null;
   statuses: readonly ListedStatus[];
+  viewer: StatusSetterViewer;
   now: string;
   lead: string;
   pending: boolean;
@@ -413,7 +428,7 @@ function DetailPanel({
           onInteractOutside={(event) => event.preventDefault()}
           className={`fixed inset-0 z-40 flex flex-col bg-ground text-prt-text focus:outline-none md:left-auto ${PANEL_WIDTH} md:border-l md:border-hairline motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=open]:duration-200`}
         >
-          {application && <Detail key={application.id} application={application} statuses={statuses} now={now} lead={lead} pending={pending} onMove={onMove} />}
+          {application && <Detail key={application.id} application={application} statuses={statuses} viewer={viewer} now={now} lead={lead} pending={pending} onMove={onMove} />}
         </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>
@@ -440,6 +455,7 @@ function verb(they: Pronouns, singular: string, plural: string): string {
 function Detail({
   application: a,
   statuses,
+  viewer,
   now,
   lead,
   pending,
@@ -447,6 +463,8 @@ function Detail({
 }: {
   application: ApplicationEntry;
   statuses: readonly ListedStatus[];
+  /** Who the viewer is to the status list's team-leader rule (board 97e). */
+  viewer: StatusSetterViewer;
   now: string;
   lead: string;
   pending: boolean;
@@ -458,7 +476,7 @@ function Detail({
   const first = firstNameOf(a.applicant.name);
   const they = pronounsOf(a.applicant.gender);
   const unit = divisionLabel(a.position.division);
-  const steps = panelStepsOf(a);
+  const steps = panelStepsOf(a, viewer);
   const locked = draft !== null;
   const close = () => setAsking(null);
   // Confirm join sets these to "Accepted for another position" (ADR 0011, amendment of 2026-10-25).
@@ -522,12 +540,22 @@ function Detail({
           current={a.status}
           draft={draft}
           canChange={a.canChange}
+          maySet={(status) => maySetStatus(status, viewer)}
           pending={pending}
           hint={unsavedPickHint(steps)}
           onPick={pick}
           onSave={save}
           onCancel={() => setDraft(null)}
         />
+        {seesDoNotEmailNote(a.status, viewer) && (
+          <p
+            role="note"
+            className="mt-3 flex gap-2.5 rounded-lg border border-warning/40 bg-warning-soft px-3.5 py-2.5 text-[12px] leading-snug text-warning"
+          >
+            <Mail aria-hidden className="mt-px h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+            {DO_NOT_EMAIL_NOTE}
+          </p>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-6 pt-4 md:px-7 md:py-5">
@@ -1052,6 +1080,7 @@ function StatusPicker({
   current,
   draft,
   canChange,
+  maySet,
   pending,
   hint,
   onPick,
@@ -1062,6 +1091,8 @@ function StatusPicker({
   current: ApplicationStatus;
   draft: ApplicationStatus | null;
   canChange: boolean;
+  /** Whether the viewer may set a status: one only the team leader sets shows locked to anyone else (board 97e). */
+  maySet: (status: ApplicationStatus) => boolean;
   pending: boolean;
   hint: string;
   onPick: (status: ApplicationStatus) => void;
@@ -1109,22 +1140,34 @@ function StatusPicker({
                   if (picked) onPick(picked.status);
                 }}
               >
-                {statuses.map((s) => (
-                  <DropdownMenuPrimitive.RadioItem
-                    key={statusValue(s.status)}
-                    value={statusValue(s.status)}
-                    className={`flex h-[30px] cursor-pointer items-center gap-2.5 rounded-lg pr-2.5 text-[13px] text-text-2 outline-none transition-colors data-[highlighted]:bg-white-5 data-[state=checked]:bg-white-5 data-[highlighted]:text-prt-text data-[state=checked]:text-prt-text ${
-                      s.status.kind === "added" ? "pl-[30px]" : "pl-2.5"
-                    }`}
-                  >
-                    <StatusDot colour={s.colour} />
-                    <span className="min-w-0 flex-1 truncate">{s.name}</span>
-                    {s.status.kind === "added" && <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.2em] text-dim">Added</span>}
-                    <DropdownMenuPrimitive.ItemIndicator>
-                      <Check aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={2} />
-                    </DropdownMenuPrimitive.ItemIndicator>
-                  </DropdownMenuPrimitive.RadioItem>
-                ))}
+                {statuses.map((s) => {
+                  // A status only the team leader sets cannot be picked by anyone else, unless it is already the current one.
+                  const locked = !maySet(s.status) && !sameStatus(s.status, current);
+                  return (
+                    <DropdownMenuPrimitive.RadioItem
+                      key={statusValue(s.status)}
+                      value={statusValue(s.status)}
+                      disabled={locked}
+                      className={`flex h-[30px] cursor-pointer items-center gap-2.5 rounded-lg pr-2.5 text-[13px] text-text-2 outline-none transition-colors data-[highlighted]:bg-white-5 data-[state=checked]:bg-white-5 data-[highlighted]:text-prt-text data-[state=checked]:text-prt-text data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 ${
+                        s.status.kind === "added" ? "pl-[30px]" : "pl-2.5"
+                      }`}
+                    >
+                      <StatusDot colour={s.colour} />
+                      <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                      {locked ? (
+                        <span className="flex shrink-0 items-center gap-1.5 font-mono text-[9px] tracking-[0.1em] text-dim">
+                          <Lock aria-hidden className="h-3 w-3" strokeWidth={1.75} />
+                          Team leader<span className="sr-only"> only</span>
+                        </span>
+                      ) : (
+                        s.status.kind === "added" && <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.2em] text-dim">Added</span>
+                      )}
+                      <DropdownMenuPrimitive.ItemIndicator>
+                        <Check aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={2} />
+                      </DropdownMenuPrimitive.ItemIndicator>
+                    </DropdownMenuPrimitive.RadioItem>
+                  );
+                })}
               </DropdownMenuPrimitive.RadioGroup>
               <DropdownMenuPrimitive.Separator className="mx-1 my-1.5 h-px bg-hairline" />
               {/* The Statuses editor (board 97d) is issue #752: until it lands the entry is shown and cannot be opened. */}
