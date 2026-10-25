@@ -1,6 +1,7 @@
 import "server-only";
 
-import { and, asc, count, desc, eq, inArray, isNull, max, or, sql, type SQL } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, max, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
@@ -31,12 +32,17 @@ import {
   type SlotTime,
 } from "./application-flow";
 import {
+  addedStatusKey,
+  deleteRefusal,
+  isBuiltInStatusKey,
+  managesStatusList,
   maySetStatus,
   statusListOf,
   statusOfStored,
   TEAM_LEADER_ONLY_REFUSAL,
   type BuiltInStatusKey,
   type ListedStatus,
+  type StatusListChange,
   type StatusSetterViewer,
 } from "./application-status";
 import { membershipsOfRoles } from "./team";
@@ -474,6 +480,7 @@ function otherApplicationsOf(row: { id: number; user_id: string | null }, { all,
       department: a.dept_name,
       division: a.division_name,
       status: stateOf(a, slots.get(a.id) ?? []).status,
+      listStatus: statusOfStored({ key: a.status_key, parentKey: a.status_parent_key }),
     }));
 }
 
@@ -518,12 +525,34 @@ async function readStatusList(): Promise<ListedStatus[]> {
   return statusListOf(rows);
 }
 
+/**
+ * How many applications use each status, by its key, anywhere on the team:
+ * the counts the Statuses editor shows and the in-use rule its delete asks
+ * (`deleteRefusal`). An application with no status reference counts as New.
+ */
+async function readStatusUses(): Promise<Record<string, number>> {
+  const rows = await getDb()
+    .select({ key: sql<string>`coalesce(${applications.statusKey}, 'new')`, uses: count() })
+    .from(applications)
+    .groupBy(sql`1`);
+  return Object.fromEntries(rows.map((r) => [r.key, Number(r.uses)]));
+}
+
+/**
+ * Whether the viewer manages the status list (`managesStatusList`): they may
+ * move an application on at least one of the positions they read
+ * Applications on, by the rule every application move asks.
+ */
+function managesStatuses(identity: Identity, positions: readonly ReadPosition[]): boolean {
+  return managesStatusList(positions, (p) => mayChangePositionIn(identity, "applications", p.unit));
+}
+
 async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
   if (!readsRecruitment(identity, "applications")) throw new DashboardRefused("applications");
   const now = new Date();
   const [positions, scope, statuses] = await Promise.all([readPositionRows(identity, "applications", now), applicationsScope(identity), readStatusList()]);
   const { teamLeader } = setterViewerOf(identity);
-  if (positions.length === 0) return { scope, now: now.toISOString(), positions: [], statuses, teamLeader, applications: [] };
+  if (positions.length === 0) return { scope, now: now.toISOString(), positions: [], statuses, teamLeader, statusUses: null, applications: [] };
 
   const db = getDb();
   const cvFiles = alias(applicationFiles, "cv_files");
@@ -531,7 +560,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
   // The list, its applicants' other applications and interview times, and their standings, all in one round
   // trip after the positions: two round trips for the page, not four (issue #397).
   const listed = listedOn(positions.map((p) => p.id));
-  const [rows, others, standings] = await Promise.all([
+  const [rows, others, standings, statusUses] = await Promise.all([
     db
       .select({
         id: applications.id,
@@ -577,6 +606,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
       .orderBy(desc(applications.appliedAt), desc(applications.id)),
     readApplicantsApplications(listed),
     readStandings(listed),
+    managesStatuses(identity, positions) ? readStatusUses() : null,
   ]);
   const { slots } = others;
   const byId = new Map(positions.map((p) => [p.id, p]));
@@ -586,6 +616,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
     positions: positions.map((p) => ({ ref: p.ref, title: p.title, division: p.division, department: p.department })),
     statuses,
     teamLeader,
+    statusUses,
     applications: rows.flatMap((r): ApplicationEntry[] => {
       const position = r.position_id === null ? undefined : byId.get(r.position_id);
       if (!position) return [];
@@ -815,6 +846,104 @@ async function pickAddedStatus(row: ReadStatus, pick: AddedPick, setter: StatusS
   return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
 }
 
+// The status list ---------------------------------------------------------------
+
+/** A guarded status list write that changed no row: someone else changed the list first. */
+const LIST_CHANGED = "The status list changed. Reload the page.";
+
+/**
+ * One change in the Statuses editor (board 97d, issue #752): add a status
+ * under a built-in parent, rename and recolour any status, or delete an added
+ * one no application uses. Only someone who may move an application manages
+ * the list (`managesStatusList`), by the rule the page asks before it offers
+ * the editor; anyone else is refused before anything is read or written.
+ */
+async function changeStatusList(identity: Identity, change: StatusListChange): Promise<WriteResult<null>> {
+  if (!readsRecruitment(identity, "applications")) throw new DashboardRefused("the status list");
+  if (!managesStatuses(identity, await readPositionRows(identity, "applications", new Date()))) throw new DashboardRefused("the status list");
+  switch (change.kind) {
+    case "add":
+      return addStatus(change);
+    case "edit":
+      return editStatus(change);
+    case "delete":
+      return deleteStatus(change.key);
+  }
+}
+
+/** A new status, last under its built-in parent. */
+async function addStatus({ name, colour, parent }: Extract<StatusListChange, { kind: "add" }>): Promise<WriteResult<null>> {
+  const key = addedStatusKey(name, randomUUID().slice(0, 8));
+  const last = sql<number>`(select coalesce(max(s.sort_order), 0) + 1 from ${applicationStatuses} s where s.parent_key = ${parent})`;
+  const added = await runAuditQuery((db) =>
+    db.insert(applicationStatuses).values({ key, name, colour, parentKey: parent, sortOrder: last }).onConflictDoNothing().returning({ key: applicationStatuses.key }),
+  );
+  return added.length === 0 ? refused(LIST_CHANGED) : written(null);
+}
+
+/**
+ * Rename and recolour: a built-in status and an added one alike. The write is
+ * guarded on the name and colour the editor read, so of two people editing
+ * one status at once the later is told the list changed instead of silently
+ * undoing the earlier.
+ */
+async function editStatus({ key, was, name, colour }: Extract<StatusListChange, { kind: "edit" }>): Promise<WriteResult<null>> {
+  const changed = await runAuditQuery((db) =>
+    db
+      .update(applicationStatuses)
+      .set({ name, colour })
+      .where(and(eq(applicationStatuses.key, key), eq(applicationStatuses.name, was.name), eq(applicationStatuses.colour, was.colour)))
+      .returning({ key: applicationStatuses.key }),
+  );
+  return changed.length === 0 ? refused(LIST_CHANGED) : written(null);
+}
+
+/**
+ * Postgres' answers when a foreign key refuses a delete: restrict_violation
+ * for an `on delete restrict` key, as `applications.status_key` is, and
+ * foreign_key_violation for a `no action` one.
+ */
+const FOREIGN_KEY_REFUSALS: ReadonlySet<unknown> = new Set(["23001", "23503"]);
+
+function isForeignKeyRefusal(error: unknown): boolean {
+  for (let e = error; e instanceof Error; e = e.cause) {
+    if (FOREIGN_KEY_REFUSALS.has((e as { code?: unknown }).code)) return true;
+  }
+  return false;
+}
+
+/**
+ * Delete an added status, only while no application uses it (`deleteRefusal`).
+ * The delete itself is guarded on both, so an application moved to the status
+ * a moment earlier keeps it. One moved in while the delete runs is past the
+ * guard's reading, and the table's foreign key refuses the delete instead:
+ * that is the same in-use answer, read again below, not an error.
+ */
+async function deleteStatus(key: string): Promise<WriteResult<null>> {
+  if (isBuiltInStatusKey(key)) return refused(deleteRefusal({ kind: "built-in", key }, 0)!);
+  const deleted = await runAuditQuery((db) =>
+    db
+      .delete(applicationStatuses)
+      .where(
+        and(
+          eq(applicationStatuses.key, key),
+          isNotNull(applicationStatuses.parentKey),
+          sql`not exists (select 1 from ${applications} a where a.status_key = ${key})`,
+        ),
+      )
+      .returning({ key: applicationStatuses.key }),
+  ).catch((error: unknown) => {
+    if (isForeignKeyRefusal(error)) return [];
+    throw error;
+  });
+  if (deleted.length > 0) return written(null);
+  const [row] = await getDb().select({ parentKey: applicationStatuses.parentKey }).from(applicationStatuses).where(eq(applicationStatuses.key, key)).limit(1);
+  if (!row) return refused(LIST_CHANGED);
+  const [{ uses }] = await getDb().select({ uses: count() }).from(applications).where(eq(applications.statusKey, key));
+  const status = statusOfStored({ key, parentKey: row.parentKey });
+  return refused(deleteRefusal(status, Number(uses)) ?? LIST_CHANGED);
+}
+
 /** The viewer as the status list's team-leader rule reads them (`maySetStatus`, ./application-status.ts). */
 function setterViewerOf(identity: Identity): StatusSetterViewer {
   return { teamLeader: isTeamLeader(identity) };
@@ -1006,5 +1135,6 @@ export function databaseRecruitmentPages(identity: Identity) {
     createPosition: (input: unknown) => createPosition(identity, input),
     editPosition: (id: number, input: unknown) => editPosition(identity, id, input),
     moveApplication: (id: number, move: ApproverMove) => moveApplication(identity, id, move),
+    changeStatusList: (change: StatusListChange) => changeStatusList(identity, change),
   };
 }

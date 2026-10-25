@@ -55,6 +55,7 @@ import {
   type Pronouns,
 } from "@/lib/dashboard/application-flow";
 import {
+  builtInOf,
   DO_NOT_EMAIL_NOTE,
   listedStatusOf,
   maySetStatus,
@@ -99,6 +100,7 @@ import { InterviewDialog } from "./interview-dialog";
 import { PANEL } from "./panel";
 import { ICON_BUTTON, PhoneTopBar } from "./shell";
 import { StatusPill, StatusTag } from "./stage-pill";
+import { StatusesEditor } from "./statuses-editor";
 
 // The Applications page (Dashboard v2 boards 58b, 58 to 58i and 97 to 97e,
 // and phone boards 58m and 58d-m, issues #171, #749 and #750): the status
@@ -326,7 +328,7 @@ export function ApplicationsView({
                   <>
                     <span className="truncate text-[13px] text-text-2">{studiesLine(a.applicant.degree, a.applicant.year)}</span>
                     <span className="min-w-0">
-                      <StatusPill state={a.state} />
+                      <StatusPill state={a.state} listed={listedStatusOf(page.statuses, a.status)} />
                     </span>
                     <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-prt-muted">
                       {a.documents.length > 0 && <FileText aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />}
@@ -360,10 +362,10 @@ export function ApplicationsView({
               </span>
               <span className="shrink-0 pt-0.5">
                 <span className="md:hidden">
-                  <StatusPill state={a.state} short />
+                  <StatusPill state={a.state} listed={listedStatusOf(page.statuses, a.status)} short />
                 </span>
                 <span className="hidden md:inline">
-                  <StatusPill state={a.state} />
+                  <StatusPill state={a.state} listed={listedStatusOf(page.statuses, a.status)} />
                 </span>
               </span>
             </button>
@@ -375,6 +377,7 @@ export function ApplicationsView({
       <DetailPanel
         application={chosen}
         statuses={page.statuses}
+        statusUses={page.statusUses}
         viewer={{ teamLeader: page.teamLeader }}
         now={page.now}
         lead={lead}
@@ -404,6 +407,7 @@ type Move = (application: ApplicationEntry, step: ApproverMove, done?: () => voi
 function DetailPanel({
   application,
   statuses,
+  statusUses,
   viewer,
   now,
   lead,
@@ -413,6 +417,7 @@ function DetailPanel({
 }: {
   application: ApplicationEntry | null;
   statuses: readonly ListedStatus[];
+  statusUses: ApplicationsPage["statusUses"];
   viewer: StatusSetterViewer;
   now: string;
   lead: string;
@@ -428,7 +433,19 @@ function DetailPanel({
           onInteractOutside={(event) => event.preventDefault()}
           className={`fixed inset-0 z-40 flex flex-col bg-ground text-prt-text focus:outline-none md:left-auto ${PANEL_WIDTH} md:border-l md:border-hairline motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=open]:duration-200`}
         >
-          {application && <Detail key={application.id} application={application} statuses={statuses} viewer={viewer} now={now} lead={lead} pending={pending} onMove={onMove} />}
+          {application && (
+            <Detail
+              key={application.id}
+              application={application}
+              statuses={statuses}
+              statusUses={statusUses}
+              viewer={viewer}
+              now={now}
+              lead={lead}
+              pending={pending}
+              onMove={onMove}
+            />
+          )}
         </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>
@@ -455,6 +472,7 @@ function verb(they: Pronouns, singular: string, plural: string): string {
 function Detail({
   application: a,
   statuses,
+  statusUses,
   viewer,
   now,
   lead,
@@ -463,6 +481,8 @@ function Detail({
 }: {
   application: ApplicationEntry;
   statuses: readonly ListedStatus[];
+  /** Null where the viewer does not manage the status list: "Manage statuses…" is not offered (issue #752). */
+  statusUses: ApplicationsPage["statusUses"];
   /** Who the viewer is to the status list's team-leader rule (board 97e). */
   viewer: StatusSetterViewer;
   now: string;
@@ -471,6 +491,8 @@ function Detail({
   onMove: Move;
 }) {
   const [asking, setAsking] = useState<Asking>(null);
+  // The Statuses editor (board 97d), opened from "Manage statuses…" in the Status picker.
+  const [managing, setManaging] = useState(false);
   // A hand pick in the Status picker, not saved yet (board 97b): it locks every action button until Save or Cancel.
   const [draft, setDraft] = useState<ApplicationStatus | null>(null);
   const first = firstNameOf(a.applicant.name);
@@ -546,7 +568,11 @@ function Detail({
           onPick={pick}
           onSave={save}
           onCancel={() => setDraft(null)}
+          onManage={statusUses === null ? null : () => setManaging(true)}
         />
+        {statusUses !== null && (
+          <StatusesEditor open={managing} onOpenChange={setManaging} statuses={statuses} uses={statusUses} defaultParent={builtInOf(a.status)} />
+        )}
         {seesDoNotEmailNote(a.status, viewer) && (
           <p
             role="note"
@@ -568,7 +594,7 @@ function Detail({
             <ul className="flex flex-col gap-2.5">
               {a.otherApplications.map((o, i) => (
                 <li key={i}>
-                  <OtherCard other={o} />
+                  <OtherCard other={o} listed={listedStatusOf(statuses, o.listStatus)} />
                 </li>
               ))}
             </ul>
@@ -966,7 +992,7 @@ function downloadIcs(a: ApplicationEntry, slot: SlotTime) {
   URL.revokeObjectURL(url);
 }
 
-function OtherCard({ other }: { other: OtherApplication }) {
+function OtherCard({ other, listed }: { other: OtherApplication; listed: ListedStatus }) {
   const reached = progressOf(other.status);
   return (
     <div className="rounded-xl border border-hairline bg-panel/60 px-4 py-3">
@@ -977,7 +1003,7 @@ function OtherCard({ other }: { other: OtherApplication }) {
             {other.department} · {other.division}
           </p>
         </div>
-        <StatusTag status={other.status} />
+        <StatusTag listed={listed} />
       </div>
       {reached !== null && (
         <div aria-hidden="true" className="mt-3 hidden grid-cols-4 gap-1.5 md:grid">
@@ -1070,10 +1096,10 @@ const STATUS_LABEL = "w-14 shrink-0 font-mono text-[10px] uppercase tracking-[0.
  * The Status picker at the head of the panel (boards 97, 97b, 97c, issue
  * #750): the current status with its colour, opening the whole list, the ten
  * built-in statuses with the added ones under their parent, then "Manage
- * statuses…" (the Statuses editor is issue #752). Any status can be picked.
- * A pick is a draft: Save and Cancel sit beside it and the line under it says
- * which action buttons wait. Where the viewer may not move the application
- * it only shows the status.
+ * statuses…", which opens the Statuses editor (board 97d, issue #752). Any
+ * status can be picked. A pick is a draft: Save and Cancel sit beside it and
+ * the line under it says which action buttons wait. Where the viewer may not
+ * move the application it only shows the status.
  */
 function StatusPicker({
   statuses,
@@ -1086,6 +1112,7 @@ function StatusPicker({
   onPick,
   onSave,
   onCancel,
+  onManage,
 }: {
   statuses: readonly ListedStatus[];
   current: ApplicationStatus;
@@ -1098,6 +1125,8 @@ function StatusPicker({
   onPick: (status: ApplicationStatus) => void;
   onSave: () => void;
   onCancel: () => void;
+  /** Opens the Statuses editor; null where the viewer does not manage the status list. */
+  onManage: (() => void) | null;
 }) {
   const shown = listedStatusOf(statuses, draft ?? current);
   if (!canChange) {
@@ -1169,15 +1198,18 @@ function StatusPicker({
                   );
                 })}
               </DropdownMenuPrimitive.RadioGroup>
-              <DropdownMenuPrimitive.Separator className="mx-1 my-1.5 h-px bg-hairline" />
-              {/* The Statuses editor (board 97d) is issue #752: until it lands the entry is shown and cannot be opened. */}
-              <DropdownMenuPrimitive.Item
-                disabled
-                className="flex h-[30px] items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-text-2 outline-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-60"
-              >
-                <SlidersHorizontal aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-                Manage statuses…
-              </DropdownMenuPrimitive.Item>
+              {onManage && (
+                <>
+                  <DropdownMenuPrimitive.Separator className="mx-1 my-1.5 h-px bg-hairline" />
+                  <DropdownMenuPrimitive.Item
+                    onSelect={onManage}
+                    className="flex h-[30px] cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-text-2 outline-none transition-colors data-[highlighted]:bg-white-5 data-[highlighted]:text-prt-text"
+                  >
+                    <SlidersHorizontal aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                    Manage statuses…
+                  </DropdownMenuPrimitive.Item>
+                </>
+              )}
             </DropdownMenuPrimitive.Content>
           </DropdownMenuPortal>
         </DropdownMenu>
