@@ -38,6 +38,10 @@ Decided 2026-10-10 by the project owner. Approval: https://github.com/PoliTo-Roc
 
 Followed today: `deleteAccount` in [lib/dashboard/database-self.ts](../lib/dashboard/database-self.ts) closes the sign-in, keeps the `users` row and records `deleted_at`; a daily job ([lib/dashboard/anonymize.ts](../lib/dashboard/anonymize.ts)) anonymizes the account once a year has passed; the dialog asks the person to type DELETE ([.patterns/confirm-decisive-actions.md](../.patterns/confirm-decisive-actions.md)).
 
+## Amendment, 2026-10-25
+
+Owner decision, 2026-10-25, on issue #729 (https://github.com/PoliTo-Rocket-Team/website-v2/issues/729#issuecomment-6400948160): the free-text answers to a position's questions are not statistics data. Rule 2 is narrowed: the yearly anonymization of a deleted account also clears the person's free-text application answers (`applications.custom_answers`) and their copies in the audit log. The role, dates and outcome of each application stay for statistics. The Privacy Policy wording that anonymized data no longer identifies the person stays as it is. The rest of this record is unchanged.
+
 ## Records
 
 no vocabulary impact
