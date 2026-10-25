@@ -23,6 +23,7 @@ import {
   type ViewAsEvent,
 } from "@/lib/dashboard/activity-log";
 import { pageCount, pageOf } from "@/lib/dashboard/team";
+import { cn } from "@/lib/utils";
 import { FilterMenu } from "./controls";
 import { Pager, TH } from "./directory";
 import { PageHeader } from "./page-header";
@@ -35,8 +36,19 @@ import { SearchField } from "./search-field";
 // A change made during View as shows "<seat title> as <person>" with the
 // acting person under it; View as starts, stops and timeouts are rows of
 // their own. Props in, nothing fetched, nothing written.
+//
+// On a desktop the 12 rows, the column header and the pager fit a 1440 x 900
+// screen as on the board: the filters sit 16px under the intro, the table 12px
+// under them, the header is 36px and every row is 52px, one-line and two-line
+// Who alike, with a long change cut to one line (its full text on hover).
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+
+/** The column header, 36px tall on the board, so the shared header loses some height. */
+const HEAD = cn(TH, "py-2.5");
+
+/** One row height for every row (board 101), whatever its Who holds. */
+const CELL = "px-5 py-2 align-middle";
 
 const VIEW_AS_ICONS: Readonly<Record<ViewAsEvent, LucideIcon>> = { start: Eye, stop: EyeOff, timeout: TimerOff };
 
@@ -64,7 +76,7 @@ export function ActivityLogView({ log }: { log: ActivityLogPage }) {
         phone="bar"
       />
 
-      <div className="mt-4 flex flex-col gap-3 md:mt-6 md:flex-row md:flex-wrap md:items-center md:gap-2.5">
+      <div className="mt-4 flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:gap-2.5">
         <SearchField value={filters.query} onChange={(query) => narrow({ query })} placeholder="Search people or changes" className="md:w-[300px]" />
         <div className="flex flex-wrap items-center gap-2">
           <div role="group" aria-label="Which changes" className="flex items-center gap-2">
@@ -121,35 +133,35 @@ export function ActivityLogView({ log }: { log: ActivityLogPage }) {
         <Pager page={current} last={last} onPage={setPage} />
       </div>
 
-      <section className={`${PANEL} mt-5 hidden overflow-hidden md:block`}>
+      <section className={`${PANEL} mt-3 hidden overflow-hidden md:block`}>
         <table className="w-full table-fixed border-collapse">
           <thead className="border-b border-hairline">
             <tr>
-              <th scope="col" className={`${TH} w-[150px] lg:w-[160px]`}>
+              <th scope="col" className={`${HEAD} w-[150px] lg:w-[160px]`}>
                 When
               </th>
-              <th scope="col" className={`${TH} w-[30%] lg:w-[25%]`}>
+              <th scope="col" className={`${HEAD} w-[30%] lg:w-[25%]`}>
                 Who
               </th>
-              <th scope="col" className={TH}>
+              <th scope="col" className={HEAD}>
                 Change
               </th>
-              <th scope="col" className={`${TH} w-[150px]`}>
+              <th scope="col" className={`${HEAD} w-[150px]`}>
                 Area
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-hairline">
             {rows.map((entry) => (
-              <tr key={entry.key} className="transition-colors duration-300 ease-out hover:bg-white-5">
-                <td className="whitespace-nowrap px-5 py-2.5 align-middle text-[13px] tabular-nums text-prt-muted">{whenLabel(entry.at, now)}</td>
-                <td className="px-5 py-2.5 align-middle">
+              <tr key={entry.key} className="h-[52px] transition-colors duration-300 ease-out hover:bg-white-5">
+                <td className={`${CELL} whitespace-nowrap text-[13px] tabular-nums text-prt-muted`}>{whenLabel(entry.at, now)}</td>
+                <td className={CELL}>
                   <Who who={entry.who} />
                 </td>
-                <td className="px-5 py-2.5 align-middle">
-                  <Change entry={entry} />
+                <td className={CELL}>
+                  <Change entry={entry} oneLine />
                 </td>
-                <td className="px-5 py-2.5 align-middle">
+                <td className={CELL}>
                   <AreaPill area={areaOf(entry.change)} />
                 </td>
               </tr>
@@ -189,19 +201,23 @@ function Who({ who }: { who: ActivityWho }) {
   const [line, under] = who.kind === "self" ? [who.name, who.title] : [`${who.actingTitle} as ${who.name}`, `by ${who.actingName}`];
   return (
     <span className="block min-w-0">
-      <span className="block truncate text-[14px] font-medium text-prt-text">{line}</span>
-      {under !== null && <span className="block truncate text-[12px] text-prt-muted">{under}</span>}
+      <span className="block truncate text-[14px] font-medium leading-5 text-prt-text">{line}</span>
+      {under !== null && <span className="block truncate text-[12px] leading-4 text-prt-muted">{under}</span>}
     </span>
   );
 }
 
-function Change({ entry }: { entry: ActivityEntry }) {
+/** The change's sentence; on the desktop table cut to one line, so every row keeps its height. */
+function Change({ entry, oneLine = false }: { entry: ActivityEntry; oneLine?: boolean }) {
   const { change } = entry;
+  const sentence = sentenceOf(change);
   const Icon = change.kind === "view-as" ? VIEW_AS_ICONS[change.event] : null;
   return (
     <span className="flex min-w-0 items-center gap-2 text-[14px] text-prt-text">
       {Icon && <Icon aria-hidden className="h-4 w-4 shrink-0 text-info" strokeWidth={1.75} />}
-      <span className="min-w-0 break-words">{sentenceOf(change)}</span>
+      <span className={`min-w-0 ${oneLine ? "truncate" : "break-words"}`} title={oneLine ? sentence : undefined}>
+        {sentence}
+      </span>
     </span>
   );
 }
