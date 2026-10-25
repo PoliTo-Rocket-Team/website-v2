@@ -105,14 +105,14 @@ import { TeamPersonPanel } from "./team-person-panel";
 
 // The Team page editor (boards 80 to 80h, issues #284 and #285): the real
 // Team page under the shared edit shell, with the "Visual changes only" tag
-// and Reset to team on the bar. Hovering a person on the org chart or a head
-// block outlines it with where it comes from and an Edit chip, which opens
-// its panel; the intro text with its four figures, and the group photo, which
+// and Reset to team on the bar. Each person on the org chart and each head
+// block shows at all times an outline with where it comes from and an Edit
+// chip, which opens its panel; the intro text with its four figures, and the group photo, which
 // may be uploaded (issue #510), are edited in place. The bar's arrow goes back
 // to the dashboard home (Owner decision). Board
 // 80e's add affordances sit on the page while no panel is open: a "+" at each
 // place on the arc (gone at eight leaders), "+ Add department" beside each
-// slide's heading, and "+ Add division lead" on a hovered head block, under a
+// slide's heading, and "+ Add division lead" on every head block, under a
 // note that added items show only on the Team page. The core members list and
 // "In numbers" have no affordance. The Advisors section is one block (board
 // 80c) whose "Edit advisors" opens the Advisors panel (board 80d, issue
@@ -603,13 +603,17 @@ function AddDepartmentButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** "+ Add division lead" on a hovered head block (board 80e): it sits on the block's outline, at its foot. */
+/**
+ * "+ Add division lead" on every head block (board 80e), shown at all times on
+ * Desktop, Phone and touch (Owner decision on #498, issue #507): it sits on the
+ * block's outline, at its foot. Hover and focus only brighten it.
+ */
 function AddLeadButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`${ADD_PILL} absolute -bottom-3 left-1 z-10 h-6 translate-y-1/2 px-2.5 text-[12px] opacity-0 group-focus-within/block:opacity-100 group-hover/block:opacity-100 focus-visible:opacity-100 md:-bottom-[22px] md:left-0`}
+      className={`${ADD_PILL} absolute -bottom-3 left-1 z-10 h-6 translate-y-1/2 px-2.5 text-[12px] md:-bottom-[22px] md:left-0`}
     >
       <Plus aria-hidden className="h-3 w-3" strokeWidth={2} />
       Add division lead
