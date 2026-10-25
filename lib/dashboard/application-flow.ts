@@ -526,25 +526,20 @@ export function parseLeadMove(value: unknown): LeadMove | null {
 
 // How a status reads --------------------------------------------------------------
 
-export type PillTone = "neutral" | "info" | "accent" | "success" | "muted";
-
 /**
- * The status pill in the list and the panel (58b, 58i): its words, its phone
- * words (58m), its colour. An interview names its booked time.
+ * The words of the status pill in the list and the panel (58b, 58i), and its
+ * phone words (58m), in the name the status list gives the application's
+ * status (issue #752): renaming a status renames every pill of it. An
+ * interview names its booked time. The pill's colour is the list's too.
  */
-export function statusPill(state: ApplicationState): { readonly label: string; readonly short: string; readonly tone: PillTone } {
+export function statusPill(state: ApplicationState, name: string = STATUS_NAMES[state.status]): { readonly label: string; readonly short: string } {
   switch (state.status) {
     case "interview":
-      if (state.booked) {
-        return {
-          label: `Interview · ${slotDayTime(state.booked.slot)}`,
-          short: `Interview · ${slotDay(state.booked.slot)}`,
-          tone: "accent",
-        };
-      }
-      return { label: "Interview · no time yet", short: "Interview · no time", tone: "neutral" };
+      if (state.booked) return { label: `${name} · ${slotDayTime(state.booked.slot)}`, short: `${name} · ${slotDay(state.booked.slot)}` };
+      return { label: `${name} · no time yet`, short: `${name} · no time` };
     default:
-      return { label: STATUS_NAMES[state.status], short: SHORT_NAMES[state.status] ?? STATUS_NAMES[state.status], tone: statusTone(state.status) };
+      // The phone words shorten a built-in status's own name; a name the list changed shows as it is.
+      return { label: name, short: name === STATUS_NAMES[state.status] ? (SHORT_NAMES[state.status] ?? name) : name };
   }
 }
 
@@ -556,26 +551,6 @@ const SHORT_NAMES: Partial<Record<BuiltInStatusKey, string>> = {
   rejected_email_sent: "Rejected · emailed",
   accepted_for_another_position: "Other position",
 };
-
-/** The tone of a status on its own, as the Other applications rows show it (board 58). */
-export function statusTone(status: BuiltInStatusKey): PillTone {
-  switch (status) {
-    case "new":
-      return "neutral";
-    case "interview":
-      return "accent";
-    case "accepted_email_to_be_sent":
-    case "accepted_email_sent":
-    case "nda_received":
-    case "joined":
-      return "success";
-    case "rejected_email_to_be_sent":
-    case "rejected_email_sent":
-    case "accepted_for_another_position":
-    case "withdrawn":
-      return "muted";
-  }
-}
 
 /** The four steps the progress bar under an Other application counts: applied, review, interview, accepted. */
 export const PROGRESS_STEPS = 4;

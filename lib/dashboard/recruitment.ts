@@ -236,6 +236,8 @@ export type OtherApplication = {
   readonly division: string;
   /** The built-in status it behaves like. */
   readonly status: BuiltInStatusKey;
+  /** Its status from the status list, an added one included: its tag shows that status's name and colour (issue #752). */
+  readonly listStatus: ApplicationStatus;
 };
 
 export type ApplicationEntry = {
@@ -297,6 +299,14 @@ export type ApplicationsPage = {
    * asks, so the panel never offers that status to anyone else (board 97e).
    */
   readonly teamLeader: boolean;
+  /**
+   * How many applications, anywhere on the team, use each status of the list,
+   * by its key, for the Statuses editor (board 97d, issue #752); an
+   * application with no status reference counts as New. Null where the viewer
+   * may move no application and so does not manage the list
+   * (`managesStatusList`, ./application-status.ts).
+   */
+  readonly statusUses: Readonly<Record<string, number>> | null;
   /** Newest first. */
   readonly applications: readonly ApplicationEntry[];
 };

@@ -215,6 +215,9 @@ test("the status pill reads the booked time, or no time yet, and every other sta
   assert.equal(statusPill(booked).label, "Interview · Thu 15, 17:30");
   assert.equal(statusPill(booked).short, "Interview · Thu 15");
   assert.equal(statusPill(STATES.accepted_email_to_be_sent).label, "Accepted · email to be sent");
+  // A name the Statuses editor gave the status is the pill's, the booked time kept and no stale phone wording (issue #752).
+  assert.deepEqual(statusPill(booked, "First round"), { label: "First round · Thu 15, 17:30", short: "First round · Thu 15" });
+  assert.equal(statusPill(STATES.accepted_email_to_be_sent, "Offer to send").short, "Offer to send");
 });
 
 test("a move from the browser is read only in a shape the flow knows", () => {

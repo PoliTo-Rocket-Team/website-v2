@@ -154,3 +154,118 @@ export function seesDoNotEmailNote(status: ApplicationStatus | BuiltInStatusKey,
 
 /** The do-not-email note's words (board 97e). */
 export const DO_NOT_EMAIL_NOTE = "Don't email the applicant. The team leader sends the acceptance email with the NDA and marks it as sent.";
+
+// The Statuses editor ------------------------------------------------------------
+
+/**
+ * Who manages the status list (owner decision on epic #588, 2026-10-25):
+ * anyone who may move at least one application, by the rule every
+ * application move asks. `mayMove` answers it for one place the viewer reads
+ * applications in.
+ */
+export function managesStatusList<P>(places: readonly P[], mayMove: (place: P) => boolean): boolean {
+  return places.some(mayMove);
+}
+
+/**
+ * The colours a status may be given in the Statuses editor (board 97d): the
+ * colours the built-in statuses ship with, which are the dashboard's own
+ * status and text colours, and three more so an added status can stand apart
+ * from its parent. Stored as the list stores a colour (`#RRGGBB`, upper case).
+ */
+export const STATUS_COLOURS = [
+  { name: "Grey", colour: "#8A8A8F" },
+  { name: "Dark grey", colour: "#5E5E64" },
+  { name: "Orange", colour: "#FF5E00" },
+  { name: "Amber", colour: "#F5A623" },
+  { name: "Blue", colour: "#4DA3FF" },
+  { name: "Green", colour: "#2E9B4F" },
+  { name: "Red", colour: "#CE2B4B" },
+  { name: "Pink", colour: "#E5489A" },
+  { name: "Teal", colour: "#1FB5A8" },
+  { name: "Violet", colour: "#9B6CF0" },
+] as const;
+
+export type StatusColour = (typeof STATUS_COLOURS)[number]["colour"];
+
+export function isStatusColour(value: unknown): value is StatusColour {
+  return STATUS_COLOURS.some((c) => c.colour === value);
+}
+
+/** What a colour is called, for its swatch's label; a stored colour the editor does not offer reads as its code. */
+export function colourName(colour: string): string {
+  return STATUS_COLOURS.find((c) => c.colour === colour)?.name ?? colour;
+}
+
+/** The longest name a status may have: it has to fit a list row and the picker. */
+export const STATUS_NAME_MAX = 40;
+
+/**
+ * One change to the status list (board 97d): add a status under a built-in
+ * parent, rename and recolour any status, or delete an added one. Who may
+ * make it, and whether a delete is allowed (`deleteRefusal`), is checked
+ * where it is written.
+ */
+export type StatusListChange =
+  | { readonly kind: "add"; readonly name: string; readonly colour: StatusColour; readonly parent: BuiltInStatusKey }
+  | { readonly kind: "edit"; readonly key: string; readonly name: string; readonly colour: StatusColour }
+  | { readonly kind: "delete"; readonly key: string };
+
+type Checked<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
+
+/** A status name as typed: trimmed, inner runs of space made one, and refused when empty or too long. */
+export function checkStatusName(value: unknown): Checked<string> {
+  const name = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+  if (name === "") return { ok: false, error: "Give the status a name." };
+  if (name.length > STATUS_NAME_MAX) return { ok: false, error: `Keep the name to ${STATUS_NAME_MAX} characters.` };
+  return { ok: true, value: name };
+}
+
+/** A change as the browser sent it, checked for shape: the change, or why it is not one. */
+export function parseStatusListChange(value: unknown): Checked<StatusListChange> {
+  const invalid = { ok: false, error: "That change is not valid." } as const;
+  if (typeof value !== "object" || value === null) return invalid;
+  const v = value as Record<string, unknown>;
+  const key = typeof v.key === "string" && v.key !== "" ? v.key : null;
+  switch (v.kind) {
+    case "delete":
+      return key === null ? invalid : { ok: true, value: { kind: "delete", key } };
+    case "edit":
+    case "add": {
+      if (!isStatusColour(v.colour)) return invalid;
+      const name = checkStatusName(v.name);
+      if (!name.ok) return name;
+      if (v.kind === "edit") return key === null ? invalid : { ok: true, value: { kind: "edit", key, name: name.value, colour: v.colour } };
+      return isBuiltInStatusKey(v.parent) ? { ok: true, value: { kind: "add", name: name.value, colour: v.colour, parent: v.parent } } : invalid;
+    }
+    default:
+      return invalid;
+  }
+}
+
+/**
+ * The key a new added status is stored under: its name in lower case with a
+ * short random tail, so two statuses of one name never share a key and an
+ * added key is never a built-in one.
+ */
+export function addedStatusKey(name: string, tail: string): string {
+  const stem = name
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 24);
+  return `${stem || "status"}_${tail}`;
+}
+
+/**
+ * Why a status cannot be deleted, or null when it can (owner decision on
+ * epic #588, 2026-10-25): a built-in status is never deleted, and an added
+ * one only while no application uses it.
+ */
+export function deleteRefusal(status: ApplicationStatus, uses: number): string | null {
+  if (status.kind === "built-in") return "Built-in statuses can't be deleted.";
+  if (uses === 1) return "1 application uses this status. Move it to another status first.";
+  if (uses > 1) return `${uses} applications use this status. Move them to another status first.`;
+  return null;
+}
