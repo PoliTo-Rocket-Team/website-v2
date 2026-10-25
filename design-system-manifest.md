@@ -127,7 +127,9 @@ Rules:
   less `--hero-bottom-space` (the empty hero below its last line of text, `app/globals.css`):
   the gap from that line to the Track record eyebrow is the same 112px / 240px. The footer's
   top pad is `section` too, and it alone sets the gap above the footer: a page's `<main>` has
-  no bottom pad (issue #582, held by `lib/footer-gap.test.ts`). /projects keeps one
+  no bottom pad (issue #582, held by `lib/footer-gap.test.ts`). A page that puts the apply
+  band between its sky and the footer (Team, alumni) pads the sky's bottom by `section`
+  instead, so the band sits one pad below the last section (issue #718). /projects keeps one
   `section` pad between the bar and its header. Never
   set a section's vertical padding with another value. Sides are `px-5 md:px-16` (board 24
   gives phones 20px sides). Sections below the hero have no borders
