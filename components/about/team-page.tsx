@@ -55,7 +55,7 @@ export function TeamPageView(
     <div className="relative bg-ground">
       {footer !== null && <LandingNavbar />}
       <PageSky>
-        <main className={footer !== null ? "pb-section pt-16 md:pt-[72px]" : "pb-section"}>
+        <main className={footer !== null ? "pt-16 md:pt-[72px]" : undefined}>
           <PageHeader {...header} intro={withAcademicYear(header.intro, academicYear)} introFrame={frames.intro} />
 
           <OrgChart chart={page.orgChart} frame={frames.leader} onAdd={frames.addLeader} />

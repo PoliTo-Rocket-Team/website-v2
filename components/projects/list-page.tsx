@@ -46,13 +46,13 @@ export function ProjectsListPage(
         {/* The top clears the fixed bar (64px, 72px from md, navbar.tsx) and
             then keeps one section pad under it, so the header sits on the
             same rhythm as every section; with no navbar, the section pad
-            alone. The bottom is the section rhythm too, so the gap to the
-            footer matches every other section gap. */}
+            alone. The bottom has no pad: the footer's own top pad sets the
+            gap under the last card (issue #582). */}
         <main
           className={
             footer !== null
-              ? "px-5 pb-section pt-[calc(64px+var(--section-pad))] md:px-16 md:pt-[calc(72px+var(--section-pad))]"
-              : "px-5 pb-section pt-section md:px-16"
+              ? "px-5 pt-[calc(64px+var(--section-pad))] md:px-16 md:pt-[calc(72px+var(--section-pad))]"
+              : "px-5 pt-section md:px-16"
           }
         >
           <div className="mx-auto max-w-[1312px]">

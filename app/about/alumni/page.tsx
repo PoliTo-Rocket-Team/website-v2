@@ -42,7 +42,7 @@ export default async function AlumniPage({ searchParams }: { searchParams: Searc
     <div className="relative bg-ground">
       <LandingNavbar />
       <PageSky>
-        <main className="pb-section pt-16 md:pt-[72px]">
+        <main className="pt-16 md:pt-[72px]">
           <PageHeader {...alumni.header} stats={headerStats(page)} />
           {page.founders.length > 0 && (
             <Founders {...alumni.founders} intro={foundersIntro(page.founders)} people={page.founders} />

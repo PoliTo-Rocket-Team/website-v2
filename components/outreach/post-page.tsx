@@ -30,7 +30,7 @@ export function PostPage(
       <PageSky>
         {/* No bottom padding: the footer's own top padding is the gap under the last section (Owner decision, 2026-10-19).
             With no footer, the section rhythm closes the page instead. */}
-        <main className={footer !== null ? "px-5 pt-16 md:px-16 md:pt-[72px]" : "px-5 pb-section md:px-16"}>
+        <main className={footer !== null ? "px-5 pt-16 md:px-16 md:pt-[72px]" : "px-5 md:px-16"}>
           <div className="pt-8 md:pt-16">
             <PostHeader post={post} frame={frame} hints={hints} />
             <PostBody post={post} frame={frame} hints={hints} />
