@@ -41,6 +41,7 @@ import { departmentLabel } from "./recruitment";
 import {
   departmentRoster,
   divisionRoster,
+  holdsLeaderSeat,
   noPhotoItem,
   oldestLine,
   overviewLayoutOf,
@@ -48,6 +49,7 @@ import {
   pageChecklistOf,
   type AttentionItem,
   type DepartmentOverview,
+  type DepartmentRosterRow,
   type DivisionOverview,
   type DivisionSummary,
   type OverviewSections,
@@ -63,7 +65,7 @@ import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./datab
 import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
 import { divisionOverviewOf, membersScopeOf, overviewAreasOf, type DivisionFigures } from "./division-overview";
 import { accessSectionOf, accessSummariesOf, type AccessFigures, type AccessSummary } from "./access-summary";
-import { answerHandOver, databaseTeamWrites, findForAdd, findPeople, readDivisionMembers, readTeamStructure, readWholeTeamMembers } from "./database-team";
+import { answerHandOver, databaseTeamWrites, findForAdd, findPeople, readDivisionMembers, readMembersDivisionReach, readTeamStructure, readWholeTeamMembers } from "./database-team";
 import { databaseSelfPages } from "./database-self";
 import { blobLogoFiles, databasePartnerStore } from "./database-partners";
 import { partnerEditor } from "@/lib/partners-editor";
@@ -623,7 +625,6 @@ function coveredMemberDivisions(identity: Identity, divisionRows: readonly { id:
  */
 async function departmentOverview(identity: Identity): Promise<DepartmentOverview> {
   const now = new Date();
-  const db = getDb();
   // The positions, their interviews and the notices need nothing of the
   // department, so they start beside its read; the rest wait for its divisions.
   // The new applications and the interviews are Applications data, so they
@@ -633,27 +634,14 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
   const interviewed = applicationsPositions(identity);
   const departmentRead = readHeadDepartment(identity).then(async (department) => {
     const divisionIds = department?.divisions.map((d) => d.id) ?? [];
-    const [team, orders, withoutPhoto] = await Promise.all([
-      divisionIds.length === 0
-        ? []
-        : db
-            .select({
-              member_id: roles.memberId,
-              division_id: roles.divisionId,
-              type: roles.type,
-              first_name: users.firstName,
-              last_name: users.lastName,
-              email: users.email,
-            })
-            .from(roles)
-            .innerJoin(users, eq(users.member, roles.memberId))
-            .where(and(inArray(roles.divisionId, divisionIds), isNull(roles.leavedAt))),
+    const [people, orders, withoutPhoto] = await Promise.all([
+      department === null ? [] : readDepartmentPeople([department.id]),
       readOrdersIn(divisionIds),
       readMembersWithoutPhoto(divisionIds),
     ]);
-    return { department, team, orders, withoutPhoto };
+    return { department, people, orders, withoutPhoto };
   });
-  const [positions, unread, interviews, notices, { department, team, orders, withoutPhoto }] = await Promise.all([
+  const [positions, unread, interviews, notices, { department, people, orders, withoutPhoto }] = await Promise.all([
     scoped,
     withUnread(interviewed),
     interviewed.then(readInterviews),
@@ -665,10 +653,9 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
   const waiting = waitingOrders(orders);
   const noPhoto = noPhotoItem(withoutPhoto);
   // One row per active role, so someone in two of the department's divisions
-  // has two rows; the department figure counts each person once (issue #229).
-  const headcount = new Set(team.map((t) => t.member_id)).size;
-  const nameOf = (r: { first_name: string | null; last_name: string | null; email: string }) =>
-    [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email;
+  // has two rows; the department figure counts each person once (issue #229),
+  // its heads included, the people the head's roster counts (issue #760).
+  const headcount = new Set(people.map((p) => p.memberId)).size;
 
   const attention: AttentionItem[] = [
     ...unread.flatMap((p): AttentionItem[] =>
@@ -711,12 +698,12 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
     attention,
     divisions: (department?.divisions ?? []).map((division): DivisionSummary => {
       const own = positions.filter((p) => p.divisionId === division.id);
-      const members = team.filter((t) => t.division_id === division.id);
+      const members = people.filter((p) => p.divisionId === division.id);
       return {
         id: division.id,
         name: division.name,
-        leads: members.filter((t) => t.type === "lead" || t.type === "head").map(nameOf),
-        people: new Set(members.map((t) => t.member_id)).size,
+        leads: members.filter((p) => p.type === "lead" || p.type === "head").map((p) => p.name),
+        people: new Set(members.map((p) => p.memberId)).size,
         newApplications: unread.filter((p) => p.divisionId === division.id).reduce((sum, p) => sum + p.newApplications, 0),
         openPositions: own.filter((p) => p.open).length,
       };
@@ -764,12 +751,14 @@ async function personalPanelsOf(identity: Identity, teamOrders: Promise<Order[]>
  * The rosters of the viewer's own units, in the order their roles come
  * (issues #593 and #652): one per department they head, and one per division
  * they hold a role in outside those departments. Only their roles count, so a
- * grant never widens a roster; the team leader gets none, since the whole
- * team is on the Members page. "See all" opens the Members page when the
- * viewer reaches it.
+ * grant never widens a roster. The seats of `LEADER_SEATS` (./overview.ts)
+ * get none, since the whole team is on their Members page (issue #760). "See
+ * all" opens the Members page on the same list: a department's for a head who
+ * reaches that page, a division's only where the page opens that division
+ * (`readMembersDivisionReach`).
  */
 async function readRosters(identity: Identity): Promise<Roster[]> {
-  if (isTeamLeader(identity)) return [];
+  if (holdsLeaderSeat(identity)) return [];
   const headed = [...new Map(identity.roles.flatMap((r) => (r.type === "head" && r.divisionId === null && r.departmentId !== null ? [[r.departmentId, r] as const] : []))).values()];
   const headedIds = headed.map((r) => r.departmentId!);
   const divisionsHeld = [
@@ -779,45 +768,23 @@ async function readRosters(identity: Identity): Promise<Roster[]> {
   ];
   if (headed.length === 0 && divisionsHeld.length === 0) return [];
   const db = getDb();
-  const unitOf = sql<number | null>`coalesce(${roles.deptId}, ${divisions.deptId})`;
-  const inHeld = divisionsHeld.length === 0 ? undefined : inArray(roles.divisionId, divisionsHeld.map((r) => r.divisionId!));
-  const inHeaded = headedIds.length === 0 ? undefined : inArray(unitOf, headedIds);
-  const [rows, headedDivisions] = await Promise.all([
-    db
-      .select({
-        division_id: roles.divisionId,
-        department_id: unitOf,
-        member_id: roles.memberId,
-        type: roles.type,
-        first_name: users.firstName,
-        last_name: users.lastName,
-        email: users.email,
-        picture: members.picture,
-      })
-      .from(roles)
-      .innerJoin(users, eq(users.member, roles.memberId))
-      .leftJoin(members, eq(members.memberId, roles.memberId))
-      .leftJoin(divisions, eq(divisions.id, roles.divisionId))
-      .where(and(or(inHeld, inHeaded), isNull(roles.leavedAt))),
+  const reachesMembers = canReach(identity, "members");
+  const [divisionRows, departmentPeople, headedDivisions, membersReach] = await Promise.all([
+    divisionsHeld.length === 0
+      ? []
+      : db
+          .select({ ...PERSON_COLUMNS, division_id: roles.divisionId })
+          .from(roles)
+          .innerJoin(users, eq(users.member, roles.memberId))
+          .leftJoin(members, eq(members.memberId, roles.memberId))
+          .where(and(inArray(roles.divisionId, divisionsHeld.map((r) => r.divisionId!)), isNull(roles.leavedAt))),
+    readDepartmentPeople(headedIds),
     headedIds.length === 0
       ? []
       : db.select({ department_id: divisions.deptId }).from(divisions).where(and(inArray(divisions.deptId, headedIds), isNull(divisions.closedAt))),
+    reachesMembers && divisionsHeld.length > 0 ? readMembersDivisionReach(identity) : NO_DIVISIONS,
   ]);
-  const people = rows.flatMap((r) =>
-    r.member_id === null
-      ? []
-      : [
-          {
-            memberId: r.member_id,
-            divisionId: r.division_id,
-            departmentId: r.department_id,
-            type: r.type,
-            name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email,
-            photoUrl: r.picture,
-          },
-        ],
-  );
-  const reachesMembers = canReach(identity, "members");
+  const divisionPeople = divisionRows.flatMap((r) => personOf(r, (row) => ({ divisionId: row.division_id })));
   return [
     ...headed.map((held) =>
       departmentRoster(
@@ -826,7 +793,7 @@ async function readRosters(identity: Identity): Promise<Roster[]> {
           divisions: headedDivisions.filter((d) => d.department_id === held.departmentId).length,
           members: reachesMembers ? "/dashboard/members" : null,
         },
-        people.filter((p) => p.departmentId === held.departmentId),
+        departmentPeople.filter((p) => p.departmentId === held.departmentId),
         identity.memberId,
       ),
     ),
@@ -835,13 +802,62 @@ async function readRosters(identity: Identity): Promise<Roster[]> {
         {
           title: held.divisionName ?? "",
           department: held.departmentName ?? "",
-          members: reachesMembers ? `/dashboard/members?division=${held.divisionId}` : null,
+          members: membersReach.includes(held.divisionId!) ? `/dashboard/members?division=${held.divisionId}` : null,
         },
-        people.filter((p) => p.divisionId === held.divisionId),
+        divisionPeople.filter((p) => p.divisionId === held.divisionId),
         identity.memberId,
       ),
     ),
   ];
+}
+
+const NO_DIVISIONS: readonly number[] = [];
+
+/** What a roster reads of each role row's person. */
+const PERSON_COLUMNS = {
+  member_id: roles.memberId,
+  type: roles.type,
+  first_name: users.firstName,
+  last_name: users.lastName,
+  email: users.email,
+  picture: members.picture,
+};
+
+/** A role row's person as a roster lists them, with `place`: where the row sits. None for a row with no member. */
+function personOf<R extends { member_id: number | null; type: RoleType | null; first_name: string | null; last_name: string | null; email: string; picture: string | null }, P>(
+  r: R,
+  place: (r: R) => P,
+) {
+  if (r.member_id === null) return [];
+  return [{ memberId: r.member_id, type: r.type, name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email, photoUrl: r.picture, ...place(r) }];
+}
+
+/**
+ * Everyone in the departments `departmentIds`, one row per active role: each
+ * head's row, kept on the department or on one of its divisions, and every
+ * role in its open divisions. The same people the team leader's Departments
+ * panel counts (`departmentSummaries`), so a department head's "My
+ * department" figure and their roster count one set (issue #760).
+ */
+async function readDepartmentPeople(departmentIds: readonly number[]): Promise<(DepartmentRosterRow & { readonly departmentId: number })[]> {
+  if (departmentIds.length === 0) return [];
+  const ids = [...departmentIds];
+  const rows = await getDb()
+    .select({ ...PERSON_COLUMNS, division_id: roles.divisionId, department_id: sql<number>`coalesce(${divisions.deptId}, ${roles.deptId})` })
+    .from(roles)
+    .innerJoin(users, eq(users.member, roles.memberId))
+    .leftJoin(members, eq(members.memberId, roles.memberId))
+    .leftJoin(divisions, eq(divisions.id, roles.divisionId))
+    .where(
+      and(
+        isNull(roles.leavedAt),
+        or(
+          and(eq(roles.type, "head"), isNull(roles.divisionId), inArray(roles.deptId, ids)),
+          and(isNull(divisions.closedAt), inArray(divisions.deptId, ids)),
+        ),
+      ),
+    );
+  return rows.flatMap((r) => personOf(r, (row) => ({ divisionId: row.division_id, departmentId: row.department_id })));
 }
 
 /**
