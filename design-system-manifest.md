@@ -66,8 +66,10 @@ Rules:
 - Application stage pills on the dashboard follow the same pairing (board 58b, issue #171,
   `stage-pill.tsx`): New and "Interview · no time yet" = `white-10` with `prt-text`, In review =
   `info`, a booked interview = accent, Accepted and Joined = success, Rejected and Withdrawn =
-  `white-5` with `prt-muted`. `info` marks In review (on the stage pill and tag, and on the
-  panel's stage menu trigger and its dot: `toneSurface`, `toneDot`) and, on the Team tree only
+  `white-5` with `prt-muted`. The Status picker at the head of the application drawer (boards 97
+  to 97c, issue #750) paints each status's dot in the colour the status list stores: it is
+  data the Statuses editor sets, like a project's stored colours, not a colour of the page.
+  `info` marks In review (on the stage pill and tag) and, on the Team tree only
   (board 54e, issue #229, `team-tree.tsx`), someone in another division: the dashed line from a
   division to someone drawn under another one, their "also {division}" tag (`info-soft` fill,
   `info` text) and the legend's line, so they read apart from the accent path. It is not a second

@@ -82,6 +82,22 @@ export function panelStepsOf(application: { readonly state: ApplicationState; re
   return { bar: [...bar.filter((s) => s.emphasis === "secondary"), ...bar.filter((s) => s.emphasis === "primary")], changeTimes };
 }
 
+/**
+ * The line under the Status picker while a hand pick is unsaved (board 97b):
+ * it names the action buttons the pick locks, the main one first, then the
+ * outlined ones, then Change times.
+ */
+export function unsavedPickHint(steps: ReturnType<typeof panelStepsOf>): string {
+  const names = [
+    ...steps.bar.filter((s) => s.emphasis === "primary").map((s) => s.label),
+    ...steps.bar.filter((s) => s.emphasis === "secondary").map((s) => s.label),
+    ...(steps.changeTimes ? ["Change times"] : []),
+  ];
+  if (names.length === 0) return "Not saved yet. Save or cancel the status.";
+  const listed = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `Not saved yet. Save or cancel the status to use ${listed}.`;
+}
+
 // Narrowing the list: the same selects, switch, search and sort for every role
 
 /** The toolbar's choices. Null is all departments, all divisions or all positions. */

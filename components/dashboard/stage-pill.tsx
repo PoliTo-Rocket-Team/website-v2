@@ -25,34 +25,3 @@ export function StatusPill({ state, short = false }: { state: ApplicationState; 
 export function StatusTag({ status }: { status: BuiltInStatusKey }) {
   return <span className={`${PILL} ${TONE[statusTone(status)]}`}>{STATUS_NAMES[status]}</span>;
 }
-
-/** The fill a tone gives a whole box, as the status at the top of the panel uses it (58d, 58g). */
-export function toneSurface(tone: PillTone): string {
-  switch (tone) {
-    case "accent":
-      return "border-accent/40 bg-accent-soft text-accent";
-    case "success":
-      return "border-success/40 bg-success-soft text-success";
-    case "info":
-      return "border-info/40 bg-info-soft text-info";
-    case "neutral":
-    case "muted":
-      return "border-hairline text-prt-text";
-  }
-}
-
-/** The dot beside the status at the top of the panel. */
-export function toneDot(tone: PillTone): string {
-  switch (tone) {
-    case "accent":
-      return "bg-accent";
-    case "success":
-      return "bg-success";
-    case "info":
-      return "bg-info";
-    case "neutral":
-      return "bg-accent";
-    case "muted":
-      return "bg-dim";
-  }
-}

@@ -25,11 +25,12 @@ import {
   NEW_APPLICANT,
   OPEN_STATUSES,
   type ApplicantStanding,
+  type AddedPick,
+  type ApproverMove,
   type JoinChange,
-  type LeadMove,
   type SlotTime,
 } from "./application-flow";
-import type { BuiltInStatusKey } from "./application-status";
+import { statusListOf, statusOfStored, type BuiltInStatusKey, type ListedStatus } from "./application-status";
 import { membershipsOfRoles } from "./team";
 import { DashboardRefused } from "./data";
 import type { DashboardIdentity } from "./database";
@@ -495,11 +496,25 @@ function answersOf(raw: unknown[] | null): ApplicationEntry["answers"] {
   });
 }
 
+/** The stored status list, in the Status picker's order (board 97c, `statusListOf`). */
+async function readStatusList(): Promise<ListedStatus[]> {
+  const rows = await getDb()
+    .select({
+      key: applicationStatuses.key,
+      name: applicationStatuses.name,
+      colour: applicationStatuses.colour,
+      sortOrder: applicationStatuses.sortOrder,
+      parentKey: applicationStatuses.parentKey,
+    })
+    .from(applicationStatuses);
+  return statusListOf(rows);
+}
+
 async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
   if (!readsRecruitment(identity, "applications")) throw new DashboardRefused("applications");
   const now = new Date();
-  const [positions, scope] = await Promise.all([readPositionRows(identity, "applications", now), applicationsScope(identity)]);
-  if (positions.length === 0) return { scope, now: now.toISOString(), positions: [], applications: [] };
+  const [positions, scope, statuses] = await Promise.all([readPositionRows(identity, "applications", now), applicationsScope(identity), readStatusList()]);
+  if (positions.length === 0) return { scope, now: now.toISOString(), positions: [], statuses, applications: [] };
 
   const db = getDb();
   const cvFiles = alias(applicationFiles, "cv_files");
@@ -560,6 +575,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
     scope,
     now: now.toISOString(),
     positions: positions.map((p) => ({ ref: p.ref, title: p.title, division: p.division, department: p.department })),
+    statuses,
     applications: rows.flatMap((r): ApplicationEntry[] => {
       const position = r.position_id === null ? undefined : byId.get(r.position_id);
       if (!position) return [];
@@ -567,6 +583,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
         {
           id: r.id,
           state: stateOf(r, slots.get(r.id) ?? []),
+          status: statusOfStored({ key: r.status_key, parentKey: r.status_parent_key }),
           applicant: {
             name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email,
             photoUrl: r.picture,
@@ -645,6 +662,7 @@ async function readApplicationFor(identity: Identity, applicationId: number) {
       applied_at: applications.appliedAt,
       accepted_at: applications.acceptedAt,
       nda_arrived_at: applications.ndaArrivedAt,
+      rejected_at: applications.rejectedAt,
       joined_at: applications.joinedAt,
     })
     .from(applications)
@@ -686,23 +704,26 @@ const statusFor: Readonly<Record<Exclude<BuiltInStatusKey, "withdrawn">, DbStatu
 };
 
 /**
- * One lead move, from an action button (and, from issue #750, the Status
- * picker's hand pick): ./application-flow.ts says whether the move is legal
- * from the application's status and which built-in status it sets, and this
- * writes that status beside what it keeps.
+ * One approver move: an action button, or a saved hand pick in the Status
+ * picker (issue #750). Both run this one write. ./application-flow.ts says
+ * whether the move is legal and which built-in status it sets, and this
+ * writes that status beside what it keeps, with the effects of the step that
+ * sets it; a hand pick of an added status changes the status reference alone
+ * (`pickAddedStatus`).
  */
-export async function moveApplication(identity: Identity, applicationId: number, move: LeadMove): Promise<WriteResult<null>> {
+export async function moveApplication(identity: Identity, applicationId: number, move: ApproverMove): Promise<WriteResult<null>> {
   const row = await readApplicationFor(identity, applicationId);
+  if (move.kind === "pick-added") return pickAddedStatus(row, move);
   const [slots, standings] = await Promise.all([readSlots([row.id]), readStandings(eq(applications.id, row.id))]);
   const before = stateOf(row, slots.get(row.id) ?? []);
   const standing = standings.get(row.id) ?? NEW_APPLICANT;
   const now = new Date();
   const result = applyMove(before, move, now);
   if (!result.ok) return refused(result.reason);
-  // A move that changes nothing writes nothing: Change times to the same times keeps the booking.
-  if (!result.changed) return written(null);
   const after = result.state;
-  const statusKey = statusKeyAfter(row, after);
+  const statusKey = statusKeyAfter(row, after, move.kind === "pick" ? "pick" : "button");
+  // A move that changes nothing writes nothing: Change times to the same times keeps the booking.
+  if (!result.changed && statusKey === row.status_key) return written(null);
   // Every write is guarded on the status it was read in, so two leads acting at once do not both land.
   const unchanged = and(eq(applications.id, row.id), statusAsRead(row), isNull(applications.withdrawnAt));
   const write = async (set: Partial<typeof applications.$inferInsert>) => {
@@ -712,9 +733,12 @@ export async function moveApplication(identity: Identity, applicationId: number,
 
   switch (after.status) {
     case "withdrawn":
+      // A hand pick of Withdrawn has the applicant's Withdraw's effect (issue #169): it leaves the lead's list.
+      return write({ statusKey, withdrawnAt: now.toISOString() });
+
     case "accepted_for_another_position":
-      // Withdrawing is the applicant's (issue #169), and another position is Confirm join's own write: never a lead move.
-      return refused("That status is not set by this step.");
+      // A hand pick of it writes what Confirm join writes on the person's other open applications.
+      return write({ status: statusFor[after.status], statusKey, rejectedAt: now.toISOString() });
 
     case "interview":
       return (await offerSlots(row, statusKey, after.offered)) ? written(null) : refused(APPLICATION_CHANGED);
@@ -744,12 +768,36 @@ export async function moveApplication(identity: Identity, applicationId: number,
 
     case "rejected_email_to_be_sent":
       // Reject records when it was decided, the time the applicant's pages count a month from (issue #317).
-      return write({ status: statusFor[after.status], statusKey, rejectedAt: now.toISOString() });
+      return write({ status: statusFor[after.status], statusKey, acceptedAt: null, ndaArrivedAt: null, rejectedAt: now.toISOString() });
 
     case "rejected_email_sent":
-      // Mark email sent keeps the day it was rejected.
-      return write({ status: statusFor[after.status], statusKey });
+      // Mark email sent keeps the day it was rejected; a hand pick from a status never rejected records it now, as Reject would.
+      return write({ status: statusFor[after.status], statusKey, acceptedAt: null, ndaArrivedAt: null, rejectedAt: row.rejected_at ?? now.toISOString() });
   }
+}
+
+/**
+ * A saved hand pick of an added status (issue #750): the application's
+ * status reference becomes that status and nothing else changes, only while
+ * the key names a status added under a built-in one and the application is
+ * still in the status it was read in.
+ */
+async function pickAddedStatus(row: ReadStatus, pick: AddedPick): Promise<WriteResult<null>> {
+  if (pick.key === row.status_key) return written(null);
+  const [added] = await getDb()
+    .select({ key: applicationStatuses.key })
+    .from(applicationStatuses)
+    .where(and(eq(applicationStatuses.key, pick.key), sql`${applicationStatuses.parentKey} is not null`))
+    .limit(1);
+  if (!added) return refused("That status is not in the list. Reload the page.");
+  const changed = await runAuditQuery((db) =>
+    db
+      .update(applications)
+      .set({ statusKey: added.key })
+      .where(and(eq(applications.id, row.id), statusAsRead(row), isNull(applications.withdrawnAt)))
+      .returning({ id: applications.id }),
+  );
+  return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
 }
 
 /** A guarded application write that changed no row: another lead or the applicant moved it first. */
@@ -760,7 +808,9 @@ const APPLICATION_CHANGED = "This application changed. Reload the page.";
  * Interview and its offered times replace the old ones, in one statement and
  * only while it is still in the status it was read in and not withdrawn. The
  * slots are cleared and written only for the row the status update matched,
- * so a move another lead beat changes no slot. True when the move landed.
+ * so a move another lead beat changes no slot. An application at Interview is
+ * not decided, so no decision day is kept: a hand pick of Interview from a
+ * decided status clears them (issue #750). True when the move landed.
  */
 async function offerSlots(read: ReadStatus, statusKey: string, offered: readonly SlotTime[]): Promise<boolean> {
   if (offered.length === 0) return false;
@@ -771,7 +821,8 @@ async function offerSlots(read: ReadStatus, statusKey: string, offered: readonly
   const [result] = await runAuditBatch((db) => [
     db.execute(sql`
       with moved as (
-        update ${applications} set status = 'interview', status_key = ${statusKey}
+        update ${applications}
+        set status = 'interview', status_key = ${statusKey}, accepted_at = null, nda_arrived_at = null, rejected_at = null
         where id = ${read.id} and status = ${read.status}
           and status_key is not distinct from ${read.status_key}::text and withdrawn_at is null
         returning id
@@ -934,6 +985,6 @@ export function databaseRecruitmentPages(identity: Identity) {
     setPositionOpen: (id: number, open: boolean) => setPositionOpen(identity, id, open),
     createPosition: (input: unknown) => createPosition(identity, input),
     editPosition: (id: number, input: unknown) => editPosition(identity, id, input),
-    moveApplication: (id: number, move: LeadMove) => moveApplication(identity, id, move),
+    moveApplication: (id: number, move: ApproverMove) => moveApplication(identity, id, move),
   };
 }
