@@ -475,7 +475,8 @@ function Locked({ label, hint, value, icon }: { label: string; hint: ReactNode; 
   );
 }
 
-const LEAVE_TEXT = "Your division lead sees a notice on their dashboard, and you move to Alumni. You keep your account.";
+const LEAVE_TEXT =
+  "Your division lead and the recruitment manager (the Logistics lead) see a notice on their dashboard, and you move to Alumni. You keep your account.";
 const LEFT_TEXT = "You left the team and are on the Alumni list. You keep your account.";
 
 /**
@@ -622,7 +623,7 @@ function LeaveDialog({
       }}
       icon={<LogOut className="h-[18px] w-[18px]" strokeWidth={1.75} />}
       title="Leave the team?"
-      description="Your division lead sees a notice on their dashboard. You move to Alumni with your years on the team."
+      description="Your division lead and the recruitment manager (the Logistics lead) see a notice on their dashboard. You move to Alumni with your years on the team."
       cancelLabel="Stay"
       confirmLabel="Leave the team"
       danger

@@ -488,7 +488,12 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   hands their role over instead (see Handing over a role).
   - The lead of each division the person was in gets a notice under "Needs your attention" on
     their Overview, until they dismiss it (#201).
-  - **Gap:** the recruitment manager is not told; the dashboard has none yet. Tracked in #194.
+  - The recruitment manager is the lead of the Logistics division (Operations department), by
+    the owner ruling on #194
+    (https://github.com/PoliTo-Rocket-Team/website-v2/issues/194#issuecomment-6341780484). Each
+    lead of the open Logistics division gets the same notice, naming every division the person
+    was in. A Logistics lead who also leads one of those divisions gets one notice, not two. When
+    Logistics is closed or has no lead, nobody extra is told (#705).
 - Someone with no active role left (they left, or were moved to Alumni) signs in as an alumnus
   when the Alumni record knows them, else as a non-member (#201, #317). Either way they open on
   their Overview.
