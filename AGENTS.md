@@ -34,6 +34,16 @@ Tailwind 3.
   seeded member on the Access page as the team leader and remove it there afterwards. The seats
   and admin testers, with what each holds, are listed in
   [docs/seed-cases.md](docs/seed-cases.md#test-seats) (Test seats, Admin testers).
+- A UI review captures a signed-in page on a PR preview by passing the tester sign-in URL,
+  `/api/auth/dev-tester/sign-in?tester=<key>&cb=<path>`, as the `review-ui render` `--surface`.
+  The route signs in and then opens `<path>`, so the shot is the signed-in page. Take `<key>` from
+  [lib/seeded-accounts.ts](lib/seeded-accounts.ts): the seat the change is about, or `admin-1`
+  when any signed-in view will do. `admin-1` holds no team role, so an area page it cannot reach
+  answers 404; use a seat that reaches the page. For example:
+  `fabrika review-ui render --pr <n> --out signed-in --surface '/api/auth/dev-tester/sign-in?tester=admin-1&cb=/dashboard' --viewport desktop --viewport mobile`.
+  Do not use sign-in scripts, Playwright or other, for signed-in screen reviews. This rule covers
+  only a page that a sign-in and one navigation reach. A state that exists only after clicks or a
+  save is outside it: capture it with `--interact`, or leave it to the owner check.
 - The check every change passes is `pnpm exec tsc --noEmit`, the same one CI runs
   ([ci.yml](.github/workflows/ci.yml)). `pnpm build` prerenders pages that query Neon, so it
   needs `DATABASE_URL`.
