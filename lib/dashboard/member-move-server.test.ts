@@ -6,7 +6,7 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { roles } from "@/db/schema";
 import { accountOf, EXTRA, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
-import { databaseWrites, tableRows, writesByTransaction } from "./access-matrix/test-database";
+import { databaseWrites, tableRows, testDb, writesByTransaction } from "./access-matrix/test-database";
 
 // The one move (issue #647), made for real against the migrated in-memory
 // Postgres (./access-matrix/test-database.ts): it ends the person's place and
@@ -101,6 +101,32 @@ describe("moving someone to another unit in one write (issue #647)", () => {
     assert.deepEqual(await headsOf(AERODYNAMICS), [EXTRA.head]);
     assert.deepEqual(await headsOf(STRUCTURES), []);
     assert.ok((await placeOf(AERODYNAMICS_HEAD)).includes(`advisor@department:${AERODYNAMICS}`), "the head they replace stays as an advisor");
+  });
+
+  test("two overlapping moves of one person: the second to land, from a place the first already ended, is refused and writes nothing", async () => {
+    await seedFixture();
+    signInAs(TEAM_LEADER);
+    const person = IDS.person("MA");
+    const from = { kind: "division", divisionId: MA };
+    const rowsBefore = (await tableRows(roles)).length;
+    // Both moves read the person in Mission Analysis; the first one's batch waits until the second has run from start to end.
+    const batch = testDb.batch;
+    let toOA: Awaited<ReturnType<typeof move>> | undefined;
+    testDb.batch = async (queries) => {
+      testDb.batch = batch;
+      toOA = await move({ personId: person, from, to: { kind: "division", divisionId: OA, as: "member" } });
+      return batch(queries);
+    };
+    let toDM: Awaited<ReturnType<typeof move>>;
+    try {
+      toDM = await move({ personId: person, from, to: { kind: "division", divisionId: DM, as: "member" } });
+    } finally {
+      testDb.batch = batch;
+    }
+    assert.deepEqual(toOA, { ok: true });
+    assert.deepEqual(toDM, { ok: false, error: "Someone changed this placement since you opened it. Reload and try again." });
+    assert.deepEqual(await placeOf(person), [`core@division:${OA}`], "in one place, never two");
+    assert.equal((await tableRows(roles)).length, rowsBefore + 1, "only the move that landed started a row");
   });
 
   test("a viewer without the right to add or remove is refused, and nothing is written", async () => {

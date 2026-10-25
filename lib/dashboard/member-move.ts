@@ -209,7 +209,8 @@ export type MoveStart =
  */
 export type MovePlan = {
   readonly personId: number;
-  readonly end: readonly number[];
+  /** Never empty: a move always ends the place they leave. */
+  readonly end: readonly [number, ...number[]];
   /** The unit whose access rows of theirs go: the division they leave, or the department they stop heading. */
   readonly leaves: MoveFrom;
   readonly start: MoveStart;
@@ -324,11 +325,13 @@ export function planMove(input: {
   if (!handed.ok) return no(from.kind === "head" ? HEAD_SEAT_NEEDS_SUCCESSOR : ONE_SUCCESSOR_FOR_SEAT);
   if (successor !== null) successor = { ...successor, seat: handed.value };
 
+  // Both branches above refuse a person with no row in the place they leave.
+  const [first, ...rest] = ending;
   return {
     ok: true,
     value: {
       personId,
-      end: ending.map((r) => r.id),
+      end: [first.id, ...rest.map((r) => r.id)],
       leaves: from,
       start,
       replaced,

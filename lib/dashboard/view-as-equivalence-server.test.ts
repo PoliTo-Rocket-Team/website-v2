@@ -179,6 +179,7 @@ function readsOf(units: Awaited<ReturnType<typeof seedUnits>>): readonly (readon
     ...units.divisionIds.map((id): readonly [string, (data: DashboardData) => Promise<unknown>] => [`members(${id})`, (d) => d.members(id)]),
     ...units.divisionIds.map((id): readonly [string, (data: DashboardData) => Promise<unknown>] => [`findForAdd(${id})`, (d) => d.findForAdd(id, "a")]),
     ["findPeople", (d) => d.findPeople("a")],
+    ...units.memberIds.map((id): readonly [string, (data: DashboardData) => Promise<unknown>] => [`findMoveTargets(${id})`, (d) => d.findMoveTargets(id)]),
     ["alumni", (d) => d.alumni()],
     ["teamTree", (d) => d.teamTree()],
     ["teamStructure", (d) => d.teamStructure()],
