@@ -4,8 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { OverviewSectionSkeleton, PageSkeleton } from "@/components/dashboard/page-skeleton";
 import {
   OverviewAliasSection,
-  OverviewBoardSection,
-  OverviewPanelsSection,
+  OverviewBodySection,
   OverviewPersonSection,
   OverviewView,
 } from "@/components/dashboard/overview";
@@ -61,8 +60,10 @@ async function LiveOverview() {
 }
 
 // A team seat's Overview streams in by section (issue #397): the person
-// shows at once, and the alias card, the board and the panels each arrive
-// on their own, their reads started together here.
+// shows at once, and the alias card and the rest each arrive on their own,
+// their reads started together here. The board's and the personal panels'
+// reads share one section, since boards 99 and 99b set their panels side by
+// side in one pair of columns (issue #652).
 function TeamOverview({ data }: { data: DashboardData }) {
   const { person, board, panels } = data.overviewSections();
   // The viewer's own email alias card (board 94f, issue #542), until the alias is set up.
@@ -74,10 +75,7 @@ function TeamOverview({ data }: { data: DashboardData }) {
         <LiveAlias alias={alias} />
       </Suspense>
       <Suspense fallback={<OverviewSectionSkeleton section="board" />}>
-        <LiveBoard board={board} />
-      </Suspense>
-      <Suspense fallback={<OverviewSectionSkeleton section="panels" />}>
-        <LivePanels panels={panels} />
+        <LiveBody board={board} panels={panels} />
       </Suspense>
     </>
   );
@@ -88,10 +86,7 @@ async function LiveAlias({ alias }: { alias: Promise<OwnAlias | null> }) {
   return showsAliasCard(own) ? <OverviewAliasSection alias={own} /> : null;
 }
 
-async function LiveBoard({ board }: { board: Promise<ScopeBoard> }) {
-  return <OverviewBoardSection board={await board} />;
-}
-
-async function LivePanels({ panels }: { panels: Promise<Omit<PersonalPanels, "person">> }) {
-  return <OverviewPanelsSection panels={await panels} />;
+async function LiveBody({ board, panels }: { board: Promise<ScopeBoard>; panels: Promise<Omit<PersonalPanels, "person">> }) {
+  const [scope, own] = await Promise.all([board, panels]);
+  return <OverviewBodySection board={scope} panels={own} />;
 }

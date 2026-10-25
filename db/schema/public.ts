@@ -401,7 +401,9 @@ export const applicationFiles = pgTable("application_files", {
 /**
  * The interview times a division lead offers on one application (issue #169;
  * the lead's side is issue #171). The applicant picks one: `chosen`, at
- * `chosen_at`. At most one slot per application is chosen.
+ * `chosen_at`. At most one slot per application is chosen. `offered_by` is
+ * the account that offered the times (issue #652), which the Overview's
+ * upcoming interviews name; null for times stored before it was recorded.
  */
 export const interviewSlots = pgTable("interview_slots", {
   id: serial("id").primaryKey(),
@@ -412,6 +414,7 @@ export const interviewSlots = pgTable("interview_slots", {
   endsAt: timestamp("ends_at", { withTimezone: true, mode: "string" }).notNull(),
   chosen: boolean("chosen").default(false).notNull(),
   chosenAt: timestamp("chosen_at", { withTimezone: true, mode: "string" }),
+  offeredBy: text("offered_by").references(() => users.id, { onDelete: "set null", onUpdate: "cascade" }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
     .defaultNow()
     .notNull(),
