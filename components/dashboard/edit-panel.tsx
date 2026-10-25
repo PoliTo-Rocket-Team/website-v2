@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { CONTENT_FOCUS } from "./content-parts";
 import { PANEL_PRIMARY_BUTTON } from "./drawer";
+import { EditorPanel } from "./editor-panel";
 
-// The edit panel beside a page under the edit shell (boards 74c and 75c):
-// 480px wide, a header with the panel's name and a close button, one card
-// per section, any of them open at once, and Done at the foot. Every content
+// The edit panel beside a page under the edit shell (boards 74c and 75c),
+// drawn on the shared EditorPanel frame: one card per section, any of them
+// open at once, and Done at the foot. Every content
 // type that edits on the page brings its own sections; Save draft and
 // Publish sit on the edit bar, not here.
 
@@ -37,40 +38,26 @@ export function EditPanel<Section extends string>({
   children: ReactNode;
 }) {
   return (
-    <aside
-      aria-label={label}
-      className="flex flex-col border-l border-hairline bg-panel max-md:h-full md:w-[480px] md:shrink-0"
-    >
-      <header className="flex shrink-0 items-center justify-between border-b border-hairline px-6 py-[18px]">
-        <div className="min-w-0">
-          {eyebrow !== undefined && <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent">{eyebrow}</p>}
-          <h2 className={`truncate text-[18px] font-bold ${eyebrow === undefined ? "" : "mt-1"}`}>{title}</h2>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close the panel"
-          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-prt-muted transition-colors duration-300 ease-out hover:bg-white-5 hover:text-prt-text ${CONTENT_FOCUS}`}
-        >
-          <X aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+    <EditorPanel
+      label={label}
+      eyebrow={eyebrow}
+      title={title}
+      onClose={onClose}
+      foot={
+        <button type="button" onClick={onClose} className={PANEL_PRIMARY_BUTTON}>
+          Done
         </button>
-      </header>
-
+      }
+    >
       <AccordionPrimitive.Root
         type="multiple"
         value={[...expanded]}
         onValueChange={(value) => onExpandedChange(value as Section[])}
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto px-[18px] py-4"
+        className="space-y-3"
       >
         {children}
       </AccordionPrimitive.Root>
-
-      <footer className="flex shrink-0 justify-end border-t border-hairline px-6 py-4">
-        <button type="button" onClick={onClose} className={PANEL_PRIMARY_BUTTON}>
-          Done
-        </button>
-      </footer>
-    </aside>
+    </EditorPanel>
   );
 }
 
