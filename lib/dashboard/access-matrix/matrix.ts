@@ -11,10 +11,10 @@ import {
   type DivisionUnit,
   type FlaggedSeat,
   type GrantArea,
-  type ScopedRole,
   type ScopeUnitRow,
   type ViewerStanding,
 } from "../viewer";
+import type { RecruitmentRole } from "../application-documents";
 import type { RoleType } from "../team";
 
 // The dashboard access matrix (issue #477): every viewer kind against every
@@ -49,11 +49,16 @@ export const ORG = [
   { id: 2, name: "Structures", divisions: [{ id: 3, name: "Design & Manufacturing" }] },
 ];
 
-export type Role = ScopedRole & ActiveRoleRef;
+/** Each division's code, as the fixture stores it (./fixture.ts): none is Logistics, so no matrix viewer is the recruitment manager. */
+const DIVISION_CODES: Readonly<Record<number, string>> = { 1: "MSA", 2: "OPT", 3: "DMA" };
+
+export type Role = RecruitmentRole & ActiveRoleRef;
 export const role = (type: RoleType, divisionId: number | null, departmentId: number | null, fullAccess: FlaggedSeat | null = null): Role => ({
   type,
   divisionId,
   departmentId,
+  divisionCode: divisionId === null ? null : (DIVISION_CODES[divisionId] ?? null),
+  divisionClosedAt: null,
   fullAccess,
 });
 export const MEMBER_ROLE = role("core", 1, 1);
@@ -69,7 +74,7 @@ export const row = (scope: ScopeUnitRow["scope"], target: ScopeUnitRow["target"]
 
 /** A viewer as the database reads them (`readIdentity`): standing, roles and area grants, and the raw rows and roles they were built from. */
 export type Viewer = ViewerStanding & {
-  readonly roles: readonly ScopedRole[];
+  readonly roles: readonly RecruitmentRole[];
   readonly grants: readonly AreaGrant[];
   /** The active roles as stored, before an alumnus's are dropped. */
   readonly heldRoles: readonly Role[];

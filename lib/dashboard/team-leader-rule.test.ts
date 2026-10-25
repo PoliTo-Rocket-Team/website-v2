@@ -66,7 +66,12 @@ const head = seat([{ type: "head", divisionId: null, departmentId: 1 }], [], [1]
 const lead = seat([{ type: "lead", divisionId: 1, departmentId: 1 }], [1], []);
 const member = seat([{ type: "core", divisionId: 1, departmentId: 1 }], [], []);
 
-const reader = (s: Seat): RecruitmentReader => ({ ...s.standing, roles: s.roles, grants: [] });
+/** The seat as the recruitment pages read it: each role with its division's code, every division open. */
+const reader = (s: Seat): RecruitmentReader => ({
+  ...s.standing,
+  roles: s.roles.map((r) => ({ ...r, divisionCode: org.divisions.find((d) => d.id === r.divisionId)?.code ?? null, divisionClosedAt: null })),
+  grants: [],
+});
 const changes = (s: Seat, area: ChangeArea, unit: DivisionUnit) => mayChange({ kind: s.standing.kind, roles: s.roles, grants: [] }, area, unit);
 
 test("the team leader is recognised by their seat alone, with no scope row", () => {

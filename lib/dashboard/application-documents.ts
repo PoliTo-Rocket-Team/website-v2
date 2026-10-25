@@ -1,6 +1,8 @@
 import type { PrivatePathname } from "@/lib/storage/pathname";
+import { recruitmentManagerDivision } from "./notices";
 import type { ApplicationDocument } from "./recruitment";
-import { readsArea, readsAreaIn, type AreaReader, type DivisionUnit, type GrantArea, type ViewerStanding } from "./viewer";
+import { divisionRoleOf } from "./team";
+import { isOffTeam, readsArea, readsAreaIn, type AreaGrant, type DivisionUnit, type GrantArea, type ScopedRole, type ViewerStanding } from "./viewer";
 
 // Who reads an application on the dashboard, and where its documents open
 // (issue #406). The Applications page lists an application only for a viewer
@@ -33,8 +35,16 @@ export function applicationIdOf(segment: string): number | null {
   return Number.isSafeInteger(id) && id <= 2_147_483_647 ? id : null;
 }
 
-/** A viewer as the recruitment pages read them: their kind, the units their roles and scope rows cover, and their area grants. */
-export type RecruitmentReader = AreaReader;
+/**
+ * An active role as the recruitment pages read it: its type and unit, with
+ * its division's code and the day that division closed (null while it is
+ * open, and for a role in no division). The two find the recruitment
+ * manager (`managesRecruitment`, issue #194).
+ */
+export type RecruitmentRole = ScopedRole & { readonly divisionCode: string | null; readonly divisionClosedAt: string | null };
+
+/** A viewer as the recruitment pages read them: their kind, their active roles, the units their roles and scope rows cover, and their area grants. */
+export type RecruitmentReader = ViewerStanding & { readonly roles: readonly RecruitmentRole[]; readonly grants: readonly AreaGrant[] };
 
 /** The two recruitment areas: the Positions page's and the Applications page's, each its own grant (issue #471). */
 export type RecruitmentArea = Extract<GrantArea, "positions" | "applications">;
@@ -48,9 +58,31 @@ export function readsRecruitment(viewer: ViewerStanding, area: RecruitmentArea):
   return readsArea(viewer, area);
 }
 
-/** Whether the viewer reads one recruitment area in one division: every division with full access, else where `readsAreaIn` covers it. */
+/**
+ * Whether the viewer is the recruitment manager (issue #194): an active lead
+ * of the division `recruitmentManagerDivision` finds, the open Logistics
+ * division (Owner decisions on #194, 2026-10-22 and 2026-10-25). They read
+ * every open division's applications and may make every move a lead may make
+ * on them, team-wide; the Positions area stays their own division's. While
+ * Logistics is closed nobody is the recruitment manager. It is a role's
+ * standing, so a member's never is, a grant's reach read as a member's
+ * included, and nor is anyone's off the team.
+ */
+export function managesRecruitment(viewer: RecruitmentReader): boolean {
+  if (viewer.kind === "member" || isOffTeam(viewer.kind)) return false;
+  const led = viewer.roles.flatMap((r) =>
+    r.divisionId !== null && divisionRoleOf(r.type) === "lead" ? [{ id: r.divisionId, code: r.divisionCode, closedAt: r.divisionClosedAt }] : [],
+  );
+  return recruitmentManagerDivision(led) !== null;
+}
+
+/**
+ * Whether the viewer reads one recruitment area in one division: every
+ * division with full access, and Applications in every division for the
+ * recruitment manager (`managesRecruitment`); else where `readsAreaIn` covers it.
+ */
 export function readsRecruitmentIn(viewer: RecruitmentReader, area: RecruitmentArea, unit: DivisionUnit): boolean {
-  return readsAreaIn(viewer, area, unit);
+  return (area === "applications" && managesRecruitment(viewer)) || readsAreaIn(viewer, area, unit);
 }
 
 /**

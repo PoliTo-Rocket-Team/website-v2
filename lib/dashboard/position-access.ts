@@ -1,4 +1,4 @@
-import { readsRecruitmentIn, type RecruitmentReader } from "./application-documents";
+import { managesRecruitment, readsRecruitmentIn, type RecruitmentReader } from "./application-documents";
 import { mayChange, type ChangeArea, type ChangeAuthority, type DivisionUnit } from "./viewer";
 
 // Who may change a position and its applications (issue #461): editing it,
@@ -15,8 +15,11 @@ export type PositionWriter = RecruitmentReader & ChangeAuthority;
  * Can edit lets them change it (`mayChange`). Full access, the
  * standing the team leader's seat gives (`fullAccessSeatOf`, issue #444),
  * passes both everywhere; a department head passes in their department, a
- * division lead in the divisions they lead.
+ * division lead in the divisions they lead. The recruitment manager, the
+ * Logistics lead (`managesRecruitment`, issue #194), passes on Applications
+ * in every division, and on Positions only where their role lets them.
  */
 export function mayChangePositionIn(viewer: PositionWriter, area: Exclude<ChangeArea, "members">, unit: DivisionUnit): boolean {
+  if (area === "applications" && managesRecruitment(viewer)) return true;
   return readsRecruitmentIn(viewer, area, unit) && mayChange(viewer, area, unit);
 }

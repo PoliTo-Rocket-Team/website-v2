@@ -77,6 +77,7 @@ import { outreachEditor } from "@/lib/outreach-editor";
 import { projectEditor } from "@/lib/project-content/editor";
 import { blobProjectBackgroundFiles, blobProjectPhotoFiles, databaseProjectStore, readProjectStamps } from "./database-projects";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
+import { readsRecruitmentIn } from "./application-documents";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { answerAlias, cancelAliasRequest, confirmAliasSetUp, readAliasAttention, readMemberAliases, readOwnAlias, requestAlias } from "./database-alias";
 import { upcomingInterviews } from "./interview-slots";
@@ -96,6 +97,9 @@ type ActiveRole = {
   startedAt: string;
   divisionId: number | null;
   divisionName: string | null;
+  /** Its division's code, and the day that division closed (null while open): what finds the recruitment manager (issue #194). */
+  divisionCode: string | null;
+  divisionClosedAt: string | null;
   departmentId: number | null;
   departmentName: string | null;
   /** The full-access seat the role is flagged as (issue #238). */
@@ -174,6 +178,8 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
         startedAt: roles.startedAt,
         divisionId: roles.divisionId,
         divisionName: divisions.name,
+        divisionCode: divisions.code,
+        divisionClosedAt: divisions.closedAt,
         departmentId: departments.id,
         departmentName: departments.name,
         fullAccess: roles.fullAccess,
@@ -297,13 +303,14 @@ async function readLivePositions(): Promise<LivePosition[]> {
 }
 
 /**
- * The live positions the viewer's figures cover in `area` (`readsAreaIn`):
- * a head's or a lead's units in every area, a member's granted ones in that
- * area alone (issue #471).
+ * The live positions the viewer's figures cover in `area`, by the rule the
+ * recruitment pages read (`readsRecruitmentIn`): a head's or a lead's units
+ * in every area, a member's granted ones in that area alone (issue #471),
+ * and every one on Applications for the recruitment manager (issue #194).
  */
 async function scopedPositions(identity: Identity, area: "positions" | "applications"): Promise<LivePosition[]> {
   const rows = await readLivePositions();
-  return rows.filter((r) => readsAreaIn(identity, area, { divisionId: r.divisionId, departmentId: r.departmentId }));
+  return rows.filter((r) => readsRecruitmentIn(identity, area, { divisionId: r.divisionId, departmentId: r.departmentId }));
 }
 
 /**
