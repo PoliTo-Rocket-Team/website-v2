@@ -57,7 +57,8 @@ import { Avatar } from "./avatar";
 import { ColumnFilter } from "./column-filter";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { FilterMenu, SearchField, Segmented } from "./controls";
+import { FilterMenu, Segmented } from "./controls";
+import { SearchField } from "./search-field";
 import { DecisionDialog, NextSteps } from "./decision-dialog";
 import { InterviewDialog } from "./interview-dialog";
 import { PANEL } from "./panel";
@@ -230,7 +231,7 @@ export function ApplicationsView({
               options={APPLICATIONS_SORTS.slice(1).map((s) => ({ value: s.sort, label: s.label }))}
             />
           )}
-          {has("search") && <SearchField label="Search applicant or position" value={filter.query} onChange={(query) => narrow({ query })} />}
+          {has("search") && <SearchField placeholder="Search applicant or position" value={filter.query} onChange={(query) => narrow({ query })} className="md:w-[260px]" />}
         </div>
       </div>
 

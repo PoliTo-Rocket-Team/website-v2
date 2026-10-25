@@ -8,7 +8,7 @@ import { divisionLabel, matchesQuery } from "@/lib/dashboard/team";
 import { editViewIntro, type StructureDepartment, type StructureDivision, type StructureLeader, type StructurePerson, type StructureSeat, type TeamStructure } from "@/lib/dashboard/team-structure";
 import { Avatar } from "./avatar";
 import { DepartmentDrawer, type DepartmentDrawerTarget } from "./department-drawers";
-import { SearchField } from "./directory";
+import { SearchField } from "./search-field";
 import { CloseDivisionDialog } from "./division-dialogs";
 import { DivisionDrawer, type DivisionDrawerTarget } from "./division-drawer";
 import { DrawerPage } from "./drawer";

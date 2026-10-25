@@ -1,14 +1,14 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { pagerItems, type TeamRole } from "@/lib/dashboard/team";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 // The parts the Members and Alumni pages share (boards 46, 46c, 59): the tab
 // strip with counts (a row of chips on a phone, board 59m), the department
-// filter, search, the role pill and the pager. Props in, nothing fetched.
+// filter, the role pill and the pager (search is `search-field.tsx`). Props in, nothing fetched.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -110,32 +110,6 @@ export function DepartmentFilter({
         </DropdownMenuPrimitive.Content>
       </DropdownMenuPortal>
     </DropdownMenu>
-  );
-}
-
-export function SearchField({
-  value,
-  onChange,
-  placeholder,
-  className = "md:w-[360px]",
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  className?: string;
-}) {
-  return (
-    <label className={`relative flex h-10 w-full items-center ${className}`}>
-      <span className="sr-only">{placeholder}</span>
-      <Search aria-hidden className="pointer-events-none absolute left-3.5 h-4 w-4 text-prt-muted" strokeWidth={1.75} />
-      <input
-        type="search"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className="h-full w-full rounded-xl border border-hairline bg-transparent pl-10 pr-3.5 text-[14px] text-prt-text placeholder:text-prt-muted transition-colors duration-300 ease-out hover:border-border-strong focus:border-border-strong focus:outline-none"
-      />
-    </label>
   );
 }
 

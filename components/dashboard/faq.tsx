@@ -13,6 +13,7 @@ import { DrawerPage, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
+import { RowOpen } from "./row-open";
 
 // The FAQ page (boards 79 and 79b, issue #258): the questions at the bottom of
 // /apply in site order, each row dragged to its place; a row or New question
@@ -187,7 +188,9 @@ function FaqRow({
     >
       <GripVertical aria-hidden className="hidden h-4 w-4 shrink-0 cursor-grab text-dim md:block" strokeWidth={1.75} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[15px] text-prt-text">{faq.question}</span>
+        <RowOpen label={`Open ${faq.question}`} onOpen={onOpen} className="block truncate text-[15px] text-prt-text">
+          {faq.question}
+        </RowOpen>
         <span className="block truncate text-[13px] text-prt-muted">{faq.answer[0]}</span>
       </span>
       <span className={`hidden w-[150px] shrink-0 text-[13px] text-text-2 md:block ${squeezed}`}>{updatedLabel(faq.updatedAt, now)}</span>

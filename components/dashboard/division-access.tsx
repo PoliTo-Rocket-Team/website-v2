@@ -84,7 +84,8 @@ import {
 import { shortDate, type WriteResult } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
-import { FilterMenu, SearchField, Segmented } from "./controls";
+import { FilterMenu, Segmented } from "./controls";
+import { SearchField } from "./search-field";
 import { Drawer, DrawerPage, PANEL_DANGER_BUTTON } from "./drawer";
 import { Field, GroupLabel, LOCKED_INPUT } from "./field";
 import { PANEL } from "./panel";
@@ -288,7 +289,7 @@ export function DivisionAccessView({ access: initial, ...actions }: { access: Ac
           )}
           {has("search") && (
             <div className="min-w-0 flex-1 md:flex-none">
-              <SearchField label="Search people" value={filter.query} onChange={(query) => narrow({ query })} />
+              <SearchField placeholder="Search people" value={filter.query} onChange={(query) => narrow({ query })} className="md:w-[260px]" />
             </div>
           )}
         </div>

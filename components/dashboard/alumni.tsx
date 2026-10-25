@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useOptimistic, useState, useTransition } from "react";
-import { Check, ChevronDown, ExternalLink, MoreHorizontal, Pencil, Plus } from "lucide-react";
+import { Check, ChevronDown, ExternalLink, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { setAlumnusShown } from "@/app/dashboard/team-actions";
 import type { AlumnusKey } from "@/lib/about/alumni-record";
@@ -11,16 +11,18 @@ import { AddAdvisorPanel, AlumniSwitch, AlumnusPanel } from "./alumni-panels";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar } from "./avatar";
-import { Controls, DepartmentFilter, Pager, SearchField, TH } from "./directory";
+import { Controls, DepartmentFilter, Pager, TH } from "./directory";
 import { DrawerPage } from "./drawer";
 import { GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
+import { RowOpen } from "./row-open";
+import { SearchField } from "./search-field";
 
 // The Alumni page (board 78, issue #257): everyone the public Alumni page
 // lists, filled in from the team's roles. Year tabs (the two latest, then
 // "Earlier"), the department filter and search narrow the rows in the
-// browser. The switch shows or hides someone on the public page; the row's
-// menu opens the fix panel (78b), and "Add alumni" adds an external advisor
+// browser. The switch shows or hides someone on the public page; a click on
+// the row opens the fix panel (78b, issue #616), and "Add alumni" adds an external advisor
 // (78c). Every write goes through the data interface (a cookie for a test
 // developer) and changes only the public page, never a role.
 
@@ -111,9 +113,6 @@ export function AlumniView({ directory, editable }: { directory: AlumniDirectory
               </th>
               <th scope="col" className={`${TH} w-[150px]`}>
                 On the site
-              </th>
-              <th scope="col" className="w-14">
-                <span className="sr-only">Fix</span>
               </th>
             </tr>
           </thead>
@@ -250,22 +249,6 @@ function Tags({ row }: { row: AlumnusRow }) {
   );
 }
 
-function OpenButton({ row, onOpen }: { row: AlumnusRow; onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        event.stopPropagation();
-        onOpen();
-      }}
-      aria-label={`Fix how ${row.name} shows`}
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-prt-muted transition-colors duration-300 ease-out hover:bg-white-5 hover:text-prt-text ${FOCUS}`}
-    >
-      <MoreHorizontal aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-    </button>
-  );
-}
-
 // A phone card (the Members phone cards, board 46): avatar, name, and the last
 // role with the years; the card opens the fix panel.
 function AlumnusCard({ row, editable, onOpen }: { row: AlumnusRow; editable: boolean; onOpen: () => void }) {
@@ -304,14 +287,16 @@ function AlumnusTableRow({
   onOpen: () => void;
 }) {
   return (
-    <tr className={`transition-colors duration-300 ease-out ${selected ? "bg-accent/[0.08]" : "hover:bg-white-5"}`}>
+    <tr onClick={onOpen} className={`cursor-pointer transition-colors duration-300 ease-out ${selected ? "bg-accent/[0.08]" : "hover:bg-white-5"}`}>
       <td className="px-5 py-2.5">
         <span className="flex min-w-0 items-center gap-3.5">
           <Avatar person={{ photoUrl: row.photo }} />
           {/* The name goes first: when it and its tags do not fit on one line (a side panel open
               at 1280px), the tags wrap under it instead of squeezing it (board 78b). */}
           <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3.5 gap-y-1">
-            <span className="block max-w-full truncate text-[15px] text-prt-text">{row.name}</span>
+            <RowOpen label={`Fix how ${row.name} shows`} onOpen={onOpen} className="block truncate text-[15px] text-prt-text">
+              {row.name}
+            </RowOpen>
             <Tags row={row} />
           </span>
         </span>
@@ -321,11 +306,9 @@ function AlumnusTableRow({
         <span className="block truncate text-[12px] text-prt-muted">{row.lastUnit}</span>
       </td>
       <td className={`hidden px-5 py-2.5 text-[14px] text-text-2 lg:table-cell ${panelOpen ? "xl:hidden" : ""}`}>{years(row)}</td>
-      <td className="px-5 py-2.5">
+      {/* The switch only shows or hides them: its click stops here, short of the row. */}
+      <td className="px-5 py-2.5" onClick={(event) => event.stopPropagation()}>
         <SiteSwitch row={row} editable={editable} />
-      </td>
-      <td className="pr-5 text-right">
-        <OpenButton row={row} onOpen={onOpen} />
       </td>
     </tr>
   );

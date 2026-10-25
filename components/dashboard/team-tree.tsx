@@ -6,7 +6,7 @@ import { ChevronDown, LocateFixed, Maximize2, Minus, Pencil, Plus } from "lucide
 import { divisionLabel, matchesQuery, type TeamTree, type TreePerson } from "@/lib/dashboard/team";
 import { boxOf, layoutTeamTree, type Box, type TreeLayout, type TreeNode } from "@/lib/dashboard/tree-layout";
 import { Avatar } from "./avatar";
-import { SearchField } from "./directory";
+import { SearchField } from "./search-field";
 
 // The Team tree as a family tree, drawn from the roster the data interface
 // returns. From md it is board 54c: the whole tree on a canvas that pans
