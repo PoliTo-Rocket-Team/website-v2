@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { NO_MEMBER_DETAILS, type MemberDetails } from "./details";
+import { membersExportRows } from "./members-export";
 import { NO_NAME } from "./person-name";
 import type { PersonRecord } from "./division-members";
 import { membershipsOf, type DivisionRole, type OrgChart, type RoleBeyondDivisions } from "./team";
 import {
   clearPicks,
   columnOptions,
+  columnValues,
   divisionChoices,
   filterTeam,
   NO_PICKS,
@@ -108,12 +110,33 @@ test("the Role column shows a head's and a seat's stored title, and a rename mov
   assert.equal(rows("", "")[1][2], "Chief Engineer");
 });
 
-test("a head shows their department's division codes; everyone else their own divisions' codes", () => {
-  const chips = (name: string) => page.people.find((p) => p.name === name)!.chips.map((c) => c.label);
-  assert.deepEqual(chips("Chiara Ferri"), ["MA", "OA"]);
-  assert.deepEqual(chips("Anna Villa"), ["MA", "OA"]);
-  assert.deepEqual(chips("Zoe Member"), ["DM"]);
-  assert.deepEqual(chips("Alessandro Greco"), []);
+test("Department and Divisions columns: a head sits in the department, everyone else in their own divisions (issue #767)", () => {
+  const lead = record("Luca Rossi", [[11, "lead"], [20, "member"]]);
+  const people = wholeTeamMembers({ records: [...records, lead], org, selfId: null }).people;
+  const row = (name: string) => {
+    const p = people.find((x) => x.name === name)!;
+    return { department: columnValues(p, "department"), divisions: columnValues(p, "divisions") };
+  };
+  assert.deepEqual(row("Zoe Member"), { department: ["Structures"], divisions: ["DM"] });
+  assert.deepEqual(row("Anna Villa"), { department: ["Aerodynamics"], divisions: ["MA", "OA"] });
+  assert.deepEqual(row("Luca Rossi"), { department: ["Aerodynamics", "Structures"], divisions: ["OA", "DM"] });
+  assert.deepEqual(row("Chiara Ferri"), { department: ["Aerodynamics"], divisions: [] });
+  assert.deepEqual(row("Alessandro Greco"), { department: [], divisions: [] });
+  // The division select still counts the head in each division of their department.
+  assert.deepEqual(people.find((p) => p.name === "Chiara Ferri")!.divisionIds, [10, 11]);
+  // Ticking a department leaves the people in it or heading it.
+  const names = (picks: Parameters<typeof withPicks>[1]) => withPicks(people, picks).map((p) => p.name);
+  assert.deepEqual(names(togglePick(NO_PICKS, "department", "Aerodynamics")), ["Chiara Ferri", "Luca Rossi", "Marco Bianchi", "Anna Villa"]);
+  assert.deepEqual(names(togglePick(NO_PICKS, "department", "Structures")), ["Luca Rossi", "Zoe Member"]);
+});
+
+test("the export's Department column sits before Divisions with the table's values; a head's Divisions cell is empty (issue #767)", () => {
+  const [header, ...rows] = membersExportRows(page.people);
+  assert.deepEqual(header.slice(0, 4), ["Name", "Role", "Department", "Divisions"]);
+  const row = (name: string) => rows.find((r) => r[0] === name)!.slice(2, 4);
+  assert.deepEqual(row("Chiara Ferri"), ["Aerodynamics", ""]);
+  assert.deepEqual(row("Alessandro Greco"), ["", ""]);
+  assert.deepEqual(row("Zoe Member"), ["Structures", "Structures · Design & Manufacturing (DM): CAD Engineer"]);
 });
 
 test("the department and division selects narrow the rows, a head counting in each division of their department", () => {
@@ -137,10 +160,10 @@ test("column filters: any ticked value in a column matches, every filtered colum
   const women = togglePick(NO_PICKS, "gender", "Female");
   assert.deepEqual(names(women), ["Chiara Ferri", "Anna Villa", "Zoe Member"]);
   const womenInOA = togglePick(women, "divisions", "OA");
-  assert.deepEqual(names(womenInOA), ["Chiara Ferri", "Anna Villa"]);
+  assert.deepEqual(names(womenInOA), ["Anna Villa"]);
   assert.deepEqual(names(togglePick(womenInOA, "nda", "Not signed")), ["Anna Villa"]);
   assert.deepEqual(names(togglePick(women, "gender", "Female")), names(NO_PICKS));
-  assert.deepEqual(names(clearPicks(womenInOA, "gender")), ["Chiara Ferri", "Anna Villa"]);
+  assert.deepEqual(names(clearPicks(womenInOA, "gender")), ["Anna Villa"]);
   assert.deepEqual(names(togglePick(NO_PICKS, "role", "Division Lead")), ["Marco Bianchi"]);
   assert.deepEqual(names(togglePick(NO_PICKS, "level", "Master's · year 1")), ["Anna Villa"]);
 });
@@ -152,7 +175,7 @@ test("a column's popover counts each value over what the other columns leave, mo
   ]);
   const inMA = togglePick(NO_PICKS, "divisions", "MA");
   assert.deepEqual(columnOptions(page.people, inMA, "gender"), [
-    { value: "Female", count: 2 },
+    { value: "Female", count: 1 },
     { value: "Male", count: 1 },
   ]);
   // A column's own ticks do not shrink its own list.

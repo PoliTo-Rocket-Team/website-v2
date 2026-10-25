@@ -1698,6 +1698,7 @@ describe("a division lead with no scope row edits their own division in the Team
 const EXPECTED_EXPORT_HEADER = [
   "Name",
   "Role",
+  "Department",
   "Divisions",
   "Member since",
   "PRT email",

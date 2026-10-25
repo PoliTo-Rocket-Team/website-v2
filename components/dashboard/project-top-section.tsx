@@ -2,30 +2,31 @@
 
 import { useId, useRef, useState } from "react";
 import Image from "next/image";
-import { ChevronDown, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import { toast } from "sonner";
 import { uploadProjectBackground } from "@/app/dashboard/project-actions";
-import { FACTS_LIMIT, type BackgroundFields, type FactFields, type ProjectFields, type VisualFields } from "@/lib/project-content/fields";
-import { BACKGROUND_MAX_BYTES, BACKGROUND_PRESETS, backgroundSrc, type BackgroundPreset } from "@/lib/project-content/record";
-import { MODEL_NAMES, type RocketModel } from "@/lib/rocket-model";
+import { FACTS_LIMIT, pickableModelsOf, type BackgroundFields, type FactFields, type ProjectFields, type VisualFields } from "@/lib/project-content/fields";
+import { BACKGROUND_MAX_BYTES, BACKGROUND_PRESETS, backgroundSrc, type BackgroundPreset, type ProjectRecord } from "@/lib/project-content/record";
+import type { TopPart } from "@/lib/project-pages";
+import { MODEL_NAMES, cardPosterOf, type RocketModel } from "@/lib/rocket-model";
 import { BackgroundCropDialog, type BackgroundCrops } from "./background-crop-dialog";
 import { CONTENT_FOCUS, TextField } from "./content-parts";
-import { SECTION_CARD } from "./edit-panel";
+import { PanelSection } from "./edit-panel";
 import { PhotosSection, type PhotoUploads } from "./outreach-post-photos";
-import { BackToBlocks } from "./project-blocks";
 import { CopyField, EditableList, type FieldErrors } from "./project-panel-parts";
 
-// The Top of the page card of the Edit <project> panel (boards 93 and 93d,
-// epic #522). Closed, it is a card over Page blocks; opened, it takes the
-// cards' place with "Page blocks" to go back, and the page's top is outlined.
-// Its visual is the project's own model (the outline rocket until one is
-// built), one photo, or none, with an optional caption. Its background is one
-// of the 17 presets; the home card draws its tall file and the page and the
+// The Top of the page row of the Edit <project> panel (boards 93 and 93d,
+// epics #522 and #614). It opens where it sits, and while it is the row
+// opened last the page's top is outlined. Its visual is a model picked in the
+// Rocket field (issue #389), one photo, or none, with an optional caption. Its
+// background is one of the 17 presets; the home card draws its tall file and the page and the
 // Projects list its wide one (`backgroundSrc`). A project that kept its brand
 // texture from before presets shows no preset picked until an editor picks
 // one. The Upload tile closes the grid: it uploads the editor's own picture,
 // cropped Tall and Wide in the crop dialog of board 93f (issue #529). Intro,
-// status, dates and key facts follow the background.
+// status, dates and key facts follow the background. The page outlines the
+// top in three parts, and each part's chip brings its own fields into view:
+// the visual and background, the intro, status and dates, and the key facts.
 
 /** What each preset is called under its swatch (board 93d). */
 const PRESET_NAMES: Readonly<Record<BackgroundPreset, string>> = {
@@ -56,7 +57,7 @@ const VISUALS: readonly { value: VisualKind; label: string }[] = [
   { value: "none", label: "None" },
 ];
 
-/** The visual a new pick starts from: 3D model draws the project's own model, a photo starts empty. */
+/** The visual a new pick starts from: 3D model draws the model picked last, a photo starts empty. */
 function switchedTo(kind: VisualKind, model: RocketModel): VisualFields {
   switch (kind) {
     case "model":
@@ -73,7 +74,7 @@ function visualNote(visual: VisualFields): string {
     case "model":
       return visual.model === "placeholder"
         ? "The outline rocket, for a project whose model is not built yet."
-        : `${MODEL_NAMES[visual.model]}, the project's own model. A new project shows the outline rocket until its model is built.`;
+        : `${MODEL_NAMES[visual.model]} on the page, its Home card and the Projects list.`;
     case "photo":
       return "One photo fills the panel on the page.";
     case "none":
@@ -81,56 +82,56 @@ function visualNote(visual: VisualFields): string {
   }
 }
 
-/** The closed Top of the page card over Page blocks (board 93); it opens the card in the cards' place. */
-export function TopCard({ fields, onOpen }: { fields: ProjectFields; onOpen: () => void }) {
+/** One top part's fields: the row's own spacing, and room over them when a chip scrolls them to the panel's top. */
+const PART_FIELDS = "scroll-mt-4 space-y-4";
+
+/** The Top of the page row's one line: what the row holds. */
+function topSummary(fields: ProjectFields): string {
   const n = fields.hero.facts.length;
-  return (
-    <div className={SECTION_CARD}>
-      <h3>
-        <button
-          type="button"
-          onClick={onOpen}
-          className={`flex w-full items-center justify-between gap-4 rounded-xl px-4 py-3.5 text-left ${CONTENT_FOCUS}`}
-        >
-          <span className="min-w-0">
-            <span className="block text-[14px] font-semibold leading-snug">Top of the page</span>
-            <span className="mt-0.5 block truncate text-[12px] text-prt-muted">{`Intro, status, dates, ${n} key ${n === 1 ? "fact" : "facts"}`}</span>
-          </span>
-          <ChevronDown aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-        </button>
-      </h3>
-    </div>
-  );
+  return `Intro, status, dates, ${n} key ${n === 1 ? "fact" : "facts"}`;
 }
 
-/** The Top of the page card opened in the cards' place (board 93d). */
-export function TopPanel({
+/**
+ * The Top of the page row (boards 93 and 93d, ruling R2.1 on #720): the
+ * visual, the rocket, the background, the intro, status, dates and key facts.
+ */
+export function TopSection({
   fields,
+  kind,
   model,
   phone,
   errors,
   uploads,
+  cardRef,
+  partRef,
   onChange,
-  onBack,
 }: {
   fields: ProjectFields;
-  /** The model 3D model draws (`projectModelOf`). */
+  /** Which models the Rocket field offers (`pickableModelsOf`). */
+  kind: ProjectRecord["kind"];
+  /** The model the Rocket field opens on (`projectModelOf`). */
   model: RocketModel;
   phone: boolean;
   errors: FieldErrors;
   uploads: PhotoUploads;
+  cardRef: (node: HTMLDivElement | null) => void;
+  /** The ref each top part's fields take, so the part's chip on the page brings them into view. */
+  partRef: (part: TopPart) => (node: HTMLDivElement | null) => void;
   onChange: (change: (fields: ProjectFields) => ProjectFields) => void;
-  onBack: () => void;
 }) {
   const { hero } = fields;
   const setHero = (change: Partial<ProjectFields["hero"]>) => onChange((f) => ({ ...f, hero: { ...f.hero, ...change } }));
+  // The model picked last, so a visual switched to Photo or None and back to 3D model draws it again.
+  const [picked, setPicked] = useState(hero.visual.kind === "model" ? hero.visual.model : model);
+  const pickModel = (next: RocketModel) => {
+    setPicked(next);
+    setHero({ visual: { kind: "model", model: next } });
+  };
   return (
-    <div className="space-y-4">
-      <BackToBlocks onBack={onBack} />
-      <section aria-label="Top of the page" className="space-y-4 rounded-xl border border-accent px-4 pb-4 pt-3">
-        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Top of the page</p>
+    <PanelSection value="top" cardRef={cardRef} title="Top of the page" summary={topSummary(fields)}>
+      <div ref={partRef("visual")} className={PART_FIELDS}>
         <TopVisualEditor
-          model={model}
+          model={picked}
           visual={hero.visual}
           caption={hero.caption}
           errors={errors}
@@ -138,12 +139,17 @@ export function TopPanel({
           onVisualChange={(change) => onChange((f) => ({ ...f, hero: { ...f.hero, visual: change(f.hero.visual) } }))}
           onCaptionChange={(caption) => setHero({ caption })}
         />
+        {hero.visual.kind === "model" && <RocketPicker models={pickableModelsOf(kind)} picked={hero.visual.model} onPick={pickModel} />}
         <BackgroundPicker background={fields.background} discard={uploads.discard} onChange={(background) => onChange((f) => ({ ...f, background }))} />
+      </div>
+      <div ref={partRef("title")} className={PART_FIELDS}>
         <CopyField label="Intro" rows={3} copy={hero.intro} phone={phone} error={errors["hero.intro"]} onChange={(intro) => setHero({ intro })} />
         <div className="grid grid-cols-2 gap-2.5">
           <TextField label="Status" value={hero.status} error={errors["hero.status"]} onChange={(status) => setHero({ status })} />
           <TextField label="Dates" value={hero.dates} error={errors["hero.dates"]} onChange={(dates) => setHero({ dates })} />
         </div>
+      </div>
+      <div ref={partRef("facts")} className="scroll-mt-4">
         <EditableList
           label="Key facts"
           hint={`${FACTS_LIMIT.min} to ${FACTS_LIMIT.max}`}
@@ -167,8 +173,8 @@ export function TopPanel({
             </div>
           )}
         />
-      </section>
-    </div>
+      </div>
+    </PanelSection>
   );
 }
 
@@ -238,6 +244,39 @@ function TopVisualEditor({
 
       {visual.kind !== "none" && <TextField label="Caption" hint="optional" value={caption} onChange={onCaptionChange} />}
     </>
+  );
+}
+
+/**
+ * The Rocket field (issue #389), built like the Background picker: a tile per
+ * model the project may draw, each its card poster with its name under it.
+ * It shows while the visual is 3D model.
+ */
+function RocketPicker({ models, picked, onPick }: { models: readonly RocketModel[]; picked: RocketModel; onPick: (model: RocketModel) => void }) {
+  const id = useId();
+  return (
+    <div>
+      <p id={id} className="mb-2 text-[13px] leading-snug text-prt-text">
+        Rocket<span className="ml-1.5 text-prt-muted">page, cards and Projects list</span>
+      </p>
+      <div role="group" aria-labelledby={id} className="grid grid-cols-4 gap-x-1.5 gap-y-2.5">
+        {models.map((model) => {
+          const on = model === picked;
+          return (
+            <button key={model} type="button" aria-pressed={on} onClick={() => onPick(model)} className={`group min-w-0 rounded-md text-left ${CONTENT_FOCUS}`}>
+              <span
+                className={`relative block aspect-[3/4] overflow-hidden rounded-md border-2 bg-white-5 transition-colors duration-300 ease-out ${
+                  on ? "border-accent" : "border-transparent group-hover:border-border-strong"
+                }`}
+              >
+                <Image src={cardPosterOf(model)} alt="" fill sizes="100px" className="object-cover" />
+              </span>
+              <span className={`mt-1 block truncate text-[12px] leading-snug ${on ? "font-semibold text-prt-text" : "text-text-2"}`}>{MODEL_NAMES[model]}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

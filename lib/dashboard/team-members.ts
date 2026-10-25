@@ -34,9 +34,11 @@ export type TeamMember = {
   readonly roleLabel: string;
   /** Every department they are in or head: what the department select matches. */
   readonly departmentIds: readonly number[];
+  /** The Department column (issue #767): the name of each department they head or have a division in, once each. */
+  readonly departments: readonly string[];
   /** Every division they are in, and for a head every division of their department: what the division select matches. */
   readonly divisionIds: readonly number[];
-  /** The Divisions column (board 73): a code per division; a head shows their department's codes. */
+  /** The Divisions column (board 73): a code per division they are in. A head sits in the department, so heading adds none (issue #767). */
   readonly chips: readonly DivisionChip[];
   /** Every division they are in, for the member panel, each with its department. */
   readonly divisions: readonly PersonDivision[];
@@ -109,6 +111,7 @@ export function teamMemberOf(record: PersonRecord, org: OrgChart, selfId: number
   });
   const headed = org.divisions.filter((d) => headOf.includes(d.departmentId));
   const shown = [...headed, ...own.map((o) => o.division).filter((d) => !headed.some((h) => h.id === d.id))];
+  const departmentIds = [...new Set([...headOf, ...own.map((o) => o.division.departmentId)])];
   return {
     id: record.id,
     name: record.name,
@@ -117,9 +120,11 @@ export function teamMemberOf(record: PersonRecord, org: OrgChart, selfId: number
     since: record.since,
     role,
     roleLabel: roleLabelOf(record, role, org),
-    departmentIds: [...new Set([...headOf, ...own.map((o) => o.division.departmentId)])],
+    departmentIds,
+    departments: departmentIds.flatMap((id) => org.departments.filter((x) => x.id === id).map((x) => x.name)),
+    // The division select still counts a head in each division of their department; only the column drops them.
     divisionIds: shown.map((d) => d.id),
-    chips: shown.map((d) => ({ divisionId: d.id, label: d.code ?? divisionLabel(d.name), code: d.code != null })),
+    chips: own.map(({ division: d }) => ({ divisionId: d.id, label: d.code ?? divisionLabel(d.name), code: d.code != null })),
     divisions: own.map(({ membership, division }) => ({
       divisionId: division.id,
       name: divisionLabel(division.name),
@@ -196,10 +201,11 @@ export function divisionChoices(departments: readonly TeamUnit[], departmentId: 
 
 // The Table view's column filters (boards 73b and 73c)
 
-export const TABLE_FILTERS = ["divisions", "role", "program", "level", "from", "gender", "nda"] as const;
+export const TABLE_FILTERS = ["department", "divisions", "role", "program", "level", "from", "gender", "nda"] as const;
 export type TableFilter = (typeof TABLE_FILTERS)[number];
 
 export const TABLE_FILTER_LABELS: Readonly<Record<TableFilter, string>> = {
+  department: "Department",
   divisions: "Divisions",
   role: "Role",
   program: "Program",
@@ -214,11 +220,13 @@ export type ColumnPicks = Picks<TableFilter>;
 
 export const NO_PICKS: ColumnPicks = {};
 
-/** What a person holds in a filtered column: each division chip, or the one value; an empty field holds none. */
+/** What a person holds in a filtered column: each department, each division chip, or the one value; an empty field holds none. */
 export function columnValues(person: TeamMember, column: TableFilter): string[] {
   const d = person.details;
   const one = (value: string) => (value === "" ? [] : [value]);
   switch (column) {
+    case "department":
+      return [...person.departments];
     case "divisions":
       return person.chips.map((c) => c.label);
     case "role":

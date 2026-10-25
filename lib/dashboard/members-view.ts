@@ -235,6 +235,7 @@ function entryOf(person: DivisionPerson, actions: MemberActions | null): MemberE
     role: lead ? "division-lead" : "member",
     roleLabel: lead ? "Division Lead" : (person.title ?? "Member"),
     departmentIds: [],
+    departments: [...new Set(person.divisions.map((d) => d.department).filter((name) => name !== ""))],
     divisionIds: person.divisions.map((d) => d.divisionId),
     chips: person.chips,
     divisions: person.divisions,
