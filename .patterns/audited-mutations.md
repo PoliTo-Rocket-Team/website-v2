@@ -112,8 +112,15 @@ tests each standing. Its action reaches the write through the dashboard data int
 (`setRecruitment` in [lib/dashboard/data.ts](../lib/dashboard/data.ts)): the database side upserts
 through `runAuditQuery`, and the server-side access tests
 ([lib/dashboard/access-matrix-server.test.ts](../lib/dashboard/access-matrix-server.test.ts)) call it
-against a migrated in-memory Postgres (PGlite), where the audit trigger runs. The other mutations
-have no automated tests.
+against a migrated in-memory Postgres (PGlite), where the audit trigger runs. The same holds for
+the other audited writes: [lib/dashboard/access-matrix/install.ts](../lib/dashboard/access-matrix/install.ts)
+points `@/db/client` at that database, so the server-side tests run `runAuditQuery` and
+`runAuditBatch` in [lib/db-audit.ts](../lib/db-audit.ts) as the server does. For example, the
+issue #605 block in
+[lib/dashboard/access-matrix-server.test.ts](../lib/dashboard/access-matrix-server.test.ts) calls
+`decideOrder`, `saveAccess` and `confirmNda` and reads the rows the audit trigger wrote to `logs`.
+[dashboard-data-interface.md](./dashboard-data-interface.md) names other suites on that database
+and how to find the rest.
 
 ## Why it is not obvious
 

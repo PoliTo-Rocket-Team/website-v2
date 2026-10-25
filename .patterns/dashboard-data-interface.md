@@ -72,11 +72,17 @@ and [team-actions.ts](../app/dashboard/team-actions.ts). The `/apply` pages read
 live in plain modules the database side calls, for example `applyMove` in
 [lib/dashboard/application-flow.ts](../lib/dashboard/application-flow.ts), and are tested there.
 Tests of the interface itself run every loader and action against a migrated in-memory Postgres
-(PGlite, [lib/dashboard/access-matrix/test-database.ts](../lib/dashboard/access-matrix/test-database.ts)):
+(PGlite, [lib/dashboard/access-matrix/test-database.ts](../lib/dashboard/access-matrix/test-database.ts)).
+[lib/dashboard/access-matrix/install.ts](../lib/dashboard/access-matrix/install.ts) points
+`@/db/client` at that database. Examples are
 [lib/dashboard/access-matrix-server.test.ts](../lib/dashboard/access-matrix-server.test.ts),
 [lib/dashboard/dashboard-rules-server.test.ts](../lib/dashboard/dashboard-rules-server.test.ts),
-[lib/dashboard/opening.test.ts](../lib/dashboard/opening.test.ts) and
-[lib/database-required.test.ts](../lib/database-required.test.ts).
+[lib/dashboard/seat-hand-over-server.test.ts](../lib/dashboard/seat-hand-over-server.test.ts),
+[lib/dashboard/roles-one-active-seat-server.test.ts](../lib/dashboard/roles-one-active-seat-server.test.ts),
+[lib/dashboard/alias-auto-request-server.test.ts](../lib/dashboard/alias-auto-request-server.test.ts)
+and [lib/dashboard/view-as-equivalence-server.test.ts](../lib/dashboard/view-as-equivalence-server.test.ts).
+The list is not complete: every test file that imports `access-matrix/install`,
+`access-matrix/install-real-session` or `access-matrix/test-database` runs against this database.
 
 It does not apply to the legacy route group, whose pages still call `app/actions/` directly
 ([scope-access.md](./scope-access.md)).
