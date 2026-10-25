@@ -19,8 +19,10 @@ import { PageHeader } from "./page-header";
 // issue #284): the header, then who leads, the departments, the advisors,
 // the numbers and every core member. The page sky runs behind everything
 // above the apply band; the sections paint no background of their own and
-// each sits one section pad below the last, as on the project pages. The
-// editor draws it with no navbar, no apply band and no footer
+// each sits one section pad below the last, as on the project pages. The sky
+// pads its bottom by one section pad too, so the apply band sits that far
+// below the core members (issue #718); <main> itself has none (issue #582).
+// The editor draws it with no navbar, no apply band and no footer
 // (`chrome="none"`, issues #495 and #510): it shows only what it edits.
 
 /**
@@ -54,7 +56,7 @@ export function TeamPageView(
   return (
     <div className="relative bg-ground">
       {footer !== null && <LandingNavbar />}
-      <PageSky>
+      <PageSky className={footer !== null ? "pb-section" : undefined}>
         <main className={footer !== null ? "pt-16 md:pt-[72px]" : undefined}>
           <PageHeader {...header} intro={withAcademicYear(header.intro, academicYear)} introFrame={frames.intro} />
 
