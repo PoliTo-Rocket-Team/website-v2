@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { Fragment, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { discardProjectPhoto, uploadProjectPhoto } from "@/app/dashboard/project-actions";
 import type { EditDevice } from "@/lib/content/edit-shell";
 import type { BlockFields } from "@/lib/project-content/block-fields";
 import { addBlock, duplicateBlock, lastBlockId, moveBlock, removeBlock, reorderBlocks, setBlockHidden } from "@/lib/project-content/block-list";
-import { blockSection, heldPhotos, type PanelSection as Section, type ProjectFields } from "@/lib/project-content/fields";
+import { blockIdOf, blockSection, heldPhotos, panelSections, type PanelSection as Section, type ProjectFields } from "@/lib/project-content/fields";
 import type { HomeCardView } from "@/lib/project-content/record";
 import type { RocketModel } from "@/lib/rocket-model";
 import { EditPanel, PanelSection, usePanelScroll } from "./edit-panel";
 import type { PhotoUploads } from "./outreach-post-photos";
-import { BlockRows, kindsFor, type BlockActions } from "./project-blocks";
+import { useDragOrder } from "./content-parts";
+import { BlockListEnd, BlockRow, kindsFor, versionNamesOf, type BlockActions } from "./project-blocks";
 import { CardEditor, cardSummary } from "./project-card-section";
 import type { FieldErrors } from "./project-panel-parts";
 import { TopSection } from "./project-top-section";
@@ -92,11 +93,11 @@ export function ProjectEditPanel({
   const { blocks } = fields;
   const setBlocks = (change: (blocks: readonly BlockFields[]) => readonly BlockFields[]) => onChange((f) => ({ ...f, blocks: change(f.blocks) }));
 
-  const actionsOf = (id: string, index: number): BlockActions => {
-    const target = blocks.find((b) => b.id === id);
+  const actionsOf = (id: string): BlockActions => {
+    const index = blocks.findIndex((b) => b.id === id);
     return {
       onDuplicate: () => setBlocks((list) => duplicateBlock(list, id)),
-      onToggleHidden: () => setBlocks((list) => setBlockHidden(list, id, !target?.hidden)),
+      onToggleHidden: () => setBlocks((list) => setBlockHidden(list, id, !blocks[index]?.hidden)),
       onUp: index > 0 ? () => setBlocks((list) => moveBlock(list, id, -1)) : null,
       onDown: index < blocks.length - 1 ? () => setBlocks((list) => moveBlock(list, id, 1)) : null,
       onRemove: () => {
@@ -115,6 +116,59 @@ export function ProjectEditPanel({
     if (id !== undefined && next !== blocks) onOpen(blockSection(id));
   };
 
+  // The rows are drawn in `panelSections` order. Only the block rows take a
+  // grip and a drop, so a dragged block moves among the blocks and the top
+  // stays first and the card last.
+  const blockOf = new Map(blocks.map((b) => [b.id, b]));
+  const drag = useDragOrder(panelSections(fields), (order) =>
+    setBlocks((list) => reorderBlocks(list, order.flatMap((section) => blockIdOf(section) ?? []))),
+  );
+  const versionNames = versionNamesOf(blocks);
+
+  const rowOf = (section: Section, index: number): ReactNode => {
+    if (section === "top") {
+      return <TopSection key={section} fields={fields} model={model} phone={phone} errors={errors} uploads={uploads} cardRef={card(section)} onChange={onChange} />;
+    }
+    if (section === "card") {
+      // The block rows end where the card begins: Add block sits under the last block.
+      return (
+        <Fragment key={section}>
+          <BlockListEnd count={blocks.length} kinds={kindsFor(kind)} onAdd={add} />
+          <PanelSection value={section} cardRef={card(section)} title="Card" summary={cardSummary(homeCard)}>
+            <CardEditor
+              card={fields.card}
+              shown={homeCard}
+              kind={kind}
+              phone={phone}
+              errors={errors}
+              onChange={(change) => onChange((f) => ({ ...f, card: { ...f.card, ...change } }))}
+            />
+          </PanelSection>
+        </Fragment>
+      );
+    }
+    const id = blockIdOf(section);
+    const block = blockOf.get(id);
+    if (block === undefined) return null;
+    return (
+      <BlockRow
+        key={section}
+        block={block}
+        section={section}
+        // The top of the page is row 0, so the first block is 1.
+        number={index}
+        phone={phone}
+        errors={errors}
+        versionNames={versionNames}
+        uploads={uploads}
+        cardRef={card(section)}
+        drag={drag.row(section, index)}
+        actions={actionsOf(id)}
+        onChange={(change) => setBlocks((list) => list.map((b) => (b.id === id ? change(b) : b)))}
+      />
+    );
+  };
+
   return (
     <EditPanel label={`Edit ${name}`} eyebrow="Project page" title={`Edit ${name}`} expanded={expanded} onExpandedChange={onExpandedChange} onClose={onClose}>
       {phone && (
@@ -122,32 +176,9 @@ export function ProjectEditPanel({
           Phone view: fields with a phone version edit the phone&apos;s text. Leave one empty to show the desktop text.
         </p>
       )}
-
-      <TopSection fields={fields} model={model} phone={phone} errors={errors} uploads={uploads} cardRef={card("top")} onChange={onChange} />
-
-      <BlockRows
-        blocks={blocks}
-        kinds={kindsFor(kind)}
-        phone={phone}
-        errors={errors}
-        uploads={uploads}
-        cardRef={card}
-        actionsOf={actionsOf}
-        onChange={(id, change) => setBlocks((list) => list.map((b) => (b.id === id ? change(b) : b)))}
-        onReorder={(ids) => setBlocks((list) => reorderBlocks(list, ids))}
-        onAdd={add}
-      />
-
-      <PanelSection value="card" cardRef={card("card")} title="Card" summary={cardSummary(homeCard)}>
-        <CardEditor
-          card={fields.card}
-          shown={homeCard}
-          kind={kind}
-          phone={phone}
-          errors={errors}
-          onChange={(change) => onChange((f) => ({ ...f, card: { ...f.card, ...change } }))}
-        />
-      </PanelSection>
+      <div className="space-y-3" {...drag.list}>
+        {drag.order.map(rowOf)}
+      </div>
     </EditPanel>
   );
 }

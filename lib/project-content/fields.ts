@@ -52,9 +52,13 @@ export type BlockSection = `block:${string}`;
 export const blockSection = (id: string): BlockSection => `block:${id}`;
 
 /** The block id a block's row names; null for every other section. */
-export const blockIdOf = (section: PanelSection): string | null => (section.startsWith("block:") ? section.slice("block:".length) : null);
+export function blockIdOf(section: BlockSection): string;
+export function blockIdOf(section: PanelSection): string | null;
+export function blockIdOf(section: PanelSection): string | null {
+  return section.startsWith("block:") ? section.slice("block:".length) : null;
+}
 
-/** The panel's rows in order: the top of the page, each block in page order, then the card. */
+/** The panel's rows in the order it draws them: the top of the page, each block in page order, then the card. */
 export const panelSections = (fields: ProjectFields): PanelSection[] => ["top", ...fields.blocks.map((b) => blockSection(b.id)), "card"];
 
 /**
