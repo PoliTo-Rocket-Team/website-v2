@@ -72,7 +72,11 @@ async function personalFiles(account: DeletedAccount): Promise<PersonalFile[]> {
   ];
 }
 
-/** Deletes one stored file. A pathname outside the store's own folders names no file of ours. */
+/**
+ * Deletes one stored file. A pathname outside the store's own folders names no file of ours.
+ * It deletes directly, not through `deleteBestEffort`: a failed delete must throw, so
+ * `anonymizeDeletedAccounts` leaves the account's rows as they are and the next run retries it.
+ */
 async function deleteFile(file: PersonalFile): Promise<void> {
   if (file.store === "private") {
     const pathname = parsePrivatePathname(file.pathname);
