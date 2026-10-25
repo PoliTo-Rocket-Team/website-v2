@@ -11,7 +11,7 @@ import { ordersScopeOf, type OrdersScopeRow } from "./orders";
 import { mayChangePositionIn } from "./position-access";
 import { GRANT_AREAS, isOffTeam, ledDivisionIds, mayChange, readsArea, readsAreaIn } from "./viewer";
 import { ALL, CHANGE_AREAS, CONTENT, ORG, PAGE_OF_AREA, SCOPES, SIGNED_OUT, TEAM_BASE, UNITS, unitsWhere, VIEWERS, type Unit, type Viewer } from "./access-matrix/matrix";
-import { aliasAttentionFor, answersAliasRequests, managesMember, type AliasRequest } from "./alias-request";
+import { aliasAttentionFor, answersAliasRequests, managesMember, type AliasRequest, type AliasTeamPerson } from "./alias-request";
 import { ownAliasOf, planAliasSetUp, showsAliasCard } from "./alias-setup";
 import type { TeamPerson } from "./division-edit";
 import { membershipsOf, type OrgChart } from "./team";
@@ -186,7 +186,7 @@ const VIEWER_ID = 100;
 const personIn = (u: Unit) => 200 + ALL.indexOf(u);
 
 /** The viewer as the alias rules read them: their active roles on the team, none once off it. */
-function aliasPersonOf(viewer: Viewer): TeamPerson {
+function aliasPersonOf(viewer: Viewer): AliasTeamPerson {
   const memberships = membershipsOf(
     viewer.roles.flatMap((r) =>
       r.divisionId !== null && r.type !== "head" && r.type !== "president" ? [{ divisionId: r.divisionId, role: r.type === "lead" ? "lead" : "member", since: "2025-10-01" } as const] : [],
@@ -195,13 +195,14 @@ function aliasPersonOf(viewer: Viewer): TeamPerson {
   const beyond = viewer.roles.flatMap((r): TeamPerson["beyond"] =>
     r.type === "president" ? [{ kind: "team-leader", title: "" }] : r.type === "head" ? [{ kind: "head", departmentId: r.departmentId, title: "Head" }] : [],
   );
-  return { id: VIEWER_ID, name: "Viewer", emails: [], memberships, beyond };
+  return { id: VIEWER_ID, name: "Viewer", emails: [], signInEmail: "viewer@mail.test", memberships, beyond };
 }
 
-const ALIAS_TEAM: readonly TeamPerson[] = ALL.map((u) => ({
+const ALIAS_TEAM: readonly AliasTeamPerson[] = ALL.map((u) => ({
   id: personIn(u),
   name: `Person ${u}`,
   emails: [],
+  signInEmail: `person-${u.toLowerCase()}@mail.test`,
   memberships: membershipsOf([{ divisionId: UNITS[u].divisionId, role: "member", since: "2025-10-01" }]),
   beyond: [],
 }));

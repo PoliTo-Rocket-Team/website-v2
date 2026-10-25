@@ -9,7 +9,7 @@ import type { ProjectEditor } from "@/lib/project-content/editor";
 import type { DashboardLanding, NavCounts } from "./access";
 import type { AccessGrant, AccessPage } from "./division-access";
 import type { Order, OrdersPage } from "./orders";
-import type { TeamSideOverview } from "./overview";
+import type { OverviewSections, TeamSideOverview } from "./overview";
 import type { LeadMove } from "./application-flow";
 import type { DocumentKind, StoredDocument } from "./application-documents";
 import type { CreatedPosition } from "./new-position";
@@ -63,6 +63,12 @@ export interface DashboardData {
    * rejects them with DashboardRefused.
    */
   overview(): Promise<TeamSideOverview>;
+  /**
+   * The same team Overview in the sections the page streams one by one
+   * (issue #397); `overview()` is these together. Throws DashboardRefused
+   * for someone off the team, as `overview()` rejects them.
+   */
+  overviewSections(): OverviewSections;
   /** Board 56b (issue #317): how the Alumni page shows the viewer; null for anyone but an alumnus. */
   myAlumni(): Promise<MyAlumni | null>;
   /**

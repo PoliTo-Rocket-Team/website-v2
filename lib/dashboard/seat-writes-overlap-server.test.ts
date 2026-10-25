@@ -4,7 +4,7 @@ import "./access-matrix/install";
 import assert from "node:assert/strict";
 import { beforeEach, describe, test } from "node:test";
 import * as teamActions from "@/app/dashboard/team-actions";
-import { members, roles, users } from "@/db/schema";
+import { members, roles, teamLeaves, users } from "@/db/schema";
 import { accountOf, EXTRA, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 import { addRows, tableRows, testDb } from "./access-matrix/test-database";
@@ -79,6 +79,32 @@ describe("overlapping seat writes on one seat (issue #666)", () => {
     assert.deepEqual(held.map((r) => r.memberId), [EXTRA.mover], "one active holder row, the successor's");
     assert.equal(held[0].fullAccess, null);
     assert.equal((await advisorRowsOf(HOLDER)).length, 1, "no duplicate Advisor role");
+  });
+
+  test("two overlapping Change holder calls where the old holder leaves: one succeeds, the seat has one holder, and the leave is written once", async () => {
+    const { first, second } = await overlapping(() => teamActions.changeSeatHolder(SEAT, { to: EXTRA.mover, outcome: "leave" }));
+    assert.deepEqual(second, { ok: true });
+    assert.deepEqual(first, { ok: false, error: "That seat is no longer held." });
+    const held = await seatRows();
+    assert.deepEqual(held.map((r) => r.memberId), [EXTRA.mover], "one active holder row, the successor's");
+    const leaves = (await tableRows(teamLeaves)).filter((r) => r.memberId === HOLDER);
+    assert.equal(leaves.length, 1, "the old holder's leave is written once");
+    assert.equal((await activeRows((r) => r.memberId === HOLDER)).length, 0, "the old holder holds no active role");
+  });
+
+  test("a batch that ends the seat and then fails on another error is thrown, not read as no longer held (issue #696)", async () => {
+    const batch = testDb.batch;
+    const failure = new Error("the batch failed", { cause: Object.assign(new Error("duplicate key value"), { code: "23505" }) });
+    testDb.batch = async (queries) => {
+      await batch(queries);
+      throw failure;
+    };
+    try {
+      await assert.rejects(teamActions.removeSeat(SEAT), (error) => error === failure);
+    } finally {
+      testDb.batch = batch;
+    }
+    assert.equal((await seatRows()).length, 0, "the seat row is ended on re-read");
   });
 
   test("a single Remove seat still ends the seat and makes its only-role holder an advisor to the team", async () => {

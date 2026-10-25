@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { AtSign, Building2, Check, ChevronDown, Copy, Eye, EyeOff, FileCheck2, Lock, Mail, Upload, UserMinus, UserPlus, X } from "lucide-react";
+import { AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, Lock, Mail, Upload, UserMinus, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { DialogClose } from "@/components/ui/dialog";
 import { addMember, findForAdd, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
@@ -35,6 +35,7 @@ import { shortDate } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { CopyButton, IconButton } from "./copy-button";
 import { Chips } from "./division-chips";
 import { MemberDialogs, type Asking } from "./division-members";
 import { Drawer, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
@@ -62,28 +63,6 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
       </h3>
       {children}
     </section>
-  );
-}
-
-async function copyText(text: string, what: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast.success(`${what} copied`);
-  } catch {
-    toast.error(`Could not copy the ${what.toLowerCase()}`);
-  }
-}
-
-function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-prt-muted transition-colors duration-300 ease-out hover:bg-white-5 hover:text-prt-text ${FOCUS}`}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -132,11 +111,7 @@ function Fact({
           <span className={`transition-[filter] duration-300 ease-out ${blur ? "blur-[5px] hover:blur-none" : ""}`}>{value}</span>
         )}
       </dd>
-      {value !== null && copy && (
-        <IconButton label={`Copy ${copy.toLowerCase()}`} onClick={() => copyText(value, copy)}>
-          <Copy aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-        </IconButton>
-      )}
+      {value !== null && copy && <CopyButton value={value} what={copy} />}
       {value !== null && hidden && (
         <IconButton label={shown ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`} onClick={() => setShown((s) => !s)}>
           {shown ? <EyeOff aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} /> : <Eye aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
@@ -923,7 +898,8 @@ function AddForm({ open, onOpenChange, target }: { open: boolean; onOpenChange: 
     const timer = setTimeout(async () => {
       const answer = await findForAdd(division.id, query);
       if (ask === asked.current) setLookup(answer);
-    }, 250);
+      // An empty field asks at once: the team is listed as the field opens (issue #618).
+    }, query === "" ? 0 : 250);
     return () => clearTimeout(timer);
   }, [query, picked, division.id]);
 

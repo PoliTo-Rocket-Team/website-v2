@@ -526,7 +526,9 @@ export function drawerAliasOf(data: SeedData, viewer: number | null, memberId: n
 
 /** The rows each approver reads under "Needs your attention" for the open requests. */
 export function aliasRowsOf(data: SeedData, viewer: ViewerStanding) {
-  return aliasAttentionFor(viewer, openAliasRequestsOf(data), teamOf(data), orgOf(data), new Date());
+  // Each with the address they sign in with, as `aliasTeamOf` reads it (issue #586).
+  const team = teamOf(data).map((p) => ({ ...p, signInEmail: data.users.find((u) => u.member === p.id)?.email ?? "" }));
+  return aliasAttentionFor(viewer, openAliasRequestsOf(data), team, orgOf(data), new Date());
 }
 
 /** `recipient`'s alias notices as their attention rows, as `readNotices` reads them. */

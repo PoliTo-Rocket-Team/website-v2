@@ -87,7 +87,13 @@ test("Add member's field finds a member by name or by either email, and says whe
   assert.ok(byEmail.kind === "people" && byEmail.people[0].id === 16 && byEmail.people[0].here === true);
   assert.deepEqual(lookupForAdd("new.person@studenti.polito.it", team, [], 1, org), { kind: "new-email", email: "new.person@studenti.polito.it" });
   assert.deepEqual(lookupForAdd("Elena@x.it", team, ["elena@x.it"], 1, org), { kind: "waiting", email: "elena@x.it" });
-  assert.deepEqual(lookupForAdd("p", team, [], 1, org), { kind: "none" });
+  // Issue #618: an empty field lists the whole team by name, and each letter narrows it.
+  const opened = lookupForAdd("", team, [], 1, org);
+  assert.ok(opened.kind === "people");
+  assert.deepEqual(opened.people.map((p) => p.name), team.map((c) => c.name).sort((x, y) => x.localeCompare(y)));
+  const narrowed = lookupForAdd("p", team, [], 1, org);
+  assert.ok(narrowed.kind === "people" && narrowed.people.length < team.length && narrowed.people.every((p) => p.name.toLowerCase().includes("p")));
+  assert.deepEqual(lookupForAdd("zzz", team, [], 1, org), { kind: "none" });
 });
 
 // Issue #351: the page offers a change only where the viewer may make it.
