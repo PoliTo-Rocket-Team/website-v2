@@ -15,7 +15,10 @@ import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
 import { betterAuthUsers, divisions, logs, members, orders, projects, projectVersions, recruitmentSetting, roles, scopes, teamLeaves, users } from "@/db/schema";
 import { databaseTeamRoles } from "@/lib/about/team-data";
 import { teamBuildOf } from "@/lib/about/team-roles";
+import { editorVersion } from "@/lib/content/versioned";
 import { importedProjects } from "@/lib/project-content/import";
+import { footerProjects, publishedProjects } from "@/lib/project-content/public";
+import { publishedPageOf } from "@/lib/project-content/record";
 import { readProjectStamps } from "./database-projects";
 import { GATE_OFF, GATE_ON, OTHER_DB, PREVIEW_DB } from "@/lib/dev-tester-fixture";
 import { ADMIN_TESTER_TITLE } from "./acting-account";
@@ -328,7 +331,6 @@ const DIRECT_WRITES = new Map<string, { readonly args: readonly unknown[]; reado
   ["outreach.posts.reorder", { args: [() => true, []], may: (r) => r.expect.siteContent, proves: "gate" }],
   ["projects.save", { args: [null, "save-draft", neverAsked], may: (r) => r.expect.siteContent, proves: "gate" }],
   ["projects.saveUnfinished", { args: [null, neverAsked], may: (r) => r.expect.siteContent, proves: "gate" }],
-  ["projects.remove", { args: [1], may: (r) => r.expect.siteContent, proves: "gate" }],
   ["projects.unpublish", { args: [1], may: (r) => r.expect.siteContent, proves: "gate" }],
   ["projects.reorder", { args: [() => true, []], may: (r) => r.expect.siteContent, proves: "gate" }],
   // The dashboard no longer sets the project order (issue #506); the stored write stays behind the gate.
@@ -610,6 +612,8 @@ const ACTION_CASES: readonly ActionCase[] = [
   { action: "outreach-actions.unfeatureOutreachPost", run: () => outreachActions.unfeatureOutreachPost(1), may: siteContent, control: by("team leader", "gate") },
   { action: "project-actions.saveProject", run: () => projectActions.saveProject(1, "save-draft", {}), may: siteContent, control: by("team leader", "gate") },
   { action: "project-actions.createProject", run: () => projectActions.createProject({ name: "Rocket" }), may: siteContent, control: by("team leader", "gate") },
+  // The migrations import Cavour as project 1, published (drizzle/0037).
+  { action: "project-actions.deleteProject", run: () => projectActions.deleteProject(1), may: siteContent, control: by("team leader") },
   { action: "project-actions.uploadProjectPhoto", run: () => projectActions.uploadProjectPhoto(form({ photo: PHOTO() })), may: siteContent, control: by("team leader") },
   { action: "project-actions.discardProjectPhoto", run: () => projectActions.discardProjectPhoto(`https://${HOST}/project-photos/x.jpg`), may: siteContent, control: by("team leader") },
   { action: "project-actions.uploadProjectBackground", run: () => projectActions.uploadProjectBackground(form({ background: PHOTO() })), may: siteContent, control: by("team leader") },
@@ -2490,6 +2494,39 @@ describe("moving a project card on the Projects page is not an edit (issue #297,
     assert.deepEqual(order, ids, "the cards stand in the new order");
     assert.deepEqual(await readProjectStamps(), stampsBefore, "the audit log holds no new edit");
     assert.deepEqual((await data.projects.board())?.edited, linesBefore, "every card's edited-by line reads as before");
+  });
+});
+
+describe("Delete project in the project editor (issue #768)", () => {
+  const CAVOUR = 1;
+  const stored = async () => ({
+    projects: (await tableRows(projects)).map((p) => p.id),
+    versions: (await tableRows(projectVersions)).map((v) => v.projectId),
+  });
+
+  test("a site-content editor deletes a published project: its rows go through the audit log, and no public read or dashboard list shows it", async () => {
+    const data = await open("team leader");
+    const slug = editorVersion(importedProjects().find((item) => item.id === CAVOUR)!.version).slug;
+    assert.ok(publishedPageOf(await publishedProjects(), slug), "Cavour is published before the delete");
+
+    assert.deepEqual(await projectActions.deleteProject(CAVOUR), { ok: true, value: null });
+
+    const after = await stored();
+    assert.ok(!after.projects.includes(CAVOUR) && !after.versions.includes(CAVOUR), `the project and its versions are gone: ${JSON.stringify(after)}`);
+    assert.deepEqual(await loggedWriters(), [{ userId: accountOf("team leader").userId, actingAccountId: null }], "the delete is logged under its editor");
+    // Home and /projects draw publishedProjects(), the footer footerProjects(); /projects/<slug> is not found without a published page.
+    assert.ok(!(await publishedProjects()).some((r) => r.slug === slug), "Home and /projects");
+    assert.ok(!(await footerProjects()).some((p) => p.slug === slug), "the footer's PROJECTS column");
+    assert.equal(publishedPageOf(await publishedProjects(), slug), null, "/projects/<slug>");
+    assert.ok(!(await data.projects.board())?.items.some((item) => item.id === CAVOUR), "the dashboard Projects list");
+  });
+
+  test("a viewer the site-content gate refuses is answered its refusal, and the project and its versions stay", async () => {
+    await open("member");
+    const before = await stored();
+    assert.ok(before.projects.includes(CAVOUR) && before.versions.includes(CAVOUR));
+    assert.deepEqual(await projectActions.deleteProject(CAVOUR), { ok: false, error: SITE_CONTENT_REFUSAL });
+    assert.deepEqual(await stored(), before);
   });
 });
 

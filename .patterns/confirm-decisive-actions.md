@@ -47,6 +47,7 @@ Call sites, by action:
 | Remove access | `ConfirmDialog` in [division-access.tsx](../components/dashboard/division-access.tsx) |
 | Remove partner | `ConfirmDialog` in [partners.tsx](../components/dashboard/partners.tsx) |
 | Remove question | `ConfirmDialog` in [faq.tsx](../components/dashboard/faq.tsx) |
+| Delete project | `ConfirmDialog` in [project-edit.tsx](../components/dashboard/project-edit.tsx) |
 
 ## When this applies
 
