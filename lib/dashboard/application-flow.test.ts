@@ -9,7 +9,10 @@ import {
   memberDivisionNames,
   memberStanding,
   NEW_APPLICANT,
+  moveToStatus,
+  parseApproverMove,
   parseLeadMove,
+  statusAfter,
   pickedCount,
   pickerFirstMonth,
   pickerFirstWeekOf,
@@ -24,9 +27,10 @@ import {
   type ApplicationMove,
   type ApplicationState,
   type LeadMove,
+  type PickTarget,
   type SlotTime,
 } from "./application-flow";
-import type { BuiltInStatusKey } from "./application-status";
+import { BUILT_IN_STATUS_KEYS, type BuiltInStatusKey } from "./application-status";
 import { placeOf, type Interview } from "./my-applications";
 import { membershipsOf } from "./team";
 
@@ -349,4 +353,67 @@ test("a time offered more than 4 weeks ahead passes the offer and reaches the ap
   const interview: Interview = { lead: "Marco Bianchi", slots: [{ id: 1, start: farAhead.start, end: farAhead.end }], chosen: null };
   const place = placeOf({ status: { kind: "built-in", key: "interview" }, appliedAt: "2026-10-01T09:00:00.000Z", withdrawnAt: null, acceptedAt: null, rejectedAt: null, joinedAt: null }, interview, null);
   assert.deepEqual(place, { kind: "active", stage: { kind: "interview", interview } });
+});
+
+// The Status picker's hand pick (boards 97 to 97c, issue #750, ruling R1.1 on #745) ----------------------
+
+/** The pick target for a built-in status, with times still to come for Interview. */
+const target = (to: BuiltInStatusKey): PickTarget => (to === "interview" ? { to, slots: [thu] } : { to });
+
+for (const [status, row] of Object.entries(OWNER_TABLE) as [BuiltInStatusKey, (typeof OWNER_TABLE)[BuiltInStatusKey]][]) {
+  for (const [label, kind, sets] of row) {
+    test(`a saved hand pick of ${sets} from ${status} runs the ${label} button's own move`, () => {
+      const pickMove = moveToStatus(STATES[status], target(sets));
+      assert.equal(pickMove.kind, kind);
+      const byButton = applyMove(STATES[status], LEAD_MOVES.find((m) => m.kind === kind)!, now);
+      assert.deepEqual(applyMove(STATES[status], pickMove, now), byButton);
+    });
+  }
+}
+
+test("a hand pick of each built-in status reaches it with the effects of the step that sets it", () => {
+  for (const to of BUILT_IN_STATUS_KEYS) {
+    // From New no button sets most statuses, so the pick runs as a `pick`, judged by that step's own checks.
+    const from = to === "joined" ? STATES.nda_received : STATES.new;
+    const result = applyMove(from, moveToStatus(from, target(to)), now);
+    assert.ok(result.ok, `${to}: ${result.ok ? "" : result.reason}`);
+    assert.equal(result.state.status, to);
+    assert.equal(result.joinsTeam, to === "joined", `${to}: only Confirm join adds the person to the team`);
+  }
+  assert.deepEqual(after(STATES.new, { kind: "pick", to: "accepted_email_sent" }), { status: "accepted_email_sent", acceptedAt: now.toISOString() });
+  assert.deepEqual(after(STATES.interview, { kind: "pick", to: "nda_received" }), { status: "nda_received", acceptedAt: now.toISOString() });
+  assert.deepEqual(after(STATES.accepted_email_sent, { kind: "pick", to: "new" }), { status: "new" });
+});
+
+test("a hand pick keeps each step's own checks", () => {
+  for (const status of BUILT_IN_STATUS_KEYS.filter((s) => s !== "nda_received")) {
+    assert.equal(applyMove(STATES[status], { kind: "pick", to: "joined" }, now).ok, false, `Joined needs the signed NDA, not ${status}`);
+  }
+  assert.equal(applyMove(STATES.new, { kind: "pick", to: "interview", slots: [] }, now).ok, false, "Interview needs offered times");
+  for (const decided of ["joined", "rejected_email_sent", "accepted_for_another_position"] as const) {
+    assert.equal(applyMove(STATES[decided], { kind: "pick", to: "withdrawn" }, now).ok, false, `withdrawn from ${decided}`);
+    assert.equal(applyMove(STATES[decided], { kind: "pick", to: "accepted_for_another_position" }, now).ok, false, `another position from ${decided}`);
+  }
+});
+
+test("after a button an added status stays where the button keeps its built-in status; after a pick the picked status stands", () => {
+  const second = { kind: "added", key: "second_interview", parent: "interview" } as const;
+  assert.deepEqual(statusAfter(second, STATES.interview, "button"), second);
+  assert.deepEqual(statusAfter(second, STATES.interview, "pick"), { kind: "built-in", key: "interview" });
+  assert.deepEqual(statusAfter(second, STATES.accepted_email_to_be_sent, "button"), { kind: "built-in", key: "accepted_email_to_be_sent" });
+});
+
+test("a hand pick from the browser is checked for shape", () => {
+  assert.deepEqual(parseApproverMove({ kind: "pick", to: "joined" }), { kind: "pick", to: "joined" });
+  assert.deepEqual(parseApproverMove({ kind: "pick", to: "interview", slots: [{ start: thu.start, end: thu.end }] }), {
+    kind: "pick",
+    to: "interview",
+    slots: [thu],
+  });
+  assert.equal(parseApproverMove({ kind: "pick", to: "interview" }), null, "Interview carries its times");
+  assert.equal(parseApproverMove({ kind: "pick", to: "in_review" }), null);
+  assert.deepEqual(parseApproverMove({ kind: "pick-added", key: "second_interview" }), { kind: "pick-added", key: "second_interview" });
+  assert.equal(parseApproverMove({ kind: "pick-added", key: "joined" }), null, "a built-in key is no added status");
+  assert.equal(parseApproverMove({ kind: "pick-added", key: "" }), null);
+  assert.deepEqual(parseApproverMove({ kind: "accept" }), { kind: "accept" });
 });

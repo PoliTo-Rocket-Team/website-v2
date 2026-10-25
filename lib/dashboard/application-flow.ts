@@ -11,9 +11,11 @@
 // Confirm join, from NDA received, makes the person a team member, and it
 // sets their other open applications to "Accepted for another position".
 // Someone already on the team follows the same statuses (ADR 0014, amendment
-// of 2026-10-25).
+// of 2026-10-25). Any status can also be picked by hand in the drawer's Status
+// picker (issue #750): a saved pick of a built-in status runs the move of the
+// step that sets it (`moveToStatus`), and one of an added status sets it alone.
 
-import { builtInOf, BUILT_IN_STATUSES, type ApplicationStatus, type BuiltInStatusKey } from "./application-status";
+import { builtInOf, BUILT_IN_STATUSES, isBuiltInStatusKey, type ApplicationStatus, type BuiltInStatusKey } from "./application-status";
 import type { InterviewSlot } from "./my-applications";
 import { divisionLabel, homeFirst, roleIn, type Memberships } from "./team";
 
@@ -122,7 +124,29 @@ export type ApplicantMove =
   | { readonly kind: "book"; readonly start: string }
   | { readonly kind: "withdraw" };
 
-export type ApplicationMove = LeadMove | ApplicantMove;
+/**
+ * A hand pick of a built-in status in the drawer's Status picker, once saved
+ * (boards 97 to 97c, ruling R1.1 on #745, issue #750). It sets the status the
+ * way the step that sets it does, with that step's effects and checks; only
+ * which status the step is offered from does not bind it. Interview, like
+ * Move to interview, carries the offered times.
+ */
+export type BuiltInPick =
+  | { readonly kind: "pick"; readonly to: "interview"; readonly slots: readonly SlotTime[] }
+  | { readonly kind: "pick"; readonly to: Exclude<BuiltInStatusKey, "interview"> };
+
+/**
+ * A hand pick of an added status, once saved: the application's status
+ * reference becomes that status and nothing else changes (issue #750). Only
+ * the stored list knows which keys are added statuses, so the data source
+ * checks the key.
+ */
+export type AddedPick = { readonly kind: "pick-added"; readonly key: string };
+
+/** What an approver does to an application: an action button, or a saved hand pick in the Status picker. */
+export type ApproverMove = LeadMove | BuiltInPick | AddedPick;
+
+export type ApplicationMove = LeadMove | BuiltInPick | ApplicantMove;
 
 /**
  * One action button: its words, the move it runs, the built-in status the
@@ -229,8 +253,72 @@ export function checkOffer(slots: readonly SlotTime[], now: Date): { ok: true; o
 
 /** The state after `move`, or why the move is not allowed from here. */
 export function applyMove(state: ApplicationState, move: ApplicationMove, now: Date): MoveResult {
-  const next = move.kind === "book" || move.kind === "withdraw" ? applicantNext(state, move, now) : leadNext(state, move, now);
+  const next =
+    move.kind === "book" || move.kind === "withdraw"
+      ? applicantNext(state, move, now)
+      : move.kind === "pick"
+        ? pickNext(state, move, now)
+        : leadNext(state, move, now);
   return next.ok ? { ...next, changed: !sameState(state, next.state) } : next;
+}
+
+/** The built-in status a hand pick sets, with the times its confirm offered when it is Interview. */
+export type PickTarget =
+  | { readonly to: "interview"; readonly slots: readonly SlotTime[] }
+  | { readonly to: Exclude<BuiltInStatusKey, "interview"> };
+
+/**
+ * The move that saving a hand-picked built-in status runs (ruling R1.1 on
+ * #745): the current status's own button where one of them sets that status,
+ * so the pick is that button's very move, and a `pick` of it otherwise.
+ */
+export function moveToStatus(state: ApplicationState, target: PickTarget): LeadMove | BuiltInPick {
+  const step = LEAD_STEPS[state.status].find((s) => s.sets === target.to);
+  if (!step) return target.to === "interview" ? { kind: "pick", to: "interview", slots: target.slots } : { kind: "pick", to: target.to };
+  if (step.move === "offer-interview") return { kind: "offer-interview", slots: target.to === "interview" ? target.slots : [] };
+  return { kind: step.move };
+}
+
+/**
+ * A saved hand pick: the state the step that sets the status reaches, with
+ * that step's checks and effects. The step is the button of the owner's
+ * table that sets the status, the applicant's Withdraw for Withdrawn, and
+ * Confirm join on another of the person's applications for "Accepted for
+ * another position". Interview's times are
+ * checked as Move to interview's; Confirm join needs the signed NDA, so
+ * Joined is picked only from NDA received, and only it adds the person to
+ * the team; Withdrawn and "Accepted for another position" are set, as the
+ * applicant's Withdraw and Confirm join elsewhere set them, only on an
+ * application still open.
+ */
+function pickNext(state: ApplicationState, pick: BuiltInPick, now: Date): Next {
+  switch (pick.to) {
+    case "interview": {
+      const offer = checkOffer(pick.slots, now);
+      if (!offer.ok) return illegal(offer.reason);
+      return moved({ status: "interview", offered: offer.offered, booked: null });
+    }
+    case "joined":
+      if (state.status !== "nda_received") return illegal("Confirm join needs the signed NDA. Save NDA received first.");
+      return moved(arrival("joined", state, now.toISOString()), true);
+    case "withdrawn":
+    case "accepted_for_another_position":
+      if (!isOpenStatus(state.status)) return illegal("This application is already decided.");
+      return moved({ status: pick.to });
+    default:
+      return moved(arrival(pick.to, state, now.toISOString()));
+  }
+}
+
+/**
+ * The status an application carries once a move reached `next`: after a
+ * hand pick, the picked status; after a button, the built-in status it set,
+ * or the current status when the button keeps the built-in status it behaves
+ * like, so Change times on an added status under Interview keeps it.
+ */
+export function statusAfter(current: ApplicationStatus, next: ApplicationState, via: "button" | "pick"): ApplicationStatus {
+  if (via === "button" && next.status === builtInOf(current)) return current;
+  return { kind: "built-in", key: next.status };
 }
 
 /** A lead move: legal only where the button table offers it from this status, and it sets the status the table names. */
@@ -369,7 +457,41 @@ export function joinChange(standing: ApplicantStanding): JoinChange {
   }
 }
 
-/** A lead's move as the browser sent it, checked for shape; null when it is not one. */
+/** An approver's move as the browser sent it, a button's or a saved hand pick, checked for shape; null when it is not one. */
+export function parseApproverMove(value: unknown): ApproverMove | null {
+  if (typeof value !== "object" || value === null) return null;
+  const v = value as Record<string, unknown>;
+  switch (v.kind) {
+    case "pick-added":
+      return typeof v.key === "string" && v.key.length > 0 && !isBuiltInStatusKey(v.key) ? { kind: "pick-added", key: v.key } : null;
+    case "pick": {
+      if (!isBuiltInStatusKey(v.to)) return null;
+      if (v.to !== "interview") return { kind: "pick", to: v.to };
+      const slots = parseSlots(v.slots);
+      return slots === null ? null : { kind: "pick", to: "interview", slots };
+    }
+    default:
+      return parseLeadMove(value);
+  }
+}
+
+/** Offered times as the browser sent them, each one of INTERVIEW_LENGTHS long; null when they are not. */
+function parseSlots(value: unknown): SlotTime[] | null {
+  if (!Array.isArray(value) || value.length > MAX_OFFERED_SLOTS) return null;
+  const slots: SlotTime[] = [];
+  for (const raw of value) {
+    if (typeof raw !== "object" || raw === null) return null;
+    const { start, end } = raw as Record<string, unknown>;
+    if (typeof start !== "string" || typeof end !== "string") return null;
+    if (!Number.isFinite(Date.parse(start)) || !Number.isFinite(Date.parse(end))) return null;
+    const slot = { start: new Date(start).toISOString(), end: new Date(end).toISOString() };
+    if (!isInterviewLength(slotLength(slot))) return null;
+    slots.push(slot);
+  }
+  return slots;
+}
+
+/** A lead's button move as the browser sent it, checked for shape; null when it is not one. */
 export function parseLeadMove(value: unknown): LeadMove | null {
   if (typeof value !== "object" || value === null) return null;
   const v = value as Record<string, unknown>;
@@ -382,18 +504,8 @@ export function parseLeadMove(value: unknown): LeadMove | null {
     case "confirm-join":
       return { kind: v.kind };
     case "offer-interview": {
-      if (!Array.isArray(v.slots) || v.slots.length > MAX_OFFERED_SLOTS) return null;
-      const slots: SlotTime[] = [];
-      for (const raw of v.slots) {
-        if (typeof raw !== "object" || raw === null) return null;
-        const { start, end } = raw as Record<string, unknown>;
-        if (typeof start !== "string" || typeof end !== "string") return null;
-        if (!Number.isFinite(Date.parse(start)) || !Number.isFinite(Date.parse(end))) return null;
-        const slot = { start: new Date(start).toISOString(), end: new Date(end).toISOString() };
-        if (!isInterviewLength(slotLength(slot))) return null;
-        slots.push(slot);
-      }
-      return { kind: "offer-interview", slots };
+      const slots = parseSlots(v.slots);
+      return slots === null ? null : { kind: "offer-interview", slots };
     }
     default:
       return null;

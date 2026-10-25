@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
 import { openDashboard } from "@/lib/dashboard/open";
-import { parseLeadMove } from "@/lib/dashboard/application-flow";
+import { parseApproverMove } from "@/lib/dashboard/application-flow";
 import type { CreatedPosition } from "@/lib/dashboard/new-position";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 
@@ -42,9 +42,13 @@ export async function setPositionOpen(positionId: number, open: boolean): Promis
   return write((data) => data.setPositionOpen(positionId, open));
 }
 
-/** One action button on an application (lib/dashboard/application-flow.ts, `LEAD_STEPS`): the move it runs, checked there and in the data source. */
+/**
+ * One action button on an application (lib/dashboard/application-flow.ts,
+ * `LEAD_STEPS`), or a saved hand pick in the Status picker (issue #750): the
+ * one move both run, checked there and in the data source.
+ */
 export async function moveApplication(applicationId: number, move: unknown): Promise<WriteResult<null>> {
-  const parsed = parseLeadMove(move);
+  const parsed = parseApproverMove(move);
   if (!isId(applicationId) || parsed === null) return refused("That change is not valid.");
   return answer((data) => data.moveApplication(applicationId, parsed));
 }

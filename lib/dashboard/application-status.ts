@@ -63,3 +63,51 @@ export function statusOfStored(ref: StoredStatusRef): ApplicationStatus {
   if (!isBuiltInStatusKey(ref.parentKey)) throw new Error(`application status "${ref.key}" has no built-in parent`);
   return { kind: "added", key: ref.key, parent: ref.parentKey };
 }
+
+/** One row of the stored status list (`application_statuses`), as the database reads it. */
+export type StoredStatusRow = {
+  readonly key: string;
+  readonly name: string;
+  readonly colour: string;
+  readonly sortOrder: number;
+  readonly parentKey: string | null;
+};
+
+/** One entry of the status list as the drawer's Status picker shows it (board 97c): the status, its name and its colour. */
+export type ListedStatus = { readonly status: ApplicationStatus; readonly name: string; readonly colour: string };
+
+/**
+ * The status list in the picker's order (board 97c): the ten built-in
+ * statuses in their ruled order, each followed by the statuses added under
+ * it in their own order. A built-in status the stored list lacks shows its
+ * first name and colour; a stored row the table's checks would refuse is
+ * left out.
+ */
+export function statusListOf(rows: readonly StoredStatusRow[]): ListedStatus[] {
+  const stored = new Map(rows.map((r) => [r.key, r]));
+  return BUILT_IN_STATUSES.flatMap((builtIn): ListedStatus[] => {
+    const own = stored.get(builtIn.key);
+    const added = rows
+      .filter((r) => r.parentKey === builtIn.key && !isBuiltInStatusKey(r.key))
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((r): ListedStatus => ({ status: { kind: "added", key: r.key, parent: builtIn.key }, name: r.name, colour: r.colour }));
+    return [{ status: { kind: "built-in", key: builtIn.key }, name: own?.name ?? builtIn.name, colour: own?.colour ?? builtIn.colour }, ...added];
+  });
+}
+
+/** Whether two statuses are the same entry of the list. */
+export function sameStatus(a: ApplicationStatus, b: ApplicationStatus): boolean {
+  return a.kind === b.kind && a.key === b.key;
+}
+
+/**
+ * How the list names and colours a status. A status the list does not hold
+ * (the page read it before an edit to the list) shows its key in its
+ * parent's colour, and a built-in one its first name and colour.
+ */
+export function listedStatusOf(list: readonly ListedStatus[], status: ApplicationStatus): ListedStatus {
+  const listed = list.find((l) => sameStatus(l.status, status));
+  if (listed) return listed;
+  const builtIn = BUILT_IN_STATUSES.find((s) => s.key === builtInOf(status))!;
+  return { status, name: status.kind === "built-in" ? builtIn.name : status.key, colour: builtIn.colour };
+}

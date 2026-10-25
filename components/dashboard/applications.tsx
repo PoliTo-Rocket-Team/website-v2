@@ -2,9 +2,29 @@
 
 import { useEffect, useOptimistic, useState, useTransition, type ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ArrowLeft, CalendarClock, CalendarPlus, Check, ExternalLink, FileCheck2, FileText, MailCheck, Signature, Undo2, UserPlus, X } from "lucide-react";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import {
+  ArrowLeft,
+  ArrowRightLeft,
+  CalendarClock,
+  CalendarPlus,
+  Check,
+  ChevronDown,
+  CircleAlert,
+  ExternalLink,
+  FileCheck2,
+  FileText,
+  LogOut,
+  MailCheck,
+  Signature,
+  SlidersHorizontal,
+  Undo2,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogClose, DialogPortal, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { moveApplication } from "@/app/dashboard/recruitment-actions";
 import {
   APPLICATION_TABS,
@@ -14,24 +34,25 @@ import {
   icsFileName,
   interviewIcs,
   memberDivisionNames,
+  moveToStatus,
   PROGRESS_STEPS,
   progressOf,
   pronounsOf,
   slotBadge,
   slotDayTime,
   slotRange,
-  STATUS_NAMES,
-  statusPill,
+  statusAfter,
   studiesLine,
   takenByJoinElsewhere,
   type AcceptedStatus,
   type ApplicationState,
+  type ApproverMove,
+  type PickTarget,
   type SlotTime,
-  type LeadMove,
-  type LeadMoveKind,
   type LeadStep,
   type Pronouns,
 } from "@/lib/dashboard/application-flow";
+import { listedStatusOf, sameStatus, type ApplicationStatus, type BuiltInStatusKey, type ListedStatus } from "@/lib/dashboard/application-status";
 import { applicantSections, type ApplicantField } from "@/lib/dashboard/applicant-details";
 import {
   APPLICATION_FILTER_LABELS,
@@ -50,6 +71,7 @@ import {
   NO_APPLICATIONS_FILTER,
   panelStepsOf,
   shownApplications,
+  unsavedPickHint,
   type ApplicationsFilter,
   type ApplicationsTool,
 } from "@/lib/dashboard/applications-view";
@@ -64,19 +86,23 @@ import { DecisionDialog, NextSteps } from "./decision-dialog";
 import { InterviewDialog } from "./interview-dialog";
 import { PANEL } from "./panel";
 import { ICON_BUTTON, PhoneTopBar } from "./shell";
-import { StatusPill, StatusTag, toneDot, toneSurface } from "./stage-pill";
+import { StatusPill, StatusTag } from "./stage-pill";
 
 // The Applications page (Dashboard v2 boards 58b, 58 to 58i and 97 to 97e,
-// and phone boards 58m and 58d-m, issues #171 and #749): the status tabs, the
-// position filter, the list, and the detail panel of the chosen application
-// with its action buttons. Props in, nothing fetched. Every button goes
-// through the dashboard's server action; which buttons a status offers, and
-// the status each sets, is lib/dashboard/application-flow.ts's alone, and the
-// page shows the result at once. Where the viewer may not move an
-// application (`canChange` false, issue #577) the same panel shows its
+// and phone boards 58m and 58d-m, issues #171, #749 and #750): the status
+// tabs, the position filter, the list, and the detail panel of the chosen
+// application with its Status picker and action buttons. Props in, nothing
+// fetched. Every button and every saved hand pick goes through the
+// dashboard's one server move; which buttons a status offers, the status each
+// sets, and the move a hand pick runs is lib/dashboard/application-flow.ts's
+// alone, and the page shows the result at once. Where the viewer may not move
+// an application (`canChange` false, issue #577) the same panel shows its
 // status and no button.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+
+/** An action button while a hand pick is unsaved (board 97b): dimmed, and it cannot be pressed. */
+const LOCKABLE = "disabled:cursor-not-allowed disabled:opacity-40";
 
 // The detail panel and the room the list leaves for it are one pair (board 58):
 // the panel is 460px wide, and the list card ends 28px before it. The shell's
@@ -100,9 +126,9 @@ export function ApplicationsView({
   /** The viewer's name: the interview email is signed with it. */
   lead: string;
 }) {
-  const [states, setState] = useOptimistic(
-    Object.fromEntries(page.applications.map((a) => [a.id, a.state])) as Record<number, ApplicationState>,
-    (current, change: { id: number; state: ApplicationState }) => ({ ...current, [change.id]: change.state }),
+  const [standings, setStanding] = useOptimistic(
+    Object.fromEntries(page.applications.map((a) => [a.id, { state: a.state, status: a.status }])) as Record<number, Standing>,
+    (current, change: { id: number; standing: Standing }) => ({ ...current, [change.id]: change.standing }),
   );
   const [pending, startTransition] = useTransition();
   // Every role's page starts on all departments, all divisions and all stages, newest first.
@@ -115,7 +141,7 @@ export function ApplicationsView({
   const model = applicationsModelOf(page);
   const has = (tool: ApplicationsTool) => model.tools.includes(tool);
   const narrow = (change: Partial<ApplicationsFilter>) => setFilter((f) => ({ ...f, ...change }));
-  const applications = page.applications.map((a) => ({ ...a, state: states[a.id] ?? a.state }));
+  const applications = page.applications.map((a) => ({ ...a, ...standings[a.id] }));
   const shown = shownApplications(page, model.units, applications, filter);
   const rows = shown.rows;
   // The desktop table's column filters narrow what the toolbar leaves; phones list cards of the toolbar's rows, as Members does.
@@ -158,10 +184,17 @@ export function ApplicationsView({
   };
 
   /** Shows the step at once, then saves it; a refusal puts the row back and says why. */
-  const move = (application: ApplicationEntry, step: LeadMove, done?: () => void) =>
+  const move = (application: ApplicationEntry, step: ApproverMove, done?: () => void) =>
     startTransition(async () => {
-      const result = applyMove(application.state, step, new Date(page.now));
-      if (result.ok) setState({ id: application.id, state: result.state });
+      if (step.kind === "pick-added") {
+        // An added status changes the status alone; the page's refresh brings back what it behaves like.
+        const listed = page.statuses.find((s) => s.status.kind === "added" && s.status.key === step.key);
+        if (listed) setStanding({ id: application.id, standing: { state: application.state, status: listed.status } });
+      } else {
+        const result = applyMove(application.state, step, new Date(page.now));
+        const via = step.kind === "pick" ? "pick" : "button";
+        if (result.ok) setStanding({ id: application.id, standing: { state: result.state, status: statusAfter(application.status, result.state, via) } });
+      }
       const saved = await moveApplication(application.id, step);
       if (!saved.ok) toast.error(saved.error);
       else done?.();
@@ -329,6 +362,7 @@ export function ApplicationsView({
 
       <DetailPanel
         application={chosen}
+        statuses={page.statuses}
         now={page.now}
         lead={lead}
         pending={pending}
@@ -344,7 +378,10 @@ function OtherTag({ count }: { count: number }) {
   return <span className="shrink-0 rounded-full bg-white-10 px-2 py-0.5 text-[11px] text-text-2">+{count} other</span>;
 }
 
-type Move = (application: ApplicationEntry, step: LeadMove, done?: () => void) => void;
+/** Where an application stands, as the page shows it before the server answers. */
+type Standing = { readonly state: ApplicationState; readonly status: ApplicationStatus };
+
+type Move = (application: ApplicationEntry, step: ApproverMove, done?: () => void) => void;
 
 // The panel on the right (board 58); on a phone a full page with a back arrow
 // and the steps pinned at the foot (58d-m). It is the repo's Radix dialog, not
@@ -353,6 +390,7 @@ type Move = (application: ApplicationEntry, step: LeadMove, done?: () => void) =
 // only under motion-safe and closes at once (design-system-manifest.md).
 function DetailPanel({
   application,
+  statuses,
   now,
   lead,
   pending,
@@ -360,6 +398,7 @@ function DetailPanel({
   onMove,
 }: {
   application: ApplicationEntry | null;
+  statuses: readonly ListedStatus[];
   now: string;
   lead: string;
   pending: boolean;
@@ -374,15 +413,20 @@ function DetailPanel({
           onInteractOutside={(event) => event.preventDefault()}
           className={`fixed inset-0 z-40 flex flex-col bg-ground text-prt-text focus:outline-none md:left-auto ${PANEL_WIDTH} md:border-l md:border-hairline motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=open]:duration-200`}
         >
-          {application && <Detail key={application.id} application={application} now={now} lead={lead} pending={pending} onMove={onMove} />}
+          {application && <Detail key={application.id} application={application} statuses={statuses} now={now} lead={lead} pending={pending} onMove={onMove} />}
         </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>
   );
 }
 
-/** Which button's confirm is open over the panel: every action button asks first (ADR 0011, amendment of 2026-10-25). */
-type Asking = LeadMoveKind | null;
+/**
+ * Which confirm is open over the panel, named by the built-in status it sets:
+ * every action button asks first (ADR 0011, amendment of 2026-10-25), and a
+ * saved hand pick asks the same confirm as the step that sets the status
+ * (ruling R1.1 on #745).
+ */
+type Asking = BuiltInStatusKey | null;
 
 function capital(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1);
@@ -395,26 +439,43 @@ function verb(they: Pronouns, singular: string, plural: string): string {
 
 function Detail({
   application: a,
+  statuses,
   now,
   lead,
   pending,
   onMove,
 }: {
   application: ApplicationEntry;
+  statuses: readonly ListedStatus[];
   now: string;
   lead: string;
   pending: boolean;
   onMove: Move;
 }) {
   const [asking, setAsking] = useState<Asking>(null);
+  // A hand pick in the Status picker, not saved yet (board 97b): it locks every action button until Save or Cancel.
+  const [draft, setDraft] = useState<ApplicationStatus | null>(null);
   const first = firstNameOf(a.applicant.name);
   const they = pronounsOf(a.applicant.gender);
   const unit = divisionLabel(a.position.division);
   const steps = panelStepsOf(a);
+  const locked = draft !== null;
   const close = () => setAsking(null);
   // Confirm join sets these to "Accepted for another position" (ADR 0011, amendment of 2026-10-25).
   const othersTaken = a.otherApplications.filter((o) => takenByJoinElsewhere({ kind: "built-in", key: o.status })).length;
-  const run = (step: LeadMove) => onMove(a, step, close);
+  // A button and a saved hand pick of the same status run the same move (`moveToStatus`), behind the same confirm.
+  const run = (target: PickTarget) =>
+    onMove(a, moveToStatus(a.state, target), () => {
+      setAsking(null);
+      setDraft(null);
+    });
+  const pick = (status: ApplicationStatus) => setDraft(sameStatus(status, a.status) ? null : status);
+  // Saving an added status sets it and nothing else; a built-in one asks the confirm of the step that sets it.
+  const save = () => {
+    if (draft === null) return;
+    if (draft.kind === "added") onMove(a, { kind: "pick-added", key: draft.key }, () => setDraft(null));
+    else setAsking(draft.key);
+  };
 
   // Every field the applicant gave, grouped; empty ones are left out (issue #406).
   const details = applicantSections(a.applicant);
@@ -433,8 +494,9 @@ function Detail({
         }
       />
 
-      <div className="hidden border-b border-hairline px-7 pb-5 pt-7 md:block">
-        <div className="flex items-start gap-4">
+      {/* The head: the applicant from md (board 97), then the Status picker on every width. */}
+      <div className="border-b border-hairline px-5 pb-4 pt-4 md:px-7 md:pb-5 md:pt-7">
+        <div className="hidden items-start gap-4 md:flex">
           <Avatar size="panel" person={a.applicant} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-[20px] font-bold leading-tight" aria-hidden="true">
@@ -451,18 +513,24 @@ function Detail({
             <X aria-hidden className="h-4 w-4" strokeWidth={2} />
           </DialogClose>
         </div>
-        <StatusBox state={a.state} />
+        <p className="mb-3 truncate text-[13px] text-prt-muted md:hidden">
+          {a.position.title} · applied {a.applied.at}
+        </p>
+        <StatusPicker
+          statuses={statuses}
+          current={a.status}
+          draft={draft}
+          canChange={a.canChange}
+          pending={pending}
+          hint={unsavedPickHint(steps)}
+          onPick={pick}
+          onSave={save}
+          onCancel={() => setDraft(null)}
+        />
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-6 pt-4 md:px-7 md:py-5">
-        <div className="mb-4 flex items-center justify-between gap-3 md:hidden">
-          <p className="min-w-0 truncate text-[13px] text-prt-muted">
-            {a.position.title} · applied {a.applied.at}
-          </p>
-          <StatusPill state={a.state} short />
-        </div>
-
-        <StageCard application={a} first={first} they={they} changeTimes={steps.changeTimes} onAsk={setAsking} />
+        <StageCard application={a} first={first} they={they} changeTimes={steps.changeTimes} locked={locked} onAsk={setAsking} />
         {details.map((section) => (
           <Fields key={section.title} title={section.title} fields={section.fields} />
         ))}
@@ -510,13 +578,13 @@ function Detail({
             Cancel
           </DialogPrimitive.Close>
           {steps.bar.map((step) => (
-            <FooterButton key={step.move} step={step} wide={steps.bar.length === 1} onAsk={setAsking} />
+            <FooterButton key={step.move} step={step} wide={steps.bar.length === 1} locked={locked} onAsk={setAsking} />
           ))}
         </div>
       )}
 
       <InterviewDialog
-        open={asking === "offer-interview"}
+        open={asking === "interview"}
         onOpenChange={(open) => !open && close()}
         mode={a.state.status === "interview" ? "change" : "offer"}
         applicant={{ name: a.applicant.name, email: a.applicant.email, position: a.position.title }}
@@ -524,10 +592,10 @@ function Detail({
         now={now}
         offered={a.state.status === "interview" ? a.state.offered : []}
         pending={pending}
-        onSubmit={(slots) => run({ kind: "offer-interview", slots })}
+        onSubmit={(slots) => run({ to: "interview", slots })}
       />
       <DecisionDialog
-        open={asking === "accept"}
+        open={asking === "accepted_email_to_be_sent"}
         onOpenChange={(open) => !open && close()}
         tone="success"
         icon={<Check className="h-5 w-5" strokeWidth={2} />}
@@ -535,13 +603,13 @@ function Detail({
         cancelLabel="Not yet"
         confirmLabel="Yes, accept"
         pending={pending}
-        onConfirm={() => run({ kind: "accept" })}
+        onConfirm={() => run({ to: "accepted_email_to_be_sent" })}
       >
         {capital(they.possessive)} status becomes Accepted · email to be sent.
         <NextSteps steps={[`The team leader emails ${first} the NDA and marks the email sent.`, `${first} signs it and sends it back.`, `You mark the NDA received and confirm ${they.possessive} join here.`]} />
       </DecisionDialog>
       <DecisionDialog
-        open={asking === "reject"}
+        open={asking === "rejected_email_to_be_sent"}
         onOpenChange={(open) => !open && close()}
         tone="danger"
         icon={<X className="h-5 w-5" strokeWidth={2} />}
@@ -549,57 +617,84 @@ function Detail({
         cancelLabel={`Keep ${they.possessive} application`}
         confirmLabel="Yes, reject"
         pending={pending}
-        onConfirm={() => run({ kind: "reject" })}
+        onConfirm={() => run({ to: "rejected_email_to_be_sent" })}
       >
         {capital(they.possessive)} status becomes Rejected · email to be sent. The site sends no email: tell {they.object} yourself, then mark the
         email sent. You can&apos;t undo this.
       </DecisionDialog>
       <DecisionDialog
-        open={asking === "withdraw-acceptance"}
+        open={asking === "new"}
         onOpenChange={(open) => !open && close()}
         tone="danger"
         icon={<Undo2 className="h-5 w-5" strokeWidth={2} />}
-        title={`Withdraw ${first}'s acceptance?`}
+        // Withdraw acceptance's confirm; a hand pick of New from a status that was never accepted asks it in plain words.
+        title={"acceptedAt" in a.state ? `Withdraw ${first}'s acceptance?` : `Move ${first}'s application back to New?`}
         cancelLabel="Not yet"
-        confirmLabel="Yes, withdraw"
+        confirmLabel={"acceptedAt" in a.state ? "Yes, withdraw" : "Yes, move it"}
         pending={pending}
-        onConfirm={() => run({ kind: "withdraw-acceptance" })}
+        onConfirm={() => run({ to: "new" })}
       >
         {capital(they.possessive)} application goes back to New.
       </DecisionDialog>
-      {a.state.status === "rejected_email_to_be_sent" ? (
-        <DecisionDialog
-          open={asking === "mark-email-sent"}
-          onOpenChange={(open) => !open && close()}
-          tone="danger"
-          icon={<MailCheck className="h-5 w-5" strokeWidth={1.75} />}
-          title={`Mark the refusal email to ${first} sent?`}
-          cancelLabel="Not yet"
-          confirmLabel="Yes, it's sent"
-          pending={pending}
-          onConfirm={() => run({ kind: "mark-email-sent" })}
-        >
-          {capital(they.possessive)} status becomes Rejected · email sent, and {they.subject} {verb(they, "sees", "see")} &ldquo;Not selected&rdquo; on{" "}
-          {they.possessive} My applications page.
-        </DecisionDialog>
-      ) : (
-        <DecisionDialog
-          open={asking === "mark-email-sent"}
-          onOpenChange={(open) => !open && close()}
-          tone="success"
-          icon={<MailCheck className="h-5 w-5" strokeWidth={1.75} />}
-          title={`Mark the acceptance email to ${first} sent?`}
-          cancelLabel="Not yet"
-          confirmLabel="Yes, it's sent"
-          pending={pending}
-          onConfirm={() => run({ kind: "mark-email-sent" })}
-        >
-          {capital(they.possessive)} status becomes Accepted · email sent, and {they.subject} {verb(they, "sees", "see")} the acceptance on{" "}
-          {they.possessive} My applications page.
-        </DecisionDialog>
-      )}
       <DecisionDialog
-        open={asking === "nda-received"}
+        open={asking === "rejected_email_sent"}
+        onOpenChange={(open) => !open && close()}
+        tone="danger"
+        icon={<MailCheck className="h-5 w-5" strokeWidth={1.75} />}
+        title={`Mark the refusal email to ${first} sent?`}
+        cancelLabel="Not yet"
+        confirmLabel="Yes, it's sent"
+        pending={pending}
+        onConfirm={() => run({ to: "rejected_email_sent" })}
+      >
+        {capital(they.possessive)} status becomes Rejected · email sent, and {they.subject} {verb(they, "sees", "see")} &ldquo;Not selected&rdquo; on{" "}
+        {they.possessive} My applications page.
+      </DecisionDialog>
+      <DecisionDialog
+        open={asking === "accepted_email_sent"}
+        onOpenChange={(open) => !open && close()}
+        tone="success"
+        icon={<MailCheck className="h-5 w-5" strokeWidth={1.75} />}
+        title={`Mark the acceptance email to ${first} sent?`}
+        cancelLabel="Not yet"
+        confirmLabel="Yes, it's sent"
+        pending={pending}
+        onConfirm={() => run({ to: "accepted_email_sent" })}
+      >
+        {capital(they.possessive)} status becomes Accepted · email sent, and {they.subject} {verb(they, "sees", "see")} the acceptance on{" "}
+        {they.possessive} My applications page.
+      </DecisionDialog>
+      {/* No button sets these two: a hand pick asks what the step that sets each does (ruling R1.1 on #745). */}
+      <DecisionDialog
+        open={asking === "accepted_for_another_position"}
+        onOpenChange={(open) => !open && close()}
+        tone="danger"
+        icon={<ArrowRightLeft className="h-5 w-5" strokeWidth={1.75} />}
+        title={`Mark ${first} accepted for another position?`}
+        cancelLabel="Not yet"
+        confirmLabel="Yes, mark it"
+        pending={pending}
+        onConfirm={() => run({ to: "accepted_for_another_position" })}
+      >
+        {capital(they.possessive)} status becomes Accepted for another position, as when {they.subject} {verb(they, "joins", "join")} through another
+        application, and {they.subject} {verb(they, "sees", "see")} &ldquo;Not selected&rdquo; for this one.
+      </DecisionDialog>
+      <DecisionDialog
+        open={asking === "withdrawn"}
+        onOpenChange={(open) => !open && close()}
+        tone="danger"
+        icon={<LogOut className="h-5 w-5" strokeWidth={1.75} />}
+        title={`Withdraw ${first}'s application?`}
+        cancelLabel={`Keep ${they.possessive} application`}
+        confirmLabel="Yes, withdraw"
+        pending={pending}
+        onConfirm={() => run({ to: "withdrawn" })}
+      >
+        {capital(they.possessive)} status becomes Withdrawn, as when {they.subject} {verb(they, "withdraws", "withdraw")} it, and it leaves this list.
+        You can&apos;t undo this.
+      </DecisionDialog>
+      <DecisionDialog
+        open={asking === "nda_received"}
         onOpenChange={(open) => !open && close()}
         tone="success"
         icon={<FileCheck2 className="h-5 w-5" strokeWidth={1.75} />}
@@ -607,14 +702,14 @@ function Detail({
         cancelLabel="Not yet"
         confirmLabel="Yes, it arrived"
         pending={pending}
-        onConfirm={() => run({ kind: "nda-received" })}
+        onConfirm={() => run({ to: "nda_received" })}
       >
         {capital(they.possessive)} status becomes NDA received. Then confirm {they.possessive} join.
       </DecisionDialog>
       {a.standing.kind === "member" ? (
         // 58h2: already on the team; they keep every division they are in.
         <DecisionDialog
-          open={asking === "confirm-join"}
+          open={asking === "joined"}
           onOpenChange={(open) => !open && close()}
           tone="success"
           icon={<UserPlus className="h-5 w-5" strokeWidth={1.75} />}
@@ -622,7 +717,7 @@ function Detail({
           cancelLabel="Not yet"
           confirmLabel="Yes, add them"
           pending={pending}
-          onConfirm={() => run({ kind: "confirm-join" })}
+          onConfirm={() => run({ to: "joined" })}
         >
           {memberJoinLine(first, unit, memberDivisionNames(a.standing))}
           {othersTaken > 0 && ` ${otherApplicationsLine(othersTaken)}`}
@@ -630,7 +725,7 @@ function Detail({
       ) : (
         // 58h: someone new, in neutral words whatever the form says.
         <DecisionDialog
-          open={asking === "confirm-join"}
+          open={asking === "joined"}
           onOpenChange={(open) => !open && close()}
           tone="success"
           icon={<UserPlus className="h-5 w-5" strokeWidth={1.75} />}
@@ -638,7 +733,7 @@ function Detail({
           cancelLabel="Not yet"
           confirmLabel="Yes, they join"
           pending={pending}
-          onConfirm={() => run({ kind: "confirm-join" })}
+          onConfirm={() => run({ to: "joined" })}
         >
           They become a member, get the member dashboard, and show up in Members and on the Team tree.
           {othersTaken > 0 && ` ${otherApplicationsLine(othersTaken)}`}
@@ -670,8 +765,12 @@ function memberJoinLine(first: string, unit: string, divisions: readonly string[
   return `${first} is already in ${places}, and signed the NDA. They join ${unit} too and keep ${kept}.`;
 }
 
-/** One action button of the bottom bar; it only opens the button's confirm. A lone button takes both columns beside Cancel. */
-function FooterButton({ step, wide, onAsk }: { step: LeadStep; wide: boolean; onAsk: (asking: Asking) => void }) {
+/**
+ * One action button of the bottom bar; it only opens the confirm of the
+ * status it sets. A lone button takes both columns beside Cancel. While a
+ * hand pick is unsaved it is `locked` (board 97b).
+ */
+function FooterButton({ step, wide, locked, onAsk }: { step: LeadStep; wide: boolean; locked: boolean; onAsk: (asking: Asking) => void }) {
   const look =
     step.emphasis === "primary"
       ? "bg-prt-text text-ground hover:opacity-90"
@@ -681,8 +780,9 @@ function FooterButton({ step, wide, onAsk }: { step: LeadStep; wide: boolean; on
   return (
     <button
       type="button"
-      onClick={() => onAsk(step.move)}
-      className={`h-11 rounded-full px-3 text-[14px] font-semibold transition duration-300 ease-out ${wide ? "col-span-2" : ""} ${look} ${FOCUS}`}
+      disabled={locked}
+      onClick={() => onAsk(step.sets)}
+      className={`h-11 rounded-full px-3 text-[14px] font-semibold transition duration-300 ease-out ${wide ? "col-span-2" : ""} ${look} ${LOCKABLE} ${FOCUS}`}
     >
       {step.label}
     </button>
@@ -693,19 +793,22 @@ function FooterButton({ step, wide, onAsk }: { step: LeadStep; wide: boolean; on
  * The card for where the application stands now: the interview (58d), the
  * acceptance email and the NDA (58g), or the join. It only says where it
  * stands; the bottom bar's buttons move it, and Change times sits here, on
- * the interview, where `changeTimes` offers it.
+ * the interview, where `changeTimes` offers it. Its buttons are `locked`
+ * while a hand pick is unsaved (board 97b).
  */
 function StageCard({
   application: a,
   first,
   they,
   changeTimes,
+  locked,
   onAsk,
 }: {
   application: ApplicationEntry;
   first: string;
   they: Pronouns;
   changeTimes: boolean;
+  locked: boolean;
   onAsk: (asking: Asking) => void;
 }) {
   const state = a.state;
@@ -755,13 +858,13 @@ function StageCard({
             {(booked || changeTimes) && (
               <div className={`mt-4 grid gap-2.5 ${booked && changeTimes ? "grid-cols-2" : "grid-cols-1"}`}>
                 {booked && (
-                  <button type="button" onClick={() => downloadIcs(a, booked.slot)} className={CARD_BUTTON}>
+                  <button type="button" disabled={locked} onClick={() => downloadIcs(a, booked.slot)} className={CARD_BUTTON}>
                     <CalendarPlus aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
                     Add to calendar
                   </button>
                 )}
                 {changeTimes && (
-                  <button type="button" onClick={() => onAsk("offer-interview")} className={CARD_BUTTON}>
+                  <button type="button" disabled={locked} onClick={() => onAsk("interview")} className={CARD_BUTTON}>
                     <CalendarClock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
                     Change times
                   </button>
@@ -821,7 +924,7 @@ function joiningLine(status: AcceptedStatus, first: string, they: Pronouns, canC
   }
 }
 
-const CARD_BUTTON = `inline-flex h-9 items-center justify-center gap-2 rounded-full border border-white-10 text-[13px] font-semibold transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`;
+const CARD_BUTTON = `inline-flex h-9 items-center justify-center gap-2 rounded-full border border-white-10 text-[13px] font-semibold transition duration-300 ease-out hover:border-border-strong ${LOCKABLE} ${FOCUS}`;
 
 /** Add to calendar: the booked time as an .ics file, made in the browser. The site sends no invite. */
 function downloadIcs(a: ApplicationEntry, slot: SlotTime) {
@@ -922,18 +1025,144 @@ function DocumentCard({ name, detail, href }: { name: string; detail: string; hr
   );
 }
 
+/** "built-in:interview", "added:second_interview": one radio value per entry of the list. */
+function statusValue(status: ApplicationStatus): string {
+  return `${status.kind}:${status.key}`;
+}
+
+/** A status's colour, as the list stores it: it is data the Statuses editor sets, not a colour of this page. */
+function StatusDot({ colour }: { colour: string }) {
+  return <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: colour }} />;
+}
+
+const STATUS_LABEL = "w-14 shrink-0 font-mono text-[10px] uppercase tracking-[0.2em] text-dim";
+
 /**
- * The status at the top of the panel (boards 58, 58d, 97). It only shows the
- * status: the bottom bar's buttons change it, each behind its confirm. The
- * Status picker that replaces it is issue #750.
+ * The Status picker at the head of the panel (boards 97, 97b, 97c, issue
+ * #750): the current status with its colour, opening the whole list, the ten
+ * built-in statuses with the added ones under their parent, then "Manage
+ * statuses…" (the Statuses editor is issue #752). Any status can be picked.
+ * A pick is a draft: Save and Cancel sit beside it and the line under it says
+ * which action buttons wait. Where the viewer may not move the application
+ * it only shows the status.
  */
-function StatusBox({ state }: { state: ApplicationState }) {
-  const { tone } = statusPill(state);
+function StatusPicker({
+  statuses,
+  current,
+  draft,
+  canChange,
+  pending,
+  hint,
+  onPick,
+  onSave,
+  onCancel,
+}: {
+  statuses: readonly ListedStatus[];
+  current: ApplicationStatus;
+  draft: ApplicationStatus | null;
+  canChange: boolean;
+  pending: boolean;
+  hint: string;
+  onPick: (status: ApplicationStatus) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const shown = listedStatusOf(statuses, draft ?? current);
+  if (!canChange) {
+    return (
+      <div className="flex items-center gap-3 md:mt-4">
+        <span className={STATUS_LABEL}>Status</span>
+        <p className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-hairline px-3 text-[13px] font-medium">
+          <span className="sr-only">Status: </span>
+          <StatusDot colour={shown.colour} />
+          <span className="truncate">{shown.name}</span>
+        </p>
+      </div>
+    );
+  }
   return (
-    <p className={`mt-4 flex h-9 w-full items-center gap-2 rounded-lg border px-3 text-[13px] font-medium ${toneSurface(tone)}`}>
-      <span className="sr-only">Status: </span>
-      <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${toneDot(tone)}`} />
-      <span className="truncate">{STATUS_NAMES[state.status]}</span>
-    </p>
+    <div className="md:mt-4">
+      <div className="flex items-center gap-3">
+        <span className={STATUS_LABEL}>Status</span>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={`Status: ${shown.name}${draft ? ", not saved" : ""}`}
+            className={`flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 text-left text-[13px] font-medium transition-colors duration-300 ease-out ${
+              draft ? "border-warning" : "border-hairline hover:border-border-strong data-[state=open]:border-border-strong"
+            } ${FOCUS}`}
+          >
+            <StatusDot colour={shown.colour} />
+            <span className="truncate">{shown.name}</span>
+            <ChevronDown aria-hidden className="ml-auto h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={2} />
+          </DropdownMenuTrigger>
+          <DropdownMenuPortal>
+            <DropdownMenuPrimitive.Content
+              align="end"
+              sideOffset={6}
+              className="z-50 max-h-[min(440px,var(--radix-dropdown-menu-content-available-height))] w-[var(--radix-dropdown-menu-trigger-width)] min-w-[260px] overflow-y-auto rounded-xl border border-hairline bg-panel p-1.5 text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0"
+            >
+              <DropdownMenuPrimitive.RadioGroup
+                value={statusValue(draft ?? current)}
+                onValueChange={(value) => {
+                  const picked = statuses.find((s) => statusValue(s.status) === value);
+                  if (picked) onPick(picked.status);
+                }}
+              >
+                {statuses.map((s) => (
+                  <DropdownMenuPrimitive.RadioItem
+                    key={statusValue(s.status)}
+                    value={statusValue(s.status)}
+                    className={`flex h-[30px] cursor-pointer items-center gap-2.5 rounded-lg pr-2.5 text-[13px] text-text-2 outline-none transition-colors data-[highlighted]:bg-white-5 data-[state=checked]:bg-white-5 data-[highlighted]:text-prt-text data-[state=checked]:text-prt-text ${
+                      s.status.kind === "added" ? "pl-[30px]" : "pl-2.5"
+                    }`}
+                  >
+                    <StatusDot colour={s.colour} />
+                    <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                    {s.status.kind === "added" && <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.2em] text-dim">Added</span>}
+                    <DropdownMenuPrimitive.ItemIndicator>
+                      <Check aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={2} />
+                    </DropdownMenuPrimitive.ItemIndicator>
+                  </DropdownMenuPrimitive.RadioItem>
+                ))}
+              </DropdownMenuPrimitive.RadioGroup>
+              <DropdownMenuPrimitive.Separator className="mx-1 my-1.5 h-px bg-hairline" />
+              {/* The Statuses editor (board 97d) is issue #752: until it lands the entry is shown and cannot be opened. */}
+              <DropdownMenuPrimitive.Item
+                disabled
+                className="flex h-[30px] items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-text-2 outline-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-60"
+              >
+                <SlidersHorizontal aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                Manage statuses…
+              </DropdownMenuPrimitive.Item>
+            </DropdownMenuPrimitive.Content>
+          </DropdownMenuPortal>
+        </DropdownMenu>
+        {draft && (
+          <>
+            <button
+              type="button"
+              onClick={onCancel}
+              className={`h-9 shrink-0 rounded-full border border-white-10 px-4 text-[13px] font-semibold transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={pending}
+              className={`h-9 shrink-0 rounded-full bg-prt-text px-4 text-[13px] font-semibold text-ground transition duration-300 ease-out hover:opacity-90 ${LOCKABLE} ${FOCUS}`}
+            >
+              Save
+            </button>
+          </>
+        )}
+      </div>
+      {draft && (
+        <p role="status" className="mt-2.5 flex gap-1.5 text-[12px] leading-snug text-warning md:pl-[68px]">
+          <CircleAlert aria-hidden className="mt-px h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+          {hint}
+        </p>
+      )}
+    </div>
   );
 }

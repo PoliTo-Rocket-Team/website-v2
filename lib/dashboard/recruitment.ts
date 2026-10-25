@@ -1,6 +1,6 @@
 import type { ApplicantDetails } from "./applicant-details";
 import type { ApplicantStanding, ApplicationState } from "./application-flow";
-import type { BuiltInStatusKey } from "./application-status";
+import type { ApplicationStatus, BuiltInStatusKey, ListedStatus } from "./application-status";
 import type { DivisionChoice, PositionContent } from "./new-position";
 import { areaUnitsOf, type AreaReader } from "./viewer";
 
@@ -242,6 +242,8 @@ export type ApplicationEntry = {
   readonly id: number;
   /** Where it stands; ./application-flow.ts says what can happen next. */
   readonly state: ApplicationState;
+  /** Its status from the status list (issue #750): the Status picker shows it; `state` is the built-in status it behaves like. */
+  readonly status: ApplicationStatus;
   /**
    * Their name, and every field they gave on the apply form and in "Your
    * details" (issue #406). `photoUrl` is the stored photo of their member
@@ -287,6 +289,8 @@ export type ApplicationsPage = {
   readonly now: string;
   /** The positions the viewer reaches, for the position filter, with the division and department each sits in. */
   readonly positions: readonly { readonly ref: PositionRef; readonly title: string; readonly division: string; readonly department: string }[];
+  /** The status list in the Status picker's order (board 97c, `statusListOf`): built-in statuses, each with its added ones under it. */
+  readonly statuses: readonly ListedStatus[];
   /** Newest first. */
   readonly applications: readonly ApplicationEntry[];
 };

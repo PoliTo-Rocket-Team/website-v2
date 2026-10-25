@@ -6,7 +6,7 @@
 // issue #748): an added status reads as its built-in parent, and a row with
 // no reference reads as New.
 
-import type { ApplicationState } from "./application-flow";
+import { statusAfter, type ApplicationState } from "./application-flow";
 import { builtInOf, statusOfStored, type BuiltInStatusKey } from "./application-status";
 import { interviewStateOf, type SlotRow } from "./interview-slots";
 
@@ -56,11 +56,16 @@ export function storedApplicationState(row: StoredApplicationRow, slots: readonl
 }
 
 /**
- * The status reference a lead's move writes on `row`: the built-in status the
- * move set, or the row's own status when the move keeps the built-in status it
- * already behaves like, so Change times on an added status under Interview
- * keeps the added status.
+ * The status reference a lead's move writes on `row` (`statusAfter`,
+ * ./application-flow.ts): after a button, the built-in status the move set,
+ * or the row's own status when the move keeps the built-in status it already
+ * behaves like, so Change times on an added status under Interview keeps the
+ * added status; after a hand pick, the picked status.
  */
-export function statusKeyAfter(row: Pick<StoredApplicationRow, "status_key" | "status_parent_key">, state: ApplicationState): string {
-  return state.status === storedBuiltInStatus(row) && row.status_key !== null ? row.status_key : state.status;
+export function statusKeyAfter(
+  row: Pick<StoredApplicationRow, "status_key" | "status_parent_key">,
+  state: ApplicationState,
+  via: "button" | "pick" = "button",
+): string {
+  return statusAfter(statusOfStored({ key: row.status_key, parentKey: row.status_parent_key }), state, via).key;
 }
