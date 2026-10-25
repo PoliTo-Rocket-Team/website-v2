@@ -60,6 +60,7 @@ import {
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
 import { databaseRecruitmentPages, readSlots, STATUS_COLUMNS, STATUS_JOIN } from "./database-recruitment";
 import { readsAsNew } from "./stored-application";
+import { statusOfStored } from "./application-status";
 import { divisionOverviewOf, membersScopeOf, overviewAreasOf, type DivisionFigures } from "./division-overview";
 import { accessSectionOf, accessSummariesOf, type AccessFigures, type AccessSummary } from "./access-summary";
 import { answerHandOver, databaseTeamWrites, findForAdd, findPeople, readDivisionMembers, readTeamStructure, readWholeTeamMembers } from "./database-team";
@@ -906,7 +907,7 @@ function scopeBoardOf(identity: Identity, teamOrders: Promise<Order[]> | null): 
 async function hasShownApplications(identity: Identity): Promise<boolean> {
   const rows = await getDb()
     .select({
-      status: applications.status,
+      ...STATUS_COLUMNS,
       appliedAt: applications.appliedAt,
       withdrawnAt: applications.withdrawnAt,
       acceptedAt: applications.acceptedAt,
@@ -914,9 +915,12 @@ async function hasShownApplications(identity: Identity): Promise<boolean> {
       joinedAt: applications.joinedAt,
     })
     .from(applications)
+    .leftJoin(applicationStatuses, STATUS_JOIN)
     .where(eq(applications.userId, identity.userId));
   const now = new Date();
-  return rows.some((row) => isShownAt(row, now));
+  return rows.some(({ status_key, status_parent_key, ...times }) =>
+    isShownAt({ status: statusOfStored({ key: status_key, parentKey: status_parent_key }), ...times }, now),
+  );
 }
 
 /** The Applications badge: unread applications where the viewer reads the Applications area; none for anyone else (issue #471). */
