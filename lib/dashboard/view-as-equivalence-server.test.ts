@@ -190,6 +190,9 @@ function readsOf(units: Awaited<ReturnType<typeof seedUnits>>): readonly (readon
     ),
     ["divisionAccess", (d) => d.divisionAccess()],
     ["orders", (d) => d.orders()],
+    // The Activity log records the View as session itself and the time it is read, so its rows
+    // differ by design: the two sessions must agree on whether it opens (issue #642).
+    ["activityLog", async (d) => (await d.activityLog()) !== null],
     ["partners.list", (d) => d.partners.list()],
     ["faqs.list", (d) => d.faqs.list()],
     ["teamPage.open", (d) => d.teamPage.open()],

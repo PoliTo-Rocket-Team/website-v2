@@ -5,7 +5,6 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
   Check,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   CircleCheck,
   ExternalLink,
@@ -47,7 +46,6 @@ import {
   orderPage,
   ordersIntro,
   orderTotal,
-  pagerSlots,
   parseEuros,
   toggleDepartment,
   unitLine,
@@ -75,6 +73,7 @@ import {
   PanelBody,
   SidePanel,
 } from "./drawer";
+import { Pager } from "./directory";
 import { Field, inputClass } from "./field";
 import { DivisionMenu } from "./new-position-drawer";
 import { PANEL } from "./panel";
@@ -198,7 +197,9 @@ export function OrdersView({ data, writes }: { data: OrdersPage; writes: OrderWr
         })}
       </ul>
       {shown.orders.length === 0 && <p className="mt-6 text-center text-[14px] text-prt-muted md:hidden">No orders match these filters.</p>}
-      <Pager className="mt-5 md:hidden" page={shown.page} pages={shown.pages} onPage={setPage} />
+      <div className="mt-5 flex justify-center md:hidden">
+        <Pager page={shown.page} last={shown.pages} onPage={setPage} />
+      </div>
 
       <section aria-label="Orders" className={`${PANEL} mt-5 hidden md:block`}>
         <div className={`${rowGrid(drawerOpen)} h-10 border-b border-hairline`}>
@@ -257,7 +258,7 @@ export function OrdersView({ data, writes }: { data: OrdersPage; writes: OrderWr
         {shown.orders.length === 0 && <p className="px-[18px] py-10 text-center text-[14px] text-prt-muted">No orders match these filters.</p>}
         <div className="grid grid-cols-[1fr_auto_1fr] items-center border-t border-hairline px-[18px] py-3">
           <span className="text-[13px] text-prt-muted">Newest first</span>
-          <Pager page={shown.page} pages={shown.pages} onPage={setPage} />
+          <Pager page={shown.page} last={shown.pages} onPage={setPage} />
           <span aria-hidden />
         </div>
       </section>
@@ -347,41 +348,6 @@ function StatusPill({ status, dot }: { status: OrderStatus; dot: boolean }) {
       {dot && <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`} />}
       <span className="truncate">{ORDER_STATUS_LABELS[status]}</span>
     </span>
-  );
-}
-
-/** "‹ 1 2 3 … 6 ›", centred, with no total count (Owner decision on #233). */
-function Pager({ page, pages, onPage, className = "" }: { page: number; pages: number; onPage: (page: number) => void; className?: string }) {
-  const step = `flex h-7 w-7 items-center justify-center rounded-md text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text disabled:pointer-events-none disabled:opacity-40 ${FOCUS}`;
-  return (
-    <nav aria-label="Pages" className={`flex items-center justify-center gap-1.5 ${className}`}>
-      <button type="button" aria-label="Previous page" disabled={page <= 1} onClick={() => onPage(page - 1)} className={step}>
-        <ChevronLeft aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-      </button>
-      {pagerSlots(page, pages).map((slot, i) =>
-        slot === "gap" ? (
-          <span key={`gap-${i}`} aria-hidden className="w-7 text-center text-[13px] text-prt-muted">
-            …
-          </span>
-        ) : (
-          <button
-            key={slot}
-            type="button"
-            aria-current={slot === page ? "page" : undefined}
-            aria-label={`Page ${slot}`}
-            onClick={() => onPage(slot)}
-            className={`flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-[13px] tabular-nums transition-colors duration-300 ease-out ${FOCUS} ${
-              slot === page ? "bg-white-10 font-semibold text-prt-text" : "text-text-2 hover:text-prt-text"
-            }`}
-          >
-            {slot}
-          </button>
-        ),
-      )}
-      <button type="button" aria-label="Next page" disabled={page >= pages} onClick={() => onPage(page + 1)} className={step}>
-        <ChevronRight aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-      </button>
-    </nav>
   );
 }
 

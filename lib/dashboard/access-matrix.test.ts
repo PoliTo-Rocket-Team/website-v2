@@ -288,6 +288,7 @@ const PAGES: Readonly<Record<string, DashboardPageKey | "editor">> = {
   "app/dashboard/team-page/page.tsx": "team-page",
   "app/dashboard/access/page.tsx": "division-access",
   "app/dashboard/orders/page.tsx": "orders",
+  "app/dashboard/activity-log/page.tsx": "activity-log",
   "app/dashboard/profile/page.tsx": "my-profile",
   "app/dashboard/account/page.tsx": "my-account",
 };
