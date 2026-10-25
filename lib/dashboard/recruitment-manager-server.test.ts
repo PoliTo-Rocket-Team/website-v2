@@ -102,7 +102,7 @@ describe("the recruitment manager, the Logistics lead, on the whole seed (issue 
   test("the Test Bench lead is refused a move, the NDA tick and Confirm join on a Logistics application", async () => {
     await seeded();
     assert.equal(positionDivision((await stored(LOGISTICS_APPLICATION)).applyPositionId as number), DIVISION.logistics);
-    await changeRows(applications, { id: LOGISTICS_APPLICATION }, { status: "accepted", acceptedAt: "2026-10-06 17:00:00+02", ndaArrivedAt: null });
+    await changeRows(applications, { id: LOGISTICS_APPLICATION }, { status: "accepted", statusKey: "accepted_email_sent", acceptedAt: "2026-10-06 17:00:00+02", ndaArrivedAt: null });
 
     signInAs(TEST_BENCH_LEAD.id);
     const reject = await recruitmentActions.moveApplication(LOGISTICS_APPLICATION, { kind: "reject" });
@@ -113,7 +113,7 @@ describe("the recruitment manager, the Logistics lead, on the whole seed (issue 
     assert.deepEqual(await databaseWrites(), [], "no write");
 
     // With the NDA in, only the access check is left to refuse Confirm join.
-    await changeRows(applications, { id: LOGISTICS_APPLICATION }, { ndaArrivedAt: "2026-10-08 09:30:00+02" });
+    await changeRows(applications, { id: LOGISTICS_APPLICATION }, { statusKey: "nda_received", ndaArrivedAt: "2026-10-08 09:30:00+02" });
     signInAs(TEST_BENCH_LEAD.id);
     assert.deepEqual(await teamActions.confirmJoin(LOGISTICS_APPLICATION), { ok: false, error: "This change could not be saved." });
     assert.deepEqual(await databaseWrites(), [], "no write");

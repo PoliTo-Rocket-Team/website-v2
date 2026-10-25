@@ -4,13 +4,13 @@
 
 import type { InferInsertModel } from "drizzle-orm";
 import {
-  applicationStatusEnum,
   orderStatusEnum,
   type aliasRequests,
   type alumniEntries,
   type alumniImportedRoles,
   type applicationFiles,
   type applications,
+  type applicationStatuses,
   type applyPositions,
   type dashboardNotices,
   type departments,
@@ -45,6 +45,7 @@ import type { TeamPerson as PagePerson } from "@/lib/about/team-person";
 import { teamBuildOf, teamPageFromRoles, type TeamRoles } from "@/lib/about/team-roles";
 import { publicItems, statusOf, versionedFromRows, type ContentItem, type VersionKind } from "@/lib/content/versioned";
 import { APPLICATION_STAGES, type ApplicationStage } from "@/lib/dashboard/application-flow";
+import { BUILT_IN_STATUS_KEYS, isBuiltInStatusKey } from "@/lib/dashboard/application-status";
 import { storedApplicationState } from "@/lib/dashboard/stored-application";
 import type { FaqVersion } from "@/lib/faq/faq";
 import { trackRecord } from "@/lib/outreach";
@@ -91,7 +92,7 @@ import {
 import { PARTNER_ROWS, PARTNER_VERSION_ROWS } from "./partners";
 import { PROJECT_ROWS, PROJECT_VERSION_ROWS } from "./projects";
 import { IT_LEAD, MEMBER_ROWS, ROLE_ROWS, PLAIN_SEAT_PEOPLE, USER_ROWS } from "./people";
-import { APPLICATION_FILE_ROWS, APPLICATION_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
+import { APPLICATION_FILE_ROWS, APPLICATION_ROWS, APPLICATION_STATUS_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
 import { DEPARTMENT_ROWS, DIVISION_ROWS } from "./structure";
 import {
   ADDED_LEADER_AFTER,
@@ -119,6 +120,7 @@ export type SeedData = {
   readonly applicationFiles: readonly InferInsertModel<typeof applicationFiles>[];
   readonly interviewSlots: readonly InferInsertModel<typeof interviewSlots>[];
   readonly recruitmentSetting: readonly InferInsertModel<typeof recruitmentSetting>[];
+  readonly applicationStatuses: readonly InferInsertModel<typeof applicationStatuses>[];
   readonly partners: readonly InferInsertModel<typeof partners>[];
   readonly partnerVersions: readonly InferInsertModel<typeof partnerVersions>[];
   readonly faqs: readonly InferInsertModel<typeof faqs>[];
@@ -152,6 +154,7 @@ export const SEED_DATA: SeedData = {
   applicationFiles: APPLICATION_FILE_ROWS.rows,
   interviewSlots: SLOT_ROWS.rows,
   recruitmentSetting: RECRUITMENT_SETTING_ROWS.rows,
+  applicationStatuses: APPLICATION_STATUS_ROWS.rows,
   partners: PARTNER_ROWS.rows,
   partnerVersions: PARTNER_VERSION_ROWS.rows,
   faqs: FAQ_ROWS.rows,
@@ -343,9 +346,11 @@ export function stageOf(data: SeedData, application: Application): ApplicationSt
       chosen_at: s.chosenAt ?? null,
       created_at: s.createdAt!,
     }));
+  const statusKey = application.statusKey ?? null;
   return storedApplicationState(
     {
-      status: application.status ?? "received",
+      status_key: statusKey,
+      status_parent_key: data.applicationStatuses.find((s) => s.key === statusKey)?.parentKey ?? null,
       applied_at: application.appliedAt!,
       accepted_at: application.acceptedAt ?? null,
       nda_arrived_at: application.ndaArrivedAt ?? null,
@@ -1060,19 +1065,29 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "recruitment",
-    case: "An application in every stage: new, in review, interview, accepted, joined, rejected and withdrawn",
+    case: "An application in every stage: new, interview, accepted, joined, rejected and withdrawn; none reads as in review",
     data: "invented",
     rows: "`applications`, `interview_slots`",
-    exercisedBy: `${issue(169)}, ${issue(171)}`,
-    holds: (data) => APPLICATION_STAGES.every((stage) => data.applications.some((a) => stageOf(data, a) === stage)),
+    exercisedBy: `${issue(169)}, ${issue(171)}, ${issue(748)}`,
+    holds: (data) =>
+      APPLICATION_STAGES.every((stage) => stage === "in-review" || data.applications.some((a) => stageOf(data, a) === stage)) &&
+      data.applications.every((a) => stageOf(data, a) !== "in-review"),
   },
   {
     area: "recruitment",
-    case: "An application in every stored status, \"accepted by another team\" among them",
+    case: "Every application references a status: each of the ten built-in statuses, and the added status \"Second interview\"",
     data: "invented",
-    rows: "`applications.status`",
-    exercisedBy: issue(171),
-    holds: (data) => applicationStatusEnum.enumValues.every((status) => data.applications.some((a) => a.status === status)),
+    rows: "`application_statuses`, `applications.status_key`",
+    exercisedBy: issue(748),
+    holds: (data) => {
+      const referenced = data.applications.map((a) => a.statusKey ?? null);
+      const added = data.applicationStatuses.filter((s) => !isBuiltInStatusKey(s.key)).map((s) => s.key);
+      return (
+        referenced.every((key) => key !== null && data.applicationStatuses.some((s) => s.key === key)) &&
+        BUILT_IN_STATUS_KEYS.every((key) => referenced.includes(key)) &&
+        added.some((key) => referenced.includes(key))
+      );
+    },
   },
   {
     area: "recruitment",

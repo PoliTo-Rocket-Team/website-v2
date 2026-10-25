@@ -329,6 +329,41 @@ export const recruitmentSetting = pgTable(
   }),
 );
 
+// The application status list (issue #748, drizzle/0064): the ten built-in
+// statuses, which the migration inserts, and the statuses approvers add under
+// one built-in parent. lib/dashboard/application-status.ts owns the built-in
+// keys, their order and the parent rule; the checks keep a built-in row
+// parentless and give every added row a built-in parent. An added status is
+// deleted only while no application references it (`on delete restrict`).
+const BUILT_IN_APPLICATION_STATUS_KEYS = sql.raw(
+  `'new', 'interview', 'accepted_email_to_be_sent', 'accepted_email_sent', 'nda_received', 'joined', 'rejected_email_to_be_sent', 'rejected_email_sent', 'accepted_for_another_position', 'withdrawn'`,
+);
+
+export const applicationStatuses = pgTable(
+  "application_statuses",
+  {
+    id: serial("id").primaryKey(),
+    key: text("key").notNull().unique("application_statuses_key_unique"),
+    name: text("name").notNull(),
+    colour: text("colour").notNull(),
+    /** The status's place in the list: among the built-in statuses, or among its parent's added ones. */
+    sortOrder: integer("sort_order").notNull(),
+    parentKey: text("parent_key").references((): AnyPgColumn => applicationStatuses.key, { onDelete: "restrict" }),
+  },
+  (table) => ({
+    builtInHasNoParent: check(
+      "application_statuses_built_in_has_no_parent",
+      sql`(${table.key} in (${BUILT_IN_APPLICATION_STATUS_KEYS})) = (${table.parentKey} is null)`,
+    ),
+    parentIsBuiltIn: check(
+      "application_statuses_parent_is_built_in",
+      sql`${table.parentKey} is null or ${table.parentKey} in (${BUILT_IN_APPLICATION_STATUS_KEYS})`,
+    ),
+    colourIsHex: check("application_statuses_colour_hex", sql`${table.colour} ~ '^#[0-9A-F]{6}$'`),
+    onePlace: unique("application_statuses_one_place").on(table.parentKey, table.sortOrder).nullsNotDistinct(),
+  }),
+);
+
 export const applications = pgTable("applications", {
   id: serial("id").primaryKey(),
   applyPositionId: integer("apply_position_id").references(
@@ -352,7 +387,10 @@ export const applications = pgTable("applications", {
   })
     .defaultNow()
     .notNull(),
+  /** The old fixed status. It keeps being written beside `statusKey` until a later cleanup drops it (issue #748). */
   status: applicationStatusEnum("status").default("received").notNull(),
+  /** The application's status in `application_statuses` (issue #748). Null reads as New. */
+  statusKey: text("status_key").references(() => applicationStatuses.key, { onDelete: "restrict" }),
   customAnswers: jsonb("custom_answers").array(),
   /** When the applicant withdrew it (issue #169); the lead no longer sees it. */
   withdrawnAt: timestamp("withdrawn_at", {
@@ -375,6 +413,7 @@ export const applications = pgTable("applications", {
     .on(table.userId, table.applyPositionId)
     .where(sql`${table.withdrawnAt} is null`),
   cvFileIdIdx: index("applications_cv_file_id_idx").on(table.cvFileId),
+  statusKeyIdx: index("applications_status_key_idx").on(table.statusKey),
   coverLetterFileIdIdx: index("applications_cover_letter_file_id_idx").on(
     table.coverLetterFileId,
   ),

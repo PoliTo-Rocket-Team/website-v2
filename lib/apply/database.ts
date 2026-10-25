@@ -115,6 +115,8 @@ async function saveApplication(application: NewApplication): Promise<"saved" | "
         coverLetterFileId: motivationLetter ? fileIdOf(motivationLetter.key) : null,
         mlName: motivationLetter?.filename ?? null,
         customAnswers,
+        // A new application starts at New in the status list (issue #748).
+        statusKey: "new",
       }),
     ]);
     return "saved";

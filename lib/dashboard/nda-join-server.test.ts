@@ -32,7 +32,7 @@ const mayChange = (row: MatrixRow) => row.expect.changes.applications.includes(U
 /** A freshly seeded database whose joining application in the unit is accepted and still waits for the NDA. */
 async function seededWithoutNda(): Promise<void> {
   await seedFixture();
-  await changeRows(applications, { id: JOINING }, { ndaArrivedAt: null });
+  await changeRows(applications, { id: JOINING }, { statusKey: "accepted_email_sent", ndaArrivedAt: null });
 }
 
 const storedApplication = async () => (await tableRows(applications)).find((a) => a.id === JOINING)!;
@@ -65,6 +65,7 @@ describe("Mark NDA received, then Confirm join, on the real database (issue #687
     signInAs(accountOf(MAY).userId);
     assert.deepEqual(await recruitmentActions.moveApplication(JOINING, SET_NDA), { ok: true, value: null });
     assert.notEqual((await storedApplication()).ndaArrivedAt, null, "the stored application carries ndaArrivedAt");
+    assert.equal((await storedApplication()).statusKey, "nda_received", "the application references NDA received");
 
     const banner = await bannerOf(MAY);
     assert.equal(banner?.ndaArrived, true, "the Members page's joining banner reports the NDA in");
@@ -73,6 +74,7 @@ describe("Mark NDA received, then Confirm join, on the real database (issue #687
     assert.deepEqual(await teamActions.confirmJoin(JOINING), { ok: true });
     const joined = await storedApplication();
     assert.equal(joined.status, "joined");
+    assert.equal(joined.statusKey, "joined");
     assert.equal((await tableRows(members)).length, membersBefore + 1, "one members row added");
     assert.notEqual((await applicant()).member, null, "the applicant is now a member");
   });
