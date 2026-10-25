@@ -44,8 +44,7 @@ import { applyLayer, isTeamPageLayer, NO_TEAM_LAYER, NO_UPLOADS, resetLayer, typ
 import type { TeamPerson as PagePerson } from "@/lib/about/team-person";
 import { teamBuildOf, teamPageFromRoles, type TeamRoles } from "@/lib/about/team-roles";
 import { publicItems, statusOf, versionedFromRows, type ContentItem, type VersionKind } from "@/lib/content/versioned";
-import { APPLICATION_STAGES, type ApplicationStage } from "@/lib/dashboard/application-flow";
-import { BUILT_IN_STATUS_KEYS, isBuiltInStatusKey } from "@/lib/dashboard/application-status";
+import { BUILT_IN_STATUS_KEYS, isBuiltInStatusKey, type BuiltInStatusKey } from "@/lib/dashboard/application-status";
 import { storedApplicationState } from "@/lib/dashboard/stored-application";
 import type { FaqVersion } from "@/lib/faq/faq";
 import { trackRecord } from "@/lib/outreach";
@@ -333,8 +332,8 @@ export function orderDepartments(data: SeedData): Set<number> {
 
 type Application = SeedData["applications"][number];
 
-/** Where a seeded application stands, as the dashboard reads it: withdrawn first, then ./stored-application.ts. */
-export function stageOf(data: SeedData, application: Application): ApplicationStage {
+/** The built-in status a seeded application reads as on the dashboard: withdrawn first, then ./stored-application.ts. */
+export function applicationStatusOf(data: SeedData, application: Application): BuiltInStatusKey {
   if (application.withdrawnAt != null) return "withdrawn";
   const slots = data.interviewSlots
     .filter((s) => s.applicationId === application.id)
@@ -357,7 +356,7 @@ export function stageOf(data: SeedData, application: Application): ApplicationSt
       joined_at: application.joinedAt ?? null,
     },
     slots,
-  ).stage;
+  ).status;
 }
 
 /** Items read back from their version rows, the way the database sources build them. */
@@ -1065,13 +1064,11 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "recruitment",
-    case: "An application in every stage: new, interview, accepted, joined, rejected and withdrawn; none reads as in review",
+    case: "An application where each built-in status reads, withdrawn included, as the dashboard reads it",
     data: "invented",
     rows: "`applications`, `interview_slots`",
     exercisedBy: `${issue(169)}, ${issue(171)}, ${issue(748)}`,
-    holds: (data) =>
-      APPLICATION_STAGES.every((stage) => stage === "in-review" || data.applications.some((a) => stageOf(data, a) === stage)) &&
-      data.applications.every((a) => stageOf(data, a) !== "in-review"),
+    holds: (data) => BUILT_IN_STATUS_KEYS.every((status) => data.applications.some((a) => applicationStatusOf(data, a) === status)),
   },
   {
     area: "recruitment",
@@ -1096,7 +1093,7 @@ export const SEED_CASES: readonly SeedCase[] = [
     rows: "`interview_slots` of applications 5 and 6",
     exercisedBy: `${issue(169)}, ${issue(186)}`,
     holds: (data) => {
-      const interviews = data.applications.filter((a) => stageOf(data, a) === "interview");
+      const interviews = data.applications.filter((a) => applicationStatusOf(data, a) === "interview");
       const booked = (a: Application) => data.interviewSlots.some((s) => s.applicationId === a.id && s.chosen);
       return interviews.some(booked) && interviews.some((a) => !booked(a));
     },
@@ -1108,7 +1105,7 @@ export const SEED_CASES: readonly SeedCase[] = [
     rows: "`applications` 3 and 1",
     exercisedBy: issue(171),
     holds: (data) => {
-      const accepted = data.applications.filter((a) => stageOf(data, a) === "accepted");
+      const accepted = data.applications.filter((a) => ["accepted_email_to_be_sent", "accepted_email_sent", "nda_received"].includes(applicationStatusOf(data, a)));
       return accepted.some((a) => a.ndaArrivedAt == null) && accepted.some((a) => a.ndaArrivedAt != null);
     },
   },
@@ -1120,7 +1117,7 @@ export const SEED_CASES: readonly SeedCase[] = [
     exercisedBy: `${issue(129)}, ${issue(169)}`,
     holds: (data) => {
       const theirs = data.applications.filter((a) => a.userId === PLAIN_SEAT_PEOPLE["non-member"]);
-      return theirs.some((a) => stageOf(data, a) === "interview") && theirs.some((a) => stageOf(data, a) === "new");
+      return theirs.some((a) => applicationStatusOf(data, a) === "interview") && theirs.some((a) => applicationStatusOf(data, a) === "new");
     },
   },
   {

@@ -481,7 +481,7 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
   return { firstName: me?.first_name ?? identity.name, email: identity.email, active, past };
 }
 
-/** Board 50b: marks it withdrawn; the lead's list leaves it out from then on (./database.ts). */
+/** Board 50b: marks it withdrawn, with the Withdrawn status (issue #749); the lead's list leaves it out from then on (./database.ts). */
 async function withdrawApplication(identity: DashboardIdentity, applicationId: number): Promise<WriteResult<null>> {
   const mine = await readMyApplications(identity);
   const application = mine?.active.find((a) => a.id === applicationId);
@@ -490,7 +490,7 @@ async function withdrawApplication(identity: DashboardIdentity, applicationId: n
   const changed = await runAuditQuery((db) =>
     db
       .update(applications)
-      .set({ withdrawnAt: sql`now()` })
+      .set({ withdrawnAt: sql`now()`, statusKey: "withdrawn" })
       .where(
         and(
           eq(applications.id, applicationId),

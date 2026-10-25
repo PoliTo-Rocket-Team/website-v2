@@ -18,7 +18,8 @@ DELETE.
 
 2. **Applications use a sibling with the same frame.** `DecisionDialog` in
    [components/dashboard/decision-dialog.tsx](../components/dashboard/decision-dialog.tsx) is the
-   step before Accept, Reject and Confirm join on the lead's Applications page. It reuses the popup
+   step before every action button on the lead's Applications page (Accept, Reject, Withdraw acceptance,
+   Mark email sent, NDA received, Confirm join; issue #749). It reuses the popup
    frame (`SHEET_CONTENT`, `SHEET_CANCEL`) from `confirm-dialog.tsx`.
 
 3. **Typing DELETE.** Delete account passes `confirmDisabled={!deleteConfirmed(typed)}`. The word
@@ -37,7 +38,7 @@ Call sites, by action:
 
 | Action | Where |
 |---|---|
-| Accept, Reject, Confirm join (lead) | `DecisionDialog` in [applications.tsx](../components/dashboard/applications.tsx) |
+| Accept, Reject, Withdraw acceptance, Mark email sent, NDA received, Confirm join (lead) | `DecisionDialog` in [applications.tsx](../components/dashboard/applications.tsx) |
 | Confirm join (Members banner) | `ConfirmDialog` in [members.tsx](../components/dashboard/members.tsx) |
 | Withdraw application, confirm interview time (applicant) | `ConfirmDialog` in [my-applications.tsx](../components/dashboard/my-applications.tsx) |
 | Move to alumni | `ConfirmDialog` in [member-drawer.tsx](../components/dashboard/member-drawer.tsx) |

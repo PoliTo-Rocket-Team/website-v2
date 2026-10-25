@@ -174,13 +174,13 @@ describe("an applicant's applications", () => {
     ]);
     const page = await (await reopen("team leader")).applications();
     const entry = (id: number) => page.applications.find((a) => a.id === id)!;
-    assert.equal(entry(IDS.interview("DM")).state.stage, "interview", "the interview reads its stored times");
+    assert.equal(entry(IDS.interview("DM")).state.status, "interview", "the interview reads its stored times");
     assert.deepEqual(
-      entry(IDS.interview("DM")).otherApplications.map((o) => o.stage),
+      entry(IDS.interview("DM")).otherApplications.map((o) => o.status),
       ["new"],
-      "the other live application, at its stage; the withdrawn one is left out",
+      "the other live application, at its status; the withdrawn one is left out",
     );
-    assert.deepEqual(entry(990).otherApplications.map((o) => o.stage), ["interview"], "the other application's interview reads its stored times");
+    assert.deepEqual(entry(990).otherApplications.map((o) => o.status), ["interview"], "the other application's interview reads its stored times");
     assert.ok(!page.applications.some((a) => a.id === 991), "a withdrawn application is not listed");
     assert.equal(entry(IDS.interview("DM")).standing.kind, "applicant");
     assert.equal(entry(992).standing.kind, "member", "a member applying reads as on the team");
@@ -196,8 +196,8 @@ describe("an applicant's applications", () => {
     await changeRows(applications, { id: IDS.interview("DM") }, { statusKey: "second_interview" });
     const page = await (await reopen("team leader")).applications();
     const entry = (id: number) => page.applications.find((a) => a.id === id)!;
-    assert.equal(entry(990).state.stage, "new", "no status reference reads as New");
-    assert.equal(entry(IDS.interview("DM")).state.stage, "interview", "the added status reads as Interview, with its stored times");
+    assert.equal(entry(990).state.status, "new", "no status reference reads as New");
+    assert.equal(entry(IDS.interview("DM")).state.status, "interview", "the added status reads as Interview, with its stored times");
 
     // Reject moves it off the added status, to the built-in status the move reaches.
     const reject = await recruitmentActions.moveApplication(IDS.interview("DM"), { kind: "reject" });
