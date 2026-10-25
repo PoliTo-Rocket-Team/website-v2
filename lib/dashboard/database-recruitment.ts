@@ -33,7 +33,7 @@ import { DashboardRefused } from "./data";
 import type { DashboardIdentity } from "./database";
 import { readHeadDepartment } from "./database-division";
 import { positionCode } from "@/lib/apply/positions";
-import type { SlotRow } from "./interview-slots";
+import type { OfferedSlotRow } from "./interview-slots";
 import { storedApplicationState, type StoredApplicationRow } from "./stored-application";
 import { checkNewPosition, checkPositionContent, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
 import {
@@ -354,14 +354,17 @@ function listedOn(positionIds: readonly number[]): SQL {
 }
 
 /** The stored interview times of the given applications, by application. */
-export async function readSlots(applicationIds: readonly number[]): Promise<Map<number, SlotRow[]>> {
+export async function readSlots(applicationIds: readonly number[]): Promise<Map<number, OfferedSlotRow[]>> {
   if (applicationIds.length === 0) return new Map();
   return readSlotsWhere(inArray(interviewSlots.applicationId, [...applicationIds]));
 }
 
-/** The stored interview times `which` selects, by application. */
-async function readSlotsWhere(which: SQL): Promise<Map<number, SlotRow[]>> {
-  const bySlot = new Map<number, SlotRow[]>();
+/** Who offered an interview's times (issue #652). */
+const offerer = alias(users, "offerer");
+
+/** The stored interview times `which` selects, by application, each with the name of who offered it. */
+async function readSlotsWhere(which: SQL): Promise<Map<number, OfferedSlotRow[]>> {
+  const bySlot = new Map<number, OfferedSlotRow[]>();
   const rows = await getDb()
     .select({
       application_id: interviewSlots.applicationId,
@@ -370,10 +373,17 @@ async function readSlotsWhere(which: SQL): Promise<Map<number, SlotRow[]>> {
       chosen: interviewSlots.chosen,
       chosen_at: interviewSlots.chosenAt,
       created_at: interviewSlots.createdAt,
+      offerer_first: offerer.firstName,
+      offerer_last: offerer.lastName,
+      offerer_email: offerer.email,
     })
     .from(interviewSlots)
+    .leftJoin(offerer, eq(offerer.id, interviewSlots.offeredBy))
     .where(which);
-  for (const row of rows) bySlot.set(row.application_id, [...(bySlot.get(row.application_id) ?? []), row]);
+  for (const { offerer_first, offerer_last, offerer_email, ...row } of rows) {
+    const offered_by = offerer_email === null ? null : [offerer_first, offerer_last].filter(Boolean).join(" ") || offerer_email;
+    bySlot.set(row.application_id, [...(bySlot.get(row.application_id) ?? []), { ...row, offered_by }]);
+  }
   return bySlot;
 }
 
@@ -425,7 +435,7 @@ type ApplicantsApplications = {
     readonly division_name: string;
     readonly dept_name: string;
   })[];
-  readonly slots: ReadonlyMap<number, SlotRow[]>;
+  readonly slots: ReadonlyMap<number, OfferedSlotRow[]>;
 };
 
 /** One listed application's applicant's applications to other roles, anywhere on the team, newest first. */
@@ -655,7 +665,7 @@ export async function moveApplication(identity: Identity, applicationId: number,
       return refused("Only the applicant can withdraw an application.");
 
     case "interview":
-      return (await offerSlots(row.id, row.status, after.offered)) ? written(null) : refused(APPLICATION_CHANGED);
+      return (await offerSlots(row.id, row.status, after.offered, identity.userId)) ? written(null) : refused(APPLICATION_CHANGED);
 
     case "accepted": {
       const changed = await runAuditQuery((db) =>
@@ -703,9 +713,10 @@ const APPLICATION_CHANGED = "This application changed. Reload the page.";
  * Interview and its offered times replace the old ones, in one statement and
  * only while it is still in the status it was read in and not withdrawn. The
  * slots are cleared and written only for the row the status update matched,
- * so a move another lead beat changes no slot. True when the move landed.
+ * so a move another lead beat changes no slot. Each time records `offeredBy`,
+ * the account that offered it (issue #652). True when the move landed.
  */
-async function offerSlots(applicationId: number, readStatus: DbStatus, offered: OfferedSlots): Promise<boolean> {
+async function offerSlots(applicationId: number, readStatus: DbStatus, offered: OfferedSlots, offeredBy: string): Promise<boolean> {
   const times = sql.join(
     offered.map((s) => sql`(${s.start}::timestamptz, ${s.end}::timestamptz)`),
     sql`, `,
@@ -721,8 +732,8 @@ async function offerSlots(applicationId: number, readStatus: DbStatus, offered: 
         delete from ${interviewSlots} where application_id in (select id from moved)
       ),
       added as (
-        insert into ${interviewSlots} (application_id, starts_at, ends_at)
-        select moved.id, offered.starts_at, offered.ends_at
+        insert into ${interviewSlots} (application_id, starts_at, ends_at, offered_by)
+        select moved.id, offered.starts_at, offered.ends_at, ${offeredBy}
         from moved cross join (values ${times}) as offered (starts_at, ends_at)
       )
       select id from moved
