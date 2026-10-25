@@ -10,6 +10,7 @@ import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import {
   aliasAnswerNotices,
   aliasAttentionFor,
+  answersAliasRequests,
   checkAliasAnswer,
   memberAliasesFor,
   owedAliasRequests,
@@ -101,7 +102,8 @@ export async function readMemberAliases(identity: DashboardIdentity, memberIds: 
 
 /** The open requests as the viewer's rows under "Needs your attention" (board 94c): the three approver seats only. */
 export async function readAliasAttention(identity: DashboardIdentity, now: Date): Promise<AttentionItem[]> {
-  if (identity.memberId === null) return [];
+  // By the seat alone, so the break-glass admin with no member row answers too (issue #646).
+  if (!answersAliasRequests(identity)) return [];
   const [open, snapshot] = await Promise.all([readOpenAliasRequests(), readTeamSnapshot()]);
   return aliasAttentionFor(identity, open, aliasTeamOf(snapshot), snapshot.org, now);
 }
@@ -189,7 +191,7 @@ export async function answerAlias(identity: DashboardIdentity, requestId: number
   const checked = checkAliasAnswer(input);
   if (!checked.ok) return refused(checked.error);
   const [request] = await readOpenAliasRequests({ id: requestId });
-  if (!request || identity.memberId === null) return refused("This alias request was already answered.");
+  if (!request) return refused("This alias request was already answered.");
   const planned = planAliasAnswer({ viewer: identity, request, answer: checked.value });
   if (!planned.ok) return refused(planned.error);
   const plan = planned.value;

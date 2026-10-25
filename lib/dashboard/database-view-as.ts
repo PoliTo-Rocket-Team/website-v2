@@ -1,5 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/db/client";
+import { isBreakGlassEmail } from "@/lib/break-glass";
 import { betterAuthUsers, logs, roles, users } from "@/db/schema";
 import {
   VIEW_AS_OPERATIONS,
@@ -20,12 +21,13 @@ import { SEAT_OF_FLAG } from "./viewer";
 /**
  * The account as View as reads it, or null when no Better Auth account has
  * this id: the full-access seat of each role it holds now (a role it left is
- * not read, so a hand-over takes effect at once).
+ * not read, so a hand-over takes effect at once), and whether the
+ * break-glass setting names its sign-in email (issue #646).
  */
 export async function readViewAsAccount(userId: string): Promise<ViewAsAccount | null> {
   const db = getDb();
   const [[account], seatRows] = await Promise.all([
-    db.select({ id: betterAuthUsers.id }).from(betterAuthUsers).where(eq(betterAuthUsers.id, userId)).limit(1),
+    db.select({ id: betterAuthUsers.id, email: betterAuthUsers.email }).from(betterAuthUsers).where(eq(betterAuthUsers.id, userId)).limit(1),
     db
       .select({ fullAccess: roles.fullAccess })
       .from(roles)
@@ -35,6 +37,7 @@ export async function readViewAsAccount(userId: string): Promise<ViewAsAccount |
   if (!account) return null;
   return {
     activeRoles: seatRows.map((r) => ({ fullAccess: r.fullAccess === null ? null : SEAT_OF_FLAG[r.fullAccess] })),
+    breakGlass: isBreakGlassEmail(account.email),
   };
 }
 

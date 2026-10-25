@@ -259,6 +259,17 @@ export function isTeamLeader(viewer: ViewerStanding): boolean {
   return seatOf(viewer) === "team-leader";
 }
 
+/** The team leader's standing: full access in the team leader's seat. */
+export type TeamLeaderStanding = Extract<ViewerStanding, { readonly kind: "operations-lead" }> & { readonly seat: "team-leader" };
+
+/**
+ * The standing the break-glass admin signs in with (issue #646): the team
+ * leader's, read from no role and no scope row, so it holds no Content grant
+ * and no "Approve orders" row; full access and the team leader's seat give
+ * both rights anyway.
+ */
+export const BREAK_GLASS_STANDING: TeamLeaderStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
+
 export type DashboardViewer = ViewerStanding & {
   readonly name: string;
   /** The line under the name in the user card: "Operations Lead", "Member". */

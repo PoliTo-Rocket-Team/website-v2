@@ -2,6 +2,7 @@ import { eq, inArray, type SQL } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { roles, users } from "@/db/schema";
 import { actingTitleOf } from "./acting-account";
+import { viewAsSiteOf, type ViewAsSite } from "./view-as";
 import { SEAT_OF_FLAG } from "./viewer";
 
 /** The title each acting account's writes show under (`actingTitleOf`), by account id. */
@@ -12,13 +13,14 @@ export type ActingSeat = { readonly user_id: string; readonly full_access: keyof
 
 /**
  * The title of each acting account a set of rows names (issue #605), read
- * from every role it holds or held. Every id given gets one, so a recorded
+ * from every role it holds or held and the site this request runs on
+ * (issue #646). Every id given gets one, so a recorded
  * acting account never reads as the person alone.
  */
-export async function readActingTitles(accountIds: Iterable<string | null>): Promise<ActingTitles> {
+export async function readActingTitles(accountIds: Iterable<string | null>, site: ViewAsSite = viewAsSiteOf()): Promise<ActingTitles> {
   const ids = accountIdsOf(accountIds);
   if (ids.length === 0) return new Map();
-  return actingTitlesOf(ids, await readActingSeats(inArray(users.id, ids)));
+  return actingTitlesOf(ids, await readActingSeats(inArray(users.id, ids)), site);
 }
 
 /**
@@ -36,11 +38,11 @@ export function readActingSeats(which: SQL): Promise<ActingSeat[]> {
 }
 
 /** The title of each acting account given, from the seats read for them; every id given gets one. */
-export function actingTitlesOf(accountIds: Iterable<string | null>, seats: readonly ActingSeat[]): ActingTitles {
+export function actingTitlesOf(accountIds: Iterable<string | null>, seats: readonly ActingSeat[], site: ViewAsSite = viewAsSiteOf()): ActingTitles {
   return new Map(
     accountIdsOf(accountIds).map((id) => [
       id,
-      actingTitleOf(seats.filter((s) => s.user_id === id).map((s) => (s.full_access === null ? null : SEAT_OF_FLAG[s.full_access]))),
+      actingTitleOf(seats.filter((s) => s.user_id === id).map((s) => (s.full_access === null ? null : SEAT_OF_FLAG[s.full_access])), site),
     ]),
   );
 }

@@ -3,6 +3,7 @@ import "server-only";
 import { and, asc, eq, ilike, inArray, isNull, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { alumniEntries, betterAuthUsers, departments, divisions, members, roles, users } from "@/db/schema";
+import { isBreakGlassEmail, readBreakGlassEmails } from "@/lib/break-glass";
 import type { CurrentUser } from "@/lib/current-user";
 import { actingTitleIn, readActingTitles } from "./database-acting-account";
 import { readViewAsAccount } from "./database-view-as";
@@ -35,7 +36,7 @@ export async function readViewAsOpening(user: CurrentUser | null, site: ViewAsSi
   if (user === null || user.actingAccountId !== null) return null;
   const account = await readViewAsAccount(user.id);
   if (account === null || !mayUseViewAs(account, site)) return null;
-  const actingTitle = actingTitleIn(await readActingTitles([user.id]), user.id);
+  const actingTitle = actingTitleIn(await readActingTitles([user.id], site), user.id);
   return actingTitle === null ? null : { actingTitle };
 }
 
@@ -66,6 +67,7 @@ async function readCandidates(actingAccountId: string, text: string): Promise<Vi
   const accounts = await db
     .select({
       id: betterAuthUsers.id,
+      email: betterAuthUsers.email,
       name,
       memberId: users.member,
       picture: members.picture,
@@ -100,6 +102,7 @@ async function readCandidates(actingAccountId: string, text: string): Promise<Vi
           .leftJoin(departments, eq(departments.id, sql`coalesce(${roles.deptId}, ${divisions.deptId})`))
           .where(and(inArray(roles.memberId, memberIds), isNull(roles.leavedAt)));
 
+  const breakGlassEmails = readBreakGlassEmails();
   return accounts.map((a) => {
     const held: ViewAsRole[] = roleRows
       .filter((r) => a.memberId !== null && r.memberId === a.memberId)
@@ -110,6 +113,7 @@ async function readCandidates(actingAccountId: string, text: string): Promise<Vi
       photoUrl: a.picture,
       roles: held,
       alumnus: held.length === 0 && a.alumniEntry !== null ? { teamTo: a.teamTo } : null,
+      breakGlass: isBreakGlassEmail(a.email, breakGlassEmails),
     };
   });
 }

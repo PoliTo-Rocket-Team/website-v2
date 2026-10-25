@@ -5,7 +5,9 @@
 // the seat through a hand-over and no per-person flag is stored. Owner
 // decision on #648 (2026-10-24): on a test site (a preview of the shared
 // preview database, or `next dev`) any signed-in account may, however it
-// signed in. The plugin's own role table is not the authority:
+// signed in. Issue #646: on production the break-glass admin may too, an
+// account the server's break-glass setting names (lib/break-glass.ts), and
+// nobody may view as it. The plugin's own role table is not the authority:
 // lib/view-as-plugin.ts asks this rule before every start.
 
 import { testerSignInOn, type GateEnv } from "../dev-tester";
@@ -25,9 +27,14 @@ export function viewAsSiteOf(env?: GateEnv): ViewAsSite {
   return testerSignInOn(env) ? "test" : "live";
 }
 
-/** What decides whether an account may use View as on the live site: their active roles. No stored role or per-person flag counts. */
+/**
+ * What decides whether an account may use View as on the live site: their
+ * active roles, and whether the break-glass setting names their sign-in
+ * email (issue #646). No stored role or per-person flag counts.
+ */
 export type ViewAsAccount = {
   readonly activeRoles: readonly Pick<ActiveRoleRef, "fullAccess">[];
+  readonly breakGlass: boolean;
 };
 
 /** Whether one of their active roles is the IT lead seat. A role they left is not active, so a hand-over moves this at once. */
@@ -35,9 +42,9 @@ export function holdsItLeadSeat(account: ViewAsAccount): boolean {
   return account.activeRoles.some((r) => r.fullAccess === "it-lead");
 }
 
-/** Whether the account may start View as on this site: any signed-in account on a test site, only the IT lead seat on the live one. */
+/** Whether the account may start View as on this site: any signed-in account on a test site; on the live one, the IT lead seat and the break-glass admin. */
 export function mayUseViewAs(account: ViewAsAccount, site: ViewAsSite): boolean {
-  return site === "test" || holdsItLeadSeat(account);
+  return site === "test" || account.breakGlass || holdsItLeadSeat(account);
 }
 
 /** Whether the person may be viewed as on this site: anyone on a test site; on the live one, nobody who could use View as themselves. */
@@ -159,6 +166,8 @@ export type ViewAsCandidate = {
   readonly roles: readonly ViewAsRole[];
   /** Null when the Alumni record does not know them; else the last year they were on the team, when it is set. */
   readonly alumnus: { readonly teamTo: number | null } | null;
+  /** Whether the break-glass setting names their sign-in email (issue #646). */
+  readonly breakGlass: boolean;
 };
 
 /** One row of the dialog: the account to start View as on, its name and the line under it. */
@@ -199,7 +208,7 @@ export function viewAsLineOf(candidate: Pick<ViewAsCandidate, "roles" | "alumnus
 export function viewAsPeopleOf(candidates: readonly ViewAsCandidate[], actingAccountId: string, site: ViewAsSite): ViewAsPerson[] {
   return candidates
     .filter((c) => c.id !== actingAccountId)
-    .filter((c) => mayBeViewedAs({ activeRoles: c.roles.map((r) => ({ fullAccess: r.seat })) }, site))
+    .filter((c) => mayBeViewedAs({ activeRoles: c.roles.map((r) => ({ fullAccess: r.seat })), breakGlass: c.breakGlass }, site))
     .slice(0, VIEW_AS_SHOWN)
     .map((c) => ({ id: c.id, name: c.name, line: viewAsLineOf(c), photoUrl: c.photoUrl }));
 }

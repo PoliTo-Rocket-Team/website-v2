@@ -189,7 +189,7 @@ function issue604Gate(db: MemoryDb): { gate: ViewAsGate; asked: Asked[]; entries
     if (!db.user.some((u) => u.id === id)) return null;
     const seeded = SEEDED_ACCOUNTS.find((a) => a.id === id);
     const activeRoles = seeded?.kind === "seat" ? seeded.roles.map((r) => ({ fullAccess: r.fullAccess === null ? null : SEAT_OF_FLAG[r.fullAccess] })) : [];
-    return { activeRoles };
+    return { activeRoles, breakGlass: false };
   };
   const asked: Asked[] = [];
   const entries: ViewAsEntry[] = [];

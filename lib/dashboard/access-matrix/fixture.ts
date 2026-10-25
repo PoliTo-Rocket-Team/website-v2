@@ -4,6 +4,7 @@ import {
   applicationFiles,
   applications,
   applyPositions,
+  betterAuthUsers,
   dashboardNotices,
   departments,
   divisions,
@@ -17,6 +18,7 @@ import {
   teamJoins,
   users,
 } from "@/db/schema";
+import { BREAK_GLASS_SETTING } from "@/lib/break-glass";
 import { BOARD_FLAG_TITLES } from "../team";
 import type { FlaggedSeat, GrantArea, SeatFlag } from "../viewer";
 import { addRows, changeRows, removeRows, restore, tableRows } from "./test-database";
@@ -76,11 +78,26 @@ export const IDS = {
 export const cvPathname = (u: Unit) => `applications/cv-${lower(u)}.pdf`;
 export const cvHash = (u: Unit) => `hash-cv-${lower(u)}`;
 
-/** The account each matrix viewer signs in as. */
+/** The account each matrix viewer signs in as. The non-member and the break-glass admin have no member row. */
 export function accountOf(name: string): { readonly userId: string; readonly memberId: number | null } {
   const index = VIEWERS.findIndex((v) => v.name === name);
   if (index === -1) throw new Error(`no matrix viewer ${name}`);
-  return { userId: `viewer-${index}`, memberId: VIEWERS[index].viewer.kind === "non-member" ? null : 100 + index };
+  const { viewer } = VIEWERS[index];
+  return { userId: `viewer-${index}`, memberId: viewer.kind === "non-member" || viewer.breakGlass ? null : 100 + index };
+}
+
+/**
+ * The placeholder sign-in email of the break-glass matrix viewer (issue
+ * #646), on the reserved `.test` domain. The break-glass setting names it for
+ * every test that reads this fixture, so that viewer stands as the team
+ * leader and no other account's email matches it.
+ */
+export const BREAK_GLASS_EMAIL = "break-glass-admin@team.test";
+process.env[BREAK_GLASS_SETTING] = BREAK_GLASS_EMAIL;
+
+/** The sign-in email of a matrix viewer's account. */
+function emailOf(userId: string, breakGlass: boolean): string {
+  return breakGlass ? BREAK_GLASS_EMAIL : `${userId}@team.test`;
 }
 
 const DB_SEAT = {
@@ -184,7 +201,11 @@ async function seedViewers(): Promise<void> {
   for (const { name, viewer } of VIEWERS) {
     const { userId, memberId } = accountOf(name);
     if (memberId !== null) await addRows(members, [{ memberId, ndaSignedAt: SINCE }]);
-    await addRows(users, [{ id: userId, email: `${userId}@team.test`, firstName: "Viewer", lastName: userId, member: memberId, createdAt: SINCE }]);
+    await addRows(users, [{ id: userId, email: emailOf(userId, viewer.breakGlass), firstName: "Viewer", lastName: userId, member: memberId, createdAt: SINCE }]);
+    // The break-glass setting is matched against the Better Auth account's email, the one Google signs in with.
+    if (viewer.breakGlass) {
+      await addRows(betterAuthUsers, [{ id: userId, name: `Viewer ${userId}`, email: BREAK_GLASS_EMAIL, emailVerified: true }]);
+    }
     if (memberId === null) continue;
     await addRows(roles, VIEWER_ROLES.seated.filter((r) => r.memberId === memberId));
     if (viewer.onAlumniRecord) {

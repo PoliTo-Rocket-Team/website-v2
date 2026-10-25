@@ -12,6 +12,7 @@ import type { FoundPerson } from "./division-edit";
 import type { PersonRecord } from "./division-members";
 import type { HeldSeat } from "./hand-over";
 import { normalizeLinkedin } from "./self";
+import { viewAsSiteOf, type ViewAsSite } from "./view-as";
 import { SEAT_OF_FLAG, type SeatFlag } from "./viewer";
 import {
   headDepartmentOf,
@@ -347,14 +348,14 @@ function teamPersonOf(r: PersonRecord): FoundPerson {
  * the NDA they signed, with who confirmed it: "IT lead as Sara Conti" when
  * it was confirmed while viewing as Sara Conti (issue #605).
  */
-export function recordsOf(snapshot: TeamSnapshot): PersonRecord[] {
+export function recordsOf(snapshot: TeamSnapshot, site: ViewAsSite = viewAsSiteOf()): PersonRecord[] {
   const people = new Map(snapshot.people.map((p) => [p.member_id, p]));
   const byMember = rolesByMember(snapshot);
   const actingTitle = (accountId: string | null): string | null => {
     if (accountId === null) return null;
     const acting = snapshot.people.find((p) => p.user_id === accountId);
     const held = acting === undefined ? [] : (byMember.get(acting.member_id) ?? []);
-    return actingTitleOf(held.map((r) => (r.full_access === null ? null : SEAT_OF_FLAG[r.full_access])));
+    return actingTitleOf(held.map((r) => (r.full_access === null ? null : SEAT_OF_FLAG[r.full_access])), site);
   };
   const confirmerOf = (person: PersonRow): string | null => {
     const confirmer = person.nda_confirmed_by === null ? null : (nameOf(people.get(person.nda_confirmed_by))?.name ?? null);

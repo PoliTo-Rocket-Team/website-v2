@@ -159,7 +159,8 @@ test("View as: the field lists people as it opens with nobody chosen, and neithe
   // View as starts from a Better Auth account; the IT lead seat may use it on every site.
   await addRows(
     betterAuthUsers,
-    [...VIEWERS.map(({ name }) => accountOf(name).userId), "person-ma"].map((id) => ({ id, name: id, email: `${id}@auth.test`, emailVerified: true, role: "user" })),
+    // The break-glass admin's account is the fixture's own (issue #646).
+    [...VIEWERS.filter(({ viewer }) => !viewer.breakGlass).map(({ name }) => accountOf(name).userId), "person-ma"].map((id) => ({ id, name: id, email: `${id}@auth.test`, emailVerified: true, role: "user" })),
   );
   signInAs(accountOf("IT lead").userId);
   const { createElement } = await import("react");

@@ -28,7 +28,7 @@ import { DashboardRefused, type TeamWrites } from "./data";
 import { automaticAliasRequests } from "./database-alias";
 import { readWaitingHandOvers } from "./database-hand-over";
 import { moveApplication } from "./database-recruitment";
-import { answerNoticeOf, planHandOverAnswer, type HandOverAnswer, type HandOverAnswerPlan } from "./hand-over-request";
+import { answerNoticeOf, HAND_OVER_NEEDS_MEMBER, planHandOverAnswer, type HandOverAnswer, type HandOverAnswerPlan } from "./hand-over-request";
 import { storedPhotoPathname } from "./database-self";
 import type { DashboardIdentity } from "./database";
 import { columnsFromMemberDetails, NO_MEMBER_DETAILS, type MemberDetails } from "./details";
@@ -178,8 +178,9 @@ async function actorOf(
   leads: (divisionId: number, org: OrgChart) => boolean,
 ): Promise<TeamActor | null> {
   const memberId = identity.memberId;
+  // Full access acts on the whole team by its standing, the break-glass admin's with no member row included (issue #646).
   const decided: TeamActor | null | undefined =
-    memberId === null || isOffTeam(identity.kind) ? null : identity.kind === "operations-lead" ? { kind: "team" } : undefined;
+    isOffTeam(identity.kind) ? null : identity.kind === "operations-lead" ? { kind: "team" } : memberId === null ? null : undefined;
   // The chart is awaited on every path, so a failed read of it never goes unheard.
   const [rows, org] = await Promise.all([
     decided !== undefined || memberId === null
@@ -660,7 +661,6 @@ async function moveToAlumni(identity: DashboardIdentity, personId: number, depar
  * `moveApplication` asks its own rule, and the Members area adds none.
  */
 async function confirmJoin(identity: DashboardIdentity, applicationId: number): Promise<boolean> {
-  if (identity.memberId === null) return false;
   try {
     return (await moveApplication(identity, applicationId, { kind: "confirm-join" })).ok;
   } catch (error) {
@@ -786,8 +786,8 @@ async function addMember(identity: DashboardIdentity, input: unknown): Promise<W
  * one NDA for the whole team (ADR 0014).
  */
 async function confirmNda(identity: DashboardIdentity, joinId: number): Promise<boolean> {
+  // Null for the break-glass admin, who has no member row (issue #646); the audit trail names its account.
   const confirmer = identity.memberId;
-  if (confirmer === null) return false;
   const [row] = await getDb()
     .select(waitingColumns)
     .from(teamJoins)
@@ -827,7 +827,6 @@ async function confirmNda(identity: DashboardIdentity, joinId: number): Promise<
  * joined, so they hold no role and no member row to end.
  */
 async function cancelAdd(identity: DashboardIdentity, joinId: number): Promise<boolean> {
-  if (identity.memberId === null) return false;
   const [row] = await getDb().select({ divisionId: teamJoins.divisionId }).from(teamJoins).where(eq(teamJoins.id, joinId)).limit(1);
   if (!row || (await actingOn(identity, row.divisionId)) === null) return false;
   await runAuditQuery((db) => db.delete(teamJoins).where(eq(teamJoins.id, joinId)));
@@ -1610,7 +1609,9 @@ async function confirmedHandOverWrites(
 export async function answerHandOver(identity: DashboardIdentity, requestId: number, answer: HandOverAnswer): Promise<WriteResult<null>> {
   const viewerId = identity.memberId;
   const [request] = await readWaitingHandOvers({ id: requestId });
-  if (!request || viewerId === null) return refused("This hand-over was already answered.");
+  if (!request) return refused("This hand-over was already answered.");
+  // The answer is the next level up's, a person on the team: the break-glass admin has no member row (issue #646).
+  if (viewerId === null) return refused(HAND_OVER_NEEDS_MEMBER);
   const snapshot = await readTeamSnapshot();
   const team = teamPeopleOf(snapshot);
   const planned = planHandOverAnswer({ viewerId, request, answer, team, org: snapshot.org });
