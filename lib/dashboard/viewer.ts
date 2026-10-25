@@ -36,6 +36,18 @@ export function isOffTeam(kind: ViewerKind): kind is OffTeamKind {
   return kind === "alumni" || kind === "non-member";
 }
 
+/**
+ * Whether the account has a profile of its own (issue #725): it is on the team
+ * and a member record stands behind it. The My profile page reads this rule,
+ * and so does the user menu, so the menu never links to a page that answers
+ * not-found.
+ */
+export function hasOwnProfile<T extends { readonly kind: ViewerKind; readonly memberId: number | null }>(
+  who: T,
+): who is T & { readonly memberId: number } {
+  return !isOffTeam(who.kind) && who.memberId !== null;
+}
+
 export function isViewerKind(value: unknown): value is ViewerKind {
   return typeof value === "string" && (VIEWER_KINDS as readonly string[]).includes(value);
 }
@@ -304,6 +316,8 @@ export type DashboardViewer = ViewerStanding & {
   readonly role: string;
   /** Their profile photo, which the user card draws in place of the PRT mark. */
   readonly photoUrl: string | null;
+  /** Whether they have a profile of their own (`hasOwnProfile`): the user menu offers My profile only then. */
+  readonly hasOwnProfile: boolean;
 };
 
 /**

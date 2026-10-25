@@ -10,7 +10,7 @@ import { userCardRole, viewerStandingOf } from "./viewer";
 
 function bannerRoleOf(roles: readonly ViewAsRole[]): string {
   const standing = viewerStandingOf({ scopes: [], activeRoles: roles.map((r) => ({ type: r.type, divisionId: 17, fullAccess: r.seat })) });
-  return userCardRole({ ...standing, name: "Elif Kaya", role: roleLabelOf(roles), photoUrl: null }, false);
+  return userCardRole({ ...standing, name: "Elif Kaya", role: roleLabelOf(roles), photoUrl: null, hasOwnProfile: true }, false);
 }
 
 test("the dialog's row starts with the label the banner shows, for a seat holder and a division member with a stored title", () => {

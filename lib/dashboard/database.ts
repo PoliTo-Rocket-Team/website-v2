@@ -83,7 +83,7 @@ import { readsRecruitmentIn } from "./application-documents";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { answerAlias, cancelAliasRequest, confirmAliasSetUp, readAliasAttention, readMemberAliases, readOwnAlias, requestAlias } from "./database-alias";
 import { upcomingInterviews } from "./interview-slots";
-import { BREAK_GLASS_STANDING, SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type BreakGlassStanding, type ViewerStanding } from "./viewer";
+import { BREAK_GLASS_STANDING, SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, hasOwnProfile, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type BreakGlassStanding, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 import { BREAK_GLASS_TITLE } from "./acting-account";
 import { primaryRoleOf, roleLabelOf } from "./role-label";
@@ -961,6 +961,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     name: identity.name,
     role: cardRoleOf(identity),
     photoUrl: identity.picture,
+    hasOwnProfile: hasOwnProfile(identity),
   };
   const self = databaseSelfPages(identity);
   return {
