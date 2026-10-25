@@ -112,6 +112,7 @@ import {
 } from "./division-edit";
 import { refreshAfter } from "@/lib/cache-tags";
 import { mayChangePositionIn } from "./position-access";
+import { readsRecruitmentIn } from "./application-documents";
 import { readTeamSnapshot, recordsOf, seatsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
@@ -219,9 +220,9 @@ function nameOf(row: { first_name: string | null; last_name: string | null; emai
 /**
  * Accepted applicants to each division's positions who are not members yet
  * (board 59), by division, for the divisions of `divisionIds` where the
- * viewer reads the Applications area (issue #471): they are applications
- * data. The application stays accepted; Confirm join, once the signed NDA
- * arrived, makes them a member, and the Applications area decides who may
+ * viewer reads the Applications area (`readsRecruitmentIn`, issues #471,
+ * #194): they are applications data. The application stays accepted;
+ * Confirm join, once the signed NDA arrived, makes them a member, and the Applications area decides who may
  * (`canConfirm`: the rule `moveApplication` asks, issue #584). Someone
  * already on the team joins from the Applications page (board 58h2, issue
  * #229) or from Add member (#231). One read for every division.
@@ -231,7 +232,7 @@ async function readJoining(identity: DashboardIdentity, divisionIds: readonly nu
     org.divisions
       .filter((d) => divisionIds.includes(d.id))
       .map((d) => [d.id, { divisionId: d.id, departmentId: d.departmentId }] as const)
-      .filter(([, unit]) => readsAreaIn(identity, "applications", unit)),
+      .filter(([, unit]) => readsRecruitmentIn(identity, "applications", unit)),
   );
   const joining = new Map<number, Joining[]>();
   if (units.size === 0) return joining;

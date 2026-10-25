@@ -235,8 +235,13 @@ An admin column comes later. **Planned**, no issue yet.
 - The applicant's page only says "The team will contact you about joining. Watch your inbox."
 - The lead or the recruitment manager ticks "The signed NDA arrived" and clicks Confirm join, which
   is confirmed. Only then does the person become a member.
-  - **Gap:** the dashboard has no recruitment manager; only leads can do this step. Tracked in
-    #194.
+- The recruitment manager is the lead of the Logistics division, in the Operations department
+  ([Owner decision, 2026-10-22](https://github.com/PoliTo-Rocket-Team/website-v2/issues/194#issuecomment-6341780484)).
+  They see every division's applications and may make every move a lead may make on them,
+  team-wide: the NDA tick and Confirm join included
+  ([Owner decision, 2026-10-25](https://github.com/PoliTo-Rocket-Team/website-v2/issues/194#issuecomment-6396490285)).
+  Their Positions page and Members page stay their own division's. While the Logistics division is
+  closed, nobody is the recruitment manager (#194).
 - Confirm join, and ticking "The signed NDA arrived", is the last step of the application, so the
   Applications area decides it wherever it appears (#584, Owner decision, 2026-10-22). On the
   Applications page and on the Members page's "{name} is joining" banner it shows, and the server

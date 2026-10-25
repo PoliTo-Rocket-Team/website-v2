@@ -46,9 +46,12 @@ Who may take each step, and what each viewer sees, is in the dashboard rules doc
 
 - The application flow lets Accept run from In review, skipping the interview: #198.
 - On real data, My applications shows a member's accepted application as joined before Confirm join: #187.
-- The dashboard has no recruitment manager, so only leads can confirm join: #194.
 
 Followed today: a daily scheduled job deletes the files of applications withdrawn 30 or more days ago (rule 8, #178): the rule is in [lib/dashboard/withdrawn-files.ts](../lib/dashboard/withdrawn-files.ts), the database and file-store side in [lib/dashboard/database-withdrawn-files.ts](../lib/dashboard/database-withdrawn-files.ts), and [app/api/cron/delete-withdrawn-files/route.ts](../app/api/cron/delete-withdrawn-files/route.ts) runs it; the stages and legal moves are in [lib/dashboard/application-flow.ts](../lib/dashboard/application-flow.ts) (first open moves New to In review; Confirm join needs the NDA); the joining sentence is `NEXT_STEPS_TEXT` in [lib/dashboard/my-applications.ts](../lib/dashboard/my-applications.ts); lead reads filter out withdrawn applications in [lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts).
+
+## Amendment, 2026-10-25
+
+Who the recruitment manager of rule 5 is. Owner decision, 2026-10-22, on issue #194 (https://github.com/PoliTo-Rocket-Team/website-v2/issues/194#issuecomment-6341780484): the recruitment manager is the lead of the Logistics division, in the Operations department. Owner decision, 2026-10-25, on the same issue (https://github.com/PoliTo-Rocket-Team/website-v2/issues/194#issuecomment-6396490285): they see every division's applications and have full recruitment rights on all of them, team-wide, so they may make every move a lead may make on an application in any division, the NDA tick and Confirm join included. While the Logistics division is closed, nobody is the recruitment manager. The rule is `managesRecruitment` in [lib/dashboard/application-documents.ts](../lib/dashboard/application-documents.ts), which finds the division through `recruitmentManagerDivision` in [lib/dashboard/notices.ts](../lib/dashboard/notices.ts); every move on an application asks it through `mayChangePositionIn` in [lib/dashboard/position-access.ts](../lib/dashboard/position-access.ts). The Gap line for #194 is removed. The rest of this record is unchanged.
 
 ## Records
 

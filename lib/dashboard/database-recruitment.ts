@@ -57,6 +57,7 @@ import { mayChange, type DivisionUnit } from "./viewer";
 import { mayChangePositionIn } from "./position-access";
 import {
   documentHref,
+  managesRecruitment,
   mayOpenApplication,
   readsRecruitment,
   readsRecruitmentIn,
@@ -270,7 +271,8 @@ async function readDepartmentUnit(identity: Identity): Promise<DepartmentUnit | 
 }
 
 async function applicationsScope(identity: Identity): Promise<ApplicationsScope> {
-  if (identity.kind === "operations-lead") return { kind: "team" };
+  // The recruitment manager reads every division's applications, as full access does (issue #194).
+  if (identity.kind === "operations-lead" || managesRecruitment(identity)) return { kind: "team" };
   const [department, reach] = await Promise.all([
     readDepartmentUnit(identity),
     identity.kind === "member" ? readGrantReach(identity, "applications") : null,

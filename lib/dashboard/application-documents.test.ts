@@ -20,8 +20,12 @@ const OTHER_DEPARTMENT = { divisionId: 5, departmentId: 1 };
 const open = (unit = TEST_BENCH): ApplicationPlace => ({ unit, withdrawn: false });
 
 const flags = { siteContent: false, approveOrders: false } as const;
+/** A role's place in the open test bench division, with that division's code, as `readIdentity` reads a role. */
+const IN_TEST_BENCH = { ...TEST_BENCH, divisionCode: "TBE", divisionClosedAt: null };
+/** A role's place in no division. */
+const NO_DIVISION = { divisionId: null, divisionCode: null, divisionClosedAt: null };
 /** A member role in the test bench division: it leads nothing, so it reads no application. */
-const inTestBench = { roles: [{ type: "core" as const, ...TEST_BENCH }], grants: [] };
+const inTestBench = { roles: [{ type: "core" as const, ...IN_TEST_BENCH }], grants: [] };
 
 /** A member holding a Can edit grant on each of `areas` over the test bench division, as `readIdentity` reads them. */
 function granted(...areas: readonly GrantArea[]): RecruitmentReader {
@@ -29,9 +33,9 @@ function granted(...areas: readonly GrantArea[]): RecruitmentReader {
   return { kind: "member", grantedAreas: areas, ...flags, roles: inTestBench.roles, grants };
 }
 
-const teamLeader: RecruitmentReader = { kind: "operations-lead", seat: "team-leader", ...flags, roles: [{ type: "president", divisionId: null, departmentId: null }], grants: [] };
-const divisionLead: RecruitmentReader = { kind: "division-lead", ...flags, roles: [{ type: "lead", ...TEST_BENCH }], grants: [] };
-const departmentHead: RecruitmentReader = { kind: "department-head", ...flags, roles: [{ type: "head", divisionId: null, departmentId: TEST_BENCH.departmentId }], grants: [] };
+const teamLeader: RecruitmentReader = { kind: "operations-lead", seat: "team-leader", ...flags, roles: [{ type: "president", ...NO_DIVISION, departmentId: null }], grants: [] };
+const divisionLead: RecruitmentReader = { kind: "division-lead", ...flags, roles: [{ type: "lead", ...IN_TEST_BENCH }], grants: [] };
+const departmentHead: RecruitmentReader = { kind: "department-head", ...flags, roles: [{ type: "head", ...NO_DIVISION, departmentId: TEST_BENCH.departmentId }], grants: [] };
 const grantHolder = granted("applications");
 const plainMember: RecruitmentReader = { kind: "member", grantedAreas: [], ...flags, ...inTestBench };
 const applicant: RecruitmentReader = { kind: "non-member", siteContent: false, approveOrders: false, roles: [], grants: [] };

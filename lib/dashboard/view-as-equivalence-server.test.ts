@@ -3,15 +3,13 @@ import "./access-matrix/install-real-session";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { before, describe, test } from "node:test";
-import type { Transaction } from "@electric-sql/pglite";
-import { DRIZZLE_MAPPED_TYPES } from "@/db/seed/connection";
-import { SEED_MODULES } from "@/db/seed/registry";
 import { scopes } from "@/db/schema";
 import { BASE, Jar, TEST_ENV } from "@/lib/dev-tester-fixture";
 import { ADMIN_TESTERS, seatOf, type Seat } from "@/lib/seeded-accounts";
 import { canReach, DASHBOARD_PAGES, sidebarFor, userMenuPageFor } from "./access";
 import { sendRequestWith } from "./access-matrix/fakes/request-headers";
-import { restore, tableRows, testDb } from "./access-matrix/test-database";
+import { tableRows } from "./access-matrix/test-database";
+import { seeded } from "./access-matrix/whole-seed";
 import type { DashboardData } from "./data";
 import { overviewOfSections } from "./overview";
 
@@ -100,23 +98,6 @@ before(async () => {
   };
 });
 
-// The seed, as `pnpm db:seed` runs it, on the test database ----------------
-
-// The seed sends values drizzle already mapped, as db/seed/connection.ts does for postgres-js.
-const AS_SENT = Object.fromEntries(DRIZZLE_MAPPED_TYPES.map((type) => [type, (value: unknown) => String(value)]));
-type SeedTxOn = { unsafe(sql: string, params?: unknown[]): Promise<unknown> };
-
-/** Every seed module's reset, last first, then every module's rows, in one transaction (lib/seed/runner.ts). */
-async function seedEverything(): Promise<void> {
-  await testDb.$client.transaction(async (tx: Transaction) => {
-    const seedTx: SeedTxOn = { unsafe: (sql, params = []) => tx.query(sql, params, { serializers: AS_SENT }) };
-    const modules = SEED_MODULES as unknown as readonly { reset(tx: SeedTxOn): Promise<void>; insert(tx: SeedTxOn): Promise<void> }[];
-    for (const module of [...modules].reverse()) await module.reset(seedTx);
-    for (const module of modules) await module.insert(seedTx);
-  });
-}
-
-const seeded = () => restore("seeded", seedEverything);
 
 // Sessions, the real way --------------------------------------------------
 
