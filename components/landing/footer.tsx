@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ShootingStar } from "./shooting-star";
 import { Starfield } from "./starfield";
-import { type FooterProject, PAGES, footerColumns, opensOf } from "@/lib/landing-links";
+import { type FooterProject, LEGAL_LINKS, PAGES, footerColumns, opensOf } from "@/lib/landing-links";
 
 // Board 21 footer. Its own background: the page sky's streak tile and grain
 // (the board is "footer background throughout": the page sky was cut from
@@ -100,7 +100,21 @@ export function LandingFooter({ inSky = false, projects }: {
           <hr className="mt-8 border-t border-hairline md:mt-16" />
 
           <div className="mt-7 flex flex-col justify-between gap-3 font-mono text-[11px] tracking-[0.12em] text-dim md:flex-row md:tracking-[0.2em]">
-            <p>POLITO ROCKET TEAM ™ 2026</p>
+            {/* The legal pages sit under the name, in the row's own type
+                (issue #122). Under it, not beside it: beside it the row
+                would not fit one line below xl. */}
+            <div className="flex flex-col gap-3">
+              <p>POLITO ROCKET TEAM ™ 2026</p>
+              <ul className="flex gap-6">
+                {LEGAL_LINKS.map((l) => (
+                  <li key={l.href}>
+                    <Link href={l.href} className="uppercase transition-colors duration-300 ease-out hover:text-accent">
+                      {l.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
             <div className="flex flex-col gap-3 md:flex-row md:gap-14">
               <p>CORSO DUCA DEGLI ABRUZZI 24, TORINO, ITALY</p>
               <p className="hidden md:block">POLITECNICO DI TORINO</p>

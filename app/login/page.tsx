@@ -5,6 +5,7 @@ import { GoogleSignInButton } from "@/components/login-form";
 import { LoginPhoto } from "@/components/login/login-photo";
 import { RocketFlame } from "@/components/login/rocket-flame";
 import { brand } from "@/lib/brand-colors";
+import { PAGES } from "@/lib/landing-links";
 
 export const metadata: Metadata = {
   title: "Sign in | Polito Rocket Team",
@@ -46,11 +47,11 @@ export default function LoginPage() {
           <p className="mt-7 text-[12px] leading-[1.6] text-prt-text/50">
             By signing in, you agree to our
             <br />
-            <Link href="/terms" className="font-medium text-prt-text transition-colors duration-300 ease-out hover:text-accent">
+            <Link href={PAGES.terms} className="font-medium text-prt-text transition-colors duration-300 ease-out hover:text-accent">
               Terms of Service
             </Link>{" "}
             and{" "}
-            <Link href="/privacy" className="font-medium text-prt-text transition-colors duration-300 ease-out hover:text-accent">
+            <Link href={PAGES.privacy} className="font-medium text-prt-text transition-colors duration-300 ease-out hover:text-accent">
               Privacy Policy
             </Link>
             .
