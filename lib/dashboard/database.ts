@@ -83,7 +83,7 @@ import { readsRecruitmentIn } from "./application-documents";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { answerAlias, cancelAliasRequest, confirmAliasSetUp, readAliasAttention, readMemberAliases, readOwnAlias, requestAlias } from "./database-alias";
 import { upcomingInterviews } from "./interview-slots";
-import { BREAK_GLASS_STANDING, SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type TeamLeaderStanding, type ViewerStanding } from "./viewer";
+import { BREAK_GLASS_STANDING, SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type BreakGlassStanding, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 import { BREAK_GLASS_TITLE } from "./acting-account";
 import { primaryRoleOf, roleLabelOf } from "./role-label";
@@ -143,7 +143,7 @@ type IdentityFields = {
  * rows: such an account always stands as the team leader, and code reads
  * this fact rather than the environment again.
  */
-type Identity = IdentityFields & (({ readonly breakGlass: false } & ViewerStanding) | ({ readonly breakGlass: true } & TeamLeaderStanding));
+type Identity = IdentityFields & (({ readonly breakGlass: false } & ViewerStanding) | BreakGlassStanding);
 
 /** Who the signed-in account is; the page modules beside this one read it. */
 export type DashboardIdentity = Identity;
@@ -223,7 +223,7 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
   const breakGlass = isBreakGlassEmail(user.sign_in_email);
   const noUnits = { role: null, roles: [], divisionIds: [], departmentIds: [], grants: [] };
   if (user.member_id === null) {
-    if (breakGlass) return { ...base, ...noUnits, breakGlass, ...BREAK_GLASS_STANDING };
+    if (breakGlass) return { ...base, ...noUnits, ...BREAK_GLASS_STANDING };
     return { ...base, ...noUnits, breakGlass, ...viewerStandingOf(null) };
   }
 
@@ -245,7 +245,7 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
     departmentIds: [...units.departmentIds],
     grants: areaGrantsOf(unitRows),
   };
-  if (breakGlass) return { ...base, ...held, breakGlass, ...BREAK_GLASS_STANDING };
+  if (breakGlass) return { ...base, ...held, ...BREAK_GLASS_STANDING };
 
   // Someone with no active role left the team: an alumnus when the Alumni record knows them (issue #317).
   const onAlumniRecord = activeRoles.length === 0 && (await readOwnAlumnus(user.member_id)) !== null;

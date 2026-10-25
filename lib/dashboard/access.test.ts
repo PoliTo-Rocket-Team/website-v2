@@ -3,7 +3,9 @@ import { test } from "node:test";
 import { canReach, DASHBOARD_PAGES, pageTitleFor, sidebarFor, userMenuPageFor, type SidebarFacts } from "./access";
 import { maySiteContent } from "@/lib/content/gate";
 import {
+  BREAK_GLASS_STANDING,
   FULL_ACCESS_SEATS,
+  standingOf,
   GRANT_AREAS,
   plainSeatStanding as kindOnly,
   type FullAccessSeat,
@@ -77,7 +79,7 @@ test("the operations lead sees My applications only once they have applied, and 
 const fullAccess = (seat: FullAccessSeat | null): ViewerStanding => ({ kind: "operations-lead", seat, siteContent: false, approveOrders: false });
 
 test("every full-access seat reaches every page of the team (issues #238, #485)", () => {
-  // My account and My alumni are pages off the team, and the Activity log is the IT lead's alone (below).
+  // My account and My alumni are pages off the team, and of the seats the Activity log is the IT lead's alone (below).
   const teamPages = DASHBOARD_PAGES.map((p) => p.key).filter((key) => key !== "my-account" && key !== "my-alumni" && key !== "activity-log");
   for (const seat of FULL_ACCESS_SEATS) {
     for (const key of teamPages) assert.equal(canReach(fullAccess(seat), key), true, `${seat} ${key}`);
@@ -183,6 +185,30 @@ test("the one sidebar structure leaves which pages each viewer reaches as it was
 test("full access from an admin or org scope row reaches every page of the team too (issue #238)", () => {
   assert.equal(canReach(fullAccess(null), "division-access"), true);
   assert.equal(canReach(fullAccess(null), "orders"), true);
+});
+
+test("the break-glass standing reaches the Activity log, and every other page the team leader reaches, no more (issue #727)", () => {
+  assert.equal(canReach(BREAK_GLASS_STANDING, "activity-log"), true);
+  // The standing the dashboard viewer carries keeps the fact: `standingOf` reads it off the identity.
+  assert.equal(canReach(standingOf({ ...BREAK_GLASS_STANDING }), "activity-log"), true);
+  const order = DASHBOARD_PAGES.map((page) => page.key);
+  const teamLeader = order.filter((key) => canReach(fullAccess("team-leader"), key));
+  assert.deepEqual(
+    order.filter((key) => canReach(BREAK_GLASS_STANDING, key)),
+    order.filter((key) => teamLeader.includes(key) || key === "activity-log"),
+  );
+  const listed = sidebarFor(BREAK_GLASS_STANDING, withoutApplications).some((s) => s.items.some((item) => item.key === "activity-log"));
+  assert.equal(listed, false);
+});
+
+test("a real team leader never reaches the Activity log by the team leader's seat, whatever grant they hold (issue #727)", () => {
+  for (const approveOrders of [false, true]) {
+    for (const siteContent of [false, true]) {
+      const viewer: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent, approveOrders };
+      assert.equal(canReach(viewer, "activity-log"), false, `content ${siteContent}, approve ${approveOrders}`);
+    }
+  }
+  assert.equal(canReach(kindOnly("team-leader", true), "activity-log"), false);
 });
 
 test("only the IT lead reaches the Activity log, and no sidebar lists it until the page is built (issue #238)", () => {

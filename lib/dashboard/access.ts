@@ -1,4 +1,4 @@
-import { seatOf, type FullAccessSeat, type GrantArea, type ViewerKind, type ViewerStanding } from "./viewer";
+import { isBreakGlass, seatOf, type FullAccessSeat, type GrantArea, type ViewerKind, type ViewerStanding } from "./viewer";
 
 // Which viewer reaches which dashboard page, and where the page sits (Dashboard
 // v2 boards 51b, 52, 56 and 72). One row per page: a new page adds one row. A
@@ -6,7 +6,8 @@ import { seatOf, type FullAccessSeat, type GrantArea, type ViewerKind, type View
 // unless the row names a `grantArea` and they are a member granted that area
 // (issues #160, #471), `siteContent` and they hold a Content grant (issues
 // #504, #589), or `approveOrders` and they hold "Approve orders". A row that names a `seat` is
-// reached by that full-access seat alone (issue #238). The `operations-lead`
+// reached by that full-access seat alone (issue #238), and also by the
+// break-glass standing when the row says so (issue #727). The `operations-lead`
 // kind is full access: the team leader, the operations lead and the IT lead,
 // or an admin or org scope row (./viewer.ts), so it reaches every page of the
 // team.
@@ -59,6 +60,8 @@ type PageRow = {
   readonly shownWhen?: Readonly<Partial<Record<ViewerKind, NavCondition>>>;
   /** The one full-access seat that reaches the page; every other viewer, full access or not, does not. */
   readonly seat?: FullAccessSeat;
+  /** Beside `seat`, the break-glass standing reaches the page too; no other seat does (issue #727). */
+  readonly breakGlass?: true;
 };
 
 /** Rows in sidebar order within each group. */
@@ -223,10 +226,12 @@ export const DASHBOARD_PAGES = [
     label: "Activity log",
     href: "/dashboard/activity-log",
     // Owner decision on #238: the IT lead alone, not the rest of full access.
-    // The page is not built yet, so the sidebar does not list it.
+    // Owner decision on #727: the break-glass standing too, never a real
+    // team leader. The page is not built yet, so the sidebar does not list it.
     place: "unlisted",
     reach: ["operations-lead"],
     seat: "it-lead",
+    breakGlass: true,
   },
   {
     key: "my-profile",
@@ -279,7 +284,7 @@ export type MenuPage = {
 
 /** Whether `viewer` reaches `page`, by their role or by a grant the row admits. */
 function reaches(page: PageRow, viewer: ViewerStanding): boolean {
-  if (page.seat !== undefined && seatOf(viewer) !== page.seat) return false;
+  if (page.seat !== undefined && seatOf(viewer) !== page.seat && !(page.breakGlass === true && isBreakGlass(viewer))) return false;
   return (
     page.reach.includes(viewer.kind) ||
     (viewer.kind === "member" && page.grantArea !== undefined && viewer.grantedAreas.includes(page.grantArea)) ||

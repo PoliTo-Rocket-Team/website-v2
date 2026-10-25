@@ -217,8 +217,13 @@ export const VIEWERS: readonly MatrixRow[] = [
   { name: "team leader", viewer: viewerOf([role("president", null, null)]), expect: TEAM_LEADER },
   // The break-glass admin (issue #646): an account the break-glass setting names, with no member row, reaches what the team
   // leader reaches. Asking for an alias is a team member's act, since the request names its requester, so it asks for none;
-  // and it leads or heads no member, so it manages none.
-  { name: "break-glass admin", viewer: breakGlassViewer(), expect: { ...TEAM_LEADER, aliases: { ...NO_ALIASES, answers: true } } },
+  // and it leads or heads no member, so it manages none. It also reaches the Activity log, which the team leader does not
+  // (Owner decision on #727).
+  {
+    name: "break-glass admin",
+    viewer: breakGlassViewer(),
+    expect: { ...TEAM_LEADER, pages: [...FULL, "activity-log"], aliases: { ...NO_ALIASES, answers: true } },
+  },
   { name: "operations lead", viewer: viewerOf([role("core", null, null, "operations-lead")]), expect: { ...FULL_ACCESS, aliases: APPROVER_ALIASES } },
   // A full-access seat that is not the team leader decides orders only with Approve orders (issue #592).
   {
