@@ -1452,15 +1452,28 @@ function endSeatRow(db: Tx, roleId: number, on: string): BatchItem<"pg"> {
   return db.with(ended).select({ ended: sql<number>`1 / (count(*) = 1)::int` }).from(ended);
 }
 
+/** Postgres' division_by_zero: how `endSeatRow` fails its batch when it ended no seat row. */
+const DIVISION_BY_ZERO = "22012";
+
+/** Whether the error, or one of its causes, is `endSeatRow`'s own guard failing (issue #696). */
+function isSeatGuardFailure(error: unknown): boolean {
+  for (let e = error; e instanceof Error; e = e.cause) {
+    if ((e as { code?: unknown }).code === DIVISION_BY_ZERO) return true;
+  }
+  return false;
+}
+
 /**
  * Runs one seat write: `endSeatRow` first, then `after`, in one audited
- * batch. When the batch fails because the seat row was already ended, the
- * write is refused as no longer held; any other failure is thrown.
+ * batch. When the batch fails on `endSeatRow`'s guard and the seat row is
+ * ended on re-read, the write is refused as no longer held; any other
+ * failure is thrown unchanged (issue #696).
  */
 async function writeSeat(roleId: number, on: string, after: (db: Tx) => BatchItem<"pg">[]): Promise<WriteResult<null>> {
   try {
     await runAuditBatch((db) => [endSeatRow(db, roleId, on), ...after(db)]);
   } catch (error) {
+    if (!isSeatGuardFailure(error)) throw error;
     const [held] = await getDb().select({ id: roles.id }).from(roles).where(and(eq(roles.id, roleId), isNull(roles.leavedAt)));
     if (held === undefined) return refused(SEAT_NO_LONGER_HELD);
     throw error;
