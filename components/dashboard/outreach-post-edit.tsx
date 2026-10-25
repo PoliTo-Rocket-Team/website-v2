@@ -6,9 +6,10 @@ import { toast } from "sonner";
 import { addOutreachTag, saveOutreachPost } from "@/app/dashboard/actions";
 import { featureOutreachPost, unfeatureOutreachPost } from "@/app/dashboard/outreach-actions";
 import type { PostFrame, PostPart } from "@/components/outreach/post";
-import type { EditBlocks, PageTarget } from "@/lib/content/edit-shell";
+import type { EditBlocks } from "@/lib/content/edit-shell";
 import { editorVersion, publicVersion, statusOf, type PublishStep } from "@/lib/content/versioned";
 import { slugOf, type Neighbouring } from "@/lib/outreach";
+import { livePostLookOf, postCardLookOf, postPagesToCheck, postPageTargets, type PostCheckedPage, type PostPageId } from "@/lib/outreach-card-look";
 import {
   featuredAfter,
   isFeatured,
@@ -33,7 +34,7 @@ import {
 } from "@/lib/outreach-post-fields";
 import { titleOf, type IsoDate, type OutreachContent, type OutreachDraft, type OutreachTag, type PostItem } from "@/lib/outreach-types";
 import { EditableBlock, EditShell } from "./edit-shell";
-import { EditedPostPage, PostCardPage, type PostPageId } from "./outreach-post-pages";
+import { EditedPostPage, PostCardPage } from "./outreach-post-pages";
 import { OutreachPostPanel, SECTION_OF, type PostSection } from "./outreach-post-panel";
 
 // An Outreach post under the edit shell (boards 74b to 74h, issues #288 and
@@ -49,6 +50,13 @@ import { OutreachPostPanel, SECTION_OF, type PostSection } from "./outreach-post
 // waits on the checklist under it. The first save gives the post its
 // address, and the editor moves there.
 //
+// The page switch shows from the start, on a new post too (Owner decision on
+// #581). Publish is held (board 93e, issue #581) after a change to what the
+// post's card draws, and on a post never published, until the editor has
+// ticked the Outreach list and Home (the list alone for a featured post)
+// through the bar each of those tabs shows. The edit shell keeps the ticks;
+// the post names those pages and its card look (lib/outreach-card-look.ts).
+//
 // The pages themselves, drawn without the site's navbar and footer (issue
 // #495), are in outreach-post-pages.tsx.
 
@@ -63,15 +71,15 @@ const POST_BLOCKS: EditBlocks<PostPart, PostSection> = {
 
 const outlined: PostFrame = (part, node) => <EditableBlock id={part}>{node}</EditableBlock>;
 
-const PAGE_TARGETS: readonly PageTarget<PostPageId>[] = [
-  { id: "post", label: "Post page" },
-  { id: "list", label: "Outreach list" },
-  { id: "home", label: "Home" },
-];
+/** Where the confirm bar asks about the card, by page (board 93e). */
+const CHECKED_PLACE: Readonly<Record<PostCheckedPage, string>> = { list: "the Outreach list", home: "Home" };
 
-// A featured post (issue #496) shows in a Featured card on the Outreach list
-// and on no home card, so its switch offers the post page and the list alone.
-const FEATURED_PAGE_TARGETS = PAGE_TARGETS.filter((t) => t.id !== "home");
+/** The warning strip while Publish is held; a featured post is checked on the list alone. */
+function checkNotice(featured: boolean): string {
+  return featured
+    ? "This changes how the post looks on the Outreach list. Check that tab before publishing."
+    : "This changes how the post looks on the Outreach list and Home. Check both tabs before publishing.";
+}
 
 /** What the editor opens on: a stored post, or a new one not saved yet, dated `today`. */
 type Opening = { readonly item: PostItem } | { readonly item: null; readonly today: IsoDate };
@@ -198,7 +206,14 @@ export function OutreachPostEdit({
       onSaveDraft={pending ? null : () => save("save-draft")}
       onPublish={pending ? null : () => save("publish")}
       publishChecklist={publishChecklist(fields)}
-      pages={item === null ? undefined : { targets: featuredHere ? FEATURED_PAGE_TARGETS : PAGE_TARGETS, current: page, onSelect: setPage }}
+      pages={{ targets: postPageTargets(featuredHere), current: page, onSelect: setPage }}
+      check={{
+        pages: postPagesToCheck(featuredHere),
+        look: postCardLookOf(view),
+        live: livePostLookOf(item),
+        notice: checkNotice(featuredHere),
+        question: (checked) => `Is the ${titleOf(view)} card right on ${CHECKED_PLACE[checked]}?`,
+      }}
       blocks={POST_BLOCKS}
       startHere={item === null && !panelOpen ? "details" : undefined}
       onEdit={openSection}
@@ -219,13 +234,13 @@ export function OutreachPostEdit({
         )
       }
     >
-      {page === "post" || item === null ? (
+      {page === "post" ? (
         <EditedPostPage post={view} neighbours={neighbours} frame={outlined} />
       ) : (
         <PostCardPage
           page={page}
           view={view}
-          edited={{ id: item.id, live: live !== null }}
+          edited={item === null ? { id: null, live: false } : { id: item.id, live: live !== null }}
           featuredHere={featuredHere}
           shown={shown}
           ids={features.ids}

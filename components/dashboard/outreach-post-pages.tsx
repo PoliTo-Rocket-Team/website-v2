@@ -16,6 +16,7 @@ import {
   type FeaturedOpen,
   type FeatureIds,
 } from "@/lib/outreach-featured";
+import type { PostPageId } from "@/lib/outreach-card-look";
 import { mapUpToTwo, type OutreachContent, type OutreachDraft } from "@/lib/outreach-types";
 import { CardChip, CardInPlace } from "./edit-shell";
 
@@ -25,10 +26,10 @@ import { CardChip, CardInPlace } from "./edit-shell";
 // and footer (issue #495): they are not the editor's to change.
 
 // The page switch (issue #294, the board 75d pattern): the post's own page,
-// then the two pages its card shows on, each with the card drawn from the
-// fields being edited, in place among the published posts. A new post has
-// none until it is saved (board 74f).
-export type PostPageId = "post" | "list" | "home";
+// then the two pages its card shows on (lib/outreach-card-look.ts), each with
+// the card drawn from the fields being edited, in place among the published
+// posts. A new post has them too, before it is first saved (Owner decision
+// on #581): its card is a new one among the published posts.
 
 /** The post's own page, its parts outlined through `frame`, a blank part saying what goes there (board 74f). */
 export function EditedPostPage({ post, neighbours, frame }: { post: OutreachDraft; neighbours: Neighbouring; frame: PostFrame }) {
