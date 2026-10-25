@@ -8,6 +8,7 @@ import { getDb } from "@/db/client";
 import {
   alumniEntries,
   applicationFiles,
+  applicationStatuses,
   applications,
   applyPositions,
   betterAuthUsers,
@@ -39,12 +40,16 @@ import {
   parseDetailsChange,
   type YourDetails,
 } from "./details";
+import { statusOfStored } from "./application-status";
+import { STATUS_COLUMNS, STATUS_JOIN } from "./database-recruitment";
 import {
   canWithdraw,
   isShownAt,
+  mayOfferInterview,
   OPEN_STATUSES,
   pickableSlot,
   placeOf,
+  WITHDRAWABLE_STATUS_KEYS,
   withdrawnOnDelete,
   type ActiveApplication,
   type ApplicationAnswer,
@@ -360,8 +365,10 @@ async function leadsOf(divisionIds: readonly number[]): Promise<Map<number, stri
   );
 }
 
+/** The columns of one application `storedOf` reads, with its status reference and that status's parent (`STATUS_COLUMNS`). */
 type StoredColumns = {
-  status: StoredApplication["status"];
+  status_key: string | null;
+  status_parent_key: string | null;
   applied_at: string;
   withdrawn_at: string | null;
   accepted_at: string | null;
@@ -369,9 +376,10 @@ type StoredColumns = {
   joined_at: string | null;
 };
 
+/** One application as My applications reads it: its status through the status list (issue #748), never the old status column. */
 function storedOf(r: StoredColumns): StoredApplication {
   return {
-    status: r.status,
+    status: statusOfStored({ key: r.status_key, parentKey: r.status_parent_key }),
     appliedAt: r.applied_at,
     withdrawnAt: r.withdrawn_at,
     acceptedAt: r.accepted_at,
@@ -397,7 +405,7 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
         dept_name: departments.name,
         dept_code: departments.code,
         applied_at: applications.appliedAt,
-        status: applications.status,
+        ...STATUS_COLUMNS,
         withdrawn_at: applications.withdrawnAt,
         accepted_at: applications.acceptedAt,
         rejected_at: applications.rejectedAt,
@@ -412,6 +420,7 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
       })
       .from(applications)
       .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
+      .leftJoin(applicationStatuses, STATUS_JOIN)
       .leftJoin(divisions, eq(applyPositions.divisionId, divisions.id))
       .leftJoin(departments, eq(divisions.deptId, departments.id))
       .leftJoin(cvFiles, eq(applications.cvFileId, cvFiles.id))
@@ -425,7 +434,7 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
   const rows = stored.filter((r) => isShownAt(storedOf(r), now));
   if (rows.length === 0) return { firstName: me?.first_name ?? identity.name, email: identity.email, active: [], past: [] };
 
-  const interviewing = rows.filter((r) => (r.status === "pending" || r.status === "interview") && r.withdrawn_at === null);
+  const interviewing = rows.filter((r) => mayOfferInterview(storedOf(r)));
   const [slotRows, leads] = await Promise.all([
     interviewing.length === 0
       ? Promise.resolve([])
@@ -481,6 +490,13 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
   return { firstName: me?.first_name ?? identity.name, email: identity.email, active, past };
 }
 
+/**
+ * The built-in status an `applications` row's status behaves like, in SQL: its
+ * own key or its added status's parent, and New for no reference
+ * (./application-status.ts).
+ */
+const BUILT_IN_STATUS_OF_ROW = sql<string>`coalesce((select coalesce(${applicationStatuses.parentKey}, ${applicationStatuses.key}) from ${applicationStatuses} where ${applicationStatuses.key} = ${applications.statusKey}), 'new')`;
+
 /** Board 50b: marks it withdrawn; the lead's list leaves it out from then on (./database.ts). */
 async function withdrawApplication(identity: DashboardIdentity, applicationId: number): Promise<WriteResult<null>> {
   const mine = await readMyApplications(identity);
@@ -495,7 +511,7 @@ async function withdrawApplication(identity: DashboardIdentity, applicationId: n
         and(
           eq(applications.id, applicationId),
           eq(applications.userId, identity.userId),
-          inArray(applications.status, [...OPEN_STATUSES]),
+          inArray(BUILT_IN_STATUS_OF_ROW, [...WITHDRAWABLE_STATUS_KEYS]),
           isNull(applications.withdrawnAt),
         ),
       )

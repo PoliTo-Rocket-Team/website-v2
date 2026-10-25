@@ -1,20 +1,29 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { BUILT_IN_STATUS_KEYS, type ApplicationStatus, type BuiltInStatusKey } from "./application-status";
 import {
   canWithdraw,
   isShownAt,
+  mayOfferInterview,
   oneMonthAfter,
   pickableSlot,
   placeOf,
+  publicStepOf,
+  WITHDRAWABLE_STATUS_KEYS,
   withdrawnOnDelete,
   type ActiveApplication,
   type ActiveStage,
+  type ApplicationPlace,
+  type Interview,
   type OwnApplication,
+  type PublicStep,
   type StoredApplication,
 } from "./my-applications";
 
-const sent = (status: StoredApplication["status"], joinedAt: string | null = null): StoredApplication => ({
-  status,
+const builtIn = (key: BuiltInStatusKey): ApplicationStatus => ({ kind: "built-in", key });
+
+const sent = (status: BuiltInStatusKey | ApplicationStatus, joinedAt: string | null = null): StoredApplication => ({
+  status: typeof status === "string" ? builtIn(status) : status,
   appliedAt: "2026-03-02T09:00:00.000Z",
   withdrawnAt: null,
   acceptedAt: null,
@@ -26,23 +35,107 @@ const sent = (status: StoredApplication["status"], joinedAt: string | null = nul
 const DECIDED = "2026-09-10T12:00:00.000Z";
 const at = (iso: string) => new Date(iso);
 
+// The public step of each built-in status (Owner decision on epic #588,
+// 2026-10-25; issue #753). The applicant never sees the team's status.
+const PUBLIC_STEPS: Record<BuiltInStatusKey, PublicStep> = {
+  new: "received",
+  interview: "interview",
+  accepted_email_to_be_sent: "in-review",
+  accepted_email_sent: "accepted",
+  nda_received: "accepted",
+  joined: "joined",
+  rejected_email_to_be_sent: "in-review",
+  rejected_email_sent: "not-selected",
+  accepted_for_another_position: "not-selected",
+  withdrawn: "withdrawn",
+};
+
+test("each of the ten built-in statuses shows its public step (issue #753)", () => {
+  assert.deepEqual(Object.keys(PUBLIC_STEPS), [...BUILT_IN_STATUS_KEYS]);
+  for (const key of BUILT_IN_STATUS_KEYS) assert.equal(publicStepOf(builtIn(key)), PUBLIC_STEPS[key], key);
+});
+
+const SLOT = { id: 1, start: "2026-04-01T10:00:00.000Z", end: "2026-04-01T10:30:00.000Z" };
+const OFFERED: Interview = { lead: "Marco Bianchi", slots: [SLOT], chosen: null };
+
+/** Where each built-in status lists on My applications, with interview times offered. */
+const PLACES: Record<BuiltInStatusKey, ApplicationPlace> = {
+  new: { kind: "active", stage: { kind: "received" } },
+  interview: { kind: "active", stage: { kind: "interview", interview: OFFERED } },
+  accepted_email_to_be_sent: { kind: "active", stage: { kind: "in-review" } },
+  accepted_email_sent: { kind: "active", stage: { kind: "accepted" } },
+  nda_received: { kind: "active", stage: { kind: "accepted" } },
+  joined: { kind: "past", outcome: { kind: "joined", since: "2026-03-02" } },
+  rejected_email_to_be_sent: { kind: "active", stage: { kind: "in-review" } },
+  rejected_email_sent: { kind: "past", outcome: { kind: "not-selected" } },
+  accepted_for_another_position: { kind: "past", outcome: { kind: "not-selected" } },
+  withdrawn: { kind: "past", outcome: { kind: "withdrawn" } },
+};
+
+test("each of the ten built-in statuses lists at its public step on My applications (issue #753)", () => {
+  for (const key of BUILT_IN_STATUS_KEYS) assert.deepEqual(placeOf(sent(key), OFFERED, null), PLACES[key], key);
+});
+
+test("an added status shows its parent's public step (issue #753)", () => {
+  for (const parent of BUILT_IN_STATUS_KEYS) {
+    const added: ApplicationStatus = { kind: "added", key: `second_${parent}`, parent };
+    assert.equal(publicStepOf(added), PUBLIC_STEPS[parent], parent);
+    assert.deepEqual(placeOf(sent(added), OFFERED, null), PLACES[parent], parent);
+  }
+  const secondInterview: ApplicationStatus = { kind: "added", key: "second_interview", parent: "interview" };
+  assert.deepEqual(placeOf(sent(secondInterview), null, null), { kind: "active", stage: { kind: "in-review" } });
+});
+
+test("an email to be sent shows In review, never the outcome, and is still being decided for the applicant (issue #753)", () => {
+  for (const key of ["accepted_email_to_be_sent", "rejected_email_to_be_sent"] as const) {
+    const decided: StoredApplication = { ...sent(key), acceptedAt: DECIDED, rejectedAt: DECIDED };
+    assert.deepEqual(placeOf(decided, null, null), { kind: "active", stage: { kind: "in-review" } }, key);
+    assert.equal(isShownAt(decided, at("2030-01-01T00:00:00.000Z")), true, key);
+  }
+});
+
+test('"Accepted for another position" shows Not selected, as accepted_by_another_team did (issue #753)', () => {
+  assert.deepEqual(placeOf(sent("accepted_for_another_position"), null, "2026-05-01T10:00:00.000Z"), {
+    kind: "past",
+    outcome: { kind: "not-selected" },
+  });
+});
+
+test("interview times are read only for an application whose public step is Interview", () => {
+  const offering = BUILT_IN_STATUS_KEYS.filter((key) => mayOfferInterview(sent(key)));
+  assert.deepEqual(offering, ["interview"]);
+  assert.equal(mayOfferInterview({ ...sent("interview"), withdrawnAt: DECIDED }), false);
+  assert.equal(mayOfferInterview(sent({ kind: "added", key: "second_interview", parent: "interview" })), true);
+});
+
+test("the applicant can withdraw only before an outcome shows", () => {
+  assert.deepEqual(WITHDRAWABLE_STATUS_KEYS, ["new", "interview", "accepted_email_to_be_sent", "rejected_email_to_be_sent"]);
+  for (const key of BUILT_IN_STATUS_KEYS) {
+    const where = placeOf(sent(key), OFFERED, null);
+    assert.equal(where.kind === "active" && canWithdraw(where.stage), WITHDRAWABLE_STATUS_KEYS.includes(key), key);
+  }
+});
+
 test("an application still being decided is shown however old it is (issue #317)", () => {
-  for (const status of ["received", "pending", "interview"] as const) {
+  for (const status of ["new", "interview", "accepted_email_to_be_sent", "rejected_email_to_be_sent"] as const) {
     assert.equal(isShownAt(sent(status), at("2030-01-01T00:00:00.000Z")), true, status);
   }
 });
 
 test("a decided application is shown until one month after its decision, that moment included, and hidden after (issue #317)", () => {
   const decided: readonly StoredApplication[] = [
-    { ...sent("accepted"), acceptedAt: DECIDED },
-    { ...sent("rejected"), rejectedAt: DECIDED },
-    { ...sent("accepted_by_another_team"), rejectedAt: DECIDED },
+    { ...sent("accepted_email_sent"), acceptedAt: DECIDED },
+    { ...sent("nda_received"), acceptedAt: DECIDED },
+    { ...sent("rejected_email_sent"), rejectedAt: DECIDED },
+    { ...sent("accepted_for_another_position"), rejectedAt: DECIDED },
     { ...sent("joined"), joinedAt: DECIDED },
-    { ...sent("received"), withdrawnAt: DECIDED },
+    { ...sent("new"), withdrawnAt: DECIDED },
+    { ...sent("withdrawn"), withdrawnAt: DECIDED },
   ];
   for (const application of decided) {
-    assert.equal(isShownAt(application, at("2026-10-10T12:00:00.000Z")), true, application.status);
-    assert.equal(isShownAt(application, at("2026-10-10T12:00:00.001Z")), false, application.status);
+    const label = JSON.stringify(application.status);
+    assert.equal(isShownAt(application, at("2026-10-10T12:00:00.000Z")), true, label);
+    assert.equal(isShownAt(application, at("2026-10-10T12:00:00.001Z")), false, label);
   }
 });
 
@@ -58,7 +151,7 @@ test("after an accept, the join is the latest decision the month counts from (is
 });
 
 test("a decided application with no decision time on record is past the month (issue #317)", () => {
-  for (const status of ["accepted", "rejected", "accepted_by_another_team", "joined"] as const) {
+  for (const status of ["accepted_email_sent", "nda_received", "rejected_email_sent", "accepted_for_another_position", "joined", "withdrawn"] as const) {
     assert.equal(isShownAt(sent(status), at("2026-03-02T09:00:01.000Z")), false, status);
   }
 });
@@ -67,18 +160,17 @@ test("a member's confirmed join is over as joined, and their other accepted appl
   // A member: their current role started on 2026-05-01, the day Confirm join ran on application A.
   const memberRoleSince = "2026-05-01T10:00:00.000Z";
   const joined = placeOf(sent("joined", "2026-05-01T10:00:00.000Z"), null, memberRoleSince);
-  const accepted = placeOf(sent("accepted"), null, memberRoleSince);
+  const accepted = placeOf(sent("accepted_email_sent"), null, memberRoleSince);
   assert.deepEqual(joined, { kind: "past", outcome: { kind: "joined", since: "2026-05-01" } });
   assert.deepEqual(accepted, { kind: "active", stage: { kind: "accepted" } });
 });
 
 test("an accepted application is active at accepted for a non-member too", () => {
-  assert.deepEqual(placeOf(sent("accepted"), null, null), { kind: "active", stage: { kind: "accepted" } });
+  assert.deepEqual(placeOf(sent("accepted_email_sent"), null, null), { kind: "active", stage: { kind: "accepted" } });
 });
 
 test("only a joined application is over as joined", () => {
-  const statuses: StoredApplication["status"][] = ["received", "pending", "interview", "accepted", "rejected", "accepted_by_another_team", "joined"];
-  const joinedOnes = statuses.filter((status) => {
+  const joinedOnes = BUILT_IN_STATUS_KEYS.filter((status) => {
     const where = placeOf(sent(status), null, "2026-05-01T10:00:00.000Z");
     return where.kind === "past" && where.outcome.kind === "joined";
   });
@@ -91,17 +183,15 @@ test("a join stored without joined_at dates from the role, then from the applica
 });
 
 test("a withdrawn application is over as withdrawn, whatever its status", () => {
-  assert.deepEqual(placeOf({ ...sent("accepted"), withdrawnAt: "2026-04-01T00:00:00.000Z" }, null, null), {
+  assert.deepEqual(placeOf({ ...sent("accepted_email_sent"), withdrawnAt: "2026-04-01T00:00:00.000Z" }, null, null), {
     kind: "past",
     outcome: { kind: "withdrawn" },
   });
 });
 
-test("an application under review shows its interview once times are offered", () => {
-  const slot = { id: 1, start: "2026-04-01T10:00:00.000Z", end: "2026-04-01T10:30:00.000Z" };
-  const interview = { lead: "Marco Bianchi", slots: [slot], chosen: null };
-  assert.deepEqual(placeOf(sent("pending"), null, null), { kind: "active", stage: { kind: "in-review" } });
-  assert.deepEqual(placeOf(sent("interview"), interview, null), { kind: "active", stage: { kind: "interview", interview } });
+test("an application at Interview shows In review until times are offered, then its interview", () => {
+  assert.deepEqual(placeOf(sent("interview"), null, null), { kind: "active", stage: { kind: "in-review" } });
+  assert.deepEqual(placeOf(sent("interview"), OFFERED, null), { kind: "active", stage: { kind: "interview", interview: OFFERED } });
 });
 
 const application = (overrides: Partial<OwnApplication> & Pick<OwnApplication, "id">): OwnApplication => ({
