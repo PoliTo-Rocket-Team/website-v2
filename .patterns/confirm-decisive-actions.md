@@ -18,9 +18,12 @@ DELETE.
 
 2. **Applications use a sibling with the same frame.** `DecisionDialog` in
    [components/dashboard/decision-dialog.tsx](../components/dashboard/decision-dialog.tsx) is the
-   step before every action button on the lead's Applications page (Accept, Reject, Withdraw acceptance,
-   Mark email sent, NDA received, Confirm join; issue #749). It reuses the popup
-   frame (`SHEET_CONTENT`, `SHEET_CANCEL`) from `confirm-dialog.tsx`.
+   step before the decision buttons on the lead's Applications page (Accept, Reject, Withdraw
+   acceptance, Mark email sent, NDA received, Confirm join; issue #749). It reuses the popup
+   frame (`SHEET_CONTENT`, `SHEET_CANCEL`) from `confirm-dialog.tsx`. Move to interview and
+   Change times open `InterviewDialog`
+   ([components/dashboard/interview-dialog.tsx](../components/dashboard/interview-dialog.tsx))
+   instead, because they ask for interview times, not a yes or no.
 
 3. **Typing DELETE.** Delete account passes `confirmDisabled={!deleteConfirmed(typed)}`. The word
    and the check are domain code, not component code:
@@ -39,6 +42,7 @@ Call sites, by action:
 | Action | Where |
 |---|---|
 | Accept, Reject, Withdraw acceptance, Mark email sent, NDA received, Confirm join (lead) | `DecisionDialog` in [applications.tsx](../components/dashboard/applications.tsx) |
+| Move to interview, Change times (lead) | `InterviewDialog` in [applications.tsx](../components/dashboard/applications.tsx) |
 | Confirm join (Members banner) | `ConfirmDialog` in [members.tsx](../components/dashboard/members.tsx) |
 | Withdraw application, confirm interview time (applicant) | `ConfirmDialog` in [my-applications.tsx](../components/dashboard/my-applications.tsx) |
 | Move to alumni | `ConfirmDialog` in [member-drawer.tsx](../components/dashboard/member-drawer.tsx) |
@@ -69,8 +73,7 @@ such as opening or closing a position.
 - **Two dialog components.** `DecisionDialog` repeats most of `ConfirmDialog` with its own ring
   and button colours, instead of passing `tone`.
 - **Some writes run with no confirm.** The site-wide recruitment switch and the position open/close
-  toggle ([positions.tsx](../components/dashboard/positions.tsx)), the "signed NDA arrived" tick
-  ([applications.tsx](../components/dashboard/applications.tsx)), Give access, the Alumni "shown on
+  toggle ([positions.tsx](../components/dashboard/positions.tsx)), Give access, the Alumni "shown on
   site" toggle ([alumni.tsx](../components/dashboard/alumni.tsx)), and Edit details' Save,
   which can change who leads a division ([member-panels.tsx](../components/dashboard/member-panels.tsx)).
   None of them is in the list at the top of this doc.
