@@ -126,7 +126,8 @@ Rules:
   on phones, 240px from md. The hero has no pad of its own, so the page sky adds one under it,
   less `--hero-bottom-space` (the empty hero below its last line of text, `app/globals.css`):
   the gap from that line to the Track record eyebrow is the same 112px / 240px. The footer's
-  top pad and the /projects page's bottom pad are `section` too, and /projects keeps one
+  top pad is `section` too, and it alone sets the gap above the footer: a page's `<main>` has
+  no bottom pad (issue #582, held by `lib/footer-gap.test.ts`). /projects keeps one
   `section` pad between the bar and its header. Never
   set a section's vertical padding with another value. Sides are `px-5 md:px-16` (board 24
   gives phones 20px sides). Sections below the hero have no borders

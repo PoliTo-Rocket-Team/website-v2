@@ -19,7 +19,7 @@ export function ApplyFrame({ children }: { children: ReactNode }) {
     <div className="relative bg-ground">
       <LandingNavbar />
       <PageSky>
-        <main className="pb-section pt-16 md:pt-[72px]">{children}</main>
+        <main className="pt-16 md:pt-[72px]">{children}</main>
         <SiteFooter inSky />
       </PageSky>
     </div>

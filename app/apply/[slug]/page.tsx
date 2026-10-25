@@ -43,7 +43,7 @@ export default function PositionPage({ params }: { params: Promise<{ slug: strin
     <div className="relative bg-ground">
       <LandingNavbar />
       <PageSky>
-        <main className="min-h-svh pb-section pt-16 md:pt-[72px]">
+        <main className="min-h-svh pt-16 md:pt-[72px]">
           {/* The skeleton is part of the page's static shell (issue #395), so the
               layout shows at once and the /apply role link prefetches it. */}
           <Suspense fallback={<PositionSkeleton />}>

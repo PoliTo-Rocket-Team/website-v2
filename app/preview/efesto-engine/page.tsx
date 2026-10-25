@@ -29,7 +29,7 @@ export default function EfestoEnginePreview() {
     <div className="relative bg-ground">
       <LandingNavbar />
       <PageSky>
-        <main className="pb-section">
+        <main>
           <ProjectHero project={{ index: card.num, name: card.name, texture: card.texture }} hero={pageRecordOf(record).hero} />
           <section className="px-5 pt-section md:px-16">
             {/* A flex row, as the home row is: the card's width is a share of the row's. */}
