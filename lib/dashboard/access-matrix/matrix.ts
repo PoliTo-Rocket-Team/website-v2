@@ -127,12 +127,15 @@ export type Expect = {
   readonly wholeTeamMembers: boolean;
   /**
    * Email alias requests (epic #538): the units whose member the viewer may
-   * request an alias for (Request alias in the drawer, and Cancel request),
-   * and whether they answer requests (the Overview rows, Decline and Mark
-   * created). A lead, a head or the team leader asks, by role; only the team
-   * leader, the operations lead and the IT lead answer.
+   * request an alias for (Request alias in the drawer and on the server), the
+   * units whose member they lead or head (`managesMember`, which also lets
+   * them cancel a request they did not send), and whether they answer
+   * requests (the Overview rows, Decline and Mark created). Full access asks
+   * for anyone on the team (Owner decision, 2026-10-25, issue #721); a lead
+   * or a head asks for the members they lead or head; only the team leader,
+   * the operations lead and the IT lead answer.
    */
-  readonly aliases: { readonly requests: readonly Unit[]; readonly answers: boolean };
+  readonly aliases: { readonly requests: readonly Unit[]; readonly manages: readonly Unit[]; readonly answers: boolean };
   /**
    * Whether they decide orders (`decideRightOf`): the team leader, and anyone
    * holding "Approve orders". Deciding is team-wide, and their Overview says
@@ -141,7 +144,13 @@ export type Expect = {
   readonly decidesOrders: boolean;
 };
 
-const NO_ALIASES = { requests: NONE, answers: false } as const;
+const NO_ALIASES = { requests: NONE, manages: NONE, answers: false } as const;
+/** Full access with no lead or head role: asks for anyone (issue #721), manages nobody. */
+const FULL_ACCESS_ALIASES = { requests: ALL, manages: NONE, answers: false } as const;
+/** The operations lead and the IT lead: full access, and they answer. */
+const APPROVER_ALIASES = { ...FULL_ACCESS_ALIASES, answers: true } as const;
+/** A lead or a head without full access: asks for, and manages, the members of `units`. */
+const leadsOrHeads = (units: readonly Unit[]) => ({ requests: units, manages: units, answers: false });
 
 const nothing = { positions: NONE, applications: NONE, members: NONE, orders: NONE } as const;
 const everywhere = (units: readonly Unit[]) => ({ positions: units, applications: units, members: units, orders: units });
@@ -156,7 +165,7 @@ const FULL_ACCESS: Expect = {
   switchesRecruitment: true,
   ordersPage: true,
   wholeTeamMembers: true,
-  aliases: NO_ALIASES,
+  aliases: FULL_ACCESS_ALIASES,
   decidesOrders: false,
 };
 
@@ -193,18 +202,18 @@ export type MatrixRow = { readonly name: string; readonly viewer: Viewer; readon
 
 export const VIEWERS: readonly MatrixRow[] = [
   // Full access: the seats by role alone (issues #238, #485), or an org scope row.
-  { name: "team leader", viewer: viewerOf([role("president", null, null)]), expect: { ...FULL_ACCESS, aliases: { requests: ALL, answers: true }, decidesOrders: true } },
-  { name: "operations lead", viewer: viewerOf([role("core", null, null, "operations-lead")]), expect: { ...FULL_ACCESS, aliases: { requests: NONE, answers: true } } },
+  { name: "team leader", viewer: viewerOf([role("president", null, null)]), expect: { ...FULL_ACCESS, aliases: { requests: ALL, manages: ALL, answers: true }, decidesOrders: true } },
+  { name: "operations lead", viewer: viewerOf([role("core", null, null, "operations-lead")]), expect: { ...FULL_ACCESS, aliases: APPROVER_ALIASES } },
   // A full-access seat that is not the team leader decides orders only with Approve orders (issue #592).
   {
     name: "operations lead with Approve orders",
     viewer: viewerOf([role("core", null, null, "operations-lead")], [row("team", "approve_orders", "edit")]),
-    expect: { ...FULL_ACCESS, aliases: { requests: NONE, answers: true }, decidesOrders: true },
+    expect: { ...FULL_ACCESS, aliases: APPROVER_ALIASES, decidesOrders: true },
   },
   {
     name: "IT lead",
     viewer: viewerOf([role("core", null, null, "it-lead")]),
-    expect: { ...FULL_ACCESS, pages: [...FULL, "activity-log"], aliases: { requests: NONE, answers: true } },
+    expect: { ...FULL_ACCESS, pages: [...FULL, "activity-log"], aliases: APPROVER_ALIASES },
   },
   // The board seats (issue #485): a flagged role in no unit, the operations lead's expectations.
   { name: "Project Manager", viewer: viewerOf([role(null, null, null, "project-manager")]), expect: FULL_ACCESS },
@@ -214,7 +223,7 @@ export const VIEWERS: readonly MatrixRow[] = [
   {
     name: "department head",
     viewer: viewerOf([role("head", null, 1)]),
-    expect: { ...PLAIN_MEMBER, aliases: { requests: AERODYNAMICS, answers: false }, pages: [...TEAM_BASE, ...LEADING], reads: everywhere(AERODYNAMICS), changes: changing(AERODYNAMICS), ordersPage: true },
+    expect: { ...PLAIN_MEMBER, aliases: leadsOrHeads(AERODYNAMICS), pages: [...TEAM_BASE, ...LEADING], reads: everywhere(AERODYNAMICS), changes: changing(AERODYNAMICS), ordersPage: true },
   },
   // Approve orders adds deciding across the team to a head's role, and nothing else (issue #592).
   {
@@ -222,7 +231,7 @@ export const VIEWERS: readonly MatrixRow[] = [
     viewer: viewerOf([role("head", null, 1)], [row("team", "approve_orders", "edit")]),
     expect: {
       ...PLAIN_MEMBER,
-      aliases: { requests: AERODYNAMICS, answers: false },
+      aliases: leadsOrHeads(AERODYNAMICS),
       pages: [...TEAM_BASE, ...LEADING],
       reads: everywhere(AERODYNAMICS),
       changes: changing(AERODYNAMICS),
@@ -236,7 +245,7 @@ export const VIEWERS: readonly MatrixRow[] = [
     viewer: viewerOf([role("head", null, 1)], [row("division", "applications", "edit", { divisionId: 3 })]),
     expect: {
       ...PLAIN_MEMBER,
-      aliases: { requests: AERODYNAMICS, answers: false },
+      aliases: leadsOrHeads(AERODYNAMICS),
       pages: [...TEAM_BASE, ...LEADING],
       reads: { ...everywhere(AERODYNAMICS), applications: ALL },
       changes: { ...changing(AERODYNAMICS), applications: ALL },
@@ -249,7 +258,7 @@ export const VIEWERS: readonly MatrixRow[] = [
     viewer: viewerOf([role("head", null, 1)], [row("division", "positions", "edit", { divisionId: 3 })]),
     expect: {
       ...PLAIN_MEMBER,
-      aliases: { requests: AERODYNAMICS, answers: false },
+      aliases: leadsOrHeads(AERODYNAMICS),
       pages: [...TEAM_BASE, ...LEADING],
       reads: { ...everywhere(AERODYNAMICS), positions: ALL },
       changes: { ...changing(AERODYNAMICS), positions: ALL },
@@ -261,7 +270,7 @@ export const VIEWERS: readonly MatrixRow[] = [
     name: "division lead",
     viewer: viewerOf([role("lead", 1, 1)]),
     // A lead's role opens Orders with no Orders row, editing their own division's orders (`ordersScopeOf`, issue #590).
-    expect: { ...PLAIN_MEMBER, aliases: { requests: ["MA"], answers: false }, pages: [...TEAM_BASE, ...LEADING], reads: everywhere(["MA"]), changes: changing(["MA"]), ordersPage: true },
+    expect: { ...PLAIN_MEMBER, aliases: leadsOrHeads(["MA"]), pages: [...TEAM_BASE, ...LEADING], reads: everywhere(["MA"]), changes: changing(["MA"]), ordersPage: true },
   },
   // The same for a lead (issue #592).
   {
@@ -269,7 +278,7 @@ export const VIEWERS: readonly MatrixRow[] = [
     viewer: viewerOf([role("lead", 1, 1)], [row("team", "approve_orders", "edit")]),
     expect: {
       ...PLAIN_MEMBER,
-      aliases: { requests: ["MA"], answers: false },
+      aliases: leadsOrHeads(["MA"]),
       pages: [...TEAM_BASE, ...LEADING],
       reads: everywhere(["MA"]),
       changes: changing(["MA"]),
@@ -283,7 +292,7 @@ export const VIEWERS: readonly MatrixRow[] = [
     viewer: viewerOf([role("lead", 1, 1)], [row("division", "positions", "view", { divisionId: 3 })]),
     expect: {
       ...PLAIN_MEMBER,
-      aliases: { requests: ["MA"], answers: false },
+      aliases: leadsOrHeads(["MA"]),
       pages: [...TEAM_BASE, ...LEADING],
       reads: { ...everywhere(["MA"]), positions: ["MA", "DM"] },
       changes: changing(["MA"]),
@@ -296,7 +305,7 @@ export const VIEWERS: readonly MatrixRow[] = [
     viewer: viewerOf([role("lead", 1, 1)], [row("division", "positions", "edit", { divisionId: 3 })]),
     expect: {
       ...PLAIN_MEMBER,
-      aliases: { requests: ["MA"], answers: false },
+      aliases: leadsOrHeads(["MA"]),
       pages: [...TEAM_BASE, ...LEADING],
       reads: { ...everywhere(["MA"]), positions: ["MA", "DM"] },
       changes: { ...changing(["MA"]), positions: ["MA", "DM"] },
@@ -364,7 +373,7 @@ export const VIEWERS: readonly MatrixRow[] = [
   {
     name: "division lead with a Content grant",
     viewer: viewerOf([role("lead", 1, 1)], [row("website", "content", "edit")]),
-    expect: { ...PLAIN_MEMBER, aliases: { requests: ["MA"], answers: false }, pages: [...TEAM_BASE, ...LEADING, ...CONTENT], reads: everywhere(["MA"]), changes: changing(["MA"]), siteContent: true, ordersPage: true },
+    expect: { ...PLAIN_MEMBER, aliases: leadsOrHeads(["MA"]), pages: [...TEAM_BASE, ...LEADING, ...CONTENT], reads: everywhere(["MA"]), changes: changing(["MA"]), siteContent: true, ordersPage: true },
   },
   {
     name: "member with Approve orders",
