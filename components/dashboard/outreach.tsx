@@ -220,17 +220,16 @@ function PostRow({
         <span className="min-w-0">
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-[14px] font-medium text-prt-text">{title}</span>
-            {featured && (
-              <span className="inline-flex h-[20px] shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2 text-[11px] font-medium text-accent">
-                <Star aria-hidden className="h-3 w-3" strokeWidth={2} />
-                Featured
-              </span>
-            )}
+            {featured && <FeaturedMark className="hidden md:inline-flex" />}
           </span>
           <span className="block truncate text-[13px] text-prt-muted md:line-clamp-2 md:whitespace-normal">{post.summary.text}</span>
-          <span className="mt-0.5 block truncate text-[12px] text-prt-muted md:hidden">
-            {rowDate(post.date)}
-            {post.place && ` · ${post.place}`}
+          {/* On phones the title has the whole line, so the Featured mark leads the date line instead. */}
+          <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12px] text-prt-muted md:hidden">
+            {featured && <FeaturedMark className="inline-flex" />}
+            <span className="truncate">
+              {rowDate(post.date)}
+              {post.place && ` · ${post.place}`}
+            </span>
           </span>
         </span>
       </span>
@@ -299,6 +298,16 @@ function PostRow({
         </RowMenu>
       </span>
     </li>
+  );
+}
+
+/** The Featured mark on a featured post's row (issue #496); the caller picks where it shows. */
+function FeaturedMark({ className }: { className: string }) {
+  return (
+    <span className={`h-[20px] shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2 text-[11px] font-medium text-accent ${className}`}>
+      <Star aria-hidden className="h-3 w-3" strokeWidth={2} />
+      Featured
+    </span>
   );
 }
 
