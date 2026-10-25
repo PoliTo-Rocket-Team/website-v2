@@ -318,14 +318,27 @@ export function seatsOf(snapshot: TeamSnapshot): HeldSeat[] {
  * pickers show (issue #656).
  */
 export function teamPeopleOf(snapshot: TeamSnapshot): FoundPerson[] {
-  return recordsOf(snapshot).map((r) => ({
+  return recordsOf(snapshot).map(teamPersonOf);
+}
+
+/**
+ * Everyone on the team as the alias approvers' rows read them
+ * (./alias-request.ts): as `teamPeopleOf` reads them, with the address each
+ * signs in with, which their alias forwards to (issue #586).
+ */
+export function aliasTeamOf(snapshot: TeamSnapshot): (FoundPerson & { readonly signInEmail: string })[] {
+  return recordsOf(snapshot).map((r) => ({ ...teamPersonOf(r), signInEmail: r.signInEmail }));
+}
+
+function teamPersonOf(r: PersonRecord): FoundPerson {
+  return {
     id: r.id,
     name: r.name,
     photoUrl: r.photoUrl,
     emails: [r.signInEmail, r.details.prtEmail].filter((e) => e !== ""),
     memberships: r.memberships,
     beyond: r.beyondDivisions,
-  }));
+  };
 }
 
 /**
