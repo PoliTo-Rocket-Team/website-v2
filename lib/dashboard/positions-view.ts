@@ -104,6 +104,34 @@ export function recruitmentNoticeOf(scope: PositionsPage["scope"], open: boolean
 }
 
 /**
+ * The warning before the site-wide switch saves (Owner decision, issue #691):
+ * one per direction, saying what the public apply page does after the change.
+ * `opens` is the direction asked about, so a warning always names one.
+ */
+export type RecruitmentWarning = {
+  readonly opens: boolean;
+  readonly title: string;
+  readonly description: string;
+  readonly confirmLabel: string;
+};
+
+export function recruitmentWarningOf(opens: boolean): RecruitmentWarning {
+  return opens
+    ? {
+        opens,
+        title: "Open recruitment?",
+        description: "The apply page will show every open position, and new applications can come in.",
+        confirmLabel: "Open recruitment",
+      }
+    : {
+        opens,
+        title: "Close recruitment?",
+        description: "The apply page will hide every position and stop taking new applications.",
+        confirmLabel: "Close recruitment",
+      };
+}
+
+/**
  * What a row opens (issues #207, #577): Edit position where the viewer may
  * change the role, else the same drawer read-only, with no field to type in
  * and no Save. With no row it is New position, which only a viewer who may
