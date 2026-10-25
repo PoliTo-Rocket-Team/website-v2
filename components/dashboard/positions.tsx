@@ -13,12 +13,15 @@ import {
   POSITIONS_SORTS,
   positionsModelOf,
   recruitmentNoticeOf,
+  recruitmentWarningOf,
   shownPositions,
   type PositionsColumn,
   type PositionsFilter,
   type PositionsTool,
+  type RecruitmentWarning,
 } from "@/lib/dashboard/positions-view";
 import { POSITION_TABS, type PositionApplications, type PositionRow, type PositionsPage } from "@/lib/dashboard/recruitment";
+import { ConfirmDialog } from "./confirm-dialog";
 import { FilterMenu, SearchField, Segmented, Toggle } from "./controls";
 import { DrawerPage } from "./drawer";
 import { NewPositionDrawer } from "./new-position-drawer";
@@ -346,8 +349,15 @@ function OpenStatus({ open }: { open: boolean }) {
 }
 
 // Board 41: the site-wide switch, for the team leader and the operations lead.
+// A click asks first (Owner decision, issue #691): the switch keeps the saved
+// state while the warning is open and flips only on its Confirm.
 function RecruitmentSwitch({ open: saved, canSwitch }: { open: boolean; canSwitch: boolean }) {
   const [open, flip] = useOptimisticSwitch(saved, setRecruitment);
+  const [warning, setWarning] = useState<RecruitmentWarning | null>(null);
+  const confirm = (asked: RecruitmentWarning) => {
+    setWarning(null);
+    flip(asked.opens);
+  };
   return (
     <section
       className={`flex items-center gap-4 rounded-xl border px-4 py-4 transition-colors md:mt-6 duration-300 ease-out md:px-5 ${
@@ -370,8 +380,28 @@ function RecruitmentSwitch({ open: saved, canSwitch }: { open: boolean; canSwitc
         </p>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1.5">
-        <Toggle checked={open} onCheckedChange={flip} label="Recruitment is open" tone="success" disabled={!canSwitch} />
+        <Toggle
+          checked={open}
+          onCheckedChange={(opens) => setWarning(recruitmentWarningOf(opens))}
+          label="Recruitment is open"
+          tone="success"
+          disabled={!canSwitch}
+        />
       </div>
+      {warning && (
+        <ConfirmDialog
+          open
+          onOpenChange={(next) => !next && setWarning(null)}
+          icon={<RadioTower className="h-5 w-5" strokeWidth={1.75} />}
+          title={warning.title}
+          description={warning.description}
+          cancelLabel="Cancel"
+          confirmLabel={warning.confirmLabel}
+          tone={warning.opens ? "success" : "danger"}
+          danger={!warning.opens}
+          onConfirm={() => confirm(warning)}
+        />
+      )}
     </section>
   );
 }
