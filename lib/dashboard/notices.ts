@@ -23,7 +23,11 @@ export type NoticeKind = (typeof NOTICE_KINDS)[number];
 
 /** What each kind stores in `dashboard_notices.data`. */
 type NoticeData = {
-  /** A member left the team from My profile: the divisions they left that the recipient leads, and the reason they gave. */
+  /**
+   * A member left the team from My profile: the divisions they left that the
+   * recipient leads (every one of them for the recruitment manager, #705), and
+   * the reason they gave.
+   */
   readonly "member-left": { readonly divisions: readonly string[]; readonly reason: string | null };
   /** A division lead promoted the subject (#188): the division they now lead, how, and the lead who did it. */
   readonly promoted: { readonly division: string; readonly mode: PromoteMode; readonly lead: string };
@@ -209,6 +213,9 @@ export function handOverAnsweredNotice(
 /** A division the leaver had an active role in. */
 export type LeftDivision = { readonly id: number; readonly name: string };
 
+/** A division of the team as the recruitment manager rule reads it: its code and whether it is closed. */
+export type TeamDivision = { readonly id: number; readonly code: string | null; readonly closedAt: string | null };
+
 /** Someone who leads a division: an active lead role in it, or a division scope on it. */
 export type DivisionLead = { readonly memberId: number; readonly divisionId: number };
 
@@ -216,16 +223,36 @@ export type DivisionLead = { readonly memberId: number; readonly divisionId: num
 export type AddressedNotice = { readonly recipientId: number; readonly notice: NewNotice };
 
 /**
- * The notices a member leaving writes: one per lead of a division they had an
- * active role in, naming the divisions of theirs that lead leads. A lead of
- * two of those divisions gets one notice naming both; the leaver is never
- * told about themselves, and a division with no lead tells nobody. This is
- * the one place that decides who is told: the recruitment manager joins here
- * once #194 says who that is.
+ * The code of the division whose leads are the recruitment manager: Logistics,
+ * in the Operations department (owner ruling on #194,
+ * https://github.com/PoliTo-Rocket-Team/website-v2/issues/194#issuecomment-6341780484).
+ */
+export const RECRUITMENT_MANAGER_DIVISION_CODE = "LGS";
+
+/**
+ * The division whose leads are the recruitment manager: the open division
+ * with the Logistics code. Null when that division is closed or the team has
+ * none, and then nobody is the recruitment manager. This is the one rule that
+ * finds it.
+ */
+export function recruitmentManagerDivision<D extends TeamDivision>(team: readonly D[]): D | null {
+  return team.find((d) => d.code === RECRUITMENT_MANAGER_DIVISION_CODE && d.closedAt === null) ?? null;
+}
+
+/**
+ * The notices a member leaving writes. Each lead of a division they had an
+ * active role in gets one, naming the divisions of theirs that lead leads; a
+ * lead of two of those divisions gets one notice naming both. Each lead of
+ * the recruitment manager's division (`recruitmentManagerDivision`, #705) is
+ * told too, with every division the leaver was in, in one notice even when
+ * they also lead one of those divisions. The leaver is never told about
+ * themselves, and a division with no lead tells nobody. This is the one place
+ * that decides who is told.
  */
 export function memberLeftNotices(
   leaverId: number,
   divisions: readonly LeftDivision[],
+  team: readonly TeamDivision[],
   leads: readonly DivisionLead[],
   reason: string | null,
 ): AddressedNotice[] {
@@ -236,6 +263,13 @@ export function memberLeftNotices(
       const names = led.get(lead.memberId) ?? [];
       if (!names.includes(division.name)) names.push(division.name);
       led.set(lead.memberId, names);
+    }
+  }
+  const manager = recruitmentManagerDivision(team);
+  if (manager !== null) {
+    const all = [...new Set(divisions.map((d) => d.name))];
+    for (const lead of leads) {
+      if (lead.divisionId === manager.id && lead.memberId !== leaverId) led.set(lead.memberId, all);
     }
   }
   return [...led].map(([recipientId, names]) => ({
