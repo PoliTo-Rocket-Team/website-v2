@@ -1,6 +1,8 @@
 // The people-and-roles seed (issues #304, #326): every person with a `users`
 // row, their member rows, every role they hold or held, and a sign-in row for
-// each of them and for the admin testers (issues #129, #653).
+// each of them and for the admin testers (issues #129, #653). One more person
+// was added to a division by email and has not signed in (issue #746), so
+// they have a `team_joins` row and no sign-in row.
 //
 // This year's team is the one the site publishes (./public-team.ts, from
 // lib/about/team.ts): its names, roles, units, photos and LinkedIn handles.
@@ -19,7 +21,7 @@
 // user ids keep the numbers the old SQL seed used; the recruitment module
 // names them.
 
-import { betterAuthUsers, members, roles, users } from "@/db/schema";
+import { betterAuthUsers, members, roles, teamJoins, users } from "@/db/schema";
 import { clearedUser, CLEARED_MEMBER } from "@/lib/dashboard/anonymize";
 import type { PlainSeat } from "@/lib/dashboard/viewer";
 import { ADMIN_TESTERS, SEATS, SEED_EMAIL_DOMAIN, seatOf } from "@/lib/seeded-accounts";
@@ -368,6 +370,54 @@ for (const seat of SEATS) {
 }
 
 /**
+ * Invented (issue #746): someone the Test Bench lead added to Test Bench by
+ * email, who has not signed in yet. Add member writes them this way
+ * (`addMember`, lib/dashboard/database-team.ts): a `users` row keyed
+ * `added:<uuid>` that holds the email and the names, and a `team_joins` row,
+ * with no member row, no role and no sign-in row. They stay waiting until
+ * they sign in or their NDA is confirmed, so a preview shows the screens only
+ * such a person has, like the editable personal email (issue #741). They are
+ * kept out of `PEOPLE`, so they get no sign-in row and the reset of the
+ * seed's sign-in rows never names them.
+ */
+export const ADDED_BY_EMAIL = {
+  userId: "added:5eed0000-0000-4000-8000-add000000001",
+  email: `nadia.ferrante@${SEED_EMAIL_DOMAIN}`,
+  first: "Nadia",
+  last: "Ferrante",
+  divisionId: DIVISION.testBench,
+  addedBy: TEST_BENCH_LEAD,
+  addedAt: "2026-10-20 09:00:00+00",
+} as const;
+
+/** The added person's `users` row: only what Add member writes, with the day it did. */
+export const ADDED_USER_ROWS = rowsOf(users, [
+  {
+    id: ADDED_BY_EMAIL.userId,
+    email: ADDED_BY_EMAIL.email,
+    firstName: ADDED_BY_EMAIL.first,
+    lastName: ADDED_BY_EMAIL.last,
+    member: null,
+    createdAt: ADDED_BY_EMAIL.addedAt,
+    updatedAt: null,
+  },
+]);
+
+/** Their wait in Test Bench, sent by its lead, the way Add member writes it. */
+export const TEAM_JOIN_ROWS = rowsOf(teamJoins, [
+  {
+    userId: ADDED_BY_EMAIL.userId,
+    divisionId: ADDED_BY_EMAIL.divisionId,
+    title: "Test Engineer",
+    prtEmail: null,
+    discord: null,
+    addedBy: ADDED_BY_EMAIL.addedBy,
+    addedByActingAccount: null,
+    addedAt: ADDED_BY_EMAIL.addedAt,
+  },
+]);
+
+/**
  * Everyone the tester sign-in and View as may open a session as (issue
  * #653): every seeded person but the anonymized alumnus, whose account is
  * deleted, under the id and email their `users` row holds.
@@ -453,9 +503,10 @@ export const PLAIN_SEAT_PEOPLE: Readonly<Record<PlainSeat, string>> = {
 
 export const people = tableSeedModule({
   name: "people",
-  owns: [members, users, roles],
+  // `team_joins` points at `users`, so emptying `users` empties it anyway.
+  owns: [members, users, roles, teamJoins],
   // Only the seed's own sign-in rows: a developer's own account stays.
   keyed: [{ table: betterAuthUsers, reset: SIGN_IN_RESET }],
-  rows: [MEMBER_ROWS, USER_ROWS, ROLE_ROWS, SIGN_IN_ROWS],
+  rows: [MEMBER_ROWS, USER_ROWS, ADDED_USER_ROWS, ROLE_ROWS, TEAM_JOIN_ROWS, SIGN_IN_ROWS],
   afterInsert: [ADMIN_TESTER_UPDATED_AT_FIX, PEOPLE_UPDATED_AT_FIX],
 });
