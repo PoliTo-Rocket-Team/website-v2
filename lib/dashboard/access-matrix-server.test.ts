@@ -33,12 +33,12 @@ import { membersModelOf, NO_MEMBERS_FILTER, shownMembers } from "./members-view"
 import { readSheet } from "./access-matrix/xlsx";
 import { openDashboard } from "./open";
 import { canEditOrder, type OrdersPage } from "./orders";
-import type { TeamSideOverview } from "./overview";
+import { overviewOfSections, type OverviewSections, type TeamSideOverview } from "./overview";
 import type { TeamStructure } from "./team-structure";
 import { applicationsModelOf } from "./applications-view";
 import { positionsModelOf } from "./positions-view";
 import type { ApplicationsPage, PositionsPage } from "./recruitment";
-import { addRows, changeRows, databaseWrites, loggedWriters, logRowsSinceSeed, tableRows } from "./access-matrix/test-database";
+import { addRows, changeRows, clearRows, databaseWrites, loggedWriters, logRowsSinceSeed, tableRows } from "./access-matrix/test-database";
 import type { OwnAlias } from "./alias-setup";
 import { isOffTeam } from "./viewer";
 import { fileReads, resetFiles } from "./access-matrix/fakes/files";
@@ -99,13 +99,19 @@ function leaked(answer: unknown, expect: Expect): string[] {
   return ALL.flatMap((u: Unit) => Object.values(MARKERS).flatMap((of) => of(u))).filter((m) => !allowed.has(m) && text.includes(m));
 }
 
-/** A read the data interface hands a page: its path on the interface, and the arguments it is called with (each unit's, where it takes one). */
-type Read = { readonly path: string; readonly args?: readonly (readonly unknown[])[] };
+/**
+ * A read the data interface hands a page: its path on the interface, the
+ * arguments it is called with (each unit's, where it takes one), and, for a
+ * read that answers in parts, how its parts arrive as one answer.
+ */
+type Read = { readonly path: string; readonly args?: readonly (readonly unknown[])[]; readonly whole?: (answer: unknown) => Promise<unknown> };
 
 const READS: readonly Read[] = [
   { path: "navCounts" },
   { path: "hasShownApplications" },
   { path: "overview" },
+  // The page streams the Overview by section (issue #397): every section is swept, as it arrives.
+  { path: "overviewSections", whole: (answer) => overviewOfSections(answer as OverviewSections) },
   { path: "myAlumni" },
   { path: "members", args: [[null], ...ALL.map((u) => [IDS.division(u)])] },
   { path: "findForAdd", args: ALL.map((u) => [IDS.division(u), "person"]) },
@@ -144,7 +150,15 @@ function callPath(data: DashboardData, path: string, args: readonly unknown[]): 
 
 /** Every read, once per argument list, by a name that says which. */
 const readCalls = (): [string, (data: DashboardData) => Promise<unknown>][] =>
-  READS.flatMap(({ path, args = [[]] }) => args.map((a): [string, (data: DashboardData) => Promise<unknown>] => [`${path}(${a.join(", ")})`, (d) => callPath(d, path, a)]));
+  READS.flatMap(({ path, args = [[]], whole }) =>
+    args.map((a): [string, (data: DashboardData) => Promise<unknown>] => [
+      `${path}(${a.join(", ")})`,
+      async (d) => {
+        const answer = await callPath(d, path, a);
+        return whole === undefined ? answer : whole(answer);
+      },
+    ]),
+  );
 
 /** Every method's path on the data interface, editors and the team's writes included. */
 function methodPaths(value: Record<string, unknown>, prefix = ""): string[] {
@@ -1165,6 +1179,39 @@ describe("leads and heads hold grants beyond their role, and their role access s
       ],
     );
     assert.deepEqual(heldLines(page.unit).length, 1, "one Your access line over both divisions");
+  });
+
+  test("a lead of two divisions reads each division's grants, with when and by whom each was given, from the one batched read (issue #397)", async () => {
+    const self = accountOf("division lead").memberId!;
+    const teamLeader = accountOf("team leader");
+    const itLead = accountOf("IT lead");
+    // No grant anywhere: the batched read answers an empty list, and the lead still holds their role's areas in both.
+    await seedKeeping();
+    await clearRows(scopes);
+    await addRows(roles, [{ id: 9_400, memberId: self, divisionId: IDS.division("OA"), title: "Division Lead", startedAt: "2025-10-01", type: "lead" }]);
+    const empty = await pageAs("division lead");
+    assert.deepEqual(empty.grants, [], "no grant in either led division");
+    assert.deepEqual(empty.unit.kind === "division" && empty.unit.divisions.map((d) => d.division.id), [IDS.division("MA"), IDS.division("OA")], "both led divisions");
+
+    // A grant in each led division, one given while viewing as the team leader, and one in a division the lead does not lead.
+    const given = { givenBy: teamLeader.memberId, scope: "division" };
+    await addRows(scopes, [
+      { ...given, id: 9_500, memberId: IDS.person("MA"), target: "members", accessLevel: "view", divisionId: IDS.division("MA") },
+      { ...given, id: 9_501, memberId: IDS.person("OA"), target: "positions", accessLevel: "edit", divisionId: IDS.division("OA"), givenByActingAccount: itLead.userId },
+      { ...given, id: 9_502, memberId: IDS.person("OA"), target: "orders", accessLevel: "view", divisionId: IDS.division(DM) },
+    ]);
+    await changeRows(logs, { tableName: "scopes", operation: "INSERT", recordId: "9500" }, { changedAt: "2026-10-01T09:00:00.000Z" });
+    await changeRows(logs, { tableName: "scopes", operation: "INSERT", recordId: "9501" }, { changedAt: "2026-10-02T09:00:00.000Z" });
+
+    const page = await pageAs("division lead");
+    assert.deepEqual(
+      page.grants.map((g) => ({ id: g.id, place: g.place.kind === "division" ? g.place.division.id : g.place.kind, target: g.target, level: g.level, givenOn: g.givenOn, givenBy: g.givenBy })),
+      [
+        { id: 9_501, place: IDS.division("OA"), target: "positions", level: "edit", givenOn: "2026-10-02", givenBy: `IT lead as Viewer ${teamLeader.userId}` },
+        { id: 9_500, place: IDS.division("MA"), target: "members", level: "view", givenOn: "2026-10-01", givenBy: `Viewer ${teamLeader.userId}` },
+      ],
+      "each led division's grant, newest first, with its own date and giver; none from a division not led",
+    );
   });
 
   test("a lead with no Orders grant gives Orders, at Can view or Can edit, to a member of their own division (issue #632)", async () => {

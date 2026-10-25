@@ -39,17 +39,19 @@ import {
   divisionRoster,
   noPhotoItem,
   oldestLine,
+  overviewOfSections,
   pageChecklistOf,
   type AttentionItem,
   type DepartmentOverview,
   type DivisionOverview,
   type DivisionSummary,
+  type OverviewSections,
   type PersonalPanels,
+  type PersonHeader,
   type Roster,
   type ScopeBoard,
   type TeamLeaderOverview,
   type TeamOverview,
-  type TeamSideOverview,
   type UpcomingInterview,
 } from "./overview";
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
@@ -699,27 +701,30 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
 
 const monthYear = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 
-/**
- * Board 52's panels, for every team seat (issue #593): who they are, their
- * page on the site, their rosters, and "Your access". `teamOrders` is the
- * team's orders when they decide orders, else null.
- */
-async function personalPanelsOf(identity: Identity, teamOrders: Promise<Order[]> | null): Promise<PersonalPanels> {
+/** Who leads board 52, from the identity alone: it needs no read of its own. */
+function personHeaderOf(identity: Identity): PersonHeader {
   const role = identity.role;
+  return {
+    name: identity.name,
+    line: [role?.title ?? "Member", role?.divisionName, role?.departmentName].filter(Boolean).join(" · "),
+    since: role ? `In the team since ${monthYear.format(new Date(`${role.startedAt}T00:00:00Z`))}` : null,
+    edit: { label: "Edit profile", href: "/dashboard/profile" },
+    // The photo the sidebar shows, `DashboardViewer.photoUrl` (issue #599).
+    photoUrl: identity.picture,
+  };
+}
 
+/**
+ * Board 52's panels, for every team seat (issue #593): their page on the
+ * site, their rosters, and "Your access". `teamOrders` is the team's orders
+ * when they decide orders, else null.
+ */
+async function personalPanelsOf(identity: Identity, teamOrders: Promise<Order[]> | null): Promise<Omit<PersonalPanels, "person">> {
   // The grants' figures need nothing of the rosters, so they are read beside them.
   // "Approve orders" is a grant only where the viewer holds it: the team leader decides by their seat, and that is no grant.
   const [rosters, lines] = await Promise.all([readRosters(identity), readAccessSummaries(identity, identity.approveOrders ? teamOrders : null)]);
 
   return {
-    person: {
-      name: identity.name,
-      line: [role?.title ?? "Member", role?.divisionName, role?.departmentName].filter(Boolean).join(" · "),
-      since: role ? `In the team since ${monthYear.format(new Date(`${role.startedAt}T00:00:00Z`))}` : null,
-      edit: { label: "Edit profile", href: "/dashboard/profile" },
-      // The photo the sidebar shows, `DashboardViewer.photoUrl` (issue #599).
-      photoUrl: identity.picture,
-    },
     // Done from every seat they hold, not only a division role (issue #641).
     checklist: pageChecklistOf({ roles: identity.roles, email: identity.email, photoUrl: identity.picture, linkedin: identity.linkedin }),
     rosters,
@@ -823,19 +828,21 @@ async function readMemberAccess(identity: Identity): Promise<NonNullable<AccessF
  * #538). Whoever decides orders (`decideRightOfStanding`), whatever the
  * shape, then gets what waits for their decision across the team
  * (`leaderAttention`, issue #592); nobody else's Overview reads the team's
- * orders for it.
+ * orders for it. Its sections are read side by side, and the page streams
+ * each one as it arrives (issue #397); the team's orders are read once for
+ * both the board and the panels.
  */
-async function overviewOf(identity: Identity): Promise<TeamSideOverview> {
+function overviewSectionsOf(identity: Identity): OverviewSections {
+  if (isOffTeam(identity.kind)) throw new DashboardRefused("an Overview off the team is built from My applications");
   const now = new Date();
   const teamOrders = decideRightOfStanding(identity) === null ? null : readTeamOrders();
-  const [board, panels, handOvers, aliases, decisions] = await Promise.all([
+  const board = Promise.all([
     scopeBoardOf(identity, teamOrders),
-    personalPanelsOf(identity, teamOrders),
     readHandOverAttention(identity, now),
     readAliasAttention(identity, now),
     teamOrders?.then((orders) => leaderAttention({ orders, now })) ?? [],
-  ]);
-  return { ...board, ...panels, attention: [...handOvers, ...aliases, ...decisions, ...board.attention] };
+  ]).then(([scope, handOvers, aliases, decisions]) => ({ ...scope, attention: [...handOvers, ...aliases, ...decisions, ...scope.attention] }));
+  return { person: personHeaderOf(identity), board, panels: personalPanelsOf(identity, teamOrders) };
 }
 
 /**
@@ -932,7 +939,8 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     viewer,
     navCounts: () => navCountsOf(identity),
     hasShownApplications: () => hasShownApplications(identity),
-    overview: () => overviewOf(identity),
+    overview: async () => overviewOfSections(overviewSectionsOf(identity)),
+    overviewSections: () => overviewSectionsOf(identity),
     members: (divisionId) => membersOf(identity, divisionId ?? null),
     findForAdd: (divisionId, query) => findForAdd(identity, divisionId, query),
     findPeople: (query) => findPeople(identity, query),
