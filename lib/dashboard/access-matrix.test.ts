@@ -172,9 +172,10 @@ describe("grants are independent (issue #477)", () => {
 
 // Email alias requests (epic #538) ------------------------------------------
 //
-// Who may ask is read from the viewer's roles on the team (`managesMember`):
-// a lead for their division, a head for their department, the team leader for
-// anyone; a grant makes nobody a requester. Who answers is the viewer's seat
+// Who leads or heads whom is read from the viewer's roles on the team
+// (`managesMember`): a lead for their division, a head for their department,
+// the team leader for anyone; a grant makes nobody a requester. Full access
+// asks for anyone on top of it (issue #721, ./alias-request.test.ts). Who answers is the viewer's seat
 // (`answersAliasRequests`): the team leader, the operations lead and the IT
 // lead, never the board seats or full access from a scope row.
 

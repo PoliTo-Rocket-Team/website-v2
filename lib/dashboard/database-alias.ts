@@ -96,7 +96,7 @@ async function readAliasAddresses(): Promise<Map<number, string>> {
 export async function readMemberAliases(identity: DashboardIdentity, memberIds: readonly number[]): Promise<MemberAliases> {
   if (memberIds.length === 0) return {};
   const [snapshot, addresses, open] = await Promise.all([readTeamSnapshot(), readAliasAddresses(), readOpenAliasRequests()]);
-  return memberAliasesFor({ viewerId: identity.memberId, memberIds, team: teamPeopleOf(snapshot), org: snapshot.org, addresses, open, now: new Date() });
+  return memberAliasesFor({ viewerId: identity.memberId, standing: identity, memberIds, team: teamPeopleOf(snapshot), org: snapshot.org, addresses, open, now: new Date() });
 }
 
 /** The open requests as the viewer's rows under "Needs your attention" (board 94c): the three approver seats only. */
@@ -111,6 +111,7 @@ export async function requestAlias(identity: DashboardIdentity, memberId: number
   const [snapshot, addresses, open] = await Promise.all([readTeamSnapshot(), readAliasAddresses(), readOpenAliasRequests()]);
   const planned = planAliasRequest({
     requesterId: identity.memberId,
+    standing: identity,
     memberId,
     team: teamPeopleOf(snapshot),
     org: snapshot.org,
