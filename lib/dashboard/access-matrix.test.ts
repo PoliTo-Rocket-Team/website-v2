@@ -11,7 +11,7 @@ import { ordersScopeOf, type OrdersScopeRow } from "./orders";
 import { mayChangePositionIn } from "./position-access";
 import { GRANT_AREAS, isOffTeam, ledDivisionIds, mayChange, readsArea, readsAreaIn } from "./viewer";
 import { ALL, CHANGE_AREAS, CONTENT, ORG, PAGE_OF_AREA, SCOPES, SIGNED_OUT, TEAM_BASE, UNITS, unitsWhere, VIEWERS, type Unit, type Viewer } from "./access-matrix/matrix";
-import { aliasAttentionFor, answersAliasRequests, managesMember, type AliasRequest, type AliasTeamPerson } from "./alias-request";
+import { aliasAttentionFor, answersAliasRequests, managesMember, planAliasRequest, type AliasRequest, type AliasTeamPerson } from "./alias-request";
 import { ownAliasOf, planAliasSetUp, showsAliasCard } from "./alias-setup";
 import type { TeamPerson } from "./division-edit";
 import { membershipsOf, type OrgChart } from "./team";
@@ -172,12 +172,14 @@ describe("grants are independent (issue #477)", () => {
 
 // Email alias requests (epic #538) ------------------------------------------
 //
-// Who leads or heads whom is read from the viewer's roles on the team
-// (`managesMember`): a lead for their division, a head for their department,
-// the team leader for anyone; a grant makes nobody a requester. Full access
-// asks for anyone on top of it (issue #721, ./alias-request.test.ts). Who answers is the viewer's seat
-// (`answersAliasRequests`): the team leader, the operations lead and the IT
-// lead, never the board seats or full access from a scope row.
+// Who may ask is Request alias itself (`planAliasRequest`): full access asks
+// for anyone on the team (Owner decision, 2026-10-25, issue #721), and anyone
+// else for the members they lead or head. Who leads or heads whom is read from
+// the viewer's roles on the team (`managesMember`): a lead for their division,
+// a head for their department, the team leader for anyone; a grant makes
+// nobody a manager. Who answers is the viewer's seat (`answersAliasRequests`):
+// the team leader, the operations lead and the IT lead, never the board seats
+// or full access from a scope row.
 
 const ALIAS_ORG: OrgChart = {
   departments: ORG.map((d) => ({ id: d.id, name: d.name, code: null, kind: "technical" as const })),
@@ -208,16 +210,21 @@ const ALIAS_TEAM: readonly AliasTeamPerson[] = ALL.map((u) => ({
   beyond: [],
 }));
 
-describe("email alias requests: who asks, who answers, and the approver rows (managesMember, answersAliasRequests, aliasAttentionFor)", () => {
+describe("email alias requests: who asks, who manages, who answers, and the approver rows (planAliasRequest, managesMember, answersAliasRequests, aliasAttentionFor)", () => {
   const open: AliasRequest[] = ALL.map((u, i) => ({ id: i + 1, memberId: personIn(u), requesterId: null, sentAt: "2026-10-22T09:00:00Z" }));
   for (const { name, viewer, expect } of VIEWERS) {
     test(name, () => {
       const me = aliasPersonOf(viewer);
       const team = [...ALIAS_TEAM, me];
       assert.deepEqual(
-        ALL.filter((u) => managesMember(me, team.find((p) => p.id === personIn(u))!, ALIAS_ORG)),
+        ALL.filter((u) => planAliasRequest({ requesterId: me.id, standing: viewer, memberId: personIn(u), team, org: ALIAS_ORG, prtEmail: null, open: [] }).ok),
         expect.aliases.requests,
         `${name}: Request alias`,
+      );
+      assert.deepEqual(
+        ALL.filter((u) => managesMember(me, team.find((p) => p.id === personIn(u))!, ALIAS_ORG)),
+        expect.aliases.manages,
+        `${name}: leads or heads`,
       );
       assert.equal(answersAliasRequests(viewer), expect.aliases.answers, `${name}: answers`);
       const rows = aliasAttentionFor(viewer, open, team, ALIAS_ORG, new Date("2026-10-22T12:00:00Z"));
