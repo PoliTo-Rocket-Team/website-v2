@@ -9,6 +9,7 @@ import { applyLayer, ARC_LEADERS, nextAddedId, NO_TEAM_LAYER, NO_UPLOADS, type A
 import { arcVisualOrder, readingIndexOfGap } from "./arc-order";
 import {
   arcHasRoom,
+  CHOOSE_A_PERSON,
   headBackToRecord,
   headFieldErrors,
   headFieldsOf,
@@ -19,6 +20,11 @@ import {
   leaderFieldsOf,
   newDepartmentFields,
   newLeaderFields,
+  pickedHead,
+  pickedLeader,
+  teamByName,
+  withHeadPerson,
+  withLeaderPerson,
   withNewLead,
   type HeadFields,
 } from "./team-page-add";
@@ -41,12 +47,17 @@ const NO_PHOTOS: TeamPagePhotos = { put: async () => "/team/stand-in.webp", owns
 const build = teamBuildOf(roles);
 const siteContent: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false };
 
-/** `layer` with a new leader added at `gap`, and the ref they take. */
+/** `layer` with a new leader added at `gap`, someone the page does not show on the arc yet, and the ref they take. */
 function addAt(layer: TeamPageLayer, gap: number): { layer: TeamPageLayer; ref: AddedRef } {
-  const fields = newLeaderFields(build, layer, gap);
+  const shown = new Set(applyLayer(build, layer).leaders.map((l) => l.shown.name));
+  const person = teamByName(build).find((p) => !shown.has(p.name))!;
+  const fields = pickedLeader({ ...withLeaderPerson(build, newLeaderFields(gap), person.id), role: "Lead" });
   assert.ok(fields);
-  return { layer: layerWithLeader(build, layer, null, { ...fields, role: "Lead" }), ref: `added:${nextAddedId(layer)}` };
+  return { layer: layerWithLeader(build, layer, null, fields), ref: `added:${nextAddedId(layer)}` };
 }
+
+/** Someone on the team to pick: the first by name. */
+const someone = teamByName(build)[0].id;
 
 test("the arc's left-to-right order is the one components/about/arc-layout.ts draws", () => {
   for (let count = 1; count <= ARC_LEADERS; count++) {
@@ -89,17 +100,17 @@ test("added departments, division leads and head-block edits show on the page, a
   // Edit a head block: the role and department name on the page, the first lead removed, a lead added at the top.
   const opened = headFieldsOf(build, NO_TEAM_LAYER, headSpot);
   assert.ok(opened);
-  const withLead = withNewLead(build, { ...opened, role: "Chief of Propulsion", department: "Propulsion team", leads: opened.leads.slice(1) });
+  const withLead = withNewLead({ ...opened, role: "Chief of Propulsion", department: "Propulsion team", leads: opened.leads.slice(1) });
   const fresh = withLead.leads[withLead.leads.length - 1];
-  const fields: HeadFields = { ...withLead, leads: [{ ...fresh, division: "Test bench" }, ...withLead.leads.slice(0, -1)] };
+  const fields: HeadFields = { ...withLead, leads: [{ ...fresh, person: someone, division: "Test bench" }, ...withLead.leads.slice(0, -1)] };
   assert.deepEqual(headFieldErrors(headSpot, fields), {});
-  let layer = layerWithHead(build, NO_TEAM_LAYER, headSpot, fields);
+  let layer = layerWithHead(build, NO_TEAM_LAYER, headSpot, pickedHead(fields)!);
 
   // Add a department with a head and one division lead.
-  const added = withNewLead(build, { ...newDepartmentFields(build)!, department: "Payload" });
+  const added = withNewLead({ ...withHeadPerson(build, newDepartmentFields(), someone), department: "Payload" });
   assert.ok(headFieldErrors(null, added).leads, "an added lead needs a division");
-  const payload: HeadFields = { ...added, leads: added.leads.map((l) => ({ ...l, division: "Experiments" })) };
-  layer = layerWithHead(build, layer, null, payload);
+  const payload: HeadFields = { ...added, leads: added.leads.map((l) => ({ ...l, person: someone, division: "Experiments" })) };
+  layer = layerWithHead(build, layer, null, pickedHead(payload)!);
 
   const shown = applyLayer(build, layer).departments;
   const edited = shown.find((d) => d.at === department.id)!;
@@ -138,7 +149,34 @@ test("Hide from page hides a head block or drops an added department; Back to th
   const back = headBackToRecord(build, layer, headSpot);
   assert.deepEqual(back, NO_TEAM_LAYER);
 
-  const withDepartment = layerWithHead(build, NO_TEAM_LAYER, null, { ...newDepartmentFields(build)!, department: "Payload" });
+  const withDepartment = layerWithHead(build, NO_TEAM_LAYER, null, pickedHead({ ...withHeadPerson(build, newDepartmentFields(), someone), department: "Payload" })!);
   const ref = applyLayer(build, withDepartment).departments.at(-1)!.at as AddedRef;
   assert.deepEqual(hideHead(withDepartment, ref), NO_TEAM_LAYER);
+});
+
+// Issue #618: a person field on the Team page editor starts with nobody
+// picked, and a panel with nobody picked is refused with a field error and
+// puts nothing on the page.
+
+test("Add leader, Add department and a new lead row start with nobody picked, and are refused on the person field until someone is", () => {
+  const leader = newLeaderFields(0);
+  assert.equal(leader.person, null, "Add leader picks nobody");
+  assert.equal(leaderFieldErrors(build, NO_TEAM_LAYER, null, { ...leader, role: "Lead" }).person, CHOOSE_A_PERSON);
+  assert.equal(pickedLeader(leader), null, "nothing reaches the layer");
+  const picked = withLeaderPerson(build, leader, someone);
+  assert.equal(leaderFieldErrors(build, NO_TEAM_LAYER, null, { ...picked, role: "Lead" }).person, undefined);
+
+  const department = { ...newDepartmentFields(), department: "Payload" };
+  assert.equal(department.person, null, "Add department picks no head");
+  assert.equal(headFieldErrors(null, department).person, CHOOSE_A_PERSON);
+  assert.equal(pickedHead(department), null, "nothing reaches the layer");
+
+  const opened = headFieldsOf(build, NO_TEAM_LAYER, headSpot)!;
+  const withRow = withNewLead(opened);
+  const row = withRow.leads.at(-1)!;
+  assert.equal(row.person, null, "a new lead row picks nobody");
+  assert.deepEqual(headFieldErrors(headSpot, { ...withRow, leads: withRow.leads.map((l) => (l.key === row.key ? { ...l, division: "Test bench" } : l)) }).leads, {
+    [row.key]: { person: CHOOSE_A_PERSON },
+  });
+  assert.deepEqual(layerWithHead(build, NO_TEAM_LAYER, headSpot, pickedHead(withRow)!), NO_TEAM_LAYER, "the row with nobody picked is not on the page");
 });

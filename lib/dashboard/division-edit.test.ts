@@ -257,5 +257,11 @@ test("the pickers search the whole team, the team leader, board and heads includ
   const leader = searchTeam("alessandro@prt.it", team, org);
   assert.ok(leader.kind === "people" && leader.people[0].id === 7 && leader.people[0].role === "Team Leader");
   assert.deepEqual(searchTeam("New.Person@studenti.polito.it", team, org), { kind: "new-email", email: "new.person@studenti.polito.it" });
+  // Issue #618: an empty field lists the whole team by name, and one letter already narrows it.
+  const opened = searchTeam("", team, org);
+  assert.ok(opened.kind === "people");
+  assert.deepEqual(opened.people.map((p) => p.name), team.map((p) => p.name).sort((x, y) => x.localeCompare(y)));
+  const narrowed = searchTeam("l", team, org);
+  assert.ok(narrowed.kind === "people" && narrowed.people.length < team.length && narrowed.people.every((p) => p.name.toLowerCase().includes("l")));
   assert.equal(plan({ name: "Flight Dynamics", code: "FD", newLeads: [3], emails: ["sara@prt.it"] }, { kind: "new", departmentId: 1 }).ok, false, "a team address is a person, not a new email");
 });
