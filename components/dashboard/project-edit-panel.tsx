@@ -5,37 +5,28 @@ import { discardProjectPhoto, uploadProjectPhoto } from "@/app/dashboard/project
 import type { EditDevice } from "@/lib/content/edit-shell";
 import type { BlockFields } from "@/lib/project-content/block-fields";
 import { addBlock, duplicateBlock, lastBlockId, moveBlock, removeBlock, reorderBlocks, setBlockHidden } from "@/lib/project-content/block-list";
-import {
-  blockIdOf,
-  blockSection,
-  heldPhotos,
-  type PanelSection as Section,
-  type PlacedSection,
-  type ProjectFields,
-} from "@/lib/project-content/fields";
+import { blockSection, heldPhotos, type PanelSection as Section, type ProjectFields } from "@/lib/project-content/fields";
 import type { HomeCardView } from "@/lib/project-content/record";
 import type { RocketModel } from "@/lib/rocket-model";
 import { EditPanel, PanelSection, usePanelScroll } from "./edit-panel";
 import type { PhotoUploads } from "./outreach-post-photos";
-import { BlockPanel, BlocksList, errorsIn, kindsFor, type BlockActions } from "./project-blocks";
+import { BlockRows, kindsFor, type BlockActions } from "./project-blocks";
 import { CardEditor, cardSummary } from "./project-card-section";
 import type { FieldErrors } from "./project-panel-parts";
-import { TopCard, TopPanel } from "./project-top-section";
+import { TopSection } from "./project-top-section";
 
 // The Edit <project> panel (boards 75c, 93, 93c and 93d, issues #298 and
-// #299, epic #522): beside the project page under the edit shell, the Top of
-// the page card (./project-top-section.tsx), the Page blocks card
-// (./project-blocks.tsx) and the Card (issue #300), which the Edit card chip
-// on Home and the Projects list opens. The Top of the page card, a block's
-// row, or either's Edit chip on the page opens that panel in the cards'
-// place, with "Page blocks" to go back. Every change goes straight back to
-// the page, which redraws as the editor types. In Phone the fields that have
-// a phone version edit it; an empty phone field shows the desktop text.
+// #299, epics #522 and #614): beside the project page under the edit shell,
+// every part of the page is a row, as the Edit post panel's sections are: the
+// Top of the page (./project-top-section.tsx), one row per page block in page
+// order (./project-blocks.tsx), and the Card (issue #300), which the Edit card
+// chip on Home and the Projects list opens. Any of them may be open at once,
+// each where it sits, and an Edit chip on the page opens its row. Every
+// change goes straight back to the page, which redraws as the editor types.
+// In Phone the fields that have a phone version edit it; an empty phone field
+// shows the desktop text.
 
 export type { FieldErrors };
-
-/** What the panel picked: the top of the page or one block, outlined on the page, and whether its panel is open in the cards' place. */
-export type PanelView = { readonly selected: PlacedSection | null; readonly open: boolean };
 
 type Change = (change: (fields: ProjectFields) => ProjectFields) => void;
 
@@ -72,9 +63,8 @@ export function ProjectEditPanel({
   errors,
   expanded,
   onExpandedChange,
+  onOpen,
   scrollTo,
-  block: blockView,
-  onBlockChange,
   onClose,
 }: {
   /** The project's name, as the panel's title says it. */
@@ -90,10 +80,10 @@ export function ProjectEditPanel({
   errors: FieldErrors;
   expanded: readonly Section[];
   onExpandedChange: (sections: Section[]) => void;
+  /** Opens a row beside the open ones and brings it into view, as Add block does with its new block's row. */
+  onOpen: (section: Section) => void;
   /** The section an Edit chip just opened, brought into view; a new object each time. */
   scrollTo: { readonly section: Section } | null;
-  block: PanelView;
-  onBlockChange: (view: PanelView) => void;
   onClose: () => void;
 }) {
   const card = usePanelScroll(scrollTo);
@@ -102,11 +92,6 @@ export function ProjectEditPanel({
   const { blocks } = fields;
   const setBlocks = (change: (blocks: readonly BlockFields[]) => readonly BlockFields[]) => onChange((f) => ({ ...f, blocks: change(f.blocks) }));
 
-  const select = (section: PlacedSection | null, open: boolean) => onBlockChange({ selected: section, open });
-  const backToList = () => {
-    select(blockView.selected, false);
-    if (!expanded.includes("blocks")) onExpandedChange([...expanded, "blocks"]);
-  };
   const actionsOf = (id: string, index: number): BlockActions => {
     const target = blocks.find((b) => b.id === id);
     return {
@@ -119,10 +104,7 @@ export function ProjectEditPanel({
         setBlocks(() => left);
         // The server keeps a file while a stored version of a project shows it.
         for (const src of letGo) void discardProjectPhoto(src);
-        if (blockView.selected === blockSection(id)) {
-          select(null, false);
-          if (!expanded.includes("blocks")) onExpandedChange([...expanded, "blocks"]);
-        }
+        onExpandedChange(expanded.filter((s) => s !== blockSection(id)));
       },
     };
   };
@@ -130,14 +112,8 @@ export function ProjectEditPanel({
     const next = addBlock(blocks, k);
     setBlocks(() => next);
     const id = lastBlockId(next);
-    if (id !== undefined && next !== blocks) select(blockSection(id), true);
+    if (id !== undefined && next !== blocks) onOpen(blockSection(id));
   };
-
-  const topOpen = blockView.open && blockView.selected === "top";
-  const openId = blockView.open && blockView.selected !== null ? blockIdOf(blockView.selected) : null;
-  const openIndex = openId === null ? -1 : blocks.findIndex((b) => b.id === openId);
-  const open = openIndex === -1 ? null : blocks[openIndex];
-  const blocked = new Set(blocks.filter((b) => Object.keys(errorsIn(errors, b.id)).length > 0).map((b) => b.id));
 
   return (
     <EditPanel label={`Edit ${name}`} eyebrow="Project page" title={`Edit ${name}`} expanded={expanded} onExpandedChange={onExpandedChange} onClose={onClose}>
@@ -147,56 +123,31 @@ export function ProjectEditPanel({
         </p>
       )}
 
-      {topOpen ? (
-        <TopPanel fields={fields} model={model} phone={phone} errors={errors} uploads={uploads} onChange={onChange} onBack={backToList} />
-      ) : open !== null ? (
-        <BlockPanel
-          key={open.id}
-          block={open}
-          index={openIndex}
+      <TopSection fields={fields} model={model} phone={phone} errors={errors} uploads={uploads} cardRef={card("top")} onChange={onChange} />
+
+      <BlockRows
+        blocks={blocks}
+        kinds={kindsFor(kind)}
+        phone={phone}
+        errors={errors}
+        uploads={uploads}
+        cardRef={card}
+        actionsOf={actionsOf}
+        onChange={(id, change) => setBlocks((list) => list.map((b) => (b.id === id ? change(b) : b)))}
+        onReorder={(ids) => setBlocks((list) => reorderBlocks(list, ids))}
+        onAdd={add}
+      />
+
+      <PanelSection value="card" cardRef={card("card")} title="Card" summary={cardSummary(homeCard)}>
+        <CardEditor
+          card={fields.card}
+          shown={homeCard}
+          kind={kind}
           phone={phone}
-          errors={errorsIn(errors, open.id)}
-          versionNames={blocks.flatMap((b) => (b.kind === "versions" ? b.items.map((v) => v.pill.trim()).filter((pill) => pill !== "") : []))}
-          uploads={uploads}
-          actions={actionsOf(open.id, openIndex)}
-          onChange={(change) => setBlocks((list) => list.map((b) => (b.id === open.id ? change(b) : b)))}
-          onBack={backToList}
+          errors={errors}
+          onChange={(change) => onChange((f) => ({ ...f, card: { ...f.card, ...change } }))}
         />
-      ) : (
-        <>
-          <TopCard fields={fields} onOpen={() => select("top", true)} />
-
-          <PanelSection value="blocks" cardRef={card("blocks")} title="Page blocks" summary={blocksSummary(blocks)}>
-            <BlocksList
-              blocks={blocks}
-              kinds={kindsFor(kind)}
-              selected={blockView.selected === null ? null : blockIdOf(blockView.selected)}
-              blocked={blocked}
-              actionsOf={actionsOf}
-              onOpen={(id) => select(blockSection(id), true)}
-              onReorder={(ids) => setBlocks((list) => reorderBlocks(list, ids))}
-              onAdd={add}
-            />
-          </PanelSection>
-
-          <PanelSection value="card" cardRef={card("card")} title="Card" summary={cardSummary(homeCard)}>
-            <CardEditor
-              card={fields.card}
-              shown={homeCard}
-              kind={kind}
-              phone={phone}
-              errors={errors}
-              onChange={(change) => onChange((f) => ({ ...f, card: { ...f.card, ...change } }))}
-            />
-          </PanelSection>
-        </>
-      )}
+      </PanelSection>
     </EditPanel>
   );
-}
-
-function blocksSummary(blocks: readonly BlockFields[]): string {
-  const hidden = blocks.filter((b) => b.hidden).length;
-  const n = `${blocks.length} ${blocks.length === 1 ? "block" : "blocks"}`;
-  return hidden === 0 ? n : `${n} · ${hidden} hidden`;
 }

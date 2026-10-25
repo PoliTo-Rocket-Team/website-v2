@@ -12,7 +12,7 @@ import { PANEL_PRIMARY_BUTTON } from "./drawer";
 // type that edits on the page brings its own sections; Save draft and
 // Publish sit on the edit bar, not here.
 
-/** A section card's frame; a closed card that opens its panel in the cards' place wears it too. */
+/** A section card's frame. */
 export const SECTION_CARD =
   "scroll-mt-4 rounded-xl border border-hairline bg-ground/40 transition-colors duration-300 ease-out data-[state=open]:border-accent/40";
 
@@ -95,19 +95,25 @@ export function usePanelScroll<Section extends string>(scrollTo: { readonly sect
 /**
  * One section card: its title and a one-line summary while closed, the
  * fields while open. `control` sits in the header beside the chevron, outside
- * the toggle, as an optional section's show-on-page switch does (board 75c).
+ * the toggle, as an optional section's show-on-page switch does (board 75c);
+ * `lead` sits before the title, outside the toggle too, as a page block's
+ * drag grip does. `tag` follows the title, open or closed.
  */
 export function PanelSection({
   value,
   title,
+  tag,
   summary,
+  lead,
   control,
   cardRef,
   children,
 }: {
   value: string;
   title: string;
+  tag?: ReactNode;
   summary: string;
+  lead?: ReactNode;
   control?: ReactNode;
   cardRef?: (node: HTMLDivElement | null) => void;
   children: ReactNode;
@@ -116,11 +122,15 @@ export function PanelSection({
     <AccordionPrimitive.Item ref={cardRef} value={value} className={SECTION_CARD}>
       <AccordionPrimitive.Header asChild>
         <h3 className="relative">
+          {lead !== undefined && <span className="absolute left-3 top-1/2 flex -translate-y-1/2">{lead}</span>}
           <AccordionPrimitive.Trigger
-            className={`group/section flex w-full items-center justify-between gap-4 rounded-xl px-4 py-3.5 text-left ${CONTENT_FOCUS}`}
+            className={`group/section flex w-full items-center justify-between gap-4 rounded-xl py-3.5 pr-4 text-left ${lead === undefined ? "pl-4" : "pl-8"} ${CONTENT_FOCUS}`}
           >
             <span className={`min-w-0 ${control === undefined ? "" : "pr-14"}`}>
-              <span className="block text-[14px] font-semibold leading-snug">{title}</span>
+              <span className="flex items-center gap-2">
+                <span className="text-[14px] font-semibold leading-snug">{title}</span>
+                {tag}
+              </span>
               <span className="mt-0.5 block truncate text-[12px] text-prt-muted group-data-[state=open]/section:hidden">{summary}</span>
             </span>
             <ChevronDown
