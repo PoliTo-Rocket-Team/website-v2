@@ -214,6 +214,16 @@ export type PageBlockOf<L> =
 
 export type BlockKind = PageBlockOf<unknown>["kind"];
 
+/**
+ * The three parts of a page's top, which the editor outlines one by one
+ * (epic #614, ruling R2.1 on #720): the title and its details (the name,
+ * intro, status and dates), the visual, and the key facts.
+ */
+export type TopPart = "title" | "visual" | "facts";
+
+/** The page's parts the editor can outline: the top's three, and each block by its id (`block:<id>`, epic #522). */
+export type ProjectPart = `top:${TopPart}` | `block:${string}`;
+
 /** A block as the page draws it: a launch history's campaigns as their cards. */
 export type PageBlock = PageBlockOf<LogEntry>;
 

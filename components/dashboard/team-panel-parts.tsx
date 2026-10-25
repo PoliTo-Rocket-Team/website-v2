@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Lock, TriangleAlert, Upload, X } from "lucide-react";
+import { Lock, TriangleAlert, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { uploadTeamPagePhoto } from "@/app/dashboard/actions";
 import { Avatar } from "@/components/about/person";
@@ -9,26 +9,38 @@ import type { PhotoChoice } from "@/lib/about/team-page-edit";
 import { personOf, type TeamPerson } from "@/lib/about/team-person";
 import type { PersonPhoto } from "@/lib/about/types";
 import { CONTENT_FOCUS } from "./content-parts";
+import { EditorPanel } from "./editor-panel";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
 import { PersonCombobox } from "./person-combobox";
 import { PhotoPicker } from "./photo-picker";
 
-// The pieces the Team page editor's Add leader and Edit a head block panels
-// share (boards 80f and 80g, issue #285): the 480px panel beside the page, its
-// "TEAM PAGE · <section>" header, the amber visual-only note, a team member
-// picker, the photo from their profile, another one the site holds or an
-// uploaded one (issue #323), and
-// LinkedIn beside the locked team email.
+// The pieces the Team page editor's panels share (boards 80b, 80d, 80f and
+// 80g, issues #285 and #736): the panel itself, drawn on the content editors'
+// shared EditorPanel frame under a "TEAM PAGE · <section>" eyebrow, the amber
+// visual-only note, a team member picker, the photo from their profile,
+// another one the site holds or an uploaded one (issue #323), and LinkedIn
+// beside the locked team email.
 
 export const PANEL_HINT = "mt-1.5 text-[12px] leading-snug text-prt-muted";
 
-/** The panel beside the page: a header, a scrolling body and the actions pinned at its foot. */
+/** A text action at the start of a panel's foot, shaped as the outreach editor's foot Remove: Back to the team record. */
+export const PANEL_FOOT_LINK = `inline-flex h-11 items-center gap-2 rounded-full px-2 text-[14px] font-semibold text-prt-text transition-opacity duration-300 ease-out enabled:hover:opacity-80 disabled:cursor-default disabled:text-dim ${CONTENT_FOCUS}`;
+
+/** The red text action at the start of a panel's foot, as the outreach editor's foot Remove: Remove from page, Hide from page. */
+export const PANEL_FOOT_DANGER_LINK = `inline-flex h-11 items-center gap-2 rounded-full px-2 text-[14px] font-semibold text-danger transition-opacity duration-300 ease-out hover:opacity-80 ${CONTENT_FOCUS}`;
+
+/**
+ * A Team page panel beside the page, on the shared EditorPanel frame (issue
+ * #736): the frame's header, body and foot, with the panel's own action at
+ * the foot's start and its buttons at the end.
+ */
 export function TeamPanel({
   label,
   eyebrow,
   title,
   onClose,
-  footer,
+  footStart,
+  footEnd,
   children,
 }: {
   label: string;
@@ -36,31 +48,27 @@ export function TeamPanel({
   eyebrow?: string;
   title: string;
   onClose: () => void;
-  footer: ReactNode;
+  /** The action at the foot's start: Remove from page, Back to the team record. */
+  footStart?: ReactNode;
+  /** The buttons at the foot's end: Cancel, then the main action. */
+  footEnd: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <aside
-      aria-label={label}
-      className="flex flex-col border-l border-hairline bg-panel max-md:h-full md:w-[480px] md:shrink-0"
-    >
-      <header className="flex shrink-0 items-start gap-3.5 border-b border-hairline px-7 py-5">
-        <div className="min-w-0 flex-1">
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Team page{eyebrow === undefined ? "" : ` · ${eyebrow}`}</p>
-          <h2 className="mt-1.5 truncate text-[20px] font-bold leading-tight">{title}</h2>
+    <EditorPanel
+      label={label}
+      eyebrow={`Team page${eyebrow === undefined ? "" : ` · ${eyebrow}`}`}
+      title={title}
+      onClose={onClose}
+      foot={
+        <div className="flex flex-1 items-center gap-3">
+          {footStart}
+          <span className="ml-auto flex gap-3">{footEnd}</span>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close the panel"
-          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-prt-muted transition-colors duration-300 ease-out hover:bg-white-5 hover:text-prt-text ${CONTENT_FOCUS}`}
-        >
-          <X aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-        </button>
-      </header>
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-7 py-6">{children}</div>
-      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-hairline px-7 py-4">{footer}</footer>
-    </aside>
+      }
+    >
+      <div className="space-y-4">{children}</div>
+    </EditorPanel>
   );
 }
 
@@ -251,7 +259,7 @@ export function PhotoChoices({
 /** LinkedIn, as a handle after "in/", beside the team email, which is never edited here. */
 export function ContactFields({ linkedin, error, onChange }: { linkedin: string; error?: string; onChange: (linkedin: string) => void }) {
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-2 gap-2.5">
       <Field label="LinkedIn" error={error}>
         {(id, describedBy) => (
           <div className="relative">
