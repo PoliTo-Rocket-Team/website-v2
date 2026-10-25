@@ -498,8 +498,6 @@ export type TeamCandidate = {
   readonly memberships: Memberships;
 };
 
-const LOOKUP_LIMIT = 6;
-
 function looksLikeEmail(text: string): boolean {
   return z.email().safeParse(text).success;
 }
@@ -507,7 +505,8 @@ function looksLikeEmail(text: string): boolean {
 /**
  * The field's answer: an email finds the member with it, the person waiting
  * with it, or says they are not on the team yet; anything else searches the
- * team by name.
+ * team by name. An empty field lists the whole team by name, so the field
+ * shows people as soon as it opens, and typing narrows them (issue #618).
  */
 export function lookupForAdd(
   query: string,
@@ -549,8 +548,7 @@ export function lookupForAdd(
     if (waitingEmails.some((e) => signInEmailOf(e) === email)) return { kind: "waiting", email };
     return { kind: "new-email", email };
   }
-  if (text.length < 2) return { kind: "none" };
-  const people = team.filter((c) => matchesQuery([c.name], text)).slice(0, LOOKUP_LIMIT);
+  const people = team.filter((c) => matchesQuery([c.name], text)).sort((x, y) => x.name.localeCompare(y.name));
   return people.length === 0 ? { kind: "none" } : { kind: "people", people: people.map(match) };
 }
 

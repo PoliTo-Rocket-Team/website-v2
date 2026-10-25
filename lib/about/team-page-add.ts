@@ -69,8 +69,8 @@ export function arcHasRoom(build: TeamBuild, layer: TeamPageLayer): boolean {
 
 /** The Add leader panel as the editor fills it. */
 export type LeaderFields = {
-  /** "Person from the team", by member id. */
-  readonly person: number;
+  /** "Person from the team", by member id; null until the editor picks someone (issue #618). */
+  readonly person: number | null;
   readonly role: string;
   /** The place on the arc, as an index into `arcGaps` of the arc without this leader. */
   readonly gap: number;
@@ -78,6 +78,17 @@ export type LeaderFields = {
   readonly photo: PersonPhoto | null;
   readonly linkedin: string;
 };
+
+/** The Add leader panel once someone is picked: the only fields the layer takes. */
+export type PickedLeaderFields = LeaderFields & { readonly person: number };
+
+/** The panel's fields as the layer can take them; null while nobody is picked, so nothing reaches the page. */
+export function pickedLeader(fields: LeaderFields): PickedLeaderFields | null {
+  return fields.person === null ? null : { ...fields, person: fields.person };
+}
+
+/** What the person fields say while nobody is picked, as Give access on the Access page says it. */
+export const CHOOSE_A_PERSON = "Choose a person.";
 
 const memberOf = (build: TeamBuild, id: number): TeamPerson | undefined => build.people.find((p) => p.id === id);
 const ownLinkedin = (person: TeamPerson | undefined) => (person === undefined ? "" : (personOf(person).linkedin ?? ""));
@@ -106,23 +117,13 @@ export function leaderGaps(build: TeamBuild, layer: TeamPageLayer, id: number | 
   return arcGaps(applyLayer(build, without).leaders);
 }
 
-/** The first person on the team the page does not show yet on the arc or as team leader; else the first by name. */
-function someoneNotOnArc(build: TeamBuild, layer: TeamPageLayer): TeamPerson | undefined {
-  const shown = applyLayer(build, layer);
-  const names = new Set([shown.leader?.name, ...shown.leaders.map((l) => l.shown.name)]);
-  const people = teamByName(build);
-  return people.find((p) => !names.has(p.name)) ?? people[0];
-}
-
-/** The panel as "+" at `gap` opens it: someone not on the arc yet, with their own title as the role. */
-export function newLeaderFields(build: TeamBuild, layer: TeamPageLayer, gap: number): LeaderFields | null {
-  const person = someoneNotOnArc(build, layer);
-  if (person === undefined) return null;
-  return { person: person.id, role: person.pageTitle?.trim() ?? "", gap, photo: null, linkedin: ownLinkedin(person) };
+/** The panel as "+" at `gap` opens it: nobody picked yet (issue #618), so nothing is added until the editor picks someone. */
+export function newLeaderFields(gap: number): LeaderFields {
+  return { person: null, role: "", gap, photo: null, linkedin: "" };
 }
 
 /** The panel's fields for added leader `id` as the layer holds them; null when it holds none. */
-export function leaderFieldsOf(build: TeamBuild, layer: TeamPageLayer, id: number): LeaderFields | null {
+export function leaderFieldsOf(build: TeamBuild, layer: TeamPageLayer, id: number): PickedLeaderFields | null {
   const added = layer.addedLeaders.find((l) => l.id === id);
   if (added === undefined) return null;
   const leaders = applyLayer(build, layer).leaders;
@@ -137,10 +138,12 @@ export function leaderFieldsOf(build: TeamBuild, layer: TeamPageLayer, id: numbe
   };
 }
 
-/** Another person in the panel: their own photo and LinkedIn. */
+/** Another person in the panel: their own photo and LinkedIn, and their own title while the role is blank. */
 export function withLeaderPerson(build: TeamBuild, fields: LeaderFields, id: number): LeaderFields {
   const person = memberOf(build, id);
-  return person === undefined ? fields : { ...fields, person: id, photo: null, linkedin: ownLinkedin(person) };
+  if (person === undefined) return fields;
+  const role = fields.role.trim() === "" ? (person.pageTitle?.trim() ?? "") : fields.role;
+  return { ...fields, person: id, role, photo: null, linkedin: ownLinkedin(person) };
 }
 
 /**
@@ -148,7 +151,7 @@ export function withLeaderPerson(build: TeamBuild, fields: LeaderFields, id: num
  * `id`, or a new one when `id` is null (it takes the next added id). Their
  * LinkedIn is kept only where it differs from their own.
  */
-export function layerWithLeader(build: TeamBuild, layer: TeamPageLayer, id: number | null, fields: LeaderFields): TeamPageLayer {
+export function layerWithLeader(build: TeamBuild, layer: TeamPageLayer, id: number | null, fields: PickedLeaderFields): TeamPageLayer {
   const without = id === null ? layer : withoutAddedLeader(layer, id);
   const gaps = leaderGaps(build, layer, id);
   const old = id === null ? undefined : layer.addedLeaders.find((l) => l.id === id);
@@ -165,7 +168,7 @@ export function layerWithLeader(build: TeamBuild, layer: TeamPageLayer, id: numb
   return { ...without, addedLeaders: [...without.addedLeaders, leader] };
 }
 
-export type LeaderFieldErrors = { readonly role?: string; readonly linkedin?: string; readonly arc?: string };
+export type LeaderFieldErrors = { readonly person?: string; readonly role?: string; readonly linkedin?: string; readonly arc?: string };
 
 const TOO_LONG = `Up to ${TEAM_PAGE_TEXT_MAX} characters.`;
 
@@ -183,9 +186,10 @@ function textError(text: string, required: string | null): string | undefined {
 const withDefined = <T extends Record<string, string | undefined>>(errors: T): Partial<T> =>
   Object.fromEntries(Object.entries(errors).filter(([, v]) => v !== undefined)) as Partial<T>;
 
-/** What Add to page refuses: no role, a LinkedIn that is no handle, or a new leader on a full arc. */
+/** What Add to page refuses: nobody picked, no role, a LinkedIn that is no handle, or a new leader on a full arc. */
 export function leaderFieldErrors(build: TeamBuild, layer: TeamPageLayer, id: number | null, fields: LeaderFields): LeaderFieldErrors {
   return withDefined({
+    person: fields.person === null ? CHOOSE_A_PERSON : undefined,
     role: textError(fields.role, "Enter the role the page shows."),
     linkedin: linkedinError(fields.linkedin),
     arc: id === null && !arcHasRoom(build, layer) ? ARC_FULL : undefined,
@@ -197,12 +201,20 @@ export function leaderFieldErrors(build: TeamBuild, layer: TeamPageLayer, id: nu
 /** A head block: a head the roles fill, or the head of a department the editor added (the department's ref). */
 export type HeadRef = HeadSpot | AddedRef;
 
-/** One division lead row in the Edit a head block panel; `at` is null for a row added in the panel. */
-export type LeadRow = { readonly key: number; readonly at: LeadRef | null; readonly person: number; readonly division: string };
+/**
+ * One division lead row in the Edit a head block panel; `at` is null for a
+ * row added in the panel, whose person is null until the editor picks one
+ * (issue #618).
+ */
+export type LeadRow = { readonly key: number; readonly at: LeadRef | null; readonly person: number | null; readonly division: string };
+
+/** A lead row with someone picked: the only rows the layer takes. */
+export type PickedLeadRow = LeadRow & { readonly person: number };
 
 /** The Edit a head block panel as the editor fills it (board 80g). */
 export type HeadFields = {
-  readonly person: number;
+  /** The head; null until the editor picks one for a department they add (issue #618). */
+  readonly person: number | null;
   readonly role: string;
   readonly department: string;
   readonly photo: PersonPhoto | null;
@@ -210,6 +222,21 @@ export type HeadFields = {
   /** The division leads the block shows, in order. */
   readonly leads: readonly LeadRow[];
 };
+
+/** The panel with its head and every lead row picked: the only fields the layer takes. */
+export type PickedHeadFields = Omit<HeadFields, "person" | "leads"> & { readonly person: number; readonly leads: readonly PickedLeadRow[] };
+
+const isPickedRow = (row: LeadRow): row is PickedLeadRow => row.person !== null;
+
+/**
+ * What the page can show of the panel as the editor fills it: nothing while
+ * no head is picked, and only the lead rows with someone picked. Done keeps
+ * it only once `headFieldErrors` refuses nothing, so a row with nobody picked
+ * never reaches the layer.
+ */
+export function pickedHead(fields: HeadFields): PickedHeadFields | null {
+  return fields.person === null ? null : { ...fields, person: fields.person, leads: fields.leads.filter(isPickedRow) };
+}
 
 const isAddedRef = (ref: string): ref is AddedRef => ref.startsWith("added:");
 const idOf = (ref: AddedRef) => Number(ref.slice("added:".length));
@@ -237,7 +264,7 @@ export function defaultHeadRole(title: string | undefined, department: string): 
 }
 
 /** The panel's fields for a head block as the layer shows it; null when the block is not on the page. */
-export function headFieldsOf(build: TeamBuild, layer: TeamPageLayer, at: HeadRef): HeadFields | null {
+export function headFieldsOf(build: TeamBuild, layer: TeamPageLayer, at: HeadRef): PickedHeadFields | null {
   if (isAddedRef(at)) {
     const d = addedDepartment(layer, at);
     if (d === undefined) return null;
@@ -273,11 +300,9 @@ function leadPerson(build: TeamBuild, layer: TeamPageLayer, department: BuiltDep
   return edit?.person ?? department.leads.find((l) => l.spot === at)?.person.id ?? 0;
 }
 
-/** The panel as "+ Add department" opens it: a head from the team, no name yet, no leads. */
-export function newDepartmentFields(build: TeamBuild): HeadFields | null {
-  const person = teamByName(build)[0];
-  if (person === undefined) return null;
-  return { person: person.id, role: "", department: "", photo: null, linkedin: ownLinkedin(person), leads: [] };
+/** The panel as "+ Add department" opens it: no head picked yet (issue #618), no name yet, no leads. */
+export function newDepartmentFields(): HeadFields {
+  return { person: null, role: "", department: "", photo: null, linkedin: "", leads: [] };
 }
 
 /** Another head in the block: their own photo and LinkedIn. */
@@ -286,24 +311,20 @@ export function withHeadPerson(build: TeamBuild, fields: HeadFields, id: number)
   return person === undefined ? fields : { ...fields, person: id, photo: null, linkedin: ownLinkedin(person) };
 }
 
-/** A new row at the end of the leads: someone not leading a row yet, with no division until the editor types one. */
-export function withNewLead(build: TeamBuild, fields: HeadFields): HeadFields {
-  const taken = new Set([fields.person, ...fields.leads.map((l) => l.person)]);
-  const people = teamByName(build);
-  const person = people.find((p) => !taken.has(p.id)) ?? people[0];
-  if (person === undefined) return fields;
+/** A new row at the end of the leads: nobody picked (issue #618) and no division until the editor gives them. */
+export function withNewLead(fields: HeadFields): HeadFields {
   const key = fields.leads.reduce((last, l) => Math.max(last, l.key), -1) + 1;
-  return { ...fields, leads: [...fields.leads, { key, at: null, person: person.id, division: "" }] };
+  return { ...fields, leads: [...fields.leads, { key, at: null, person: null, division: "" }] };
 }
 
 /** The id each added thing in `rows` takes: its own, or the next free one from `from` for a row added in the panel. */
-function idsOf(rows: readonly LeadRow[], from: number): Map<number, number> {
+function idsOf(rows: readonly PickedLeadRow[], from: number): Map<number, number> {
   let next = from;
   return new Map(rows.map((row) => [row.key, row.at !== null && isAddedRef(row.at) ? idOf(row.at) : next++]));
 }
 
 /** A row's added lead, keeping what the layer already shows for them when they are the same person. */
-function addedLeadOf(row: LeadRow, id: number, old: AddedLead | undefined): AddedLead {
+function addedLeadOf(row: PickedLeadRow, id: number, old: AddedLead | undefined): AddedLead {
   const same = old !== undefined && old.person === row.person;
   return {
     id,
@@ -316,7 +337,7 @@ function addedLeadOf(row: LeadRow, id: number, old: AddedLead | undefined): Adde
 }
 
 /** A lead spot's edit from its row: only what differs from the roles; an edit for another person drops the old person's name, photo and LinkedIn. */
-function leadSpotEdit(old: SpotEdit | undefined, built: { person: TeamPerson; division: string }, row: LeadRow): SpotEdit {
+function leadSpotEdit(old: SpotEdit | undefined, built: { person: TeamPerson; division: string }, row: PickedLeadRow): SpotEdit {
   const { hidden: _hidden, person: oldPerson, role: _role, ...rest } = old ?? {};
   const samePerson = (oldPerson ?? built.person.id) === row.person;
   const division = row.division.trim();
@@ -333,7 +354,7 @@ const withSpot = (spots: TeamPageLayer["spots"], spot: HeadSpot | LeadSpot, edit
 };
 
 /** A head's edit from the panel: only what differs from the roles; a name edited before stays while the person does. */
-function headSpotEdit(build: TeamBuild, old: SpotEdit | undefined, head: { person: TeamPerson; title: string | undefined }, department: string, fields: HeadFields): SpotEdit {
+function headSpotEdit(build: TeamBuild, old: SpotEdit | undefined, head: { person: TeamPerson; title: string | undefined }, department: string, fields: PickedHeadFields): SpotEdit {
   const own = ownLinkedin(memberOf(build, fields.person));
   const role = fields.role.trim();
   const linkedin = linkedinHandle(fields.linkedin);
@@ -355,7 +376,7 @@ function headSpotEdit(build: TeamBuild, old: SpotEdit | undefined, head: { perso
  * whole. `at` null adds a new department after the others. None of it
  * creates a role, department or division.
  */
-export function layerWithHead(build: TeamBuild, layer: TeamPageLayer, at: HeadRef | null, fields: HeadFields): TeamPageLayer {
+export function layerWithHead(build: TeamBuild, layer: TeamPageLayer, at: HeadRef | null, fields: PickedHeadFields): TeamPageLayer {
   if (at === null || isAddedRef(at)) return layerWithAddedDepartment(build, layer, at, fields);
   const found = builtHead(build, at);
   if (found === null) return layer;
@@ -393,7 +414,7 @@ export function layerWithHead(build: TeamBuild, layer: TeamPageLayer, at: HeadRe
   return { ...layer, spots, departments: Object.keys(edit).length === 0 ? departments : { ...departments, [key]: edit } };
 }
 
-function layerWithAddedDepartment(build: TeamBuild, layer: TeamPageLayer, at: AddedRef | null, fields: HeadFields): TeamPageLayer {
+function layerWithAddedDepartment(build: TeamBuild, layer: TeamPageLayer, at: AddedRef | null, fields: PickedHeadFields): TeamPageLayer {
   const old = at === null ? undefined : addedDepartment(layer, at);
   if (at !== null && old === undefined) return layer;
   const id = old?.id ?? nextAddedId(layer);
@@ -421,26 +442,38 @@ function layerWithAddedDepartment(build: TeamBuild, layer: TeamPageLayer, at: Ad
   return { ...layer, addedDepartments: [...others.slice(0, index), department, ...others.slice(index)] };
 }
 
+/** What a lead row refuses: nobody picked, or the division it needs. */
+export type LeadRowErrors = { readonly person?: string; readonly division?: string };
+
 export type HeadFieldErrors = {
+  readonly person?: string;
   readonly department?: string;
   readonly role?: string;
   readonly linkedin?: string;
-  /** By row key: a division the row needs. */
-  readonly leads?: Readonly<Record<number, string>>;
+  /** By row key: what the row refuses. */
+  readonly leads?: Readonly<Record<number, LeadRowErrors>>;
 };
 
-/** What Done refuses: an added department with no name, text the layer would not take, a LinkedIn that is no handle, or an added lead with no division. */
+/**
+ * What Done refuses: no head or lead picked, an added department with no
+ * name, text the layer would not take, a LinkedIn that is no handle, or an
+ * added lead with no division.
+ */
 export function headFieldErrors(at: HeadRef | null, fields: HeadFields): HeadFieldErrors {
   const added = at === null || isAddedRef(at);
   const leads = Object.fromEntries(
     fields.leads.flatMap((row) => {
       const needsDivision = row.at === null || isAddedRef(row.at);
-      const error = textError(row.division, needsDivision ? "Enter the division." : null);
-      return error === undefined ? [] : [[row.key, error]];
+      const errors = withDefined({
+        person: row.person === null ? CHOOSE_A_PERSON : undefined,
+        division: textError(row.division, needsDivision ? "Enter the division." : null),
+      });
+      return Object.keys(errors).length === 0 ? [] : [[row.key, errors]];
     }),
   );
   return {
     ...withDefined({
+      person: fields.person === null ? CHOOSE_A_PERSON : undefined,
       department: textError(fields.department, added ? "Enter the department's name." : null),
       role: textError(fields.role, null),
       linkedin: linkedinError(fields.linkedin),
