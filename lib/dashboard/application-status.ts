@@ -200,16 +200,27 @@ export function colourName(colour: string): string {
 /** The longest name a status may have: it has to fit a list row and the picker. */
 export const STATUS_NAME_MAX = 40;
 
+/** A status's name and colour as the editor read them: the line a rename or recolour is guarded on. */
+export type StatusAsRead = { readonly name: string; readonly colour: string };
+
 /**
  * One change to the status list (board 97d): add a status under a built-in
- * parent, rename and recolour any status, or delete an added one. Who may
- * make it, and whether a delete is allowed (`deleteRefusal`), is checked
- * where it is written.
+ * parent, rename and recolour any status, or delete an added one. An edit
+ * carries the name and colour it was made over (`was`), so it lands only
+ * while the status still reads that way and never undoes someone else's edit.
+ * Who may make a change, and whether a delete is allowed (`deleteRefusal`),
+ * is checked where it is written.
  */
 export type StatusListChange =
   | { readonly kind: "add"; readonly name: string; readonly colour: StatusColour; readonly parent: BuiltInStatusKey }
-  | { readonly kind: "edit"; readonly key: string; readonly name: string; readonly colour: StatusColour }
+  | { readonly kind: "edit"; readonly key: string; readonly was: StatusAsRead; readonly name: string; readonly colour: StatusColour }
   | { readonly kind: "delete"; readonly key: string };
+
+function statusAsReadOf(value: unknown): StatusAsRead | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { name, colour } = value as Record<string, unknown>;
+  return typeof name === "string" && typeof colour === "string" ? { name, colour } : null;
+}
 
 type Checked<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
 
@@ -235,7 +246,10 @@ export function parseStatusListChange(value: unknown): Checked<StatusListChange>
       if (!isStatusColour(v.colour)) return invalid;
       const name = checkStatusName(v.name);
       if (!name.ok) return name;
-      if (v.kind === "edit") return key === null ? invalid : { ok: true, value: { kind: "edit", key, name: name.value, colour: v.colour } };
+      if (v.kind === "edit") {
+        const was = statusAsReadOf(v.was);
+        return key === null || was === null ? invalid : { ok: true, value: { kind: "edit", key, was, name: name.value, colour: v.colour } };
+      }
       return isBuiltInStatusKey(v.parent) ? { ok: true, value: { kind: "add", name: name.value, colour: v.colour, parent: v.parent } } : invalid;
     }
     default:

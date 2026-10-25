@@ -497,7 +497,7 @@ const ACTION_CASES: readonly ActionCase[] = [
   // The Statuses editor (issue #752): anyone who moves applications anywhere manages the one list.
   {
     action: "recruitment-actions.changeStatusList",
-    run: () => recruitmentActions.changeStatusList({ kind: "edit", key: "new", name: "New", colour: "#8A8A8F" }),
+    run: () => recruitmentActions.changeStatusList({ kind: "edit", key: "new", was: { name: "New", colour: "#8A8A8F" }, name: "New", colour: "#8A8A8F" }),
     may: (r) => r.expect.changes.applications.length > 0,
     control: by("team leader"),
   },

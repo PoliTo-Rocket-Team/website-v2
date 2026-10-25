@@ -881,18 +881,43 @@ async function addStatus({ name, colour, parent }: Extract<StatusListChange, { k
   return added.length === 0 ? refused(LIST_CHANGED) : written(null);
 }
 
-/** Rename and recolour: a built-in status and an added one alike. */
-async function editStatus({ key, name, colour }: Extract<StatusListChange, { kind: "edit" }>): Promise<WriteResult<null>> {
+/**
+ * Rename and recolour: a built-in status and an added one alike. The write is
+ * guarded on the name and colour the editor read, so of two people editing
+ * one status at once the later is told the list changed instead of silently
+ * undoing the earlier.
+ */
+async function editStatus({ key, was, name, colour }: Extract<StatusListChange, { kind: "edit" }>): Promise<WriteResult<null>> {
   const changed = await runAuditQuery((db) =>
-    db.update(applicationStatuses).set({ name, colour }).where(eq(applicationStatuses.key, key)).returning({ key: applicationStatuses.key }),
+    db
+      .update(applicationStatuses)
+      .set({ name, colour })
+      .where(and(eq(applicationStatuses.key, key), eq(applicationStatuses.name, was.name), eq(applicationStatuses.colour, was.colour)))
+      .returning({ key: applicationStatuses.key }),
   );
   return changed.length === 0 ? refused(LIST_CHANGED) : written(null);
 }
 
 /**
+ * Postgres' answers when a foreign key refuses a delete: restrict_violation
+ * for an `on delete restrict` key, as `applications.status_key` is, and
+ * foreign_key_violation for a `no action` one.
+ */
+const FOREIGN_KEY_REFUSALS: ReadonlySet<unknown> = new Set(["23001", "23503"]);
+
+function isForeignKeyRefusal(error: unknown): boolean {
+  for (let e = error; e instanceof Error; e = e.cause) {
+    if (FOREIGN_KEY_REFUSALS.has((e as { code?: unknown }).code)) return true;
+  }
+  return false;
+}
+
+/**
  * Delete an added status, only while no application uses it (`deleteRefusal`).
  * The delete itself is guarded on both, so an application moved to the status
- * a moment earlier keeps it; the table's foreign key holds the same line.
+ * a moment earlier keeps it. One moved in while the delete runs is past the
+ * guard's reading, and the table's foreign key refuses the delete instead:
+ * that is the same in-use answer, read again below, not an error.
  */
 async function deleteStatus(key: string): Promise<WriteResult<null>> {
   if (isBuiltInStatusKey(key)) return refused(deleteRefusal({ kind: "built-in", key }, 0)!);
@@ -907,7 +932,10 @@ async function deleteStatus(key: string): Promise<WriteResult<null>> {
         ),
       )
       .returning({ key: applicationStatuses.key }),
-  );
+  ).catch((error: unknown) => {
+    if (isForeignKeyRefusal(error)) return [];
+    throw error;
+  });
   if (deleted.length > 0) return written(null);
   const [row] = await getDb().select({ parentKey: applicationStatuses.parentKey }).from(applicationStatuses).where(eq(applicationStatuses.key, key)).limit(1);
   if (!row) return refused(LIST_CHANGED);

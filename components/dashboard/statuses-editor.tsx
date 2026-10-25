@@ -43,7 +43,7 @@ const NEW_STATUS_COLOUR: StatusColour = "#E5489A";
 
 type Change =
   | { readonly kind: "add"; readonly name: string; readonly colour: StatusColour; readonly parent: BuiltInStatusKey }
-  | { readonly kind: "edit"; readonly key: string; readonly name: string; readonly colour: string }
+  | { readonly kind: "edit"; readonly key: string; readonly was: { readonly name: string; readonly colour: string }; readonly name: string; readonly colour: string }
   | { readonly kind: "delete"; readonly key: string };
 
 function usesLine(uses: number): string {
@@ -130,7 +130,7 @@ function StatusRow({ listed, uses, pending, onSave }: { listed: ListedStatus; us
     const checked = checkStatusName(renaming);
     if (!checked.ok) return toast.error(checked.error);
     if (checked.value === name) return setRenaming(null);
-    onSave({ kind: "edit", key: status.key, name: checked.value, colour }, () => setRenaming(null));
+    onSave({ kind: "edit", key: status.key, was: { name, colour }, name: checked.value, colour }, () => setRenaming(null));
   };
   const keys = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -149,7 +149,7 @@ function StatusRow({ listed, uses, pending, onSave }: { listed: ListedStatus; us
         label={`Colour of ${name}: ${colourName(colour)}`}
         colour={colour}
         disabled={pending}
-        onPick={(picked) => picked !== colour && onSave({ kind: "edit", key: status.key, name, colour: picked })}
+        onPick={(picked) => picked !== colour && onSave({ kind: "edit", key: status.key, was: { name, colour }, name, colour: picked })}
       />
       {renaming === null ? (
         <span className="min-w-0 flex-1 truncate text-[13px]">{name}</span>
