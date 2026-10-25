@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
-import { GripVertical, Plus, Trash2, TriangleAlert, Upload } from "lucide-react";
+import { Plus, Trash2, TriangleAlert, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { measurePartnerLogo, removePartner, reorderPartners, savePartner } from "@/app/dashboard/actions";
 import { moveTo } from "@/lib/content/order";
@@ -10,12 +10,12 @@ import { PARTNER_TEXT_LIMITS, type Partner, type PartnerLogo, type PartnerTier }
 import { fieldsOf, partnerFieldErrors, websiteLabel, type PartnerFieldErrors, type PartnerFields } from "@/lib/partners-fields";
 import type { MeasuredLogo } from "@/lib/partners-editor";
 import { ConfirmDialog } from "./confirm-dialog";
-import { CONTENT_FOCUS as FOCUS, PublishFooter, RowMenu, StatusPill, TextField, useDragOrder, type DragRow } from "./content-parts";
+import { CONTENT_FOCUS as FOCUS, DragGrip, PublishFooter, RowMenu, StatusPill, TextField, useDragOrder, type DragRow } from "./content-parts";
 import { Toggle } from "./controls";
 import { DrawerPage, PanelBody, SidePanel } from "./drawer";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
-import { RowOpen } from "./row-open";
+import { EditChip } from "./row-open";
 
 // The Partners page (boards 76 and 76b, issue #256): the partners in site
 // order, Main then Media, each row dragged to its place in its tier; a row or
@@ -196,16 +196,14 @@ function PartnerRow({
       onDragOver={drag.onDragOver}
       onDragEnd={drag.onDragEnd}
       onClick={onOpen}
-      className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors duration-300 ease-out md:gap-4 md:px-5 ${
+      className={`group/row flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors duration-300 ease-out md:gap-4 md:px-5 ${
         selected ? "bg-accent/[0.08]" : "hover:bg-white-5"
       } ${drag.dragged ? "opacity-50" : ""}`}
     >
-      <GripVertical aria-hidden className={`hidden h-4 w-4 shrink-0 cursor-grab text-dim md:block ${squeezed}`} strokeWidth={1.75} />
+      <DragGrip className={squeezed} />
       <LogoBox logo={partner.logo} name={partner.name} size={panelOpen ? "row-narrow" : "row"} />
       <span className="min-w-0 flex-1">
-        <RowOpen label={`Open ${partner.name}`} onOpen={onOpen} className="block truncate text-[15px] text-prt-text">
-          {partner.name}
-        </RowOpen>
+        <span className="block truncate text-[15px] text-prt-text">{partner.name}</span>
         <span className="block truncate text-[13px] text-prt-muted">{partner.oneLiner}</span>
       </span>
       <span className={`hidden w-[200px] shrink-0 truncate text-[13px] lg:block ${squeezed} ${partner.website ? "text-text-2" : "text-dim"}`}>
@@ -214,6 +212,7 @@ function PartnerRow({
       <span className="w-[86px] shrink-0">
         <StatusPill status={statusOf(item.version)} short />
       </span>
+      <EditChip label={`Edit ${partner.name}`} target={{ onOpen }} />
       <RowMenu
         name={partner.name}
         onUp={onMove && index > 0 ? () => onMove(index - 1) : null}

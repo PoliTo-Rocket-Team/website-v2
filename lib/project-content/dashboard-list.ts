@@ -6,7 +6,7 @@ import { homeCardOf, newestFirst, pageOf, type ProjectRecord } from "./record";
 // The dashboard Projects list (board 91, issue #506): one row per stored
 // project, drafts included, newest first by the same rule as the home
 // Projects row and /projects (`newestFirst`). Each row reads the editor's
-// version, the one Edit page opens on, and says whether a published version
+// version, the one the row's editor opens on, and says whether a published version
 // is on the site. The list sets no order: the stored site order stays as it
 // is and only breaks a tie in start year, as on the public pages.
 
@@ -41,7 +41,7 @@ export function rowVisualOf(record: ProjectRecord): RowVisual {
 
 export type ProjectRow = {
   readonly id: number;
-  /** Where Edit page opens it: /dashboard/projects/<slug>. */
+  /** Where a click on the row, or its Edit chip, opens it: /dashboard/projects/<slug>. */
   readonly slug: string;
   readonly name: string;
   /** The project's background, as its home card draws it. */
