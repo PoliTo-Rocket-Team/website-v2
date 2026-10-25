@@ -374,9 +374,10 @@ for (const seat of SEATS) {
  * email, who has not signed in yet. Add member writes them this way
  * (`addMember`, lib/dashboard/database-team.ts): a `users` row keyed
  * `added:<uuid>` that holds the email and the names, and a `team_joins` row,
- * with no member row, no role and no sign-in row. They stay waiting until
- * they sign in or their NDA is confirmed, so a preview shows the screens only
- * such a person has, like the editable personal email (issue #741). They are
+ * with no member row, no role and no sign-in row. They wait until their NDA
+ * is confirmed, and no account is linked to them until they sign in, so a
+ * preview shows the screens only such a person has, like the editable
+ * personal email (issue #741). They are
  * kept out of `PEOPLE`, so they get no sign-in row and the reset of the
  * seed's sign-in rows never names them.
  */
