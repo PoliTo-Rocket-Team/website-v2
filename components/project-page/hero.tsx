@@ -1,6 +1,7 @@
+import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import type { Hero, Photo, TopVisual } from "@/lib/project-pages";
+import type { Hero, Photo, TopPart, TopVisual } from "@/lib/project-pages";
 import type { Project } from "@/lib/projects";
 import { stageStillOf, stageTextureOf, type OwnRocket } from "@/lib/rocket-model";
 import { CopyText, FactList, Pill } from "./parts";
@@ -10,6 +11,22 @@ import { CopyText, FactList, Pill } from "./parts";
 // project's background (when its visual is a model or a photo) and up to six
 // key facts. Boards 23m, 24m and 25m (390): the same stack at 20px sides,
 // pill and dates in one row under the intro, facts 3 x 2.
+//
+// The editor outlines the top in three parts (epic #614, ruling R2.1 on
+// #720), each through `frame`: the title and its details, the visual and the
+// key facts. With no frame the hero draws as it always has.
+
+/** Wraps one of the top's three parts; the editor outlines each one. */
+export type TopFrame = (part: TopPart, node: ReactNode) => ReactNode;
+
+/**
+ * The room over the visual and over the key facts. Outlined, each part's
+ * outline stands out from it and the next part's chips ride its top edge
+ * (EditableBlock in components/dashboard/edit-shell.tsx), so the parts keep
+ * more room between them, clear of each other's outlines.
+ */
+const PART_ROOM = "mt-6 md:mt-10";
+const OUTLINED_ROOM = "mt-10 md:mt-20";
 
 /**
  * The panel's rocket slot: a still of the project's own model, or of the
@@ -51,9 +68,9 @@ function PhotoFill({ photo }: { photo: Photo }) {
  * engine's still is centred on the orange streak texture in its place
  * (stageTextureOf, issue #382). A photo fills the panel.
  */
-function VisualPanel({ texture, visual }: { texture: string; visual: Exclude<TopVisual, { kind: "none" }> }) {
+function VisualPanel({ texture, visual, className }: { texture: string; visual: Exclude<TopVisual, { kind: "none" }>; className: string }) {
   return (
-    <div className="glass-project relative mt-6 h-[220px] overflow-hidden rounded-2xl md:mt-10 md:h-[620px]">
+    <div className={`glass-project relative h-[220px] overflow-hidden rounded-2xl md:h-[620px] ${className}`}>
       {visual.kind === "model" ? (
         <>
           <Image
@@ -82,6 +99,7 @@ export function ProjectHero({
   project,
   hero,
   underNavbar = true,
+  frame,
 }: {
   project: Pick<Project, "index" | "name" | "texture">;
   hero: Hero;
@@ -91,40 +109,48 @@ export function ProjectHero({
    * (issue #495), so it keeps the second part alone.
    */
   underNavbar?: boolean;
+  /** Outlines the top's three parts, in the editor. */
+  frame?: TopFrame;
 }) {
   const { visual } = hero;
+  // A part after the first: as it is with its room, or outlined under the room an outline needs.
+  const after = (part: TopPart, node: (room: string) => ReactNode) =>
+    frame === undefined ? node(PART_ROOM) : <div className={OUTLINED_ROOM}>{frame(part, node(""))}</div>;
+  const title = (
+    <>
+      <nav aria-label="Breadcrumb" className="font-mono text-[11px] tracking-[0.2em] md:text-xs">
+        <Link href="/projects" className="text-text-2 transition-colors duration-300 ease-out hover:text-accent">
+          <span aria-hidden>←</span> ALL PROJECTS
+        </Link>
+        <span aria-hidden className="mx-3 text-dim md:mx-4">
+          /
+        </span>
+        <span aria-current="page" className="text-prt-muted md:text-accent">
+          {project.index} · {project.name.toUpperCase()}
+        </span>
+      </nav>
+
+      <h1 className="mt-3 text-[52px] font-extrabold leading-none tracking-[-0.03em] md:mt-8 md:text-[128px]">
+        {project.name}
+      </h1>
+
+      <div className="mt-4 flex flex-col gap-4 md:mt-10 md:flex-row md:items-start md:justify-between">
+        <p className="max-w-[640px] text-[15px] leading-[24px] text-text-2 md:text-[20px] md:leading-[29px]">
+          <CopyText copy={hero.intro} />
+        </p>
+        <div className="flex items-center gap-4 md:flex-col md:items-end md:gap-3">
+          <Pill tone="success">{hero.status}</Pill>
+          <p className="font-mono text-[11px] tracking-[0.2em] text-prt-muted md:text-xs">{hero.dates}</p>
+        </div>
+      </div>
+    </>
+  );
   return (
     <section className={underNavbar ? "px-5 pt-[88px] md:px-16 md:pt-[164px]" : "px-5 pt-6 md:px-16 md:pt-[92px]"}>
       <div className="mx-auto max-w-[1312px]">
-        <nav aria-label="Breadcrumb" className="font-mono text-[11px] tracking-[0.2em] md:text-xs">
-          <Link href="/projects" className="text-text-2 transition-colors duration-300 ease-out hover:text-accent">
-            <span aria-hidden>←</span> ALL PROJECTS
-          </Link>
-          <span aria-hidden className="mx-3 text-dim md:mx-4">
-            /
-          </span>
-          <span aria-current="page" className="text-prt-muted md:text-accent">
-            {project.index} · {project.name.toUpperCase()}
-          </span>
-        </nav>
-
-        <h1 className="mt-3 text-[52px] font-extrabold leading-none tracking-[-0.03em] md:mt-8 md:text-[128px]">
-          {project.name}
-        </h1>
-
-        <div className="mt-4 flex flex-col gap-4 md:mt-10 md:flex-row md:items-start md:justify-between">
-          <p className="max-w-[640px] text-[15px] leading-[24px] text-text-2 md:text-[20px] md:leading-[29px]">
-            <CopyText copy={hero.intro} />
-          </p>
-          <div className="flex items-center gap-4 md:flex-col md:items-end md:gap-3">
-            <Pill tone="success">{hero.status}</Pill>
-            <p className="font-mono text-[11px] tracking-[0.2em] text-prt-muted md:text-xs">{hero.dates}</p>
-          </div>
-        </div>
-
-        {visual.kind !== "none" && <VisualPanel texture={project.texture} visual={visual} />}
-
-        <FactList facts={hero.facts} className="mt-6 md:mt-10" />
+        {frame === undefined ? title : frame("title", title)}
+        {visual.kind !== "none" && after("visual", (room) => <VisualPanel texture={project.texture} visual={visual} className={room} />)}
+        {after("facts", (room) => <FactList facts={hero.facts} className={room} />)}
       </div>
     </section>
   );

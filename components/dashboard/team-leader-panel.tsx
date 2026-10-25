@@ -5,10 +5,9 @@ import { ARC_LEADERS } from "@/lib/about/team-layer";
 import type { ArcGap, LeaderFieldErrors, LeaderFields } from "@/lib/about/team-page-add";
 import type { PhotoChoice } from "@/lib/about/team-page-edit";
 import type { TeamPerson } from "@/lib/about/team-person";
-import { CONTENT_FOCUS } from "./content-parts";
 import { PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON } from "./drawer";
 import { Field, inputClass } from "./field";
-import { ContactFields, PANEL_HINT, PersonSelect, PhotoField, TeamPanel, VisualOnlyNote } from "./team-panel-parts";
+import { ContactFields, PANEL_FOOT_DANGER_LINK, PANEL_HINT, PersonSelect, PhotoField, TeamPanel, VisualOnlyNote } from "./team-panel-parts";
 
 // The Add leader panel (board 80f, issue #285): opened by a "+" on the arc,
 // it puts a team member on the page at that place, drawn inline like every
@@ -55,28 +54,22 @@ export function TeamLeaderPanel({
       eyebrow="Org chart"
       title={adding ? "Add leader" : (person?.name ?? "Leader")}
       onClose={onCancel}
-      footer={
+      footStart={
+        onRemove !== null && (
+          <button type="button" onClick={onRemove} className={PANEL_FOOT_DANGER_LINK}>
+            <Trash2 aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+            Remove from page
+          </button>
+        )
+      }
+      footEnd={
         <>
-          {onRemove === null ? (
-            <span />
-          ) : (
-            <button
-              type="button"
-              onClick={onRemove}
-              className={`inline-flex items-center gap-2 rounded-md text-[14px] font-semibold text-danger transition-opacity duration-300 ease-out hover:opacity-80 ${CONTENT_FOCUS}`}
-            >
-              <Trash2 aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-              Remove from page
-            </button>
-          )}
-          <span className="flex gap-3">
-            <button type="button" onClick={onCancel} className={PANEL_GHOST_BUTTON}>
-              Cancel
-            </button>
-            <button type="button" onClick={onSubmit} className={PANEL_PRIMARY_BUTTON}>
-              {adding ? "Add to page" : "Save"}
-            </button>
-          </span>
+          <button type="button" onClick={onCancel} className={PANEL_GHOST_BUTTON}>
+            Cancel
+          </button>
+          <button type="button" onClick={onSubmit} className={PANEL_PRIMARY_BUTTON}>
+            {adding ? "Add to page" : "Save"}
+          </button>
         </>
       }
     >

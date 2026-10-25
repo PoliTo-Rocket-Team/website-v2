@@ -8,7 +8,7 @@ import { pageRowsOf, type BlockKind } from "@/lib/project-pages";
 import type { BlockFields } from "./block-fields";
 import { addBlock, reorderBlocks, setBlockHidden } from "./block-list";
 import { projectEditor } from "./editor";
-import { fieldsAfterSave, fieldsOf, fieldProblems, projectViewOf, readProjectFields, type ProjectFields } from "./fields";
+import { fieldsAfterSave, fieldsOf, fieldProblems, outlinedSection, panelSections, projectViewOf, readProjectFields, type ProjectFields } from "./fields";
 import { importedProjects, importedRecords } from "./import";
 import { pageRecordOf, type ProjectBlock, type ProjectRecord } from "./record";
 
@@ -225,4 +225,23 @@ test("a request is read as fields only in their shape, and nothing it carries be
   ]) {
     assert.equal(readProjectFields(broken), null);
   }
+});
+
+test("the panel lists the top of the page, each block in page order, then the card; a refused field opens the row that holds it", () => {
+  const fields = fieldsOf(efesto);
+  assert.deepEqual(panelSections(fields), ["top", "block:name", "block:design", "block:plan", "block:reasons", "block:gallery", "card"]);
+  const moved = { ...fields, blocks: reorderBlocks(fields.blocks, ["gallery", "name", "design", "plan", "reasons"]) };
+  assert.deepEqual(panelSections(moved), ["top", "block:gallery", "block:name", "block:design", "block:plan", "block:reasons", "card"], "the rows follow the page");
+
+  const top = { ...fields, hero: { ...fields.hero, dates: " " } };
+  assert.equal(fieldProblems(top)[0]?.section, "top", "a refused top-of-page field opens the Top of the page row");
+  const block = withBlock(fields, "reasons", (b) => (b.kind === "points" ? { ...b, title: "" } : b));
+  assert.equal(fieldProblems(block)[0]?.section, "block:reasons", "a refused block field opens its block's row");
+});
+
+test("of the open rows, the page outlines the part whose row opened last; the card outlines nothing there", () => {
+  assert.equal(outlinedSection([]), null);
+  assert.equal(outlinedSection(["top", "block:plan"]), "block:plan");
+  assert.equal(outlinedSection(["block:plan", "top", "card"]), "top");
+  assert.equal(outlinedSection(["card"]), null);
 });
