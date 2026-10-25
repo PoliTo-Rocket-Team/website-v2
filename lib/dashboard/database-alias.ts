@@ -25,7 +25,7 @@ import { actingTitleIn, readActingTitles } from "./database-acting-account";
 import type { DashboardIdentity } from "./database";
 import { isOffTeam } from "./viewer";
 import type { AttentionItem } from "./overview";
-import { readTeamSnapshot, teamPeopleOf } from "./team-database";
+import { aliasTeamOf, readTeamSnapshot, teamPeopleOf } from "./team-database";
 import { refused, written, type WriteResult } from "./write";
 
 // Alias requests on the database (epic #538, issue #541): the open requests,
@@ -103,7 +103,7 @@ export async function readMemberAliases(identity: DashboardIdentity, memberIds: 
 export async function readAliasAttention(identity: DashboardIdentity, now: Date): Promise<AttentionItem[]> {
   if (identity.memberId === null) return [];
   const [open, snapshot] = await Promise.all([readOpenAliasRequests(), readTeamSnapshot()]);
-  return aliasAttentionFor(identity, open, teamPeopleOf(snapshot), snapshot.org, now);
+  return aliasAttentionFor(identity, open, aliasTeamOf(snapshot), snapshot.org, now);
 }
 
 /** Request alias (board 94): the request is stored as open; the index refuses a second one. */

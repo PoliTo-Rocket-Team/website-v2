@@ -350,16 +350,23 @@ function roleBecome(person: TeamPerson | undefined, org: OrgChart): string | nul
 }
 
 /**
- * An open request as the approver's row under "Needs your attention" (board
- * 94c): "Marco Bianchi asks for an email alias for Davide Russo", or, for one
- * the site made, "Pietro Ricci needs an email alias", with Decline and Mark
- * created.
+ * Someone on the team as the approver's rows read them: as the rules read
+ * them, with the address they sign in with (`users.email`), which their alias
+ * forwards to (issue #586). Only the approvers' rows carry it.
  */
-export function aliasAttention(request: AliasRequest, team: readonly TeamPerson[], org: OrgChart, now: Date): AttentionItem {
-  const member = team.find((p) => p.id === request.memberId);
-  const name = member?.name ?? "Someone";
+export type AliasTeamPerson = TeamPerson & { readonly signInEmail: string };
+
+/**
+ * An open request for `member` as the approver's row under "Needs your
+ * attention" (board 94c): "Marco Bianchi asks for an email alias for Davide
+ * Russo", or, for one the site made, "Pietro Ricci needs an email alias", with
+ * Decline and Mark created. Mark created's dialog shows the member's sign-in
+ * email to copy (issue #586).
+ */
+export function aliasAttention(request: AliasRequest, member: AliasTeamPerson, team: readonly TeamPerson[], org: OrgChart, now: Date): AttentionItem {
+  const name = member.name;
   const when = sentWhen(request.sentAt, now);
-  const action = { answerAlias: request.id, member: name, prefill: aliasPrefill(name) };
+  const action = { answerAlias: request.id, member: name, prefill: aliasPrefill(name), signInEmail: member.signInEmail };
   if (request.requesterId === null) {
     const role = roleBecome(member, org);
     return {
@@ -386,13 +393,15 @@ export function aliasAttention(request: AliasRequest, team: readonly TeamPerson[
 export function aliasAttentionFor(
   viewer: ViewerStanding,
   open: readonly AliasRequest[],
-  team: readonly TeamPerson[],
+  team: readonly AliasTeamPerson[],
   org: OrgChart,
   now: Date,
 ): AttentionItem[] {
   if (!answersAliasRequests(viewer)) return [];
-  return open
-    .filter((r) => team.some((p) => p.id === r.memberId))
+  return [...open]
     .sort((a, b) => Date.parse(a.sentAt) - Date.parse(b.sentAt) || a.id - b.id)
-    .map((r) => aliasAttention(r, team, org, now));
+    .flatMap((r) => {
+      const member = team.find((p) => p.id === r.memberId);
+      return member === undefined ? [] : [aliasAttention(r, member, team, org, now)];
+    });
 }

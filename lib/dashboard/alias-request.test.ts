@@ -12,6 +12,7 @@ import {
   planAliasCancel,
   planAliasRequest,
   type AliasRequest,
+  type AliasTeamPerson,
 } from "./alias-request";
 import type { TeamPerson } from "./division-edit";
 import { attentionOf, noticeOf } from "./notices";
@@ -35,10 +36,11 @@ const org: OrgChart = {
   ],
 };
 
-const person = (id: number, name: string, rest: Partial<Pick<TeamPerson, "memberships" | "beyond">>): TeamPerson => ({
+const person = (id: number, name: string, rest: Partial<Pick<TeamPerson, "memberships" | "beyond">>): AliasTeamPerson => ({
   id,
   name,
   emails: [],
+  signInEmail: `person-${id}@mail.test`,
   memberships: rest.memberships ?? membershipsOf([]),
   beyond: rest.beyond ?? [],
 });
@@ -53,7 +55,7 @@ const CHIARA = 15; // Head of Aerodynamics
 const ALESSANDRO = 14; // the team leader
 const GIULIA = 1; // the operations lead, a member of no division here
 
-const team: TeamPerson[] = [
+const team: AliasTeamPerson[] = [
   person(MARCO, "Marco Bianchi", { memberships: lead(1) }),
   person(DAVIDE, "Davide Russo", { memberships: member(1) }),
   person(LENA, "Lena Fischer", { memberships: member(2) }),
@@ -188,7 +190,12 @@ test("the approver's rows (board 94c): one per open request, oldest first, the a
       ["alias-request", "Marco Bianchi needs an email alias", "Automatic · became Mission Analysis lead today and has no alias"],
     ],
   );
-  assert.deepEqual(rows[0].action, { answerAlias: 1, member: "Davide Russo", prefill: "davide.russo@politorocketteam.it" });
+  assert.deepEqual(rows[0].action, {
+    answerAlias: 1,
+    member: "Davide Russo",
+    prefill: "davide.russo@politorocketteam.it",
+    signInEmail: `person-${DAVIDE}@mail.test`,
+  });
   assert.deepEqual(aliasAttentionFor(plainSeatStanding("department-head"), open, team, org, now), []);
   assert.deepEqual(aliasAttentionFor(plainSeatStanding("team-leader"), [request(3, 999, null)], team, org, now), [], "someone off the team");
 });

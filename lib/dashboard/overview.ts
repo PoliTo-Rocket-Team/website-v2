@@ -57,10 +57,12 @@ export type AnswerHandOver = { readonly answerHandOver: number };
 
 /**
  * A row's Decline and Mark created on an open alias request (board 94c,
- * ./alias-request.ts): the member it is for, and the address Mark created's
- * dialog starts from (board 94d).
+ * ./alias-request.ts): the member it is for, the address Mark created's
+ * dialog starts from (board 94d), and the member's sign-in email, their
+ * `users.email`, which the alias forwards to (issue #586). Only the approver
+ * seats get these rows (`aliasAttentionFor`), so nobody else is sent it.
  */
-export type AnswerAlias = { readonly answerAlias: number; readonly member: string; readonly prefill: string };
+export type AnswerAlias = { readonly answerAlias: number; readonly member: string; readonly prefill: string; readonly signInEmail: string };
 
 /** Where a row's button goes, the notice it dismisses, or the request it answers. */
 export type AttentionAction = Link | DismissNotice | AnswerHandOver | AnswerAlias;

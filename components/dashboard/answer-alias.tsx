@@ -9,7 +9,8 @@ import { answerAlias } from "@/app/dashboard/actions";
 import { ALIAS_FORM_HINT, checkAliasAddress } from "@/lib/dashboard/alias-request";
 import type { AnswerAlias as AnswerAliasAction } from "@/lib/dashboard/overview";
 import { SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber } from "./confirm-dialog";
-import { Field, inputClass } from "./field";
+import { CopyButton } from "./copy-button";
+import { Field, inputClass, LOCKED_INPUT } from "./field";
 import { rowActionClass } from "./panel";
 
 const PAPER =
@@ -56,8 +57,10 @@ export function AnswerAlias({ action, chip = false }: { action: AnswerAliasActio
  * domain from the member's name and checked before it is sent; the server
  * checks it again and saves it as the member's PRT email. The form skips the
  * browser's own email check, so an address `checkAliasAddress` refuses shows
- * its reason under the field rather than a browser bubble. 440px wide with a
- * 24px pad and the row's 32px pills, as the board draws it.
+ * its reason under the field rather than a browser bubble. Above it, the
+ * member's sign-in email the alias forwards to, read-only with a copy button,
+ * for Google Workspace's recipient address map (issue #586). 440px wide with
+ * a 24px pad and the row's 32px pills, as the board draws it.
  */
 function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOpenChange: (open: boolean) => void; action: AnswerAliasAction }) {
   const [address, setAddress] = useState(action.prefill);
@@ -98,7 +101,15 @@ function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOp
               Create it in Google Workspace first (recipient address map), then type it here. It is saved to {first}&apos;s details and {first} gets the
               setup steps.
             </p>
-            <Field label="Alias address" error={error} className="mt-6">
+            <Field label="Forwards to" hint="their sign-in email" className="mt-6">
+              {(id) => (
+                <span id={id} className={cn(LOCKED_INPUT, "pr-2")}>
+                  <span className="min-w-0 flex-1 truncate text-prt-text">{action.signInEmail}</span>
+                  <CopyButton value={action.signInEmail} what="Sign-in email" />
+                </span>
+              )}
+            </Field>
+            <Field label="Alias address" error={error} className="mt-5">
               {(id, describedBy) => (
                 <>
                   <input
