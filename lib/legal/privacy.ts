@@ -10,7 +10,7 @@ import type { LegalDocument } from "./types";
 // stores changes this text with it.
 
 const APPLICATION_READERS =
-  "The leads of the division you applied to and the head of its department, the team leader, the operations lead, the IT lead, the Project Manager and the Chief Engineer, and team members given access to applications for that role.";
+  "The team members who handle recruitment for the role you applied to.";
 
 export const privacyPolicy: LegalDocument = {
   description: "What personal data the PoliTo Rocket Team site keeps, where it is kept, who can see it, and how long.",
