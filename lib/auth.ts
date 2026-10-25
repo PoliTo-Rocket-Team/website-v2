@@ -4,6 +4,8 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { customSession } from "better-auth/plugins";
 import { admin } from "better-auth/plugins/admin";
 import { getDb } from "@/db/client";
+import { breakGlassSignInOf, readBreakGlassEmails, type BreakGlassSignIn } from "@/lib/break-glass";
+import { recordBreakGlassSignIn } from "@/lib/dashboard/database-sign-in";
 import { recordViewAs, viewAsRefusal } from "@/lib/dashboard/database-view-as";
 import { devTesterPlugin, type TesterDirectory } from "@/lib/dev-tester-plugin";
 import { testerSignInOn } from "@/lib/dev-tester";
@@ -56,11 +58,22 @@ const databaseTesters: TesterDirectory = {
   },
 };
 
+/** Where each break-glass sign-in is logged (issue #646). */
+export type SignInLog = { readonly record: (signIn: BreakGlassSignIn) => Promise<void> };
+
+const databaseSignIns: SignInLog = { record: recordBreakGlassSignIn };
+
 /**
  * getAuth() over any database adapter; tests pass an in-memory one, and may
- * pass a View as gate and a tester directory that read no database.
+ * pass a View as gate, a tester directory and a sign-in log that read no
+ * database.
  */
-export function createAuth(database: BetterAuthOptions["database"], viewAs: ViewAsGate = databaseViewAs, testers: TesterDirectory = databaseTesters) {
+export function createAuth(
+  database: BetterAuthOptions["database"],
+  viewAs: ViewAsGate = databaseViewAs,
+  testers: TesterDirectory = databaseTesters,
+  signIns: SignInLog = databaseSignIns,
+) {
   return betterAuth({
     baseURL: authBaseUrl as string,
     secret: process.env.BETTER_AUTH_SECRET as string,
@@ -79,6 +92,23 @@ export function createAuth(database: BetterAuthOptions["database"], viewAs: View
       cookieCache: {
         enabled: true,
         maxAge: 10 * 60,
+      },
+    },
+    // Each sign-in of the break-glass admin writes one audit entry (issue
+    // #646); every other account's sessions write nothing here.
+    databaseHooks: {
+      session: {
+        create: {
+          after: async (session, ctx) => {
+            // With no break-glass account set, no session reads its account.
+            const allowed = readBreakGlassEmails();
+            if (ctx === undefined || allowed.size === 0) return;
+            const user = await ctx.context.internalAdapter.findUserById(session.userId);
+            const opened = { id: session.id, userId: session.userId, impersonatedBy: impersonatorOf(session) };
+            const signIn = breakGlassSignInOf(opened, user?.email ?? null, allowed);
+            if (signIn !== null) await signIns.record(signIn);
+          },
+        },
       },
     },
     plugins: [

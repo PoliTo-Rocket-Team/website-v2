@@ -19,7 +19,7 @@ const role = (over: Partial<ViewAsRole>): ViewAsRole => ({
 });
 
 function candidate(id: string, over: Partial<ViewAsCandidate> = {}): ViewAsCandidate {
-  return { id, name: id, photoUrl: null, roles: [role({})], alumnus: null, ...over };
+  return { id, name: id, photoUrl: null, roles: [role({})], alumnus: null, breakGlass: false, ...over };
 }
 
 const ACTING = "acting";
@@ -37,6 +37,12 @@ test("the acting account is never offered, on any site", () => {
 test("the IT lead seat is not offered on the live site, where it may use View as; on a test site everyone else is offered", () => {
   assert.deepEqual(viewAsPeopleOf([itLead, adminTester, member], ACTING, "live").map((p) => p.id), ["admin-tester", "member"]);
   assert.deepEqual(viewAsPeopleOf([itLead, adminTester, member], ACTING, "test").map((p) => p.id), ["it-lead", "admin-tester", "member"]);
+});
+
+test("the break-glass admin is not offered on the live site, where it may use View as; on a test site it is (issue #646)", () => {
+  const breakGlass = candidate("break-glass", { roles: [], breakGlass: true });
+  assert.deepEqual(viewAsPeopleOf([breakGlass, member], ACTING, "live").map((p) => p.id), ["member"]);
+  assert.deepEqual(viewAsPeopleOf([breakGlass, member], ACTING, "test").map((p) => p.id), ["break-glass", "member"]);
 });
 
 test("one search shows at most VIEW_AS_SHOWN people, in the order read", () => {

@@ -9,6 +9,7 @@ import { getDb, isDatabaseConfigured } from "@/db/client";
 import {
   applications,
   applyPositions,
+  betterAuthUsers,
   departments,
   divisions,
   members,
@@ -20,6 +21,7 @@ import {
 import type { Recruitment } from "@/lib/apply/positions";
 import { canSwitchRecruitment, switchRecruitment } from "@/lib/apply/recruitment-switch";
 import { getCurrentUser, type CurrentUser } from "@/lib/current-user";
+import { isBreakGlassEmail } from "@/lib/break-glass";
 import { runAuditQuery } from "@/lib/db-audit";
 import { canReach, LANDING_AFTER_LEAVING, type NavCounts } from "./access";
 import { isShownAt } from "./my-applications";
@@ -81,8 +83,9 @@ import { readsRecruitmentIn } from "./application-documents";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { answerAlias, cancelAliasRequest, confirmAliasSetUp, readAliasAttention, readMemberAliases, readOwnAlias, requestAlias } from "./database-alias";
 import { upcomingInterviews } from "./interview-slots";
-import { SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type ViewerStanding } from "./viewer";
+import { BREAK_GLASS_STANDING, SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type TeamLeaderStanding, type ViewerStanding } from "./viewer";
 import { written } from "./write";
+import { BREAK_GLASS_TITLE } from "./acting-account";
 import { primaryRoleOf, roleLabelOf } from "./role-label";
 
 // The dashboard data interface for the signed-in account, read from the
@@ -107,7 +110,7 @@ type ActiveRole = {
 };
 
 
-type Identity = {
+type IdentityFields = {
   userId: string;
   /**
    * The account behind a View as session, read from the session on the
@@ -132,7 +135,15 @@ type Identity = {
   departmentIds: number[];
   /** Each area grant they hold, with its area and level: what a recruitment change checks (`mayChange`, issue #160). */
   grants: readonly AreaGrant[];
-} & ViewerStanding;
+};
+
+/**
+ * Who the signed-in account is. `breakGlass` says whether the standing comes
+ * from the break-glass setting (issue #646) rather than from roles and scope
+ * rows: such an account always stands as the team leader, and code reads
+ * this fact rather than the environment again.
+ */
+type Identity = IdentityFields & (({ readonly breakGlass: false } & ViewerStanding) | ({ readonly breakGlass: true } & TeamLeaderStanding));
 
 /** Who the signed-in account is; the page modules beside this one read it. */
 export type DashboardIdentity = Identity;
@@ -154,9 +165,12 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
         linkedin: users.linkedin,
         member_id: users.member,
         picture: members.picture,
+        // The email the account signs in with, which the break-glass setting names (issue #646).
+        sign_in_email: betterAuthUsers.email,
       })
       .from(users)
       .leftJoin(members, eq(users.member, members.memberId))
+      .leftJoin(betterAuthUsers, eq(betterAuthUsers.id, users.id))
       .where(eq(users.id, userId))
       .limit(1),
     db
@@ -205,8 +219,12 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
     memberId: user.member_id,
     picture: user.picture,
   };
+  // The break-glass admin stands as the team leader, with or without a member row or a role (issue #646).
+  const breakGlass = isBreakGlassEmail(user.sign_in_email);
+  const noUnits = { role: null, roles: [], divisionIds: [], departmentIds: [], grants: [] };
   if (user.member_id === null) {
-    return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], grants: [], ...viewerStandingOf(null) };
+    if (breakGlass) return { ...base, ...noUnits, breakGlass, ...BREAK_GLASS_STANDING };
+    return { ...base, ...noUnits, breakGlass, ...viewerStandingOf(null) };
   }
 
   const activeRoles: ActiveRole[] = roleRows.map((r) => ({ ...r, fullAccess: r.fullAccess === null ? null : SEAT_OF_FLAG[r.fullAccess] }));
@@ -218,24 +236,23 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
     scopeRows.map((s) => ({ scope: s.scope, target: s.target, level: s.level, divisionId: s.division_id, deptId: s.dept_id })),
     openDepartmentIds,
   );
-  // Someone with no active role left the team: an alumnus when the Alumni record knows them (issue #317).
-  const onAlumniRecord = activeRoles.length === 0 && (await readOwnAlumnus(user.member_id)) !== null;
-  const access = { scopes: unitRows, activeRoles, onAlumniRecord };
-  const standing = viewerStandingOf(access);
-  // Off the team, scope rows that outlived the roles reach nothing.
-  if (isOffTeam(standing.kind)) return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], grants: [], ...standing };
-
   // Every division they lead and the department they head, plus the units their scopes name.
   const units = viewerUnitsOf(unitRows, activeRoles);
-  return {
-    ...base,
+  const held = {
     role: primaryRoleOf(activeRoles),
     roles: activeRoles,
     divisionIds: [...units.divisionIds],
     departmentIds: [...units.departmentIds],
     grants: areaGrantsOf(unitRows),
-    ...standing,
   };
+  if (breakGlass) return { ...base, ...held, breakGlass, ...BREAK_GLASS_STANDING };
+
+  // Someone with no active role left the team: an alumnus when the Alumni record knows them (issue #317).
+  const onAlumniRecord = activeRoles.length === 0 && (await readOwnAlumnus(user.member_id)) !== null;
+  const standing = viewerStandingOf({ scopes: unitRows, activeRoles, onAlumniRecord });
+  // Off the team, scope rows that outlived the roles reach nothing.
+  if (isOffTeam(standing.kind)) return { ...base, ...noUnits, breakGlass, ...standing };
+  return { ...base, ...held, breakGlass, ...standing };
 }
 
 type LivePosition = {
@@ -805,6 +822,8 @@ async function readAccessSummaries(identity: Identity, teamOrders: Promise<Order
 function grantReachOf(identity: Identity): Identity & { kind: "member" } {
   return {
     ...identity,
+    // A member's reach, so no break-glass standing comes with it (issue #646).
+    breakGlass: false,
     kind: "member",
     grantedAreas: areasGrantedBy(identity.grants),
     siteContent: identity.siteContent,
@@ -917,6 +936,8 @@ async function membersOf(identity: Identity, divisionId: number | null): Promise
  * ./role-label.ts), which the View as dialog reads too.
  */
 function cardRoleOf(identity: Identity): string {
+  // The break-glass admin holds no role to name, so the card names no account either (issue #646).
+  if (identity.breakGlass && identity.roles.length === 0) return BREAK_GLASS_TITLE;
   switch (identity.kind) {
     case "alumni":
       return VIEWER_KIND_LABELS.alumni;

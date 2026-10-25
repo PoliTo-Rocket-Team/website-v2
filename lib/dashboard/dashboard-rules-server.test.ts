@@ -67,7 +67,8 @@ describe("a viewer out of a page's reach gets none of its data", () => {
       assert.equal(maySiteContent(data.viewer), expect.siteContent);
       for (const [i, read] of content.entries()) assert.equal(read === null, !expect.siteContent, `content read ${i}`);
       assert.equal((await data.myAlumni()) === null, data.viewer.kind !== "alumni", "My alumni");
-      assert.equal((await data.myProfile()) === null, offTeam, "My profile");
+      // The break-glass admin has no member row, so no profile of its own (issue #646).
+      assert.equal((await data.myProfile()) === null, offTeam || name === "break-glass admin", "My profile");
       assert.equal((await data.myAccount()) === null, !offTeam, "My account");
       if (offTeam) assert.ok(!JSON.stringify(await data.teamTree()).includes("Lead MA"), "off the team, the tree names nobody");
     });

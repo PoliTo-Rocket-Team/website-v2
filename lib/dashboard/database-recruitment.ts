@@ -815,7 +815,7 @@ async function confirmJoin(identity: Identity, applicationId: number, joinedAt: 
       ),
       new_member as (
         insert into ${members} (nda_signed_at, nda_name, nda_confirmed_by, nda_confirmed_by_acting_account)
-        select app.nda_arrived_at, app.name, ${identity.memberId}, ${identity.actingAccountId}::text from app where ${addMember}::boolean and app.member_id is null
+        select app.nda_arrived_at, app.name, ${identity.memberId}::int, ${identity.actingAccountId}::text from app where ${addMember}::boolean and app.member_id is null
         returning member_id
       ),
       linked as (

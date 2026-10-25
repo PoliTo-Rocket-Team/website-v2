@@ -40,7 +40,7 @@ import { positionsModelOf } from "./positions-view";
 import type { ApplicationsPage, PositionsPage } from "./recruitment";
 import { addRows, changeRows, clearRows, databaseWrites, loggedWriters, logRowsSinceSeed, tableRows } from "./access-matrix/test-database";
 import type { OwnAlias } from "./alias-setup";
-import { isOffTeam } from "./viewer";
+import { isOffTeam, isTeamLeader } from "./viewer";
 import { fileReads, resetFiles } from "./access-matrix/fakes/files";
 import { ownPublicStoreHost } from "./access-matrix/fakes/public-store";
 import { accountOf, cvHash, EXTRA, IDS, MARKERS, seedFixture } from "./access-matrix/fixture";
@@ -321,7 +321,7 @@ function callText(path: string): string {
  */
 const neverAsked = async () => ({ ok: false as const, error: "never asked" });
 const DIRECT_WRITES = new Map<string, { readonly args: readonly unknown[]; readonly may: (r: MatrixRow) => boolean; readonly proves: Proof }>([
-  ["setApproveOrders", { args: [{ personId: IDS.person("DM"), holds: true }], may: (r) => r.name === "team leader", proves: "write" }],
+  ["setApproveOrders", { args: [{ personId: IDS.person("DM"), holds: true }], may: (r) => isTeamLeader(r.viewer), proves: "write" }],
   ["teamAdvisors.save", { args: ["save-draft", []], may: (r) => r.expect.siteContent, proves: "gate" }],
   ["outreach.posts.save", { args: [null, "save-draft", neverAsked], may: (r) => r.expect.siteContent, proves: "gate" }],
   ["outreach.posts.saveUnfinished", { args: [null, neverAsked], may: (r) => r.expect.siteContent, proves: "gate" }],
@@ -708,6 +708,44 @@ describe("every server action refuses every viewer the matrix keeps out, and wri
   }
 });
 
+// The break-glass admin (issue #646) signs in with the team leader's rights
+// and no member row. The refusal loop above proves only who is kept out, so
+// every action the team leader is the control for, and the matrix lets the
+// break-glass admin make, is made here as the break-glass admin, and proven
+// the way the control is.
+
+describe("the break-glass admin makes every action the matrix lets the team leader make (issue #646)", () => {
+  const breakGlass = VIEWERS.find((r) => r.viewer.breakGlass)!;
+  const teamLeaderCases = ACTION_CASES.filter(
+    (c): c is ActionCase & { control: { who: string; proves: Proof } } => "who" in c.control && c.control.who === "team leader" && c.may(breakGlass) === true,
+  );
+
+  test("the cases cover the Access page, order decisions and the seats", () => {
+    const covered = teamLeaderCases.map((c) => c.action);
+    for (const action of ["actions.saveAccess", "actions.removeGrant", "actions.decideOrder", "actions.markOrdered", "team-actions.changeSeatHolder", "team-actions.addSeat", "team-actions.removeSeat"]) {
+      assert.ok(covered.includes(action), action);
+    }
+  });
+
+  for (const c of teamLeaderCases) {
+    test(c.action, async () => {
+      const made = await attempt(accountOf(breakGlass.name).userId, c.run);
+      assert.ok(proven(c.control.proves, made.answer, made.writes), `${c.action} (${c.control.proves}): ${JSON.stringify(made.answer)}`);
+    });
+  }
+
+  for (const [path, { args, may, proves }] of DIRECT_WRITES) {
+    if (!may(breakGlass)) continue;
+    test(`${path}, called directly`, async () => {
+      const made = await attempt(accountOf(breakGlass.name).userId, async () => {
+        const opening = await openDashboard();
+        return opening.kind === "open" ? callPath(opening.data, path, args) : "refused";
+      });
+      assert.ok(proven(proves, made.answer, made.writes), `${path} (${proves}): ${JSON.stringify(made.answer)}`);
+    });
+  }
+});
+
 // The recruitment switch follows full access (Owner decision, 2026-10-24, issue #621)
 //
 // The refusal loop above visits only the rows the matrix keeps out, so each
@@ -721,7 +759,7 @@ describe("every full-access viewer switches recruitment on the database (issue #
   test("the matrix lets in every full-access row and no other", () => {
     assert.deepEqual(
       switchers.map((r) => r.name).sort(),
-      ["Chief Engineer", "IT lead", "Project Manager", "operations lead", "operations lead with Approve orders", "org-wide editor", "team leader"].sort(),
+      ["Chief Engineer", "IT lead", "Project Manager", "break-glass admin", "operations lead", "operations lead with Approve orders", "org-wide editor", "team leader"].sort(),
     );
   });
 
@@ -2193,7 +2231,8 @@ describe("View as: on production only the IT lead seat starts it, on a preview o
   /** The fixture, with a Better Auth account for every matrix viewer and the person: `admins` store the admin role, everyone else the plugin's default. */
   async function seedAccounts(admins: readonly string[] = []): Promise<void> {
     await seedFixture();
-    const ids = [...VIEWERS.map(({ name }) => accountOf(name).userId), person];
+    // The break-glass admin's account is the fixture's own (issue #646).
+    const ids = [...VIEWERS.filter(({ viewer }) => !viewer.breakGlass).map(({ name }) => accountOf(name).userId), person];
     await addRows(
       betterAuthUsers,
       ids.map((id) => ({ id, name: id, email: `${id}@auth.test`, emailVerified: true, role: admins.includes(id) ? "admin" : "user" })),
@@ -2235,10 +2274,10 @@ describe("View as: on production only the IT lead seat starts it, on a preview o
     assert.equal(await viewAsRefusal(start(itLead.userId), PRODUCTION), null, "the IT lead seat");
   });
 
-  test("on production the IT lead starts View as, and every other matrix viewer is refused, the team leader and a stored admin included", async () => {
+  test("on production the IT lead and the break-glass admin start View as, and every other matrix viewer is refused, the team leader and a stored admin included", async () => {
     await seedAccounts([member.userId, accountOf("team leader").userId]);
     for (const { name } of VIEWERS) {
-      assert.equal(await viewAsRefusal(start(accountOf(name).userId), LIVE), name === "IT lead" ? null : "not-allowed", name);
+      assert.equal(await viewAsRefusal(start(accountOf(name).userId), LIVE), name === "IT lead" || name === "break-glass admin" ? null : "not-allowed", name);
     }
     assert.deepEqual(await databaseWrites(), [], "deciding writes nothing");
   });

@@ -20,6 +20,6 @@ export async function readViewAsBanner(
   if (user === null || user.actingAccountId === null) return null;
   const { name, role } = person;
   // Every acting account given gets a title (readActingTitles); the fallback only keeps the banner from ever dropping.
-  const actingTitle = actingTitleIn(await readActingTitles([user.actingAccountId]), user.actingAccountId) ?? actingTitleOf([]);
+  const actingTitle = actingTitleIn(await readActingTitles([user.actingAccountId], site), user.actingAccountId) ?? actingTitleOf([], site);
   return { site, name, role, actingTitle };
 }

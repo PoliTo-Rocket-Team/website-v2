@@ -177,8 +177,9 @@ async function readTeamUnit(): Promise<AccessUnit> {
  * lead what they hold in each division; null for anyone with no such page.
  */
 async function accessUnitOf(identity: DashboardIdentity): Promise<AccessUnit | null> {
-  if (identity.memberId === null) return null;
+  // Full access by its standing, the break-glass admin's with no member row included (issue #646).
   if (identity.kind === "operations-lead") return readTeamUnit();
+  if (identity.memberId === null) return null;
   // A lead or head who holds Content gives it across the whole team (issue #504).
   const content = identity.siteContent ? ({ content: true } as const) : {};
   if (identity.kind === "division-lead") {
@@ -215,7 +216,8 @@ function unitDepartmentsOf(unit: AccessUnit): readonly AccessDepartmentUnit[] {
  */
 async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage | null> {
   const unit = await accessUnitOf(identity);
-  if (unit === null || identity.memberId === null) return null;
+  if (unit === null) return null;
+  // Null for the break-glass admin, who has no member row and so no grant or role row of their own (issue #646).
   const me = identity.memberId;
   const db = getDb();
   const giver = alias(users, "giver");
@@ -233,7 +235,7 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
   // A team page also holds the grants across the whole team, Content and "Approve orders" (issue #247).
   const acrossTeam = or(and(eq(scopes.scope, "team"), or(unitTarget, eq(scopes.target, "approve_orders"))), contentRows);
   const unitRows = unit.kind === "team" ? or(inUnitDivisions, inUnitDepartments, acrossTeam) : unit.content === true ? or(inUnitDivisions, inUnitDepartments, contentRows) : or(inUnitDivisions, inUnitDepartments);
-  const listed = and(unitRows, ne(scopes.memberId, me));
+  const listed = me === null ? unitRows : and(unitRows, ne(scopes.memberId, me));
   // When each grant was given and the seats of the acting accounts that gave them are read by the grants' own
   // condition, beside the grants rather than after them: one round trip after the unit, not two (issue #397).
   const listedIds = db.select({ id: sql<string>`${scopes.id}::text` }).from(scopes).where(listed);
@@ -295,7 +297,7 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
       // Oldest first, so someone in two of a lead's divisions is placed in their older one (issue #185).
       .orderBy(asc(roles.startedAt)),
     // Whether the viewer decides orders: "Your access" on a team page carries the chip (board 71).
-    unit.kind === "team"
+    unit.kind === "team" && me !== null
       ? db
           .select({ id: scopes.id })
           .from(scopes)
@@ -443,7 +445,6 @@ function grantWhere(personId: number, place: AccessPlace, target: AccessTarget) 
  * batch. Answers the person's grants as they now read.
  */
 async function writeAccess(identity: DashboardIdentity, personId: number, writes: readonly AccessWrite[]): Promise<WriteResult<readonly AccessGrant[]>> {
-  if (identity.memberId === null) return refused("Only a division lead or a department head gives access here.");
   const given = givenByOf(identity);
   const touched = writes.filter((w) => w.changes.length > 0 || w.approveOrders !== null);
 
@@ -520,12 +521,16 @@ async function readOrdersScope(
   identity: DashboardIdentity,
   org: readonly OrgDepartmentUnits[] | Promise<readonly OrgDepartmentUnits[]>,
 ): Promise<OrdersScope | null> {
-  if (identity.memberId === null || isOffTeam(identity.kind)) return null;
+  if (isOffTeam(identity.kind)) return null;
+  const memberId = identity.memberId;
   const [rows, headDepartment, units] = await Promise.all([
-    getDb()
-      .select({ scope: scopes.scope, target: scopes.target, level: scopes.accessLevel, divisionId: scopes.divisionId, deptId: scopes.deptId })
-      .from(scopes)
-      .where(eq(scopes.memberId, identity.memberId)),
+    // The break-glass admin has no member row, so no scope row of their own (issue #646).
+    memberId === null
+      ? []
+      : getDb()
+          .select({ scope: scopes.scope, target: scopes.target, level: scopes.accessLevel, divisionId: scopes.divisionId, deptId: scopes.deptId })
+          .from(scopes)
+          .where(eq(scopes.memberId, memberId)),
     readHeadDepartment(identity),
     org,
   ]);
@@ -857,7 +862,6 @@ const DB_STATUS_AFTER: Readonly<Record<OrderDecision["kind"], DbOrderStatus>> = 
 
 /** Approve, reject or ask for changes, checked on the server (`checkDecision`). */
 async function decideOrder(identity: DashboardIdentity, orderId: number, input: unknown): Promise<WriteResult<Order>> {
-  if (identity.memberId === null) return refused("Only the team leader, or someone they gave Approve orders, decides orders.");
   const found = await scopedOrder(identity, orderId);
   if (typeof found === "string") return refused(found);
   const checked = checkDecision(found.scope.decides, found.order.status, input);
@@ -903,7 +907,6 @@ async function markOrdered(identity: DashboardIdentity, orderId: number): Promis
 
 /** Give or remove "Approve orders": only the team leader, any number of holders (`checkApproveOrdersChange`). */
 async function setApproveOrders(identity: DashboardIdentity, input: unknown): Promise<WriteResult<null>> {
-  if (identity.memberId === null) return refused("Only the team leader gives or removes Approve orders.");
   const db = getDb();
   const [active, holders] = await Promise.all([
     db.select({ member_id: roles.memberId, type: roles.type }).from(roles).where(isNull(roles.leavedAt)),

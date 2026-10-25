@@ -232,8 +232,8 @@ test("a Decline made while viewing as the approver names the acting account too;
   const read = (actingTitle: string | null) =>
     attentionOf(noticeOf({ id: 1, kind: declined.notice.kind, subject: "Davide Russo", createdAt: "2026-10-22T10:00:00Z", actingTitle, data: declined.notice.data })!, now)
       .title;
-  assert.equal(read(actingTitleOf(["it-lead"])), "IT lead as Sara Conti declined the email alias for Davide Russo");
-  assert.equal(read(actingTitleOf([null])), "Admin tester as Sara Conti declined the email alias for Davide Russo");
+  assert.equal(read(actingTitleOf(["it-lead"], "live")), "IT lead as Sara Conti declined the email alias for Davide Russo");
+  assert.equal(read(actingTitleOf([null], "test")), "Admin tester as Sara Conti declined the email alias for Davide Russo");
   assert.equal(read(null), "Sara Conti declined the email alias for Davide Russo");
   const created = aliasAnswerNotices({ kind: "created", request: request(1, DAVIDE, MARCO), address: "davide.russo@politorocketteam.it" }, "Sara Conti");
   const ready = noticeOf({ id: 2, kind: "alias-created", subject: "Davide Russo", createdAt: "2026-10-22T10:00:00Z", actingTitle: "IT lead", data: created[0]!.notice.data });
