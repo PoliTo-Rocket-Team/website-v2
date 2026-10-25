@@ -33,7 +33,7 @@ import { membersModelOf, NO_MEMBERS_FILTER, shownMembers } from "./members-view"
 import { readSheet } from "./access-matrix/xlsx";
 import { openDashboard } from "./open";
 import { canEditOrder, type OrdersPage } from "./orders";
-import type { TeamSideOverview } from "./overview";
+import { overviewOfSections, type OverviewSections, type TeamSideOverview } from "./overview";
 import type { TeamStructure } from "./team-structure";
 import { applicationsModelOf } from "./applications-view";
 import { positionsModelOf } from "./positions-view";
@@ -99,13 +99,19 @@ function leaked(answer: unknown, expect: Expect): string[] {
   return ALL.flatMap((u: Unit) => Object.values(MARKERS).flatMap((of) => of(u))).filter((m) => !allowed.has(m) && text.includes(m));
 }
 
-/** A read the data interface hands a page: its path on the interface, and the arguments it is called with (each unit's, where it takes one). */
-type Read = { readonly path: string; readonly args?: readonly (readonly unknown[])[] };
+/**
+ * A read the data interface hands a page: its path on the interface, the
+ * arguments it is called with (each unit's, where it takes one), and, for a
+ * read that answers in parts, how its parts arrive as one answer.
+ */
+type Read = { readonly path: string; readonly args?: readonly (readonly unknown[])[]; readonly whole?: (answer: unknown) => Promise<unknown> };
 
 const READS: readonly Read[] = [
   { path: "navCounts" },
   { path: "hasShownApplications" },
   { path: "overview" },
+  // The page streams the Overview by section (issue #397): every section is swept, as it arrives.
+  { path: "overviewSections", whole: (answer) => overviewOfSections(answer as OverviewSections) },
   { path: "myAlumni" },
   { path: "members", args: [[null], ...ALL.map((u) => [IDS.division(u)])] },
   { path: "findForAdd", args: ALL.map((u) => [IDS.division(u), "person"]) },
@@ -144,7 +150,15 @@ function callPath(data: DashboardData, path: string, args: readonly unknown[]): 
 
 /** Every read, once per argument list, by a name that says which. */
 const readCalls = (): [string, (data: DashboardData) => Promise<unknown>][] =>
-  READS.flatMap(({ path, args = [[]] }) => args.map((a): [string, (data: DashboardData) => Promise<unknown>] => [`${path}(${a.join(", ")})`, (d) => callPath(d, path, a)]));
+  READS.flatMap(({ path, args = [[]], whole }) =>
+    args.map((a): [string, (data: DashboardData) => Promise<unknown>] => [
+      `${path}(${a.join(", ")})`,
+      async (d) => {
+        const answer = await callPath(d, path, a);
+        return whole === undefined ? answer : whole(answer);
+      },
+    ]),
+  );
 
 /** Every method's path on the data interface, editors and the team's writes included. */
 function methodPaths(value: Record<string, unknown>, prefix = ""): string[] {
