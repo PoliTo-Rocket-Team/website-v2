@@ -64,7 +64,7 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ver
 ## Vercel Deployment
 
 1. Connect the repository to Vercel.
-2. Copy the production environment variables from your local `.env` into the Vercel project settings.
+2. The owner sets the Production environment variables in the Vercel project settings ([ADR 0018](.decisions/0018-v2-hosting-and-launch.md)). They are never copied from a local `.env`, which holds the `development` branch's strings.
 3. Keep the default Next.js framework preset and use the repository root as the project root.
 4. Deploy from the Vercel dashboard or run `pnpm deploy` after authenticating the Vercel CLI.
 
