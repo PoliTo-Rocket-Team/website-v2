@@ -239,6 +239,41 @@ test("0062 keeps every existing role row as it was, and applies again over a dat
   assert.deepEqual(indexes.rows.map((r) => r.name), ["roles_one_active_department_head", "roles_one_active_full_access_seat", "roles_one_active_team_leader"]);
 });
 
+// The notice acting account (issue #628) adds one nullable column to
+// `dashboard_notices` and its foreign key: every stored notice keeps its
+// values and names no acting account, so it reads as it does today.
+const NOTICE_TAG = "0063_notice_acting_account";
+
+test("0063_notice_acting_account.sql drops, renames and rewrites nothing", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${NOTICE_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+});
+
+test("0063 keeps every stored notice as it was, and applies again over a database that already holds it", async () => {
+  const { db, apply } = await databaseBefore(NOTICE_TAG);
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id) values (1), (2);
+    insert into dashboard_notices (id, recipient_id, kind, subject_id, data) values
+      (1, 1, 'alias-declined', 2, '{"by":"Sara Conti"}'),
+      (2, 2, 'hand-over-answered', 1, '{}');
+    set session_replication_role = origin;
+  `);
+  const before = await db.query(`select * from dashboard_notices order by id`);
+  await apply();
+  await apply();
+  const after = await db.query(`select * from dashboard_notices order by id`);
+  assert.deepEqual(
+    after.rows,
+    before.rows.map((row) => ({ ...(row as object), written_by_acting_account: null })),
+    "every notice is kept, naming no acting account",
+  );
+  const constraints = await db.query<{ count: number }>(
+    `select count(*)::int as count from pg_constraint where conname = 'dashboard_notices_written_by_acting_account_users_id_fk'`,
+  );
+  assert.equal(constraints.rows[0].count, 1, "the foreign key exists once");
+});
+
 // The migrator applies only entries journaled later than the newest one a
 // database records, so every entry must be later than the one before it. The
 // numbers 0056 and 0057 are not journaled: the trunk skipped them while this
@@ -303,10 +338,26 @@ for (const [shape, lastRecordedTag] of [
     );
     const newest = await db.query<{ created_at: string }>(`select created_at from drizzle.__drizzle_migrations order by created_at desc limit 1`);
     assert.equal(Number(newest.rows[0].created_at), journal.entries.at(-1)?.when, "the newest recorded entry is the journal's last");
-    const constraints = await db.query<{ count: number }>(
-      `select count(*)::int as count from pg_constraint where conname like '%acting_account_users_id_fk'`,
+    // The migrator runs the whole journal, so the later acting-account keys
+    // (0063's on notices) are here too; each key is listed once.
+    const constraints = await db.query<{ name: string }>(
+      `select conname as name from pg_constraint where conname like '%acting_account_users_id_fk' order by 1`,
     );
-    assert.equal(constraints.rows[0].count, 8, "each acting-account foreign key exists once");
+    assert.deepEqual(
+      constraints.rows.map((r) => r.name),
+      [
+        "alias_requests_answered_by_acting_account_users_id_fk",
+        "alias_requests_requested_by_acting_account_users_id_fk",
+        "dashboard_notices_written_by_acting_account_users_id_fk",
+        "hand_over_requests_decided_by_acting_account_users_id_fk",
+        "logs_changed_by_acting_account_users_id_fk",
+        "members_nda_confirmed_by_acting_account_users_id_fk",
+        "orders_reviewed_by_acting_account_users_id_fk",
+        "scopes_given_by_acting_account_users_id_fk",
+        "team_joins_added_by_acting_account_users_id_fk",
+      ],
+      "each acting-account foreign key exists once",
+    );
   });
 }
 
