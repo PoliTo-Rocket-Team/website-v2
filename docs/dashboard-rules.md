@@ -505,6 +505,8 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
 - Delete account: the person types DELETE. It closes the sign-in. The data is kept at least one
   year, then anonymized for statistics. The Privacy Policy must say so (#122). A non-member may
   also withdraw their open applications in the same dialog.
+- Anonymization also clears the person's free-text answers to a position's questions, on the
+  application and in the audit log copies (#729). The role, dates and outcome stay for statistics.
 - Alumni entries survive anonymization (#257). Anonymizing a deleted account clears the private
   fields, but keeps the person's alumni entry: their name, years, roles and founder mark stay on
   the Alumni page as part of the team's history. The entry's photo goes.

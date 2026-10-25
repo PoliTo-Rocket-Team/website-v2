@@ -37,10 +37,13 @@ import { departmentSummaries, leaderAttention, leaderStats } from "./leader-over
 import { opensWholeTeam } from "./members-view";
 import { databaseAlumniWrites, databaseOwnAlumni, readAlumniDirectory, readOwnAlumnus } from "./database-alumni";
 import { decideRightOfStanding, formatEuro, waitingOrders, type Order } from "./orders";
+import { departmentLabel } from "./recruitment";
 import {
+  departmentRoster,
   divisionRoster,
   noPhotoItem,
   oldestLine,
+  overviewLayoutOf,
   overviewOfSections,
   pageChecklistOf,
   type AttentionItem,
@@ -83,7 +86,7 @@ import { readsRecruitmentIn } from "./application-documents";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { answerAlias, cancelAliasRequest, confirmAliasSetUp, readAliasAttention, readMemberAliases, readOwnAlias, requestAlias } from "./database-alias";
 import { upcomingInterviews } from "./interview-slots";
-import { BREAK_GLASS_STANDING, SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type BreakGlassStanding, type ViewerStanding } from "./viewer";
+import { BREAK_GLASS_STANDING, SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, hasOwnProfile, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type BreakGlassStanding, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 import { BREAK_GLASS_TITLE } from "./acting-account";
 import { primaryRoleOf, roleLabelOf } from "./role-label";
@@ -749,6 +752,7 @@ async function personalPanelsOf(identity: Identity, teamOrders: Promise<Order[]>
   const [rosters, lines] = await Promise.all([readRosters(identity), readAccessSummaries(identity, identity.approveOrders ? teamOrders : null)]);
 
   return {
+    layout: overviewLayoutOf(identity),
     // Done from every seat they hold, not only a division role (issue #641).
     checklist: pageChecklistOf({ roles: identity.roles, email: identity.email, photoUrl: identity.picture, linkedin: identity.linkedin }),
     rosters,
@@ -757,37 +761,87 @@ async function personalPanelsOf(identity: Identity, teamOrders: Promise<Order[]>
 }
 
 /**
- * One roster per division the viewer holds an active role in, in the order
- * their roles come (issue #593): none for a seat whose roles name no division.
+ * The rosters of the viewer's own units, in the order their roles come
+ * (issues #593 and #652): one per department they head, and one per division
+ * they hold a role in outside those departments. Only their roles count, so a
+ * grant never widens a roster; the team leader gets none, since the whole
+ * team is on the Members page. "See all" opens the Members page when the
+ * viewer reaches it.
  */
 async function readRosters(identity: Identity): Promise<Roster[]> {
-  const divisionsHeld = [...new Map(identity.roles.flatMap((r) => (r.divisionId === null ? [] : [[r.divisionId, r] as const]))).values()];
-  if (divisionsHeld.length === 0) return [];
-  const rows = await getDb()
-    .select({
-      division_id: roles.divisionId,
-      member_id: roles.memberId,
-      type: roles.type,
-      first_name: users.firstName,
-      last_name: users.lastName,
-      email: users.email,
-      picture: members.picture,
-    })
-    .from(roles)
-    .innerJoin(users, eq(users.member, roles.memberId))
-    .leftJoin(members, eq(members.memberId, roles.memberId))
-    .where(and(inArray(roles.divisionId, divisionsHeld.map((r) => r.divisionId!)), isNull(roles.leavedAt)));
-  return divisionsHeld.map((held) =>
-    divisionRoster(
-      { title: held.divisionName ?? "", department: held.departmentName ?? "" },
-      rows.flatMap((r) =>
-        r.member_id === null || r.division_id !== held.divisionId
-          ? []
-          : [{ memberId: r.member_id, type: r.type, name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email, photoUrl: r.picture }],
-      ),
-      identity.memberId,
-    ),
+  if (isTeamLeader(identity)) return [];
+  const headed = [...new Map(identity.roles.flatMap((r) => (r.type === "head" && r.divisionId === null && r.departmentId !== null ? [[r.departmentId, r] as const] : []))).values()];
+  const headedIds = headed.map((r) => r.departmentId!);
+  const divisionsHeld = [
+    ...new Map(
+      identity.roles.flatMap((r) => (r.divisionId === null || (r.departmentId !== null && headedIds.includes(r.departmentId)) ? [] : [[r.divisionId, r] as const])),
+    ).values(),
+  ];
+  if (headed.length === 0 && divisionsHeld.length === 0) return [];
+  const db = getDb();
+  const unitOf = sql<number | null>`coalesce(${roles.deptId}, ${divisions.deptId})`;
+  const inHeld = divisionsHeld.length === 0 ? undefined : inArray(roles.divisionId, divisionsHeld.map((r) => r.divisionId!));
+  const inHeaded = headedIds.length === 0 ? undefined : inArray(unitOf, headedIds);
+  const [rows, headedDivisions] = await Promise.all([
+    db
+      .select({
+        division_id: roles.divisionId,
+        department_id: unitOf,
+        member_id: roles.memberId,
+        type: roles.type,
+        first_name: users.firstName,
+        last_name: users.lastName,
+        email: users.email,
+        picture: members.picture,
+      })
+      .from(roles)
+      .innerJoin(users, eq(users.member, roles.memberId))
+      .leftJoin(members, eq(members.memberId, roles.memberId))
+      .leftJoin(divisions, eq(divisions.id, roles.divisionId))
+      .where(and(or(inHeld, inHeaded), isNull(roles.leavedAt))),
+    headedIds.length === 0
+      ? []
+      : db.select({ department_id: divisions.deptId }).from(divisions).where(and(inArray(divisions.deptId, headedIds), isNull(divisions.closedAt))),
+  ]);
+  const people = rows.flatMap((r) =>
+    r.member_id === null
+      ? []
+      : [
+          {
+            memberId: r.member_id,
+            divisionId: r.division_id,
+            departmentId: r.department_id,
+            type: r.type,
+            name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email,
+            photoUrl: r.picture,
+          },
+        ],
   );
+  const reachesMembers = canReach(identity, "members");
+  return [
+    ...headed.map((held) =>
+      departmentRoster(
+        {
+          title: departmentLabel(held.departmentName ?? ""),
+          divisions: headedDivisions.filter((d) => d.department_id === held.departmentId).length,
+          members: reachesMembers ? "/dashboard/members" : null,
+        },
+        people.filter((p) => p.departmentId === held.departmentId),
+        identity.memberId,
+      ),
+    ),
+    ...divisionsHeld.map((held) =>
+      divisionRoster(
+        {
+          title: held.divisionName ?? "",
+          department: held.departmentName ?? "",
+          members: reachesMembers ? `/dashboard/members?division=${held.divisionId}` : null,
+        },
+        people.filter((p) => p.divisionId === held.divisionId),
+        identity.memberId,
+      ),
+    ),
+  ];
 }
 
 /**
@@ -961,6 +1015,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     name: identity.name,
     role: cardRoleOf(identity),
     photoUrl: identity.picture,
+    hasOwnProfile: hasOwnProfile(identity),
   };
   const self = databaseSelfPages(identity);
   return {

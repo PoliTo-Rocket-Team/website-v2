@@ -20,7 +20,7 @@ import type { AccessSection } from "./access-summary";
 import type { ApplicantOverview } from "./applicant-overview";
 import type { AlumniOverview } from "./my-alumni";
 import type { RoleType } from "./team";
-import type { FlaggedSeat } from "./viewer";
+import { isTeamLeader, type FlaggedSeat, type ViewerStanding } from "./viewer";
 
 export type Link = { readonly label: string; readonly href: string };
 
@@ -113,6 +113,11 @@ export type TeamOverview = {
 export type UpcomingInterview = {
   readonly applicant: string;
   readonly position: string;
+  /**
+   * Who offered its times, read "with Marco Bianchi" under the time (board
+   * 99b, issue #652); null for times stored before the setter was recorded.
+   */
+  readonly setBy: string | null;
 } & (
   | { readonly state: "booked"; readonly start: Date; readonly end: Date }
   | { readonly state: "waiting" }
@@ -316,8 +321,9 @@ export function pageChecklistOf(page: PageProfile): Checklist | null {
 
 export type RosterPerson = {
   readonly name: string;
-  /** "Division lead" or "Member"; the viewer's own row reads "You" on desktop (board 52). */
+  /** "Department head", "Division lead" or "Member"; the viewer's own row reads "You" on desktop (board 52). */
   readonly role: string;
+  /** A head or a lead: their circle shows on the accent. */
   readonly lead: boolean;
   readonly self: boolean;
   /** Their stored photo; null draws the PRT mark (issue #599). */
@@ -327,12 +333,18 @@ export type RosterPerson = {
 export type Roster = {
   readonly title: string;
   readonly detail: string;
-  /** Everyone in the division, not only the people listed. */
+  /** Everyone in the division or department, not only the people listed. */
   readonly size: number;
+  /** At most `ROSTER_LIMIT` of them. */
   readonly people: readonly RosterPerson[];
+  /** "See all 14 on Members", to the Members page (board 99b); null for a viewer who does not reach that page. */
+  readonly seeAll: Link | null;
 };
 
-/** One active role row in the viewer's division, as the personal roster reads it. */
+/** The most people an Overview roster lists (board 99b); everyone is on the Members page. */
+export const ROSTER_LIMIT = 6;
+
+/** One active role row in the viewer's division or department, as the personal roster reads it. */
 export type RosterRow = {
   readonly memberId: number;
   readonly name: string;
@@ -341,53 +353,141 @@ export type RosterRow = {
   readonly photoUrl: string | null;
 };
 
+/** A row of a department's roster: the head's own row names no division. */
+export type DepartmentRosterRow = RosterRow & { readonly divisionId: number | null };
+
+/** Where someone stands in a roster, highest first. */
+type RosterRank = "head" | "lead" | "member";
+
+const RANK_ORDER: readonly RosterRank[] = ["head", "lead", "member"];
+
+const RANK_LABELS: Readonly<Record<RosterRank, string>> = {
+  head: "Department head",
+  lead: "Division lead",
+  member: "Member",
+};
+
+/** A division roster's row: "lead" or "head" in a division makes a division lead. */
+function divisionRankOf(row: RosterRow): RosterRank {
+  return row.type === "lead" || row.type === "head" ? "lead" : "member";
+}
+
+/** A department roster's row: the head's own row names no division; in a division it reads as a division row. */
+function departmentRankOf(row: DepartmentRosterRow): RosterRank {
+  return row.type === "head" && row.divisionId === null ? "head" : divisionRankOf(row);
+}
+
+/** "See all 14 on Members", or null for a viewer who does not reach the Members page. */
+function seeAllOf(size: number, members: string | null): Link | null {
+  return members === null ? null : { label: `See all ${size} on Members`, href: members };
+}
+
 /**
- * The viewer's division on the personal Overview (board 52). One member can
- * hold more than one active role row in a division (a department head who
- * also leads it), so the rows collapse to one person per member (issue #249),
- * a lead when any of their rows is. Leads come first, then up to two other
- * members, then the viewer; `size` and the detail count distinct members.
+ * One member can hold more than one active role row in a unit (a department
+ * head who also leads a division in it), so the rows collapse to one person
+ * per member (issue #249), at the highest rank any of their rows has. Heads
+ * come first, then leads, the viewer among them when they hold one of those
+ * seats (board 99b); then the other members, and the viewer last when they
+ * are a member. At most `ROSTER_LIMIT` are listed, the viewer always among
+ * them; `size` counts everyone.
+ */
+function rosterPeople<R extends RosterRow>(rows: readonly R[], rankOf: (row: R) => RosterRank, viewerId: number | null) {
+  const byMember = new Map<number, RosterPerson & { rank: RosterRank }>();
+  for (const row of rows) {
+    const held = byMember.get(row.memberId)?.rank;
+    const own = rankOf(row);
+    const rank = held !== undefined && RANK_ORDER.indexOf(held) < RANK_ORDER.indexOf(own) ? held : own;
+    byMember.set(row.memberId, {
+      name: row.name,
+      role: RANK_LABELS[rank],
+      lead: rank !== "member",
+      self: row.memberId === viewerId,
+      photoUrl: row.photoUrl,
+      rank,
+    });
+  }
+  const everyone = [...byMember.values()];
+  const me = everyone.filter((p) => p.self && p.rank === "member");
+  const room = ROSTER_LIMIT - me.length;
+  const leads = keepingViewer(
+    RANK_ORDER.filter((rank) => rank !== "member").flatMap((rank) => everyone.filter((p) => p.rank === rank)),
+    room,
+  );
+  const others = everyone.filter((p) => !p.self && p.rank === "member").slice(0, room - leads.length);
+  return { size: everyone.length, people: [...leads, ...others, ...me].map(({ rank: _rank, ...person }) => person) };
+}
+
+/** The first `room` of `people`, the viewer kept in the last place when they would fall off. */
+function keepingViewer<T extends { readonly self: boolean }>(people: readonly T[], room: number): T[] {
+  const first = people.slice(0, room);
+  const viewer = people.find((p) => p.self);
+  return viewer === undefined || first.includes(viewer) ? first : [...first.slice(0, room - 1), viewer];
+}
+
+/**
+ * The viewer's division on the personal Overview (boards 52 and 99b): at
+ * most `ROSTER_LIMIT` people (`rosterPeople`), with "See all N on Members"
+ * to `members`, the Members page, when the viewer reaches it.
  */
 export function divisionRoster(
-  division: { readonly title: string; readonly department: string },
+  division: { readonly title: string; readonly department: string; readonly members: string | null },
   rows: readonly RosterRow[],
   viewerId: number | null,
 ): Roster {
-  const byMember = new Map<number, RosterPerson>();
-  for (const row of rows) {
-    const lead = (byMember.get(row.memberId)?.lead ?? false) || row.type === "lead" || row.type === "head";
-    byMember.set(row.memberId, {
-      name: row.name,
-      role: lead ? "Division lead" : "Member",
-      lead,
-      self: row.memberId === viewerId,
-      photoUrl: row.photoUrl,
-    });
-  }
-  const people = [...byMember.values()];
-  const leads = people.filter((p) => p.lead && !p.self);
-  const others = people.filter((p) => !p.lead && !p.self).slice(0, 2);
-  const me = people.filter((p) => p.self);
-  return {
-    title: division.title,
-    detail: `${division.department} · ${rosterSize(people.length)}`,
-    size: people.length,
-    people: [...leads, ...others, ...me],
-  };
+  const { size, people } = rosterPeople(rows, divisionRankOf, viewerId);
+  return { title: division.title, detail: `${division.department} · ${rosterSize(size)}`, size, people, seeAll: seeAllOf(size, division.members) };
+}
+
+/**
+ * A department head's department on their Overview (issue #652): its head
+ * and everyone in its divisions, as a division's roster lists them.
+ */
+export function departmentRoster(
+  department: { readonly title: string; readonly divisions: number; readonly members: string | null },
+  rows: readonly DepartmentRosterRow[],
+  viewerId: number | null,
+): Roster {
+  const { size, people } = rosterPeople(rows, departmentRankOf, viewerId);
+  const divisions = `${department.divisions} ${department.divisions === 1 ? "division" : "divisions"}`;
+  return { title: department.title, detail: `${divisions} · ${rosterSize(size)}`, size, people, seeAll: seeAllOf(size, department.members) };
 }
 
 /**
  * Board 52's panels, on every team seat's Overview (issue #593): who the
- * viewer is, their page on the site, one roster per division they are in
- * (none for a seat whose roles name no division), and "Your access".
+ * viewer is, their page on the site, the roster of their own division or
+ * department (issue #652: never wider, whatever their grants reach, and none
+ * for the team leader, whose whole team is on the Members page), and "Your
+ * access".
  */
 export type PersonalPanels = {
   readonly person: PersonHeader;
+  /** Where these panels sit beside the scope board (`overviewLayoutOf`). */
+  readonly layout: OverviewLayout;
   /** "Your page on the site" (`pageChecklistOf`); null once every step is done (issue #641). */
   readonly checklist: Checklist | null;
   readonly rosters: readonly Roster[];
   readonly access: AccessSection;
 };
+
+/**
+ * How a team seat's Overview sets its panels out. `leader-columns` is boards
+ * 99 and 99b (issue #652): what needs attention, their page on the site and
+ * the scope's own panel on the left, the roster then recent activity on the
+ * right. `board-first` is the order from before: the scope board's attention
+ * beside its activity, then their page on the site beside the roster.
+ */
+export type OverviewLayout = "leader-columns" | "board-first";
+
+/**
+ * Boards 99 and 99b are for the three leaders the issue names: the team
+ * leader, a department head and a division lead. Every other team seat (a
+ * member, with or without grants, and a full-access seat that is not the team
+ * leader) keeps the board-first order.
+ */
+export function overviewLayoutOf(viewer: ViewerStanding): OverviewLayout {
+  if (viewer.kind === "department-head" || viewer.kind === "division-lead" || isTeamLeader(viewer)) return "leader-columns";
+  return "board-first";
+}
 
 /** The one-line strip under a member's panels when they hold no grant and read no area (board 40m). */
 export const ACCESS_HINT = "Need to work on recruitment or site content? Ask your division lead or the admin team for access.";

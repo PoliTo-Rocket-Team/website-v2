@@ -435,6 +435,13 @@
       "when": 1794417600000,
       "tag": "0063_notice_acting_account",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1794504000000,
+      "tag": "0064_interview_slots_offered_by",
+      "breakpoints": true
     }
   ]
 }
