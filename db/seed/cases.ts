@@ -34,6 +34,7 @@ import {
   type scopes,
   type teamPageAdvisors,
   type teamPageAdvisorVersions,
+  type teamJoins,
   type teamPageLayerVersions,
   type users,
 } from "@/db/schema";
@@ -90,7 +91,7 @@ import {
 } from "./outreach";
 import { PARTNER_ROWS, PARTNER_VERSION_ROWS } from "./partners";
 import { PROJECT_ROWS, PROJECT_VERSION_ROWS } from "./projects";
-import { IT_LEAD, MEMBER_ROWS, ROLE_ROWS, PLAIN_SEAT_PEOPLE, USER_ROWS } from "./people";
+import { ADDED_BY_EMAIL, ADDED_USER_ROWS, IT_LEAD, MEMBER_ROWS, ROLE_ROWS, PLAIN_SEAT_PEOPLE, SIGN_IN_ROWS, TEAM_JOIN_ROWS, USER_ROWS } from "./people";
 import { APPLICATION_FILE_ROWS, APPLICATION_ROWS, APPLICATION_STATUS_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
 import { DEPARTMENT_ROWS, DIVISION_ROWS } from "./structure";
 import {
@@ -109,6 +110,9 @@ export type SeedData = {
   readonly divisions: readonly InferInsertModel<typeof divisions>[];
   readonly members: readonly InferInsertModel<typeof members>[];
   readonly users: readonly InferInsertModel<typeof users>[];
+  /** The people added by email who have not signed in (issue #746): `users` rows with no sign-in row. */
+  readonly addedUsers: readonly InferInsertModel<typeof users>[];
+  readonly teamJoins: readonly InferInsertModel<typeof teamJoins>[];
   readonly roles: readonly InferInsertModel<typeof roles>[];
   readonly scopes: readonly InferInsertModel<typeof scopes>[];
   readonly alumniEntries: readonly InferInsertModel<typeof alumniEntries>[];
@@ -143,6 +147,8 @@ export const SEED_DATA: SeedData = {
   divisions: DIVISION_ROWS.rows,
   members: MEMBER_ROWS.rows,
   users: USER_ROWS.rows,
+  addedUsers: ADDED_USER_ROWS.rows,
+  teamJoins: TEAM_JOIN_ROWS.rows,
   roles: ROLE_ROWS.rows,
   scopes: SCOPE_ROWS.rows,
   alumniEntries: ALUMNI_ENTRY_ROWS.rows,
@@ -891,6 +897,30 @@ export const SEED_CASES: readonly SeedCase[] = [
     rows: "`PLAIN_SEAT_PEOPLE` in `db/seed/people.ts`",
     exercisedBy: issue(247),
     holds: (data) => PLAIN_SEATS.every((viewer) => resolvesTo(data, viewer)),
+  },
+  {
+    area: "people",
+    case: "Someone a division lead added by email who has not signed in yet, so they wait with no member row and no sign-in",
+    data: "invented",
+    rows: `\`users\` id \`${ADDED_BY_EMAIL.userId}\`, its \`team_joins\` row in Test Bench added by member ${ADDED_BY_EMAIL.addedBy}`,
+    exercisedBy: issue(741),
+    holds: (data) => {
+      const added = data.addedUsers.filter((u) => u.id.startsWith("added:"));
+      if (added.length !== 1) return false;
+      const [user] = added;
+      const joins = data.teamJoins.filter((j) => j.userId === user.id);
+      if (joins.length !== 1) return false;
+      const [join] = joins;
+      return (
+        user.email.endsWith("@example.com") &&
+        (user.member ?? null) === null &&
+        !data.users.some((u) => u.id === user.id || u.email === user.email) &&
+        !SIGN_IN_ROWS.rows.some((row) => row.id === user.id || row.email === user.email) &&
+        openDivisions(data).some((d) => d.id === join.divisionId) &&
+        join.addedBy != null &&
+        activeIn(data, join.divisionId).some((r) => r.memberId === join.addedBy && r.type === "lead")
+      );
+    },
   },
   {
     area: "alumni",
