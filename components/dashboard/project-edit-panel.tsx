@@ -82,7 +82,7 @@ export function ProjectEditPanel({
   /** The project's name, as the panel's title says it. */
   name: string;
   kind: "vehicle" | "engine";
-  /** The model the top's 3D model draws (`projectModelOf`). */
+  /** The model the top's Rocket field opens on (`projectModelOf`). */
   model: RocketModel;
   /** The project's card as Home draws it now, for the Card section's number and counted pill. */
   card: HomeCardView;
@@ -145,6 +145,7 @@ export function ProjectEditPanel({
         <TopSection
           key={section}
           fields={fields}
+          kind={kind}
           model={model}
           phone={phone}
           errors={errors}

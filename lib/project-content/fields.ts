@@ -2,7 +2,7 @@ import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { isPhotoSrc } from "@/lib/outreach-photos";
 import type { Fact, KeyFacts, Photo, TopVisual } from "@/lib/project-pages/types";
 import { editorVersion, type Versioned } from "@/lib/content/versioned";
-import { MODEL_ALTS, ownModels, rocketModelOf, type OwnModel, type RocketModel } from "@/lib/rocket-model";
+import { MODEL_ALTS, ownModels, ownRocketModels, rocketModelOf, type OwnModel, type RocketModel } from "@/lib/rocket-model";
 import { blockFieldsOf, blockOf, blockPhotos, blockProblems, readBlockFields, type BlockFields, type FactFields } from "./block-fields";
 import { BLOCKS_MAX } from "./block-list";
 import { cardFieldsAfterSave, cardFieldsOf, cardProblems, readCardFields, withCardFields, type CardFields } from "./card-fields";
@@ -77,9 +77,9 @@ export function outlinedSection(expanded: readonly PanelSection[]): PageSection 
 export type { BlockFields, CardFields, CopyFields, FactFields };
 
 /**
- * The top of the page's visual as the panel picks it (board 93d): the
- * project's own model or the outline rocket (`projectModelOf`), a photo, none
- * until it is uploaded, or no visual at all.
+ * The top of the page's visual as the panel picks it (board 93d): a model
+ * from the Rocket field (`pickableModelsOf`, issue #389), a photo, none until
+ * it is uploaded, or no visual at all.
  */
 export type VisualFields =
   | { readonly kind: "model"; readonly model: RocketModel }
@@ -132,10 +132,25 @@ function visualFieldsOf(visual: TopVisual): VisualFields {
 }
 
 /**
- * The model the panel's 3D model draws (board 93d draws no model list): the
- * project's own, from the version the panel opened or else the published one,
- * so a visual switched to Photo or None and back keeps it; the outline rocket
- * for a project whose model is not built yet.
+ * The models the Rocket field offers a project (issue #389), the outline
+ * rocket last. A rocket's record names a rocket only (`isProjectRecord`,
+ * issue #382), so an engine never draws on a rocket's card; an engine's may
+ * name any model.
+ */
+const PICKABLE_MODELS: Readonly<Record<ProjectRecord["kind"], readonly RocketModel[]>> = {
+  vehicle: [...ownRocketModels, "placeholder"],
+  engine: [...ownModels, "placeholder"],
+};
+
+export function pickableModelsOf(kind: ProjectRecord["kind"]): readonly RocketModel[] {
+  return PICKABLE_MODELS[kind];
+}
+
+/**
+ * The model the Rocket field opens on (issue #389): the project's own, from
+ * the version the panel opened or else the published one, so a visual
+ * switched to Photo or None and back keeps it; the outline rocket for a
+ * project that has none.
  */
 export function projectModelOf(version: Versioned<ProjectRecord>): RocketModel {
   const own = visualModelOf<OwnModel>(editorVersion(version).hero) ?? (version.state === "published" ? visualModelOf<OwnModel>(version.published.hero) : undefined);
