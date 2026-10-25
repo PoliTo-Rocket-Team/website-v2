@@ -510,6 +510,8 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
       }
       toast.success(`Saved ${checked.value.name === null ? name : `${checked.value.name.firstName} ${checked.value.name.lastName}`}`);
       onClose();
+    } catch (err) {
+      toast.error("Could not save the details", { description: err instanceof Error ? err.message : "Please try again." });
     } finally {
       setPending(false);
     }
@@ -747,6 +749,8 @@ function PhotoField({ person }: { person: Pick<EditPerson, "id" | "photoUrl"> })
       setPreview(URL.createObjectURL(square));
       setCropping(null);
       toast.success("Photo updated");
+    } catch (err) {
+      toast.error("Could not upload the photo", { description: err instanceof Error ? err.message : "Please try again." });
     } finally {
       setPending(false);
     }
