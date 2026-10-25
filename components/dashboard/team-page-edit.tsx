@@ -597,12 +597,12 @@ function AddedItemsNote() {
   );
 }
 
-const ADD_PILL = `inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-accent/70 bg-ground font-semibold text-accent transition-colors duration-300 ease-out hover:border-accent hover:bg-accent/10 ${CONTENT_FOCUS}`;
+const ADD_PILL = `inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-accent/70 bg-ground font-semibold text-accent transition-colors duration-300 ease-out hover:border-accent ${CONTENT_FOCUS}`;
 
 /** "+ Add department" beside a slide's heading (board 80e). */
 function AddDepartmentButton({ onClick }: { onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className={`${ADD_PILL} h-8 px-3.5 text-[13px]`}>
+    <button type="button" onClick={onClick} className={`${ADD_PILL} h-8 px-3.5 text-[13px] hover:bg-accent/10`}>
       <Plus aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
       Add department
     </button>
@@ -613,13 +613,19 @@ function AddDepartmentButton({ onClick }: { onClick: () => void }) {
  * "+ Add division lead" on every head block (board 80e), shown at all times on
  * Desktop, Phone and touch (Owner decision on #498, issue #507): it sits on the
  * block's outline, at its foot. Hover and focus only brighten it.
+ *
+ * The outline is drawn after the block's content at `z-10` (EditableBlock in
+ * edit-shell.tsx), so the pill stacks above it at `z-20` and its solid
+ * `bg-ground` hides the dashed line under the label (issue #697). For the
+ * same reason its hover tint is a layer between that fill and the label,
+ * never a see-through fill in place of it.
  */
 function AddLeadButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`${ADD_PILL} absolute -bottom-3 left-1 z-10 h-6 translate-y-1/2 px-2.5 text-[12px] md:-bottom-[22px] md:left-0`}
+      className={`${ADD_PILL} absolute -bottom-3 left-1 z-20 h-6 translate-y-1/2 px-2.5 text-[12px] before:absolute before:inset-0 before:-z-10 before:rounded-full before:transition-colors before:duration-300 before:ease-out hover:before:bg-accent/10 md:-bottom-[22px] md:left-0`}
     >
       <Plus aria-hidden className="h-3 w-3" strokeWidth={2} />
       Add division lead
