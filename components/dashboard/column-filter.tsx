@@ -2,9 +2,10 @@
 
 import { useRef, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Check, ListFilter, Search } from "lucide-react";
+import { Check, ListFilter } from "lucide-react";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import type { ColumnOption } from "@/lib/dashboard/column-filters";
+import { SearchField } from "./search-field";
 
 // A table column's filter, shared by the Members table and the Applications
 // table (boards 73b and 73c, issue #428). The table owns the picks and the
@@ -121,17 +122,7 @@ export function ColumnFilter({
             className="fixed z-50 flex w-[272px] flex-col rounded-xl border border-hairline bg-panel p-1.5 font-display normal-case tracking-normal text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0"
           >
             <DialogTitle className="sr-only">{label}</DialogTitle>
-            <label className="relative mb-1 block">
-              <span className="sr-only">Search {label.toLowerCase()}</span>
-              <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-prt-muted" strokeWidth={2} />
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={placeholder}
-                className="h-9 w-full rounded-lg border border-hairline bg-white-5 pl-9 pr-3 text-[13px] text-prt-text outline-none transition-colors duration-300 ease-out placeholder:text-prt-muted focus:border-border-strong"
-              />
-            </label>
+            <SearchField value={search} onChange={setSearch} placeholder={placeholder} className="mb-1" />
             <div className="max-h-[300px] overflow-y-auto">
               {sections.map((field, i) => {
                 const options = field.options.filter(matches);

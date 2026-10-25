@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { FileSpreadsheet, List, Lock, MoreHorizontal, Pencil, Plus, Table2, UserMinus, UserX } from "lucide-react";
+import { FileSpreadsheet, List, Lock, Pencil, Plus, Table2, UserMinus, UserX } from "lucide-react";
 import type { MemberAliases } from "@/lib/dashboard/alias-request";
 import { memberDetailText } from "@/lib/dashboard/details";
 import type { DivisionHeader, WaitingPerson } from "@/lib/dashboard/division-members";
@@ -31,7 +31,7 @@ import {
 import { shortDate } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
 import { ColumnFilter } from "./column-filter";
-import { DepartmentFilter, Pager, SearchField, TH } from "./directory";
+import { DepartmentFilter, Pager, TH } from "./directory";
 import { Chips } from "./division-chips";
 import {
   ConfirmNdaButton,
@@ -49,6 +49,8 @@ import { DrawerPage } from "./drawer";
 import { AddMemberDrawer, EditDetailsDrawer, PersonDrawer, type AddTarget, type EditTarget } from "./member-panels";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
+import { RowOpen } from "./row-open";
+import { SearchField } from "./search-field";
 
 // The Members page, one view for every role that opens it (Owner decision,
 // 2026-10-19, issue #408): the team leader, a department head and a division
@@ -347,22 +349,6 @@ function roleClass(person: TeamMember): string {
   return person.role === "member" ? "text-prt-text" : "text-accent";
 }
 
-function OpenButton({ person, onOpen }: { person: TeamMember; onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        event.stopPropagation();
-        onOpen();
-      }}
-      aria-label={`Open ${person.name}`}
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-prt-muted transition-colors duration-300 ease-out hover:bg-white-5 hover:text-prt-text ${FOCUS}`}
-    >
-      <MoreHorizontal aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-    </button>
-  );
-}
-
 // Board 73: member, divisions and role; no Phone or Discord column, those
 // stay in the member panel. The people waiting for Confirm NDA come first
 // (board 61e), then pages of eight under "Heads and leads first".
@@ -458,7 +444,9 @@ function PersonRow({
         <span className="flex min-w-0 items-center gap-3.5">
           <Avatar person={person} />
           <span className="min-w-0">
-            <span className="block truncate text-[14px] text-prt-text">{person.name}</span>
+            <RowOpen label={`Open ${person.name}`} onOpen={onOpen} className="block truncate text-[14px] text-prt-text">
+              {person.name}
+            </RowOpen>
             <span className="block truncate text-[12px] text-prt-muted">{person.details.prtEmail || person.signInEmail}</span>
           </span>
         </span>
@@ -468,7 +456,7 @@ function PersonRow({
       </td>
       <td className={`truncate px-5 py-2.5 text-[14px] ${roleClass(person)}`}>{person.roleLabel}</td>
       <td className="pr-4 text-right" onClick={(e) => e.stopPropagation()}>
-        {actions ? <PersonMenu actions={actions} onAsk={onAsk} /> : <OpenButton person={person} onOpen={onOpen} />}
+        {actions && <PersonMenu actions={actions} onAsk={onAsk} />}
       </td>
     </tr>
   );
@@ -711,7 +699,9 @@ function TableView({
                 >
                   <span className="flex min-w-0 items-center gap-2.5">
                     <Avatar size="xs" person={p} />
-                    <span className="truncate text-[13px] text-prt-text">{p.name}</span>
+                    <RowOpen label={`Open ${p.name}`} onOpen={() => onOpen(p.id)} className="min-w-0 truncate text-[13px] text-prt-text">
+                      {p.name}
+                    </RowOpen>
                   </span>
                 </td>
                 {COLUMNS.map((column) => (
