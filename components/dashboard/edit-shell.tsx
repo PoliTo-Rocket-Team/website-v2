@@ -17,6 +17,18 @@ import {
   type PublishCheck,
   type ScaledFrame,
 } from "@/lib/content/edit-shell";
+import {
+  checksAfterEdit,
+  confirmPage,
+  holdsPublish,
+  markedTargets,
+  pageToCheck,
+  publishHoldOf,
+  uncheckedFor,
+  type CardLook,
+  type PageChecks,
+  type PublishHold,
+} from "@/lib/content/publish-hold";
 import { CONTENT_STATUS_LABELS, type ContentStatus } from "@/lib/content/versioned";
 import { CONTENT_FOCUS } from "./content-parts";
 import { EditFrame } from "./edit-frame";
@@ -55,11 +67,13 @@ import { ViewAsBanner } from "./view-as-banner";
 // instead of reflowing the page to that narrower width. Below md the panel
 // covers the page, so there it changes nothing.
 //
-// A content type may hold Publish behind a check of other pages (board 93e,
-// issue #530): a warning strip under the bar, a cross or a tick after each
-// page of the switch the editor has to check, and, on a page still to check,
-// a bar over the page's foot asking whether it looks right. A shell given
-// none of these draws as before.
+// A content type with a page switch holds Publish behind a check of the other
+// pages its card shows on (board 93e, issues #530 and #581). It names those
+// pages and its card's look, in the editor and on the site; the shell keeps
+// the ticks (lib/content/publish-hold.ts holds the rule) and, while the hold
+// is on, draws a warning strip under the bar, a cross or a tick after each
+// page to check, and, on a page still to check, a bar over the page's foot
+// asking whether it looks right. Publish stays off until every page is ticked.
 //
 // Below md the bar keeps its one 60px row, and the page switch, marks and
 // all, moves to a row of its own under it, so a phone reaches every page and
@@ -136,7 +150,41 @@ function useScaledFrame(room: RefObject<HTMLDivElement | null>, on: boolean): Sc
 }
 
 /** The question a page still to check asks, and what confirming it does. */
-export type PageCheckPrompt = { readonly question: string; readonly onConfirm: () => void };
+type PageCheckPrompt = { readonly question: string; readonly onConfirm: () => void };
+
+/**
+ * The pages of the switch a content type's card shows on, checked before
+ * Publish while the card's look in the editor is not the one the site shows
+ * (board 93e): that look, the live one (null for an item with no live
+ * version, never saved or never published, which is always held), the
+ * warning strip's words and the question each page's "Looks right" bar asks.
+ */
+export type PagesToCheck<Page extends string> = {
+  readonly pages: readonly Page[];
+  readonly look: CardLook;
+  readonly live: CardLook | null;
+  readonly notice: string;
+  readonly question: (page: Page) => string;
+};
+
+/**
+ * The hold over the pages to check, the ticks kept as the editor confirms
+ * each page and cleared when the look changes. The ticks follow the look
+ * while drawing, as React adjusts state that follows another value, so a look
+ * changed and changed back is cleared too.
+ */
+function usePublishHold<Page extends string>(
+  check: PagesToCheck<Page> | undefined,
+): { readonly hold: PublishHold<Page>; readonly confirm: (page: Page) => void } {
+  const look = check?.look ?? null;
+  const [checks, setChecks] = useState<PageChecks<Page> | null>(() => (look === null ? null : uncheckedFor(look)));
+  const current = look === null ? null : checks === null ? uncheckedFor<Page>(look) : checksAfterEdit(checks, look);
+  if (current !== checks) setChecks(current);
+  return {
+    hold: check === undefined || current === null ? { kind: "free" } : publishHoldOf(current, check.live, check.pages),
+    confirm: (page) => setChecks((c) => (c === null ? c : confirmPage(c, page))),
+  };
+}
 
 /** The page switch: the pages this item shows on, and the one in view. */
 export type PageSwitch<Page extends string> = {
@@ -145,7 +193,7 @@ export type PageSwitch<Page extends string> = {
   readonly onSelect: (page: Page) => void;
 };
 
-export function EditShell<Id extends string, Section extends string, Page extends string = never>({
+export function EditShell<Id extends string, Section extends string, Page extends string = never, Checked extends Page = Page>({
   section,
   heading,
   status,
@@ -164,8 +212,7 @@ export function EditShell<Id extends string, Section extends string, Page extend
   children,
   panel,
   scalesDesktop = false,
-  notice,
-  pageCheck,
+  check,
 }: {
   /** The dashboard page this item belongs to, as the breadcrumb's first step and where the arrow goes back to. */
   section: { readonly label: string; readonly href: string };
@@ -208,15 +255,19 @@ export function EditShell<Id extends string, Section extends string, Page extend
   panel?: ReactNode;
   /** While the panel is open, Desktop keeps the desktop layout scaled to fit beside it (board 93) rather than reflowing. */
   scalesDesktop?: boolean;
-  /** A warning strip under the bar, as while Publish waits on a check of other pages (board 93e). */
-  notice?: string;
-  /** On a page still to check, the bar over the page's foot: the question and its "Looks right" (board 93e). */
-  pageCheck?: PageCheckPrompt;
+  /** The pages of the switch the card shows on, checked before Publish (board 93e); every editor with a page switch names them. */
+  check?: PagesToCheck<Checked>;
 }) {
   const [device, setDevice] = useState<EditDevice>("desktop");
   const roomRef = useRef<HTMLDivElement>(null);
   const scaled = useScaledFrame(roomRef, scalesDesktop && device === "desktop" && Boolean(panel));
-  const switcher = pages !== undefined && showsPageSwitch(pages.targets) ? pages : null;
+  const { hold, confirm } = usePublishHold(check);
+  const switcher = pages !== undefined && showsPageSwitch(pages.targets) ? { ...pages, targets: markedTargets(pages.targets, hold) } : null;
+  const toCheck = switcher === null ? null : pageToCheck(hold, switcher.current);
+  const notice = check !== undefined && hold.kind === "checking" ? check.notice : undefined;
+  const pageCheck: PageCheckPrompt | undefined =
+    check === undefined || toCheck === null ? undefined : { question: check.question(toCheck), onConfirm: () => confirm(toCheck) };
+  const publish = holdsPublish(hold) ? null : onPublish;
   const changeDevice = (next: EditDevice) => {
     setDevice(next);
     onDeviceChange?.(next);
@@ -272,11 +323,11 @@ export function EditShell<Id extends string, Section extends string, Page extend
             <div className="group/publish">
               <button
                 type="button"
-                disabled={onPublish === null}
+                disabled={ready && publish === null}
                 aria-disabled={ready ? undefined : true}
                 aria-describedby={ready ? undefined : checklistId}
                 onClick={() => {
-                  if (ready) onPublish?.();
+                  if (ready) publish?.();
                 }}
                 className={`${BAR_BUTTON} bg-prt-text text-ground transition-opacity duration-300 ease-out ${ready ? "hover:opacity-90" : "cursor-not-allowed opacity-50"}`}
               >

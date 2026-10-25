@@ -135,8 +135,11 @@ export type CardFeature =
 /** A move the server is asked for. */
 export type FeatureMove = Exclude<CardFeature, { kind: "locked" }>;
 
-/** The post being edited: its id, and whether a version of it is on the site. */
-export type EditedPost = { readonly id: number; readonly live: boolean };
+/**
+ * The post being edited: its id, and whether a version of it is on the site.
+ * A new post not saved yet has no id, and so nothing on the site.
+ */
+export type EditedPost = { readonly id: number; readonly live: boolean } | { readonly id: null; readonly live: false };
 
 /**
  * Feature on a card under the Featured cards. The card being edited features
@@ -154,8 +157,8 @@ export function listedCardFeature(
 ): CardFeature | null {
   const full = featured.length === 2 ? FEATURED_FULL : null;
   if (edited !== null) {
-    const reason = edited.live ? full : FEATURE_LOCKED;
-    return reason === null ? { kind: "feature", id: edited.id, title: card.title } : { kind: "locked", title: card.title, reason };
+    if (!edited.live) return { kind: "locked", title: card.title, reason: FEATURE_LOCKED };
+    return full === null ? { kind: "feature", id: edited.id, title: card.title } : { kind: "locked", title: card.title, reason: full };
   }
   const id = ids[card.slug];
   if (id === undefined) return null;
