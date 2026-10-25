@@ -38,6 +38,10 @@ This record supersedes rule 7 ("One person, one division") of [0011](./0011-appl
 
 Followed today: the memberships model and the home-division rule are in [lib/dashboard/team.ts](../lib/dashboard/team.ts); a member's standing and the no-NDA Confirm join are in [lib/dashboard/application-flow.ts](../lib/dashboard/application-flow.ts); the dashboard rules are in [docs/dashboard-rules.md](../docs/dashboard-rules.md).
 
+## Amendment, 2026-10-25
+
+Owner ruling R1.3, 2026-10-25, on the grilling session #745 of epic #588 (https://github.com/PoliTo-Rocket-Team/website-v2/issues/745#issuecomment-6399754015). Rule 4 is replaced: a person already on the team who applies to another division goes through exactly the same statuses as any applicant ([0011](./0011-applicant-journey-received-to-joining.md), amendment of 2026-10-25, "one application status list"), with no special path and no skipped status. After the acceptance email is sent ("Accepted · email sent"), the team leader sets "NDA received" as usual, then Confirm join adds them to the position's division, and they keep every other division. The "What this decides" line's "Confirm join adds them to that division at once", the bold summary's "Confirm join for someone already on the team waits for no NDA", and the Context line saying this record amends 0011's Confirm join rule for people already on the team no longer hold; those lines stay as written. Rules 1, 2, 3 and 5 still hold: the team has one NDA and a member signs it once. The code that follows the new rule 4 is built by the children of epic #588; until they land, `lib/dashboard/application-flow.ts` still runs the no-NDA Confirm join. The rest of this record is unchanged.
+
 ## Records
 
 Terms: confirm join, joining (redefined for members). Rows in [.glossary/TERMS.md](../.glossary/TERMS.md).
