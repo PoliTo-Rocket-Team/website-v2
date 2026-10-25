@@ -49,6 +49,12 @@ export type EditPerson = Pick<DivisionPerson, "id" | "name" | "signInEmail" | "p
 export type MemberActions = {
   readonly person: EditPerson;
   readonly position: MemberPosition;
+  /**
+   * Whether Edit details may correct their sign-in email (issue #741): set
+   * on the server, for full access only and only while no sign-in account
+   * holds their user row (./sign-in-email.ts). A head's or a lead's page never offers it.
+   */
+  readonly correctsSignInEmail: boolean;
 };
 
 /** One person on the page, whichever role opens it; `actions` is null where the page offers no change to them. */
@@ -150,11 +156,15 @@ export function membersModelOf(directory: MemberDirectory): MembersModel | null 
  * (Owner decision, 2026-10-22, issue #584).
  */
 export function wholeTeamModel(
-  page: WholeTeamMembers & { readonly positions: readonly PersonPosition[]; readonly queues: readonly DivisionQueue[] },
+  page: WholeTeamMembers & {
+    readonly positions: readonly PersonPosition[];
+    readonly queues: readonly DivisionQueue[];
+    readonly correctsSignInEmail: readonly number[];
+  },
 ): MembersModel {
   const actionsOf = (person: EditPerson): MemberActions | null => {
     const position = page.positions.find((e) => e.id === person.id);
-    return position === undefined ? null : { person, position };
+    return position === undefined ? null : { person, position, correctsSignInEmail: page.correctsSignInEmail.includes(person.id) };
   };
   const queues = page.queues.flatMap((q): MembersQueue[] => {
     const header = page.divisions.find((d) => d.id === q.divisionId);
@@ -210,7 +220,7 @@ function unitDivision(d: DivisionHeader): MembersUnit["divisions"][number] {
 
 /** A division page's person's actions: none on a page at Can view, or on their own row (`position` is null there). */
 function actionsOf(person: DivisionPerson): MemberActions | null {
-  return person.position === null ? null : { person, position: person.position };
+  return person.position === null ? null : { person, position: person.position, correctsSignInEmail: false };
 }
 
 function sliceOf(page: DivisionMembers): MembersDivision {

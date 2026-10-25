@@ -423,7 +423,13 @@ export type DivisionQueue = {
  * every open division's people waiting for Confirm NDA and joining (issue #584).
  */
 export type MemberDirectory =
-  | ({ readonly scope: "whole-team"; readonly positions: readonly PersonPosition[]; readonly queues: readonly DivisionQueue[] } & WholeTeamMembers)
+  | ({
+      readonly scope: "whole-team";
+      readonly positions: readonly PersonPosition[];
+      readonly queues: readonly DivisionQueue[];
+      /** The members whose sign-in email the viewer may correct in Edit details (issue #741, ./sign-in-email.ts). */
+      readonly correctsSignInEmail: readonly number[];
+    } & WholeTeamMembers)
   | ({ readonly scope: "division" } & DivisionMembers)
   | ({ readonly scope: "department" } & DepartmentMembers)
   | { readonly scope: "none" };

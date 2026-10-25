@@ -459,6 +459,8 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   const waiting = target.kind === "waiting" ? target.waiting : null;
   const name = person?.name ?? waiting?.name ?? waiting?.email ?? "";
   const email = person?.signInEmail ?? waiting?.email ?? "";
+  // Full access corrects a mistyped sign-in email while no sign-in account holds it (issue #741); the server sets the flag.
+  const correctsEmail = target.kind === "person" ? target.actions.correctsSignInEmail : target.waiting.correctsSignInEmail;
   const title = position?.title ?? null;
   // The division whose role title the form sets: the waiting person's, or the person's titled one; none for a seat.
   const titleDivision =
@@ -474,6 +476,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   );
   // Their first and last name, for someone on the team (issue #668); someone waiting keeps the name they were added with.
   const [names, setNames] = useState<PersonName | null>(position?.name ?? null);
+  const [signInEmail, setSignInEmail] = useState(email);
   const [asking, setAsking] = useState<Asking | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -484,7 +487,9 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const input = { title: draft.title, details: detailsOf(draft), ...names };
+    // The sign-in email is sent only when corrected, so a save that leaves it as shown asks for no correction.
+    const corrected = correctsEmail && signInEmail.trim().toLowerCase() !== email.toLowerCase();
+    const input = { title: draft.title, details: detailsOf(draft), ...names, ...(corrected ? { signInEmail } : {}) };
     const checked = checkMemberEdit(input, title?.kind === "seat" ? "required" : "optional");
     if (!checked.ok) return setErrors(checked.errors);
     setPending(true);
@@ -632,13 +637,30 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         <Section title="Contact">
           <div className="grid gap-x-3 gap-y-4 sm:grid-cols-2">
             <DetailInput name="prtEmail" label="PRT email" draft={draft} errors={errors} set={set} />
-            <Field label="Personal email" hint="sign-in email">
-              {(id) => (
-                <span id={id} className={LOCKED_INPUT}>
-                  <span className="min-w-0 flex-1 truncate">{email}</span>
-                  <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-                </span>
-              )}
+            <Field label="Personal email" hint="sign-in email" error={correctsEmail ? errors.signInEmail : undefined}>
+              {(id, describedBy) =>
+                correctsEmail ? (
+                  <input
+                    id={id}
+                    type="email"
+                    value={signInEmail}
+                    maxLength={200}
+                    autoComplete="off"
+                    aria-describedby={describedBy}
+                    aria-invalid={errors.signInEmail !== undefined}
+                    onChange={(e) => {
+                      setSignInEmail(e.target.value);
+                      setErrors((errs) => ({ ...errs, signInEmail: undefined }));
+                    }}
+                    className={inputClass(errors.signInEmail)}
+                  />
+                ) : (
+                  <span id={id} className={LOCKED_INPUT}>
+                    <span className="min-w-0 flex-1 truncate">{email}</span>
+                    <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                  </span>
+                )
+              }
             </Field>
             <DetailInput name="phone" label="Phone" draft={draft} errors={errors} set={set} />
             <DetailInput name="discord" label="Discord" draft={draft} errors={errors} set={set} />
