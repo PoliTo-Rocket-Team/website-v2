@@ -464,8 +464,9 @@ function Detail({
   // Confirm join sets these to "Accepted for another position" (ADR 0011, amendment of 2026-10-25).
   const othersTaken = a.otherApplications.filter((o) => takenByJoinElsewhere({ kind: "built-in", key: o.status })).length;
   // A button and a saved hand pick of the same status run the same move (`moveToStatus`), behind the same confirm.
+  // The buttons are locked while a pick is a draft, so a confirm asked with a draft open is the pick's.
   const run = (target: PickTarget) =>
-    onMove(a, moveToStatus(a.state, target), () => {
+    onMove(a, moveToStatus(a.state, target, draft === null ? "button" : "pick"), () => {
       setAsking(null);
       setDraft(null);
     });

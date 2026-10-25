@@ -268,23 +268,33 @@ export type PickTarget =
   | { readonly to: Exclude<BuiltInStatusKey, "interview"> };
 
 /**
- * The move that saving a hand-picked built-in status runs (ruling R1.1 on
- * #745): the current status's own button where one of them sets that status,
- * so the pick is that button's very move, and a `pick` of it otherwise.
+ * The move a confirm runs for `target` (ruling R1.1 on #745). From a button,
+ * that button's own move. From a saved hand pick, a `pick` of the status: it
+ * runs the move of the current status's button that sets it where there is
+ * one (`pickNext`), so its checks and effects are that button's, and only
+ * the status it leaves differs. Interview picked from Second interview runs
+ * Change times' move and lands on Interview, where Change times itself keeps
+ * Second interview (`statusAfter`).
  */
-export function moveToStatus(state: ApplicationState, target: PickTarget): LeadMove | BuiltInPick {
-  const step = LEAD_STEPS[state.status].find((s) => s.sets === target.to);
+export function moveToStatus(state: ApplicationState, target: PickTarget, via: "button" | "pick"): LeadMove | BuiltInPick {
+  const step = via === "button" ? LEAD_STEPS[state.status].find((s) => s.sets === target.to) : undefined;
   if (!step) return target.to === "interview" ? { kind: "pick", to: "interview", slots: target.slots } : { kind: "pick", to: target.to };
+  return buttonMove(step, target);
+}
+
+/** The move `step`'s button runs, with the times its confirm offered when it moves to Interview. */
+function buttonMove(step: LeadStep, target: PickTarget): LeadMove {
   if (step.move === "offer-interview") return { kind: "offer-interview", slots: target.to === "interview" ? target.slots : [] };
   return { kind: step.move };
 }
 
 /**
  * A saved hand pick: the state the step that sets the status reaches, with
- * that step's checks and effects. The step is the button of the owner's
- * table that sets the status, the applicant's Withdraw for Withdrawn, and
- * Confirm join on another of the person's applications for "Accepted for
- * another position". Interview's times are
+ * that step's checks and effects. Where a button of the current status sets
+ * it, the pick runs that button's move. Otherwise the step is the button of
+ * the owner's table that sets the status, the applicant's Withdraw for
+ * Withdrawn, and Confirm join on another of the person's applications for
+ * "Accepted for another position". Interview's times are
  * checked as Move to interview's; Confirm join needs the signed NDA, so
  * Joined is picked only from NDA received, and only it adds the person to
  * the team; Withdrawn and "Accepted for another position" are set, as the
@@ -292,6 +302,8 @@ export function moveToStatus(state: ApplicationState, target: PickTarget): LeadM
  * application still open.
  */
 function pickNext(state: ApplicationState, pick: BuiltInPick, now: Date): Next {
+  const step = LEAD_STEPS[state.status].find((s) => s.sets === pick.to);
+  if (step) return leadNext(state, buttonMove(step, pick), now);
   switch (pick.to) {
     case "interview": {
       const offer = checkOffer(pick.slots, now);

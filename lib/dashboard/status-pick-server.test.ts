@@ -70,6 +70,34 @@ describe("A saved hand pick in the Status picker, on the real database (issue #7
     assert.notEqual(withdrawn.withdrawnAt, null, "it leaves the lead's list");
   });
 
+  test("Rejected · email sent from a status never rejected records the decision day, as Reject then Mark email sent would", async () => {
+    await seedFixture();
+    signInAs(accountOf(MAY).userId);
+    assert.equal((await stored(NEW_APPLICATION)).rejectedAt, null);
+    assert.deepEqual(await recruitmentActions.moveApplication(NEW_APPLICATION, { kind: "pick", to: "rejected_email_sent" }), { ok: true, value: null });
+    const rejected = await stored(NEW_APPLICATION);
+    assert.equal(rejected.statusKey, "rejected_email_sent");
+    assert.notEqual(rejected.rejectedAt, null, "the applicant's pages count one month from this day");
+  });
+
+  test("a built-in status picked from an added status under it sets the built-in status, where its button keeps the added one", async () => {
+    await seedFixture();
+    await addRows(applicationStatuses, [{ key: "second_interview", name: "Second interview", colour: "#FF5E00", sortOrder: 1, parentKey: "interview" }]);
+    signInAs(accountOf(MAY).userId);
+    const interview = IDS.interview("MA");
+    const start = Date.now() + 7 * 24 * 60 * 60 * 1000;
+    const times = (at: number) => [{ start: new Date(at).toISOString(), end: new Date(at + 30 * 60 * 1000).toISOString() }];
+    assert.deepEqual(await recruitmentActions.moveApplication(interview, { kind: "pick-added", key: "second_interview" }), { ok: true, value: null });
+
+    // Change times keeps Second interview.
+    assert.deepEqual(await recruitmentActions.moveApplication(interview, { kind: "offer-interview", slots: times(start) }), { ok: true, value: null });
+    assert.equal((await stored(interview)).statusKey, "second_interview");
+
+    // A saved pick of Interview, with the same times, sets Interview.
+    assert.deepEqual(await recruitmentActions.moveApplication(interview, { kind: "pick", to: "interview", slots: times(start) }), { ok: true, value: null });
+    assert.equal((await stored(interview)).statusKey, "interview");
+  });
+
   test("Joined by hand is refused until the signed NDA is in, and nothing is written", async () => {
     await seedFixture();
     signInAs(accountOf(MAY).userId);

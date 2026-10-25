@@ -662,6 +662,7 @@ async function readApplicationFor(identity: Identity, applicationId: number) {
       applied_at: applications.appliedAt,
       accepted_at: applications.acceptedAt,
       nda_arrived_at: applications.ndaArrivedAt,
+      rejected_at: applications.rejectedAt,
       joined_at: applications.joinedAt,
     })
     .from(applications)
@@ -767,11 +768,11 @@ export async function moveApplication(identity: Identity, applicationId: number,
 
     case "rejected_email_to_be_sent":
       // Reject records when it was decided, the time the applicant's pages count a month from (issue #317).
-      return write({ status: statusFor[after.status], statusKey, rejectedAt: now.toISOString() });
+      return write({ status: statusFor[after.status], statusKey, acceptedAt: null, ndaArrivedAt: null, rejectedAt: now.toISOString() });
 
     case "rejected_email_sent":
-      // Mark email sent keeps the day it was rejected.
-      return write({ status: statusFor[after.status], statusKey });
+      // Mark email sent keeps the day it was rejected; a hand pick from a status never rejected records it now, as Reject would.
+      return write({ status: statusFor[after.status], statusKey, acceptedAt: null, ndaArrivedAt: null, rejectedAt: row.rejected_at ?? now.toISOString() });
   }
 }
 
@@ -807,7 +808,9 @@ const APPLICATION_CHANGED = "This application changed. Reload the page.";
  * Interview and its offered times replace the old ones, in one statement and
  * only while it is still in the status it was read in and not withdrawn. The
  * slots are cleared and written only for the row the status update matched,
- * so a move another lead beat changes no slot. True when the move landed.
+ * so a move another lead beat changes no slot. An application at Interview is
+ * not decided, so no decision day is kept: a hand pick of Interview from a
+ * decided status clears them (issue #750). True when the move landed.
  */
 async function offerSlots(read: ReadStatus, statusKey: string, offered: readonly SlotTime[]): Promise<boolean> {
   if (offered.length === 0) return false;
@@ -818,7 +821,8 @@ async function offerSlots(read: ReadStatus, statusKey: string, offered: readonly
   const [result] = await runAuditBatch((db) => [
     db.execute(sql`
       with moved as (
-        update ${applications} set status = 'interview', status_key = ${statusKey}
+        update ${applications}
+        set status = 'interview', status_key = ${statusKey}, accepted_at = null, nda_arrived_at = null, rejected_at = null
         where id = ${read.id} and status = ${read.status}
           and status_key is not distinct from ${read.status_key}::text and withdrawn_at is null
         returning id

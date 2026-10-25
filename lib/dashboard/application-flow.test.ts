@@ -363,8 +363,9 @@ const target = (to: BuiltInStatusKey): PickTarget => (to === "interview" ? { to,
 for (const [status, row] of Object.entries(OWNER_TABLE) as [BuiltInStatusKey, (typeof OWNER_TABLE)[BuiltInStatusKey]][]) {
   for (const [label, kind, sets] of row) {
     test(`a saved hand pick of ${sets} from ${status} runs the ${label} button's own move`, () => {
-      const pickMove = moveToStatus(STATES[status], target(sets));
-      assert.equal(pickMove.kind, kind);
+      assert.equal(moveToStatus(STATES[status], target(sets), "button").kind, kind);
+      const pickMove = moveToStatus(STATES[status], target(sets), "pick");
+      assert.equal(pickMove.kind, "pick");
       const byButton = applyMove(STATES[status], LEAD_MOVES.find((m) => m.kind === kind)!, now);
       assert.deepEqual(applyMove(STATES[status], pickMove, now), byButton);
     });
@@ -375,7 +376,7 @@ test("a hand pick of each built-in status reaches it with the effects of the ste
   for (const to of BUILT_IN_STATUS_KEYS) {
     // From New no button sets most statuses, so the pick runs as a `pick`, judged by that step's own checks.
     const from = to === "joined" ? STATES.nda_received : STATES.new;
-    const result = applyMove(from, moveToStatus(from, target(to)), now);
+    const result = applyMove(from, moveToStatus(from, target(to), "pick"), now);
     assert.ok(result.ok, `${to}: ${result.ok ? "" : result.reason}`);
     assert.equal(result.state.status, to);
     assert.equal(result.joinsTeam, to === "joined", `${to}: only Confirm join adds the person to the team`);
