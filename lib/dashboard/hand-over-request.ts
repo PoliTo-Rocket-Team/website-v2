@@ -290,18 +290,18 @@ export type HandOverAnswerPlan =
   | { readonly answer: "confirm"; readonly request: HandOverRequest; readonly steppingDown: SteppingDown };
 
 /**
- * Confirm or Decline as the rules allow it, or the first reason it is
- * refused: only the next level up answers (`approverIdsOf`), and the server
- * refuses everyone else. Confirm also needs the sender to hold the role
- * still and the successor to be in its unit still.
- */
-/**
  * Why an account with no member row, the break-glass admin's (issue #646),
  * cannot answer a hand-over: the answer is the next level up's, a person on
  * the team, and the sender's notice names them.
  */
 export const HAND_OVER_NEEDS_MEMBER = "Only a team member can answer a hand-over.";
 
+/**
+ * Confirm or Decline as the rules allow it, or the first reason it is
+ * refused: only the next level up answers (`approverIdsOf`), and the server
+ * refuses everyone else. Confirm also needs the sender to hold the role
+ * still and the successor to be in its unit still.
+ */
 export function planHandOverAnswer(input: {
   readonly viewerId: number | null;
   readonly request: HandOverRequest;
