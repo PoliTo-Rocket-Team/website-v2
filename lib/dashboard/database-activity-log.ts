@@ -43,6 +43,7 @@ export async function readActivityLog(now: Date): Promise<ActivityLogPage> {
         after: sql<Record<string, unknown> | null>`${logs.newData} - ${HEAVY_KEYS}`,
         label: sql<string | null>`coalesce(${stored} -> 'page' ->> 'name', ${stored} -> 'content' ->> 'name', ${stored} -> 'advisor' ->> 'name', ${stored} ->> 'title', ${stored} ->> 'question', ${stored} ->> 'name')`,
         at: logs.changedAt,
+        stamp: sql<string>`${logs.changedAt}::text`,
         by: logs.changedBy,
         acting: logs.changedByActingAccount,
       })

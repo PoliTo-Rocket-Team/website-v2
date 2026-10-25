@@ -65,8 +65,10 @@ export type LogRow = {
   readonly after: Readonly<Record<string, unknown>> | null;
   /** The record's own name, title or question, from its stored data. */
   readonly label: string | null;
-  /** ISO time the write was stored: one value for every row of one transaction. */
+  /** ISO time the write was stored, to the millisecond: what the When column shows. */
   readonly at: string;
+  /** `changed_at` as the database prints it, at its full stored precision: one value for every row of one transaction, so the key a change is grouped on. */
+  readonly stamp: string;
   /** The account the write is stored under: the person viewed as during View as. */
   readonly by: string | null;
   /** The account behind a View as session; null outside View as. */
@@ -119,7 +121,10 @@ const VIEW_AS_WORDS: Readonly<Record<ViewAsEvent, string>> = {
 /** A write, with its sentence and area, or a View as event naming the person viewed as. */
 export type ActivityChange =
   | { readonly kind: "write"; readonly sentence: string; readonly area: WriteArea }
-  | { readonly kind: "view-as"; readonly event: ViewAsEvent; readonly person: string };
+  | { readonly kind: "view-as"; readonly event: ViewAsEvent; readonly person: ViewedPerson };
+
+/** The person viewed as in a View as event; `id` is null when the stored row names none. */
+export type ViewedPerson = { readonly id: string | null; readonly name: string };
 
 export type ActivityEntry = {
   readonly key: string;
@@ -141,7 +146,7 @@ export function areaOf(change: ActivityChange): ActivityArea {
 
 /** The Change column's sentence: "Moved Giulia Rossi to Interview", "View as started: Sofia Neri". */
 export function sentenceOf(change: ActivityChange): string {
-  return change.kind === "write" ? change.sentence : `${VIEW_AS_WORDS[change.event]}: ${change.person}`;
+  return change.kind === "write" ? change.sentence : `${VIEW_AS_WORDS[change.event]}: ${change.person.name}`;
 }
 
 /** Made during View as, or a View as start, stop or timeout: what "View as only" keeps. */
@@ -205,7 +210,7 @@ function timeoutsOf(
 function groupsOf(rows: readonly LogRow[]): Map<string, LogRow[]> {
   const groups = new Map<string, LogRow[]>();
   for (const row of rows) {
-    const key = `${row.at}|${row.by}|${row.acting ?? ""}`;
+    const key = `${row.stamp}|${row.by}|${row.acting ?? ""}`;
     groups.set(key, [...(groups.get(key) ?? []), row]);
   }
   return groups;
@@ -230,7 +235,8 @@ function whoOf(by: string, acting: string | null, names: ActivityNames): Activit
 
 function viewAsEntry(row: LogRow, event: ViewAsEvent, at: string, names: ActivityNames): ActivityEntry {
   const acting = row.by ?? text(row.after, "actingAccountId") ?? "";
-  const person = accountOf(names, text(row.after, "personId")).name;
+  const personId = text(row.after, "personId");
+  const person = { id: personId, name: accountOf(names, personId).name };
   return { key: `${event}-${row.id}`, at, who: whoOf(acting, null, names), change: { kind: "view-as", event, person } };
 }
 
@@ -411,13 +417,24 @@ function describe(row: LogRow, group: readonly LogRow[], names: ActivityNames): 
 
 type Sentence = (row: LogRow, data: Data, d: Describer) => Described;
 
+/**
+ * The draft version a save wrote, if it wrote one. A save rewrites every
+ * version of the record (it removes them all and writes them again), so
+ * saving a draft of a published record also writes the published version
+ * back unchanged: the draft written beside it is what the save was.
+ */
+function draftWritten(row: LogRow, d: Describer): LogRow | null {
+  if (row.operation === "DELETE") return null;
+  return d.rows(row.table).find((r) => r.operation !== "DELETE" && text(r.after, "version") === "draft") ?? null;
+}
+
 /** A record kept as a draft and a published version (posts, partners, FAQ, projects, advisors). */
 function versioned(noun: string, area: WriteArea, labelKey: string): Sentence {
-  return (row, data) => {
-    const label = row.label ?? text(data, labelKey);
-    if (row.operation === "DELETE") return { sentence: `Deleted the ${noun}${quoted(label)}`, area };
-    const sentence = text(data, "version") === "published" ? `Published the ${noun}${quoted(label)}` : `Saved the draft ${noun}${quoted(label)}`;
-    return { sentence, area };
+  return (row, data, d) => {
+    if (row.operation === "DELETE") return { sentence: `Deleted the ${noun}${quoted(row.label ?? text(data, labelKey))}`, area };
+    const draft = draftWritten(row, d);
+    if (draft !== null) return { sentence: `Saved the draft ${noun}${quoted(draft.label ?? text(draft.after, labelKey))}`, area };
+    return { sentence: `Published the ${noun}${quoted(row.label ?? text(data, labelKey))}`, area };
   };
 }
 
@@ -631,8 +648,8 @@ const SENTENCES: Readonly<Record<string, Sentence>> = {
     const verb = row.operation === "INSERT" ? "Added" : row.operation === "DELETE" ? "Removed" : "Edited";
     return { sentence: `${verb} the tag${name}`, area: "outreach" };
   },
-  outreach_summit_versions(_row, data) {
-    return { sentence: text(data, "version") === "published" ? "Published the summit" : "Saved the draft summit", area: "outreach" };
+  outreach_summit_versions(row, _data, d) {
+    return { sentence: draftWritten(row, d) === null ? "Published the summit" : "Saved the draft summit", area: "outreach" };
   },
 
   project_versions: versioned("project", "projects", "name"),
@@ -641,8 +658,8 @@ const SENTENCES: Readonly<Record<string, Sentence>> = {
   partners: listRow("partners", "partner", "partners"),
   faq_versions: versioned("question", "faq", "question"),
   faqs: listRow("questions", "question", "faq"),
-  team_page_layer_versions(_row, data) {
-    return { sentence: text(data, "version") === "published" ? "Published the Team page" : "Saved the Team page draft", area: "team-page" };
+  team_page_layer_versions(row, _data, d) {
+    return { sentence: draftWritten(row, d) === null ? "Published the Team page" : "Saved the Team page draft", area: "team-page" };
   },
   team_page_advisor_versions: versioned("advisor", "team-page", "name"),
   team_page_advisors: listRow("advisors", "advisor", "team-page"),
@@ -686,7 +703,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Whether the person is the one who made the entry, the one viewed as, or the one viewing. */
 function involves(entry: ActivityEntry, personId: string): boolean {
-  return entry.who.id === personId || (entry.who.kind === "as" && entry.who.actingId === personId);
+  const { who, change } = entry;
+  return who.id === personId || (who.kind === "as" && who.actingId === personId) || (change.kind === "view-as" && change.person.id === personId);
 }
 
 /** The entries every filter keeps. */
@@ -711,9 +729,10 @@ function searchFieldsOf(entry: ActivityEntry): string[] {
 /** The people the Person filter offers: everyone who made an entry or was viewed as in one, by name. */
 export function activityPeople(entries: readonly ActivityEntry[]): { id: string; name: string }[] {
   const people = new Map<string, string>();
-  for (const { who } of entries) {
+  for (const { who, change } of entries) {
     people.set(who.id, who.name);
     if (who.kind === "as") people.set(who.actingId, who.actingName);
+    if (change.kind === "view-as" && change.person.id !== null) people.set(change.person.id, change.person.name);
   }
   return [...people].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }

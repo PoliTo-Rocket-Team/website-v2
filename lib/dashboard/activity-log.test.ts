@@ -38,6 +38,7 @@ const HOUR = 60 * 60;
 
 let nextId = 1;
 function row(fields: Partial<LogRow> & Pick<LogRow, "table" | "operation">): LogRow {
+  const at = fields.at ?? "2026-10-25T10:00:00.000Z";
   return {
     id: nextId++,
     schema: "public",
@@ -45,10 +46,11 @@ function row(fields: Partial<LogRow> & Pick<LogRow, "table" | "operation">): Log
     before: null,
     after: null,
     label: null,
-    at: "2026-10-25T10:00:00.000Z",
     by: "acct-a",
     acting: null,
     ...fields,
+    at,
+    stamp: fields.stamp ?? at,
   };
 }
 
@@ -115,6 +117,42 @@ test("rows a save rewrote and rows a delete removed read as one save and one del
   assert.deepEqual(sentences(entries), ['Deleted the question "Old question"', 'Saved the draft question "A question"']);
 });
 
+test("saving a draft of a published record reads as the draft saved, though the save rewrote both versions", () => {
+  const tables: [string, string][] = [
+    ["faq_versions", "question"],
+    ["outreach_post_versions", "post"],
+    ["partner_versions", "partner"],
+    ["project_versions", "project"],
+    ["team_page_advisor_versions", "advisor"],
+  ];
+  for (const [table, noun] of tables) {
+    const at = "2026-10-25T05:00:00.000Z";
+    // What the store writes: every version removed, then the published one and the new draft written again.
+    const entries = read([
+      row({ table, operation: "DELETE", at, before: { version: "published" }, label: "Live label" }),
+      row({ table, operation: "DELETE", at, before: { version: "draft" }, label: "Old draft label" }),
+      row({ table, operation: "INSERT", at, after: { version: "published" }, label: "Live label" }),
+      row({ table, operation: "INSERT", at, after: { version: "draft" }, label: "New draft label" }),
+    ]);
+    assert.deepEqual(sentences(entries), [`Saved the draft ${noun} "New draft label"`], table);
+  }
+  const publish = read([
+    row({ table: "faq_versions", operation: "DELETE", before: { version: "published" }, label: "Live label" }),
+    row({ table: "faq_versions", operation: "DELETE", before: { version: "draft" }, label: "Draft label" }),
+    row({ table: "faq_versions", operation: "INSERT", after: { version: "published" }, label: "Draft label" }),
+  ]);
+  assert.deepEqual(sentences(publish), ['Published the question "Draft label"']);
+});
+
+test("two writes by one writer within one millisecond stay two changes", () => {
+  const at = "2026-10-25T04:00:00.123Z";
+  const entries = read([
+    row({ table: "orders", operation: "INSERT", at, stamp: "2026-10-25 04:00:00.123401+00", after: { name: "Bolts" } }),
+    row({ table: "orders", operation: "INSERT", at, stamp: "2026-10-25 04:00:00.123402+00", after: { name: "Sheet" } }),
+  ]);
+  assert.equal(entries.length, 2);
+});
+
 test("Give access with several areas names them all; a change made during View as names both people", () => {
   const at = "2026-10-25T07:00:00.000Z";
   const [entry] = read([
@@ -129,8 +167,8 @@ test("a write stored under no account is left out", () => {
   assert.deepEqual(read([row({ table: "orders", operation: "INSERT", by: null, after: { name: "Sheet" } })]), []);
 });
 
-const viewAs = (operation: "VIEW_AS_START" | "VIEW_AS_STOP", session: string, at: string) =>
-  row({ schema: "better_auth", table: "session", operation, recordId: session, at, by: "acct-c", after: { personId: "acct-b", actingAccountId: "acct-c" } });
+const viewAs = (operation: "VIEW_AS_START" | "VIEW_AS_STOP", session: string, at: string, person = "acct-b") =>
+  row({ schema: "better_auth", table: "session", operation, recordId: session, at, by: "acct-c", after: { personId: person, actingAccountId: "acct-c" } });
 
 test("View as starts and stops are rows of their own, under the acting person", () => {
   const entries = read([viewAs("VIEW_AS_START", "s1", "2026-10-25T10:00:00.000Z"), viewAs("VIEW_AS_STOP", "s1", "2026-10-25T10:20:00.000Z")]);
@@ -175,6 +213,25 @@ test("each filter narrows the list, and they combine", () => {
     activityPeople(entries).map((p) => p.name),
     ["Person A", "Person B", "Person C"],
   );
+});
+
+test("the Person filter lists a person who was only viewed as, and keeps the View as rows of their sessions", () => {
+  const entries = read(
+    [
+      row({ table: "orders", operation: "INSERT", at: "2026-10-25T06:00:00.000Z", by: "acct-b", after: { name: "Bolts" } }),
+      viewAs("VIEW_AS_START", "s6", "2026-10-25T07:00:00.000Z", "acct-d"),
+      viewAs("VIEW_AS_STOP", "s6", "2026-10-25T07:10:00.000Z", "acct-d"),
+      viewAs("VIEW_AS_START", "s7", "2026-10-25T08:00:00.000Z", "acct-d"),
+    ],
+    new Map([["s7", "2026-10-25T09:00:00.000Z"]]),
+  );
+  assert.ok(activityPeople(entries).some((p) => p.id === "acct-d" && p.name === "Applicant D"));
+  assert.deepEqual(sentences(filterActivity(entries, { ...OPENING_FILTERS, range: null, personId: "acct-d" }, NOW)), [
+    "View as ended by timeout: Applicant D",
+    "View as started: Applicant D",
+    "View as stopped: Applicant D",
+    "View as started: Applicant D",
+  ]);
 });
 
 test("the When column counts days on Turin's clock", () => {
