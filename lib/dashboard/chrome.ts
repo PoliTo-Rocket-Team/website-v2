@@ -1,4 +1,4 @@
-import { sidebarFor, userMenuPageFor, type MenuPage, type NavSection, type SidebarFacts } from "./access";
+import { sidebarFor, userMenuPageOf, type MenuPage, type NavSection, type SidebarFacts } from "./access";
 import type { DashboardOpening } from "./opening";
 import type { ViewAsBanner, ViewAsOpening } from "./view-as";
 import { userCardRole, type DashboardViewer } from "./viewer";
@@ -36,7 +36,7 @@ export function openChrome(
     kind: "open",
     viewer: { ...viewer, role: userCardRole(viewer, facts.hasShownApplications) },
     sections: sidebarFor(viewer, facts),
-    menuPage: userMenuPageFor(viewer.kind),
+    menuPage: userMenuPageOf(viewer),
     viewAs,
     viewingAs,
   };

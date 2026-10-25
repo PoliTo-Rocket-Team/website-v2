@@ -342,6 +342,16 @@ export function userMenuPageFor(kind: ViewerKind): MenuPage | null {
 }
 
 /**
+ * The page this viewer's user menu links to: their kind's page, except My
+ * profile for an account with no profile of its own (`hasOwnProfile`, issue
+ * #725), whose My profile page answers not-found.
+ */
+export function userMenuPageOf(viewer: { readonly kind: ViewerKind; readonly hasOwnProfile: boolean }): MenuPage | null {
+  const page = userMenuPageFor(viewer.kind);
+  return page?.key === "my-profile" && !viewer.hasOwnProfile ? null : page;
+}
+
+/**
  * The title the phone top bar shows for the page at `pathname` (boards 50m-b,
  * 52m, 56m): the page whose address is the longest match, so a page under
  * /dashboard/applications still reads "Applications". Null off the dashboard.
