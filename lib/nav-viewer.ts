@@ -16,13 +16,15 @@ export async function navViewer(): Promise<NavViewer | null> {
   return user === null ? null : personNavViewer(user);
 }
 
-/** The person's team address and photo, from their member row; the sign-in address when they have no team one. */
+/**
+ * The person's sign-in address, always, so the menu tells which Google account
+ * is active (issue #683); the member row gives only the photo.
+ */
 async function personNavViewer(user: CurrentUser): Promise<NavViewer | null> {
   if (!isDatabaseConfigured()) return null;
   const [row] = await getDb()
     .select({
       email: users.email,
-      prt_email: members.prtEmail,
       picture: members.picture,
     })
     .from(users)
@@ -30,7 +32,6 @@ async function personNavViewer(user: CurrentUser): Promise<NavViewer | null> {
     .where(eq(users.id, user.id))
     .limit(1);
   if (!row) return null;
-  const teamEmail = row.prt_email?.trim() ? row.prt_email : null;
   const photoUrl = row.picture?.trim() ? row.picture : null;
-  return { name: user.name, email: teamEmail ?? row.email, photoUrl };
+  return { name: user.name, email: row.email, photoUrl };
 }

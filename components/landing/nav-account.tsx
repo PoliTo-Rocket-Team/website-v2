@@ -3,16 +3,16 @@
 import Link from "next/link";
 import { useEffect, useSyncExternalStore, type ComponentProps } from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { LayoutDashboard, LogOut } from "lucide-react";
+import { ExternalLink, LayoutDashboard, LogOut } from "lucide-react";
 import { Avatar } from "@/components/dashboard/avatar";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useSignOut } from "@/components/use-sign-out";
 import { parseNavViewer, type NavViewer } from "@/lib/nav-viewer-shape";
-import { PAGES } from "@/lib/landing-links";
+import { PAGES, WIKI, opensOf } from "@/lib/landing-links";
 
 // The navbar's account end. A visitor sees "Sign in" (issue #157). Once
-// signed in, the viewer's round avatar opens a menu with Dashboard and Log
-// out (board 01b, issue #261). Who is signed in comes from GET /api/viewer,
+// signed in, the viewer's round avatar opens a menu with Dashboard, Wiki and
+// Log out (board 01b, issues #261, #683). Who is signed in comes from GET /api/viewer,
 // asked from the browser, so the pages that carry the navbar never read a
 // cookie and stay prerendered: the prerendered bar shows "Sign in", and the
 // avatar replaces it once the answer lands. The answer is kept for the tab,
@@ -74,8 +74,8 @@ const ITEM =
 
 /**
  * Board 01b: a 38px avatar (photo, else the PRT mark on the accent) that opens a
- * menu below it, aligned right: who is signed in, then Dashboard and a red
- * Log out. It is the repo's Radix dropdown, so Escape, an outside click,
+ * menu below it, aligned right: who is signed in (the sign-in address), then
+ * Dashboard, Wiki and a red Log out. It is the repo's Radix dropdown, so Escape, an outside click,
  * focus and arrow keys come with it. The avatar wears an accent ring while
  * the menu is open.
  */
@@ -111,6 +111,12 @@ function AccountMenu({ viewer }: { viewer: NavViewer }) {
               <LayoutDashboard aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
               Dashboard
             </Link>
+          </DropdownMenuPrimitive.Item>
+          <DropdownMenuPrimitive.Item asChild>
+            <a href={WIKI} {...opensOf(WIKI)} className={`${ITEM} text-text-2 data-[highlighted]:text-prt-text`}>
+              <ExternalLink aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+              Wiki
+            </a>
           </DropdownMenuPrimitive.Item>
           <DropdownMenuPrimitive.Item onSelect={() => void logOut()} className={`${ITEM} text-danger`}>
             <LogOut aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />

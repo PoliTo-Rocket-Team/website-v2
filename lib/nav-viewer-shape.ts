@@ -4,7 +4,7 @@
 
 export type NavViewer = {
   readonly name: string;
-  /** The menu header's address: the team address, else the sign-in address of someone with none. */
+  /** The menu header's address: the Google account address the person signed in with, never the team address. */
   readonly email: string;
   /** The profile photo; null shows the PRT mark. */
   readonly photoUrl: string | null;

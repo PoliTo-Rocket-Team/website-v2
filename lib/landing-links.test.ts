@@ -69,7 +69,7 @@ test("the footer's PROJECTS column lists the published projects, in order, each 
 
 test("every link to another site opens in a new tab with noopener noreferrer", () => {
   const external = landingHrefs().filter((href) => isExternal(href));
-  assert.deepEqual(external.length, 3, "the footer's Instagram, LinkedIn and X");
+  assert.deepEqual(external.length, 4, "the footer's Instagram, LinkedIn and X, and the account menu's Wiki");
   for (const href of external) {
     assert.match(href, /^https:\/\//, `${href} is not https`);
     assert.deepEqual(opensOf(href), { target: "_blank", rel: "noopener noreferrer" });
