@@ -80,6 +80,13 @@ An admin column comes later. **Planned**, no issue yet.
   - **Exception 2, the Activity log:** only the IT lead reaches it. The reach rule is in place;
     the page itself is **Planned**
     ([#642](https://github.com/PoliTo-Rocket-Team/website-v2/issues/642)), so no sidebar lists it yet.
+  - **Exception 3, the acceptance email:** only the team leader sets an application to
+    "Accepted · email sent", by Mark email sent or by the Status picker, because the team leader
+    sends the acceptance email with the NDA. Everyone else sees that status locked as team leader
+    only, gets no Mark email sent on "Accepted · email to be sent", and sees a note on an accepted
+    application not to email the applicant (board 97e, ADR 0011 rule 6,
+    [#751](https://github.com/PoliTo-Rocket-Team/website-v2/issues/751)). "Rejected · email sent"
+    stays open to anyone who can move the application.
 - **The team leader's own pages** (boards 72 to 73c, #252). The team leader has full access like
   the operations lead and the IT lead, but some of their pages differ. The operations lead and the
   IT lead keep boards 40 and 46.

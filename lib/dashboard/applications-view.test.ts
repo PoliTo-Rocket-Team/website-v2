@@ -14,7 +14,7 @@ const oa = { ref: "oa-cfd", title: "CFD Analyst", division: "Optimization and An
 const dm = { ref: "dm-composites", title: "Composites Technician", division: "Design & Manufacturing Division", department: "Structures" };
 
 function page(scope: ApplicationsScope, positions: ApplicationsPage["positions"]): ApplicationsPage {
-  return { scope, now: "2026-10-19T09:00:00.000Z", positions, statuses: [], applications: [] };
+  return { scope, now: "2026-10-19T09:00:00.000Z", positions, statuses: [], teamLeader: false, applications: [] };
 }
 
 const wholeTeam = page({ kind: "team" }, [ma, oa, dm]);
@@ -38,6 +38,10 @@ const byRole = {
 function row(id: number, name: string, position: typeof ma, status: BuiltInStatusKey = "new") {
   return { id, state: { status }, applicant: { name, email: `${name.split(" ")[0].toLowerCase()}@studenti.polito.it` }, position };
 }
+
+/** The team leader, and any other approver, as the status list's team-leader rule reads them. */
+const LEADER = { teamLeader: true };
+const APPROVER = { teamLeader: false };
 
 // Newest first, as the page reads them.
 const rows = [row(1, "Sara Conti", ma), row(2, "Bruno Ricci", oa, "interview"), row(3, "Anna Moretti", dm), row(4, "Ugo Neri", ma, "rejected_email_to_be_sent")];
@@ -138,17 +142,25 @@ test("the panel offers no button on an application the viewer may not move (issu
     { status: "nda_received", acceptedAt: "2026-10-18T09:00:00.000Z" },
   ];
   for (const state of states) {
-    assert.deepEqual(panelStepsOf({ state, canChange: false }), { bar: [], changeTimes: false }, state.status);
-    assert.ok(panelStepsOf({ state, canChange: true }).bar.length > 0, `${state.status}: the flow offers buttons here`);
+    assert.deepEqual(panelStepsOf({ state, canChange: false }, LEADER), { bar: [], changeTimes: false }, state.status);
+    assert.ok(panelStepsOf({ state, canChange: true }, LEADER).bar.length > 0, `${state.status}: the flow offers buttons here`);
   }
 });
 
 test("the bottom bar shows the status's buttons, the outlined ones first; Change times sits on the interview card (board 97)", () => {
-  const labels = (state: ApplicationState) => panelStepsOf({ state, canChange: true }).bar.map((s) => s.label);
+  const labels = (state: ApplicationState) => panelStepsOf({ state, canChange: true }, LEADER).bar.map((s) => s.label);
   assert.deepEqual(labels({ status: "new" }), ["Reject", "Move to interview"]);
   assert.deepEqual(labels({ status: "interview", offered: [], booked: null }), ["Reject", "Accept"]);
-  assert.equal(panelStepsOf({ state: { status: "interview", offered: [], booked: null }, canChange: true }).changeTimes, true);
-  assert.equal(panelStepsOf({ state: { status: "new" }, canChange: true }).changeTimes, false);
+  assert.equal(panelStepsOf({ state: { status: "interview", offered: [], booked: null }, canChange: true }, LEADER).changeTimes, true);
+  assert.equal(panelStepsOf({ state: { status: "new" }, canChange: true }, LEADER).changeTimes, false);
   assert.deepEqual(labels({ status: "accepted_email_to_be_sent", acceptedAt: "2026-10-18T09:00:00.000Z" }), ["Withdraw acceptance", "Mark email sent"]);
   assert.deepEqual(labels({ status: "joined", joinedAt: "2026-10-18T09:00:00.000Z" }), []);
+});
+
+test("Mark email sent on an acceptance is the team leader's alone; on a refusal anyone who may move it has it (board 97e)", () => {
+  const labels = (state: ApplicationState, viewer: typeof LEADER) => panelStepsOf({ state, canChange: true }, viewer).bar.map((s) => s.label);
+  const accepted: ApplicationState = { status: "accepted_email_to_be_sent", acceptedAt: "2026-10-18T09:00:00.000Z" };
+  assert.deepEqual(labels(accepted, LEADER), ["Withdraw acceptance", "Mark email sent"]);
+  assert.deepEqual(labels(accepted, APPROVER), ["Withdraw acceptance"]);
+  for (const viewer of [LEADER, APPROVER]) assert.deepEqual(labels({ status: "rejected_email_to_be_sent" }, viewer), ["Mark email sent"]);
 });
