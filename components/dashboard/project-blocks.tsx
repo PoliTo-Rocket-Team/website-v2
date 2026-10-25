@@ -36,6 +36,7 @@ import {
 } from "@/lib/project-content/block-fields";
 import { BLOCKS_MAX } from "@/lib/project-content/block-list";
 import type { BlockSection } from "@/lib/project-content/fields";
+import { BLOCK_LABELS } from "@/lib/project-content/page-parts";
 import { partNumber, twoDigits, type BlockKind, type TextWidth } from "@/lib/project-pages";
 import { CONTENT_FOCUS, TextField, useDragOrder, type DragRow } from "./content-parts";
 import { ErrorLine, PanelSection } from "./edit-panel";
@@ -51,17 +52,6 @@ import { CopyField, EditableList, type FieldErrors } from "./project-panel-parts
 // opened last the block is outlined on the page.
 // The list blocks' fields are in ./project-list-sections.tsx; the rules every
 // edit keeps are in lib/project-content/block-fields.ts and block-list.ts.
-
-export const BLOCK_LABELS: Readonly<Record<BlockKind, string>> = {
-  text: "Text",
-  facts: "Key facts",
-  photo: "Photo",
-  gallery: "Gallery",
-  versions: "Versions",
-  launches: "Launch history",
-  timeline: "Timeline",
-  points: "Numbered points",
-};
 
 /** The Add block menu's line under each kind (board 93b). */
 const BLOCK_HINTS: Readonly<Record<BlockKind, string>> = {

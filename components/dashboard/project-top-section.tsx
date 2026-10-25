@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { uploadProjectBackground } from "@/app/dashboard/project-actions";
 import { FACTS_LIMIT, type BackgroundFields, type FactFields, type ProjectFields, type VisualFields } from "@/lib/project-content/fields";
 import { BACKGROUND_MAX_BYTES, BACKGROUND_PRESETS, backgroundSrc, type BackgroundPreset } from "@/lib/project-content/record";
+import type { TopPart } from "@/lib/project-pages";
 import { MODEL_NAMES, type RocketModel } from "@/lib/rocket-model";
 import { BackgroundCropDialog, type BackgroundCrops } from "./background-crop-dialog";
 import { CONTENT_FOCUS, TextField } from "./content-parts";
@@ -23,7 +24,9 @@ import { CopyField, EditableList, type FieldErrors } from "./project-panel-parts
 // texture from before presets shows no preset picked until an editor picks
 // one. The Upload tile closes the grid: it uploads the editor's own picture,
 // cropped Tall and Wide in the crop dialog of board 93f (issue #529). Intro,
-// status, dates and key facts follow the background.
+// status, dates and key facts follow the background. The page outlines the
+// top in three parts, and each part's chip brings its own fields into view:
+// the visual and background, the intro, status and dates, and the key facts.
 
 /** What each preset is called under its swatch (board 93d). */
 const PRESET_NAMES: Readonly<Record<BackgroundPreset, string>> = {
@@ -79,6 +82,9 @@ function visualNote(visual: VisualFields): string {
   }
 }
 
+/** One top part's fields: the row's own spacing, and room over them when a chip scrolls them to the panel's top. */
+const PART_FIELDS = "scroll-mt-4 space-y-4";
+
 /** The Top of the page row's one line: what the row holds. */
 function topSummary(fields: ProjectFields): string {
   const n = fields.hero.facts.length;
@@ -96,6 +102,7 @@ export function TopSection({
   errors,
   uploads,
   cardRef,
+  partRef,
   onChange,
 }: {
   fields: ProjectFields;
@@ -105,50 +112,58 @@ export function TopSection({
   errors: FieldErrors;
   uploads: PhotoUploads;
   cardRef: (node: HTMLDivElement | null) => void;
+  /** The ref each top part's fields take, so the part's chip on the page brings them into view. */
+  partRef: (part: TopPart) => (node: HTMLDivElement | null) => void;
   onChange: (change: (fields: ProjectFields) => ProjectFields) => void;
 }) {
   const { hero } = fields;
   const setHero = (change: Partial<ProjectFields["hero"]>) => onChange((f) => ({ ...f, hero: { ...f.hero, ...change } }));
   return (
     <PanelSection value="top" cardRef={cardRef} title="Top of the page" summary={topSummary(fields)}>
-      <TopVisualEditor
-        model={model}
-        visual={hero.visual}
-        caption={hero.caption}
-        errors={errors}
-        uploads={uploads}
-        onVisualChange={(change) => onChange((f) => ({ ...f, hero: { ...f.hero, visual: change(f.hero.visual) } }))}
-        onCaptionChange={(caption) => setHero({ caption })}
-      />
-      <BackgroundPicker background={fields.background} discard={uploads.discard} onChange={(background) => onChange((f) => ({ ...f, background }))} />
-      <CopyField label="Intro" rows={3} copy={hero.intro} phone={phone} error={errors["hero.intro"]} onChange={(intro) => setHero({ intro })} />
-      <div className="grid grid-cols-2 gap-2.5">
-        <TextField label="Status" value={hero.status} error={errors["hero.status"]} onChange={(status) => setHero({ status })} />
-        <TextField label="Dates" value={hero.dates} error={errors["hero.dates"]} onChange={(dates) => setHero({ dates })} />
+      <div ref={partRef("visual")} className={PART_FIELDS}>
+        <TopVisualEditor
+          model={model}
+          visual={hero.visual}
+          caption={hero.caption}
+          errors={errors}
+          uploads={uploads}
+          onVisualChange={(change) => onChange((f) => ({ ...f, hero: { ...f.hero, visual: change(f.hero.visual) } }))}
+          onCaptionChange={(caption) => setHero({ caption })}
+        />
+        <BackgroundPicker background={fields.background} discard={uploads.discard} onChange={(background) => onChange((f) => ({ ...f, background }))} />
       </div>
-      <EditableList
-        label="Key facts"
-        hint={`${FACTS_LIMIT.min} to ${FACTS_LIMIT.max}`}
-        items={hero.facts}
-        limit={FACTS_LIMIT}
-        error={errors["hero.facts"]}
-        blank={() => ({ value: "", label: { text: "", phone: "" } })}
-        rowName={(i) => `key fact ${i + 1}`}
-        addLabel="Add key fact"
-        onChange={(facts) => setHero({ facts })}
-        row={(fact: FactFields, i, update) => (
-          <div className="grid grid-cols-2 gap-2.5">
-            <TextField label="Value" value={fact.value} error={errors[`hero.facts.${i}.value`]} onChange={(value) => update({ ...fact, value })} />
-            <CopyField
-              label="Label"
-              copy={fact.label}
-              phone={phone}
-              error={errors[`hero.facts.${i}.label`]}
-              onChange={(label) => update({ ...fact, label })}
-            />
-          </div>
-        )}
-      />
+      <div ref={partRef("title")} className={PART_FIELDS}>
+        <CopyField label="Intro" rows={3} copy={hero.intro} phone={phone} error={errors["hero.intro"]} onChange={(intro) => setHero({ intro })} />
+        <div className="grid grid-cols-2 gap-2.5">
+          <TextField label="Status" value={hero.status} error={errors["hero.status"]} onChange={(status) => setHero({ status })} />
+          <TextField label="Dates" value={hero.dates} error={errors["hero.dates"]} onChange={(dates) => setHero({ dates })} />
+        </div>
+      </div>
+      <div ref={partRef("facts")} className="scroll-mt-4">
+        <EditableList
+          label="Key facts"
+          hint={`${FACTS_LIMIT.min} to ${FACTS_LIMIT.max}`}
+          items={hero.facts}
+          limit={FACTS_LIMIT}
+          error={errors["hero.facts"]}
+          blank={() => ({ value: "", label: { text: "", phone: "" } })}
+          rowName={(i) => `key fact ${i + 1}`}
+          addLabel="Add key fact"
+          onChange={(facts) => setHero({ facts })}
+          row={(fact: FactFields, i, update) => (
+            <div className="grid grid-cols-2 gap-2.5">
+              <TextField label="Value" value={fact.value} error={errors[`hero.facts.${i}.value`]} onChange={(value) => update({ ...fact, value })} />
+              <CopyField
+                label="Label"
+                copy={fact.label}
+                phone={phone}
+                error={errors[`hero.facts.${i}.label`]}
+                onChange={(label) => update({ ...fact, label })}
+              />
+            </div>
+          )}
+        />
+      </div>
     </PanelSection>
   );
 }

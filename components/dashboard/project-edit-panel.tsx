@@ -7,6 +7,7 @@ import type { BlockFields } from "@/lib/project-content/block-fields";
 import { addBlock, duplicateBlock, lastBlockId, moveBlock, removeBlock, reorderBlocks, setBlockHidden } from "@/lib/project-content/block-list";
 import { blockIdOf, blockSection, heldPhotos, panelSections, type PanelSection as Section, type ProjectFields } from "@/lib/project-content/fields";
 import type { HomeCardView } from "@/lib/project-content/record";
+import type { TopPart } from "@/lib/project-pages";
 import type { RocketModel } from "@/lib/rocket-model";
 import { EditPanel, PanelSection, usePanelScroll } from "./edit-panel";
 import type { PhotoUploads } from "./outreach-post-photos";
@@ -28,6 +29,16 @@ import { TopSection } from "./project-top-section";
 // shows the desktop text.
 
 export type { FieldErrors };
+
+/**
+ * The row an Edit chip just opened, brought into view; a new object each
+ * time. A chip on one of the top's three parts names it, and the Top of the
+ * page row scrolls to that part's fields.
+ */
+export type PanelScroll = { readonly section: Section; readonly part: TopPart | null };
+
+/** What the panel scrolls to: a row's card, or one top part's fields in the Top of the page row. */
+type ScrollKey = Section | `top:${TopPart}`;
 
 type Change = (change: (fields: ProjectFields) => ProjectFields) => void;
 
@@ -83,11 +94,14 @@ export function ProjectEditPanel({
   onExpandedChange: (sections: Section[]) => void;
   /** Opens a row beside the open ones and brings it into view, as Add block does with its new block's row. */
   onOpen: (section: Section) => void;
-  /** The section an Edit chip just opened, brought into view; a new object each time. */
-  scrollTo: { readonly section: Section } | null;
+  scrollTo: PanelScroll | null;
   onClose: () => void;
 }) {
-  const card = usePanelScroll(scrollTo);
+  const target = useMemo(
+    () => scrollTo && { section: scrollTo.part === null ? scrollTo.section : (`top:${scrollTo.part}` as ScrollKey) },
+    [scrollTo],
+  );
+  const card = usePanelScroll<ScrollKey>(target);
   const uploads = useHeldUploads(fields);
   const phone = device === "phone";
   const { blocks } = fields;
@@ -127,7 +141,19 @@ export function ProjectEditPanel({
 
   const rowOf = (section: Section, index: number): ReactNode => {
     if (section === "top") {
-      return <TopSection key={section} fields={fields} model={model} phone={phone} errors={errors} uploads={uploads} cardRef={card(section)} onChange={onChange} />;
+      return (
+        <TopSection
+          key={section}
+          fields={fields}
+          model={model}
+          phone={phone}
+          errors={errors}
+          uploads={uploads}
+          cardRef={card(section)}
+          partRef={(part) => card(`top:${part}`)}
+          onChange={onChange}
+        />
+      );
     }
     if (section === "card") {
       // The block rows end where the card begins: Add block sits under the last block.
