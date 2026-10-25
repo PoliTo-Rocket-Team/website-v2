@@ -223,14 +223,12 @@ function PostRow({
             {featured && <FeaturedMark className="hidden md:inline-flex" />}
           </span>
           <span className="block truncate text-[13px] text-prt-muted md:line-clamp-2 md:whitespace-normal">{post.summary.text}</span>
-          {/* On phones the title has the whole line, so the Featured mark leads the date line instead. */}
-          <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12px] text-prt-muted md:hidden">
-            {featured && <FeaturedMark className="inline-flex" />}
-            <span className="truncate">
-              {rowDate(post.date)}
-              {post.place && ` · ${post.place}`}
-            </span>
+          <span className="mt-0.5 block truncate text-[12px] text-prt-muted md:hidden">
+            {rowDate(post.date)}
+            {post.place && ` · ${post.place}`}
           </span>
+          {/* On phones the title and the date each keep their whole line, so the Featured mark takes a line of its own. */}
+          {featured && <FeaturedMark className="mt-1 flex w-fit md:hidden" />}
         </span>
       </span>
       <span className="hidden min-w-0 text-[13px] md:block">
