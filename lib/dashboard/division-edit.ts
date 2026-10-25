@@ -446,8 +446,6 @@ export type TeamSearch =
   | { readonly kind: "new-email"; readonly email: string }
   | { readonly kind: "none" };
 
-const SEARCH_LIMIT = 6;
-
 function pickOf(person: FoundPerson, org: OrgChart): TeamPick {
   const label = (divisionId: number | null) => {
     const division = org.divisions.find((d) => d.id === divisionId);
@@ -474,7 +472,9 @@ function pickOf(person: FoundPerson, org: OrgChart): TeamPick {
  * A picker's search over the whole team (Owner decision, 2026-10-11): an
  * email finds the member who uses it, or says it is new to the team; anything
  * else searches names. Everyone on the team is listed, the team leader, the
- * board and the heads included (`pickError`).
+ * board and the heads included (`pickError`). An empty field lists the whole
+ * team by name, so the picker shows people as soon as it opens, and each
+ * letter typed narrows the list (issue #618).
  */
 export function searchTeam(query: string, team: readonly FoundPerson[], org: OrgChart): TeamSearch {
   const text = query.trim();
@@ -483,7 +483,6 @@ export function searchTeam(query: string, team: readonly FoundPerson[], org: Org
     const member = team.find((p) => p.emails.some((e) => e.trim().toLowerCase() === email));
     return member ? { kind: "people", people: [pickOf(member, org)] } : { kind: "new-email", email };
   }
-  if (text.length < 2) return { kind: "none" };
-  const people = team.filter((p) => matchesQuery([p.name], text)).slice(0, SEARCH_LIMIT);
+  const people = team.filter((p) => matchesQuery([p.name], text)).sort((x, y) => x.name.localeCompare(y.name));
   return people.length === 0 ? { kind: "none" } : { kind: "people", people: people.map((p) => pickOf(p, org)) };
 }

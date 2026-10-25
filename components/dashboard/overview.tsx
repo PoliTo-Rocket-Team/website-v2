@@ -36,7 +36,10 @@ import {
   type AttentionKind,
   type Checklist,
   type Overview,
+  type PersonalPanels,
+  type PersonHeader,
   type Roster,
+  type ScopeBoard,
   type TeamSideOverview,
   type Stat,
   type UpcomingInterview,
@@ -84,7 +87,7 @@ const STACK = "mt-6 flex min-w-0 flex-col gap-4";
 type LeadPhoneForm = "full" | "board-56m";
 
 /** The scope board's own parts, and the phone form it reads in: board 56m's for a division or department board, 40m's otherwise. */
-function boardParts(overview: TeamSideOverview) {
+function boardParts(overview: ScopeBoard) {
   switch (overview.shape) {
     case "team":
       return { divisions: null, departments: null, interviews: [], phone: "full" as const };
@@ -107,41 +110,67 @@ function boardParts(overview: TeamSideOverview) {
 // hint for a member who reads no area, or nothing for a seat that reads its
 // areas by role and holds no grant. Board 52m: the person sits on the page
 // with no frame and no edit button (My profile is in the user menu), each
-// panel's count moves beside its title, and the hint is left out.
+// panel's count moves beside its title, and the hint is left out. The page
+// streams these sections one by one (issue #397), so each is its own part.
 function TeamView({ overview, aliasCard }: { overview: TeamSideOverview; aliasCard: OwnAlias | null }) {
-  const { person, checklist, rosters, access } = overview;
-  const parts = boardParts(overview);
   return (
     <>
-      <section className={PERSON_FRAME}>
-        <PersonLines person={person} since={person.since} />
-        {person.edit && (
-          <Link
-            href={person.edit.href}
-            className="hidden h-9 items-center gap-2 self-start rounded-full md:inline-flex bg-prt-text px-4 text-[14px] font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:self-center"
-          >
-            <Pencil aria-hidden className="h-4 w-4" strokeWidth={2} />
-            {person.edit.label}
-          </Link>
-        )}
-      </section>
+      <OverviewPersonSection person={overview.person} />
+      {aliasCard && <OverviewAliasSection alias={aliasCard} />}
+      <OverviewBoardSection board={overview} />
+      <OverviewPanelsSection panels={overview} />
+    </>
+  );
+}
 
-      {aliasCard && (
-        <div className="mt-5 md:mt-6">
-          <AliasReadyCard alias={aliasCard} />
-        </div>
+/** Board 52's person, with Edit profile from md. */
+export function OverviewPersonSection({ person }: { person: PersonHeader }) {
+  return (
+    <section className={PERSON_FRAME}>
+      <PersonLines person={person} since={person.since} />
+      {person.edit && (
+        <Link
+          href={person.edit.href}
+          className="hidden h-9 items-center gap-2 self-start rounded-full md:inline-flex bg-prt-text px-4 text-[14px] font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:self-center"
+        >
+          <Pencil aria-hidden className="h-4 w-4" strokeWidth={2} />
+          {person.edit.label}
+        </Link>
       )}
+    </section>
+  );
+}
 
-      <ScopeBoardView
-        stats={overview.stats}
-        attention={overview.attention}
-        divisions={parts.divisions}
-        departments={parts.departments}
-        interviews={parts.interviews}
-        activity={overview.activity}
-        phone={parts.phone}
-      />
+/** Board 94f's alias card, under the person until the alias is set up. */
+export function OverviewAliasSection({ alias }: { alias: OwnAlias }) {
+  return (
+    <div className="mt-5 md:mt-6">
+      <AliasReadyCard alias={alias} />
+    </div>
+  );
+}
 
+/** The board the seat's scope reads (boards 40, 56, 62, 72). */
+export function OverviewBoardSection({ board }: { board: ScopeBoard }) {
+  const parts = boardParts(board);
+  return (
+    <ScopeBoardView
+      stats={board.stats}
+      attention={board.attention}
+      divisions={parts.divisions}
+      departments={parts.departments}
+      interviews={parts.interviews}
+      activity={board.activity}
+      phone={parts.phone}
+    />
+  );
+}
+
+/** Board 52's own panels: the viewer's page on the site, their rosters, and "Your access". */
+export function OverviewPanelsSection({ panels }: { panels: Omit<PersonalPanels, "person"> }) {
+  const { checklist, rosters, access } = panels;
+  return (
+    <>
       {(checklist !== null || rosters.length > 0) && (
         <div className={checklist !== null && rosters.length > 0 ? GRID : "mt-5 md:mt-6"}>
           {checklist !== null && <ChecklistPanel checklist={checklist} />}

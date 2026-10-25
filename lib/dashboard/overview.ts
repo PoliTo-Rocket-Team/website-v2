@@ -398,6 +398,25 @@ export type ScopeBoard = TeamOverview | TeamLeaderOverview | DepartmentOverview 
 /** What the dashboard data interface answers: the one team Overview, the same for every seat but the scope it reads (issue #593). */
 export type TeamSideOverview = ScopeBoard & PersonalPanels;
 
+/**
+ * The team Overview in the sections the page streams one by one (issue
+ * #397): the person, known with the viewer, so it shows at once; the board
+ * its scope reads; and board 52's own panels. Each read starts when the
+ * sections are asked for, so they run side by side; `TeamSideOverview` is
+ * the three together (`overviewOfSections`).
+ */
+export type OverviewSections = {
+  readonly person: PersonHeader;
+  readonly board: Promise<ScopeBoard>;
+  readonly panels: Promise<Omit<PersonalPanels, "person">>;
+};
+
+/** The whole team Overview, once every section has arrived. */
+export async function overviewOfSections({ person, board, panels }: OverviewSections): Promise<TeamSideOverview> {
+  const [scope, own] = await Promise.all([board, panels]);
+  return { ...scope, ...own, person };
+}
+
 /** Someone off the team: a non-member (boards 50e, 50f) or an alumnus (board 56, issue #317), built by the page. */
 export type Overview = TeamSideOverview | ApplicantOverview | AlumniOverview;
 

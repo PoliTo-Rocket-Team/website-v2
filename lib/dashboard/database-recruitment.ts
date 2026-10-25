@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, count, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, max, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
@@ -34,7 +34,7 @@ import type { DashboardIdentity } from "./database";
 import { readHeadDepartment } from "./database-division";
 import { positionCode } from "@/lib/apply/positions";
 import type { SlotRow } from "./interview-slots";
-import { storedApplicationState } from "./stored-application";
+import { storedApplicationState, type StoredApplicationRow } from "./stored-application";
 import { checkNewPosition, checkPositionContent, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
 import {
   ago,
@@ -341,10 +341,25 @@ async function editPosition(identity: Identity, positionId: number, input: unkno
 /** Where a stored application stands (./stored-application.ts). */
 const stateOf = storedApplicationState;
 
+/**
+ * The applications a lead's list holds, as one condition: those on the given
+ * positions, without the withdrawn ones, which leave the list at once (issue
+ * #169). The reads after the list name them by it rather than by the ids the
+ * list returns, so they run beside the list (issue #397).
+ */
+function listedOn(positionIds: readonly number[]): SQL {
+  return sql`${inArray(applications.applyPositionId, [...positionIds])} and ${isNull(applications.withdrawnAt)}`;
+}
+
 /** The stored interview times of the given applications, by application. */
 export async function readSlots(applicationIds: readonly number[]): Promise<Map<number, SlotRow[]>> {
+  if (applicationIds.length === 0) return new Map();
+  return readSlotsWhere(inArray(interviewSlots.applicationId, [...applicationIds]));
+}
+
+/** The stored interview times `which` selects, by application. */
+async function readSlotsWhere(which: SQL): Promise<Map<number, SlotRow[]>> {
   const bySlot = new Map<number, SlotRow[]>();
-  if (applicationIds.length === 0) return bySlot;
   const rows = await getDb()
     .select({
       application_id: interviewSlots.applicationId,
@@ -355,53 +370,72 @@ export async function readSlots(applicationIds: readonly number[]): Promise<Map<
       created_at: interviewSlots.createdAt,
     })
     .from(interviewSlots)
-    .where(inArray(interviewSlots.applicationId, [...applicationIds]));
+    .where(which);
   for (const row of rows) bySlot.set(row.application_id, [...(bySlot.get(row.application_id) ?? []), row]);
   return bySlot;
 }
 
-/** Each applicant's applications to other roles, anywhere on the team, newest first. */
-async function readOtherApplications(
-  rows: readonly { id: number; user_id: string | null }[],
-): Promise<Map<number, OtherApplication[]>> {
-  const others = new Map<number, OtherApplication[]>();
-  const userIds = [...new Set(rows.flatMap((r) => (r.user_id === null ? [] : [r.user_id])))];
-  if (userIds.length === 0) return others;
-  const all = await getDb()
-    .select({
-      id: applications.id,
-      user_id: applications.userId,
-      status: applications.status,
-      applied_at: applications.appliedAt,
-      accepted_at: applications.acceptedAt,
-      nda_arrived_at: applications.ndaArrivedAt,
-      joined_at: applications.joinedAt,
-      title: applyPositions.title,
-      division_name: divisions.name,
-      dept_name: departments.name,
-    })
-    .from(applications)
-    .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
-    .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
-    .innerJoin(departments, eq(divisions.deptId, departments.id))
-    // A withdrawn application leaves every lead's view at once (issue #169).
-    .where(and(inArray(applications.userId, userIds), eq(applyPositions.isDeleted, false), isNull(applications.withdrawnAt)))
-    .orderBy(desc(applications.appliedAt));
-  const slots = await readSlots(all.filter((a) => a.status === "interview").map((a) => a.id));
-  for (const row of rows) {
-    others.set(
-      row.id,
-      all
-        .filter((a) => a.user_id === row.user_id && a.id !== row.id)
-        .map((a) => ({
-          title: a.title ?? "Untitled position",
-          department: a.dept_name,
-          division: a.division_name,
-          stage: stateOf(a, slots.get(a.id) ?? []).stage,
-        })),
-    );
-  }
-  return others;
+/**
+ * Every live application, anywhere on the team, of the applicants `listed`
+ * selects, and the interview times of all of them, the listed ones included:
+ * what each listed application's other roles (`otherApplicationsOf`) and its
+ * own state are read from. The applicants are named by the condition rather
+ * than by the ids the list returns, so this runs beside the list (issue #397).
+ */
+async function readApplicantsApplications(listed: SQL): Promise<ApplicantsApplications> {
+  const db = getDb();
+  const applicants = db.select({ id: applications.userId }).from(applications).where(listed);
+  // A withdrawn application leaves every lead's view at once (issue #169).
+  const live = and(inArray(applications.userId, applicants), isNull(applications.withdrawnAt));
+  const [all, slots] = await Promise.all([
+    db
+      .select({
+        id: applications.id,
+        user_id: applications.userId,
+        status: applications.status,
+        applied_at: applications.appliedAt,
+        accepted_at: applications.acceptedAt,
+        nda_arrived_at: applications.ndaArrivedAt,
+        joined_at: applications.joinedAt,
+        title: applyPositions.title,
+        division_name: divisions.name,
+        dept_name: departments.name,
+      })
+      .from(applications)
+      .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
+      .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
+      .innerJoin(departments, eq(divisions.deptId, departments.id))
+      .where(and(live, eq(applyPositions.isDeleted, false)))
+      .orderBy(desc(applications.appliedAt)),
+    readSlotsWhere(
+      inArray(interviewSlots.applicationId, db.select({ id: applications.id }).from(applications).where(and(live, eq(applications.status, "interview")))),
+    ),
+  ]);
+  return { all, slots };
+}
+
+/** What `readApplicantsApplications` read: the applicants' live applications, and the interview times by application. */
+type ApplicantsApplications = {
+  readonly all: readonly (StoredApplicationRow & {
+    readonly id: number;
+    readonly user_id: string | null;
+    readonly title: string | null;
+    readonly division_name: string;
+    readonly dept_name: string;
+  })[];
+  readonly slots: ReadonlyMap<number, SlotRow[]>;
+};
+
+/** One listed application's applicant's applications to other roles, anywhere on the team, newest first. */
+function otherApplicationsOf(row: { id: number; user_id: string | null }, { all, slots }: ApplicantsApplications): OtherApplication[] {
+  return all
+    .filter((a) => a.user_id !== null && a.user_id === row.user_id && a.id !== row.id)
+    .map((a) => ({
+      title: a.title ?? "Untitled position",
+      department: a.dept_name,
+      division: a.division_name,
+      stage: stateOf(a, slots.get(a.id) ?? []).stage,
+    }));
 }
 
 function documentOf(
@@ -440,55 +474,56 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
   const db = getDb();
   const cvFiles = alias(applicationFiles, "cv_files");
   const letterFiles = alias(applicationFiles, "letter_files");
-  const rows = await db
-    .select({
-      id: applications.id,
-      user_id: applications.userId,
-      position_id: applications.applyPositionId,
-      applied_at: applications.appliedAt,
-      status: applications.status,
-      accepted_at: applications.acceptedAt,
-      nda_arrived_at: applications.ndaArrivedAt,
-      joined_at: applications.joinedAt,
-      answers: applications.customAnswers,
-      cv_name: applications.cvName,
-      letter_name: applications.mlName,
-      email: users.email,
-      first_name: users.firstName,
-      last_name: users.lastName,
-      phone: users.phone,
-      polito_id: users.politoId,
-      year: users.levelOfStudy,
-      degree: users.program,
-      birth_date: users.dateOfBirth,
-      gender: users.gender,
-      country: users.country,
-      origin: users.origin,
-      linkedin: users.linkedin,
-      referral: users.referralSource,
-      picture: members.picture,
-      cv_file_id: cvFiles.id,
-      cv_file_name: cvFiles.originalFilename,
-      cv_file_size: cvFiles.fileSize,
-      letter_file_id: letterFiles.id,
-      letter_file_name: letterFiles.originalFilename,
-      letter_file_size: letterFiles.fileSize,
-    })
-    .from(applications)
-    .innerJoin(users, eq(applications.userId, users.id))
-    // An applicant with a member record shows its stored photo (issue #656).
-    .leftJoin(members, eq(members.memberId, users.member))
-    .leftJoin(cvFiles, eq(applications.cvFileId, cvFiles.id))
-    .leftJoin(letterFiles, eq(applications.coverLetterFileId, letterFiles.id))
-    // A withdrawn application leaves the lead's list at once (issue #169).
-    .where(and(inArray(applications.applyPositionId, positions.map((p) => p.id)), isNull(applications.withdrawnAt)))
-    .orderBy(desc(applications.appliedAt), desc(applications.id));
-
-  const [slots, others, standings] = await Promise.all([
-    readSlots(rows.filter((r) => r.status === "interview").map((r) => r.id)),
-    readOtherApplications(rows),
-    readStandings(rows.map((r) => r.id)),
+  // The list, its applicants' other applications and interview times, and their standings, all in one round
+  // trip after the positions: two round trips for the page, not four (issue #397).
+  const listed = listedOn(positions.map((p) => p.id));
+  const [rows, others, standings] = await Promise.all([
+    db
+      .select({
+        id: applications.id,
+        user_id: applications.userId,
+        position_id: applications.applyPositionId,
+        applied_at: applications.appliedAt,
+        status: applications.status,
+        accepted_at: applications.acceptedAt,
+        nda_arrived_at: applications.ndaArrivedAt,
+        joined_at: applications.joinedAt,
+        answers: applications.customAnswers,
+        cv_name: applications.cvName,
+        letter_name: applications.mlName,
+        email: users.email,
+        first_name: users.firstName,
+        last_name: users.lastName,
+        phone: users.phone,
+        polito_id: users.politoId,
+        year: users.levelOfStudy,
+        degree: users.program,
+        birth_date: users.dateOfBirth,
+        gender: users.gender,
+        country: users.country,
+        origin: users.origin,
+        linkedin: users.linkedin,
+        referral: users.referralSource,
+        picture: members.picture,
+        cv_file_id: cvFiles.id,
+        cv_file_name: cvFiles.originalFilename,
+        cv_file_size: cvFiles.fileSize,
+        letter_file_id: letterFiles.id,
+        letter_file_name: letterFiles.originalFilename,
+        letter_file_size: letterFiles.fileSize,
+      })
+      .from(applications)
+      .innerJoin(users, eq(applications.userId, users.id))
+      // An applicant with a member record shows its stored photo (issue #656).
+      .leftJoin(members, eq(members.memberId, users.member))
+      .leftJoin(cvFiles, eq(applications.cvFileId, cvFiles.id))
+      .leftJoin(letterFiles, eq(applications.coverLetterFileId, letterFiles.id))
+      .where(listed)
+      .orderBy(desc(applications.appliedAt), desc(applications.id)),
+    readApplicantsApplications(listed),
+    readStandings(listed),
   ]);
+  const { slots } = others;
   const byId = new Map(positions.map((p) => [p.id, p]));
   return {
     scope,
@@ -529,7 +564,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
             ),
           ],
           answers: answersOf(r.answers),
-          otherApplications: others.get(r.id) ?? [],
+          otherApplications: otherApplicationsOf(r, others),
           // The rule the move write asks (`moveApplication`), so the panel never offers a step the server refuses.
           canChange: mayChangePositionIn(identity, "applications", position.unit),
         },
@@ -600,7 +635,7 @@ const statusFor: Readonly<Record<Exclude<ApplicationState["stage"], "withdrawn">
 
 export async function moveApplication(identity: Identity, applicationId: number, move: LeadMove): Promise<WriteResult<null>> {
   const row = await readApplicationFor(identity, applicationId);
-  const [slots, standings] = await Promise.all([readSlots([row.id]), readStandings([row.id])]);
+  const [slots, standings] = await Promise.all([readSlots([row.id]), readStandings(eq(applications.id, row.id))]);
   const before = stateOf(row, slots.get(row.id) ?? []);
   const standing = standings.get(row.id) ?? NEW_APPLICANT;
   const now = new Date();
@@ -698,34 +733,37 @@ async function offerSlots(applicationId: number, readStatus: DbStatus, offered: 
  * Where each application's applicant stands with the team: no member row, a
  * member row with no active role, or active roles, read as memberships
  * (`membershipsOfRoles`, ./team.ts) with their divisions' names and the year
- * of their NDA.
+ * of their NDA. `which` selects the applications; their applicants' roles are
+ * read by the same condition, beside them rather than after them (issue #397).
  */
-async function readStandings(applicationIds: readonly number[]): Promise<Map<number, ApplicantStanding>> {
+async function readStandings(which: SQL): Promise<Map<number, ApplicantStanding>> {
   const standings = new Map<number, ApplicantStanding>();
-  if (applicationIds.length === 0) return standings;
   const db = getDb();
-  const applicants = await db
-    .select({ id: applications.id, member_id: users.member, division_id: applyPositions.divisionId, nda_signed_at: members.ndaSignedAt })
+  const applicantMembers = db
+    .select({ id: users.member })
     .from(applications)
     .innerJoin(users, eq(users.id, applications.userId))
-    .innerJoin(applyPositions, eq(applyPositions.id, applications.applyPositionId))
-    .leftJoin(members, eq(members.memberId, users.member))
-    .where(inArray(applications.id, [...applicationIds]));
-  const memberIds = [...new Set(applicants.flatMap((a) => (a.member_id === null ? [] : [a.member_id])))];
-  const active =
-    memberIds.length === 0
-      ? []
-      : await db
-          .select({
-            member_id: roles.memberId,
-            type: roles.type,
-            started_at: roles.startedAt,
-            division_id: roles.divisionId,
-            division_name: divisions.name,
-          })
-          .from(roles)
-          .leftJoin(divisions, eq(divisions.id, roles.divisionId))
-          .where(and(inArray(roles.memberId, memberIds), isNull(roles.leavedAt)));
+    .where(which);
+  const [applicants, active] = await Promise.all([
+    db
+      .select({ id: applications.id, member_id: users.member, division_id: applyPositions.divisionId, nda_signed_at: members.ndaSignedAt })
+      .from(applications)
+      .innerJoin(users, eq(users.id, applications.userId))
+      .innerJoin(applyPositions, eq(applyPositions.id, applications.applyPositionId))
+      .leftJoin(members, eq(members.memberId, users.member))
+      .where(which),
+    db
+      .select({
+        member_id: roles.memberId,
+        type: roles.type,
+        started_at: roles.startedAt,
+        division_id: roles.divisionId,
+        division_name: divisions.name,
+      })
+      .from(roles)
+      .leftJoin(divisions, eq(divisions.id, roles.divisionId))
+      .where(and(inArray(roles.memberId, applicantMembers), isNull(roles.leavedAt))),
+  ]);
   for (const a of applicants) {
     const theirs = active.filter((r) => r.member_id === a.member_id);
     if (a.member_id === null) standings.set(a.id, NEW_APPLICANT);

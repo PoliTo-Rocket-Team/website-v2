@@ -82,10 +82,10 @@ export function TeamLeaderPanel({
     >
       <VisualOnlyNote>Visual only. This adds a spot on the Team page. It does not give anyone a role or access in the team.</VisualOnlyNote>
 
-      <Field label="Person" hint="from the team">
-        {(id) => (
+      <Field label="Person" hint="from the team" error={errors.person}>
+        {(id, describedBy) => (
           <>
-            <PersonSelect id={id} people={people} value={fields.person} onChange={onPerson} />
+            <PersonSelect id={id} people={people} value={fields.person} onChange={onPerson} describedBy={describedBy} invalid={errors.person !== undefined} />
             <p className={PANEL_HINT}>Their photo, LinkedIn and email come from their profile.</p>
           </>
         )}

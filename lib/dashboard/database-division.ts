@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/db/client";
 import { departments, divisions, logs, members, orders, roles, scopes, users } from "@/db/schema";
@@ -10,7 +10,7 @@ import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
 import { privatePathname, type PrivatePathname } from "@/lib/storage/pathname";
 import { deletePrivateFile, uploadPrivateFile } from "@/lib/storage/private-store";
 import { attributedName } from "./acting-account";
-import { actingTitleIn, readActingTitles } from "./database-acting-account";
+import { actingTitleIn, actingTitlesOf, readActingSeats, readActingTitles } from "./database-acting-account";
 import {
   canGiveApproveOrders,
   checkRemoveAllAccess,
@@ -107,15 +107,26 @@ async function leadDivisions(identity: DashboardIdentity): Promise<Extract<Acces
   if (identity.kind !== "division-lead" || memberId === null) return null;
   const ledIds = ledDivisionIds({ scopes: [], activeRoles: identity.roles });
   if (ledIds.length === 0) return null;
-  const rows = await getDb()
-    .select({ id: divisions.id, name: divisions.name })
-    .from(divisions)
-    .where(and(inArray(divisions.id, ledIds), isNull(divisions.closedAt)))
-    .orderBy(asc(divisions.name));
+  const db = getDb();
+  // The member's division grants are read for every division led at once, beside the divisions (issue #397).
+  const [rows, grants] = await Promise.all([
+    db
+      .select({ id: divisions.id, name: divisions.name })
+      .from(divisions)
+      .where(and(inArray(divisions.id, ledIds), isNull(divisions.closedAt)))
+      .orderBy(asc(divisions.name)),
+    db
+      .select({ division_id: scopes.divisionId, target: scopes.target, level: scopes.accessLevel })
+      .from(scopes)
+      .where(and(eq(scopes.memberId, memberId), eq(scopes.scope, "division"), inArray(scopes.divisionId, ledIds))),
+  ]);
   const first = identity.role?.divisionId ?? null;
   const ordered = [...rows.filter((r) => r.id === first), ...rows.filter((r) => r.id !== first)];
   // The role gives Positions, Applications, Members and Orders at Can edit in each division led (issues #591, #632); grants there add to it.
-  const led = await Promise.all(ordered.map(async (division) => ({ division, held: mergeHeld(LEAD_ROLE_HELD_ACCESS, await readHeld(memberId, division.id)) })));
+  const led = ordered.map((division) => ({
+    division,
+    held: mergeHeld(LEAD_ROLE_HELD_ACCESS, heldOf(grants.filter((g) => g.division_id === division.id))),
+  }));
   const [head, ...rest] = led;
   return head === undefined ? null : { kind: "division", divisions: [head, ...rest] };
 }
@@ -124,12 +135,8 @@ function isUnitTarget(value: string): value is UnitTarget {
   return (UNIT_TARGETS as readonly string[]).includes(value);
 }
 
-/** What the member holds in the division, area by area: "all" on a division scope covers each area. */
-async function readHeld(memberId: number, divisionId: number): Promise<HeldAccess[]> {
-  const mine = await getDb()
-    .select({ target: scopes.target, level: scopes.accessLevel })
-    .from(scopes)
-    .where(and(eq(scopes.memberId, memberId), eq(scopes.scope, "division"), eq(scopes.divisionId, divisionId)));
+/** What the member's grants in one division hold, area by area: "all" on a division scope covers each area. */
+function heldOf(mine: readonly { target: string; level: AccessLevel }[]): HeldAccess[] {
   return UNIT_TARGETS.flatMap((target) => {
     const levels = mine.filter((m) => m.target === target || m.target === "all").map((m) => m.level);
     if (levels.length === 0) return [];
@@ -226,8 +233,13 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
   // A team page also holds the grants across the whole team, Content and "Approve orders" (issue #247).
   const acrossTeam = or(and(eq(scopes.scope, "team"), or(unitTarget, eq(scopes.target, "approve_orders"))), contentRows);
   const unitRows = unit.kind === "team" ? or(inUnitDivisions, inUnitDepartments, acrossTeam) : unit.content === true ? or(inUnitDivisions, inUnitDepartments, contentRows) : or(inUnitDivisions, inUnitDepartments);
+  const listed = and(unitRows, ne(scopes.memberId, me));
+  // When each grant was given and the seats of the acting accounts that gave them are read by the grants' own
+  // condition, beside the grants rather than after them: one round trip after the unit, not two (issue #397).
+  const listedIds = db.select({ id: sql<string>`${scopes.id}::text` }).from(scopes).where(listed);
+  const listedActing = db.select({ id: scopes.givenByActingAccount }).from(scopes).where(listed);
 
-  const [rows, team, mineApproves] = await Promise.all([
+  const [rows, team, mineApproves, given, actingSeats] = await Promise.all([
     db
       .select({
         id: scopes.id,
@@ -251,7 +263,7 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
       .innerJoin(users, eq(users.member, scopes.memberId))
       .leftJoin(members, eq(members.memberId, scopes.memberId))
       .leftJoin(giver, eq(giver.member, scopes.givenBy))
-      .where(and(unitRows, ne(scopes.memberId, me)))
+      .where(listed)
       .orderBy(desc(scopes.id)),
     db
       .select({
@@ -290,6 +302,11 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
           .where(and(eq(scopes.memberId, me), eq(scopes.scope, "team"), eq(scopes.target, "approve_orders")))
           .limit(1)
       : Promise.resolve([]),
+    db
+      .select({ record_id: logs.recordId, changed_at: logs.changedAt })
+      .from(logs)
+      .where(and(eq(logs.tableName, "scopes"), eq(logs.operation, "INSERT"), inArray(logs.recordId, listedIds))),
+    readActingSeats(inArray(users.id, listedActing)),
   ]);
 
   // The full-access seat each member holds (issue #238): only a team page shows them, each across the whole team.
@@ -348,16 +365,7 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
     // Full access first (board 71), then the heads and the leads.
     .sort((a, b) => Number(b.place.kind === "team") - Number(a.place.kind === "team"));
 
-  const ids = rows.map((r) => String(r.id));
-  const [given, actingTitles] = await Promise.all([
-    ids.length === 0
-      ? []
-      : db
-          .select({ record_id: logs.recordId, changed_at: logs.changedAt })
-          .from(logs)
-          .where(and(eq(logs.tableName, "scopes"), eq(logs.operation, "INSERT"), inArray(logs.recordId, ids))),
-    readActingTitles(rows.map((r) => r.given_by_acting_account)),
-  ]);
+  const actingTitles = actingTitlesOf(rows.map((r) => r.given_by_acting_account), actingSeats);
   const givenOn = new Map(given.map((g) => [g.record_id, g.changed_at.slice(0, 10)]));
 
   // A grant given while viewing as someone names the acting seat too, even to the person viewed as (issue #605).
