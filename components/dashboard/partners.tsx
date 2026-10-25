@@ -216,7 +216,6 @@ function PartnerRow({
       </span>
       <RowMenu
         name={partner.name}
-        onEdit={onOpen}
         onUp={onMove && index > 0 ? () => onMove(index - 1) : null}
         onDown={onMove && index < last ? () => onMove(index + 1) : null}
         onRemove={onRemove}

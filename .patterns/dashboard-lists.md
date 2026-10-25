@@ -34,9 +34,11 @@ one per section: a click on the row opens its side view, and every search is the
    in a span that stops the click) and the Members Table view's phone, birth date and gender
    cells. A click there never opens the side view.
 
-4. **The three-dot menu holds only secondary actions.** Remove from a division, Leaves the team,
-   Move up, Move down, Remove. It is never the only way into the side view, and a row with no
-   secondary actions has no three-dot button at all (a Members row the viewer cannot change).
+4. **The three-dot menu holds only secondary actions, and it is never a way into the side view.**
+   Remove from a division, Leaves the team, Move up, Move down, Remove. No menu item opens the
+   side view: on Partners and FAQ the shared `RowMenu` gets no `onEdit`, so it shows no Edit item.
+   A row with no secondary actions has no three-dot button at all (a Members row the viewer cannot
+   change).
 
 ```tsx
 <tr onClick={onOpen} className="cursor-pointer …">
@@ -93,6 +95,10 @@ design.
 
 - The Members waiting rows (people waiting for Confirm NDA) open no side view; "Fill details" in
   their menu opens the Edit details panel.
+- `RowMenu` in [content-parts.tsx](../components/dashboard/content-parts.tsx) still takes an
+  optional `onEdit`. The text blocks in the Edit post panel
+  ([outreach-post-panel.tsx](../components/dashboard/outreach-post-panel.tsx)) pass it to open a
+  block in place; that panel is not a list with a side view.
 - The Applications side view is its own non-modal dialog, not `SidePanel`; it still opens on a
   row click.
 - On Applications, Access and Positions the filters beside the search are 32px tall (`h-8`),

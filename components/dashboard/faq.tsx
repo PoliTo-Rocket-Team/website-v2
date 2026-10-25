@@ -197,7 +197,7 @@ function FaqRow({
       <span className="w-[120px] shrink-0">
         <StatusPill status={statusOf(item.version)} />
       </span>
-      <RowMenu name={faq.question} onEdit={onOpen} onUp={onUp} onDown={onDown} onRemove={onRemove} />
+      <RowMenu name={faq.question} onUp={onUp} onDown={onDown} onRemove={onRemove} />
     </li>
   );
 }
