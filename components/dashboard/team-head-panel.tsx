@@ -9,7 +9,7 @@ import { personOf, type TeamPerson } from "@/lib/about/team-person";
 import { CONTENT_FOCUS, useDragOrder, type DragRow } from "./content-parts";
 import { PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON } from "./drawer";
 import { Field, GroupLabel, inputClass } from "./field";
-import { ContactFields, PANEL_HINT, PersonSelect, PhotoField, TeamPanel, VisualOnlyNote } from "./team-panel-parts";
+import { ContactFields, PANEL_FOOT_DANGER_LINK, PANEL_HINT, PersonSelect, PhotoField, TeamPanel, VisualOnlyNote } from "./team-panel-parts";
 
 // The Edit a head block panel (board 80g, issue #285), opened from a head
 // block's Edit chip, its "+ Add division lead", or "+ Add department": the
@@ -84,34 +84,28 @@ export function TeamHeadPanel({
       eyebrow="Departments"
       title={kind === "new" ? "Add department" : (head?.name ?? "Head")}
       onClose={onCancel}
-      footer={
+      footStart={
+        onHide !== null && (
+          <button type="button" onClick={onHide} className={PANEL_FOOT_DANGER_LINK}>
+            {added ? <Trash2 aria-hidden className="h-4 w-4" strokeWidth={1.75} /> : <EyeOff aria-hidden className="h-4 w-4" strokeWidth={1.75} />}
+            {added ? "Remove from page" : "Hide from page"}
+          </button>
+        )
+      }
+      footEnd={
         <>
-          {onHide === null ? (
-            <span />
+          {kind === "roles" ? (
+            <button type="button" disabled={onBack === null} onClick={() => onBack?.()} className={`${PANEL_GHOST_BUTTON} disabled:cursor-default disabled:text-dim`}>
+              Back to the team record
+            </button>
           ) : (
-            <button
-              type="button"
-              onClick={onHide}
-              className={`inline-flex items-center gap-2 rounded-md text-[14px] font-semibold text-danger transition-opacity duration-300 ease-out hover:opacity-80 ${CONTENT_FOCUS}`}
-            >
-              {added ? <Trash2 aria-hidden className="h-4 w-4" strokeWidth={1.75} /> : <EyeOff aria-hidden className="h-4 w-4" strokeWidth={1.75} />}
-              {added ? "Remove from page" : "Hide from page"}
+            <button type="button" onClick={onCancel} className={PANEL_GHOST_BUTTON}>
+              Cancel
             </button>
           )}
-          <span className="flex gap-3">
-            {kind === "roles" ? (
-              <button type="button" disabled={onBack === null} onClick={() => onBack?.()} className={`${PANEL_GHOST_BUTTON} disabled:cursor-default disabled:text-dim`}>
-                Back to the team record
-              </button>
-            ) : (
-              <button type="button" onClick={onCancel} className={PANEL_GHOST_BUTTON}>
-                Cancel
-              </button>
-            )}
-            <button type="button" onClick={onDone} className={PANEL_PRIMARY_BUTTON}>
-              {kind === "new" ? "Add to page" : "Done"}
-            </button>
-          </span>
+          <button type="button" onClick={onDone} className={PANEL_PRIMARY_BUTTON}>
+            {kind === "new" ? "Add to page" : "Done"}
+          </button>
         </>
       }
     >
@@ -132,7 +126,7 @@ export function TeamHeadPanel({
         )}
       </Field>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2.5">
         <Field label="Role on the page" error={errors.role}>
           {(id, describedBy) => (
             <input
@@ -258,7 +252,7 @@ function LeadRowItem({
         </button>
       </div>
       {open && (
-        <div className="grid grid-cols-2 gap-3 border-t border-white-10 px-3 py-3">
+        <div className="grid grid-cols-2 gap-2.5 border-t border-white-10 px-3 py-3">
           <PersonSelect
             label="Division lead"
             people={people}
