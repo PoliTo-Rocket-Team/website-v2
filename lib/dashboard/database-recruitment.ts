@@ -792,7 +792,7 @@ async function readApplicationFor(identity: Identity, applicationId: number) {
 }
 
 /** The application as `readApplicationFor` read it: its old status and its status reference. */
-type ReadStatus = { readonly id: number; readonly status: DbStatus; readonly status_key: string | null };
+export type ReadStatus = { readonly id: number; readonly status: DbStatus; readonly status_key: string | null };
 
 /**
  * The application is still in the status it was read in: the old status
@@ -1145,8 +1145,19 @@ async function readStandings(which: SQL): Promise<Map<number, ApplicantStanding>
  * position", with the join's day as their decision day; their decided and
  * withdrawn ones keep their status (issue #749). True when the application
  * was marked joined.
+ *
+ * The first step locks the application row it reads (issue #761). A second
+ * Confirm join of the same application, sent before the first commits, waits
+ * on that lock, then re-checks the status it read against the row the first
+ * one left: it finds no row, so it writes nothing and answers false instead
+ * of adding the person a second time.
  */
-async function confirmJoin(identity: Identity, read: ReadStatus, joinedAt: string, change: JoinChange): Promise<boolean> {
+export async function confirmJoin(
+  identity: Pick<Identity, "memberId" | "actingAccountId">,
+  read: ReadStatus,
+  joinedAt: string,
+  change: JoinChange,
+): Promise<boolean> {
   const addMember = change === "new-member";
   const addRole = change !== "nothing";
   const open = sql.join(
@@ -1165,6 +1176,7 @@ async function confirmJoin(identity: Identity, read: ReadStatus, joinedAt: strin
         where a.id = ${read.id} and a.status = ${read.status}
           and a.status_key is not distinct from ${read.status_key}::text
           and a.withdrawn_at is null and a.nda_arrived_at is not null
+        for update of a
       ),
       new_member as (
         insert into ${members} (nda_signed_at, nda_name, nda_confirmed_by, nda_confirmed_by_acting_account)
