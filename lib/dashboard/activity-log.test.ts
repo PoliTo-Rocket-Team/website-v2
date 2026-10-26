@@ -144,6 +144,23 @@ test("saving a draft of a published record reads as the draft saved, though the 
   assert.deepEqual(sentences(publish), ['Published the question "Draft label"']);
 });
 
+test("unpublishing a record reads as unpublished, though the store wrote it back as a draft", () => {
+  const at = "2026-10-25T05:30:00.000Z";
+  // What Unpublish writes: every version removed, and what was live written back as the only draft.
+  const entries = read([
+    row({ table: "outreach_post_versions", operation: "DELETE", at, before: { version: "published" }, label: "Live post" }),
+    row({ table: "outreach_post_versions", operation: "DELETE", at, before: { version: "draft" }, label: "Old draft" }),
+    row({ table: "outreach_post_versions", operation: "INSERT", at, after: { version: "draft" }, label: "Live post" }),
+  ]);
+  assert.deepEqual(sentences(entries), ['Unpublished the post "Live post"']);
+  assert.equal(entries[0].change.kind === "write" && entries[0].change.area, "outreach");
+  const withoutDraft = read([
+    row({ table: "outreach_post_versions", operation: "DELETE", before: { version: "published" }, label: "Live post" }),
+    row({ table: "outreach_post_versions", operation: "INSERT", after: { version: "draft" }, label: "Live post" }),
+  ]);
+  assert.deepEqual(sentences(withoutDraft), ['Unpublished the post "Live post"']);
+});
+
 test("two writes by one writer within one millisecond stay two changes", () => {
   const at = "2026-10-25T04:00:00.123Z";
   const entries = read([

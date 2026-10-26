@@ -428,11 +428,23 @@ function draftWritten(row: LogRow, d: Describer): LogRow | null {
   return d.rows(row.table).find((r) => r.operation !== "DELETE" && text(r.after, "version") === "draft") ?? null;
 }
 
+/**
+ * Whether the change took the record off the site: it removed the published
+ * version, wrote none back, and wrote a draft (Unpublish keeps what was live
+ * as the record's draft).
+ */
+function unpublishedTo(draft: LogRow, d: Describer): boolean {
+  const rows = d.rows(draft.table);
+  const isPublished = (data: Data) => text(data, "version") === "published";
+  return rows.some((r) => r.operation === "DELETE" && isPublished(r.before)) && !rows.some((r) => r.operation !== "DELETE" && isPublished(r.after));
+}
+
 /** A record kept as a draft and a published version (posts, partners, FAQ, projects, advisors). */
 function versioned(noun: string, area: WriteArea, labelKey: string): Sentence {
   return (row, data, d) => {
     if (row.operation === "DELETE") return { sentence: `Deleted the ${noun}${quoted(row.label ?? text(data, labelKey))}`, area };
     const draft = draftWritten(row, d);
+    if (draft !== null && unpublishedTo(draft, d)) return { sentence: `Unpublished the ${noun}${quoted(draft.label ?? text(draft.after, labelKey))}`, area };
     if (draft !== null) return { sentence: `Saved the draft ${noun}${quoted(draft.label ?? text(draft.after, labelKey))}`, area };
     return { sentence: `Published the ${noun}${quoted(row.label ?? text(data, labelKey))}`, area };
   };
