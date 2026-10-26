@@ -85,7 +85,10 @@ const PAGE_TARGETS: readonly PageTarget<ProjectPageId>[] = [
   { id: "list", label: "Projects list" },
 ];
 
-const CHECK_NOTICE = "This changes how the project looks on Home and the Projects list. Check both tabs before publishing.";
+/** The warning strip while Publish is held (issue #790): what changed, why Publish is off, and how to turn it back on. */
+function checkNotice(project: string): string {
+  return `Your edits change the ${project} card on Home and the Projects list. Publish stays off until you check it there: open each tab and press Looks right. Then you can publish.`;
+}
 
 /** Where the confirm bar asks about the card, by tab (board 93e). */
 const CHECKED_PLACE: Readonly<Record<ProjectCheckedPage, string>> = { home: "Home", list: "the Projects list" };
@@ -235,7 +238,7 @@ export function ProjectEdit({
           pages: PROJECT_CHECKED_PAGES,
           look: cardLookOf(view),
           live: liveLookOf(item.version),
-          notice: CHECK_NOTICE,
+          notice: checkNotice(view.name),
           question: (checked) => `Is the ${view.name} card right on ${CHECKED_PLACE[checked]}?`,
         }}
         blocks={editBlocksOf(view)}

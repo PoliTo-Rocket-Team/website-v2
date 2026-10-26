@@ -757,7 +757,7 @@ async function personalPanelsOf(identity: Identity, teamOrders: Promise<Order[]>
     // Done from every seat they hold, not only a division role (issue #641).
     checklist: pageChecklistOf({ roles: identity.roles, email: identity.email, photoUrl: identity.picture, linkedin: identity.linkedin }),
     rosters,
-    access: accessSectionOf(lines, overviewAreasOf(identity).length > 0),
+    access: accessSectionOf(lines),
   };
 }
 

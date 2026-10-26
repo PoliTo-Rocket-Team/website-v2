@@ -30,7 +30,10 @@ export function AccountUnresolved() {
         <h1 className="mt-8 text-[26px] font-bold leading-tight tracking-[-0.02em]">
           We could not open your account
         </h1>
-        <p className="mt-2 text-[15px] text-text-2">Sign out, then sign in again with Google.</p>
+        <p className="mt-2 text-[15px] text-text-2">
+          Your session may have ended, or this Google account has no record on the site. Sign out, then sign in again with Google using the address
+          the team has for you. If this screen comes back, ask the team to check that address.
+        </p>
         <button
           type="button"
           onClick={signOut}

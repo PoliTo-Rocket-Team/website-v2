@@ -51,7 +51,7 @@ const page = departmentMembers({
   departmentId: 1,
   actor: { kind: "head", departmentIds: [1] },
   selfId: null,
-  waiting: { 1: [{ joinId: 9, email: "elena@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS }] },
+  waiting: { 1: [{ joinId: 9, email: "elena@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS, addedOn: "2026-10-20", signedIn: false }] },
   joining: {},
 })!;
 

@@ -942,7 +942,7 @@ export type AddTarget =
 /**
  * Add member (boards 61h, 61h2 and 69c): type an email or search the team by
  * name. Someone on the team joins at once and keeps their other divisions; an
- * email new to the team shows the amber "Not in the team yet" line and waits
+ * email new to the team shows the amber "isn't on the team yet" line and waits
  * for Confirm NDA. "Fill in their other details now" opens the rest of the
  * form. The site sends no emails, so the drawer says to tell them. A head
  * picks the division first, from their department's divisions only.
@@ -1073,7 +1073,7 @@ function AddForm({ open, onOpenChange, target }: { open: boolean; onOpenChange: 
       toast.success(
         result.value === "joined"
           ? `${picked?.name ?? query} joined ${short}`
-          : `${query} is waiting for their NDA. Let them know: the site sends no emails.`,
+          : `${query} was added and is waiting for their signed NDA. The site sends no emails, so message them to sign in with Google. They join when you confirm the NDA.`,
       );
       onOpenChange(false);
     } finally {
@@ -1157,8 +1157,8 @@ function AddForm({ open, onOpenChange, target }: { open: boolean; onOpenChange: 
         <p className="mt-2 flex items-start gap-2 text-[13px] leading-snug text-warning">
           <UserPlus aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
           <span>
-            Not in the team yet. They join after you confirm their signed NDA.
-            {fillNow && " The site doesn't send emails, so you need to let them know."}
+            {query.trim()} isn&apos;t on the team yet. After you add them, they wait for their signed NDA and join when you confirm it.
+            {fillNow && " The site doesn't send emails, so they won't know you added them. Message them to sign in with Google using this address."}
           </span>
         </p>
       )}
@@ -1220,7 +1220,8 @@ function AddForm({ open, onOpenChange, target }: { open: boolean; onOpenChange: 
       {isNew && !fillNow && (
         <p className="mt-5 flex items-start gap-2.5 rounded-xl border border-warning/30 bg-warning/[0.05] px-4 py-3 text-[13px] text-text-2">
           <Mail aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-warning" strokeWidth={1.75} />
-          The site doesn&apos;t send emails, so you need to let them know you added them.
+          The site doesn&apos;t send emails, so they won&apos;t know you added them. Message them to sign in with Google using this address. Until they
+          sign in or their details are filled in, a box under Members reminds you.
         </p>
       )}
     </Drawer>
