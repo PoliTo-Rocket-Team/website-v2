@@ -23,10 +23,16 @@
 // member seat's PRT email, and the members still owed one have none, on the
 // rows `people` owns (`MEMBER_SEAT_ALIAS`, `OWED_ALIAS`); these rows go in
 // after them.
+//
+// The member seat also holds two shared team addresses (epic #578, issue
+// #786), so their side view shows the Team addresses row of board 102: one
+// that moves with the Logistics lead, one tied to no role. The addresses are
+// invented, on the seed's team domain.
 
-import { aliasRequests, dashboardNotices } from "@/db/schema";
-import { MEMBER_SEAT, MEMBER_SEAT_ALIAS, OPERATIONS_HEAD, OWED_ALIAS, TEAM_LEADER, TEST_BENCH_LEAD } from "./people";
+import { aliasRequests, dashboardNotices, teamAddresses } from "@/db/schema";
+import { MEMBER_SEAT, MEMBER_SEAT_ALIAS, OPERATIONS_HEAD, OWED_ALIAS, SEED_TEAM_EMAIL_DOMAIN, TEAM_LEADER, TEST_BENCH_LEAD } from "./people";
 import { rowsOf, tableSeedModule } from "./rows";
+import { DIVISION } from "./structure";
 
 const LEAD = TEST_BENCH_LEAD;
 /** The head of Operations, in the operations lead's seat: an approver. */
@@ -101,10 +107,37 @@ export const ALIAS_NOTICE_ROWS = rowsOf(dashboardNotices, [
   },
 ]);
 
+/** The member seat's two team addresses (board 102): one moves with the Logistics lead, one with no role. */
+export const TEAM_ADDRESS_ROWS = rowsOf(teamAddresses, [
+  {
+    address: `logistics@${SEED_TEAM_EMAIL_DOMAIN}`,
+    purpose: "Logistics",
+    holderId: MEMBER_SEAT,
+    movesWith: "division_lead",
+    movesWithSeat: null,
+    movesWithDeptId: null,
+    movesWithDivisionId: DIVISION.logistics,
+    createdAt: "2026-10-16 15:00:00+00",
+    updatedAt: "2026-10-16 15:00:00+00",
+  },
+  {
+    address: `recruitment@${SEED_TEAM_EMAIL_DOMAIN}`,
+    purpose: "Recruitment",
+    holderId: MEMBER_SEAT,
+    movesWith: null,
+    movesWithSeat: null,
+    movesWithDeptId: null,
+    movesWithDivisionId: null,
+    createdAt: "2026-10-16 15:05:00+00",
+    updatedAt: "2026-10-16 15:05:00+00",
+  },
+]);
+
 // The seed writes no other notice, and resetting `people` empties the table
-// anyway (its members cascade), so this module owns it whole.
+// anyway (its members cascade), so this module owns it whole. The same holds
+// for the team addresses, each held by a seeded member.
 export const aliasesSeed = tableSeedModule({
   name: "aliases",
-  owns: [aliasRequests, dashboardNotices],
-  rows: [ALIAS_REQUEST_ROWS, ALIAS_NOTICE_ROWS],
+  owns: [aliasRequests, dashboardNotices, teamAddresses],
+  rows: [ALIAS_REQUEST_ROWS, ALIAS_NOTICE_ROWS, TEAM_ADDRESS_ROWS],
 });

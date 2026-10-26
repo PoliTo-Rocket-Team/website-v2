@@ -143,6 +143,7 @@ const READS: readonly Read[] = [
   { path: "myAccount" },
   { path: "myApplications" },
   { path: "memberAliases", args: [[ALL.map((u) => IDS.person(u))]] },
+  { path: "memberTeamAddresses", args: [[ALL.map((u) => IDS.person(u))]] },
   { path: "myAlias" },
 ];
 
