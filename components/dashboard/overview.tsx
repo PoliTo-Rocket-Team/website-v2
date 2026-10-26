@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRightLeft, ArrowUpRight, AtSign, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Package, Pencil, ShoppingCart, Timer, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
+import { ArrowRightLeft, ArrowUpRight, AtSign, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Mail, Package, Pencil, ShoppingCart, Timer, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
 import {
   APPLICANT_PILL_LABELS,
@@ -518,6 +518,7 @@ function attentionKey(item: AttentionItem): string {
 }
 
 const ATTENTION_ICONS: Readonly<Record<AttentionKind, LucideIcon>> = {
+  "acceptance-emails": Mail,
   applications: Inbox,
   "quiet-position": Timer,
   unassigned: UserPlus,

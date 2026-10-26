@@ -1,3 +1,4 @@
+import type { AcceptanceEmailRow } from "./acceptance-emails";
 import type { ApplicantDetails } from "./applicant-details";
 import type { ApplicantStanding, ApplicationState } from "./application-flow";
 import type { ApplicationStatus, BuiltInStatusKey, ListedStatus } from "./application-status";
@@ -307,6 +308,13 @@ export type ApplicationsPage = {
    * (`managesStatusList`, ./application-status.ts).
    */
   readonly statusUses: Readonly<Record<string, number>> | null;
+  /**
+   * The acceptance emails to send, team-wide, oldest acceptance first (board
+   * 100, `acceptanceEmailsFor`, ./acceptance-emails.ts): the team leader's
+   * box above the filters. Null for every other viewer, so no row of it
+   * reaches their page.
+   */
+  readonly acceptanceEmails: readonly AcceptanceEmailRow[] | null;
   /** Newest first. */
   readonly applications: readonly ApplicationEntry[];
 };

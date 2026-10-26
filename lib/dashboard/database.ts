@@ -34,6 +34,7 @@ import {
   type RoleType,
 } from "./team";
 import { readTeamSnapshot, recordsOf, rosterOf } from "./team-database";
+import { acceptanceEmailsAttention } from "./acceptance-emails";
 import { departmentSummaries, leaderAttention, leaderStats } from "./leader-overview";
 import { opensWholeTeam } from "./members-view";
 import { databaseAlumniWrites, databaseOwnAlumni, readAlumniDirectory, readOwnAlumnus } from "./database-alumni";
@@ -64,7 +65,7 @@ import {
 } from "./overview";
 import { readActivityLog } from "./database-activity-log";
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
-import { databaseRecruitmentPages, interviewStatuses, readSlots, STATUS_COLUMNS, STATUS_JOIN } from "./database-recruitment";
+import { databaseRecruitmentPages, interviewStatuses, readAcceptanceEmailCount, readSlots, STATUS_COLUMNS, STATUS_JOIN } from "./database-recruitment";
 import { readsAsNew } from "./stored-application";
 import { statusOfStored } from "./application-status";
 import { divisionOverviewOf, membersScopeOf, overviewAreasOf, type DivisionFigures } from "./division-overview";
@@ -937,7 +938,9 @@ async function readMemberAccess(identity: Identity): Promise<NonNullable<AccessF
  * #538). Whoever decides orders (`decideRightOfStanding`), whatever the
  * shape, then gets what waits for their decision across the team
  * (`leaderAttention`, issue #592); nobody else's Overview reads the team's
- * orders for it. Its sections are read side by side, and the page streams
+ * orders for it. The team leader alone then gets the count of acceptance
+ * emails to send, linking to their box on Applications (board 100, issue
+ * #744). Its sections are read side by side, and the page streams
  * each one as it arrives (issue #397); the team's orders are read once for
  * both the board and the panels.
  */
@@ -949,8 +952,12 @@ function overviewSectionsOf(identity: Identity): OverviewSections {
     scopeBoardOf(identity, teamOrders),
     readHandOverAttention(identity, now),
     readAliasAttention(identity, now),
+    isTeamLeader(identity) ? readAcceptanceEmailCount().then(acceptanceEmailsAttention) : null,
     teamOrders?.then((orders) => leaderAttention({ orders, now })) ?? [],
-  ]).then(([scope, handOvers, aliases, decisions]) => ({ ...scope, attention: [...handOvers, ...aliases, ...decisions, ...scope.attention] }));
+  ]).then(([scope, handOvers, aliases, acceptance, decisions]) => ({
+    ...scope,
+    attention: [...handOvers, ...aliases, ...(acceptance === null ? [] : [acceptance]), ...decisions, ...scope.attention],
+  }));
   return { person: personHeaderOf(identity), board, panels: personalPanelsOf(identity, teamOrders) };
 }
 

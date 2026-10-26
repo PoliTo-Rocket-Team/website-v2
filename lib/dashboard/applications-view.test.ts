@@ -14,7 +14,7 @@ const oa = { ref: "oa-cfd", title: "CFD Analyst", division: "Optimization and An
 const dm = { ref: "dm-composites", title: "Composites Technician", division: "Design & Manufacturing Division", department: "Structures" };
 
 function page(scope: ApplicationsScope, positions: ApplicationsPage["positions"]): ApplicationsPage {
-  return { scope, now: "2026-10-19T09:00:00.000Z", positions, statuses: [], teamLeader: false, statusUses: null, applications: [] };
+  return { scope, now: "2026-10-19T09:00:00.000Z", positions, statuses: [], teamLeader: false, statusUses: null, acceptanceEmails: null, applications: [] };
 }
 
 const wholeTeam = page({ kind: "team" }, [ma, oa, dm]);
