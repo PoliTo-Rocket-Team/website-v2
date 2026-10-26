@@ -107,21 +107,24 @@ export function LandingFooter({ inSky = false, projects }: {
 
           <hr className="mt-8 border-t border-hairline md:mt-16" />
 
-          <div className="mt-7 flex flex-col justify-between gap-3 font-mono text-[11px] tracking-[0.12em] text-dim md:flex-row md:tracking-[0.2em]">
-            <p>POLITO ROCKET TEAM ™ 2026</p>
+          {/* No item ever breaks inside itself (issue #774). At the wide
+              tracking the full row needs about 770px, more than the md
+              content width up to ~900px, so it stays stacked until lg. */}
+          <div className="mt-7 flex flex-col justify-between gap-3 font-mono text-[11px] tracking-[0.12em] text-dim md:tracking-[0.2em] lg:flex-row">
+            <p className="whitespace-nowrap">POLITO ROCKET TEAM ™ 2026</p>
             {/* The legal pages (issue #122) sit on the right, where the street
                 address was before it moved under the tagline (issue #737). */}
-            <div className="flex flex-col gap-3 md:flex-row md:gap-14">
+            <div className="flex flex-col gap-3 lg:flex-row lg:gap-14">
               <ul className="flex gap-6">
                 {LEGAL_LINKS.map((l) => (
                   <li key={l.href}>
-                    <Link href={l.href} className="uppercase transition-colors duration-300 ease-out hover:text-accent">
+                    <Link href={l.href} className="whitespace-nowrap uppercase transition-colors duration-300 ease-out hover:text-accent">
                       {l.label}
                     </Link>
                   </li>
                 ))}
               </ul>
-              <p className="hidden md:block">POLITECNICO DI TORINO</p>
+              <p className="hidden whitespace-nowrap md:block">POLITECNICO DI TORINO</p>
             </div>
           </div>
         </div>
