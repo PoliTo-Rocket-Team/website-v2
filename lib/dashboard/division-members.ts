@@ -25,6 +25,7 @@ import {
   type RoleBeyondDivisions,
   type TeamActor,
 } from "./team";
+import { shortDate } from "./write";
 
 // A division's Members page (issue #231, boards 61e to 61h2): the people in
 // the division with every division they are in, their contact, studies and
@@ -216,7 +217,36 @@ export type WaitingPerson = {
   readonly addedOn: string;
   /** Whether a sign-in account already holds their user row: they have signed in at least once. */
   readonly signedIn: boolean;
+  /** Who added them, as the viewer reads it (issue #799). Set on the server. */
+  readonly addedBy: WaitingAdder;
 };
+
+/**
+ * Who added someone waiting, from `team_joins.added_by` (issue #799): the
+ * viewer, another member by full name, or nobody known, since the column is
+ * cleared when the adder's member record goes.
+ */
+export type WaitingAdder =
+  | { readonly kind: "viewer" }
+  | { readonly kind: "member"; readonly name: string }
+  | { readonly kind: "unknown" };
+
+/**
+ * The first sentence of the "hasn't signed in yet" box (issues #790, #799):
+ * "You added them…" for the adder, the adder's name for anyone else, and a
+ * sentence that names no one when the adder is not known.
+ */
+export function addedSentence(waiting: Pick<WaitingPerson, "addedBy" | "addedOn" | "email">, unit: string): string {
+  const where = `to ${unit} on ${shortDate(waiting.addedOn)} with ${waiting.email}.`;
+  switch (waiting.addedBy.kind) {
+    case "viewer":
+      return `You added them ${where}`;
+    case "member":
+      return `${waiting.addedBy.name} added them ${where}`;
+    case "unknown":
+      return `They were added ${where}`;
+  }
+}
 
 /**
  * Whether the "hasn't signed in yet" box shows for them (issue #790): only

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { NO_MEMBER_DETAILS } from "./details";
 import { NO_NAME } from "./person-name";
-import { addOutcome, checkAddMember, checkMemberEdit, divisionMembers, headcountLine, lookupForAdd, type PersonRecord } from "./division-members";
+import { addedSentence, addOutcome, checkAddMember, checkMemberEdit, divisionMembers, headcountLine, lookupForAdd, type PersonRecord } from "./division-members";
 import { membershipsOf, type OrgChart } from "./team";
 
 // Issue #231: the division page's shapes and Add member's rules, as both
@@ -60,7 +60,7 @@ test("a division's page lists its people with this division first, a code chip i
   assert.equal(page.division.leadsHint, null, "its own lead changes its leads (#594)");
   const granted = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1], ledDivisionIds: [] }, selfId: null, reach: [1], waiting: [], joining: [] })!;
   assert.equal(granted.division.leadsHint, "Leads are changed by the Head of Aerodynamics", "a Members grant does not");
-  assert.equal(headcountLine({ people: page.people, waiting: [{ joinId: 1, email: "e@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS, addedOn: "2026-10-20", signedIn: false }] }), "1 lead, 3 members");
+  assert.equal(headcountLine({ people: page.people, waiting: [{ joinId: 1, email: "e@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS, addedOn: "2026-10-20", signedIn: false, addedBy: { kind: "viewer" } }] }), "1 lead, 3 members");
 });
 
 test("Add member: a team member joins at once with no second NDA; anyone else waits for Confirm NDA (#231)", () => {
@@ -117,4 +117,17 @@ test("a corrected sign-in email is checked like the other email fields, and its 
   assert.deepEqual(edit(), { ok: true, value: { title: null, details: NO_MEMBER_DETAILS, name: null, signInEmail: null } });
   assert.deepEqual(edit(" New.Person@Example.com "), { ok: true, value: { title: null, details: NO_MEMBER_DETAILS, name: null, signInEmail: "new.person@example.com" } });
   for (const bad of ["", "not-an-email"]) assert.deepEqual(edit(bad), { ok: false, errors: { signInEmail: "Write an email address." } }, JSON.stringify(bad));
+});
+
+// Issue #799: the "hasn't signed in yet" box names who added the person.
+test("the box says You to the adder and the adder's full name to anyone else", () => {
+  const added = { addedOn: "2026-10-20", email: "elena@x.it" };
+  assert.equal(addedSentence({ ...added, addedBy: { kind: "viewer" } }, "Mission Analysis Division"), "You added them to Mission Analysis Division on 20 Oct with elena@x.it.");
+  assert.equal(addedSentence({ ...added, addedBy: { kind: "member", name: "Marco Rossi" } }, "Mission Analysis Division"), "Marco Rossi added them to Mission Analysis Division on 20 Oct with elena@x.it.");
+});
+
+test("with no known adder the box names no one", () => {
+  const sentence = addedSentence({ addedOn: "2026-10-20", email: "elena@x.it", addedBy: { kind: "unknown" } }, "Mission Analysis Division");
+  assert.equal(sentence, "They were added to Mission Analysis Division on 20 Oct with elena@x.it.");
+  assert.doesNotMatch(sentence, /^\s|\s{2}|You/);
 });

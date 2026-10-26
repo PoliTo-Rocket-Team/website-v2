@@ -6,8 +6,7 @@ import { toast } from "sonner";
 import { moveApplication } from "@/app/dashboard/recruitment-actions";
 import { cancelAdd, confirmJoin, confirmNda, removeFromDivision } from "@/app/dashboard/team-actions";
 import { noDetailsFilled } from "@/lib/dashboard/details";
-import { shortDate } from "@/lib/dashboard/write";
-import type { DivisionPerson, WaitingPerson } from "@/lib/dashboard/division-members";
+import { addedSentence, type DivisionPerson, type WaitingPerson } from "@/lib/dashboard/division-members";
 import type { Joining } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
@@ -194,7 +193,7 @@ export function NoEmailNote({ waiting, unit, editable, onFill }: { waiting: Wait
         <div className="min-w-0 space-y-1.5">
           <h3 className="font-semibold text-prt-text">{waiting.name ?? waiting.email} hasn&apos;t signed in yet</h3>
           <p>
-            You added them to {unit} on {shortDate(waiting.addedOn)} with {waiting.email}. The site doesn&apos;t send emails, so they don&apos;t know
+            {addedSentence(waiting, unit)} The site doesn&apos;t send emails, so they don&apos;t know
             yet.
           </p>
           <p>
