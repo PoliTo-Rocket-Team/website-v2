@@ -41,6 +41,27 @@ export type MoveTo =
   | { readonly kind: "division"; readonly divisionId: number; readonly as: DivisionRole }
   | { readonly kind: "head"; readonly departmentId: number };
 
+/** Whether two destinations are one unit: the same division, whatever the role there, or the same headship; null keeps them where they are. */
+function sameUnit(a: MoveTo | null, b: MoveTo | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.kind === "division") return b.kind === "division" && a.divisionId === b.divisionId;
+  return b.kind === "head" && a.departmentId === b.departmentId;
+}
+
+/**
+ * What a move form's role title box holds once its destination changes from
+ * `from` to `to` (issue #777): the stored title when they stay where they are
+ * (`to` null), and an empty box for a new unit, so a move never carries the
+ * old unit's title there. Lead or member in the one division is not a new
+ * unit, so what the editor typed stays. A blank title stays blank in a
+ * division and reads "Head of <department>" for a head (`planMove`).
+ */
+export function titleOnMove(input: { readonly current: string; readonly stored: string | null; readonly from: MoveTo | null; readonly to: MoveTo | null }): string {
+  const { current, stored, from, to } = input;
+  if (sameUnit(from, to)) return current;
+  return to === null ? (stored ?? "") : "";
+}
+
 /** One placement the viewer may move someone out of, as Edit details and the Team tree offer it. */
 export type MovablePlace =
   | {

@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { findMoveTargets, moveMember } from "@/app/dashboard/team-actions";
 import type { HandOverOutcome } from "@/lib/dashboard/hand-over";
-import type { MovablePlace, MoveDepartment, MoveTo } from "@/lib/dashboard/member-move";
+import { titleOnMove, type MovablePlace, type MoveDepartment, type MoveTo } from "@/lib/dashboard/member-move";
 import { Chips } from "./division-chips";
 import { ConfirmDialog } from "./confirm-dialog";
 import { Field, inputClass } from "./field";
@@ -380,7 +380,8 @@ export function HeadMoveConfirm({
 /**
  * "Move to…" on a member row of the Team tree's Edit division (issue #647):
  * the same control and the same server move as Edit details, for the one
- * division the row is in, with their role title in the new division.
+ * division the row is in, with their role title in the new division, typed
+ * here: the old division's title never goes with them (issue #777).
  */
 export function MoveDialog({
   open,
@@ -399,9 +400,14 @@ export function MoveDialog({
 }) {
   const departments = useMoveTargets(open ? personId : null);
   const [choice, setChoice] = useState<MoveChoice>(choiceOf(place));
-  const [title, setTitle] = useState(place.title ?? "");
+  // The title is the new division's, typed here: it starts empty and empties on each new destination (issue #777).
+  const [title, setTitle] = useState("");
   const [pending, startTransition] = useTransition();
   const to = moveToOf(place, choice, departments);
+  const choose = (next: MoveChoice) => {
+    setTitle(titleOnMove({ current: title, stored: null, from: to, to: moveToOf(place, next, departments) }));
+    setChoice(next);
+  };
   const short = unitShort(departments, choice.unit) ?? place.short;
   const save = () =>
     startTransition(async () => {
@@ -420,7 +426,7 @@ export function MoveDialog({
       onOpenChange={(next) => {
         if (!next) {
           setChoice(choiceOf(place));
-          setTitle(place.title ?? "");
+          setTitle("");
         }
         onOpenChange(next);
       }}
@@ -434,7 +440,7 @@ export function MoveDialog({
       onConfirm={save}
     >
       <div className="mt-5 flex flex-col gap-4">
-        <MoveFields place={place} departments={departments} value={choice} taken={taken} onChange={setChoice} />
+        <MoveFields place={place} departments={departments} value={choice} taken={taken} onChange={choose} />
         <Field label={`Role in ${short}`} hint="shown on the Team page">
           {(id) => <input id={id} value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} className={inputClass()} />}
         </Field>

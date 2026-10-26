@@ -7,6 +7,8 @@ import { roles } from "@/db/schema";
 import { accountOf, EXTRA, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 import { databaseWrites, tableRows, testDb, writesByTransaction } from "./access-matrix/test-database";
+import { titleOnMove } from "./member-move";
+import { defaultHeadTitle } from "./team";
 
 // The one move (issue #647), made for real against the migrated in-memory
 // Postgres (./access-matrix/test-database.ts): it ends the person's place and
@@ -149,5 +151,41 @@ describe("moving someone to another unit in one write (issue #647)", () => {
       assert.deepEqual(await databaseWrites(), [], `${viewer} moving ${what}: wrote`);
       assert.deepEqual(await placeOf(person), place, `${viewer} moving ${what}: moved`);
     }
+  });
+});
+
+describe("the title a move writes (issue #777)", () => {
+  /** Their active title in `divisionId`, or on the department they head. */
+  const titleIn = async (memberId: number, where: { divisionId?: number; deptId?: number }) =>
+    (await active()).find(
+      (r) => r.memberId === memberId && (where.divisionId === undefined || r.divisionId === where.divisionId) && (where.deptId === undefined || r.deptId === where.deptId),
+    )?.title;
+
+  test("a move to a division saved with a blank title writes a blank title there", async () => {
+    await seedFixture();
+    signInAs(TEAM_LEADER);
+    const person = IDS.person("MA");
+    assert.deepEqual(await move({ personId: person, from: { kind: "division", divisionId: MA }, to: { kind: "division", divisionId: DM, as: "member" }, title: "" }), { ok: true });
+    assert.equal(await titleIn(person, { divisionId: DM }), "");
+  });
+
+  test("a move made head with a blank title writes the head's default, Head of <department>", async () => {
+    await seedFixture();
+    signInAs(TEAM_LEADER);
+    const moved = await move({ personId: EXTRA.head, from: { kind: "head", departmentId: STRUCTURES }, to: { kind: "head", departmentId: AERODYNAMICS }, title: "", replaced: "advisor" });
+    assert.deepEqual(moved, { ok: true });
+    assert.equal(await titleIn(EXTRA.head, { deptId: AERODYNAMICS }), defaultHeadTitle("Aerodynamics"));
+  });
+
+  test("a head moved to a division as a member, with no title typed, does not keep the head's title there", async () => {
+    await seedFixture();
+    signInAs(TEAM_LEADER);
+    const stored = await titleIn(EXTRA.head, { deptId: STRUCTURES });
+    assert.ok(stored !== undefined && stored !== "", "the head holds a stored title to leave behind");
+    const to = { kind: "division", divisionId: MA, as: "member" } as const;
+    // What Edit details sends: the title box emptied once the destination changed, and nothing typed.
+    const title = titleOnMove({ current: stored, stored, from: null, to });
+    assert.deepEqual(await move({ personId: EXTRA.head, from: { kind: "head", departmentId: STRUCTURES }, to, title }), { ok: true });
+    assert.equal(await titleIn(EXTRA.head, { divisionId: MA }), "");
   });
 });

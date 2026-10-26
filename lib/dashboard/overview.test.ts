@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { departmentRoster, divisionRoster, ROSTER_LIMIT, type DepartmentRosterRow, type RosterRow } from "./overview";
+import {
+  departmentHeadcount,
+  departmentRoster,
+  divisionRoster,
+  divisionsMeta,
+  myDepartmentStat,
+  ROSTER_LIMIT,
+  type DepartmentRosterRow,
+  type DivisionSummary,
+  type RosterRow,
+} from "./overview";
 
 const division = { title: "Mission Analysis Division", department: "Aerospace", members: "/dashboard/members?division=4" };
 
@@ -72,4 +82,47 @@ test("a department roster lists the head, then division leads, then members, and
   assert.equal(roster.people.length, 6);
   assert.equal(roster.size, 9);
   assert.equal(roster.detail, "2 divisions · 9 people");
+});
+
+// Issue #777: the Divisions panel's header counts the department as the "My
+// department" figure and the roster do: the head, who holds no division role,
+// included, and someone in two divisions once.
+test("a department head's Divisions header, My department figure and roster count the same people", () => {
+  const rows: DepartmentRosterRow[] = [
+    { memberId: 1, name: "Hana Head", type: "head", divisionId: null, photoUrl: null },
+    { memberId: 2, name: "Ada Both", type: "core", divisionId: 10, photoUrl: null },
+    { memberId: 2, name: "Ada Both", type: "core", divisionId: 11, photoUrl: null },
+    { memberId: 3, name: "Leo Lead", type: "lead", divisionId: 10, photoUrl: null },
+  ];
+  const division = (id: number): DivisionSummary => ({
+    id,
+    name: `Division ${id}`,
+    leads: [],
+    people: new Set(rows.filter((r) => r.divisionId === id).map((r) => r.memberId)).size,
+    newApplications: 0,
+    openPositions: 0,
+  });
+  const divisions = [division(10), division(11)];
+  const people = departmentHeadcount(rows);
+  const roster = departmentRoster({ title: "Propulsion Department", divisions: 2, members: null }, rows, 1);
+
+  assert.equal(people, 3);
+  assert.equal(myDepartmentStat(people, "Propulsion").value, "3");
+  assert.equal(roster.size, 3);
+  assert.equal(divisionsMeta(divisions, people), "2 divisions · 3 people");
+});
+
+test("a department whose head holds no division role counts the head, where the rows' sum would not", () => {
+  const rows: DepartmentRosterRow[] = [
+    { memberId: 1, name: "Hana Head", type: "head", divisionId: null, photoUrl: null },
+    { memberId: 2, name: "Ada Member", type: "core", divisionId: 10, photoUrl: null },
+  ];
+  const people = departmentHeadcount(rows);
+  assert.equal(people, 2);
+  assert.equal(departmentRoster({ title: "Propulsion Department", divisions: 1, members: null }, rows, 1).size, people);
+  assert.equal(myDepartmentStat(people, "Propulsion").value, "2");
+  assert.equal(
+    divisionsMeta([{ id: 10, name: "Division 10", leads: [], people: 1, newApplications: 0, openPositions: 0 }], people),
+    "1 division · 2 people",
+  );
 });

@@ -52,7 +52,7 @@ import {
   type HeadMoveAnswer,
   type MoveChoice,
 } from "./member-move";
-import type { MovablePlace } from "@/lib/dashboard/member-move";
+import { titleOnMove, type MovablePlace } from "@/lib/dashboard/member-move";
 import { Drawer, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
 import { PersonCombobox } from "./person-combobox";
@@ -512,6 +512,15 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
       title?.kind === "division" ? p.kind === "division" && p.divisionId === title.divisionId : title?.kind === "seat" && p.kind === "head" && p.title === title.value,
     ) ?? null;
   const titledMove = titledPlace === null ? null : moveToOf(titledPlace, choiceFor(titledPlace), departments);
+  /** A new choice for `place`; a new unit for the titled place empties its title, and back where they are shows the stored one (issue #777). */
+  const choose = (place: MovablePlace, next: MoveChoice) => {
+    if (place === titledPlace) {
+      const from = moveToOf(place, choiceFor(place), departments);
+      const nextTitle = titleOnMove({ current: draft.title, stored: startTitle, from, to: moveToOf(place, next, departments) });
+      if (nextTitle !== draft.title) set("title", nextTitle);
+    }
+    setChoices((c) => ({ ...c, [placeKey(place)]: next }));
+  };
   // Their first and last name, for someone on the team (issue #668); someone waiting keeps the name they were added with.
   const [names, setNames] = useState<PersonName | null>(position?.name ?? null);
   const [signInEmail, setSignInEmail] = useState(email);
@@ -566,7 +575,8 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
             personId: person!.id,
             from: place.kind === "division" ? { kind: "division", divisionId: place.divisionId } : { kind: "head", departmentId: place.departmentId },
             to,
-            title: place === titledPlace ? draft.title : place.kind === "division" ? (place.title ?? "") : "",
+            // Only the titled place's title is typed for the new unit; any other starts blank, never with the old unit's title (issue #777).
+            title: place === titledPlace ? draft.title : "",
             replaced: place.kind === "head" ? (answer?.replaced ?? null) : null,
             successor: place.kind === "head" ? (answer?.successor ?? null) : null,
           });
@@ -618,7 +628,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
           departments={departments}
           value={choice}
           taken={taken}
-          onChange={(next) => setChoices((c) => ({ ...c, [placeKey(place)]: next }))}
+          onChange={(next) => choose(place, next)}
         />
         {place === titledPlace && (
           <div className="mt-4">{titleField(to === null ? null : to.kind === "division" ? `Role in ${short ?? ""}` : "Role", to === null && title?.kind === "seat")}</div>

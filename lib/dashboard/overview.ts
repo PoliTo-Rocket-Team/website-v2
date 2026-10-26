@@ -152,9 +152,26 @@ export type DepartmentOverview = {
   readonly stats: readonly Stat[];
   readonly attention: readonly AttentionItem[];
   readonly divisions: readonly DivisionSummary[];
+  /** Everyone in the department once (`departmentHeadcount`): the "My department" figure and the Divisions panel's people count. */
+  readonly people: number;
   readonly interviews: readonly UpcomingInterview[];
   readonly activity: readonly ActivityItem[];
 };
+
+/**
+ * A department's people, each once: its active heads and everyone with an
+ * active role in its open divisions (issue #760). The head's own row names no
+ * division, and someone in two divisions has a row in each, so this is never
+ * the sum of the per-division counts (issue #777).
+ */
+export function departmentHeadcount(rows: readonly { readonly memberId: number }[]): number {
+  return new Set(rows.map((r) => r.memberId)).size;
+}
+
+/** "My department" on a department head's Overview (board 62): `people` from `departmentHeadcount`. */
+export function myDepartmentStat(people: number, department: string): Stat {
+  return { label: "My department", value: String(people), detail: `${people === 1 ? "person" : "people"} in ${department}` };
+}
 
 /** One department on the team leader's Overview (board 72): who heads it, how big it is, what waits. */
 export type DepartmentSummary = {
@@ -197,10 +214,13 @@ export function departmentLine(department: DepartmentSummary): string {
   return `${heads} · ${divisions} · ${rosterSize(department.people)}`;
 }
 
-/** "2 divisions · 16 people", beside the Divisions panel's title (board 62). */
-export function divisionsMeta(divisions: readonly DivisionSummary[]): string {
-  const people = divisions.reduce((sum, d) => sum + d.people, 0);
-  return `${divisions.length} ${divisions.length === 1 ? "division" : "divisions"} · ${people} ${people === 1 ? "person" : "people"}`;
+/**
+ * "2 divisions · 16 people", beside the Divisions panel's title (board 62):
+ * `people` is the department's headcount, the "My department" figure, never
+ * the sum of the rows' counts (issue #777).
+ */
+export function divisionsMeta(divisions: readonly DivisionSummary[], people: number): string {
+  return `${divisions.length} ${divisions.length === 1 ? "division" : "divisions"} · ${rosterSize(people)}`;
 }
 
 /** "Leads", "Lead", or null for a division with no lead yet. */
