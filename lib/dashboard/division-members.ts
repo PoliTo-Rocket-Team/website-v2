@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { NO_MEMBER_DETAILS, parseMemberDetails, type MemberDetailErrors, type MemberDetails } from "./details";
+import { movablePlacesOf, type MovablePlace } from "./member-move";
+import { placesOf, type PersonPlace } from "./member-places";
 import { nameRule, NO_NAME, type PersonName } from "./person-name";
 import {
   beyondTitle,
@@ -78,6 +80,8 @@ export type DivisionPerson = {
   readonly advisor: boolean;
   /** Every division they are in, this one first. */
   readonly divisions: readonly PersonDivision[];
+  /** Every place they hold, seats and headships included, with its stored title: the member panel's Placement (board 98, issue #647). */
+  readonly places: readonly PersonPlace[];
   readonly chips: readonly DivisionChip[];
   readonly details: MemberDetails;
   /** Null only for a record from before the NDA was kept. */
@@ -129,6 +133,8 @@ export type MemberPosition = {
   readonly name: PersonName;
   readonly title: PositionTitle;
   readonly leads: readonly LeadChoice[];
+  /** The places the viewer may move them out of, from Edit details and the Team tree (`movablePlacesOf`, issue #647). */
+  readonly moves: readonly MovablePlace[];
   /** Every division of theirs the viewer reaches; the panel and the ⋯ menu show those offered or locked. */
   readonly removals: readonly DivisionRemoval[];
   readonly leave: Permission;
@@ -166,6 +172,7 @@ export function positionOf(record: PersonRecord, org: OrgChart, actor: TeamActor
     leads: reached
       .filter((m) => !record.advising.includes(m.divisionId) && mayChangeDivision(actor, m.divisionId, org).allowed)
       .map((m) => ({ divisionId: m.divisionId, short: short(m.divisionId), role: m.role })),
+    moves: movablePlacesOf(record, org, actor),
     removals: reached.map((m) => ({ divisionId: m.divisionId, short: short(m.divisionId), removal: removalFrom(actor, standing, m.divisionId, org) })),
     leave: mayLeaveTeam(actor, standing, org),
   };
@@ -332,6 +339,7 @@ export function divisionMembers(input: {
         title: record.titles[divisionId] ?? null,
         advisor: record.advising.includes(divisionId),
         divisions: ordered,
+        places: placesOf(record, org),
         chips: chipsOf(ordered),
         details: record.details,
         nda: record.nda,

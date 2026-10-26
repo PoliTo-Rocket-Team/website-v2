@@ -43,6 +43,8 @@ function divisionsText(person: TeamMember): string {
 export const MEMBERS_EXPORT_COLUMNS: readonly ExportColumn[] = [
   { header: "Name", value: (p) => p.name },
   { header: "Role", value: (p) => p.roleLabel },
+  // The table's Department cell (issue #767); a head's Divisions cell stays empty, as heading adds no division.
+  { header: "Department", value: (p) => p.departments.join("; ") },
   { header: "Divisions", value: divisionsText },
   { header: "Member since", value: (p) => String(p.since) },
   // The member's team address, their email alias once one is created (issue #563).

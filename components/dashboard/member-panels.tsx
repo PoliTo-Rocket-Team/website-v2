@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactN
 import { AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, Lock, Mail, Upload, UserMinus, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { DialogClose } from "@/components/ui/dialog";
-import { addMember, findForAdd, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
+import { addMember, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
 import { cancelAliasRequest, requestAlias } from "@/app/dashboard/actions";
 import type { MemberAlias } from "@/lib/dashboard/alias-request";
 import { DEGREE_PROGRAMMES, GENDERS, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
@@ -29,8 +29,9 @@ import {
   type WaitingPerson,
 } from "@/lib/dashboard/division-members";
 import type { EditPerson, MemberActions } from "@/lib/dashboard/members-view";
+import { PLACE_TAG_LABELS, placeHeaderLine, type PersonPlace, type PlaceTag } from "@/lib/dashboard/member-places";
 import { MAX_NAME, type PersonName } from "@/lib/dashboard/person-name";
-import { divisionLabel, type DivisionRole } from "@/lib/dashboard/team";
+import { divisionLabel } from "@/lib/dashboard/team";
 import { shortDate } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
@@ -38,6 +39,20 @@ import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/compone
 import { CopyButton, IconButton } from "./copy-button";
 import { Chips } from "./division-chips";
 import { MemberDialogs, type Asking } from "./division-members";
+import {
+  choiceOf,
+  HeadMoveConfirm,
+  MoveFields,
+  MoveHint,
+  moveToOf,
+  NoHeadNote,
+  placeKey,
+  unitShort,
+  useMoveTargets,
+  type HeadMoveAnswer,
+  type MoveChoice,
+} from "./member-move";
+import type { MovablePlace } from "@/lib/dashboard/member-move";
 import { Drawer, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
 import { PersonCombobox } from "./person-combobox";
@@ -45,10 +60,11 @@ import { Toggle } from "./controls";
 import { EYEBROW, GHOST_PILL } from "./page-header";
 import { PHOTO_ACCEPT, PhotoCropDialog } from "./photo-crop-dialog";
 
-// The member panels of every Members page (issues #231 and #584): the member
-// panel with their private data (board 61f), Edit details (61g, with board
-// 46b's position part: lead or member, Leaving the team), the one member
-// editor for every viewer who may edit someone, and Add member (61h, 61h2).
+// The member panels of every Members page (issues #231, #584 and #647): the
+// member panel with their placement and private data (boards 61f, 98), Edit
+// details (61g, with the move of boards 98a to 98c and board 46b's Leaving
+// the team), the one member editor for every viewer who may edit someone, and
+// Add member (61h, 61h2).
 // Private data is blurred until hover; there is no access section, since
 // access lives only on the Access page.
 
@@ -122,12 +138,41 @@ function Fact({
 }
 
 /** What the member panel shows of someone: a division page's person, or one on the team leader's whole-team page (issue #252). */
-export type PanelPerson = Pick<DivisionPerson, "id" | "name" | "signInEmail" | "photoUrl" | "since" | "divisions" | "details" | "nda" | "self">;
+export type PanelPerson = Pick<DivisionPerson, "id" | "name" | "signInEmail" | "photoUrl" | "since" | "divisions" | "places" | "details" | "nda" | "self">;
+
+/** A Placement row's tag (board 98): Lead and Head in the accent, the rest on the white tint. */
+const PLACE_TAG_TONE: Readonly<Record<PlaceTag, string>> = {
+  lead: "bg-accent-soft text-accent",
+  head: "bg-accent-soft text-accent",
+  member: "bg-white-10 text-prt-text",
+  seat: "bg-white-10 text-prt-text",
+  advisor: "bg-white-10 text-prt-muted",
+};
+
+/** One row of the Placement section (board 98): the code chip, the stored title over its unit, and the tag. */
+function PlaceRow({ place }: { place: PersonPlace }) {
+  return (
+    <li className="flex items-center gap-3 rounded-[10px] border border-hairline bg-white-5 px-3.5 py-2.5">
+      {place.code !== null ? (
+        <Chips chips={[{ divisionId: 0, label: place.code, code: true }]} />
+      ) : (
+        <span aria-hidden className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-hairline">
+          <Building2 className="h-3.5 w-3.5 text-prt-muted" strokeWidth={1.75} />
+        </span>
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[14px] text-prt-text">{place.title}</span>
+        {place.unit !== null && <span className="block truncate text-[13px] text-prt-muted">{place.unit}</span>}
+      </span>
+      <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[12px] font-medium ${PLACE_TAG_TONE[place.tag]}`}>{PLACE_TAG_LABELS[place.tag]}</span>
+    </li>
+  );
+}
 
 /**
- * The member panel (board 61f): divisions, contact, studies, personal and the
- * NDA. Close, and Edit details. It is the wide panel, as boards 94 to 94e
- * draw it, so the PRT email row keeps its whole address and request line.
+ * The member panel (boards 61f and 98): placement, contact, studies, personal
+ * and the NDA. Close, and Edit details. It is the wide panel, as boards 94 to
+ * 94e draw it, so the PRT email row keeps its whole address and request line.
  */
 export function PersonDrawer<P extends PanelPerson>({
   person,
@@ -149,13 +194,12 @@ export function PersonDrawer<P extends PanelPerson>({
   const p = person ?? shown;
   if (p === null) return null;
   const d = p.details;
-  const count = p.divisions.length;
   return (
     <SidePanel
       open={person !== null}
       onOpenChange={(next) => !next && onClose()}
       title={p.name}
-      detail={`Member since ${p.since} · ${count} ${count === 1 ? "division" : "divisions"}`}
+      detail={placeHeaderLine(p.places, p.since)}
       leading={<Avatar size="panel" person={p} />}
       wide
       footer={
@@ -172,22 +216,10 @@ export function PersonDrawer<P extends PanelPerson>({
       }
     >
       <PanelBody>
-        <Section title="Divisions">
+        <Section title="Placement">
           <ul className="flex flex-col gap-2">
-            {p.divisions.map((x) => (
-              <li key={x.divisionId} className="flex items-center gap-3 rounded-[10px] border border-hairline bg-white-5 px-3.5 py-2.5">
-                {x.sameDepartment ? (
-                  <Chips chips={[{ divisionId: x.divisionId, label: x.code ?? x.name, code: x.code !== null }]} />
-                ) : (
-                  <Building2 aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-                )}
-                <span className="min-w-0 flex-1 truncate text-[14px] text-prt-text">
-                  {x.sameDepartment ? x.name : `${x.department} · ${x.name}`}
-                </span>
-                <span className={`shrink-0 text-[13px] ${x.role === "lead" ? "text-accent" : "text-prt-muted"}`}>
-                  {x.role === "lead" ? "Division Lead" : (x.title ?? "Member")}
-                </span>
-              </li>
+            {p.places.map((place, i) => (
+              <PlaceRow key={i} place={place} />
             ))}
           </ul>
         </Section>
@@ -434,11 +466,14 @@ function detailsOf(draft: Draft): Record<MemberDetailKey, string> {
 /**
  * Edit details (board 61g), the one member editor of every Members page
  * (issue #584): the photo, the role title, contact, studies and personal
- * details, and for someone on the team the position part of board 46b: lead
- * or member in each division where the viewer may change its leads, and
- * Leaving the team (Remove from a division, Move to alumni), each locked with
- * its reason where the viewer may not. Fill details, for someone waiting,
- * holds the role in their division and the details.
+ * details, and for someone on the team the position part: for each place the
+ * viewer may move them out of, where they go and what they are there (boards
+ * 98a and 98b, issue #647; lead or member in the same division is the switch
+ * it always was), and Leaving the team (board 46b: Remove from a division,
+ * Move to alumni), each locked with its reason where the viewer may not. A
+ * head's move asks on Save who heads the department they leave (board 98c).
+ * Fill details, for someone waiting, holds the role in their division and the
+ * details.
  */
 export function EditDetailsDrawer({ target, onClose }: { target: EditTarget | null; onClose: () => void }) {
   const [shown, setShown] = useState(target);
@@ -447,11 +482,6 @@ export function EditDetailsDrawer({ target, onClose }: { target: EditTarget | nu
   if (t === null) return null;
   return <EditForm key={t.kind === "person" ? `p${t.actions.person.id}` : `w${t.waiting.joinId}`} open={target !== null} target={t} onClose={onClose} />;
 }
-
-const LEAD_OPTIONS: readonly { value: DivisionRole; label: string }[] = [
-  { value: "member", label: "Member" },
-  { value: "lead", label: "Division lead" },
-];
 
 function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget; onClose: () => void }) {
   const person = target.kind === "person" ? target.actions.person : null;
@@ -469,12 +499,21 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         : null;
   const startTitle = waiting?.title ?? (title?.kind === "division" || title?.kind === "seat" ? title.value : null);
   const { draft, errors, setErrors, set } = useDraft(draftOf(startTitle, person?.details ?? waiting?.details ?? NO_MEMBER_DETAILS));
-  const [leads, setLeads] = useState<Readonly<Record<number, DivisionRole>>>(() =>
-    Object.fromEntries((position?.leads ?? []).map((l) => [l.divisionId, l.role])),
-  );
+  // Where each place they hold goes, and what they are there (boards 98a, 98b); a seat is never one (issue #647).
+  const places = position?.moves ?? [];
+  const departments = useMoveTargets(places.length > 0 && person !== null ? person.id : null);
+  const [choices, setChoices] = useState<Readonly<Record<string, MoveChoice>>>(() => Object.fromEntries(places.map((p) => [placeKey(p), choiceOf(p)])));
+  const choiceFor = (place: MovablePlace) => choices[placeKey(place)] ?? choiceOf(place);
+  // The place whose role title the form sets: its title field sits under its boxes and follows its move.
+  const titledPlace =
+    places.find((p) =>
+      title?.kind === "division" ? p.kind === "division" && p.divisionId === title.divisionId : title?.kind === "seat" && p.kind === "head" && p.title === title.value,
+    ) ?? null;
+  const titledMove = titledPlace === null ? null : moveToOf(titledPlace, choiceFor(titledPlace), departments);
   // Their first and last name, for someone on the team (issue #668); someone waiting keeps the name they were added with.
   const [names, setNames] = useState<PersonName | null>(position?.name ?? null);
   const [asking, setAsking] = useState<Asking | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
 
   const setName = (key: keyof PersonName, value: string) => {
@@ -482,10 +521,20 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
     setErrors((errs) => ({ ...errs, [key]: undefined }));
   };
 
-  const submit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const input = { title: draft.title, details: detailsOf(draft), ...names };
-    const checked = checkMemberEdit(input, title?.kind === "seat" ? "required" : "optional");
+  // A head's move leaves their department with no head, so Save asks first (board 98c).
+  const headMove = places.flatMap((p) => {
+    const to = p.kind === "head" ? moveToOf(p, choiceFor(p), departments) : null;
+    return p.kind === "head" && to !== null ? [{ place: p, to }] : [];
+  })[0];
+
+  /** The details as Save sends them: a moved place's title goes with its move, so the details keep the one it had. */
+  const checkedDetails = () => {
+    const input = { title: titledMove === null ? draft.title : (startTitle ?? ""), details: detailsOf(draft), ...names };
+    return { input, checked: checkMemberEdit(input, title?.kind === "seat" && titledMove === null ? "required" : "optional") };
+  };
+
+  const save = async (answer: HeadMoveAnswer | null) => {
+    const { input, checked } = checkedDetails();
     if (!checked.ok) return setErrors(checked.errors);
     setPending(true);
     try {
@@ -498,17 +547,34 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         toast.error("Could not save the details", { description: result.error });
         return;
       }
-      // Lead or member, only where it changed: each division is its own write, checked on the server.
-      for (const choice of position?.leads ?? []) {
-        const role = leads[choice.divisionId] ?? choice.role;
-        if (person === null || role === choice.role) continue;
-        const changed = await saveMember(person.id, choice.divisionId, role === "lead" ? "division-lead" : "member");
-        if (!changed.ok) {
-          toast.error(`Could not change who leads ${choice.short}`, { description: changed.error });
-          return;
+      for (const place of person === null ? [] : places) {
+        const choice = choiceFor(place);
+        const to = moveToOf(place, choice, departments);
+        if (to !== null) {
+          // One move per place: each ends one placement and starts the new one in a single write.
+          const moved = await moveMember({
+            personId: person!.id,
+            from: place.kind === "division" ? { kind: "division", divisionId: place.divisionId } : { kind: "head", departmentId: place.departmentId },
+            to,
+            title: place === titledPlace ? draft.title : place.kind === "division" ? (place.title ?? "") : "",
+            replaced: place.kind === "head" ? (answer?.replaced ?? null) : null,
+            successor: place.kind === "head" ? (answer?.successor ?? null) : null,
+          });
+          if (!moved.ok) {
+            toast.error(`Could not move them from ${place.kind === "division" ? place.short : place.department}`, { description: moved.error });
+            return;
+          }
+        } else if (place.kind === "division" && choice.as !== place.role && choice.as !== "head") {
+          // Lead or member in the same division: the switch it always was, checked on the server.
+          const changed = await saveMember(person!.id, place.divisionId, choice.as === "lead" ? "division-lead" : "member");
+          if (!changed.ok) {
+            toast.error(`Could not change who leads ${place.short}`, { description: changed.error });
+            return;
+          }
         }
       }
       toast.success(`Saved ${checked.value.name === null ? name : `${checked.value.name.firstName} ${checked.value.name.lastName}`}`);
+      setConfirming(false);
       onClose();
     } catch (err) {
       toast.error("Could not save the details", { description: err instanceof Error ? err.message : "Please try again." });
@@ -516,6 +582,60 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
       setPending(false);
     }
   };
+
+  const submit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (headMove !== undefined) {
+      const { checked } = checkedDetails();
+      if (!checked.ok) return setErrors(checked.errors);
+      setConfirming(true);
+      return;
+    }
+    void save(null);
+  };
+
+  /** The boxes of one place, its title field when it carries the form's title, the hint and the no-head note. */
+  const placeFields = (place: MovablePlace) => {
+    const choice = choiceFor(place);
+    const to = moveToOf(place, choice, departments);
+    const short = unitShort(departments, choice.unit);
+    // Every division they are in, the ones this viewer does not reach included: none is a place to move into.
+    const taken = (person?.divisions ?? []).map((d) => d.divisionId).filter((id) => place.kind !== "division" || id !== place.divisionId);
+    return (
+      <div key={placeKey(place)}>
+        <MoveFields
+          place={place}
+          departments={departments}
+          value={choice}
+          taken={taken}
+          onChange={(next) => setChoices((c) => ({ ...c, [placeKey(place)]: next }))}
+        />
+        {place === titledPlace && (
+          <div className="mt-4">{titleField(to === null ? null : to.kind === "division" ? `Role in ${short ?? ""}` : "Role", to === null && title?.kind === "seat")}</div>
+        )}
+        <MoveHint place={place} moving={to !== null} />
+        {place.kind === "head" && to !== null && <NoHeadNote department={place.department} />}
+      </div>
+    );
+  };
+
+  /** The role title field: "Role in <division>", or a seat's "Role" (issue #626); `label` null keeps the form's own. */
+  const titleField = (label: string | null, required: boolean) => (
+    <Field label={label ?? (titleDivision !== null ? `Role in ${titleDivision.short}` : "Role")} hint="shown on the Team page" error={errors.title}>
+      {(id, describedBy) => (
+        <input
+          id={id}
+          value={draft.title}
+          maxLength={80}
+          aria-required={required}
+          aria-describedby={describedBy}
+          aria-invalid={errors.title !== undefined}
+          onChange={(e) => set("title", e.target.value)}
+          className={inputClass(errors.title)}
+        />
+      )}
+    </Field>
+  );
 
   return (
     <>
@@ -573,58 +693,24 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         )}
 
         <Section title="Role">
-          {titleDivision !== null || title?.kind === "seat" ? (
-            // A division's title, or a seat's: the head's, the team leader's or a team-level seat's (issue #626).
-            <Field label={titleDivision !== null ? `Role in ${titleDivision.short}` : "Role"} hint="shown on the Team page" error={errors.title}>
-              {(id, describedBy) => (
-                <input
-                  id={id}
-                  value={draft.title}
-                  maxLength={80}
-                  aria-required={titleDivision === null}
-                  aria-describedby={describedBy}
-                  aria-invalid={errors.title !== undefined}
-                  onChange={(e) => set("title", e.target.value)}
-                  className={inputClass(errors.title)}
-                />
-              )}
-            </Field>
-          ) : (
-            title?.kind === "fixed" && (
-              <Field label="Role" hint="set on the Team tree">
-                {(id) => (
-                  <span id={id} className={LOCKED_INPUT}>
-                    <span className="min-w-0 flex-1 truncate">{title.label}</span>
-                    <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-                  </span>
-                )}
-              </Field>
-            )
-          )}
-          {position !== null && position.leads.length > 0 && (
-            // One choice per row: a division's name is long beside its hint.
-            <div className="mt-4 flex flex-col gap-4">
-              {position.leads.map((choice) => (
-                <Field key={choice.divisionId} label={`In ${choice.short}`} hint="lead or member">
-                  {(id) => (
-                    <div className="relative">
-                      <select
-                        id={id}
-                        value={leads[choice.divisionId] ?? choice.role}
-                        onChange={(e) => setLeads((l) => ({ ...l, [choice.divisionId]: e.target.value as DivisionRole }))}
-                        className={`${inputClass()} cursor-pointer appearance-none pr-10`}
-                      >
-                        {LEAD_OPTIONS.map((o) => (
-                          <option key={o.value} value={o.value} className="bg-panel text-prt-text">
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
-                    </div>
-                  )}
-                </Field>
-              ))}
+          {titledPlace === null &&
+            (titleDivision !== null || title?.kind === "seat"
+              ? // A division's title, or a seat's: the head's, the team leader's or a team-level seat's (issue #626).
+                titleField(null, titleDivision === null)
+              : title?.kind === "fixed" && (
+                  <Field label="Role" hint="set on the Team tree">
+                    {(id) => (
+                      <span id={id} className={LOCKED_INPUT}>
+                        <span className="min-w-0 flex-1 truncate">{title.label}</span>
+                        <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                      </span>
+                    )}
+                  </Field>
+                ))}
+          {places.length > 0 && (
+            // One set of boxes per place they hold: a division, or the department they head (boards 98a, 98b).
+            <div className={`flex flex-col gap-6 ${titledPlace === null && title !== null ? "mt-4" : ""}`}>
+              {places.map(placeFields)}
             </div>
           )}
         </Section>
@@ -665,6 +751,18 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         {person && position && <LeavingSection person={person} position={position} onAsk={setAsking} />}
       </Drawer>
       <MemberDialogs asking={asking} onClose={() => setAsking(null)} onDone={onClose} />
+      {headMove !== undefined && headMove.place.kind === "head" && (
+        <HeadMoveConfirm
+          open={confirming}
+          onOpenChange={setConfirming}
+          person={name}
+          from={{ id: headMove.place.departmentId, name: headMove.place.department }}
+          to={headMove.to}
+          departments={departments}
+          pending={pending}
+          onConfirm={(answer) => void save(answer)}
+        />
+      )}
     </>
   );
 }

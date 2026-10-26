@@ -227,8 +227,8 @@ export const DASHBOARD_PAGES = [
     href: "/dashboard/activity-log",
     // Owner decision on #238: the IT lead alone, not the rest of full access.
     // Owner decision on #727: the break-glass standing too, never a real
-    // team leader. The page is not built yet, so the sidebar does not list it.
-    place: "unlisted",
+    // team leader. Board 101 (issue #642) lists it under Team.
+    place: "team",
     reach: ["operations-lead"],
     seat: "it-lead",
     breakGlass: true,

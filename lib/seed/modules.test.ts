@@ -92,7 +92,7 @@ test("no table is owned by two modules", () => {
 test("the people module removes only the seed's own sign-in rows, never a developer's own account", () => {
   const people = tableModules.find((s) => s.name === "people");
   assert.ok(people);
-  assert.deepEqual(people.owns.map(getTableName).sort(), ["members", "roles", "users"]);
+  assert.deepEqual(people.owns.map(getTableName).sort(), ["members", "roles", "team_joins", "users"]);
   assert.match(people.keyed?.[0]?.reset.sql ?? "", /^DELETE FROM better_auth\."user" WHERE id LIKE '7e57e500-/);
 });
 

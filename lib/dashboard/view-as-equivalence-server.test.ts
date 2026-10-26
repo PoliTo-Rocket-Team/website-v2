@@ -179,6 +179,7 @@ function readsOf(units: Awaited<ReturnType<typeof seedUnits>>): readonly (readon
     ...units.divisionIds.map((id): readonly [string, (data: DashboardData) => Promise<unknown>] => [`members(${id})`, (d) => d.members(id)]),
     ...units.divisionIds.map((id): readonly [string, (data: DashboardData) => Promise<unknown>] => [`findForAdd(${id})`, (d) => d.findForAdd(id, "a")]),
     ["findPeople", (d) => d.findPeople("a")],
+    ...units.memberIds.map((id): readonly [string, (data: DashboardData) => Promise<unknown>] => [`findMoveTargets(${id})`, (d) => d.findMoveTargets(id)]),
     ["alumni", (d) => d.alumni()],
     ["teamTree", (d) => d.teamTree()],
     ["teamStructure", (d) => d.teamStructure()],
@@ -190,6 +191,9 @@ function readsOf(units: Awaited<ReturnType<typeof seedUnits>>): readonly (readon
     ),
     ["divisionAccess", (d) => d.divisionAccess()],
     ["orders", (d) => d.orders()],
+    // The Activity log records the View as session itself and the time it is read, so its rows
+    // differ by design: the two sessions must agree on whether it opens (issue #642).
+    ["activityLog", async (d) => (await d.activityLog()) !== null],
     ["partners.list", (d) => d.partners.list()],
     ["faqs.list", (d) => d.faqs.list()],
     ["teamPage.open", (d) => d.teamPage.open()],

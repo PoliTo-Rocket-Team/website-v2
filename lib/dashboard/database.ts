@@ -61,11 +61,12 @@ import {
   type TeamOverview,
   type UpcomingInterview,
 } from "./overview";
+import { readActivityLog } from "./database-activity-log";
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
 import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
 import { divisionOverviewOf, membersScopeOf, overviewAreasOf, type DivisionFigures } from "./division-overview";
 import { accessSectionOf, accessSummariesOf, type AccessFigures, type AccessSummary } from "./access-summary";
-import { answerHandOver, databaseTeamWrites, findForAdd, findPeople, readDivisionMembers, readMembersDivisionReach, readTeamStructure, readWholeTeamMembers } from "./database-team";
+import { answerHandOver, databaseTeamWrites, findForAdd, findMoveTargets, findPeople, readDivisionMembers, readMembersDivisionReach, readTeamStructure, readWholeTeamMembers } from "./database-team";
 import { databaseSelfPages } from "./database-self";
 import { blobLogoFiles, databasePartnerStore } from "./database-partners";
 import { partnerEditor } from "@/lib/partners-editor";
@@ -1043,6 +1044,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     members: (divisionId) => membersOf(identity, divisionId ?? null),
     findForAdd: (divisionId, query) => findForAdd(identity, divisionId, query),
     findPeople: (query) => findPeople(identity, query),
+    findMoveTargets: (personId) => findMoveTargets(identity, personId),
     alumni: () => readAlumniDirectory(identity),
     teamTree: async () => {
       const snapshot = await readTeamSnapshot();
@@ -1071,6 +1073,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
       }),
     ...databaseRecruitmentPages(identity),
     ...databaseDivisionPages(identity),
+    activityLog: async () => (canReach(identity, "activity-log") ? readActivityLog(new Date()) : null),
     partners: partnerEditor(identity, databasePartnerStore, blobLogoFiles),
     faqs: faqEditor(identity, databaseFaqStore, () => new Date()),
     teamPage: teamPageEditor(identity, databaseTeamPageStore, databaseTeamRoles, teamRecord, blobTeamPagePhotos()),

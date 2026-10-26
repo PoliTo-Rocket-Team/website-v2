@@ -7,6 +7,7 @@ import type { OutreachEditor } from "@/lib/outreach-editor";
 import type { PartnerEditor } from "@/lib/partners-editor";
 import type { ProjectEditor } from "@/lib/project-content/editor";
 import type { DashboardLanding, NavCounts } from "./access";
+import type { ActivityLogPage } from "./activity-log";
 import type { AccessGrant, AccessPage } from "./division-access";
 import type { Order, OrdersPage } from "./orders";
 import type { OverviewSections, TeamSideOverview } from "./overview";
@@ -17,6 +18,7 @@ import type { ApplicationsPage, PositionsPage } from "./recruitment";
 import type { YourDetails } from "./details";
 import type { AddLookup, DetailsTarget } from "./division-members";
 import type { TeamSearch } from "./division-edit";
+import type { MoveLookup } from "./member-move";
 import type { TeamStructure } from "./team-structure";
 import type { InterviewSlot, MyApplications } from "./my-applications";
 import type { MyAlumni } from "./my-alumni";
@@ -103,6 +105,13 @@ export interface DashboardData {
    * manages no division.
    */
   findPeople(query: string): Promise<TeamSearch>;
+  /**
+   * Where Edit details and the Team tree may move `personId` (issue #647):
+   * every division the viewer may add to, and for the team leader and full
+   * access every department with its head (`moveTargetsOf`). Nothing for
+   * someone the viewer may not edit.
+   */
+  findMoveTargets(personId: number): Promise<MoveLookup>;
   /** The Alumni page (board 78, #257): everyone the public Alumni page can list, for a viewer who reaches it. */
   alumni(): Promise<AlumniDirectory>;
   /** The Team tree (#143), built from this year's roster. */
@@ -171,6 +180,13 @@ export interface DashboardData {
    * nothing else changes. Answers all the person's grants as the table shows them.
    */
   removeGrant(input: unknown): Promise<WriteResult<readonly AccessGrant[]>>;
+
+  /**
+   * Board 101 (issue #642): the Activity log, every stored change of the last
+   * 12 months newest first; null for a viewer the `activity-log` row of
+   * ./access.ts does not admit.
+   */
+  activityLog(): Promise<ActivityLogPage | null>;
 
   /**
    * Boards 61 to 61d, 61m, 67 and 67b (issue #233): every order in the team,
@@ -388,6 +404,13 @@ export interface TeamWrites {
   cancelAdd(joinId: number): Promise<boolean>;
   /** "Remove from <division>": only that division's role ends. Refused for someone whose only division it is. */
   removeFromDivision(personId: number, divisionId: number): Promise<boolean>;
+  /**
+   * Move to another unit (issue #647), from Edit details and the Team tree:
+   * one batch ends the person's place and starts the new one, with the head
+   * it replaces and the head picked for a department they leave, checked by
+   * `planMove` (./member-move.ts). A refused move writes nothing.
+   */
+  moveMember(input: unknown): Promise<WriteResult<null>>;
   /**
    * Edit details or Fill details (board 61g, issue #584): the details of
    * anyone the viewer may edit, and the title in `divisionId`, which they

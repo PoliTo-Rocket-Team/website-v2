@@ -4,7 +4,8 @@ import { memoryContentStore } from "@/lib/content/memory";
 import { publicItems } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { projectEditor } from "./editor";
-import { fieldProblems, fieldsOf, heldPhotos, projectModelOf, projectViewOf, readProjectFields, type ProjectFields } from "./fields";
+import { MODEL_ALTS } from "@/lib/rocket-model";
+import { checkProjectFields, fieldProblems, fieldsOf, heldPhotos, pickableModelsOf, projectModelOf, projectViewOf, readProjectFields, type ProjectFields } from "./fields";
 import { importedProjects, importedRecords } from "./import";
 import { backgroundSrc, homeCardOf, landingCardOf, listingOf, pageRecordOf } from "./record";
 
@@ -106,6 +107,27 @@ test("a rocket's visual names a rocket only; an engine's may name any model", as
   assert.deepEqual(await store.list(), importedProjects());
   const engine = withTop(fieldsOf(efesto), { visual: { kind: "model", model: "cavour" } });
   assert.ok((await projectEditor(admin, memoryContentStore(importedProjects())).saveFields(3, "publish", engine)).ok);
+});
+
+test("the Rocket field offers every model the project's record may name, and each one it offers saves", () => {
+  assert.deepEqual(pickableModelsOf("vehicle"), ["cavour", "ves", "placeholder"]);
+  assert.deepEqual(pickableModelsOf("engine"), ["cavour", "ves", "efesto", "placeholder"]);
+
+  for (const record of [cavour, efesto]) {
+    for (const model of pickableModelsOf(record.kind)) {
+      const saved = checkProjectFields(withTop(fieldsOf(record), { visual: { kind: "model", model } }), record);
+      assert.ok(saved.ok, `${record.slug}: ${model} saves`);
+      const visual = saved.value.hero.visual;
+      assert.equal(visual.kind, "model");
+      if (visual.kind !== "model") continue;
+      if (model === "placeholder") assert.equal(visual.own, undefined, `${record.slug}: the outline rocket carries no model of its own`);
+      else if (record.hero.visual.kind !== "model" || record.hero.visual.own?.model !== model)
+        assert.deepEqual(visual.own, { model, alt: MODEL_ALTS[model] }, `${record.slug}: a newly picked ${model} carries its alt text`);
+    }
+  }
+
+  const efestoOnRocket = checkProjectFields(withTop(fieldsOf(cavour), { visual: { kind: "model", model: "efesto" } }), cavour);
+  assert.deepEqual(efestoOnRocket, { ok: false, error: "Reload the page and try again." }, "a rocket never draws an engine");
 });
 
 test("a request names a preset or keeps the opened background, never a file the site ships; it names a model the site has and an uploaded photo", () => {
