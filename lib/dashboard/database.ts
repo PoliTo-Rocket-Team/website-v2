@@ -938,9 +938,9 @@ async function readMemberAccess(identity: Identity): Promise<NonNullable<AccessF
  * #538). Whoever decides orders (`decideRightOfStanding`), whatever the
  * shape, then gets what waits for their decision across the team
  * (`leaderAttention`, issue #592); nobody else's Overview reads the team's
- * orders for it. The team leader alone then gets the count of acceptance
+ * orders for it. The team leader alone also gets the count of acceptance
  * emails to send, linking to their box on Applications (board 100, issue
- * #744). Its sections are read side by side, and the page streams
+ * #744), just before those order rows. Its sections are read side by side, and the page streams
  * each one as it arrives (issue #397); the team's orders are read once for
  * both the board and the panels.
  */
