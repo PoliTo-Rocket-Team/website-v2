@@ -871,8 +871,28 @@ These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 
 - One address has at most one open request, in any letter case. A request is refused when the
   address is already a team address or already has an open request; the database index
   `team_address_requests_one_open` refuses the second of two requests sent at once, with the same
-  message. Nothing in the dashboard answers a request or moves an address on a hand-over yet; those
-  come in later slices of epic #578.
+  message.
+- The alias approvers answer team address requests (issue #788): the team leader, the operations
+  lead and the IT lead (`ALIAS_APPROVER_SEATS`). The Project Manager, the Chief Engineer, a lead,
+  a head and full access from an access row alone do not, and the server refuses them.
+- Each approver sees one Needs your attention row per open request, oldest first, drawn like the
+  alias row (board 94c) with its at-sign: who asked for which address for which member, then what
+  it is for, the role it moves with, if any, and when it was sent. A request for someone no longer
+  on the team is not shown.
+- **Decline** closes the request and stores nothing under the member. **Mark created** opens a
+  dialog like the alias one (board 94d): the address, prefilled with the one asked for, is checked
+  again on the team domain, then stored under the member with the request's purpose and moves-with
+  role, and the request closes. It is refused, and the request stays open, when the address is a
+  team address already (also when it became one meanwhile: `team_addresses_address` refuses the
+  second holder) or another open request asks for it.
+- The request is closed first, so a second answer is refused with "This team address request was
+  already answered." If saving the address or the notice then fails, the request opens again; when
+  a newer request for the address came in meanwhile, that one is kept and the answer is refused.
+- Either answer leaves the requester a notice, themselves included when they asked for their own
+  address: "recruitment@politorocketteam.it is ready for Davide Russo", or "Sara Conti declined
+  recruitment@politorocketteam.it for Davide Russo · you can ask again". A request whose
+  requester's record is gone tells nobody. Nothing in the dashboard moves an address on a
+  hand-over yet; that comes in the last slice of epic #578.
 
 ### Access
 

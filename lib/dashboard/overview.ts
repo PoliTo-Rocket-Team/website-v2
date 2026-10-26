@@ -39,6 +39,8 @@ export type Stat = {
  * their decision, approved orders not ordered yet, and positions closing soon.
  * "acceptance-emails": the team leader's count of acceptance emails to send,
  * linking to the box on Applications (board 100, ./acceptance-emails.ts).
+ * "alias-request" and "team-address-request": an open request waiting for
+ * an approver's answer (./alias-request.ts, ./team-address.ts).
  */
 export type AttentionKind =
   | "acceptance-emails"
@@ -50,7 +52,8 @@ export type AttentionKind =
   | "orders-to-decide"
   | "approved-orders"
   | "hand-over"
-  | "alias-request";
+  | "alias-request"
+  | "team-address-request";
 
 /** A row's button that dismisses the stored notice it shows (./notices.ts). */
 export type DismissNotice = { readonly label: string; readonly dismissNotice: number };
@@ -67,8 +70,16 @@ export type AnswerHandOver = { readonly answerHandOver: number };
  */
 export type AnswerAlias = { readonly answerAlias: number; readonly member: string; readonly prefill: string; readonly signInEmail: string };
 
+/**
+ * A row's Decline and Mark created on an open team address request (epic
+ * #578, issue #788, ./team-address.ts): the member it is for, and the
+ * address and purpose asked for; Mark created's dialog starts from that
+ * address. Only the approver seats get these rows (`teamAddressAttentionFor`).
+ */
+export type AnswerTeamAddress = { readonly answerTeamAddress: number; readonly member: string; readonly address: string; readonly purpose: string };
+
 /** Where a row's button goes, the notice it dismisses, or the request it answers. */
-export type AttentionAction = Link | DismissNotice | AnswerHandOver | AnswerAlias;
+export type AttentionAction = Link | DismissNotice | AnswerHandOver | AnswerAlias | AnswerTeamAddress;
 
 export function isDismissNotice(action: AttentionAction): action is DismissNotice {
   return "dismissNotice" in action;
@@ -80,6 +91,10 @@ export function isAnswerHandOver(action: AttentionAction): action is AnswerHandO
 
 export function isAnswerAlias(action: AttentionAction): action is AnswerAlias {
   return "answerAlias" in action;
+}
+
+export function isAnswerTeamAddress(action: AttentionAction): action is AnswerTeamAddress {
+  return "answerTeamAddress" in action;
 }
 
 export type AttentionItem = {
