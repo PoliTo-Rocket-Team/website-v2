@@ -358,6 +358,14 @@ export async function answerTeamAddress(requestId: number, answer: unknown): Pro
   return result;
 }
 
+/** Mark done on a team address routing item (epic #578, issue #789): the row leaves, and the address shows under its new holder. */
+export async function markTeamAddressRerouteDone(rerouteId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(rerouteId)) return refused("Unknown team address routing item.");
+  const result = await write("overview", (data) => data.markTeamAddressRerouteDone(rerouteId));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
 /** Cancel request in the member drawer (board 94b). */
 export async function cancelAliasRequest(requestId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(requestId)) return refused("Unknown alias request.");

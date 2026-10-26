@@ -3,6 +3,7 @@ import { attributedName } from "./acting-account";
 import { answersAliasRequests, domainAddressOf, mayAskFor, TEAM_DOMAIN } from "./alias-request";
 import type { Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
+import type { SeatMove } from "./hand-over";
 import { sentWhen } from "./hand-over-request";
 import type { AddressedNotice } from "./notices";
 import { divisionShortName, type AttentionItem } from "./overview";
@@ -13,14 +14,16 @@ import { FLAG_OF_SEAT, SEAT_OF_FLAG, type FlaggedSeat, type SeatFlag, type Viewe
 // member's PRT email, the team has shared addresses on the team domain, such
 // as a recruitment or a logistics address. Each one has one holder, says
 // what it is for, and may move with a role: when that role changes hands,
-// the address follows it (a later slice of the epic). This module owns the
+// the address follows it. This module owns the
 // tie, its label and how the member side view lists a member's addresses;
 // `team_addresses` stores what it says. It also owns Request team address
 // (issue #787, board 102b): who may ask, the address and purpose checks and
 // the one open request per address; `team_address_requests` stores it. And
 // the approvers' answer (issue #788, the alias boards 94c and 94d): who
 // answers, Decline and Mark created, their rows under Needs your attention
-// and the notices to the requester.
+// and the notices to the requester. Last, the routing item a role change
+// raises when the role an address moves with changes hands (issue #789): the
+// approvers move the address with Mark done; `team_address_reroutes` stores it.
 
 /**
  * The role a team address moves with (grill #785, R1.1): one the org model
@@ -469,5 +472,131 @@ export function teamAddressAttentionFor(
     .flatMap((r) => {
       const member = team.find((p) => p.id === r.memberId);
       return member === undefined ? [] : [teamAddressAttention(r, member, team, org, now)];
+    });
+}
+
+// Routing when a tied role changes hands (issue #789; grill #785, R1.2) -----------
+
+/** A team address as a role change reads it: its row id beside what it stores. */
+export type StoredTeamAddress = TeamAddress & { readonly id: number };
+
+/**
+ * What one role change does to one tied role: the people it makes a holder,
+ * and the holders it keeps. A role one person holds (the team leader, a
+ * full-access seat, a department's head) keeps nobody when it changes hands;
+ * a division keeps the leads the change does not replace.
+ */
+export type TiedRoleChange = {
+  readonly tie: MovesWith;
+  readonly becoming: readonly number[];
+  readonly staying: readonly number[];
+};
+
+/** A role one person holds, handed to `memberId`: they are its only holder after the change. */
+export function handedTo(tie: MovesWith, memberId: number): TiedRoleChange {
+  return { tie, becoming: [memberId], staying: [] };
+}
+
+/** The full-access seat a hand-over moves (`seatHandOver`, ./hand-over.ts), as a change of its tie; none when no seat moves. */
+export function seatHandedTo(seat: SeatMove | null): TiedRoleChange[] {
+  return seat === null ? [] : [handedTo({ kind: "full-access-seat", seat: seat.seat }, seat.to)];
+}
+
+/** One open routing item to write: the address, the member it goes to, and its holder now. */
+export type TeamAddressReroute = { readonly addressId: number; readonly toId: number; readonly fromId: number };
+
+/**
+ * The routing items a role change owes (Owner decision on epic #578,
+ * 2026-10-26; grill #785, R1.2): one for an address when the change makes
+ * someone a holder of the role it moves with and the address's holder does
+ * not hold that role after the change. So adding a co-lead beside a holder
+ * who still leads owes nothing, and neither does an address tied to no role.
+ * When the change makes two holders, the first by member id is named.
+ * Several changes of one role in one write read as one.
+ */
+export function owedTeamAddressReroutes(input: {
+  /** The team addresses; only those with a tie are read. */
+  readonly addresses: readonly StoredTeamAddress[];
+  readonly changes: readonly TiedRoleChange[];
+}): TeamAddressReroute[] {
+  return input.addresses.flatMap((address) => {
+    const { movesWith } = address;
+    if (movesWith === null) return [];
+    const changes = input.changes.filter((c) => movesWithKey(c.tie) === movesWithKey(movesWith));
+    const staying = new Set(changes.flatMap((c) => c.staying));
+    const becoming = [...new Set(changes.flatMap((c) => c.becoming))].filter((id) => !staying.has(id)).sort((a, b) => a - b);
+    const [to] = becoming;
+    if (to === undefined || staying.has(address.holderId) || becoming.includes(address.holderId)) return [];
+    return [{ addressId: address.id, toId: to, fromId: address.holderId }];
+  });
+}
+
+/** An open routing item, as the approvers' rows and Mark done read it. `fromId` is null once that member's record is gone. */
+export type OpenTeamAddressReroute = {
+  readonly id: number;
+  readonly addressId: number;
+  readonly address: string;
+  readonly movesWith: MovesWith | null;
+  readonly toId: number;
+  readonly fromId: number | null;
+  /** When the role changed hands, an ISO timestamp. */
+  readonly createdAt: string;
+};
+
+/** What a second Mark done, or one on an item gone meanwhile, reads. */
+export const REROUTE_ALREADY_DONE = "This team address was already moved.";
+
+/** Mark done as the rules allow it: only the alias approver seats (`answersAliasRequests`), who answer team address requests too. */
+export function planRerouteDone(viewer: ViewerStanding): Checked<null> {
+  return answersAliasRequests(viewer)
+    ? { ok: true, value: null }
+    : { ok: false, error: "Only the team leader, the operations lead or the IT lead can move a team address." };
+}
+
+/** Someone on the team as a routing row reads them: with the address they sign in with, which the team address forwards to. */
+export type RerouteTeamPerson = TeamPerson & { readonly signInEmail: string };
+
+/**
+ * An open routing item as the approver's row under Needs your attention:
+ * "logistics@politorocketteam.it goes to Davide Russo", then the role they
+ * took and when, whose address it was and the new holder's sign-in email,
+ * which the row copies, with Mark done.
+ */
+export function teamAddressRerouteAttention(
+  reroute: OpenTeamAddressReroute,
+  to: RerouteTeamPerson,
+  team: readonly TeamPerson[],
+  org: OrgChart,
+  now: Date,
+): AttentionItem {
+  const from = team.find((p) => p.id === reroute.fromId)?.name;
+  const role = reroute.movesWith === null ? null : `${movesWithLabel(reroute.movesWith, org)} since ${sentWhen(reroute.createdAt, now)}`;
+  return {
+    kind: "team-address-reroute",
+    title: `${reroute.address} goes to ${to.name}`,
+    phoneTitle: `${reroute.address} to ${to.name}`,
+    detail: [role, from === undefined ? null : `was ${from}'s`, to.signInEmail].filter(Boolean).join(" · "),
+    action: { markRerouteDone: reroute.id, address: reroute.address, member: to.name, signInEmail: to.signInEmail },
+  };
+}
+
+/**
+ * The open routing items as the viewer's rows, oldest first: one per item for
+ * each approver seat (`answersAliasRequests`), none for anyone else. An item
+ * for someone no longer on the team is not shown.
+ */
+export function teamAddressRerouteAttentionFor(
+  viewer: ViewerStanding,
+  open: readonly OpenTeamAddressReroute[],
+  team: readonly RerouteTeamPerson[],
+  org: OrgChart,
+  now: Date,
+): AttentionItem[] {
+  if (!answersAliasRequests(viewer)) return [];
+  return [...open]
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id - b.id)
+    .flatMap((r) => {
+      const to = team.find((p) => p.id === r.toId);
+      return to === undefined ? [] : [teamAddressRerouteAttention(r, to, team, org, now)];
     });
 }

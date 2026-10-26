@@ -353,6 +353,13 @@ export interface DashboardData {
    */
   answerTeamAddress(requestId: number, answer: unknown): Promise<WriteResult<null>>;
   /**
+   * Mark done on an open team address routing item (issue #789), checked by
+   * `planRerouteDone`: only the team leader, the operations lead and the IT
+   * lead. It moves the address to the member the item names; a second Mark
+   * done is refused.
+   */
+  markTeamAddressRerouteDone(rerouteId: number): Promise<WriteResult<null>>;
+  /**
    * Request alias (board 94): checked by `planAliasRequest`; refused for
    * anyone but a full-access holder (any member, themselves included) or a
    * lead or head who manages the member (issue #721), and while the member's PRT email is set or a request is open.

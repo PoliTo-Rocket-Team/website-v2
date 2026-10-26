@@ -712,6 +712,34 @@ export const teamAddressRequests = pgTable("team_address_requests", {
   answered: check("team_address_requests_answered", sql`(${table.outcome} is null) = (${table.answeredAt} is null)`),
 }));
 
+/**
+ * A routing item (epic #578, issue #789, drizzle/0068): the role a team
+ * address moves with changed hands, so the approvers move the address to its
+ * new holder with Mark done. It names the address, the member it goes to and
+ * the member it came from; done by and done at stay null while it is open.
+ * One address has at most one open item (`team_address_reroutes_one_open`);
+ * lib/dashboard/team-address.ts owns the rules.
+ */
+export const teamAddressReroutes = pgTable("team_address_reroutes", {
+  id: serial("id").primaryKey(),
+  addressId: integer("address_id")
+    .references(() => teamAddresses.id, { onDelete: "cascade" })
+    .notNull(),
+  toMember: integer("to_member")
+    .references(() => members.memberId, { onDelete: "cascade" })
+    .notNull(),
+  fromMember: integer("from_member").references(() => members.memberId, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  doneBy: integer("done_by").references(() => members.memberId, { onDelete: "set null" }),
+  doneByActingAccount: actingAccount("done_by_acting_account"),
+  doneAt: timestamp("done_at", { withTimezone: true, mode: "string" }),
+}, (table) => ({
+  oneOpen: uniqueIndex("team_address_reroutes_one_open").on(table.addressId).where(sql`${table.doneAt} is null`),
+  done: check("team_address_reroutes_done", sql`${table.doneBy} is null or ${table.doneAt} is not null`),
+}));
+
 // The Alumni page (issue #257). The page is built from the roles; an entry
 // holds only how one person shows on it, so a fix never writes a role, a
 // division or access. A member's entry is keyed by their member row and made

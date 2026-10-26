@@ -23,6 +23,8 @@ import {
   recruitmentSetting,
   roles,
   scopes,
+  teamAddresses,
+  teamAddressReroutes,
   teamAddressRequests,
   teamLeaves,
   users,
@@ -471,6 +473,12 @@ const addTeamAddressRequest = () =>
   addRows(teamAddressRequests, [
     { id: TEAM_ADDRESS_REQUEST, memberId: IDS.person(DM), address: "design@politorocketteam.it", purpose: "Design", requestedBy: IDS.lead(DM) },
   ]);
+/** An open routing item: DM's lead's team address goes to the member of DM. */
+const TEAM_ADDRESS_REROUTE = 1;
+const addTeamAddressReroute = async () => {
+  await addRows(teamAddresses, [{ id: 1, address: "structures@politorocketteam.it", purpose: "Structures", holderId: IDS.lead(DM) }]);
+  await addRows(teamAddressReroutes, [{ id: TEAM_ADDRESS_REROUTE, addressId: 1, toMember: IDS.person(DM), fromMember: IDS.lead(DM) }]);
+};
 const changesDM = (area: "positions" | "applications" | "members") => (r: MatrixRow) => r.expect.changes[area].includes(DM);
 const reaches = (page: Expect["pages"][number]) => (r: MatrixRow) => r.expect.pages.includes(page);
 const fullAccess = (r: MatrixRow) => r.expect.wholeTeamMembers;
@@ -703,6 +711,13 @@ const ACTION_CASES: readonly ActionCase[] = [
   {
     action: "actions.answerTeamAddress",
     run: async () => (await addTeamAddressRequest(), actions.answerTeamAddress(TEAM_ADDRESS_REQUEST, { kind: "decline" })),
+    may: (r) => r.expect.aliases.answers,
+    control: by("IT lead"),
+  },
+  // Who moves a team address is the alias rule too (issue #789): the routing item is added first, as the fixture holds none.
+  {
+    action: "actions.markTeamAddressRerouteDone",
+    run: async () => (await addTeamAddressReroute(), actions.markTeamAddressRerouteDone(TEAM_ADDRESS_REROUTE)),
     may: (r) => r.expect.aliases.answers,
     control: by("IT lead"),
   },

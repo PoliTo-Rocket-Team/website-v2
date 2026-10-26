@@ -891,8 +891,29 @@ These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 
 - Either answer leaves the requester a notice, themselves included when they asked for their own
   address: "recruitment@politorocketteam.it is ready for Davide Russo", or "Sara Conti declined
   recruitment@politorocketteam.it for Davide Russo · you can ask again". A request whose
-  requester's record is gone tells nobody. Nothing in the dashboard moves an address on a
-  hand-over yet; that comes in the last slice of epic #578.
+  requester's record is gone tells nobody.
+- When the role an address moves with changes hands, the role change raises one routing item for
+  the address (issue #789; grill #785, R1.2): when the change makes someone a holder of that role
+  and the address's holder does not hold it after the change. Adding a co-lead while the holder
+  still leads the division raises none, and so does an address tied to no role. When one change
+  makes two new holders, the first by member id is named. The item names the address, the member
+  it goes to and the member it came from.
+- Every role change that asks for an automatic alias raises the routing items it owes, in the
+  same batch: Move to another unit, Edit division and New division, New department, Change head,
+  the team leader hand-over and a confirmed hand-over request. Change holder on a seat raises the
+  item for an address tied to that full-access seat, and so does any of those changes that moves
+  a seat with the role. A role change that is refused or fails leaves no routing item.
+- One address has at most one open routing item (`team_address_reroutes_one_open`). A second role
+  change before Mark done adds no second item; the open one stays as it is.
+- Each approver (the team leader, the operations lead and the IT lead) sees one Needs your
+  attention row per open item, oldest first, with the at-sign: the address and who it goes to,
+  then the role and when it changed hands, whose address it was and the new holder's sign-in
+  email, with a copy button for that email and **Mark done**. An item for someone no longer on the
+  team is not shown.
+- **Mark done** claims the item and, in the same batch, makes the new holder the address's holder,
+  so it leaves the previous holder's Team addresses row and shows on the new holder's. A second
+  Mark done is refused with "This team address was already moved." Nobody else may mark it done,
+  and the server refuses them.
 
 ### Access
 

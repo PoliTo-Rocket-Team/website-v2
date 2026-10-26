@@ -1,8 +1,9 @@
 import "server-only";
 
-import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import { getDb } from "@/db/client";
-import { dashboardNotices, teamAddresses, teamAddressRequests } from "@/db/schema";
+import { dashboardNotices, teamAddresses, teamAddressReroutes, teamAddressRequests } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { answersAliasRequests } from "./alias-request";
 import { actingTitleIn, readActingTitles } from "./database-acting-account";
@@ -16,22 +17,30 @@ import {
   memberTeamAddressesFor,
   movesWithOf,
   NO_TEAM_ADDRESSES,
+  owedTeamAddressReroutes,
+  planRerouteDone,
   planTeamAddressAnswer,
   planTeamAddressRequest,
+  REROUTE_ALREADY_DONE,
   storedTieOf,
   teamAddressAnswerNotices,
   teamAddressAttentionFor,
+  teamAddressRerouteAttentionFor,
   type MemberTeamAddresses,
   type OpenTeamAddressRequest,
+  type OpenTeamAddressReroute,
+  type StoredTeamAddress,
   type TeamAddress,
+  type TiedRoleChange,
 } from "./team-address";
-import { readTeamSnapshot, teamPeopleOf } from "./team-database";
+import { aliasTeamOf, readTeamSnapshot, teamPeopleOf } from "./team-database";
 import { refused, written, type WriteResult } from "./write";
 
-// Shared team addresses on the database (epic #578, issues #786 to #788):
+// Shared team addresses on the database (epic #578, issues #786 to #789):
 // the rows `team_addresses` holds for the members the side view opens,
-// Request team address, stored in `team_address_requests`, and the
-// approvers' Decline and Mark created. What a row means, how the side view
+// Request team address, stored in `team_address_requests`, the approvers'
+// Decline and Mark created, and the routing items a role change raises,
+// stored in `team_address_reroutes`, with Mark done. What a row means, how the side view
 // lists it, who may ask and who answers are ./team-address.ts's; this module
 // reads and writes the rows. The reads go to the tables, not the cached team
 // snapshot, so a write shows at once.
@@ -294,4 +303,142 @@ async function undoTeamAddressClaim(requestId: number): Promise<"reopened" | "su
   }
   await runAuditQuery((db) => db.update(teamAddressRequests).set({ outcome: "cancelled" }).where(eq(teamAddressRequests.id, requestId)));
   return "superseded";
+}
+
+// Routing when a tied role changes hands (issue #789) --------------------------------
+
+/**
+ * The routing items a role change owes (`owedTeamAddressReroutes`), as
+ * inserts for the role change's own batch: an item lands with the role or not
+ * at all, so a refused or failed change leaves none. The tied addresses and
+ * the open items are read first; an address with an open item gets no second
+ * one, and one opened between that read and the batch is kept while the
+ * insert skips it (`on conflict do nothing` on
+ * `team_address_reroutes_one_open`), so an automatic write never fails on it.
+ */
+export async function automaticTeamAddressReroutes(changes: readonly TiedRoleChange[]): Promise<(db: ReturnType<typeof getDb>) => BatchItem<"pg">[]> {
+  if (!changes.some((c) => c.becoming.length > 0)) return () => [];
+  const db = getDb();
+  const [tied, open] = await Promise.all([
+    db
+      .select({
+        id: teamAddresses.id,
+        address: teamAddresses.address,
+        purpose: teamAddresses.purpose,
+        holder_id: teamAddresses.holderId,
+        moves_with: teamAddresses.movesWith,
+        moves_with_seat: teamAddresses.movesWithSeat,
+        moves_with_dept_id: teamAddresses.movesWithDeptId,
+        moves_with_division_id: teamAddresses.movesWithDivisionId,
+      })
+      .from(teamAddresses)
+      .where(isNotNull(teamAddresses.movesWith)),
+    db.select({ address_id: teamAddressReroutes.addressId }).from(teamAddressReroutes).where(isNull(teamAddressReroutes.doneAt)),
+  ]);
+  const routed = new Set(open.map((r) => r.address_id));
+  const owed = owedTeamAddressReroutes({
+    addresses: tied
+      .filter((r) => !routed.has(r.id))
+      .map((r): StoredTeamAddress => ({ id: r.id, address: r.address, purpose: r.purpose, holderId: r.holder_id, movesWith: movesWithOf(r) })),
+    changes,
+  });
+  if (owed.length === 0) return () => [];
+  return (tx) => [
+    tx
+      .insert(teamAddressReroutes)
+      .values(owed.map((r) => ({ addressId: r.addressId, toMember: r.toId, fromMember: r.fromId })))
+      .onConflictDoNothing(),
+  ];
+}
+
+/** The routing items still open: all of them, or one by id. */
+async function readOpenTeamAddressReroutes(filter: { readonly id?: number } = {}): Promise<OpenTeamAddressReroute[]> {
+  const rows = await getDb()
+    .select({
+      id: teamAddressReroutes.id,
+      address_id: teamAddressReroutes.addressId,
+      address: teamAddresses.address,
+      moves_with: teamAddresses.movesWith,
+      moves_with_seat: teamAddresses.movesWithSeat,
+      moves_with_dept_id: teamAddresses.movesWithDeptId,
+      moves_with_division_id: teamAddresses.movesWithDivisionId,
+      to_member: teamAddressReroutes.toMember,
+      from_member: teamAddressReroutes.fromMember,
+      created_at: teamAddressReroutes.createdAt,
+    })
+    .from(teamAddressReroutes)
+    .innerJoin(teamAddresses, eq(teamAddresses.id, teamAddressReroutes.addressId))
+    .where(and(isNull(teamAddressReroutes.doneAt), filter.id === undefined ? undefined : eq(teamAddressReroutes.id, filter.id)));
+  return rows.map((r) => ({
+    id: r.id,
+    addressId: r.address_id,
+    address: r.address,
+    movesWith: movesWithOf(r),
+    toId: r.to_member,
+    fromId: r.from_member,
+    createdAt: r.created_at,
+  }));
+}
+
+/** The open routing items as the viewer's rows under Needs your attention: the alias approver seats only. */
+export async function readTeamAddressRerouteAttention(identity: DashboardIdentity, now: Date): Promise<AttentionItem[]> {
+  // By the seat alone, so the break-glass admin with no member row moves addresses too (issue #646).
+  if (!answersAliasRequests(identity)) return [];
+  const [open, snapshot] = await Promise.all([readOpenTeamAddressReroutes(), readTeamSnapshot()]);
+  return teamAddressRerouteAttentionFor(identity, open, aliasTeamOf(snapshot), snapshot.org, now);
+}
+
+/** Postgres' division_by_zero: how `claimReroute` fails its batch when the item was no longer open. */
+const DIVISION_BY_ZERO = "22012";
+
+function isClaimGuardFailure(error: unknown): boolean {
+  for (let e = error; e instanceof Error; e = e.cause) {
+    if ((e as { code?: unknown }).code === DIVISION_BY_ZERO) return true;
+  }
+  return false;
+}
+
+/**
+ * Marks the item done, and fails the whole batch unless it was still open:
+ * the batch cannot read one write's result in the next, so the check lives in
+ * this one statement (as `endRoleRows` does, ./database-team.ts). Of two Mark
+ * dones on one item, the second waits for the first's row lock, then claims
+ * nothing, and its batch rolls back.
+ */
+function claimReroute(db: ReturnType<typeof getDb>, identity: DashboardIdentity, rerouteId: number): BatchItem<"pg"> {
+  const claimed = db.$with("claimed").as(
+    db
+      .update(teamAddressReroutes)
+      .set({ doneBy: identity.memberId, doneByActingAccount: identity.actingAccountId, doneAt: new Date().toISOString() })
+      .where(and(eq(teamAddressReroutes.id, rerouteId), isNull(teamAddressReroutes.doneAt)))
+      .returning({ id: teamAddressReroutes.id }),
+  );
+  // Division by zero is how one plain statement fails its transaction.
+  return db.with(claimed).select({ claimed: sql<number>`1 / (count(*) = 1)::int` }).from(claimed);
+}
+
+/**
+ * Mark done on the Overview, checked by `planRerouteDone`: in one batch the
+ * item is claimed (`claimReroute`), then the address's holder becomes the
+ * member it goes to, so it leaves the previous holder's Team addresses row
+ * and shows on the new holder's. A second Mark done is refused.
+ */
+export async function markTeamAddressRerouteDone(identity: DashboardIdentity, rerouteId: number): Promise<WriteResult<null>> {
+  const planned = planRerouteDone(identity);
+  if (!planned.ok) return refused(planned.error);
+  const [reroute] = await readOpenTeamAddressReroutes({ id: rerouteId });
+  if (!reroute) return refused(REROUTE_ALREADY_DONE);
+  try {
+    await runAuditBatch((db) => [
+      claimReroute(db, identity, rerouteId),
+      db
+        .update(teamAddresses)
+        .set({ holderId: reroute.toId, updatedAt: new Date().toISOString() })
+        .where(eq(teamAddresses.id, reroute.addressId)),
+    ]);
+  } catch (error) {
+    if (isClaimGuardFailure(error)) return refused(REROUTE_ALREADY_DONE);
+    throw error;
+  }
+  return written(null);
 }

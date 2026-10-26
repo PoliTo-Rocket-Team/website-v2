@@ -9,6 +9,7 @@ import {
   checkTeamAddressRequest,
   memberTeamAddressesFor,
   movesWithOptions,
+  owedTeamAddressReroutes,
   planTeamAddressAnswer,
   planTeamAddressRequest,
   teamAddressAnswerNotices,
@@ -18,6 +19,7 @@ import {
   type TeamAddress,
   type TeamAddressAnswer,
   type TeamAddressRequest,
+  type TiedRoleChange,
 } from "./team-address";
 import { plainSeatStanding, type ViewerStanding } from "./viewer";
 
@@ -238,4 +240,34 @@ test("the approver's rows: one per open request, oldest first, with the address,
   assert.deepEqual(rows[0]?.action, { answerTeamAddress: 1, member: "Person 5", address: "logistics@politorocketteam.it", purpose: "Logistics" });
   assert.deepEqual(teamAddressAttentionFor(plainSeatStanding("division-lead"), requests, team, org, now), []);
   assert.deepEqual(teamAddressAttentionFor(IT_LEAD, [open(3, { memberId: OFF_TEAM })], team, org, now), [], "someone off the team");
+});
+
+// Routing when a tied role changes hands (issue #789) ------------------------------
+
+test("a role change owes one routing item for each tied address whose holder no longer holds the role, naming the first new holder by id", () => {
+  const LOGISTICS_LEAD: MovesWith = { kind: "division-lead", divisionId: 9 };
+  const tied = (id: number, movesWith: MovesWith | null, holderId = LEAD) => ({ id, ...held(`a${id}@politorocketteam.it`, movesWith, holderId) });
+  const owed = (address: ReturnType<typeof tied>, change: TiedRoleChange) => owedTeamAddressReroutes({ addresses: [address], changes: [change] });
+  const cases: [string, ReturnType<typeof owed>, ReturnType<typeof owed>][] = [
+    [
+      "hand-over: the lead is replaced",
+      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [] }),
+      [{ addressId: 1, toId: IN_LOGISTICS, fromId: LEAD }],
+    ],
+    ["co-lead added: the holder still leads", owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [LEAD] }), []],
+    [
+      "vacant role filled: the holder held it no more",
+      owed(tied(1, { kind: "team-leader" }, HOLDER), { tie: { kind: "team-leader" }, becoming: [FULL_ACCESS], staying: [] }),
+      [{ addressId: 1, toId: FULL_ACCESS, fromId: HOLDER }],
+    ],
+    ["untied address", owed(tied(1, null), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [] }), []],
+    ["another role's change", owed(tied(1, { kind: "division-lead", divisionId: 10 }), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [] }), []],
+    [
+      "two new holders in one change",
+      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_MARKETING, IN_LOGISTICS], staying: [] }),
+      [{ addressId: 1, toId: IN_LOGISTICS, fromId: LEAD }],
+    ],
+    ["the holder is the one made a holder", owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [LEAD], staying: [] }), []],
+  ];
+  for (const [name, actual, expected] of cases) assert.deepEqual(actual, expected, name);
 });
