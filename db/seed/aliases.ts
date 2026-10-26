@@ -27,7 +27,8 @@
 // The member seat also holds two shared team addresses (epic #578, issue
 // #786), so their side view shows the Team addresses row of board 102: one
 // that moves with the Logistics lead, one tied to no role. The addresses are
-// invented, on the seed's team domain.
+// invented, on the seed's team domain. The Logistics one is set up and the
+// recruitment one is not, so their Overview shows one team address ready card.
 
 import { aliasRequests, dashboardNotices, teamAddresses } from "@/db/schema";
 import { MEMBER_SEAT, MEMBER_SEAT_ALIAS, OPERATIONS_HEAD, OWED_ALIAS, SEED_TEAM_EMAIL_DOMAIN, TEAM_LEADER, TEST_BENCH_LEAD } from "./people";
@@ -117,6 +118,7 @@ export const TEAM_ADDRESS_ROWS = rowsOf(teamAddresses, [
     movesWithSeat: null,
     movesWithDeptId: null,
     movesWithDivisionId: DIVISION.logistics,
+    setUpAt: "2026-10-17 09:00:00+00",
     createdAt: "2026-10-16 15:00:00+00",
     updatedAt: "2026-10-16 15:00:00+00",
   },
@@ -128,6 +130,7 @@ export const TEAM_ADDRESS_ROWS = rowsOf(teamAddresses, [
     movesWithSeat: null,
     movesWithDeptId: null,
     movesWithDivisionId: null,
+    setUpAt: null,
     createdAt: "2026-10-16 15:05:00+00",
     updatedAt: "2026-10-16 15:05:00+00",
   },

@@ -648,6 +648,11 @@ export const teamAddresses = pgTable("team_addresses", {
   movesWithSeat: fullAccessSeatEnum("moves_with_seat"),
   movesWithDeptId: integer("moves_with_dept_id").references(() => departments.id),
   movesWithDivisionId: integer("moves_with_division_id").references(() => divisions.id),
+  /**
+   * When the holder pressed I've set it up (drizzle/0069); null until then.
+   * Mark done on a routing item clears it, so the new holder sets it up.
+   */
+  setUpAt: timestamp("set_up_at", { withTimezone: true, mode: "string" }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
     .defaultNow()
     .notNull(),

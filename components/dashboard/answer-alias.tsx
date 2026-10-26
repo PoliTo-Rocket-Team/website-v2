@@ -54,6 +54,25 @@ export function AnswerAlias({ action, chip = false }: { action: AnswerAliasActio
 }
 
 /**
+ * Board 94d's "Forwards to" row (issue #586): the member's sign-in email an
+ * address forwards to, read-only with a copy button, for Google Workspace's
+ * recipient address map. The approvers' dialogs alone show it: the alias and
+ * team address Mark created, and a team address routing item's Mark done.
+ */
+export function ForwardsTo({ signInEmail, className }: { signInEmail: string; className?: string }) {
+  return (
+    <Field label="Forwards to" hint="their sign-in email" className={className}>
+      {(id) => (
+        <span id={id} className={cn(LOCKED_INPUT, "pr-2")}>
+          <span className="min-w-0 flex-1 truncate text-prt-text">{signInEmail}</span>
+          <CopyButton value={signInEmail} what="Sign-in email" />
+        </span>
+      )}
+    </Field>
+  );
+}
+
+/**
  * Board 94d: the alias address, prefilled as firstname.lastname on the team
  * domain from the member's name and checked before it is sent; the server
  * checks it again and saves it as the member's PRT email. The form skips the
@@ -102,14 +121,7 @@ function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOp
               Create it in Google Workspace first (recipient address map), then type it here. It is saved to {first}&apos;s details and {first} gets the
               setup steps.
             </p>
-            <Field label="Forwards to" hint="their sign-in email" className="mt-6">
-              {(id) => (
-                <span id={id} className={cn(LOCKED_INPUT, "pr-2")}>
-                  <span className="min-w-0 flex-1 truncate text-prt-text">{action.signInEmail}</span>
-                  <CopyButton value={action.signInEmail} what="Sign-in email" />
-                </span>
-              )}
-            </Field>
+            <ForwardsTo signInEmail={action.signInEmail} className="mt-6" />
             <Field label="Alias address" error={error} className="mt-5">
               {(id, describedBy) => (
                 <>

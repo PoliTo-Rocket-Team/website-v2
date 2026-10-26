@@ -18,9 +18,11 @@ import {
   movesWithOf,
   NO_TEAM_ADDRESSES,
   owedTeamAddressReroutes,
+  ownTeamAddressesOf,
   planRerouteDone,
   planTeamAddressAnswer,
   planTeamAddressRequest,
+  planTeamAddressSetUp,
   REROUTE_ALREADY_DONE,
   storedTieOf,
   teamAddressAnswerNotices,
@@ -29,11 +31,13 @@ import {
   type MemberTeamAddresses,
   type OpenTeamAddressRequest,
   type OpenTeamAddressReroute,
+  type OwnTeamAddress,
   type StoredTeamAddress,
   type TeamAddress,
   type TiedRoleChange,
 } from "./team-address";
 import { aliasTeamOf, readTeamSnapshot, teamPeopleOf } from "./team-database";
+import { isOffTeam } from "./viewer";
 import { refused, written, type WriteResult } from "./write";
 
 // Shared team addresses on the database (epic #578, issues #786 to #789):
@@ -183,7 +187,8 @@ export async function readTeamAddressAttention(identity: DashboardIdentity, now:
   // By the seat alone, so the break-glass admin with no member row answers too (issue #646).
   if (!answersAliasRequests(identity)) return [];
   const [open, snapshot] = await Promise.all([readOpenTeamAddressRequests(), readTeamSnapshot()]);
-  return teamAddressAttentionFor(identity, open, teamPeopleOf(snapshot), snapshot.org, now);
+  // Each with the address they sign in with, which Mark created's dialog shows as Forwards to.
+  return teamAddressAttentionFor(identity, open, aliasTeamOf(snapshot), snapshot.org, now);
 }
 
 /** The stored team addresses equal to `address` in any letter case, and the open requests for it other than `requestId`. */
@@ -421,7 +426,8 @@ function claimReroute(db: ReturnType<typeof getDb>, identity: DashboardIdentity,
  * Mark done on the Overview, checked by `planRerouteDone`: in one batch the
  * item is claimed (`claimReroute`), then the address's holder becomes the
  * member it goes to, so it leaves the previous holder's Team addresses row
- * and shows on the new holder's. A second Mark done is refused.
+ * and shows on the new holder's. Its set-up is cleared, so the new holder's
+ * Overview shows the ready card. A second Mark done is refused.
  */
 export async function markTeamAddressRerouteDone(identity: DashboardIdentity, rerouteId: number): Promise<WriteResult<null>> {
   const planned = planRerouteDone(identity);
@@ -433,7 +439,7 @@ export async function markTeamAddressRerouteDone(identity: DashboardIdentity, re
       claimReroute(db, identity, rerouteId),
       db
         .update(teamAddresses)
-        .set({ holderId: reroute.toId, updatedAt: new Date().toISOString() })
+        .set({ holderId: reroute.toId, setUpAt: null, updatedAt: new Date().toISOString() })
         .where(eq(teamAddresses.id, reroute.addressId)),
     ]);
   } catch (error) {
@@ -441,4 +447,36 @@ export async function markTeamAddressRerouteDone(identity: DashboardIdentity, re
     throw error;
   }
   return written(null);
+}
+
+// The holder's own team addresses (owner finding on PR #794; board 94f) -----------
+
+/** The team addresses the viewer holds, and whether they set each up: their own rows alone. */
+export async function readOwnTeamAddresses(identity: DashboardIdentity): Promise<OwnTeamAddress[]> {
+  if (identity.memberId === null || isOffTeam(identity.kind)) return [];
+  const rows = await getDb()
+    .select({ id: teamAddresses.id, address: teamAddresses.address, set_up_at: teamAddresses.setUpAt })
+    .from(teamAddresses)
+    .where(eq(teamAddresses.holderId, identity.memberId));
+  return ownTeamAddressesOf({ kind: identity.kind, held: rows.map((r) => ({ id: r.id, address: r.address, setUpAt: r.set_up_at })) });
+}
+
+/**
+ * "I've set it up" on a team address, checked by `planTeamAddressSetUp`: the
+ * time is stored on that address only while the viewer still holds it and it
+ * is still unset, so a second press, or one after the address moved, writes
+ * nothing.
+ */
+export async function confirmTeamAddressSetUp(identity: DashboardIdentity, addressId: number): Promise<WriteResult<null>> {
+  const planned = planTeamAddressSetUp(await readOwnTeamAddresses(identity), addressId);
+  if (!planned.ok || identity.memberId === null) return refused(planned.ok ? "You hold no such team address to set up." : planned.error);
+  const holderId = identity.memberId;
+  const stored = await runAuditQuery((db) =>
+    db
+      .update(teamAddresses)
+      .set({ setUpAt: new Date().toISOString() })
+      .where(and(eq(teamAddresses.id, addressId), eq(teamAddresses.holderId, holderId), isNull(teamAddresses.setUpAt)))
+      .returning({ id: teamAddresses.id }),
+  );
+  return stored.length === 0 ? refused("You already set up this team address.") : written(null);
 }

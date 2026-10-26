@@ -161,6 +161,7 @@ const READS: readonly Read[] = [
   { path: "memberAliases", args: [[ALL.map((u) => IDS.person(u))]] },
   { path: "memberTeamAddresses", args: [[ALL.map((u) => IDS.person(u))]] },
   { path: "myAlias" },
+  { path: "myTeamAddresses" },
 ];
 
 /** Calls the method at `path` on the data interface. */
@@ -473,11 +474,14 @@ const addTeamAddressRequest = () =>
   addRows(teamAddressRequests, [
     { id: TEAM_ADDRESS_REQUEST, memberId: IDS.person(DM), address: "design@politorocketteam.it", purpose: "Design", requestedBy: IDS.lead(DM) },
   ]);
+/** DM's lead's team address, not set up yet. */
+const TEAM_ADDRESS = 1;
+const addTeamAddress = () => addRows(teamAddresses, [{ id: TEAM_ADDRESS, address: "structures@politorocketteam.it", purpose: "Structures", holderId: IDS.lead(DM) }]);
 /** An open routing item: DM's lead's team address goes to the member of DM. */
 const TEAM_ADDRESS_REROUTE = 1;
 const addTeamAddressReroute = async () => {
-  await addRows(teamAddresses, [{ id: 1, address: "structures@politorocketteam.it", purpose: "Structures", holderId: IDS.lead(DM) }]);
-  await addRows(teamAddressReroutes, [{ id: TEAM_ADDRESS_REROUTE, addressId: 1, toMember: IDS.person(DM), fromMember: IDS.lead(DM) }]);
+  await addTeamAddress();
+  await addRows(teamAddressReroutes, [{ id: TEAM_ADDRESS_REROUTE, addressId: TEAM_ADDRESS, toMember: IDS.person(DM), fromMember: IDS.lead(DM) }]);
 };
 const changesDM = (area: "positions" | "applications" | "members") => (r: MatrixRow) => r.expect.changes[area].includes(DM);
 const reaches = (page: Expect["pages"][number]) => (r: MatrixRow) => r.expect.pages.includes(page);
@@ -724,6 +728,13 @@ const ACTION_CASES: readonly ActionCase[] = [
   // "I've set it up" (issue #542): DM's lead has an alias and stores it; no matrix viewer has one of their own,
   // so each is refused, and nobody's press reaches the lead's record.
   { action: "actions.confirmAliasSetUp", run: async () => (await giveAlias(IDS.lead(DM)), actions.confirmAliasSetUp()), may: nobody, control: by("lead-dm") },
+  // "I've set it up" on a team address (owner finding on PR #794): only its holder, DM's lead, stores it; no matrix viewer holds it.
+  {
+    action: "actions.confirmTeamAddressSetUp",
+    run: async () => (await addTeamAddress(), actions.confirmTeamAddressSetUp(TEAM_ADDRESS)),
+    may: nobody,
+    control: by("lead-dm"),
+  },
   // A notice, an application and an interview of someone else's.
   { action: "actions.dismissNotice", run: () => actions.dismissNotice(IDS.notice(DM)), may: nobody, control: by("lead-dm") },
   { action: "actions.withdrawApplication", run: () => actions.withdrawApplication(IDS.application(DM)), may: nobody, control: by("applicant-dm") },

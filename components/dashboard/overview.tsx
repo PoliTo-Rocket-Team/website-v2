@@ -45,9 +45,8 @@ import {
   type Stat,
   type UpcomingInterview,
 } from "@/lib/dashboard/overview";
-import type { OwnAlias } from "@/lib/dashboard/alias-setup";
 import type { Pictured } from "@/lib/dashboard/stored-photo";
-import { AliasReadyCard } from "./alias-setup";
+import { AddressReadyCard, type ReadyAddress } from "./alias-setup";
 import { Avatar } from "./avatar";
 import { AnswerAlias } from "./answer-alias";
 import { AnswerHandOver } from "./answer-hand-over";
@@ -63,13 +62,13 @@ import { PANEL, Panel, RowAction } from "./panel";
 // division lead, and 56 over their grants for a member); 50e and 50f for a
 // non-member, and issue #317's board 56 for an alumnus. Props in, nothing
 // fetched: the page hands over what the dashboard data interface answered.
-export function OverviewView({ overview, aliasCard = null }: { overview: Overview; aliasCard?: OwnAlias | null }) {
+export function OverviewView({ overview, readyCards = [] }: { overview: Overview; readyCards?: readonly ReadyAddress[] }) {
   switch (overview.shape) {
     case "team":
     case "leader":
     case "department":
     case "division":
-      return <TeamView overview={overview} aliasCard={aliasCard} />;
+      return <TeamView overview={overview} readyCards={readyCards} />;
     case "applicant":
       return <ApplicantView overview={overview} />;
     case "alumni":
@@ -110,7 +109,8 @@ function boardParts(overview: ScopeBoard): {
 
 // One Overview for every team seat (issue #593). Board 52's person leads it,
 // with Edit profile from md, and board 94f's alias card under it until the
-// alias is set up. The seat's figures follow, then its panels: in the two
+// alias is set up, with the same card for each team address the person holds
+// and has not set up yet. The seat's figures follow, then its panels: in the two
 // columns boards 99 and 99b set for every leader (issue #652), or board
 // first, then their page on the site beside the roster, for every other seat.
 // "Your access" closes the page: each grant, or nothing for a seat that
@@ -118,11 +118,11 @@ function boardParts(overview: ScopeBoard): {
 // no frame and no edit button (My profile is in the user menu), and each
 // panel's count moves beside its title. The page streams the person first
 // and the rest once both its reads arrive (issue #397).
-function TeamView({ overview, aliasCard }: { overview: TeamSideOverview; aliasCard: OwnAlias | null }) {
+function TeamView({ overview, readyCards }: { overview: TeamSideOverview; readyCards: readonly ReadyAddress[] }) {
   return (
     <>
       <OverviewPersonSection person={overview.person} />
-      {aliasCard && <OverviewAliasSection alias={aliasCard} />}
+      <OverviewReadySection cards={readyCards} />
       <OverviewBodySection board={overview} panels={overview} />
     </>
   );
@@ -146,11 +146,17 @@ export function OverviewPersonSection({ person }: { person: PersonHeader }) {
   );
 }
 
-/** Board 94f's alias card, under the person until the alias is set up. */
-export function OverviewAliasSection({ alias }: { alias: OwnAlias }) {
+/**
+ * Board 94f's cards under the person: the alias card until the alias is set
+ * up, then one per team address not set up yet, by address. None, nothing.
+ */
+export function OverviewReadySection({ cards }: { cards: readonly ReadyAddress[] }) {
+  if (cards.length === 0) return null;
   return (
-    <div className="mt-5 md:mt-6">
-      <AliasReadyCard alias={alias} />
+    <div className="mt-5 flex flex-col gap-3 md:mt-6">
+      {cards.map((ready) => (
+        <AddressReadyCard key={`${ready.kind}-${ready.own.address}`} ready={ready} />
+      ))}
     </div>
   );
 }

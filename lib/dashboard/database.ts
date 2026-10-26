@@ -96,8 +96,10 @@ import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { answerAlias, cancelAliasRequest, confirmAliasSetUp, readAliasAttention, readMemberAliases, readOwnAlias, requestAlias } from "./database-alias";
 import {
   answerTeamAddress,
+  confirmTeamAddressSetUp,
   markTeamAddressRerouteDone,
   readMemberTeamAddresses,
+  readOwnTeamAddresses,
   readTeamAddressAttention,
   readTeamAddressRerouteAttention,
   requestTeamAddress,
@@ -1103,6 +1105,8 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     requestTeamAddress: (input) => requestTeamAddress(identity, input),
     answerTeamAddress: (requestId, answer) => answerTeamAddress(identity, requestId, answer),
     markTeamAddressRerouteDone: (rerouteId) => markTeamAddressRerouteDone(identity, rerouteId),
+    myTeamAddresses: () => readOwnTeamAddresses(identity),
+    confirmTeamAddressSetUp: (addressId) => confirmTeamAddressSetUp(identity, addressId),
     requestAlias: (memberId) => requestAlias(identity, memberId),
     cancelAliasRequest: (requestId) => cancelAliasRequest(identity, requestId),
     answerAlias: (requestId, answer) => answerAlias(identity, requestId, answer),

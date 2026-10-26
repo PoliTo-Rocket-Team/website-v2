@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { AliasTeamPerson } from "./alias-request";
 import type { TeamPerson } from "./division-edit";
 import { attentionOf, noticeOf } from "./notices";
 import { membershipsOf, type OrgChart } from "./team";
@@ -10,10 +11,13 @@ import {
   memberTeamAddressesFor,
   movesWithOptions,
   owedTeamAddressReroutes,
+  ownTeamAddressesOf,
   planTeamAddressAnswer,
   planTeamAddressRequest,
+  planTeamAddressSetUp,
   teamAddressAnswerNotices,
   teamAddressAttentionFor,
+  teamAddressCardsOf,
   type MovesWith,
   type OpenTeamAddressRequest,
   type TeamAddress,
@@ -37,9 +41,10 @@ const org: OrgChart = {
   ],
 };
 
-const person = (id: number, rest: Partial<Pick<TeamPerson, "memberships" | "beyond">> = {}): TeamPerson => ({
+const person = (id: number, rest: Partial<Pick<TeamPerson, "memberships" | "beyond">> = {}): AliasTeamPerson => ({
   id,
   name: `Person ${id}`,
+  signInEmail: `person-${id}@mail.test`,
   emails: [],
   memberships: rest.memberships ?? membershipsOf([]),
   beyond: rest.beyond ?? [],
@@ -237,7 +242,13 @@ test("the approver's rows: one per open request, oldest first, with the address,
       ["team-address-request", "Person 7 asks for events@politorocketteam.it for Person 5", "Events · sent today"],
     ],
   );
-  assert.deepEqual(rows[0]?.action, { answerTeamAddress: 1, member: "Person 5", address: "logistics@politorocketteam.it", purpose: "Logistics" });
+  assert.deepEqual(rows[0]?.action, {
+    answerTeamAddress: 1,
+    member: "Person 5",
+    address: "logistics@politorocketteam.it",
+    purpose: "Logistics",
+    signInEmail: "person-5@mail.test",
+  });
   assert.deepEqual(teamAddressAttentionFor(plainSeatStanding("division-lead"), requests, team, org, now), []);
   assert.deepEqual(teamAddressAttentionFor(IT_LEAD, [open(3, { memberId: OFF_TEAM })], team, org, now), [], "someone off the team");
 });
@@ -270,4 +281,26 @@ test("a role change owes one routing item for each tied address whose holder no 
     ["the holder is the one made a holder", owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [LEAD], staying: [] }), []],
   ];
   for (const [name, actual, expected] of cases) assert.deepEqual(actual, expected, name);
+});
+
+// The holder's ready card (owner finding on PR #794) ---------------------------------
+
+test("the holder reads a ready card per own team address not set up, and sets up only one they hold, once; off the team, none", () => {
+  const stored = [
+    { id: 2, address: "recruitment@politorocketteam.it", setUpAt: null },
+    { id: 1, address: "logistics@politorocketteam.it", setUpAt: "2026-10-26T10:00:00Z" },
+  ];
+  const own = ownTeamAddressesOf({ kind: "member", held: stored });
+  assert.deepEqual(own, [
+    { id: 1, address: "logistics@politorocketteam.it", setUp: true },
+    { id: 2, address: "recruitment@politorocketteam.it", setUp: false },
+  ]);
+  assert.deepEqual(
+    teamAddressCardsOf(own).map((a) => a.address),
+    ["recruitment@politorocketteam.it"],
+  );
+  assert.deepEqual(planTeamAddressSetUp(own, 2), { ok: true, value: { id: 2, address: "recruitment@politorocketteam.it", setUp: true } });
+  assert.equal(planTeamAddressSetUp(own, 1).ok, false, "a second press");
+  assert.equal(planTeamAddressSetUp(own, 3).ok, false, "an address they do not hold");
+  assert.deepEqual(ownTeamAddressesOf({ kind: "alumni", held: stored }), [], "off the team");
 });

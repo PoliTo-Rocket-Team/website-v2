@@ -28,7 +28,7 @@ import type { AlumnusKey } from "@/lib/about/alumni-record";
 import type { AlumniDirectory } from "./alumni";
 import type { HandOverAnswer } from "./hand-over-request";
 import type { MemberAliases } from "./alias-request";
-import type { MemberTeamAddresses } from "./team-address";
+import type { MemberTeamAddresses, OwnTeamAddress } from "./team-address";
 import type { OwnAlias } from "./alias-setup";
 import type { Departure, MemberDirectory, MemberEdit, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
@@ -359,6 +359,19 @@ export interface DashboardData {
    * done is refused.
    */
   markTeamAddressRerouteDone(rerouteId: number): Promise<WriteResult<null>>;
+  /**
+   * The team addresses the viewer holds and whether they set each up
+   * (`ownTeamAddressesOf`, ./team-address.ts), for the Overview's ready
+   * cards (board 94f's, for a team address); none off the team. It reads the
+   * viewer's own rows and nobody else's.
+   */
+  myTeamAddresses(): Promise<OwnTeamAddress[]>;
+  /**
+   * "I've set it up" on a team address the viewer holds, checked by
+   * `planTeamAddressSetUp`: stored on that address only, and refused for one
+   * they do not hold or once set up.
+   */
+  confirmTeamAddressSetUp(addressId: number): Promise<WriteResult<null>>;
   /**
    * Request alias (board 94): checked by `planAliasRequest`; refused for
    * anyone but a full-access holder (any member, themselves included) or a

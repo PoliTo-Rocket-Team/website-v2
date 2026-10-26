@@ -470,6 +470,13 @@
       "when": 1794849600000,
       "tag": "0068_team_address_reroutes",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1794936000000,
+      "tag": "0069_team_address_set_up",
+      "breakpoints": true
     }
   ]
 }

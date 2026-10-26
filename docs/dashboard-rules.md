@@ -880,9 +880,11 @@ These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 
   it is for, the role it moves with, if any, and when it was sent. A request for someone no longer
   on the team is not shown.
 - **Decline** closes the request and stores nothing under the member. **Mark created** opens a
-  dialog like the alias one (board 94d): the address, prefilled with the one asked for, is checked
-  again on the team domain, then stored under the member with the request's purpose and moves-with
-  role, and the request closes. It is refused, and the request stays open, when the address is a
+  dialog like the alias one (board 94d): what it is for, read-only; a "Forwards to" row with the
+  member's sign-in email and a copy button, as in the alias dialog (issue #586), for Google
+  Workspace's recipient address map; and the address, prefilled with the one asked for. The address
+  is checked again on the team domain, then stored under the member with the request's purpose and
+  moves-with role, and the request closes. It is refused, and the request stays open, when the address is a
   team address already (also when it became one meanwhile: `team_addresses_address` refuses the
   second holder) or another open request asks for it.
 - The request is closed first, so a second answer is refused with "This team address request was
@@ -908,12 +910,20 @@ These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 
 - Each approver (the team leader, the operations lead and the IT lead) sees one Needs your
   attention row per open item, oldest first, with the at-sign: the address and who it goes to,
   then the role and when it changed hands, whose address it was and the new holder's sign-in
-  email, with a copy button for that email and **Mark done**. An item for someone no longer on the
-  team is not shown.
-- **Mark done** claims the item and, in the same batch, makes the new holder the address's holder,
-  so it leaves the previous holder's Team addresses row and shows on the new holder's. A second
-  Mark done is refused with "This team address was already moved." Nobody else may mark it done,
-  and the server refuses them.
+  email, with **Mark done**. Mark done opens a dialog drawn like Mark created's: the new holder's
+  sign-in email as the "Forwards to" row with a copy button, then Cancel and Mark done. An item for
+  someone no longer on the team is not shown.
+- **Mark done** in that dialog claims the item and, in the same batch, makes the new holder the
+  address's holder and clears its set-up, so it leaves the previous holder's Team addresses row and
+  shows on the new holder's. A second Mark done is refused with "This team address was already
+  moved." Nobody else may mark it done, and the server refuses them.
+- The holder of a team address gets the alias's ready card (board 94f) on their own Overview, under
+  the person, after Mark created and after a routing item's Mark done (owner findings of
+  2026-10-26 on PR #794): "Your team address is ready:" and the address, with Open setup steps. The steps are the alias's (board 94g), titled "Set up your
+  team address". The card stays until the holder presses **I've set it up** in the steps; Close
+  only closes them. The press is stored on the address (`team_addresses.set_up_at`), only by its
+  holder and only once, so each address not set up has its own card, by address, under the alias
+  card. The steps for a team address have no way back from My profile.
 
 ### Access
 

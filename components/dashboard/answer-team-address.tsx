@@ -9,7 +9,7 @@ import { answerTeamAddress } from "@/app/dashboard/actions";
 import { TEAM_DOMAIN } from "@/lib/dashboard/alias-request";
 import type { AnswerTeamAddress as AnswerTeamAddressAction } from "@/lib/dashboard/overview";
 import { checkTeamAddress } from "@/lib/dashboard/team-address";
-import { PAPER } from "./answer-alias";
+import { ForwardsTo, PAPER } from "./answer-alias";
 import { SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber } from "./confirm-dialog";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
 import { rowActionClass } from "./panel";
@@ -55,7 +55,9 @@ export function AnswerTeamAddress({ action, chip = false }: { action: AnswerTeam
  * Mark created, drawn as the alias dialog of board 94d: the address,
  * prefilled with the one asked for and checked again on the team domain
  * before it is sent; the server checks it once more and stores it under the
- * member. What it is for shows above it, read-only. A refusal (taken
+ * member. Above it, read-only: what it is for, and the member's sign-in email
+ * it forwards to with a copy button, as the alias dialog shows it (issue
+ * #586). A refusal (taken
  * meanwhile, already answered) shows under the field and keeps the dialog
  * open. 440px wide with a 24px pad and the row's 32px pills.
  */
@@ -95,7 +97,8 @@ function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOp
           >
             <DialogTitle className="text-[20px] font-bold leading-snug">Team address for {action.member}</DialogTitle>
             <p className="mt-2 text-[14px] leading-relaxed text-prt-muted">
-              Create it in Google Workspace first, then confirm it here. It is saved under {first}&apos;s team addresses and the person who asked is told.
+              Create it in Google Workspace first (recipient address map), then confirm it here. It is saved under {first}&apos;s team addresses,{" "}
+              {first} gets the setup steps and the person who asked is told.
             </p>
             <Field label="What it's for" className="mt-6">
               {(id) => (
@@ -104,6 +107,7 @@ function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOp
                 </span>
               )}
             </Field>
+            <ForwardsTo signInEmail={action.signInEmail} className="mt-5" />
             <Field label="Address" error={error} className="mt-5">
               {(id, describedBy) => (
                 <>

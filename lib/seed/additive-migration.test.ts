@@ -580,3 +580,23 @@ test("after 0068 the database keeps one open routing item per address, and takes
   await route(3);
   await assert.rejects(db.exec(`update team_address_reroutes set done_by = 1 where done_at is null`), Error, "done by with no done at");
 });
+
+// A team address's set-up (owner finding on PR #794) adds one nullable
+// column; an address already stored reads as not set up, so its holder gets
+// the ready card.
+const TEAM_ADDRESS_SET_UP_TAG = "0069_team_address_set_up";
+
+test("0069_team_address_set_up.sql drops, renames and rewrites nothing, applies again and leaves stored addresses not set up", async () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${TEAM_ADDRESS_SET_UP_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  const { db, apply } = await databaseBefore(TEAM_ADDRESS_SET_UP_TAG);
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id) values (1);
+    set session_replication_role = origin;
+    insert into team_addresses (address, purpose, holder_id) values ('events@politorocketteam.it', 'Events', 1);
+  `);
+  await apply();
+  await apply();
+  assert.deepEqual((await db.query(`select set_up_at from team_addresses`)).rows, [{ set_up_at: null }]);
+});

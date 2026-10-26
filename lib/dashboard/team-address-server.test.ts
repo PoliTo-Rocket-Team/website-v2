@@ -124,6 +124,40 @@ test("Mark created stores the address under the member with its purpose and role
   assert.ok(!again.ok && /already answered/.test(again.error), JSON.stringify(again));
 });
 
+test("Mark created's row carries the member's sign-in email, which its dialog shows as Forwards to", async () => {
+  await seededWithRequest();
+  const [row] = await requestRowsSeenBy("IT lead");
+  assert.deepEqual(row?.action, {
+    answerTeamAddress: REQUEST,
+    member: "Person DM",
+    address: "design@politorocketteam.it",
+    purpose: "Design",
+    signInEmail: "person-dm@mail.test",
+  });
+});
+
+/** The holder's own team addresses, as their Overview's ready cards read them. */
+async function ownAddressesOf(userId: string) {
+  signInAs(userId);
+  const opening = await openDashboard();
+  assert.equal(opening.kind, "open", "the dashboard opens");
+  return (opening as { data: DashboardData }).data.myTeamAddresses();
+}
+
+test("after Mark created the holder reads the address as not set up, until they press I've set it up once; nobody else can", async () => {
+  await seededWithRequest();
+  signInAs(accountOf("IT lead").userId);
+  assert.deepEqual(await actions.answerTeamAddress(REQUEST, { kind: "created", address: "design@politorocketteam.it" }), { ok: true, value: null });
+  const [own] = await ownAddressesOf("person-dm");
+  assert.deepEqual(own && { address: own.address, setUp: own.setUp }, { address: "design@politorocketteam.it", setUp: false });
+  signInAs(accountOf("team leader").userId);
+  assert.equal((await actions.confirmTeamAddressSetUp(own!.id)).ok, false, "the team leader does not hold it");
+  signInAs("person-dm");
+  assert.deepEqual(await actions.confirmTeamAddressSetUp(own!.id), { ok: true, value: null });
+  assert.deepEqual((await ownAddressesOf("person-dm")).map((a) => a.setUp), [true]);
+  assert.equal((await actions.confirmTeamAddressSetUp(own!.id)).ok, false, "a second press");
+});
+
 test("Decline closes the request, stores nothing under the member and tells the requester who declined", async () => {
   await seededWithRequest();
   signInAs(accountOf("operations lead").userId);
@@ -205,6 +239,21 @@ test("a confirmed hand-over of a tied division lead raises one routing item each
   signInAs(accountOf("operations lead").userId);
   const again = await actions.markTeamAddressRerouteDone(1);
   assert.ok(!again.ok && /already moved/.test(again.error), JSON.stringify(again));
+});
+
+test("Mark done clears the set-up, so the new holder reads the ready card and the previous holder no longer holds it", async () => {
+  await seededTied();
+  signInAs("lead-dm");
+  assert.deepEqual(await actions.confirmTeamAddressSetUp(1), { ok: true, value: null });
+  signInAs("head-str");
+  assert.deepEqual(await actions.answerHandOver(IDS.handOver("DM"), "confirm"), { ok: true, value: null });
+  signInAs(accountOf("IT lead").userId);
+  assert.deepEqual(await actions.markTeamAddressRerouteDone(1), { ok: true, value: null });
+  assert.deepEqual(
+    (await ownAddressesOf("person-dm")).map((a) => [a.address, a.setUp]),
+    [[STRUCTURES, false]],
+  );
+  assert.deepEqual(await ownAddressesOf("lead-dm"), []);
 });
 
 test("adding a co-lead beside the holder raises no routing item, and neither does a refused save", async () => {

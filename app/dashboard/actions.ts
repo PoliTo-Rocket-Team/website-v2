@@ -393,6 +393,18 @@ export async function confirmAliasSetUp(): Promise<WriteResult<null>> {
   return result;
 }
 
+/**
+ * "I've set it up" in a team address's set-up steps (owner finding on PR
+ * #794): stored on that address only while the viewer holds it. The Overview
+ * reads again without its card.
+ */
+export async function confirmTeamAddressSetUp(addressId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(addressId)) return refused("Unknown team address.");
+  const result = await write("overview", (data) => data.confirmTeamAddressSetUp(addressId));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
 export async function withdrawApplication(applicationId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(applicationId)) return refused("Unknown application.");
   return write("my-applications", (data) => data.withdrawApplication(applicationId));

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { attributedName } from "./acting-account";
-import { answersAliasRequests, domainAddressOf, mayAskFor, TEAM_DOMAIN } from "./alias-request";
+import { answersAliasRequests, domainAddressOf, mayAskFor, TEAM_DOMAIN, type AliasTeamPerson } from "./alias-request";
 import type { Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
 import type { SeatMove } from "./hand-over";
@@ -8,7 +8,7 @@ import { sentWhen } from "./hand-over-request";
 import type { AddressedNotice } from "./notices";
 import { divisionShortName, type AttentionItem } from "./overview";
 import type { OrgChart } from "./team";
-import { FLAG_OF_SEAT, SEAT_OF_FLAG, type FlaggedSeat, type SeatFlag, type ViewerStanding } from "./viewer";
+import { FLAG_OF_SEAT, isOffTeam, SEAT_OF_FLAG, type FlaggedSeat, type SeatFlag, type ViewerKind, type ViewerStanding } from "./viewer";
 
 // Shared team addresses (epic #578, issue #786; board 102). Besides each
 // member's PRT email, the team has shared addresses on the team domain, such
@@ -434,11 +434,13 @@ export function teamAddressAnswerNotices(plan: TeamAddressAnswerPlan, approver: 
  * board 94c draws an alias request: "Marco Bianchi asks for
  * recruitment@politorocketteam.it for Davide Russo", then what it is for,
  * the role it moves with and when it was sent, with Decline and Mark
- * created. Mark created's dialog starts from the address asked for.
+ * created. Mark created's dialog starts from the address asked for, and
+ * shows the member's sign-in email, which the address forwards to, as the
+ * alias dialog does (issue #586).
  */
 export function teamAddressAttention(
   request: OpenTeamAddressRequest,
-  member: TeamPerson,
+  member: AliasTeamPerson,
   team: readonly TeamPerson[],
   org: OrgChart,
   now: Date,
@@ -450,7 +452,7 @@ export function teamAddressAttention(
     title: `${requester} asks for ${request.address} for ${member.name}`,
     phoneTitle: `${request.address} for ${member.name}`,
     detail: [request.purpose, movesWith, `sent ${sentWhen(request.sentAt, now)}`].filter(Boolean).join(" · "),
-    action: { answerTeamAddress: request.id, member: member.name, address: request.address, purpose: request.purpose },
+    action: { answerTeamAddress: request.id, member: member.name, address: request.address, purpose: request.purpose, signInEmail: member.signInEmail },
   };
 }
 
@@ -462,7 +464,7 @@ export function teamAddressAttention(
 export function teamAddressAttentionFor(
   viewer: ViewerStanding,
   open: readonly OpenTeamAddressRequest[],
-  team: readonly TeamPerson[],
+  team: readonly AliasTeamPerson[],
   org: OrgChart,
   now: Date,
 ): AttentionItem[] {
@@ -553,18 +555,15 @@ export function planRerouteDone(viewer: ViewerStanding): Checked<null> {
     : { ok: false, error: "Only the team leader, the operations lead or the IT lead can move a team address." };
 }
 
-/** Someone on the team as a routing row reads them: with the address they sign in with, which the team address forwards to. */
-export type RerouteTeamPerson = TeamPerson & { readonly signInEmail: string };
-
 /**
  * An open routing item as the approver's row under Needs your attention:
  * "logistics@politorocketteam.it goes to Davide Russo", then the role they
  * took and when, whose address it was and the new holder's sign-in email,
- * which the row copies, with Mark done.
+ * with Mark done, whose dialog shows that email as Forwards to.
  */
 export function teamAddressRerouteAttention(
   reroute: OpenTeamAddressReroute,
-  to: RerouteTeamPerson,
+  to: AliasTeamPerson,
   team: readonly TeamPerson[],
   org: OrgChart,
   now: Date,
@@ -588,7 +587,7 @@ export function teamAddressRerouteAttention(
 export function teamAddressRerouteAttentionFor(
   viewer: ViewerStanding,
   open: readonly OpenTeamAddressReroute[],
-  team: readonly RerouteTeamPerson[],
+  team: readonly AliasTeamPerson[],
   org: OrgChart,
   now: Date,
 ): AttentionItem[] {
@@ -599,4 +598,43 @@ export function teamAddressRerouteAttentionFor(
       const to = team.find((p) => p.id === r.toId);
       return to === undefined ? [] : [teamAddressRerouteAttention(r, to, team, org, now)];
     });
+}
+
+// The holder's own team addresses (owner finding on PR #794; board 94f) -----------
+
+/**
+ * A team address the viewer holds, as their Overview reads it: its row id,
+ * the address, and whether they said they set it up. As for the email alias
+ * (./alias-setup.ts), the Overview shows "Your team address is ready" with
+ * the Gmail set-up steps until they press I've set it up; Mark created and a
+ * routing item's Mark done each leave the address not set up for its holder.
+ */
+export type OwnTeamAddress = { readonly id: number; readonly address: string; readonly setUp: boolean };
+
+/**
+ * The viewer's own team addresses, sorted by address, or none for someone
+ * off the team. Only the rows the viewer holds are ever read into it.
+ */
+export function ownTeamAddressesOf(input: {
+  readonly kind: ViewerKind;
+  readonly held: readonly { readonly id: number; readonly address: string; readonly setUpAt: string | null }[];
+}): OwnTeamAddress[] {
+  if (isOffTeam(input.kind)) return [];
+  return input.held.map((r) => ({ id: r.id, address: r.address, setUp: r.setUpAt !== null })).sort((a, b) => a.address.localeCompare(b.address));
+}
+
+/** The ready cards the Overview shows: one per own team address not yet set up. */
+export function teamAddressCardsOf(own: readonly OwnTeamAddress[]): OwnTeamAddress[] {
+  return own.filter((a) => !a.setUp);
+}
+
+/**
+ * "I've set it up" on a team address, as the rules allow it: only on one the
+ * viewer holds, and once. The write touches that address alone.
+ */
+export function planTeamAddressSetUp(own: readonly OwnTeamAddress[], addressId: number): Checked<OwnTeamAddress> {
+  const address = own.find((a) => a.id === addressId);
+  if (address === undefined) return { ok: false, error: "You hold no such team address to set up." };
+  if (address.setUp) return { ok: false, error: "You already set up this team address." };
+  return { ok: true, value: { ...address, setUp: true } };
 }

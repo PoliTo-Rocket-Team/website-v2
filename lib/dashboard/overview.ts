@@ -77,15 +77,24 @@ export type AnswerAlias = { readonly answerAlias: number; readonly member: strin
  * A row's Decline and Mark created on an open team address request (epic
  * #578, issue #788, ./team-address.ts): the member it is for, and the
  * address and purpose asked for; Mark created's dialog starts from that
- * address. Only the approver seats get these rows (`teamAddressAttentionFor`).
+ * address and shows the member's sign-in email, which the address forwards
+ * to, as the alias dialog does (issue #586). Only the approver seats get
+ * these rows (`teamAddressAttentionFor`).
  */
-export type AnswerTeamAddress = { readonly answerTeamAddress: number; readonly member: string; readonly address: string; readonly purpose: string };
+export type AnswerTeamAddress = {
+  readonly answerTeamAddress: number;
+  readonly member: string;
+  readonly address: string;
+  readonly purpose: string;
+  readonly signInEmail: string;
+};
 
 /**
- * A row's copy button and Mark done on an open routing item (epic #578,
- * issue #789, ./team-address.ts): the address, the member it goes to, and
- * their sign-in email, which the address forwards to. Only the approver
- * seats get these rows (`teamAddressRerouteAttentionFor`).
+ * A row's Mark done on an open routing item (epic #578, issue #789,
+ * ./team-address.ts): the address, the member it goes to, and their sign-in
+ * email, which the address forwards to; Mark done's dialog shows it as
+ * Forwards to. Only the approver seats get these rows
+ * (`teamAddressRerouteAttentionFor`).
  */
 export type MarkRerouteDone = { readonly markRerouteDone: number; readonly address: string; readonly member: string; readonly signInEmail: string };
 

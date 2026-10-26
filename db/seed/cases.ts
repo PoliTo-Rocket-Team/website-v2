@@ -78,7 +78,7 @@ import {
   type PlainSeat,
   type ViewerStanding,
 } from "@/lib/dashboard/viewer";
-import { memberTeamAddressesFor, movesWithOf } from "@/lib/dashboard/team-address";
+import { memberTeamAddressesFor, movesWithOf, ownTeamAddressesOf, teamAddressCardsOf } from "@/lib/dashboard/team-address";
 import { ALIAS_NOTICE_ROWS, ALIAS_REQUEST_ROWS, AUTOMATIC_REQUEST, CREATED_ALIAS, DECLINED_REQUEST, OPEN_REQUEST, TEAM_ADDRESS_ROWS } from "./aliases";
 import { ALUMNI_ENTRY_ROWS, ALUMNI_IMPORTED_ROLE_ROWS } from "./alumni";
 import { SCOPE_ROWS } from "./access";
@@ -1487,6 +1487,23 @@ export const SEED_CASES: readonly SeedCase[] = [
     holds: (data) => {
       const lines = drawerTeamAddressesOf(data, memberOfUser(data, PLAIN_SEAT_PEOPLE.member) ?? -1);
       return lines.length === 2 && lines[0].movesWith === "Logistics Lead" && lines[1].movesWith === null;
+    },
+  },
+  {
+    area: "aliases",
+    case: "Of the member plain seat's two team addresses, the Logistics one is set up and the recruitment one is not, so their Overview shows one team address ready card",
+    data: "invented",
+    rows: "`team_addresses` `set_up_at`, member 140, `logistics@prt.example.com` set up, `recruitment@prt.example.com` not",
+    exercisedBy: issue(578),
+    holds: (data) => {
+      const member = memberOfUser(data, PLAIN_SEAT_PEOPLE.member);
+      const standing = standingOfUser(data, PLAIN_SEAT_PEOPLE.member);
+      if (standing === null) return false;
+      const held = data.teamAddresses
+        .filter((r) => r.holderId === member)
+        .map((r, id) => ({ id, address: r.address, setUpAt: r.setUpAt ?? null }));
+      const cards = teamAddressCardsOf(ownTeamAddressesOf({ kind: standing.kind, held }));
+      return held.length === 2 && cards.length === 1 && cards[0].address.startsWith("recruitment@");
     },
   },
   {
