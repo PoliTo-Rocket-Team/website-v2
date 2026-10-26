@@ -41,6 +41,8 @@ export type Stat = {
  * linking to the box on Applications (board 100, ./acceptance-emails.ts).
  * "alias-request" and "team-address-request": an open request waiting for
  * an approver's answer (./alias-request.ts, ./team-address.ts).
+ * "team-address-reroute": a team address whose role changed hands, waiting
+ * for an approver to move it (./team-address.ts).
  */
 export type AttentionKind =
   | "acceptance-emails"
@@ -53,7 +55,8 @@ export type AttentionKind =
   | "approved-orders"
   | "hand-over"
   | "alias-request"
-  | "team-address-request";
+  | "team-address-request"
+  | "team-address-reroute";
 
 /** A row's button that dismisses the stored notice it shows (./notices.ts). */
 export type DismissNotice = { readonly label: string; readonly dismissNotice: number };
@@ -78,8 +81,16 @@ export type AnswerAlias = { readonly answerAlias: number; readonly member: strin
  */
 export type AnswerTeamAddress = { readonly answerTeamAddress: number; readonly member: string; readonly address: string; readonly purpose: string };
 
+/**
+ * A row's copy button and Mark done on an open routing item (epic #578,
+ * issue #789, ./team-address.ts): the address, the member it goes to, and
+ * their sign-in email, which the address forwards to. Only the approver
+ * seats get these rows (`teamAddressRerouteAttentionFor`).
+ */
+export type MarkRerouteDone = { readonly markRerouteDone: number; readonly address: string; readonly member: string; readonly signInEmail: string };
+
 /** Where a row's button goes, the notice it dismisses, or the request it answers. */
-export type AttentionAction = Link | DismissNotice | AnswerHandOver | AnswerAlias | AnswerTeamAddress;
+export type AttentionAction = Link | DismissNotice | AnswerHandOver | AnswerAlias | AnswerTeamAddress | MarkRerouteDone;
 
 export function isDismissNotice(action: AttentionAction): action is DismissNotice {
   return "dismissNotice" in action;
@@ -95,6 +106,10 @@ export function isAnswerAlias(action: AttentionAction): action is AnswerAlias {
 
 export function isAnswerTeamAddress(action: AttentionAction): action is AnswerTeamAddress {
   return "answerTeamAddress" in action;
+}
+
+export function isMarkRerouteDone(action: AttentionAction): action is MarkRerouteDone {
+  return "markRerouteDone" in action;
 }
 
 export type AttentionItem = {

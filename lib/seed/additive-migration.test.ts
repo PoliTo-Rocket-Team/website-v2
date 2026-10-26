@@ -387,6 +387,7 @@ for (const [shape, lastRecordedTag] of [
         "scopes_given_by_acting_account_users_id_fk",
         "team_address_requests_answered_by_acting_account_users_id_fk",
         "team_address_requests_requested_by_acting_account_users_id_fk",
+        "team_address_reroutes_done_by_acting_account_users_id_fk",
         "team_joins_added_by_acting_account_users_id_fk",
       ],
       "each acting-account foreign key exists once",
@@ -547,4 +548,35 @@ test("after 0067 the database refuses a second open request for an address in an
     Error,
     "a tie whose kind and reference disagree",
   );
+});
+
+// Team address routing items (issue #789) add one table with its foreign
+// keys, its one-open index, its check and its audit trigger. The table keeps
+// one open item per address, so a second role change before Mark done adds
+// no second one; a done item frees the address.
+const TEAM_ADDRESS_REROUTE_TAG = "0068_team_address_reroutes";
+
+test("0068_team_address_reroutes.sql drops, renames and rewrites nothing, and applies again", async () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${TEAM_ADDRESS_REROUTE_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  const { apply } = await databaseBefore(TEAM_ADDRESS_REROUTE_TAG);
+  await apply();
+  await apply();
+});
+
+test("after 0068 the database keeps one open routing item per address, and takes another once it is done", async () => {
+  const { db, apply } = await databaseBefore(TEAM_ADDRESS_REROUTE_TAG);
+  await apply();
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id) values (1), (2), (3);
+    set session_replication_role = origin;
+    insert into team_addresses (id, address, purpose, holder_id, moves_with) values (1, 'events@politorocketteam.it', 'Events', 1, 'team_leader');
+  `);
+  const route = (to: number) => db.exec(`insert into team_address_reroutes (address_id, to_member, from_member) values (1, ${to}, 1)`);
+  await route(2);
+  await assert.rejects(route(3), Error, "a second open item for the address");
+  await db.exec(`update team_address_reroutes set done_by = 1, done_at = now()`);
+  await route(3);
+  await assert.rejects(db.exec(`update team_address_reroutes set done_by = 1 where done_at is null`), Error, "done by with no done at");
 });

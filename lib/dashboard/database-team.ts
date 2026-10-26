@@ -28,6 +28,8 @@ import { alumniMove } from "./alumni-move";
 import { DashboardRefused, type TeamWrites } from "./data";
 import { automaticAliasRequests } from "./database-alias";
 import { readWaitingHandOvers } from "./database-hand-over";
+import { automaticTeamAddressReroutes } from "./database-team-address";
+import { handedTo, seatHandedTo, type TiedRoleChange } from "./team-address";
 import { moveApplication } from "./database-recruitment";
 import { answerNoticeOf, HAND_OVER_NEEDS_MEMBER, planHandOverAnswer, type HandOverAnswer, type HandOverAnswerPlan } from "./hand-over-request";
 import { storedPhotoPathname } from "./database-self";
@@ -986,6 +988,8 @@ async function moveMember(identity: DashboardIdentity, input: unknown): Promise<
   const on = today();
   const replacedRoles = plan.replaced === null ? [] : await activeRoles(plan.replaced.memberId);
   const aliasAsked = await automaticAliasRequests(plan.newLeads);
+  const leadsThere = plan.start.kind === "division" && plan.start.type === "lead" ? leadsIn(await heldRows(plan.start.divisionId)) : [];
+  const reroutesAsked = await automaticTeamAddressReroutes(moveRoleChanges(plan, leadsThere));
   // Every row the move ends, the head it replaces' included, ends in one guarded statement (issue #666), so an overlapping move ends nothing twice.
   const ending: readonly [number, ...number[]] = [...plan.end, ...(plan.replaced?.rows ?? [])];
   try {
@@ -993,6 +997,7 @@ async function moveMember(identity: DashboardIdentity, input: unknown): Promise<
       endRoleRows(db, ending, on),
       ...moveWrites(db, plan, replacedRoles, on),
       ...aliasAsked(db),
+      ...reroutesAsked(db),
     ]);
   } catch (error) {
     if (!isEndGuardFailure(error)) throw error;
@@ -1005,6 +1010,29 @@ async function moveMember(identity: DashboardIdentity, input: unknown): Promise<
 }
 
 const MOVED_SINCE = "Someone changed this placement since you opened it. Reload and try again.";
+
+/**
+ * The tied roles a move hands over, for the team address routing items
+ * (`automaticTeamAddressReroutes`, issue #789): the division they join as a
+ * lead beside `leadsThere`, its leads now, or the department they head with
+ * its seat, and the department the picked head takes over with its seat.
+ */
+function moveRoleChanges(plan: MovePlan, leadsThere: readonly number[]): TiedRoleChange[] {
+  const { personId, start, successor } = plan;
+  const starts: TiedRoleChange[] =
+    start.kind === "division"
+      ? start.type === "lead"
+        ? [{ tie: { kind: "division-lead", divisionId: start.divisionId }, becoming: [personId], staying: leadsThere }]
+        : []
+      : [handedTo({ kind: "department-head", departmentId: start.departmentId }, personId), ...seatHandedTo(start.seat)];
+  if (successor === null) return starts;
+  return [...starts, handedTo({ kind: "department-head", departmentId: successor.departmentId }, successor.memberId), ...seatHandedTo(successor.seat)];
+}
+
+/** The people who lead a division, from its active rows (`heldRows`). */
+function leadsIn(held: readonly HeldRow[]): number[] {
+  return held.filter((r) => r.type === "lead").map((r) => r.memberId);
+}
 
 /**
  * The move's writes after its rows end (`moveMember`): the access given in
@@ -1288,6 +1316,16 @@ async function writeDivisionPlan(
   const seatRow = held.find((r) => seat !== null && r.memberId === seat.to && rows.toLead.includes(r.id))?.id;
   // Each new lead is owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests([...plan.promote, ...plan.joinAsLead]);
+  // A team address tied to this division's lead, held by a lead the save replaces, is owed a routing item (issue #789).
+  const leaving = new Set([...plan.demote, ...plan.advise, ...plan.replaced, ...plan.leaveDivision, ...plan.leaveTeam]);
+  const reroutesAsked = await automaticTeamAddressReroutes([
+    {
+      tie: { kind: "division-lead", divisionId },
+      becoming: [...plan.promote, ...plan.joinAsLead],
+      staying: leadsIn(held).filter((id) => !leaving.has(id)),
+    },
+    ...seatHandedTo(seat),
+  ]);
 
   await runAuditBatch((db) => [
     create
@@ -1311,6 +1349,7 @@ async function writeDivisionPlan(
       steppingDownWrites(db, { memberId, active: [] }, steppingDown({ kind: "lead", divisionId }, "advisor"), [], on),
     ),
     ...aliasAsked(db),
+    ...reroutesAsked(db),
   ]);
   done();
 
@@ -1427,10 +1466,13 @@ async function createDepartment(identity: DashboardIdentity, input: unknown): Pr
   const departmentId = Number((next.rows[0] as { id: number }).id);
   // The new head is owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests([headId]);
+  // Read for every role change (issue #789), though no team address can move with a department not made yet.
+  const reroutesAsked = await automaticTeamAddressReroutes([handedTo({ kind: "department-head", departmentId }, headId)]);
   await runAuditBatch((db) => [
     db.insert(departments).values({ id: departmentId, name, code, kind }),
     db.insert(roles).values({ memberId: headId, deptId: departmentId, divisionId: null, title: defaultHeadTitle(name), type: "head", startedAt: today() }),
     ...aliasAsked(db),
+    ...reroutesAsked(db),
   ]);
   done();
   return written(departmentId);
@@ -1461,6 +1503,10 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
   const seat = handed?.value ?? null;
   // A new head is owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests(head === null ? [] : [head.to]);
+  // A team address tied to the head, or to the seat on their row, is owed a routing item (issue #789).
+  const reroutesAsked = await automaticTeamAddressReroutes(
+    head === null ? [] : [handedTo({ kind: "department-head", departmentId }, head.to), ...seatHandedTo(seat)],
+  );
   await runAuditBatch((db) => [
     db
       .update(departments)
@@ -1480,6 +1526,7 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
       ? []
       : [db.insert(roles).values({ memberId: head.to, deptId: departmentId, divisionId: null, title: defaultHeadTitle(name), type: "head", startedAt: on, ...seatFor(seat, head.to) })]),
     ...aliasAsked(db),
+    ...reroutesAsked(db),
   ]);
   done();
   return written(null);
@@ -1610,12 +1657,15 @@ async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): 
   const seat = active.filter((r) => r.type === "president");
   // The new team leader is owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests([to]);
+  // A team address tied to the team leader is owed a routing item (issue #789).
+  const reroutesAsked = await automaticTeamAddressReroutes([handedTo({ kind: "team-leader" }, to)]);
   const on = today();
   // The old role ends before the new one starts: the database keeps one active team leader (issue #667).
   await runAuditBatch((db) => [
     ...steppingDownWrites(db, { memberId: from, active }, step, seat.map((r) => r.id), on, Number(held?.count ?? 0)),
     db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: seat[0]?.title.trim() || "Team Leader", type: "president", startedAt: on }),
     ...aliasAsked(db),
+    ...reroutesAsked(db),
   ]);
   done();
   return written(null);
@@ -1700,12 +1750,15 @@ async function changeSeatHolder(identity: DashboardIdentity, roleId: number, inp
   const handed = seatHandOver([{ fullAccess: seatOfFlag(row.full_access) }], [to]);
   if (!handed.ok) return refused(handed.error);
   const active = await activeRoles(from);
+  // A team address tied to the full-access seat is owed a routing item (issue #789).
+  const reroutesAsked = await automaticTeamAddressReroutes(seatHandedTo(handed.value));
   const on = today();
   // The holder's row ends before the successor's starts: the database keeps one active holder per seat (issue #667).
   // It ends in `writeSeat`'s first statement, so the stepping-down writes end no row of it again.
   return writeSeat(roleId, on, (db) => [
     ...steppingDownWrites(db, { memberId: from, active }, step, [], on),
     db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: row.title, type: row.type, startedAt: on, ...seatFor(handed.value, to) }),
+    ...reroutesAsked(db),
   ]);
 }
 
@@ -1772,27 +1825,41 @@ async function confirmedHandOverWrites(
   const seat = handed.value;
   const endingIds = ending.map((r) => r.id);
   if (role.kind === "lead") {
-    const theirs = (await heldRows(role.divisionId)).filter((r) => r.memberId === toId);
+    const held = await heldRows(role.divisionId);
+    const theirs = held.filter((r) => r.memberId === toId);
     const promote = theirs.some((r) => r.type === "lead" || r.type === "head") ? [] : theirs.map((r) => r.id);
     const seatRow = promote[0] ?? theirs.find((r) => r.type === "lead")?.id ?? theirs[0]?.id;
     // A successor who becomes the lead here is owed an alias request when they have none (issue #543).
     const aliasAsked = await automaticAliasRequests(promote.length === 0 ? [] : [toId]);
+    // A team address tied to this lead, or to the seat on the sender's row, is owed a routing item (issue #789).
+    const reroutesAsked = await automaticTeamAddressReroutes([
+      {
+        tie: { kind: "division-lead", divisionId: role.divisionId },
+        becoming: promote.length === 0 ? [] : [toId],
+        staying: leadsIn(held).filter((id) => id !== fromId),
+      },
+      ...seatHandedTo(seat),
+    ]);
     // The sender's rows end before the seat lands on the successor's: one active holder per seat (issue #667).
     return (db) => [
       ...(promote.length === 0 ? [] : [db.update(roles).set({ type: "lead" }).where(and(inArray(roles.id, promote), isNull(roles.leavedAt)))]),
       ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
       ...seatOnto(db, seat, seatRow),
       ...aliasAsked(db),
+      ...reroutesAsked(db),
     ];
   }
   const department = org.departments.find((d) => d.id === role.departmentId)?.name ?? "";
   // The successor becomes a head, owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests([toId]);
+  // A team address tied to this head, or to the seat on the sender's row, is owed a routing item (issue #789).
+  const reroutesAsked = await automaticTeamAddressReroutes([handedTo({ kind: "department-head", departmentId: role.departmentId }, toId), ...seatHandedTo(seat)]);
   // The sender's head row ends before the successor's starts: one active head per department (issue #667).
   return (db) => [
     ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
     db.insert(roles).values({ memberId: toId, deptId: role.departmentId, divisionId: null, title: defaultHeadTitle(department), type: "head", startedAt: on, ...seatFor(seat, toId) }),
     ...aliasAsked(db),
+    ...reroutesAsked(db),
   ];
 }
 
