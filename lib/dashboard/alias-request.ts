@@ -429,7 +429,7 @@ export function aliasAttention(request: AliasRequest, member: AliasTeamPerson, t
   return {
     kind: "alias-request",
     title: `${requester} asks for an email alias for ${name}`,
-    detail: `Sent ${when} · create it in Google Workspace, then mark it created`,
+    detail: `Sent ${when} · create it in Google Workspace, then press Mark created. ${name} and ${requester} then see that it's ready.`,
     action,
   };
 }

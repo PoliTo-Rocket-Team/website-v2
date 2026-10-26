@@ -6,7 +6,7 @@ import { FileSpreadsheet, List, Lock, Pencil, Plus, Table2, UserMinus, UserX } f
 import type { MemberAliases } from "@/lib/dashboard/alias-request";
 import type { MemberTeamAddresses } from "@/lib/dashboard/team-address";
 import { memberDetailText } from "@/lib/dashboard/details";
-import type { DivisionHeader, WaitingPerson } from "@/lib/dashboard/division-members";
+import { mayNotKnowTheyWereAdded, type DivisionHeader, type WaitingPerson } from "@/lib/dashboard/division-members";
 import {
   divisionOptions,
   shownMembers,
@@ -245,9 +245,11 @@ export function ScopedMembersView({
         <Pager page={current} last={last} onPage={setListPage} />
       </div>
 
-      {shown.waiting.map((w) => (
-        <NoEmailNote key={w.waiting.joinId} waiting={w.waiting} editable={writes && w.editable} onFill={() => fillDetails(w)} />
-      ))}
+      {shown.waiting
+        .filter((w) => mayNotKnowTheyWereAdded(w.waiting))
+        .map((w) => (
+          <NoEmailNote key={w.waiting.joinId} waiting={w.waiting} unit={w.division.name} editable={writes && w.editable} onFill={() => fillDetails(w)} />
+        ))}
 
       <PersonDrawer
         person={open}

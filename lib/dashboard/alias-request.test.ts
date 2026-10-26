@@ -247,7 +247,7 @@ test("the approver's rows (board 94c): one per open request, oldest first, the a
   assert.deepEqual(
     rows.map((r) => [r.kind, r.title, r.detail]),
     [
-      ["alias-request", "Marco Bianchi asks for an email alias for Davide Russo", "Sent yesterday · create it in Google Workspace, then mark it created"],
+      ["alias-request", "Marco Bianchi asks for an email alias for Davide Russo", "Sent yesterday · create it in Google Workspace, then press Mark created. Davide Russo and Marco Bianchi then see that it's ready."],
       ["alias-request", "Marco Bianchi needs an email alias", "Automatic · became Mission Analysis lead today and has no alias"],
     ],
   );

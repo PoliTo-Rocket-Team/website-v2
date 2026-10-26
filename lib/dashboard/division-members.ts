@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { NO_MEMBER_DETAILS, parseMemberDetails, type MemberDetailErrors, type MemberDetails } from "./details";
+import { NO_MEMBER_DETAILS, noDetailsFilled, parseMemberDetails, type MemberDetailErrors, type MemberDetails } from "./details";
 import { movablePlacesOf, type MovablePlace } from "./member-move";
 import { placesOf, type PersonPlace } from "./member-places";
 import { nameRule, NO_NAME, type PersonName } from "./person-name";
@@ -212,7 +212,20 @@ export type WaitingPerson = {
   readonly name: string | null;
   readonly title: string | null;
   readonly details: MemberDetails;
+  /** The day they were added, in the team's time zone: "2026-10-20". */
+  readonly addedOn: string;
+  /** Whether a sign-in account already holds their user row: they have signed in at least once. */
+  readonly signedIn: boolean;
 };
+
+/**
+ * Whether the "hasn't signed in yet" box shows for them (issue #790): only
+ * while they have not signed in and nobody has filled in their details, since
+ * until then they may not know they were added.
+ */
+export function mayNotKnowTheyWereAdded(waiting: Pick<WaitingPerson, "signedIn" | "details">): boolean {
+  return !waiting.signedIn && noDetailsFilled(waiting.details);
+}
 
 export type DivisionHeader = {
   readonly id: number;

@@ -170,9 +170,8 @@ test("a member gets the division board a lead gets, with only the areas they are
   assert.deepEqual(lead.stats.map((s) => s.label), ["New applications", "Open positions", "Orders", "My division"]);
 });
 
-test("the plain member keeps the access hint; a seat with no grant and its own areas gets neither hint nor lines", async () => {
-  assert.deepEqual((await overviewOf("member")).access, { kind: "hint" });
-  for (const seat of ["division lead", "department head", "team leader"]) assert.deepEqual((await overviewOf(seat)).access, { kind: "none" }, seat);
+test("a seat with no grant gets no Your access lines and no access hint, the plain member included", async () => {
+  for (const seat of ["member", "division lead", "department head", "team leader"]) assert.deepEqual((await overviewOf(seat)).access, { kind: "none" }, seat);
 });
 
 test("Your access lists each grant the seat holds, a lead's and a head's included", async () => {

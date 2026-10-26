@@ -595,7 +595,7 @@ function Detail({
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-6 pt-4 md:px-7 md:py-5">
-        <StageCard application={a} first={first} they={they} changeTimes={steps.changeTimes} locked={locked} onAsk={setAsking} />
+        <StageCard application={a} first={first} they={they} viewer={viewer} changeTimes={steps.changeTimes} locked={locked} onAsk={setAsking} />
         {details.map((section) => (
           <Fields key={section.title} title={section.title} fields={section.fields} />
         ))}
@@ -865,6 +865,7 @@ function StageCard({
   application: a,
   first,
   they,
+  viewer,
   changeTimes,
   locked,
   onAsk,
@@ -872,6 +873,8 @@ function StageCard({
   application: ApplicationEntry;
   first: string;
   they: Pronouns;
+  /** The team leader reads the acceptance email step as their own (issue #790). */
+  viewer: StatusSetterViewer;
   changeTimes: boolean;
   locked: boolean;
   onAsk: (asking: Asking) => void;
@@ -951,7 +954,7 @@ function StageCard({
               {JOINING_TITLE[state.status]}
             </p>
             <p className="mt-2 text-[12px] leading-relaxed text-text-2">
-              Accepted on {dayMonth(state.acceptedAt)}. {joiningLine(state.status, first, they, a.canChange)}
+              Accepted on {dayMonth(state.acceptedAt)}. {joiningLine(state.status, first, they, a.canChange, viewer.teamLeader)}
             </p>
           </div>
         </Section>
@@ -977,11 +980,15 @@ const JOINING_TITLE: Readonly<Record<AcceptedStatus, string>> = {
   nda_received: "Ready to confirm the join",
 };
 
-/** What happens next on an accepted application; the step a viewer who may not move it cannot take is left out (issue #577). */
-function joiningLine(status: AcceptedStatus, first: string, they: Pronouns, canChange: boolean): string {
+/**
+ * What happens next on an accepted application; the step a viewer who may not
+ * move it cannot take is left out (issue #577). The team leader, who sends the
+ * acceptance email, reads that step as their own (issue #790).
+ */
+function joiningLine(status: AcceptedStatus, first: string, they: Pronouns, canChange: boolean, teamLeader: boolean): string {
   switch (status) {
     case "accepted_email_to_be_sent":
-      return "The team leader sends the welcome email with the NDA, then marks it sent.";
+      return teamLeader ? "You send the welcome email with the NDA, then mark it sent." : "The team leader sends the welcome email with the NDA, then marks it sent.";
     case "accepted_email_sent":
       return `The email with the NDA went out.${canChange ? ` When ${first} sends it back signed, mark it received.` : ""}`;
     case "nda_received":

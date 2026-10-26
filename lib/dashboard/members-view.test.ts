@@ -52,7 +52,7 @@ const records = [
   record(7, "Alessandro Greco", [], [{ kind: "team-leader", title: "" }]),
 ];
 
-const elena: WaitingPerson = { joinId: 9, email: "elena@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS };
+const elena: WaitingPerson = { joinId: 9, email: "elena@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS, addedOn: "2026-10-20", signedIn: false };
 const giulia: Joining = { applicationId: 41, name: "Giulia Rossi", photoUrl: null, position: "Mission Analyst", ndaArrived: true, canConfirm: true };
 const paolo: Joining = { applicationId: 42, name: "Paolo Neri", photoUrl: null, position: "CAD Engineer", ndaArrived: true, canConfirm: false };
 

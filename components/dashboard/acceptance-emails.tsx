@@ -53,7 +53,8 @@ export function AcceptanceEmailsBox({
             Acceptance emails to send · {rows.length}
           </h2>
           <p className="mt-0.5 text-[12px] leading-snug text-text-2">
-            Send each the acceptance email with the NDA, then set the status to {sentStatusName}. Only you see this.
+            These applicants were accepted, but the site doesn&apos;t email them. Send each one the acceptance email with the NDA, then set their
+            status to {sentStatusName}. Each row leaves this list once it&apos;s marked sent. Only you see this.
           </p>
         </div>
         <button

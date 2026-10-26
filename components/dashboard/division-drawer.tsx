@@ -15,7 +15,7 @@ import {
   type TeamPick,
   type TeamSearch,
 } from "@/lib/dashboard/division-edit";
-import { matchesPerson, type DivisionMembers, type DivisionPerson, type WaitingPerson } from "@/lib/dashboard/division-members";
+import { matchesPerson, mayNotKnowTheyWereAdded, type DivisionMembers, type DivisionPerson, type WaitingPerson } from "@/lib/dashboard/division-members";
 import { fullAccessMovesLine, seatOfHandedRole, steppingDown, steppingDownLine, type HandOverOutcome, type HeldSeat } from "@/lib/dashboard/hand-over";
 import { divisionLabel, type Permission } from "@/lib/dashboard/team";
 import type { FullAccessSeat } from "@/lib/dashboard/viewer";
@@ -762,7 +762,7 @@ function LiveMembers({ tab, editable, onFill }: { tab: DivisionMembers; editable
         toast.error("Could not add them", { description: result.error });
         return;
       }
-      toast.success(result.value === "joined" ? `${who} joined ${short}` : `${who} is waiting for their NDA. Let them know: the site sends no emails.`);
+      toast.success(result.value === "joined" ? `${who} joined ${short}` : `${who} was added and is waiting for their signed NDA. The site sends no emails, so message them to sign in with Google. They join when you confirm the NDA.`);
     });
 
   return (
@@ -812,8 +812,8 @@ function LiveMembers({ tab, editable, onFill }: { tab: DivisionMembers; editable
             Add member
           </button>
         ))}
-      {tab.waiting.map((w) => (
-        <NoEmailNote key={w.joinId} waiting={w} editable={editable} onFill={() => onFill(w)} />
+      {tab.waiting.filter(mayNotKnowTheyWereAdded).map((w) => (
+        <NoEmailNote key={w.joinId} waiting={w} unit={division.name} editable={editable} onFill={() => onFill(w)} />
       ))}
       <MemberDialogs asking={asking} onClose={() => setAsking(null)} />
     </section>

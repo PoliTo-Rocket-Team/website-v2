@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRightLeft, ArrowUpRight, AtSign, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Mail, Package, Pencil, ShoppingCart, Timer, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
+import { ArrowRightLeft, ArrowUpRight, AtSign, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Mail, Package, Pencil, ShoppingCart, Timer, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
 import {
   APPLICANT_PILL_LABELS,
@@ -13,7 +13,6 @@ import type { AlumniCard, AlumniOverview } from "@/lib/dashboard/my-alumni";
 import { sentLabel, SHOWN_FOR_A_MONTH } from "@/lib/dashboard/my-applications";
 import { ACCESS_AREA_LABELS, accessCounts, type AccessSummary } from "@/lib/dashboard/access-summary";
 import {
-  ACCESS_HINT,
   checklistCount,
   departmentLine,
   departmentsMeta,
@@ -114,12 +113,11 @@ function boardParts(overview: ScopeBoard): {
 // alias is set up. The seat's figures follow, then its panels: in the two
 // columns boards 99 and 99b set for every leader (issue #652), or board
 // first, then their page on the site beside the roster, for every other seat.
-// "Your access" closes the page: each grant, the access hint for a member
-// who reads no area, or nothing for a seat that reads its areas by role and
-// holds no grant. Board 52m: the person sits on the page with no frame and no
-// edit button (My profile is in the user menu), each panel's count moves
-// beside its title, and the hint is left out. The page streams the person
-// first and the rest once both its reads arrive (issue #397).
+// "Your access" closes the page: each grant, or nothing for a seat that
+// holds no grant (issue #790). Board 52m: the person sits on the page with
+// no frame and no edit button (My profile is in the user menu), and each
+// panel's count moves beside its title. The page streams the person first
+// and the rest once both its reads arrive (issue #397).
 function TeamView({ overview, aliasCard }: { overview: TeamSideOverview; aliasCard: OwnAlias | null }) {
   return (
     <>
@@ -181,12 +179,6 @@ export function OverviewBodySection({ board, panels }: { board: ScopeBoard; pane
       )}
 
       {access.kind === "lines" && <AccessPanel access={access.lines} />}
-      {access.kind === "hint" && (
-        <p className={`${PANEL} mt-6 items-start gap-2.5 px-4 py-2.5 text-[13px] text-text-2 max-md:hidden md:flex`}>
-          <Info aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={1.75} />
-          {ACCESS_HINT}
-        </p>
-      )}
     </>
   );
 }
@@ -559,8 +551,8 @@ function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boole
   );
 }
 
-// Issues #480 and #593: each grant the viewer holds, one linked row each, in
-// place of the access hint. Counts only; the names stay on each area's own page.
+// Issues #480 and #593: each grant the viewer holds, one linked row each.
+// Counts only; the names stay on each area's own page.
 function AccessPanel({ access }: { access: readonly AccessSummary[] }) {
   return (
     <Panel title="Your access" className="mt-5 md:mt-6">
