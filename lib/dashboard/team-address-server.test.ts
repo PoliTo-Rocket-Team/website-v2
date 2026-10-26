@@ -5,7 +5,7 @@ import { test } from "node:test";
 import * as actions from "@/app/dashboard/actions";
 import * as teamActions from "@/app/dashboard/team-actions";
 import { dashboardNotices, divisions, teamAddresses, teamAddressReroutes, teamAddressRequests } from "@/db/schema";
-import { addRows, tableRows } from "./access-matrix/test-database";
+import { addRows, changeRows, tableRows } from "./access-matrix/test-database";
 import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
 import { ALL, UNITS } from "./access-matrix/matrix";
 import { signInAs } from "./access-matrix/session";
@@ -207,11 +207,14 @@ async function rerouteRowsSeenBy(viewer: string) {
   return overview.attention.filter((a) => a.kind === "team-address-reroute");
 }
 
-/** Edit division's save of MA, as the team leader sends it. */
-async function saveMA(change: { newLeads?: number[]; oldLeads?: unknown[] }) {
-  const division = (await tableRows(divisions)).find((d) => d.id === UNITS.MA.divisionId)!;
-  return teamActions.saveDivision(UNITS.MA.divisionId, { name: String(division.name), code: String(division.code), newLeads: [], oldLeads: [], members: [], emails: [], ...change });
+/** Edit division's save of a division, as the signed-in viewer sends it. */
+async function saveDivision(divisionId: number, change: { newLeads?: number[]; oldLeads?: unknown[] }) {
+  const division = (await tableRows(divisions)).find((d) => d.id === divisionId)!;
+  return teamActions.saveDivision(divisionId, { name: String(division.name), code: String(division.code), newLeads: [], oldLeads: [], members: [], emails: [], ...change });
 }
+
+/** Edit division's save of MA. */
+const saveMA = (change: { newLeads?: number[]; oldLeads?: unknown[] }) => saveDivision(UNITS.MA.divisionId, change);
 
 test("a confirmed hand-over of a tied division lead raises one routing item each approver seat sees with the new holder's sign-in email; Mark done moves the address once", async () => {
   await seededTied();
@@ -265,13 +268,61 @@ test("adding a co-lead beside the holder raises no routing item, and neither doe
   assert.deepEqual(await tableRows(teamAddressReroutes), []);
 });
 
-test("a second change before Mark done leaves one open routing item for the address", async () => {
+test("a second change before Mark done leaves one open routing item, naming the role's holder now; Mark done moves the address to them", async () => {
+  const OA = IDS.person("OA");
   await seededTied();
   signInAs(accountOf("team leader").userId);
   assert.deepEqual(await saveMA({ newLeads: [MA_MEMBER], oldLeads: [{ personId: MA_LEAD, via: "replaced", outcome: "advisor" }] }), { ok: true });
-  assert.deepEqual(await saveMA({ newLeads: [IDS.person("OA")], oldLeads: [{ personId: MA_MEMBER, via: "replaced", outcome: "advisor" }] }), { ok: true });
+  assert.deepEqual(await saveMA({ newLeads: [OA], oldLeads: [{ personId: MA_MEMBER, via: "replaced", outcome: "advisor" }] }), { ok: true });
   assert.deepEqual(
-    (await tableRows(teamAddressReroutes)).map((r) => [r.addressId, r.toMember, r.fromMember]),
-    [[2, MA_MEMBER, MA_LEAD]],
+    (await tableRows(teamAddressReroutes)).map((r) => [r.addressId, r.toMember, r.fromMember, r.doneAt]),
+    [[2, OA, MA_LEAD, null]],
+  );
+  assert.deepEqual(
+    (await rerouteRowsSeenBy("team leader")).map((r) => r.title),
+    ["mission@politorocketteam.it goes to Person OA"],
+  );
+  signInAs(accountOf("IT lead").userId);
+  assert.deepEqual(await actions.markTeamAddressRerouteDone(1), { ok: true, value: null });
+  assert.deepEqual(
+    (await tableRows(teamAddresses)).filter((r) => r.id === 2).map((r) => r.holderId),
+    [OA],
+  );
+  assert.deepEqual((await tableRows(teamAddressReroutes)).map((r) => [r.toMember, r.doneAt !== null]), [[OA, true]]);
+});
+
+test("Mark done moves the address to whoever took the tied role over, even when the item named someone who left it since", async () => {
+  const OA = IDS.person("OA");
+  await seededTied();
+  // MA's lead hands MA to its member: the item names MA's member.
+  signInAs(accountOf("team leader").userId);
+  assert.deepEqual(await saveMA({ newLeads: [MA_MEMBER], oldLeads: [{ personId: MA_LEAD, via: "replaced", outcome: "advisor" }] }), { ok: true });
+  assert.deepEqual(await saveMA({ newLeads: [OA], oldLeads: [{ personId: MA_MEMBER, via: "replaced", outcome: "advisor" }] }), { ok: true });
+  // Laid back to name MA's member, who left the role, as an item stored before this rule reads: Mark done reads the role's holder anyway.
+  await changeRows(teamAddressReroutes, { addressId: 2 }, { toMember: MA_MEMBER });
+  signInAs(accountOf("IT lead").userId);
+  assert.deepEqual(await actions.markTeamAddressRerouteDone(1), { ok: true, value: null });
+  assert.deepEqual(
+    (await tableRows(teamAddresses)).filter((r) => r.id === 2).map((r) => r.holderId),
+    [OA],
+  );
+});
+
+test("a lead handing a division over to someone who already co-leads raises one routing item naming that co-lead", async () => {
+  await seededTied();
+  // DM's member becomes a co-lead beside DM's lead, who holds the address: nothing is raised.
+  signInAs(accountOf("team leader").userId);
+  assert.deepEqual(await saveDivision(UNITS.DM.divisionId, { newLeads: [DM_MEMBER] }), { ok: true });
+  assert.deepEqual(await tableRows(teamAddressReroutes), []);
+  // DM's lead hands DM over to that co-lead.
+  signInAs("head-str");
+  assert.deepEqual(await actions.answerHandOver(IDS.handOver("DM"), "confirm"), { ok: true, value: null });
+  assert.deepEqual(
+    (await tableRows(teamAddressReroutes)).map((r) => [r.addressId, r.toMember, r.fromMember, r.doneAt]),
+    [[1, DM_MEMBER, DM_LEAD, null]],
+  );
+  assert.deepEqual(
+    (await rerouteRowsSeenBy("team leader")).map((r) => r.title),
+    [`${STRUCTURES} goes to Person DM`],
   );
 });

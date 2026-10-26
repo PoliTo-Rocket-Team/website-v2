@@ -15,15 +15,20 @@ import {
   planTeamAddressAnswer,
   planTeamAddressRequest,
   planTeamAddressSetUp,
+  rerouteTargetNow,
+  reroutesNow,
   teamAddressAnswerNotices,
   teamAddressAttentionFor,
   teamAddressCardsOf,
+  teamAddressRerouteAttentionFor,
   type MovesWith,
   type OpenTeamAddressRequest,
+  type StoredTeamAddressReroute,
   type TeamAddress,
   type TeamAddressAnswer,
   type TeamAddressRequest,
   type TiedRoleChange,
+  type TieRoleRow,
 } from "./team-address";
 import { plainSeatStanding, type ViewerStanding } from "./viewer";
 
@@ -258,7 +263,8 @@ test("the approver's rows: one per open request, oldest first, with the address,
 test("a role change owes one routing item for each tied address whose holder no longer holds the role, naming the first new holder by id", () => {
   const LOGISTICS_LEAD: MovesWith = { kind: "division-lead", divisionId: 9 };
   const tied = (id: number, movesWith: MovesWith | null, holderId = LEAD) => ({ id, ...held(`a${id}@politorocketteam.it`, movesWith, holderId) });
-  const owed = (address: ReturnType<typeof tied>, change: TiedRoleChange) => owedTeamAddressReroutes({ addresses: [address], changes: [change] });
+  const owed = (address: ReturnType<typeof tied>, change: TiedRoleChange, open: { addressId: number; toId: number }[] = []) =>
+    owedTeamAddressReroutes({ addresses: [address], changes: [change], open });
   const cases: [string, ReturnType<typeof owed>, ReturnType<typeof owed>][] = [
     [
       "hand-over: the lead is replaced",
@@ -279,8 +285,81 @@ test("a role change owes one routing item for each tied address whose holder no 
       [{ addressId: 1, toId: IN_LOGISTICS, fromId: LEAD }],
     ],
     ["the holder is the one made a holder", owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [LEAD], staying: [] }), []],
+    [
+      "hand-over to someone who already co-leads: the holder left",
+      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [IN_MARKETING, IN_LOGISTICS] }),
+      [{ addressId: 1, toId: IN_LOGISTICS, fromId: LEAD }],
+    ],
+    [
+      "hand-over between two co-leads beside the holder, who still leads",
+      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [LEAD, IN_LOGISTICS] }),
+      [],
+    ],
+    [
+      "second change: the member the open item names left the role, so it names the new holder",
+      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_MARKETING], staying: [] }, [{ addressId: 1, toId: IN_LOGISTICS }]),
+      [{ addressId: 1, toId: IN_MARKETING, fromId: LEAD }],
+    ],
+    [
+      "second change: a co-lead added beside the member the open item names leaves it as it is",
+      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_MARKETING], staying: [IN_LOGISTICS] }, [{ addressId: 1, toId: IN_LOGISTICS }]),
+      [],
+    ],
   ];
   for (const [name, actual, expected] of cases) assert.deepEqual(actual, expected, name);
+});
+
+test("an open routing item moves its address to whoever holds the tied role now, never to a member it named earlier", () => {
+  const LOGISTICS_LEAD: MovesWith = { kind: "division-lead", divisionId: 9 };
+  const A = LEAD;
+  const B = IN_LOGISTICS;
+  const C = IN_MARKETING;
+  const role = (memberId: number, rest: Partial<TieRoleRow> = {}): TieRoleRow => ({
+    id: memberId,
+    memberId,
+    since: "2025-10-01",
+    type: "lead",
+    departmentId: null,
+    divisionId: 9,
+    fullAccess: null,
+    ...rest,
+  });
+  const lead = (memberId: number, since?: string): TieRoleRow => role(memberId, since === undefined ? {} : { since });
+  const item = (toId: number, movesWith: MovesWith | null = LOGISTICS_LEAD): StoredTeamAddressReroute => ({
+    id: 1,
+    addressId: 1,
+    address: "logistics@politorocketteam.it",
+    movesWith,
+    holderId: A,
+    toId,
+    fromId: A,
+    createdAt: "2026-10-26T10:00:00Z",
+  });
+  const cases: [string, number | null, number | null][] = [
+    ["A to B: B leads", rerouteTargetNow(item(B), [lead(B)], org), B],
+    ["A to B to C before Mark done: the item named B, C leads now", rerouteTargetNow(item(B), [lead(C)], org), C],
+    ["B still leads beside a later co-lead", rerouteTargetNow(item(B), [lead(C, "2026-10-26"), lead(B)], org), B],
+    ["B left: the newest of the leads now took it over", rerouteTargetNow(item(B), [lead(NO_ADDRESS), lead(C, "2026-10-26")], org), C],
+    ["a head row kept on the division is not a lead of it", rerouteTargetNow(item(B), [role(C, { type: "head" })], org), null],
+    ["A leads again", rerouteTargetNow(item(B), [lead(A)], org), null],
+    ["nobody leads", rerouteTargetNow(item(B), [], org), null],
+    ["an address tied to no role", rerouteTargetNow(item(B, null), [lead(C)], org), null],
+    ["the team leader by the president row", rerouteTargetNow(item(B, { kind: "team-leader" }), [role(C, { type: "president", divisionId: null })], org), C],
+    ["a full-access seat by its flag", rerouteTargetNow(item(B, { kind: "full-access-seat", seat: "it-lead" }), [role(C, { divisionId: 10, fullAccess: "it-lead" })], org), C],
+    [
+      "a department's head by a head row kept on one of its divisions",
+      rerouteTargetNow(item(B, { kind: "department-head", departmentId: 7 }), [role(C, { type: "head", divisionId: 10 })], org),
+      C,
+    ],
+  ];
+  for (const [name, actual, expected] of cases) assert.equal(actual, expected, name);
+
+  const [open] = reroutesNow([item(B)], [lead(C)], org);
+  assert.equal(open?.toId, C, "the approver's row names C");
+  const now = new Date("2026-10-27T10:00:00Z");
+  const rows = teamAddressRerouteAttentionFor(IT_LEAD, [open!], team, org, now);
+  assert.deepEqual(rows.map((r) => r.title), ["logistics@politorocketteam.it goes to Person 6"]);
+  assert.deepEqual(teamAddressRerouteAttentionFor(IT_LEAD, reroutesNow([item(B)], [lead(A)], org), team, org, now), [], "nothing to move: no row");
 });
 
 // The holder's ready card (owner finding on PR #794) ---------------------------------

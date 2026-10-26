@@ -722,6 +722,9 @@ export const teamAddressRequests = pgTable("team_address_requests", {
  * address moves with changed hands, so the approvers move the address to its
  * new holder with Mark done. It names the address, the member it goes to and
  * the member it came from; done by and done at stay null while it is open.
+ * While open, a later change of the role names its new holder on the same
+ * item and dates it to that change; Mark done moves the address to whoever
+ * holds the role then and stores them as the member it went to (issue #795).
  * One address has at most one open item (`team_address_reroutes_one_open`);
  * lib/dashboard/team-address.ts owns the rules.
  */
