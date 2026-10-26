@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
+import { BUILT_IN_STATUSES } from "../dashboard/application-status";
 import { nonAdditiveStatements } from "./journal";
 
 // Every preview build applies pending migrations to the shared preview
@@ -404,4 +405,67 @@ test("the check catches each statement that is not additive, and no foreign key 
   const foreignKey =
     'ALTER TABLE "a" ADD CONSTRAINT "f" FOREIGN KEY ("m") REFERENCES "b"("m") ON DELETE cascade ON UPDATE no action;';
   assert.deepEqual(nonAdditiveStatements(foreignKey), []);
+});
+
+// The application status list (issue #748) adds one table with its ten
+// built-in rows and one nullable reference on `applications`. Existing
+// applications are test data and keep every value; with no reference they
+// read as New (lib/dashboard/application-status.ts).
+const STATUS_TAG = "0065_application_statuses";
+
+test("0065_application_statuses.sql drops, renames and rewrites nothing", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${STATUS_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  assert.match(sql, /issue #748/);
+});
+
+test("0065 inserts the ten built-in statuses in order, keeps every application as it was, and applies again", async () => {
+  const { db, apply } = await databaseBefore(STATUS_TAG);
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into applications (id, apply_position_id, user_id, status, applied_at) values
+      (1, null, null, 'accepted', '2026-09-01 10:00:00+02'),
+      (2, null, null, 'pending', '2026-09-02 10:00:00+02');
+    set session_replication_role = origin;
+  `);
+  const before = await db.query(`select * from applications order by id`);
+  await apply();
+  await apply();
+  const after = await db.query(`select * from applications order by id`);
+  assert.deepEqual(
+    after.rows,
+    before.rows.map((row) => ({ ...(row as object), status_key: null })),
+    "every application keeps its values and references no status",
+  );
+  const statuses = await db.query<{ key: string; name: string; colour: string; sort_order: number; parent_key: string | null }>(
+    `select key, name, colour, sort_order, parent_key from application_statuses order by sort_order`,
+  );
+  assert.deepEqual(
+    statuses.rows,
+    BUILT_IN_STATUSES.map((s, i) => ({ key: s.key, name: s.name, colour: s.colour, sort_order: i + 1, parent_key: null })),
+    "the built-in rows are the module's, once each, in order",
+  );
+});
+
+test("after 0065 the table takes an added status only under a built-in parent, and keeps one in use", async () => {
+  const { db, apply } = await databaseBefore(STATUS_TAG);
+  await apply();
+  const refuses = async (sql: string, what: string) => {
+    await assert.rejects(db.exec(sql), Error, what);
+  };
+  await db.exec(`insert into application_statuses (key, name, colour, sort_order, parent_key) values ('second_interview', 'Second interview', '#FF7526', 1, 'interview')`);
+  await refuses(`insert into application_statuses (key, name, colour, sort_order) values ('on_hold', 'On hold', '#FF7526', 11)`, "an added status with no parent");
+  await refuses(`insert into application_statuses (key, name, colour, sort_order, parent_key) values ('third', 'Third', '#FF7526', 2, 'second_interview')`, "a parent that is not built-in");
+  await refuses(`insert into application_statuses (key, name, colour, sort_order, parent_key) values ('joined', 'Joined', '#FF7526', 3, 'new')`, "a built-in key with a parent");
+  await refuses(`insert into application_statuses (key, name, colour, sort_order, parent_key) values ('later', 'Later', 'orange', 4, 'new')`, "a colour that is not hex");
+  await refuses(`insert into application_statuses (key, name, colour, sort_order, parent_key) values ('again', 'Again', '#FF7526', 1, 'interview')`, "two statuses in one place");
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into applications (id, status, status_key, applied_at) values (1, 'interview', 'second_interview', now());
+    set session_replication_role = origin;
+  `);
+  await refuses(`delete from application_statuses where key = 'second_interview'`, "an added status in use");
+  await refuses(`update applications set status_key = 'no_such_status' where id = 1`, "a reference to no status");
+  await db.exec(`update applications set status_key = 'interview' where id = 1; delete from application_statuses where key = 'second_interview'`);
+  assert.equal((await db.query(`select 1 from application_statuses where key = 'second_interview'`)).rows.length, 0, "an unused added status is deleted");
 });

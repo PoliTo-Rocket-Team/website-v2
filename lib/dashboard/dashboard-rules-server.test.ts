@@ -4,10 +4,10 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import * as teamActions from "@/app/dashboard/team-actions";
 import * as recruitmentActions from "@/app/dashboard/recruitment-actions";
-import { applications, applyPositions, scopes } from "@/db/schema";
+import { applications, applicationStatuses, applyPositions, scopes } from "@/db/schema";
 import { maySiteContent } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
-import { addRows, databaseWrites, tableRows } from "./access-matrix/test-database";
+import { addRows, changeRows, databaseWrites, tableRows } from "./access-matrix/test-database";
 import { accountOf, EXTRA, IDS, seedFixture } from "./access-matrix/fixture";
 import { ALL, UNITS, VIEWERS } from "./access-matrix/matrix";
 import { signInAs } from "./access-matrix/session";
@@ -154,7 +154,7 @@ describe("an applicant's applications", () => {
     await open("team leader");
     // The person at interview in DM also applied for the MA role, still New there.
     await addRows(applications, [
-      { id: 990, applyPositionId: IDS.position("MA"), userId: "interviewee-dm", appliedAt: daysAgo(2), status: "received", customAnswers: [{ question: "Why?", answer: "x" }] },
+      { id: 990, applyPositionId: IDS.position("MA"), userId: "interviewee-dm", appliedAt: daysAgo(2), status: "received", statusKey: "new", customAnswers: [{ question: "Why?", answer: "x" }] },
     ]);
     const before = (await tableRows(applications)).find((a) => a.id === 990);
     const answer = await recruitmentActions.moveApplication(IDS.interview("DM"), { kind: "accept" });
@@ -167,23 +167,65 @@ describe("an applicant's applications", () => {
     await open("team leader");
     await addRows(applications, [
       // The person at interview in DM also applied for the MA role, still New there, and withdrew from OA.
-      { id: 990, applyPositionId: IDS.position("MA"), userId: "interviewee-dm", appliedAt: daysAgo(2), status: "received", customAnswers: [] },
-      { id: 991, applyPositionId: IDS.position("OA"), userId: "interviewee-dm", appliedAt: daysAgo(3), status: "received", customAnswers: [], withdrawnAt: daysAgo(1) },
+      { id: 990, applyPositionId: IDS.position("MA"), userId: "interviewee-dm", appliedAt: daysAgo(2), status: "received", statusKey: "new", customAnswers: [] },
+      { id: 991, applyPositionId: IDS.position("OA"), userId: "interviewee-dm", appliedAt: daysAgo(3), status: "received", statusKey: "new", customAnswers: [], withdrawnAt: daysAgo(1) },
       // A member of MA applies to DM.
-      { id: 992, applyPositionId: IDS.position("DM"), userId: "person-ma", appliedAt: daysAgo(1), status: "received", customAnswers: [] },
+      { id: 992, applyPositionId: IDS.position("DM"), userId: "person-ma", appliedAt: daysAgo(1), status: "received", statusKey: "new", customAnswers: [] },
     ]);
     const page = await (await reopen("team leader")).applications();
     const entry = (id: number) => page.applications.find((a) => a.id === id)!;
-    assert.equal(entry(IDS.interview("DM")).state.stage, "interview", "the interview reads its stored times");
+    assert.equal(entry(IDS.interview("DM")).state.status, "interview", "the interview reads its stored times");
     assert.deepEqual(
-      entry(IDS.interview("DM")).otherApplications.map((o) => o.stage),
+      entry(IDS.interview("DM")).otherApplications.map((o) => o.status),
       ["new"],
-      "the other live application, at its stage; the withdrawn one is left out",
+      "the other live application, at its status; the withdrawn one is left out",
     );
-    assert.deepEqual(entry(990).otherApplications.map((o) => o.stage), ["interview"], "the other application's interview reads its stored times");
+    assert.deepEqual(entry(990).otherApplications.map((o) => o.status), ["interview"], "the other application's interview reads its stored times");
     assert.ok(!page.applications.some((a) => a.id === 991), "a withdrawn application is not listed");
     assert.equal(entry(IDS.interview("DM")).standing.kind, "applicant");
     assert.equal(entry(992).standing.kind, "member", "a member applying reads as on the team");
+  });
+
+  test("the Applications page reads the status reference: none reads as New, an added status as its parent (issue #748)", async () => {
+    await open("team leader");
+    await addRows(applicationStatuses, [{ key: "second_interview", name: "Second interview", colour: "#FF7526", sortOrder: 1, parentKey: "interview" }]);
+    await addRows(applications, [
+      // The old column says accepted; with no reference it reads as New.
+      { id: 990, applyPositionId: IDS.position("MA"), userId: "interviewee-dm", appliedAt: daysAgo(2), status: "accepted", statusKey: null, customAnswers: [] },
+    ]);
+    await changeRows(applications, { id: IDS.interview("DM") }, { statusKey: "second_interview" });
+    const page = await (await reopen("team leader")).applications();
+    const entry = (id: number) => page.applications.find((a) => a.id === id)!;
+    assert.equal(entry(990).state.status, "new", "no status reference reads as New");
+    assert.equal(entry(IDS.interview("DM")).state.status, "interview", "the added status reads as Interview, with its stored times");
+
+    // Reject moves it off the added status, to the built-in status the move reaches.
+    const reject = await recruitmentActions.moveApplication(IDS.interview("DM"), { kind: "reject" });
+    assert.ok(reject.ok, JSON.stringify(reject));
+    const stored = (await tableRows(applications)).find((a) => a.id === IDS.interview("DM"));
+    assert.deepEqual([stored?.status, stored?.statusKey], ["rejected", "rejected_email_to_be_sent"], "both columns are written");
+  });
+
+  test("the new-application counts read the status reference, not the old column (issue #748)", async () => {
+    await open("team leader");
+    await addRows(applicationStatuses, [{ key: "first_look", name: "First look", colour: "#8A8A8F", sortOrder: 1, parentKey: "new" }]);
+    await addRows(applications, [
+      // Old column pending (In review), reference New: counted.
+      { id: 990, applyPositionId: IDS.position("MA"), userId: "interviewee-dm", appliedAt: daysAgo(2), status: "pending", statusKey: "new", customAnswers: [] },
+      // A status added under New: counted.
+      { id: 991, applyPositionId: IDS.position("MA"), userId: "person-ma", appliedAt: daysAgo(4), status: "received", statusKey: "first_look", customAnswers: [] },
+      // Old column received, reference Interview: not counted.
+      { id: 992, applyPositionId: IDS.position("MA"), userId: "joining-dm", appliedAt: daysAgo(1), status: "received", statusKey: "interview", customAnswers: [] },
+    ]);
+    const data = await reopen("team leader");
+    const positions = await data.positions();
+    const ma = positions?.positions.find((p) => p.id === IDS.position("MA"));
+    // The fixture's own New application, plus 990 and 991.
+    assert.equal(ma?.applications?.fresh, 3, "the Positions tally");
+    const overview = await data.overview();
+    const fresh = overview && "stats" in overview ? overview.stats.find((s) => s.label === "New applications") : undefined;
+    // One fixture New application in each unit, plus 990 and 991.
+    assert.equal(fresh?.value, String(ALL.length + 2), "the Overview count");
   });
 
   test("an accepted application cannot be withdrawn, and the refusal writes nothing", async () => {

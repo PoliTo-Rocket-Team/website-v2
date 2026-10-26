@@ -1,5 +1,6 @@
 import type { ApplicantDetails } from "./applicant-details";
-import type { ApplicantStanding, ApplicationStage, ApplicationState } from "./application-flow";
+import type { ApplicantStanding, ApplicationState } from "./application-flow";
+import type { ApplicationStatus, BuiltInStatusKey, ListedStatus } from "./application-status";
 import type { DivisionChoice, PositionContent } from "./new-position";
 import { areaUnitsOf, type AreaReader } from "./viewer";
 
@@ -233,20 +234,25 @@ export type OtherApplication = {
   readonly title: string;
   readonly department: string;
   readonly division: string;
-  readonly stage: ApplicationStage;
+  /** The built-in status it behaves like. */
+  readonly status: BuiltInStatusKey;
+  /** Its status from the status list, an added one included: its tag shows that status's name and colour (issue #752). */
+  readonly listStatus: ApplicationStatus;
 };
 
 export type ApplicationEntry = {
   readonly id: number;
   /** Where it stands; ./application-flow.ts says what can happen next. */
   readonly state: ApplicationState;
+  /** Its status from the status list (issue #750): the Status picker shows it; `state` is the built-in status it behaves like. */
+  readonly status: ApplicationStatus;
   /**
    * Their name, and every field they gave on the apply form and in "Your
    * details" (issue #406). `photoUrl` is the stored photo of their member
    * record (issue #656): null for the PRT mark, as for anyone with no record.
    */
   readonly applicant: ApplicantDetails & { readonly name: string; readonly photoUrl: string | null };
-  /** Where the applicant stands with the team: a member joins with no NDA wait (board 58h2). */
+  /** Where the applicant stands with the team: what Confirm join adds, and how its confirm reads (58h, 58h2). */
   readonly standing: ApplicantStanding;
   readonly position: { readonly ref: PositionRef; readonly title: string; readonly division: string };
   /** "Today" in the list, "today, 14:32" in the detail panel. */
@@ -259,7 +265,7 @@ export type ApplicationEntry = {
    * Whether the viewer may move this application (issue #577), by the rule
    * every application write asks (`mayChangePositionIn` on Applications in
    * its position's unit, ./position-access.ts). Where false the panel shows
-   * its stage and offers no step.
+   * its status and offers no button.
    */
   readonly canChange: boolean;
 };
@@ -285,13 +291,29 @@ export type ApplicationsPage = {
   readonly now: string;
   /** The positions the viewer reaches, for the position filter, with the division and department each sits in. */
   readonly positions: readonly { readonly ref: PositionRef; readonly title: string; readonly division: string; readonly department: string }[];
+  /** The status list in the Status picker's order (board 97c, `statusListOf`): built-in statuses, each with its added ones under it. */
+  readonly statuses: readonly ListedStatus[];
+  /**
+   * Whether the viewer is the team leader, the one who sets "Accepted · email
+   * sent" (`maySetStatus`, ./application-status.ts): the rule the move write
+   * asks, so the panel never offers that status to anyone else (board 97e).
+   */
+  readonly teamLeader: boolean;
+  /**
+   * How many applications, anywhere on the team, use each status of the list,
+   * by its key, for the Statuses editor (board 97d, issue #752); an
+   * application with no status reference counts as New. Null where the viewer
+   * may move no application and so does not manage the list
+   * (`managesStatusList`, ./application-status.ts).
+   */
+  readonly statusUses: Readonly<Record<string, number>> | null;
   /** Newest first. */
   readonly applications: readonly ApplicationEntry[];
 };
 
 /** How many applications wait for a first look: the sidebar's count and the New tab's. */
 export function newCount(applications: readonly { readonly state: ApplicationState }[]): number {
-  return applications.filter((a) => a.state.stage === "new").length;
+  return applications.filter((a) => a.state.status === "new").length;
 }
 
 /** "CV + letter" or "CV", as the Documents column reads (board 58b). */

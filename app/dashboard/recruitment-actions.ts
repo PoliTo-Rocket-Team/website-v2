@@ -3,7 +3,8 @@
 import { refresh } from "next/cache";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
 import { openDashboard } from "@/lib/dashboard/open";
-import { parseLeadMove } from "@/lib/dashboard/application-flow";
+import { parseApproverMove } from "@/lib/dashboard/application-flow";
+import { parseStatusListChange } from "@/lib/dashboard/application-status";
 import type { CreatedPosition } from "@/lib/dashboard/new-position";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 
@@ -42,11 +43,27 @@ export async function setPositionOpen(positionId: number, open: boolean): Promis
   return write((data) => data.setPositionOpen(positionId, open));
 }
 
-/** One step on an application: open it, offer interview times, accept, reject, tick the NDA, confirm the join. */
+/**
+ * One action button on an application (lib/dashboard/application-flow.ts,
+ * `LEAD_STEPS`), or a saved hand pick in the Status picker (issue #750): the
+ * one move both run, checked there and in the data source.
+ */
 export async function moveApplication(applicationId: number, move: unknown): Promise<WriteResult<null>> {
-  const parsed = parseLeadMove(move);
+  const parsed = parseApproverMove(move);
   if (!isId(applicationId) || parsed === null) return refused("That change is not valid.");
   return answer((data) => data.moveApplication(applicationId, parsed));
+}
+
+/**
+ * One change in the Statuses editor (board 97d, issue #752): add, rename,
+ * recolour or delete a status. Its shape is checked here
+ * (`parseStatusListChange`); who may make it and whether a delete is allowed
+ * is the data interface's.
+ */
+export async function changeStatusList(change: unknown): Promise<WriteResult<null>> {
+  const parsed = parseStatusListChange(change);
+  if (!parsed.ok) return refused(parsed.error);
+  return answer((data) => data.changeStatusList(parsed.value));
 }
 
 /** New position (boards 57a, 57b): the drawer's fields, checked by the data interface. */

@@ -334,13 +334,15 @@ const BANNER_ACTION =
   "inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-success/60 px-4 text-[14px] font-semibold text-success transition-colors duration-300 ease-out hover:border-success hover:bg-success/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-success/60 disabled:hover:bg-transparent md:h-8 md:px-3.5 md:text-[13px]";
 
 /**
- * "Giulia Rossi is joining" (boards 59 and 59m): Confirm join, once "The signed
- * NDA arrived" is ticked on the application (58g). It is the Applications
- * page's own Confirm join, so the button waits for that tick here too, and
- * shows only where `editable`: the viewer may change applications there
+ * "Giulia Rossi is joining" (boards 59 and 59m): Confirm join, once the
+ * application's status is NDA received. It is the Applications page's own
+ * Confirm join, so the button waits for that status here too, and shows only
+ * where `editable`: the viewer may change applications there
  * (`Joining.canConfirm`, issue #584). While the NDA waits, the same viewer
- * records it here with Mark NDA received: the Applications tick's own move
- * (`set-nda`), so the banner adds no rule or write path of its own (issue #601).
+ * records it here with Mark NDA received: the Applications page's NDA received
+ * button (`nda-received`), so the banner adds no rule or write path of its own
+ * (issue #601). Like that button, it is refused until the acceptance email is
+ * marked sent (issue #749).
  * The server's yes is what readies Confirm join: the banner holds it at once,
  * so it does not wait on the page's refresh to show the NDA arrived.
  */
@@ -354,7 +356,7 @@ export function JoiningBanner({ joining, division, editable }: { joining: Joinin
 
   const markNda = () =>
     startMarking(async () => {
-      const result = await moveApplication(joining.applicationId, { kind: "set-nda", arrived: true });
+      const result = await moveApplication(joining.applicationId, { kind: "nda-received" });
       if (result.ok) setMarked(true);
       else toast.error(result.error);
     });

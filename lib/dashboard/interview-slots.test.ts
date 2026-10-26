@@ -15,14 +15,12 @@ function slot(applicationId: number, startsAt: string, chosen = false, offeredBy
   };
 }
 
-test("an interview with no times left reads as In review", () => {
-  assert.deepEqual(interviewStateOf([]), { stage: "in-review" });
+test("an interview with no times is one being arranged", () => {
+  assert.deepEqual(interviewStateOf([]), { status: "interview", offered: [], booked: null });
 });
 
 test("times with none chosen wait for the applicant; offered come soonest first", () => {
   const state = interviewStateOf([slot(1, "2026-10-20T10:00:00Z"), slot(1, "2026-10-18T10:00:00Z")]);
-  assert.equal(state.stage, "interview");
-  if (state.stage !== "interview") return;
   assert.equal(state.booked, null);
   assert.deepEqual(
     state.offered.map((s) => s.start),
@@ -32,8 +30,6 @@ test("times with none chosen wait for the applicant; offered come soonest first"
 
 test("the chosen time is the booking", () => {
   const state = interviewStateOf([slot(1, "2026-10-18T10:00:00Z"), slot(1, "2026-10-20T10:00:00Z", true)]);
-  assert.equal(state.stage, "interview");
-  if (state.stage !== "interview") return;
   assert.deepEqual(state.booked, {
     slot: { start: "2026-10-20T10:00:00.000Z", end: "2026-10-20T10:30:00.000Z" },
     at: "2026-10-01T09:00:00.000Z",

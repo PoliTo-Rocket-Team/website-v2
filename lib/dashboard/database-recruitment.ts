@@ -1,6 +1,7 @@
 import "server-only";
 
-import { and, asc, count, desc, eq, inArray, isNull, max, sql, type SQL } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, max, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
@@ -8,6 +9,7 @@ import { refreshAfter } from "@/lib/cache-tags";
 import {
   applicationFiles,
   applications,
+  applicationStatuses,
   applyPositions,
   departments,
   divisions,
@@ -22,19 +24,35 @@ import {
   joinChange,
   memberStanding,
   NEW_APPLICANT,
+  OPEN_STATUSES,
   type ApplicantStanding,
-  type ApplicationState,
+  type AddedPick,
+  type ApproverMove,
   type JoinChange,
-  type LeadMove,
-  type OfferedSlots,
+  type SlotTime,
 } from "./application-flow";
+import {
+  addedStatusKey,
+  builtInOf,
+  deleteRefusal,
+  isBuiltInStatusKey,
+  managesStatusList,
+  maySetStatus,
+  statusListOf,
+  statusOfStored,
+  TEAM_LEADER_ONLY_REFUSAL,
+  type BuiltInStatusKey,
+  type ListedStatus,
+  type StatusListChange,
+  type StatusSetterViewer,
+} from "./application-status";
 import { membershipsOfRoles } from "./team";
 import { DashboardRefused } from "./data";
 import type { DashboardIdentity } from "./database";
 import { readHeadDepartment } from "./database-division";
 import { positionCode } from "@/lib/apply/positions";
 import type { OfferedSlotRow } from "./interview-slots";
-import { storedApplicationState, type StoredApplicationRow } from "./stored-application";
+import { daysOfAddedPick, readsAsNew, statusKeyAfter, storedApplicationState, type StoredApplicationRow, type StoredDays } from "./stored-application";
 import { checkNewPosition, checkPositionContent, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
 import {
   ago,
@@ -53,7 +71,7 @@ import {
   type PositionRow,
   type PositionsPage,
 } from "./recruitment";
-import { mayChange, type DivisionUnit } from "./viewer";
+import { isTeamLeader, mayChange, type DivisionUnit } from "./viewer";
 import { mayChangePositionIn } from "./position-access";
 import {
   documentHref,
@@ -143,10 +161,11 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
       .orderBy(desc(applyPositions.createdAt)),
     readsRecruitment(identity, "applications")
       ? db
-          .select({ position_id: applications.applyPositionId, status: applications.status, n: count(), last: max(applications.appliedAt) })
+          .select({ position_id: applications.applyPositionId, ...STATUS_COLUMNS, n: count(), last: max(applications.appliedAt) })
           .from(applications)
+          .leftJoin(applicationStatuses, STATUS_JOIN)
           .where(isNull(applications.withdrawnAt))
-          .groupBy(applications.applyPositionId, applications.status)
+          .groupBy(applications.applyPositionId, applications.statusKey, applicationStatuses.parentKey)
       : [],
   ]);
   // The same rule the document route checks (`readsRecruitmentIn`, ./application-documents.ts).
@@ -170,7 +189,7 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
       applications: tallied
         ? {
             total: own.reduce((sum, t) => sum + t.n, 0),
-            fresh: own.filter((t) => t.status === "received").reduce((sum, t) => sum + t.n, 0),
+            fresh: own.filter(readsAsNew).reduce((sum, t) => sum + t.n, 0),
             quiet: quietNote(quietDays(r.status, latest === null ? created : new Date(latest), now)),
           }
         : null,
@@ -344,6 +363,27 @@ async function editPosition(identity: Identity, positionId: number, input: unkno
 const stateOf = storedApplicationState;
 
 /**
+ * The status columns `stateOf` reads, for a select that left-joins
+ * `application_statuses` on the application's status reference
+ * (`STATUS_JOIN`): the status's key and its parent's (issue #748).
+ */
+export const STATUS_COLUMNS = {
+  status_key: applications.statusKey,
+  status_parent_key: applicationStatuses.parentKey,
+} as const;
+
+/** The join that reads an application's status row beside it; no reference joins nothing and reads as New. */
+export const STATUS_JOIN = eq(applicationStatuses.key, applications.statusKey);
+
+/** The statuses that behave like Interview: the built-in one and every status added under it. */
+export function interviewStatuses() {
+  return getDb()
+    .select({ key: applicationStatuses.key })
+    .from(applicationStatuses)
+    .where(or(eq(applicationStatuses.key, "interview"), eq(applicationStatuses.parentKey, "interview")));
+}
+
+/**
  * The applications a lead's list holds, as one condition: those on the given
  * positions, without the withdrawn ones, which leave the list at once (issue
  * #169). The reads after the list name them by it rather than by the ids the
@@ -404,7 +444,7 @@ async function readApplicantsApplications(listed: SQL): Promise<ApplicantsApplic
       .select({
         id: applications.id,
         user_id: applications.userId,
-        status: applications.status,
+        ...STATUS_COLUMNS,
         applied_at: applications.appliedAt,
         accepted_at: applications.acceptedAt,
         nda_arrived_at: applications.ndaArrivedAt,
@@ -414,13 +454,17 @@ async function readApplicantsApplications(listed: SQL): Promise<ApplicantsApplic
         dept_name: departments.name,
       })
       .from(applications)
+      .leftJoin(applicationStatuses, STATUS_JOIN)
       .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
       .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
       .innerJoin(departments, eq(divisions.deptId, departments.id))
       .where(and(live, eq(applyPositions.isDeleted, false)))
       .orderBy(desc(applications.appliedAt)),
     readSlotsWhere(
-      inArray(interviewSlots.applicationId, db.select({ id: applications.id }).from(applications).where(and(live, eq(applications.status, "interview")))),
+      inArray(
+        interviewSlots.applicationId,
+        db.select({ id: applications.id }).from(applications).where(and(live, inArray(applications.statusKey, interviewStatuses()))),
+      ),
     ),
   ]);
   return { all, slots };
@@ -446,7 +490,8 @@ function otherApplicationsOf(row: { id: number; user_id: string | null }, { all,
       title: a.title ?? "Untitled position",
       department: a.dept_name,
       division: a.division_name,
-      stage: stateOf(a, slots.get(a.id) ?? []).stage,
+      status: stateOf(a, slots.get(a.id) ?? []).status,
+      listStatus: statusOfStored({ key: a.status_key, parentKey: a.status_parent_key }),
     }));
 }
 
@@ -477,11 +522,48 @@ function answersOf(raw: unknown[] | null): ApplicationEntry["answers"] {
   });
 }
 
+/** The stored status list, in the Status picker's order (board 97c, `statusListOf`). */
+async function readStatusList(): Promise<ListedStatus[]> {
+  const rows = await getDb()
+    .select({
+      key: applicationStatuses.key,
+      name: applicationStatuses.name,
+      colour: applicationStatuses.colour,
+      sortOrder: applicationStatuses.sortOrder,
+      parentKey: applicationStatuses.parentKey,
+    })
+    .from(applicationStatuses);
+  return statusListOf(rows);
+}
+
+/**
+ * How many applications use each status, by its key, anywhere on the team:
+ * the counts the Statuses editor shows and the in-use rule its delete asks
+ * (`deleteRefusal`). An application with no status reference counts as New.
+ */
+async function readStatusUses(): Promise<Record<string, number>> {
+  const rows = await getDb()
+    .select({ key: sql<string>`coalesce(${applications.statusKey}, 'new')`, uses: count() })
+    .from(applications)
+    .groupBy(sql`1`);
+  return Object.fromEntries(rows.map((r) => [r.key, Number(r.uses)]));
+}
+
+/**
+ * Whether the viewer manages the status list (`managesStatusList`): they may
+ * move an application on at least one of the positions they read
+ * Applications on, by the rule every application move asks.
+ */
+function managesStatuses(identity: Identity, positions: readonly ReadPosition[]): boolean {
+  return managesStatusList(positions, (p) => mayChangePositionIn(identity, "applications", p.unit));
+}
+
 async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
   if (!readsRecruitment(identity, "applications")) throw new DashboardRefused("applications");
   const now = new Date();
-  const [positions, scope] = await Promise.all([readPositionRows(identity, "applications", now), applicationsScope(identity)]);
-  if (positions.length === 0) return { scope, now: now.toISOString(), positions: [], applications: [] };
+  const [positions, scope, statuses] = await Promise.all([readPositionRows(identity, "applications", now), applicationsScope(identity), readStatusList()]);
+  const { teamLeader } = setterViewerOf(identity);
+  if (positions.length === 0) return { scope, now: now.toISOString(), positions: [], statuses, teamLeader, statusUses: null, applications: [] };
 
   const db = getDb();
   const cvFiles = alias(applicationFiles, "cv_files");
@@ -489,14 +571,14 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
   // The list, its applicants' other applications and interview times, and their standings, all in one round
   // trip after the positions: two round trips for the page, not four (issue #397).
   const listed = listedOn(positions.map((p) => p.id));
-  const [rows, others, standings] = await Promise.all([
+  const [rows, others, standings, statusUses] = await Promise.all([
     db
       .select({
         id: applications.id,
         user_id: applications.userId,
         position_id: applications.applyPositionId,
         applied_at: applications.appliedAt,
-        status: applications.status,
+        ...STATUS_COLUMNS,
         accepted_at: applications.acceptedAt,
         nda_arrived_at: applications.ndaArrivedAt,
         joined_at: applications.joinedAt,
@@ -525,6 +607,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
         letter_file_size: letterFiles.fileSize,
       })
       .from(applications)
+      .leftJoin(applicationStatuses, STATUS_JOIN)
       .innerJoin(users, eq(applications.userId, users.id))
       // An applicant with a member record shows its stored photo (issue #656).
       .leftJoin(members, eq(members.memberId, users.member))
@@ -534,6 +617,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
       .orderBy(desc(applications.appliedAt), desc(applications.id)),
     readApplicantsApplications(listed),
     readStandings(listed),
+    managesStatuses(identity, positions) ? readStatusUses() : null,
   ]);
   const { slots } = others;
   const byId = new Map(positions.map((p) => [p.id, p]));
@@ -541,6 +625,9 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
     scope,
     now: now.toISOString(),
     positions: positions.map((p) => ({ ref: p.ref, title: p.title, division: p.division, department: p.department })),
+    statuses,
+    teamLeader,
+    statusUses,
     applications: rows.flatMap((r): ApplicationEntry[] => {
       const position = r.position_id === null ? undefined : byId.get(r.position_id);
       if (!position) return [];
@@ -548,6 +635,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
         {
           id: r.id,
           state: stateOf(r, slots.get(r.id) ?? []),
+          status: statusOfStored({ key: r.status_key, parentKey: r.status_parent_key }),
           applicant: {
             name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email,
             photoUrl: r.picture,
@@ -622,12 +710,15 @@ async function readApplicationFor(identity: Identity, applicationId: number) {
       id: applications.id,
       position_id: applications.applyPositionId,
       status: applications.status,
+      ...STATUS_COLUMNS,
       applied_at: applications.appliedAt,
       accepted_at: applications.acceptedAt,
       nda_arrived_at: applications.ndaArrivedAt,
+      rejected_at: applications.rejectedAt,
       joined_at: applications.joinedAt,
     })
     .from(applications)
+    .leftJoin(applicationStatuses, STATUS_JOIN)
     .where(and(eq(applications.id, applicationId), isNull(applications.withdrawnAt)))
     .limit(1);
   if (!row || row.position_id === null || !(await mayChangePosition(identity, "applications", row.position_id))) {
@@ -636,73 +727,248 @@ async function readApplicationFor(identity: Identity, applicationId: number) {
   return row;
 }
 
-const statusFor: Readonly<Record<Exclude<ApplicationState["stage"], "withdrawn">, DbStatus>> = {
+/** The application as `readApplicationFor` read it: its old status and its status reference. */
+type ReadStatus = { readonly id: number; readonly status: DbStatus; readonly status_key: string | null };
+
+/**
+ * The application is still in the status it was read in: the old status
+ * column, which every move still writes (issue #748), and the status
+ * reference.
+ */
+function statusAsRead(row: ReadStatus): SQL | undefined {
+  return and(
+    eq(applications.status, row.status),
+    row.status_key === null ? isNull(applications.statusKey) : eq(applications.statusKey, row.status_key),
+  );
+}
+
+/** The old status column each status writes beside its status reference; it is no longer read for the state (issue #748). */
+const statusFor: Readonly<Record<Exclude<BuiltInStatusKey, "withdrawn">, DbStatus>> = {
   new: "received",
-  "in-review": "pending",
   interview: "interview",
-  accepted: "accepted",
+  accepted_email_to_be_sent: "accepted",
+  accepted_email_sent: "accepted",
+  nda_received: "accepted",
   joined: "joined",
-  rejected: "rejected",
+  rejected_email_to_be_sent: "rejected",
+  rejected_email_sent: "rejected",
+  accepted_for_another_position: "accepted_by_another_team",
 };
 
-export async function moveApplication(identity: Identity, applicationId: number, move: LeadMove): Promise<WriteResult<null>> {
+/**
+ * One approver move: an action button, or a saved hand pick in the Status
+ * picker (issue #750). Both run this one write. ./application-flow.ts says
+ * whether the move is legal and which built-in status it sets, and this
+ * writes that status beside what it keeps, with the effects of the step that
+ * sets it; a hand pick of an added status changes the status reference alone
+ * (`pickAddedStatus`).
+ */
+export async function moveApplication(identity: Identity, applicationId: number, move: ApproverMove): Promise<WriteResult<null>> {
   const row = await readApplicationFor(identity, applicationId);
+  const setter = setterViewerOf(identity);
+  if (move.kind === "pick-added") return pickAddedStatus(row, move, setter);
   const [slots, standings] = await Promise.all([readSlots([row.id]), readStandings(eq(applications.id, row.id))]);
   const before = stateOf(row, slots.get(row.id) ?? []);
   const standing = standings.get(row.id) ?? NEW_APPLICANT;
   const now = new Date();
-  const result = applyMove(before, move, now, standing);
+  const result = applyMove(before, move, now);
   if (!result.ok) return refused(result.reason);
-  // A move that changes nothing writes nothing: "open" on an interview keeps its times and booking.
-  if (!result.changed) return written(null);
   const after = result.state;
+  const statusKey = statusKeyAfter(row, after, move.kind === "pick" ? "pick" : "button");
+  // A move that changes nothing writes nothing: Change times to the same times keeps the booking.
+  if (!result.changed && statusKey === row.status_key) return written(null);
+  // Only the team leader sets "Accepted · email sent", by Mark email sent or by a hand pick (board 97e).
+  if (!maySetStatus(after.status, setter)) return refused(TEAM_LEADER_ONLY_REFUSAL);
   // Every write is guarded on the status it was read in, so two leads acting at once do not both land.
-  const unchanged = and(eq(applications.id, row.id), eq(applications.status, row.status), isNull(applications.withdrawnAt));
+  const unchanged = and(eq(applications.id, row.id), statusAsRead(row), isNull(applications.withdrawnAt));
+  const write = async (set: Partial<typeof applications.$inferInsert>) => {
+    const changed = await runAuditQuery((db) => db.update(applications).set(set).where(unchanged).returning({ id: applications.id }));
+    return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
+  };
 
-  switch (after.stage) {
+  switch (after.status) {
     case "withdrawn":
-      // Withdrawing is the applicant's (issue #169), never a lead move.
-      return refused("Only the applicant can withdraw an application.");
+      // A hand pick of Withdrawn has the applicant's Withdraw's effect (issue #169): it leaves the lead's list.
+      return write({ statusKey, withdrawnAt: now.toISOString() });
+
+    case "accepted_for_another_position":
+      // A hand pick of it writes what Confirm join writes on the person's other open applications.
+      return write({ status: statusFor[after.status], statusKey, rejectedAt: now.toISOString() });
 
     case "interview":
-      return (await offerSlots(row.id, row.status, after.offered, identity.userId)) ? written(null) : refused(APPLICATION_CHANGED);
+      return (await offerSlots(row, statusKey, after.offered, identity.userId)) ? written(null) : refused(APPLICATION_CHANGED);
 
-    case "accepted": {
-      const changed = await runAuditQuery((db) =>
-        db
-          .update(applications)
-          .set({
-            status: "accepted",
-            acceptedAt: after.acceptedAt,
-            rejectedAt: null,
-            ndaArrivedAt: after.ndaArrived ? (row.nda_arrived_at ?? now.toISOString()) : null,
-          })
-          .where(unchanged)
-          .returning({ id: applications.id }),
-      );
-      return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
-    }
+    case "accepted_email_to_be_sent":
+    case "accepted_email_sent":
+    case "nda_received":
+      return write({
+        status: statusFor[after.status],
+        statusKey,
+        acceptedAt: after.acceptedAt,
+        rejectedAt: null,
+        // NDA received records the day the signed NDA arrived; Confirm join reads it.
+        ndaArrivedAt: after.status === "nda_received" ? (row.nda_arrived_at ?? now.toISOString()) : null,
+      });
 
     case "joined": {
       if (!result.joinsTeam) return refused("That move does not add anyone to the team.");
-      const change = joinChange(standing);
-      if (!(await confirmJoin(identity, row.id, after.joinedAt, change))) return refused(APPLICATION_CHANGED);
+      if (!(await confirmJoin(identity, row, after.joinedAt, joinChange(standing)))) return refused(APPLICATION_CHANGED);
       refreshAfter("team", updateTag);
       return written(null);
     }
 
     case "new":
-    case "in-review":
-    case "rejected": {
-      // Reject records when it was decided, the time the applicant's pages
-      // count a month from (issue #317); moving it back clears it.
-      const rejectedAt = after.stage === "rejected" ? now.toISOString() : null;
-      const changed = await runAuditQuery((db) =>
-        db.update(applications).set({ status: statusFor[after.stage], rejectedAt }).where(unchanged).returning({ id: applications.id }),
-      );
-      return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
-    }
+      // Withdraw acceptance: back to New, with nothing of the acceptance kept.
+      return write({ status: statusFor.new, statusKey, acceptedAt: null, ndaArrivedAt: null, rejectedAt: null });
+
+    case "rejected_email_to_be_sent":
+      // Reject records when it was decided, the time the applicant's pages count a month from (issue #317).
+      return write({ status: statusFor[after.status], statusKey, acceptedAt: null, ndaArrivedAt: null, rejectedAt: now.toISOString() });
+
+    case "rejected_email_sent":
+      // Mark email sent keeps the day it was rejected; a hand pick from a status never rejected records it now, as Reject would.
+      return write({ status: statusFor[after.status], statusKey, acceptedAt: null, ndaArrivedAt: null, rejectedAt: row.rejected_at ?? now.toISOString() });
   }
+}
+
+/**
+ * A saved hand pick of an added status (issue #750): the application's
+ * status reference becomes that status, beside the days its parent's state
+ * reads that the row lacks (`daysOfAddedPick`), and nothing else changes,
+ * only while the key names a status added under a built-in one and the
+ * application is still in the status it was read in. A status added under
+ * "Accepted · email sent" is the team leader's to set, as its parent is
+ * (`maySetStatus`).
+ */
+async function pickAddedStatus(row: ReadStatus & StoredDays, pick: AddedPick, setter: StatusSetterViewer): Promise<WriteResult<null>> {
+  if (pick.key === row.status_key) return written(null);
+  const [added] = await getDb()
+    .select({ key: applicationStatuses.key, parentKey: applicationStatuses.parentKey })
+    .from(applicationStatuses)
+    .where(and(eq(applicationStatuses.key, pick.key), sql`${applicationStatuses.parentKey} is not null`))
+    .limit(1);
+  if (!added) return refused("That status is not in the list. Reload the page.");
+  const status = statusOfStored({ key: added.key, parentKey: added.parentKey });
+  if (!maySetStatus(status, setter)) return refused(TEAM_LEADER_ONLY_REFUSAL);
+  const days = daysOfAddedPick(builtInOf(status), row, new Date().toISOString());
+  const changed = await runAuditQuery((db) =>
+    db
+      .update(applications)
+      // A day the pick does not record is undefined, which the update leaves as it is.
+      .set({
+        statusKey: added.key,
+        acceptedAt: days.accepted_at,
+        ndaArrivedAt: days.nda_arrived_at,
+        rejectedAt: days.rejected_at,
+        joinedAt: days.joined_at,
+      })
+      .where(and(eq(applications.id, row.id), statusAsRead(row), isNull(applications.withdrawnAt)))
+      .returning({ id: applications.id }),
+  );
+  return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
+}
+
+// The status list ---------------------------------------------------------------
+
+/** A guarded status list write that changed no row: someone else changed the list first. */
+const LIST_CHANGED = "The status list changed. Reload the page.";
+
+/**
+ * One change in the Statuses editor (board 97d, issue #752): add a status
+ * under a built-in parent, rename and recolour any status, or delete an added
+ * one no application uses. Only someone who may move an application manages
+ * the list (`managesStatusList`), by the rule the page asks before it offers
+ * the editor; anyone else is refused before anything is read or written.
+ */
+async function changeStatusList(identity: Identity, change: StatusListChange): Promise<WriteResult<null>> {
+  if (!readsRecruitment(identity, "applications")) throw new DashboardRefused("the status list");
+  if (!managesStatuses(identity, await readPositionRows(identity, "applications", new Date()))) throw new DashboardRefused("the status list");
+  switch (change.kind) {
+    case "add":
+      return addStatus(change);
+    case "edit":
+      return editStatus(change);
+    case "delete":
+      return deleteStatus(change.key);
+  }
+}
+
+/** A new status, last under its built-in parent. */
+async function addStatus({ name, colour, parent }: Extract<StatusListChange, { kind: "add" }>): Promise<WriteResult<null>> {
+  const key = addedStatusKey(name, randomUUID().slice(0, 8));
+  const last = sql<number>`(select coalesce(max(s.sort_order), 0) + 1 from ${applicationStatuses} s where s.parent_key = ${parent})`;
+  const added = await runAuditQuery((db) =>
+    db.insert(applicationStatuses).values({ key, name, colour, parentKey: parent, sortOrder: last }).onConflictDoNothing().returning({ key: applicationStatuses.key }),
+  );
+  return added.length === 0 ? refused(LIST_CHANGED) : written(null);
+}
+
+/**
+ * Rename and recolour: a built-in status and an added one alike. The write is
+ * guarded on the name and colour the editor read, so of two people editing
+ * one status at once the later is told the list changed instead of silently
+ * undoing the earlier.
+ */
+async function editStatus({ key, was, name, colour }: Extract<StatusListChange, { kind: "edit" }>): Promise<WriteResult<null>> {
+  const changed = await runAuditQuery((db) =>
+    db
+      .update(applicationStatuses)
+      .set({ name, colour })
+      .where(and(eq(applicationStatuses.key, key), eq(applicationStatuses.name, was.name), eq(applicationStatuses.colour, was.colour)))
+      .returning({ key: applicationStatuses.key }),
+  );
+  return changed.length === 0 ? refused(LIST_CHANGED) : written(null);
+}
+
+/**
+ * Postgres' answers when a foreign key refuses a delete: restrict_violation
+ * for an `on delete restrict` key, as `applications.status_key` is, and
+ * foreign_key_violation for a `no action` one.
+ */
+const FOREIGN_KEY_REFUSALS: ReadonlySet<unknown> = new Set(["23001", "23503"]);
+
+function isForeignKeyRefusal(error: unknown): boolean {
+  for (let e = error; e instanceof Error; e = e.cause) {
+    if (FOREIGN_KEY_REFUSALS.has((e as { code?: unknown }).code)) return true;
+  }
+  return false;
+}
+
+/**
+ * Delete an added status, only while no application uses it (`deleteRefusal`).
+ * The delete itself is guarded on both, so an application moved to the status
+ * a moment earlier keeps it. One moved in while the delete runs is past the
+ * guard's reading, and the table's foreign key refuses the delete instead:
+ * that is the same in-use answer, read again below, not an error.
+ */
+async function deleteStatus(key: string): Promise<WriteResult<null>> {
+  if (isBuiltInStatusKey(key)) return refused(deleteRefusal({ kind: "built-in", key }, 0)!);
+  const deleted = await runAuditQuery((db) =>
+    db
+      .delete(applicationStatuses)
+      .where(
+        and(
+          eq(applicationStatuses.key, key),
+          isNotNull(applicationStatuses.parentKey),
+          sql`not exists (select 1 from ${applications} a where a.status_key = ${key})`,
+        ),
+      )
+      .returning({ key: applicationStatuses.key }),
+  ).catch((error: unknown) => {
+    if (isForeignKeyRefusal(error)) return [];
+    throw error;
+  });
+  if (deleted.length > 0) return written(null);
+  const [row] = await getDb().select({ parentKey: applicationStatuses.parentKey }).from(applicationStatuses).where(eq(applicationStatuses.key, key)).limit(1);
+  if (!row) return refused(LIST_CHANGED);
+  const [{ uses }] = await getDb().select({ uses: count() }).from(applications).where(eq(applications.statusKey, key));
+  const status = statusOfStored({ key, parentKey: row.parentKey });
+  return refused(deleteRefusal(status, Number(uses)) ?? LIST_CHANGED);
+}
+
+/** The viewer as the status list's team-leader rule reads them (`maySetStatus`, ./application-status.ts). */
+function setterViewerOf(identity: Identity): StatusSetterViewer {
+  return { teamLeader: isTeamLeader(identity) };
 }
 
 /** A guarded application write that changed no row: another lead or the applicant moved it first. */
@@ -714,9 +980,12 @@ const APPLICATION_CHANGED = "This application changed. Reload the page.";
  * only while it is still in the status it was read in and not withdrawn. The
  * slots are cleared and written only for the row the status update matched,
  * so a move another lead beat changes no slot. Each time records `offeredBy`,
- * the account that offered it (issue #652). True when the move landed.
+ * the account that offered it (issue #652). An application at Interview is
+ * not decided, so no decision day is kept: a hand pick of Interview from a
+ * decided status clears them (issue #750). True when the move landed.
  */
-async function offerSlots(applicationId: number, readStatus: DbStatus, offered: OfferedSlots, offeredBy: string): Promise<boolean> {
+async function offerSlots(read: ReadStatus, statusKey: string, offered: readonly SlotTime[], offeredBy: string): Promise<boolean> {
+  if (offered.length === 0) return false;
   const times = sql.join(
     offered.map((s) => sql`(${s.start}::timestamptz, ${s.end}::timestamptz)`),
     sql`, `,
@@ -724,8 +993,10 @@ async function offerSlots(applicationId: number, readStatus: DbStatus, offered: 
   const [result] = await runAuditBatch((db) => [
     db.execute(sql`
       with moved as (
-        update ${applications} set status = 'interview'
-        where id = ${applicationId} and status = ${readStatus} and withdrawn_at is null
+        update ${applications}
+        set status = 'interview', status_key = ${statusKey}, accepted_at = null, nda_arrived_at = null, rejected_at = null
+        where id = ${read.id} and status = ${read.status}
+          and status_key is not distinct from ${read.status_key}::text and withdrawn_at is null
         returning id
       ),
       cleared as (
@@ -795,20 +1066,29 @@ async function readStandings(which: SQL): Promise<Map<number, ApplicantStanding>
  * Confirm join (58h and 58h2, and the Members page's banner, 59): the one
  * write that adds a person to the team, doing what `joinChange`
  * (./application-flow.ts) decided. In one statement, and only while the
- * application is still accepted with the NDA arrived, or the applicant is on
- * the team already and so signed the team's one NDA: a new `members` row (the
+ * application is still in the status it was read in (NDA received, or a
+ * status added under it) with the signed NDA's day recorded, whoever the
+ * applicant is (ADR 0014, amendment of 2026-10-25): a new `members` row (the
  * NDA date, the name and the confirming lead on it) linked from their `users`
  * row for a new person, a member role titled with the position in its
  * division unless they already hold an active role in that division, then the
  * application marked joined. A member keeps every other role they hold and no
  * NDA date is written for them (issue #229). The guards are repeated in the
  * statement so a person who joined the division meanwhile still gets no
- * second role in it. Their other applications are not touched. True when the
- * application was marked joined.
+ * second role in it. The person's other open applications (their status
+ * behaves like one of `OPEN_STATUSES`, ./application-flow.ts, or they have no
+ * status reference, which reads as New) are set to "Accepted for another
+ * position", with the join's day as their decision day; their decided and
+ * withdrawn ones keep their status (issue #749). True when the application
+ * was marked joined.
  */
-async function confirmJoin(identity: Identity, applicationId: number, joinedAt: string, change: JoinChange): Promise<boolean> {
+async function confirmJoin(identity: Identity, read: ReadStatus, joinedAt: string, change: JoinChange): Promise<boolean> {
   const addMember = change === "new-member";
   const addRole = change !== "nothing";
+  const open = sql.join(
+    OPEN_STATUSES.map((key) => sql`${key}`),
+    sql`, `,
+  );
   const result = await runAuditQuery((db) =>
     db.execute(sql`
       with app as (
@@ -818,11 +1098,9 @@ async function confirmJoin(identity: Identity, applicationId: number, joinedAt: 
         join ${users} u on u.id = a.user_id
         join ${applyPositions} p on p.id = a.apply_position_id
         join ${divisions} d on d.id = p.division_id
-        where a.id = ${applicationId} and a.status = 'accepted' and a.withdrawn_at is null
-          and (
-            a.nda_arrived_at is not null
-            or exists (select 1 from ${roles} r where r.member_id = u.member and r.leaved_at is null)
-          )
+        where a.id = ${read.id} and a.status = ${read.status}
+          and a.status_key is not distinct from ${read.status_key}::text
+          and a.withdrawn_at is null and a.nda_arrived_at is not null
       ),
       new_member as (
         insert into ${members} (nda_signed_at, nda_name, nda_confirmed_by, nda_confirmed_by_acting_account)
@@ -849,9 +1127,22 @@ async function confirmJoin(identity: Identity, applicationId: number, joinedAt: 
             select 1 from ${roles} r where r.member_id = app.member_id and r.division_id = app.division_id and r.leaved_at is null
           )
         returning id
+      ),
+      taken_elsewhere as (
+        update ${applications} other
+        set status = 'accepted_by_another_team', status_key = 'accepted_for_another_position', rejected_at = ${joinedAt}
+        where other.user_id = (select user_id from app) and other.id <> ${read.id}
+          and other.withdrawn_at is null
+          and exists (select 1 from the_member)
+          and (
+            other.status_key is null
+            or other.status_key in (${open})
+            or exists (select 1 from ${applicationStatuses} s where s.key = other.status_key and s.parent_key in (${open}))
+          )
+        returning other.id
       )
-      update ${applications} set status = 'joined', joined_at = ${joinedAt}
-      where id = ${applicationId} and exists (select 1 from the_member)
+      update ${applications} set status = 'joined', status_key = 'joined', joined_at = ${joinedAt}
+      where id = ${read.id} and exists (select 1 from the_member)
       returning id
     `),
   );
@@ -866,6 +1157,7 @@ export function databaseRecruitmentPages(identity: Identity) {
     setPositionOpen: (id: number, open: boolean) => setPositionOpen(identity, id, open),
     createPosition: (input: unknown) => createPosition(identity, input),
     editPosition: (id: number, input: unknown) => editPosition(identity, id, input),
-    moveApplication: (id: number, move: LeadMove) => moveApplication(identity, id, move),
+    moveApplication: (id: number, move: ApproverMove) => moveApplication(identity, id, move),
+    changeStatusList: (change: StatusListChange) => changeStatusList(identity, change),
   };
 }

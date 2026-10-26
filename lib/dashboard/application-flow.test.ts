@@ -3,13 +3,16 @@ import { test } from "node:test";
 import {
   applyMove,
   checkOffer,
-  footerSteps,
   interviewIcs,
   joinChange,
+  leadSteps,
   memberDivisionNames,
   memberStanding,
   NEW_APPLICANT,
+  moveToStatus,
+  parseApproverMove,
   parseLeadMove,
+  statusAfter,
   pickedCount,
   pickerFirstMonth,
   pickerFirstWeekOf,
@@ -17,17 +20,22 @@ import {
   pickerWeek,
   romeTime,
   timesOnDay,
-  stagePill,
+  statusPill,
   slotAt,
   studiesLine,
+  takenByJoinElsewhere,
   type ApplicationMove,
   type ApplicationState,
+  type LeadMove,
+  type PickTarget,
   type SlotTime,
 } from "./application-flow";
+import { BUILT_IN_STATUS_KEYS, type BuiltInStatusKey } from "./application-status";
 import { placeOf, type Interview } from "./my-applications";
 import { membershipsOf } from "./team";
 
-// Where an application stands and how it moves (boards 58 to 58i, issue #171).
+// Where an application stands and how it moves (boards 58 to 58i and 97 to
+// 97e, issues #171 and #749).
 
 const now = new Date("2026-10-09T16:00:00+02:00");
 const NEW = NEW_APPLICANT;
@@ -41,145 +49,187 @@ const MATTEO = memberStanding(MATTEO_DIVISIONS, (id) => DIVISION_NAMES[id], 1, 2
 const slot = (iso: string): SlotTime => slotAt(iso, 30);
 const thu = slot("2026-10-15T17:30:00+02:00");
 const fri = slot("2026-10-16T18:00:00+02:00");
+const acceptedDay = "2026-10-05T10:00:00.000Z";
 
-const STATES: Record<ApplicationState["stage"], ApplicationState> = {
-  new: { stage: "new" },
-  "in-review": { stage: "in-review" },
-  interview: { stage: "interview", offered: [thu, fri], booked: null },
-  accepted: { stage: "accepted", acceptedAt: now.toISOString(), ndaArrived: false },
-  joined: { stage: "joined", joinedAt: now.toISOString() },
-  rejected: { stage: "rejected" },
-  withdrawn: { stage: "withdrawn" },
+const STATES: Record<BuiltInStatusKey, ApplicationState> = {
+  new: { status: "new" },
+  interview: { status: "interview", offered: [thu, fri], booked: null },
+  accepted_email_to_be_sent: { status: "accepted_email_to_be_sent", acceptedAt: acceptedDay },
+  accepted_email_sent: { status: "accepted_email_sent", acceptedAt: acceptedDay },
+  nda_received: { status: "nda_received", acceptedAt: acceptedDay },
+  joined: { status: "joined", joinedAt: acceptedDay },
+  rejected_email_to_be_sent: { status: "rejected_email_to_be_sent" },
+  rejected_email_sent: { status: "rejected_email_sent" },
+  accepted_for_another_position: { status: "accepted_for_another_position" },
+  withdrawn: { status: "withdrawn" },
 };
 
 function after(state: ApplicationState, move: ApplicationMove): ApplicationState {
-  const result = applyMove(state, move, now, NEW);
-  assert.ok(result.ok, `${move.kind} from ${state.stage}: ${result.ok ? "" : result.reason}`);
+  const result = applyMove(state, move, now);
+  assert.ok(result.ok, `${move.kind} from ${state.status}: ${result.ok ? "" : result.reason}`);
   return result.state;
 }
 
-/** The stages a move is legal from; every other stage refuses it. */
-function legalFrom(move: ApplicationMove): string[] {
-  return Object.values(STATES)
-    .filter((s) => applyMove(s, move, now, NEW).ok)
-    .map((s) => s.stage);
+/** One of each lead move, with times still to come for an offer. */
+const LEAD_MOVES: readonly LeadMove[] = [
+  { kind: "offer-interview", slots: [thu] },
+  { kind: "accept" },
+  { kind: "reject" },
+  { kind: "withdraw-acceptance" },
+  { kind: "mark-email-sent" },
+  { kind: "nda-received" },
+  { kind: "confirm-join" },
+];
+
+/**
+ * The owner's button table (2026-10-25, on epic #588), as the owner wrote it:
+ * each built-in status's buttons, in order, and the status each one sets.
+ */
+const OWNER_TABLE: Record<BuiltInStatusKey, readonly (readonly [label: string, move: LeadMove["kind"], sets: BuiltInStatusKey])[]> = {
+  new: [
+    ["Move to interview", "offer-interview", "interview"],
+    ["Reject", "reject", "rejected_email_to_be_sent"],
+  ],
+  interview: [
+    ["Change times", "offer-interview", "interview"],
+    ["Accept", "accept", "accepted_email_to_be_sent"],
+    ["Reject", "reject", "rejected_email_to_be_sent"],
+  ],
+  accepted_email_to_be_sent: [
+    ["Mark email sent", "mark-email-sent", "accepted_email_sent"],
+    ["Withdraw acceptance", "withdraw-acceptance", "new"],
+  ],
+  accepted_email_sent: [["NDA received", "nda-received", "nda_received"]],
+  nda_received: [["Confirm join", "confirm-join", "joined"]],
+  rejected_email_to_be_sent: [["Mark email sent", "mark-email-sent", "rejected_email_sent"]],
+  joined: [],
+  withdrawn: [],
+  rejected_email_sent: [],
+  accepted_for_another_position: [],
+};
+
+for (const [status, row] of Object.entries(OWNER_TABLE) as [BuiltInStatusKey, (typeof OWNER_TABLE)[BuiltInStatusKey]][]) {
+  test(`${status}: offers exactly the table's buttons, and each sets the status the table names`, () => {
+    assert.deepEqual(
+      leadSteps(status).map((s) => [s.label, s.move, s.sets]),
+      row.map((r) => [...r]),
+    );
+    // The move a button runs is legal here and lands on the status the table names; every other lead move is refused.
+    for (const move of LEAD_MOVES) {
+      const result = applyMove(STATES[status], move, now);
+      const button = row.find(([, kind]) => kind === move.kind);
+      if (button) {
+        assert.ok(result.ok, `${move.kind} from ${status}: ${result.ok ? "" : result.reason}`);
+        assert.equal(result.state.status, button[2], `${move.kind} from ${status}`);
+      } else {
+        assert.equal(result.ok, false, `${move.kind} is refused from ${status}`);
+      }
+    }
+  });
 }
 
-test("opening a New application moves it to In review; opening any other changes nothing", () => {
-  assert.deepEqual(after(STATES.new, { kind: "open" }), { stage: "in-review" });
-  for (const state of Object.values(STATES).filter((s) => s.stage !== "new")) {
-    assert.deepEqual(after(state, { kind: "open" }), state);
-  }
+test("an added status offers its parent's buttons", () => {
+  const secondInterview = { kind: "added", key: "second_interview", parent: "interview" } as const;
+  assert.deepEqual(leadSteps(secondInterview), leadSteps("interview"));
+  assert.deepEqual(leadSteps({ kind: "added", key: "waiting_for_papers", parent: "nda_received" }), leadSteps("nda_received"));
+  assert.deepEqual(leadSteps({ kind: "added", key: "on_hold", parent: "joined" }), []);
 });
 
-test("a move that leaves the state as it was reports no change, so a data source writes nothing", () => {
-  const booked = after(STATES.interview, { kind: "book", start: thu.start });
-  for (const state of [...Object.values(STATES), booked].filter((s) => s.stage !== "new")) {
-    const opened = applyMove(state, { kind: "open" }, now, NEW);
-    assert.ok(opened.ok);
-    assert.equal(opened.changed, false);
-  }
-  const untouched = applyMove(STATES.accepted, { kind: "set-nda", arrived: false }, now, NEW);
-  assert.ok(untouched.ok);
-  assert.equal(untouched.changed, false);
-  for (const [state, move] of [
-    [STATES.new, { kind: "open" }],
-    [booked, { kind: "offer-interview", slots: [thu, fri] }],
-    [STATES.accepted, { kind: "set-nda", arrived: true }],
-    [STATES.interview, { kind: "accept" }],
-  ] as const) {
-    const result = applyMove(state, move, now, NEW);
-    assert.ok(result.ok);
-    assert.equal(result.changed, true);
-  }
-});
-
-test("each move is legal only from the stages the flow allows", () => {
-  assert.deepEqual(legalFrom({ kind: "offer-interview", slots: [thu] }), ["new", "in-review", "interview"]);
-  assert.deepEqual(legalFrom({ kind: "book", start: thu.start }), ["interview"]);
-  assert.deepEqual(legalFrom({ kind: "accept" }), ["interview"]);
-  assert.deepEqual(legalFrom({ kind: "reject" }), ["new", "in-review", "interview", "accepted"]);
-  assert.deepEqual(legalFrom({ kind: "set-nda", arrived: true }), ["accepted"]);
-  assert.deepEqual(legalFrom({ kind: "withdraw" }), ["new", "in-review", "interview", "accepted"]);
-  // Confirm join waits for the NDA, so no stage takes it as it stands.
-  assert.deepEqual(legalFrom({ kind: "confirm-join" }), []);
-});
-
-test("an interview offer needs times still to come, one length, none twice", () => {
-  assert.equal(applyMove(STATES.new, { kind: "offer-interview", slots: [] }, now, NEW).ok, false);
-  assert.equal(applyMove(STATES.new, { kind: "offer-interview", slots: [slot("2026-10-08T17:00:00+02:00")] }, now, NEW).ok, false);
-  assert.equal(applyMove(STATES.new, { kind: "offer-interview", slots: [thu, thu] }, now, NEW).ok, false);
-  assert.equal(applyMove(STATES.new, { kind: "offer-interview", slots: [thu, slotAt(fri.start, 60)] }, now, NEW).ok, false);
-  assert.deepEqual(after(STATES.new, { kind: "offer-interview", slots: [fri, thu] }), { stage: "interview", offered: [thu, fri], booked: null });
-});
-
-test("Change times offers new times and clears the booking", () => {
-  const booked = after(STATES.interview, { kind: "book", start: thu.start });
-  assert.equal(booked.stage === "interview" && booked.booked?.slot.start, thu.start);
-  assert.deepEqual(after(booked, { kind: "offer-interview", slots: [fri] }), { stage: "interview", offered: [fri], booked: null });
-  assert.equal(applyMove(STATES.interview, { kind: "book", start: slot("2026-10-14T17:00:00+02:00").start }, now, NEW).ok, false);
-});
-
-test("Accept only marks the application accepted: no one joins the team", () => {
-  const result = applyMove(STATES.interview, { kind: "accept" }, now, NEW);
-  assert.ok(result.ok);
-  assert.equal(result.joinsTeam, false);
-  assert.deepEqual(result.state, { stage: "accepted", acceptedAt: now.toISOString(), ndaArrived: false });
-});
-
-test("Accept never skips the interview: from In review it is refused and the state stays as it was", () => {
-  const before = { stage: "in-review" } as const;
-  const result = applyMove(before, { kind: "accept" }, now, NEW);
-  assert.deepEqual(result, { ok: false, reason: "Only an application at interview can be accepted." });
-  assert.deepEqual(before, { stage: "in-review" });
-});
-
-test("after Accept the outlined button reads Withdraw acceptance, and it rejects", () => {
-  assert.equal(footerSteps(STATES.interview, NEW, "Mission Analysis")?.secondary.label, "Reject");
+test("Accept records the day, and the email and NDA statuses after it keep that day", () => {
   const accepted = after(STATES.interview, { kind: "accept" });
-  assert.deepEqual(footerSteps(accepted, NEW, "Mission Analysis")?.secondary, { label: "Withdraw acceptance", move: "reject" });
-  assert.deepEqual(after(accepted, { kind: "reject" }), { stage: "rejected" });
+  assert.deepEqual(accepted, { status: "accepted_email_to_be_sent", acceptedAt: now.toISOString() });
+  const sent = after(accepted, { kind: "mark-email-sent" });
+  assert.deepEqual(sent, { status: "accepted_email_sent", acceptedAt: now.toISOString() });
+  assert.deepEqual(after(sent, { kind: "nda-received" }), { status: "nda_received", acceptedAt: now.toISOString() });
 });
 
-test("Confirm join is ready only after the NDA tick, and only it adds the person to the team", () => {
-  const accepted = after(STATES.interview, { kind: "accept" });
-  assert.equal(footerSteps(accepted, NEW, "Mission Analysis")?.primary.ready, false);
-  assert.equal(applyMove(accepted, { kind: "confirm-join" }, now, NEW).ok, false);
-  assert.equal(stagePill(accepted, NEW).label, "Accepted · waiting for NDA");
-
-  const arrived = after(accepted, { kind: "set-nda", arrived: true });
-  assert.equal(footerSteps(arrived, NEW, "Mission Analysis")?.primary.ready, true);
-  const joined = applyMove(arrived, { kind: "confirm-join" }, now, NEW);
+test("only Confirm join adds the person to the team", () => {
+  const joined = applyMove(STATES.nda_received, { kind: "confirm-join" }, now);
   assert.ok(joined.ok);
   assert.equal(joined.joinsTeam, true);
-  assert.deepEqual(joined.state, { stage: "joined", joinedAt: now.toISOString() });
-
-  // Un-ticking takes the readiness back.
-  assert.equal(applyMove(after(arrived, { kind: "set-nda", arrived: false }), { kind: "confirm-join" }, now, NEW).ok, false);
-  // No move but Confirm join ever adds someone.
+  assert.deepEqual(joined.state, { status: "joined", joinedAt: now.toISOString() });
   for (const state of Object.values(STATES)) {
-    for (const move of [{ kind: "open" }, { kind: "accept" }, { kind: "reject" }, { kind: "set-nda", arrived: true }] as const) {
-      const result = applyMove(state, move, now, NEW);
-      assert.ok(!result.ok || !result.joinsTeam);
+    for (const move of LEAD_MOVES.filter((m) => m.kind !== "confirm-join")) {
+      const result = applyMove(state, move, now);
+      assert.ok(!result.ok || !result.joinsTeam, `${move.kind} from ${state.status}`);
     }
   }
 });
 
-test("the stage pill reads the booked time, or no time yet", () => {
-  assert.equal(stagePill(STATES.interview, NEW).label, "Interview · no time yet");
+test("Confirm join sets a person's other open applications to Accepted for another position, and none of their decided ones", () => {
+  const open: BuiltInStatusKey[] = ["new", "interview", "accepted_email_to_be_sent", "accepted_email_sent", "nda_received"];
+  for (const status of Object.keys(STATES) as BuiltInStatusKey[]) {
+    assert.equal(takenByJoinElsewhere({ kind: "built-in", key: status }), open.includes(status), status);
+  }
+  // An added status goes with its parent.
+  assert.equal(takenByJoinElsewhere({ kind: "added", key: "second_interview", parent: "interview" }), true);
+  assert.equal(takenByJoinElsewhere({ kind: "added", key: "late_refusal", parent: "rejected_email_sent" }), false);
+});
+
+test("a person already on the team reaches Joined only through NDA received and Confirm join (ADR 0014, 2026-10-25)", () => {
+  // The standing changes nothing about the buttons: Confirm join is offered only from NDA received.
+  for (const status of Object.keys(STATES) as BuiltInStatusKey[]) {
+    const joins = leadSteps(status).some((s) => s.move === "confirm-join");
+    assert.equal(joins, status === "nda_received", status);
+  }
+  const accepted = after(STATES.interview, { kind: "accept" });
+  assert.equal(applyMove(accepted, { kind: "confirm-join" }, now).ok, false);
+  assert.equal(applyMove(after(accepted, { kind: "mark-email-sent" }), { kind: "confirm-join" }, now).ok, false);
+  // What Confirm join adds for them is still only the new division (board 58h2).
+  assert.equal(joinChange(MATTEO), "new-division");
+});
+
+test("the applicant withdraws an open application only", () => {
+  for (const status of Object.keys(STATES) as BuiltInStatusKey[]) {
+    const result = applyMove(STATES[status], { kind: "withdraw" }, now);
+    const open = ["new", "interview", "accepted_email_to_be_sent", "accepted_email_sent", "nda_received"].includes(status);
+    assert.equal(result.ok, open, status);
+    if (result.ok) assert.deepEqual(result.state, { status: "withdrawn" });
+  }
+});
+
+test("Change times to the times already offered reports no change, so a data source writes nothing", () => {
+  const again = applyMove(STATES.interview, { kind: "offer-interview", slots: [thu, fri] }, now);
+  assert.ok(again.ok);
+  assert.equal(again.changed, false);
+});
+
+test("an interview offer needs times still to come, one length, none twice", () => {
+  assert.equal(applyMove(STATES.new, { kind: "offer-interview", slots: [] }, now).ok, false);
+  assert.equal(applyMove(STATES.new, { kind: "offer-interview", slots: [slot("2026-10-08T17:00:00+02:00")] }, now).ok, false);
+  assert.equal(applyMove(STATES.new, { kind: "offer-interview", slots: [thu, thu] }, now).ok, false);
+  assert.equal(applyMove(STATES.new, { kind: "offer-interview", slots: [thu, slotAt(fri.start, 60)] }, now).ok, false);
+  assert.deepEqual(after(STATES.new, { kind: "offer-interview", slots: [fri, thu] }), { status: "interview", offered: [thu, fri], booked: null });
+});
+
+test("Change times offers new times and clears the booking", () => {
   const booked = after(STATES.interview, { kind: "book", start: thu.start });
-  assert.equal(stagePill(booked, NEW).label, "Interview · Thu 15, 17:30");
-  assert.equal(stagePill(booked, NEW).short, "Interview · Thu 15");
+  assert.equal(booked.status === "interview" && booked.booked?.slot.start, thu.start);
+  assert.deepEqual(after(booked, { kind: "offer-interview", slots: [fri] }), { status: "interview", offered: [fri], booked: null });
+  assert.equal(applyMove(STATES.interview, { kind: "book", start: slot("2026-10-14T17:00:00+02:00").start }, now).ok, false);
+});
+
+test("the status pill reads the booked time, or no time yet, and every other status by its name", () => {
+  assert.equal(statusPill(STATES.interview).label, "Interview · no time yet");
+  const booked = after(STATES.interview, { kind: "book", start: thu.start });
+  assert.equal(statusPill(booked).label, "Interview · Thu 15, 17:30");
+  assert.equal(statusPill(booked).short, "Interview · Thu 15");
+  assert.equal(statusPill(STATES.accepted_email_to_be_sent).label, "Accepted · email to be sent");
+  // A name the Statuses editor gave the status is the pill's, the booked time kept and no stale phone wording (issue #752).
+  assert.deepEqual(statusPill(booked, "First round"), { label: "First round · Thu 15, 17:30", short: "First round · Thu 15" });
+  assert.equal(statusPill(STATES.accepted_email_to_be_sent, "Offer to send").short, "Offer to send");
 });
 
 test("a move from the browser is read only in a shape the flow knows", () => {
-  assert.deepEqual(parseLeadMove({ kind: "open" }), { kind: "open" });
-  assert.deepEqual(parseLeadMove({ kind: "set-nda", arrived: true }), { kind: "set-nda", arrived: true });
+  assert.deepEqual(parseLeadMove({ kind: "mark-email-sent" }), { kind: "mark-email-sent" });
   assert.deepEqual(parseLeadMove({ kind: "offer-interview", slots: [{ start: thu.start, end: thu.end }] }), {
     kind: "offer-interview",
     slots: [thu],
   });
   assert.equal(parseLeadMove({ kind: "offer-interview", slots: [{ start: thu.start, end: slotAt(thu.start, 25).end }] }), null);
+  // Opening no longer moves an application (ruling R1.2 on #745), and the NDA tick is now the NDA received button.
+  assert.equal(parseLeadMove({ kind: "open" }), null);
+  assert.equal(parseLeadMove({ kind: "set-nda", arrived: true }), null);
   assert.equal(parseLeadMove({ kind: "withdraw" }), null);
   assert.equal(parseLeadMove({ kind: "book", start: thu.start }), null);
   assert.equal(parseLeadMove("accept"), null);
@@ -289,21 +339,6 @@ test("Confirm join gives a new person a member row, a returning one a role, a me
   assert.deepEqual(memberDivisionNames(MATTEO), ["Design & Manufacturing", "Optimization and Analysis"]);
 });
 
-test("a member joins a new division with no NDA wait, and no second NDA is ever recorded (board 58h2)", () => {
-  const accepted = after(STATES.interview, { kind: "accept" });
-  // Ready at once: the main button adds them to the division.
-  assert.deepEqual(footerSteps(accepted, MATTEO, "Mission Analysis")?.primary, { label: "Add to Mission Analysis", move: "confirm-join", ready: true });
-  assert.equal(stagePill(accepted, MATTEO).label, "Accepted");
-  // The NDA tick is refused: they signed the team's one NDA when they joined.
-  assert.equal(applyMove(accepted, { kind: "set-nda", arrived: true }, now, MATTEO).ok, false);
-  const joined = applyMove(accepted, { kind: "confirm-join" }, now, MATTEO);
-  assert.ok(joined.ok);
-  assert.equal(joined.joinsTeam, true);
-  assert.deepEqual(joined.state, { stage: "joined", joinedAt: now.toISOString() });
-  // Someone off the team still waits for the NDA.
-  assert.equal(applyMove(accepted, { kind: "confirm-join" }, now, { kind: "alumnus" }).ok, false);
-});
-
 test("a time offered more than 4 weeks ahead passes the offer and reaches the applicant's picker (#212, #222)", () => {
   // Ten weeks after `now`: past the old 4-week picker limit that #212 removed.
   const farAhead = slot("2026-12-17T17:30:00+01:00");
@@ -311,14 +346,78 @@ test("a time offered more than 4 weeks ahead passes the offer and reaches the ap
 
   const offer = checkOffer([farAhead], now);
   assert.ok(offer.ok, offer.ok ? "" : offer.reason);
-  assert.deepEqual(after(STATES["in-review"], { kind: "offer-interview", slots: [farAhead] }), {
-    stage: "interview",
+  assert.deepEqual(after(STATES.new, { kind: "offer-interview", slots: [farAhead] }), {
+    status: "interview",
     offered: [farAhead],
     booked: null,
   });
 
   // The applicant's side (board 50c): the stored offer comes back as their interview stage.
   const interview: Interview = { lead: "Marco Bianchi", slots: [{ id: 1, start: farAhead.start, end: farAhead.end }], chosen: null };
-  const place = placeOf({ status: "interview", appliedAt: "2026-10-01T09:00:00.000Z", withdrawnAt: null, acceptedAt: null, rejectedAt: null, joinedAt: null }, interview, null);
+  const place = placeOf({ status: { kind: "built-in", key: "interview" }, appliedAt: "2026-10-01T09:00:00.000Z", withdrawnAt: null, acceptedAt: null, rejectedAt: null, joinedAt: null }, interview, null);
   assert.deepEqual(place, { kind: "active", stage: { kind: "interview", interview } });
+});
+
+// The Status picker's hand pick (boards 97 to 97c, issue #750, ruling R1.1 on #745) ----------------------
+
+/** The pick target for a built-in status, with times still to come for Interview. */
+const target = (to: BuiltInStatusKey): PickTarget => (to === "interview" ? { to, slots: [thu] } : { to });
+
+for (const [status, row] of Object.entries(OWNER_TABLE) as [BuiltInStatusKey, (typeof OWNER_TABLE)[BuiltInStatusKey]][]) {
+  for (const [label, kind, sets] of row) {
+    test(`a saved hand pick of ${sets} from ${status} runs the ${label} button's own move`, () => {
+      assert.equal(moveToStatus(STATES[status], target(sets), "button").kind, kind);
+      const pickMove = moveToStatus(STATES[status], target(sets), "pick");
+      assert.equal(pickMove.kind, "pick");
+      const byButton = applyMove(STATES[status], LEAD_MOVES.find((m) => m.kind === kind)!, now);
+      assert.deepEqual(applyMove(STATES[status], pickMove, now), byButton);
+    });
+  }
+}
+
+test("a hand pick of each built-in status reaches it with the effects of the step that sets it", () => {
+  for (const to of BUILT_IN_STATUS_KEYS) {
+    // From New no button sets most statuses, so the pick runs as a `pick`, judged by that step's own checks.
+    const from = to === "joined" ? STATES.nda_received : STATES.new;
+    const result = applyMove(from, moveToStatus(from, target(to), "pick"), now);
+    assert.ok(result.ok, `${to}: ${result.ok ? "" : result.reason}`);
+    assert.equal(result.state.status, to);
+    assert.equal(result.joinsTeam, to === "joined", `${to}: only Confirm join adds the person to the team`);
+  }
+  assert.deepEqual(after(STATES.new, { kind: "pick", to: "accepted_email_sent" }), { status: "accepted_email_sent", acceptedAt: now.toISOString() });
+  assert.deepEqual(after(STATES.interview, { kind: "pick", to: "nda_received" }), { status: "nda_received", acceptedAt: now.toISOString() });
+  assert.deepEqual(after(STATES.accepted_email_sent, { kind: "pick", to: "new" }), { status: "new" });
+});
+
+test("a hand pick keeps each step's own checks", () => {
+  for (const status of BUILT_IN_STATUS_KEYS.filter((s) => s !== "nda_received")) {
+    assert.equal(applyMove(STATES[status], { kind: "pick", to: "joined" }, now).ok, false, `Joined needs the signed NDA, not ${status}`);
+  }
+  assert.equal(applyMove(STATES.new, { kind: "pick", to: "interview", slots: [] }, now).ok, false, "Interview needs offered times");
+  for (const decided of ["joined", "rejected_email_sent", "accepted_for_another_position"] as const) {
+    assert.equal(applyMove(STATES[decided], { kind: "pick", to: "withdrawn" }, now).ok, false, `withdrawn from ${decided}`);
+    assert.equal(applyMove(STATES[decided], { kind: "pick", to: "accepted_for_another_position" }, now).ok, false, `another position from ${decided}`);
+  }
+});
+
+test("after a button an added status stays where the button keeps its built-in status; after a pick the picked status stands", () => {
+  const second = { kind: "added", key: "second_interview", parent: "interview" } as const;
+  assert.deepEqual(statusAfter(second, STATES.interview, "button"), second);
+  assert.deepEqual(statusAfter(second, STATES.interview, "pick"), { kind: "built-in", key: "interview" });
+  assert.deepEqual(statusAfter(second, STATES.accepted_email_to_be_sent, "button"), { kind: "built-in", key: "accepted_email_to_be_sent" });
+});
+
+test("a hand pick from the browser is checked for shape", () => {
+  assert.deepEqual(parseApproverMove({ kind: "pick", to: "joined" }), { kind: "pick", to: "joined" });
+  assert.deepEqual(parseApproverMove({ kind: "pick", to: "interview", slots: [{ start: thu.start, end: thu.end }] }), {
+    kind: "pick",
+    to: "interview",
+    slots: [thu],
+  });
+  assert.equal(parseApproverMove({ kind: "pick", to: "interview" }), null, "Interview carries its times");
+  assert.equal(parseApproverMove({ kind: "pick", to: "in_review" }), null);
+  assert.deepEqual(parseApproverMove({ kind: "pick-added", key: "second_interview" }), { kind: "pick-added", key: "second_interview" });
+  assert.equal(parseApproverMove({ kind: "pick-added", key: "joined" }), null, "a built-in key is no added status");
+  assert.equal(parseApproverMove({ kind: "pick-added", key: "" }), null);
+  assert.deepEqual(parseApproverMove({ kind: "accept" }), { kind: "accept" });
 });

@@ -728,7 +728,7 @@ async function moveToAlumni(identity: DashboardIdentity, personId: number, depar
 /**
  * Confirm join from the Members page's banner (boards 59, 69m) is the
  * Applications page's Confirm join (58h): the same move, through the same
- * rule, so it waits for the NDA tick, marks the application joined and never
+ * rule, so it waits for NDA received, marks the application joined and never
  * gives someone already on the team a second role. The Applications area
  * decides who may, here as there (Owner decision, 2026-10-22, issue #584):
  * `moveApplication` asks its own rule, and the Members area adds none.

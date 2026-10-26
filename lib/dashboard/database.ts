@@ -8,6 +8,7 @@ import { cachedReadTags, refreshAfter } from "@/lib/cache-tags";
 import { getDb, isDatabaseConfigured } from "@/db/client";
 import {
   applications,
+  applicationStatuses,
   applyPositions,
   betterAuthUsers,
   departments,
@@ -63,7 +64,9 @@ import {
 } from "./overview";
 import { readActivityLog } from "./database-activity-log";
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
-import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
+import { databaseRecruitmentPages, interviewStatuses, readSlots, STATUS_COLUMNS, STATUS_JOIN } from "./database-recruitment";
+import { readsAsNew } from "./stored-application";
+import { statusOfStored } from "./application-status";
 import { divisionOverviewOf, membersScopeOf, overviewAreasOf, type DivisionFigures } from "./division-overview";
 import { accessSectionOf, accessSummariesOf, type AccessFigures, type AccessSummary } from "./access-summary";
 import { answerHandOver, databaseTeamWrites, findForAdd, findMoveTargets, findPeople, readDivisionMembers, readMembersDivisionReach, readTeamStructure, readWholeTeamMembers } from "./database-team";
@@ -338,16 +341,24 @@ async function scopedPositions(identity: Identity, area: "positions" | "applicat
 
 /**
  * The unread applications on every position: how many, and when the oldest
- * came in. Applications change by the minute, so this is read on request,
- * beside the cached positions rather than after them.
+ * came in. An application is unread while its status reference reads as New
+ * (`readsAsNew`, issue #748). Applications change by the minute, so this is
+ * read on request, beside the cached positions rather than after them.
  */
 async function readUnread(): Promise<Map<number | null, { n: number; oldest: string | null }>> {
-  const unread = await getDb()
-    .select({ position_id: applications.applyPositionId, n: count(), oldest: min(applications.appliedAt) })
+  const tallies = await getDb()
+    .select({ position_id: applications.applyPositionId, ...STATUS_COLUMNS, n: count(), oldest: min(applications.appliedAt) })
     .from(applications)
-    .where(and(eq(applications.status, "received"), isNull(applications.withdrawnAt)))
-    .groupBy(applications.applyPositionId);
-  return new Map(unread.map((u) => [u.position_id, u]));
+    .leftJoin(applicationStatuses, STATUS_JOIN)
+    .where(isNull(applications.withdrawnAt))
+    .groupBy(applications.applyPositionId, applications.statusKey, applicationStatuses.parentKey);
+  const unread = new Map<number | null, { n: number; oldest: string | null }>();
+  for (const t of tallies.filter(readsAsNew)) {
+    const sofar = unread.get(t.position_id) ?? { n: 0, oldest: null };
+    const oldest = sofar.oldest === null || (t.oldest !== null && t.oldest < sofar.oldest) ? t.oldest : sofar.oldest;
+    unread.set(t.position_id, { n: sofar.n + t.n, oldest });
+  }
+  return unread;
 }
 
 /** The live positions in the units where the viewer reads Applications. */
@@ -512,9 +523,9 @@ async function readMembersWithoutPhoto(divisionIds: number[]): Promise<string[]>
 }
 
 /**
- * The upcoming interviews on the given positions: each live application at
- * status `interview` with times offered, booked or waiting for the
- * applicant, read the way the applications page reads them
+ * The upcoming interviews on the given positions: each live application in
+ * Interview or a status added under it, with times offered, booked or
+ * waiting for the applicant, read the way the applications page reads them
  * (./interview-slots.ts).
  */
 async function readInterviews(positions: readonly { id: number; title: string }[]): Promise<UpcomingInterview[]> {
@@ -532,7 +543,8 @@ async function readInterviews(positions: readonly { id: number; title: string }[
     .innerJoin(users, eq(applications.userId, users.id))
     .where(
       and(
-        eq(applications.status, "interview"),
+        // The status reference, not the old status column: a hand pick of an added status changes only the reference (#588).
+        inArray(applications.statusKey, interviewStatuses()),
         isNull(applications.withdrawnAt),
         inArray(applications.applyPositionId, [...titles.keys()]),
       ),
@@ -967,7 +979,7 @@ function scopeBoardOf(identity: Identity, teamOrders: Promise<Order[]> | null): 
 async function hasShownApplications(identity: Identity): Promise<boolean> {
   const rows = await getDb()
     .select({
-      status: applications.status,
+      ...STATUS_COLUMNS,
       appliedAt: applications.appliedAt,
       withdrawnAt: applications.withdrawnAt,
       acceptedAt: applications.acceptedAt,
@@ -975,9 +987,12 @@ async function hasShownApplications(identity: Identity): Promise<boolean> {
       joinedAt: applications.joinedAt,
     })
     .from(applications)
+    .leftJoin(applicationStatuses, STATUS_JOIN)
     .where(eq(applications.userId, identity.userId));
   const now = new Date();
-  return rows.some((row) => isShownAt(row, now));
+  return rows.some(({ status_key, status_parent_key, ...times }) =>
+    isShownAt({ status: statusOfStored({ key: status_key, parentKey: status_parent_key }), ...times }, now),
+  );
 }
 
 /** The Applications badge: unread applications where the viewer reads the Applications area; none for anyone else (issue #471). */

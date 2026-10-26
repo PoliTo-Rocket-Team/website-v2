@@ -287,6 +287,7 @@ async function seedUnit(u: Unit): Promise<void> {
       mlName: `letter-${l}.pdf`,
       appliedAt: daysAgo(3),
       status: "received",
+      statusKey: "new",
       customAnswers: [{ question: "Why?", answer: `answer-${l}` }],
     },
     {
@@ -295,6 +296,7 @@ async function seedUnit(u: Unit): Promise<void> {
       userId: `interviewee-${l}`,
       appliedAt: daysAgo(10),
       status: "interview",
+      statusKey: "interview",
       customAnswers: [{ question: "Why?", answer: `answer-${l}-interviewee` }],
     },
     // Accepted, the signed NDA in: joining the division once the lead confirms.
@@ -304,6 +306,7 @@ async function seedUnit(u: Unit): Promise<void> {
       userId: `joining-${l}`,
       appliedAt: daysAgo(20),
       status: "accepted",
+      statusKey: "nda_received",
       acceptedAt: daysAgo(15),
       ndaArrivedAt: daysAgo(5),
       customAnswers: [{ question: "Why?", answer: `answer-${l}-joining` }],

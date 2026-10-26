@@ -155,6 +155,7 @@ const application: InferSelectModel<typeof applications> = {
   cvName: "giulia-rossi-cv.pdf",
   appliedAt: "2024-09-02T10:00:00.000Z",
   status: "joined",
+  statusKey: "joined",
   customAnswers: [{ question: "Why?", answer: "I am Giulia Rossi, I led the Turin model rocket club" }],
   withdrawnAt: null,
   acceptedAt: "2024-09-20T10:00:00.000Z",

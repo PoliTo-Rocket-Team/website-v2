@@ -48,7 +48,7 @@ An admin column comes later. **Planned**, no issue yet.
 | My profile | No | No | User menu only | User menu only | User menu only | User menu only |
 | Sign out | User menu only | User menu only | User menu only | User menu only | User menu only | User menu only |
 
-- **An application is shown** while it is being decided (received, in review, at its interview),
+- **An application is shown** while it is being decided (New or Interview, or a status added under either),
   and until one month after its latest decision: accept, reject, another team taking the person,
   join, or withdraw. After an accept, the join is the latest decision. Then it leaves the Overview
   and My applications, for everyone; the data stays (Owner decision, #317). A decision from before
@@ -85,6 +85,13 @@ An admin column comes later. **Planned**, no issue yet.
     shows "<seat title> as <person>" with "by <acting person>" under it. View as starts and stops
     are their own rows, and a start with no stop whose session has expired shows as ended by
     timeout at that expiry, worked out when the page is read.
+  - **Exception 3, the acceptance email:** only the team leader sets an application to
+    "Accepted · email sent", by Mark email sent or by the Status picker, because the team leader
+    sends the acceptance email with the NDA. Everyone else sees that status locked as team leader
+    only, gets no Mark email sent on "Accepted · email to be sent", and sees a note on an accepted
+    application not to email the applicant (board 97e, ADR 0011 rule 6,
+    [#751](https://github.com/PoliTo-Rocket-Team/website-v2/issues/751)). "Rejected · email sent"
+    stays open to anyone who can move the application.
 - **The team leader's own pages** (boards 72 to 73c, #252). The team leader has full access like
   the operations lead and the IT lead, but some of their pages differ. The operations lead and the
   IT lead keep boards 40 and 46.
@@ -215,9 +222,88 @@ An admin column comes later. **Planned**, no issue yet.
 
 ## 2. Applications
 
-- The steps are: Received (New), In review, Interview, Decision, and, after an accept, Joined.
-- In review starts when the lead first opens the application. Opening it as someone who may not
-  move it changes nothing (#577).
+These rules come from the Owner decisions of 2026-10-25 on epic #588 and the rulings on its
+grilling session #745, recorded in the 2026-10-25 status-list amendment of
+[0011](../.decisions/0011-applicant-journey-received-to-joining.md). The code follows them.
+
+### Application status
+
+- Every application has one status from one list. There are no separate stages and statuses
+  ([Owner decision, 2026-10-25](https://github.com/PoliTo-Rocket-Team/website-v2/issues/588#issuecomment-6399491157)).
+  The ten built-in statuses, in order:
+  1. New
+  2. Interview (booked or being arranged)
+  3. Accepted · email to be sent
+  4. Accepted · email sent (the NDA email went out)
+  5. NDA received
+  6. Joined (Confirm join)
+  7. Rejected · email to be sent
+  8. Rejected · email sent
+  9. Accepted for another position
+  10. Withdrawn (the applicant backed out)
+- Approvers can add their own statuses. Each added status sits under one built-in status, its
+  parent, chosen when it is created (for example "Second interview" under Interview). It behaves
+  like its parent: the applicant sees the parent's public step, and the parent's buttons apply.
+  Built-in statuses can be renamed and recoloured but never deleted. An added status can be
+  deleted only while no application uses it
+  ([Owner decision, 2026-10-25](https://github.com/PoliTo-Rocket-Team/website-v2/issues/588#issuecomment-6399501184)).
+- There is no "In review" status. Opening an application never changes its status, and existing
+  In review applications read as New
+  ([ruling R1.2](https://github.com/PoliTo-Rocket-Team/website-v2/issues/745#issuecomment-6399753082)).
+
+### Action buttons and hand pick
+
+- The drawer's bottom bar shows only the buttons for the current status. Each asks for a confirm
+  and sets the next built-in status
+  ([Owner decision, 2026-10-25](https://github.com/PoliTo-Rocket-Team/website-v2/issues/588#issuecomment-6399628523)):
+
+  | Status | Buttons |
+  |---|---|
+  | New | Move to interview → Interview; Reject → Rejected · email to be sent |
+  | Interview | Change times; Accept → Accepted · email to be sent; Reject → Rejected · email to be sent |
+  | Accepted · email to be sent | Mark email sent (team leader only) → Accepted · email sent; Withdraw acceptance → New |
+  | Accepted · email sent | NDA received → NDA received |
+  | NDA received | Confirm join → Joined, and the person's other open applications → Accepted for another position |
+  | Rejected · email to be sent | Mark email sent → Rejected · email sent |
+  | Joined, Withdrawn, Rejected · email sent, Accepted for another position | No buttons |
+
+  An added status uses its parent's buttons. The buttons only ever set built-in statuses.
+- Every status, built-in or added, can also be picked by hand in the Status picker. The buttons
+  are shortcuts for the next step. A hand pick of a built-in status has exactly the same effect as
+  the button that sets it, with the same confirm: picking Joined runs Confirm join, and picking
+  Interview starts the interview step. Both go through one server move
+  ([ruling R1.1](https://github.com/PoliTo-Rocket-Team/website-v2/issues/745#issuecomment-6399752172)).
+  A hand pick of an added status sets the status and records the day its parent keeps when the
+  application has none yet: the acceptance day, the NDA day, the join day, or the day it ended
+  without a place. So the applicant sees the parent's public step for the usual month, and Confirm
+  join works under NDA received. It adds no one to the team, offers no times and is not a
+  withdrawal.
+- A hand pick is a draft until saved: the picker has Save and Cancel, and the action buttons are
+  locked while the change is unsaved, with a hint to save or cancel it first
+  ([Owner decision, 2026-10-25](https://github.com/PoliTo-Rocket-Team/website-v2/issues/588#issuecomment-6399407814),
+  points 2 and 3; boards 97 to 97e).
+
+### Who sets which status
+
+- Anyone who can move an application can set its status and can manage the status list: add,
+  rename, recolour, and delete unused added statuses
+  ([Owner decision, 2026-10-25](https://github.com/PoliTo-Rocket-Team/website-v2/issues/588#issuecomment-6399538440)).
+- Only the team leader sets "Accepted · email sent", by Mark email sent or by hand pick: the team
+  leader sends the acceptance email with the NDA. Anyone who can move the application sets
+  "Rejected · email sent".
+- Everyone else sees a note on an accepted application: do not email the applicant; the
+  acceptance email is the team leader's job. In their Status picker, "Accepted · email sent" shows
+  as team leader only (board 97e).
+
+### What the applicant sees
+
+- The applicant never sees the team's statuses, only public steps
+  ([Owner decision, 2026-10-25](https://github.com/PoliTo-Rocket-Team/website-v2/issues/588#issuecomment-6399713897)):
+  Received (just applied); In review (every internal status in between); Interview (only while
+  they need to pick or see an interview time); the outcome, Accepted (then the NDA step) only from
+  "Accepted · email sent", and Not selected only from "Rejected · email sent" and for "Accepted for
+  another position"; and Withdrawn. Until the email status is "sent", they still see In review.
+- My applications keeps the layout of boards 50 to 50d.
 
 ### Interview
 
@@ -231,23 +317,25 @@ An admin column comes later. **Planned**, no issue yet.
 ### Accept and reject
 
 - Accept and Reject are always confirmed.
-- Accept only marks the application Accepted. It does not add the person to the team, and it does
-  not touch their other applications: other leads decide those.
+- Accept only sets "Accepted · email to be sent". It does not add the person to the team, and it
+  does not touch their other applications: other leads decide those until Confirm join.
 
 ### After accept
 
-- The team leader emails the welcome and the NDA.
-- The applicant's page only says "The team will contact you about joining. Watch your inbox."
-- The lead or the recruitment manager ticks "The signed NDA arrived" and clicks Confirm join, which
-  is confirmed. Only then does the person become a member.
+- The team leader emails the welcome and the NDA, then sets "Accepted · email sent".
+- From "Accepted · email sent", the applicant's page only says "The team will contact you about
+  joining. Watch your inbox."
+- Once the signed NDA is back, "NDA received" is set, then Confirm join, which is confirmed. Only
+  then does the person become a member. Confirm join sets the person's other open applications
+  to "Accepted for another position".
 - The recruitment manager is the lead of the Logistics division, in the Operations department
   ([Owner decision, 2026-10-22](https://github.com/PoliTo-Rocket-Team/website-v2/issues/194#issuecomment-6341780484)).
   They see every division's applications and may make every move a lead may make on them,
-  team-wide: the NDA tick and Confirm join included
+  team-wide: "NDA received" and Confirm join included
   ([Owner decision, 2026-10-25](https://github.com/PoliTo-Rocket-Team/website-v2/issues/194#issuecomment-6396490285)).
   Their Positions page and Members page stay their own division's. While the Logistics division is
   closed, nobody is the recruitment manager (#194).
-- Confirm join, and ticking "The signed NDA arrived", is the last step of the application, so the
+- Confirm join, and setting "NDA received", is the last step of the application, so the
   Applications area decides it wherever it appears (#584, Owner decision, 2026-10-22). On the
   Applications page and on the Members page's "{name} is joining" banner it shows, and the server
   accepts it, only for a viewer who may change applications in that division: the same rule as
@@ -256,11 +344,12 @@ An admin column comes later. **Planned**, no issue yet.
   the Members area's.
 - Confirm join for someone new asks "Confirm {name} joins {division}?" in neutral words (they,
   their), whatever the application form says (board 58h).
-- Confirm join for someone already on the team has no NDA wait: they signed the team's one NDA
-  when they joined (see "Divisions per person" below). The panel shows no NDA tick, and its main
-  button reads "Add to {division}". It is still confirmed ("Add {name} to {division}?", board
-  58h2). The person joins the new division and keeps every division they are in, and no NDA date
-  is recorded for them (#229, [0014](../.decisions/0014-several-divisions-one-nda.md)).
+- Someone already on the team follows the same statuses as any applicant, with no special path
+  and no skipped status: after "Accepted · email sent", the team leader sets "NDA received" as
+  usual, then Confirm join adds them to the new division, and they keep every division they are
+  in ([ruling R1.3](https://github.com/PoliTo-Rocket-Team/website-v2/issues/745#issuecomment-6399754015),
+  amending rule 4 of [0014](../.decisions/0014-several-divisions-one-nda.md)). This replaces the
+  earlier no-NDA-wait Confirm join with an "Add to {division}" button (board 58h2, #229).
 - The Members page's joining banner lists only people not on the team yet. A member joins another
   division from the Applications page, or from Add member on the Members page (#231).
 
@@ -318,7 +407,8 @@ These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
   the arc, as before.
 - **Superseded:** rule 7 of [0011](../.decisions/0011-applicant-journey-received-to-joining.md),
   "one person, one division", no longer holds. [0014](../.decisions/0014-several-divisions-one-nda.md)
-  replaces it, and also amends 0011's Confirm join rule for someone already on the team.
+  replaces it. Its first amendment of 0011's Confirm join rule for someone already on the team
+  is undone by its 2026-10-25 amendment: they follow the same statuses as any applicant.
 - My profile shows every division the person is in, one role per line, the home division first.
   Access places each person in one division of the lead's: the one they lead there, else their
   oldest (#185).
@@ -762,8 +852,8 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
     another area, changes neither page, and no grant makes its holder a division lead (#160).
   - Where a person may not change a position or an application, its drawer opens read-only:
     the position's text and lists as plain text with only Close at the foot, and the
-    application's stage as a pill with no stage menu, no footer actions, no Change times and no
-    NDA tick. Opening a new application does not mark it In review for them. It is the same
+    application's status as a pill with no Status picker, no footer actions and no Change times.
+    Opening an application never changes its status, for anyone (section 2). It is the same
     drawer every role opens; only the actions differ (#577).
   - A member's Positions and Applications lines name what their grant covers, once: "Every role
     in the team." and "Applications for every role in the team." for a grant across the team,

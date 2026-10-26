@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { test } from "node:test";
 import { publicItems, versionRows, type ContentItem } from "../content/versioned";
 import { ANONYMIZED_EMAIL, CLEARED_MEMBER } from "../dashboard/anonymize";
-import { APPLICATION_STAGES } from "../dashboard/application-flow";
+import { BUILT_IN_STATUS_KEYS, isStatusColour } from "../dashboard/application-status";
 import { PLAIN_SEATS } from "../dashboard/viewer";
 import { ACCESS_LEVEL_LABELS, ACCESS_TARGET_LABELS } from "../dashboard/division-access";
 import {
@@ -46,7 +46,7 @@ import {
   SEED_AREAS,
   SEED_CASES,
   SEED_DATA,
-  stageOf,
+  applicationStatusOf,
   teamAdvisorItemsOf,
   teamOf,
   teamPageOfSeed,
@@ -249,8 +249,12 @@ test("each order is made by a member who holds a role in its division, and only 
   }
 });
 
-test("invariant: every application stage is present", () => {
-  for (const stage of APPLICATION_STAGES) assert.ok(data.applications.some((a) => stageOf(data, a) === stage), stage);
+test("invariant: an application reads as each built-in status (issue #749)", () => {
+  for (const status of BUILT_IN_STATUS_KEYS) assert.ok(data.applications.some((a) => applicationStatusOf(data, a) === status), status);
+});
+
+test("every seeded status has a colour the Statuses editor offers, so a rename alone saves (epic #588)", () => {
+  for (const status of data.applicationStatuses) assert.ok(isStatusColour(status.colour), `${status.key}: ${status.colour}`);
 });
 
 test("every position sits in an open division, and every application in a seeded position, after it opened", () => {
@@ -271,24 +275,26 @@ test("every position sits in an open division, and every application in a seeded
   }
 });
 
-test("each application is by a seeded applicant, once per position, and its dates follow its stage", () => {
+test("each application is by a seeded applicant, once per position, and its dates follow its status", () => {
   const live = data.applications.filter((a) => a.withdrawnAt == null).map((a) => `${a.userId}/${a.applyPositionId}`);
   assert.equal(new Set(live).size, live.length, "a person holds two live applications to one position");
   for (const a of data.applications) {
     const user = data.users.find((u) => u.id === a.userId);
     assert.ok(user, `application ${a.id}`);
-    const stage = stageOf(data, a);
-    assert.equal(user.member != null, stage === "joined", `application ${a.id}: only the joined applicant is a member`);
-    assert.equal(a.acceptedAt != null, stage === "accepted" || stage === "joined", `application ${a.id} accepted_at`);
-    assert.equal(a.joinedAt != null, stage === "joined", `application ${a.id} joined_at`);
-    assert.equal(a.rejectedAt != null, stage === "rejected", `application ${a.id} rejected_at`);
+    const status = applicationStatusOf(data, a);
+    const accepted = ["accepted_email_to_be_sent", "accepted_email_sent", "nda_received", "joined"].includes(status);
+    const rejected = ["rejected_email_to_be_sent", "rejected_email_sent", "accepted_for_another_position"].includes(status);
+    assert.equal(user.member != null, status === "joined", `application ${a.id}: only the joined applicant is a member`);
+    assert.equal(a.acceptedAt != null, accepted, `application ${a.id} accepted_at`);
+    assert.equal(a.joinedAt != null, status === "joined", `application ${a.id} joined_at`);
+    assert.equal(a.rejectedAt != null, rejected, `application ${a.id} rejected_at`);
     const times = [a.appliedAt, a.acceptedAt, a.ndaArrivedAt, a.joinedAt].flatMap((t) => (t == null ? [] : [Date.parse(t)]));
     assert.deepEqual(times, [...times].sort((x, y) => x - y), `application ${a.id}: its dates run out of order`);
   }
 });
 
 test("the joined applicant holds a role in the position's division from the day they joined", () => {
-  const joined = data.applications.filter((a) => stageOf(data, a) === "joined");
+  const joined = data.applications.filter((a) => applicationStatusOf(data, a) === "joined");
   assert.ok(joined.length > 0);
   for (const a of joined) {
     const memberId = data.users.find((u) => u.id === a.userId)?.member;

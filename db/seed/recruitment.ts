@@ -2,14 +2,16 @@
 // dashboard's Positions page, the applications on its Applications page
 // (issue #171), the interview times offered on them (issue #186), and the
 // site-wide recruitment switch, on (issue #119). Positions 1–22 keep the
-// texts db/seed.sql used to hold. Every stage an application can be in has
-// one at least: new, in review, interview (times offered, and one booked),
-// accepted (waiting for the NDA, and with the NDA arrived), joined, rejected
-// (by this team, and by another team taking the person) and withdrawn.
+// texts db/seed.sql used to hold. Every application references a status in
+// the status list (issue #748): each of the ten built-in statuses has one at
+// least, interview with times offered and one booked, and one application
+// has the added status "Second interview". The old `status` column is still
+// written beside it.
 // Applications and their answers are private, so every applicant is an
 // invented person (issue #326).
 
-import { applicationFiles, applications, applyPositions, interviewSlots, recruitmentSetting } from "@/db/schema";
+import { applicationFiles, applications, applicationStatuses, applyPositions, interviewSlots, recruitmentSetting } from "@/db/schema";
+import { BUILT_IN_STATUSES } from "@/lib/dashboard/application-status";
 import { seatOf } from "@/lib/seeded-accounts";
 import { samplePdf } from "@/lib/seed/sample-pdf";
 import { privatePathname } from "@/lib/storage/pathname";
@@ -182,6 +184,26 @@ function answersTo(positionId: number, answers: readonly string[] = ANSWERS[posi
   return questions.map((question, i) => ({ question, answer: answers[i] ?? "" }));
 }
 
+/** The status an approver added under Interview: the case of an added status (issue #748). */
+export const SECOND_INTERVIEW = {
+  key: "second_interview",
+  name: "Second interview",
+  // A colour the Statuses editor offers (`STATUS_COLOURS`), so renaming it alone saves.
+  colour: "#FF5E00",
+  sortOrder: 1,
+  parentKey: "interview",
+} as const;
+
+/**
+ * The status list (issue #748): the ten built-in statuses as drizzle/0065
+ * inserts them, in order, and one added status. The seed owns the table, so a
+ * re-seed puts the built-in names and colours back.
+ */
+export const APPLICATION_STATUS_ROWS = rowsOf(applicationStatuses, [
+  ...BUILT_IN_STATUSES.map((s, i) => ({ key: s.key, name: s.name, colour: s.colour, sortOrder: i + 1, parentKey: null })),
+  SECOND_INTERVIEW,
+]);
+
 type Application = typeof applications.$inferInsert;
 
 /** One application; its answers are the position's questions with ANSWERS. */
@@ -191,6 +213,7 @@ function application(
   userId: string,
   appliedAt: string,
   status: NonNullable<Application["status"]>,
+  statusKey: NonNullable<Application["statusKey"]>,
   more: Partial<Application> = {},
 ): Application {
   const first = userId.slice(0, 4);
@@ -202,6 +225,7 @@ function application(
     cvName: `cv-${first}-${applyPositionId}.pdf`,
     appliedAt,
     status,
+    statusKey,
     customAnswers: answersTo(applyPositionId),
     ...more,
   };
@@ -230,64 +254,66 @@ export const APPLICATION = {
 export const APPLICANT_SEAT = seatOf("non-member").id;
 
 const APPLICATIONS: readonly Application[] = [
-  application(APPLICATION.ndaArrived, 1, "dddddddd-dddd-dddd-dddd-dddddddddddd", "2026-09-05 16:45:00+02", "accepted", {
+  application(APPLICATION.ndaArrived, 1, "dddddddd-dddd-dddd-dddd-dddddddddddd", "2026-09-05 16:45:00+02", "accepted", "nda_received", {
     acceptedAt: "2026-10-05 11:00:00+02",
     ndaArrivedAt: "2026-10-08 09:30:00+02",
   }),
-  application(APPLICATION.inReview, 2, "f1111111-1111-1111-1111-111111111111", "2026-09-10 14:30:00+02", "pending"),
-  application(APPLICATION.waitingForNda, 3, "f2222222-2222-2222-2222-222222222222", "2026-09-11 09:15:00+02", "accepted", {
+  application(APPLICATION.inReview, 2, "f1111111-1111-1111-1111-111111111111", "2026-09-10 14:30:00+02", "pending", "new"),
+  application(APPLICATION.waitingForNda, 3, "f2222222-2222-2222-2222-222222222222", "2026-09-11 09:15:00+02", "accepted", "accepted_email_to_be_sent", {
     acceptedAt: "2026-10-06 17:00:00+02",
   }),
-  application(APPLICATION.new, 4, "f3333333-3333-3333-3333-333333333333", "2026-10-12 11:20:00+02", "received"),
+  application(APPLICATION.new, 4, "f3333333-3333-3333-3333-333333333333", "2026-10-12 11:20:00+02", "received", "new"),
   {
-    ...application(APPLICATION.timesOffered, 1, "f4444444-4444-4444-4444-444444444444", "2026-09-12 16:45:00+02", "interview"),
+    ...application(APPLICATION.timesOffered, 1, "f4444444-4444-4444-4444-444444444444", "2026-09-12 16:45:00+02", "interview", "interview"),
     customAnswers: answersTo(1, [
       "I have 3 years of experience with React and Next.js, building scalable web applications with TypeScript",
       "Mostly useState and useEffect, with useMemo for derived data and a few custom hooks for data fetching",
     ]),
   },
-  application(APPLICATION.booked, 5, "f5555555-5555-5555-5555-555555555555", "2026-09-13 10:30:00+02", "interview"),
-  application(7, 6, "f6666666-6666-6666-6666-666666666666", "2026-10-13 13:45:00+02", "received"),
-  application(8, 7, "f7777777-7777-7777-7777-777777777777", "2026-09-15 08:20:00+02", "pending"),
-  application(APPLICATION.rejected, 8, "f8888888-8888-8888-8888-888888888888", "2026-09-16 14:15:00+02", "rejected", {
+  application(APPLICATION.booked, 5, "f5555555-5555-5555-5555-555555555555", "2026-09-13 10:30:00+02", "interview", "interview"),
+  application(7, 6, "f6666666-6666-6666-6666-666666666666", "2026-10-13 13:45:00+02", "received", "new"),
+  application(8, 7, "f7777777-7777-7777-7777-777777777777", "2026-09-15 08:20:00+02", "pending", "new"),
+  application(APPLICATION.rejected, 8, "f8888888-8888-8888-8888-888888888888", "2026-09-16 14:15:00+02", "rejected", "rejected_email_to_be_sent", {
     rejectedAt: "2026-10-02 12:00:00+02",
   }),
-  application(10, 9, "f9999999-9999-9999-9999-999999999999", "2026-10-14 11:30:00+02", "received"),
-  application(APPLICATION.withdrawn, 10, "1d111111-1111-1111-1111-111111111111", "2026-09-18 09:45:00+02", "pending", {
+  application(10, 9, "f9999999-9999-9999-9999-999999999999", "2026-10-14 11:30:00+02", "received", "new"),
+  application(APPLICATION.withdrawn, 10, "1d111111-1111-1111-1111-111111111111", "2026-09-18 09:45:00+02", "pending", "withdrawn", {
     withdrawnAt: "2026-09-30 20:10:00+02",
   }),
-  application(APPLICATION.takenByAnotherTeam, 11, "1d222222-2222-2222-2222-222222222222", "2026-09-19 15:20:00+02", "accepted_by_another_team", {
+  application(APPLICATION.takenByAnotherTeam, 11, "1d222222-2222-2222-2222-222222222222", "2026-09-19 15:20:00+02", "accepted_by_another_team", "accepted_for_another_position", {
     rejectedAt: "2026-10-03 10:00:00+02",
   }),
-  application(13, 12, "1d333333-3333-3333-3333-333333333333", "2026-10-14 12:10:00+02", "received"),
-  application(14, 13, "1d444444-4444-4444-4444-444444444444", "2026-03-17 10:25:00+01", "rejected", {
+  application(13, 12, "1d333333-3333-3333-3333-333333333333", "2026-10-14 12:10:00+02", "received", "new"),
+  application(14, 13, "1d444444-4444-4444-4444-444444444444", "2026-03-17 10:25:00+01", "rejected", "rejected_email_sent", {
     rejectedAt: "2026-04-10 09:00:00+02",
   }),
-  application(15, 14, "1d555555-5555-5555-5555-555555555555", "2026-09-22 14:40:00+02", "interview"),
-  application(16, 15, "1d666666-6666-6666-6666-666666666666", "2026-10-15 11:15:00+02", "received"),
-  application(17, 16, "1d777777-7777-7777-7777-777777777777", "2026-09-24 09:30:00+02", "pending"),
-  application(18, 17, "1d888888-8888-8888-8888-888888888888", "2026-09-25 13:50:00+02", "pending"),
-  application(19, 18, "1d999999-9999-9999-9999-999999999999", "2026-03-22 16:20:00+01", "rejected", {
+  application(15, 14, "1d555555-5555-5555-5555-555555555555", "2026-09-22 14:40:00+02", "interview", SECOND_INTERVIEW.key),
+  application(16, 15, "1d666666-6666-6666-6666-666666666666", "2026-10-15 11:15:00+02", "received", "new"),
+  application(17, 16, "1d777777-7777-7777-7777-777777777777", "2026-09-24 09:30:00+02", "pending", "new"),
+  application(18, 17, "1d888888-8888-8888-8888-888888888888", "2026-09-25 13:50:00+02", "accepted", "accepted_email_sent", {
+    acceptedAt: "2026-10-07 10:00:00+02",
+  }),
+  application(19, 18, "1d999999-9999-9999-9999-999999999999", "2026-03-22 16:20:00+01", "rejected", "rejected_email_sent", {
     rejectedAt: "2026-04-12 09:00:00+02",
   }),
-  application(20, 19, "1e111111-1111-1111-1111-111111111111", "2026-10-15 10:05:00+02", "received"),
-  application(21, 20, "1e222222-2222-2222-2222-222222222222", "2026-09-28 12:35:00+02", "interview"),
-  application(22, 21, "1e333333-3333-3333-3333-333333333333", "2026-10-16 08:45:00+02", "received"),
-  application(APPLICATION.joined, 23, JOINED_APPLICANT, "2022-09-10 18:00:00+02", "joined", {
+  application(20, 19, "1e111111-1111-1111-1111-111111111111", "2026-10-15 10:05:00+02", "received", "new"),
+  application(21, 20, "1e222222-2222-2222-2222-222222222222", "2026-09-28 12:35:00+02", "interview", "interview"),
+  application(22, 21, "1e333333-3333-3333-3333-333333333333", "2026-10-16 08:45:00+02", "received", "new"),
+  application(APPLICATION.joined, 23, JOINED_APPLICANT, "2022-09-10 18:00:00+02", "joined", "joined", {
     acceptedAt: "2022-09-25 10:00:00+02",
     ndaArrivedAt: "2022-10-01 10:00:00+02",
     joinedAt: "2022-10-05 10:00:00+02",
   }),
   // The applicant plain seat (issues #129, #653): times to pick from, and one not opened yet.
   {
-    ...application(APPLICATION.applicantSeatTimesOffered, 15, APPLICANT_SEAT, "2026-09-20 18:00:00+02", "interview"),
+    ...application(APPLICATION.applicantSeatTimesOffered, 15, APPLICANT_SEAT, "2026-09-20 18:00:00+02", "interview", "interview"),
     customAnswers: answersTo(15, [
       "MATLAB and a little GMAT, from a university course on orbital mechanics",
       "I tuned an ascent trajectory with a genetic algorithm for a course project",
     ]),
   },
   {
-    ...application(APPLICATION.applicantSeatNew, 2, APPLICANT_SEAT, "2026-10-14 21:00:00+02", "received"),
+    ...application(APPLICATION.applicantSeatNew, 2, APPLICANT_SEAT, "2026-10-14 21:00:00+02", "received", "new"),
     customAnswers: answersTo(2, [
       "Figma and Illustrator for most work, Blender for the occasional render",
       "Only exploded views for a robotics club so far",
@@ -375,6 +401,6 @@ export const RECRUITMENT_SETTING_ROWS = rowsOf(recruitmentSetting, [
 
 export const recruitmentSeed = tableSeedModule({
   name: "recruitment",
-  owns: [applyPositions, applicationFiles, applications, interviewSlots, recruitmentSetting],
-  rows: [POSITION_ROWS, APPLICATION_FILE_ROWS, APPLICATION_ROWS, SLOT_ROWS, RECRUITMENT_SETTING_ROWS],
+  owns: [applyPositions, applicationFiles, applicationStatuses, applications, interviewSlots, recruitmentSetting],
+  rows: [POSITION_ROWS, APPLICATION_FILE_ROWS, APPLICATION_STATUS_ROWS, APPLICATION_ROWS, SLOT_ROWS, RECRUITMENT_SETTING_ROWS],
 });

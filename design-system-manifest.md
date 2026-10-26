@@ -63,11 +63,15 @@ Rules:
   award tag accent and every other tag `white-10` with `prt-text`. Project status pills sit on a texture, so they follow
   board 21 instead: flown = `ground/70` with `prt-text`, In design = `prt-text` with `ground`
   (`project-card.tsx`).
-- Application stage pills on the dashboard follow the same pairing (board 58b, issue #171,
-  `stage-pill.tsx`): New and "Interview · no time yet" = `white-10` with `prt-text`, In review =
-  `info`, a booked interview = accent, Accepted and Joined = success, Rejected and Withdrawn =
-  `white-5` with `prt-muted`. `info` marks In review (on the stage pill and tag, and on the
-  panel's stage menu trigger and its dot: `toneSurface`, `toneDot`) and, on the Team tree only
+- Application status pills and tags on the dashboard (`stage-pill.tsx`, issue #752) show the
+  name and colour the status list stores, so a rename or recolour in the Statuses editor
+  (board 97d) reaches every application in that status: a 16% fill of the status's colour, a
+  dot in it, and `prt-text` words, which stay legible whatever colour is picked. The Status
+  picker at the head of the application drawer (boards 97 to 97c, issue #750) and the Statuses
+  editor paint each status's dot in that colour too. It is data the editor sets, from the
+  colours `STATUS_COLOURS` offers (`lib/dashboard/application-status.ts`), like a project's
+  stored colours, not a colour of the page.
+  `info` marks, on the Team tree only
   (board 54e, issue #229, `team-tree.tsx`), someone in another division: the dashed line from a
   division to someone drawn under another one, their "also {division}" tag (`info-soft` fill,
   `info` text) and the legend's line, so they read apart from the accent path. It is not a second

@@ -11,7 +11,8 @@ import type { ActivityLogPage } from "./activity-log";
 import type { AccessGrant, AccessPage } from "./division-access";
 import type { Order, OrdersPage } from "./orders";
 import type { OverviewSections, TeamSideOverview } from "./overview";
-import type { LeadMove } from "./application-flow";
+import type { ApproverMove } from "./application-flow";
+import type { StatusListChange } from "./application-status";
 import type { DocumentKind, StoredDocument } from "./application-documents";
 import type { CreatedPosition } from "./new-position";
 import type { ApplicationsPage, PositionsPage } from "./recruitment";
@@ -157,11 +158,21 @@ export interface DashboardData {
    */
   editPosition(positionId: number, input: unknown): Promise<WriteResult<null>>;
   /**
-   * One step on an application (boards 58 to 58i). Which steps are legal is
-   * ./application-flow.ts's; an illegal one answers why and writes nothing.
-   * Only Confirm join adds the person to the team.
+   * One step on an application (boards 58 to 58i and 97 to 97c): an action
+   * button, or a saved hand pick in the Status picker, which runs the same
+   * write (issue #750). Which steps are legal is ./application-flow.ts's; an
+   * illegal one answers why and writes nothing. Only Confirm join adds the
+   * person to the team.
    */
-  moveApplication(applicationId: number, move: LeadMove): Promise<WriteResult<null>>;
+  moveApplication(applicationId: number, move: ApproverMove): Promise<WriteResult<null>>;
+  /**
+   * One change in the Statuses editor (board 97d, issue #752): add, rename,
+   * recolour, or delete an added status no application uses. Someone who may
+   * move no application rejects with DashboardRefused; a built-in status, or
+   * an added one in use, answers why it stays (`deleteRefusal`,
+   * ./application-status.ts) and writes nothing.
+   */
+  changeStatusList(change: StatusListChange): Promise<WriteResult<null>>;
 
   /** Boards 60 to 60m (a division lead) and 65 to 65m (a department head): the Access page, the only place access is given, changed or removed. */
   divisionAccess(): Promise<AccessPage | null>;

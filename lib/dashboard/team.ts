@@ -387,7 +387,7 @@ export type Joining = {
   readonly photoUrl: string | null;
   /** The position they were accepted for: "Mission Analyst". */
   readonly position: string;
-  /** "The signed NDA arrived" is ticked on the application: Confirm join waits for it. */
+  /** The signed NDA's day is recorded on the application (NDA received): Confirm join waits for it. */
   readonly ndaArrived: boolean;
   /**
    * Whether the viewer may Confirm join it: the Applications area decides,
