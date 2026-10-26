@@ -1,6 +1,6 @@
 import { Award } from "lucide-react";
 import { twoDigits, type LaunchLog, type LogEntry, type Outcome } from "@/lib/project-pages";
-import { CopyText, PhotoSlot, Pill, SectionHead, type PillTone } from "./parts";
+import { BlockColumn, CopyText, PhotoSlot, Pill, SectionHead, type BlockFrame, type PillTone } from "./parts";
 
 // Launch history. Boards 23 and 24: one row per campaign under a hairline:
 // number, date, place, version and outcome left; title, summary, award and
@@ -98,23 +98,21 @@ function EntryCard({ entry, num, texture }: { entry: LogEntry; num: string; text
   );
 }
 
-export function ProjectLaunches({ num, log, texture }: { num: string; log: LaunchLog; texture: string }) {
+export function ProjectLaunches({ num, log, texture, frame }: { num: string; log: LaunchLog; texture: string; frame?: BlockFrame }) {
   return (
-    <section className="px-5 pt-14 md:px-16 md:pt-[120px]">
-      <div className="mx-auto max-w-[1312px]">
-        <SectionHead num={num} label="LAUNCH HISTORY" title={log.title} />
-        <div className="mt-6 flex flex-col gap-4 md:mt-12 md:gap-0">
-          {log.entries.map((e, i) => {
-            const n = twoDigits(i + 1);
-            return (
-              <div key={e.date}>
-                <EntryRow entry={e} num={n} texture={texture} />
-                <EntryCard entry={e} num={n} texture={texture} />
-              </div>
-            );
-          })}
-        </div>
+    <BlockColumn frame={frame}>
+      <SectionHead num={num} label="LAUNCH HISTORY" title={log.title} />
+      <div className="mt-6 flex flex-col gap-4 md:mt-12 md:gap-0">
+        {log.entries.map((e, i) => {
+          const n = twoDigits(i + 1);
+          return (
+            <div key={e.date}>
+              <EntryRow entry={e} num={n} texture={texture} />
+              <EntryCard entry={e} num={n} texture={texture} />
+            </div>
+          );
+        })}
       </div>
-    </section>
+    </BlockColumn>
   );
 }

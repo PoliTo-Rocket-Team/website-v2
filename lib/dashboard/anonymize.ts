@@ -55,10 +55,12 @@ type AlumniEntryRow = InferSelectModel<typeof alumniEntries>;
 // The identifying fields each row loses. The statistics fields are the ones
 // left out: users' gender, date of birth, origin, country, level of study,
 // program, referral source, created_at and member link; members' team years
-// and NDA date; every applications position, status and date column.
+// and NDA date; every applications position, status and date column. The
+// free-text answers to a position's questions can name or describe the
+// person, so they are cleared too (issue #729, ADR 0012 amendment).
 const CLEARED_USER_KEYS = ["email", "firstName", "lastName", "phone", "linkedin", "politoId"] as const;
 const CLEARED_MEMBER_KEYS = ["prtEmail", "mobileNumber", "discord", "ndaName", "picture"] as const;
-const CLEARED_APPLICATION_KEYS = ["mlName", "cvName"] as const;
+const CLEARED_APPLICATION_KEYS = ["mlName", "cvName", "customAnswers"] as const;
 
 export type UserClear = Pick<UserRow, (typeof CLEARED_USER_KEYS)[number] | "anonymizedAt">;
 export type MemberClear = Pick<MemberRow, (typeof CLEARED_MEMBER_KEYS)[number]>;
@@ -87,7 +89,7 @@ export const CLEARED_MEMBER: MemberClear = {
   picture: null,
 };
 
-export const CLEARED_APPLICATION: ApplicationClear = { mlName: null, cvName: null };
+export const CLEARED_APPLICATION: ApplicationClear = { mlName: null, cvName: null, customAnswers: null };
 
 /**
  * What a removed person's alumni entry loses: every name and the photo. The

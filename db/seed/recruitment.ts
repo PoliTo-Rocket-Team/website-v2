@@ -333,8 +333,11 @@ export const APPLICATION_ROWS = rowsOf(
   APPLICATIONS.map((app) => ({ ...app, cvFileId: SAMPLE_FILE_ID, coverLetterFileId: SAMPLE_FILE_ID })),
 );
 
-/** One interview time: an hour from `start`, offered when the lead moved the application to interview. */
-function slot(id: number, applicationId: number, start: string, offeredAt: string, chosenAt: string | null = null) {
+/**
+ * One interview time: an hour from `start`, offered by `offeredBy` when they
+ * moved the application to interview (issue #652).
+ */
+function slot(id: number, applicationId: number, offeredBy: string, start: string, offeredAt: string, chosenAt: string | null = null) {
   const end = new Date(Date.parse(start) + 60 * 60_000).toISOString();
   return {
     id,
@@ -344,20 +347,25 @@ function slot(id: number, applicationId: number, start: string, offeredAt: strin
     chosen: chosenAt !== null,
     chosenAt,
     createdAt: offeredAt,
+    offeredBy,
   };
 }
 
+/** Who offered the seeded times: the Test Bench lead seat offered its own division's, the team leader the rest. */
+const TEST_BENCH_LEAD = seatOf("division-lead").id;
+const TEAM_LEADER = seatOf("team-leader").id;
+
 export const SLOT_ROWS = rowsOf(interviewSlots, [
   // Times offered, none picked yet.
-  slot(1, APPLICATION.timesOffered, "2026-10-21T16:00:00+02:00", "2026-10-14 10:00:00+02"),
-  slot(2, APPLICATION.timesOffered, "2026-10-22T17:00:00+02:00", "2026-10-14 10:00:00+02"),
+  slot(1, APPLICATION.timesOffered, TEAM_LEADER, "2026-10-21T16:00:00+02:00", "2026-10-14 10:00:00+02"),
+  slot(2, APPLICATION.timesOffered, TEAM_LEADER, "2026-10-22T17:00:00+02:00", "2026-10-14 10:00:00+02"),
   // The applicant booked the second time.
-  slot(3, APPLICATION.booked, "2026-10-20T15:00:00+02:00", "2026-10-09 12:00:00+02"),
-  slot(4, APPLICATION.booked, "2026-10-23T15:00:00+02:00", "2026-10-09 12:00:00+02", "2026-10-10 08:30:00+02"),
-  slot(5, 15, "2026-10-27T18:00:00+01:00", "2026-10-15 09:00:00+02"),
-  slot(6, 21, "2026-10-28T18:00:00+01:00", "2026-10-15 09:30:00+02", "2026-10-15 20:00:00+02"),
-  slot(7, APPLICATION.applicantSeatTimesOffered, "2026-10-29T17:00:00+01:00", "2026-10-15 11:00:00+02"),
-  slot(8, APPLICATION.applicantSeatTimesOffered, "2026-10-30T17:00:00+01:00", "2026-10-15 11:00:00+02"),
+  slot(3, APPLICATION.booked, TEAM_LEADER, "2026-10-20T15:00:00+02:00", "2026-10-09 12:00:00+02"),
+  slot(4, APPLICATION.booked, TEAM_LEADER, "2026-10-23T15:00:00+02:00", "2026-10-09 12:00:00+02", "2026-10-10 08:30:00+02"),
+  slot(5, 15, TEAM_LEADER, "2026-10-27T18:00:00+01:00", "2026-10-15 09:00:00+02"),
+  slot(6, 21, TEST_BENCH_LEAD, "2026-10-28T18:00:00+01:00", "2026-10-15 09:30:00+02", "2026-10-15 20:00:00+02"),
+  slot(7, APPLICATION.applicantSeatTimesOffered, TEAM_LEADER, "2026-10-29T17:00:00+01:00", "2026-10-15 11:00:00+02"),
+  slot(8, APPLICATION.applicantSeatTimesOffered, TEAM_LEADER, "2026-10-30T17:00:00+01:00", "2026-10-15 11:00:00+02"),
 ]);
 
 /** Recruitment is on: the open positions show on /apply. */

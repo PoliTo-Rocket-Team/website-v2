@@ -596,6 +596,8 @@ function text(value: string | null): ReactNode {
 
 /** Board 73b's columns, after the pinned name: every member field. Phone, date of birth and gender are blurred until hover. */
 const COLUMNS: readonly Column[] = [
+  // Issue #767: a head shows the department they head; a team-level seat holds none and reads the dash.
+  { key: "department", label: "Department", width: "w-[170px]", filter: "department", cell: (p) => (p.departments.length === 0 ? DASH : p.departments.join(", ")) },
   { key: "divisions", label: "Divisions", width: "w-[150px]", filter: "divisions", cell: (p) => (p.chips.length === 0 ? DASH : <Chips chips={p.chips} />) },
   { key: "role", label: "Role", width: "w-[180px]", filter: "role", cell: (p) => <span className={roleClass(p)}>{p.roleLabel}</span> },
   { key: "prt-email", label: "PRT email", width: "w-[240px]", cell: (p) => text(memberDetailText(p.details, "prtEmail")) },

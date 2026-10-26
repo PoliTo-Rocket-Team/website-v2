@@ -87,38 +87,41 @@ const STACK = "mt-6 flex min-w-0 flex-col gap-4";
 type LeadPhoneForm = "full" | "board-56m";
 
 /** The scope board's own parts, and the phone form it reads in: board 56m's for a division or department board, 40m's otherwise. */
-function boardParts(overview: ScopeBoard) {
+function boardParts(overview: ScopeBoard): {
+  divisions: readonly DivisionSummary[] | null;
+  departments: { readonly list: readonly DepartmentSummary[]; readonly people: number } | null;
+  interviews: readonly UpcomingInterview[];
+  phone: LeadPhoneForm;
+} {
   switch (overview.shape) {
     case "team":
-      return { divisions: null, departments: null, interviews: [], phone: "full" as const };
+      return { divisions: null, departments: null, interviews: [], phone: "full" };
     case "leader":
-      return { divisions: null, departments: { list: overview.departments, people: overview.people }, interviews: [], phone: "full" as const };
+      return { divisions: null, departments: { list: overview.departments, people: overview.people }, interviews: [], phone: "full" };
     case "department":
-      return { divisions: overview.divisions, departments: null, interviews: overview.interviews, phone: "board-56m" as const };
+      return { divisions: overview.divisions, departments: null, interviews: overview.interviews, phone: "board-56m" };
     case "division":
-      return { divisions: null, departments: null, interviews: overview.interviews, phone: "board-56m" as const };
+      return { divisions: null, departments: null, interviews: overview.interviews, phone: "board-56m" };
   }
 }
 
 // One Overview for every team seat (issue #593). Board 52's person leads it,
 // with Edit profile from md, and board 94f's alias card under it until the
-// alias is set up. The seat's board follows (boards 40, 56, 62, 72): its
-// figures, then what needs attention beside the recent activity. Board 52's
-// own panels come after it: their page on the site beside one roster per
-// division they are in (the rosters on their own once every step of the page
-// is done, issue #641), then "Your access" listing each grant, the access
-// hint for a member who reads no area, or nothing for a seat that reads its
-// areas by role and holds no grant. Board 52m: the person sits on the page
-// with no frame and no edit button (My profile is in the user menu), each
-// panel's count moves beside its title, and the hint is left out. The page
-// streams these sections one by one (issue #397), so each is its own part.
+// alias is set up. The seat's figures follow, then its panels: in the two
+// columns boards 99 and 99b set for every leader (issue #652), or board
+// first, then their page on the site beside the roster, for every other seat.
+// "Your access" closes the page: each grant, the access hint for a member
+// who reads no area, or nothing for a seat that reads its areas by role and
+// holds no grant. Board 52m: the person sits on the page with no frame and no
+// edit button (My profile is in the user menu), each panel's count moves
+// beside its title, and the hint is left out. The page streams the person
+// first and the rest once both its reads arrive (issue #397).
 function TeamView({ overview, aliasCard }: { overview: TeamSideOverview; aliasCard: OwnAlias | null }) {
   return (
     <>
       <OverviewPersonSection person={overview.person} />
       {aliasCard && <OverviewAliasSection alias={aliasCard} />}
-      <OverviewBoardSection board={overview} />
-      <OverviewPanelsSection panels={overview} />
+      <OverviewBodySection board={overview} panels={overview} />
     </>
   );
 }
@@ -150,38 +153,27 @@ export function OverviewAliasSection({ alias }: { alias: OwnAlias }) {
   );
 }
 
-/** The board the seat's scope reads (boards 40, 56, 62, 72). */
-export function OverviewBoardSection({ board }: { board: ScopeBoard }) {
+// Everything under the person: the seat's figures (boards 40, 56, 62, 72),
+// then its panels in the layout the seat reads (`overviewLayoutOf`), then
+// "Your access". A board with no figure (a member who holds no area grant)
+// shows no figure row.
+export function OverviewBodySection({ board, panels }: { board: ScopeBoard; panels: Omit<PersonalPanels, "person"> }) {
   const parts = boardParts(board);
-  return (
-    <ScopeBoardView
-      stats={board.stats}
-      attention={board.attention}
-      divisions={parts.divisions}
-      departments={parts.departments}
-      interviews={parts.interviews}
-      activity={board.activity}
-      phone={parts.phone}
-    />
-  );
-}
-
-/** Board 52's own panels: the viewer's page on the site, their rosters, and "Your access". */
-export function OverviewPanelsSection({ panels }: { panels: Omit<PersonalPanels, "person"> }) {
-  const { checklist, rosters, access } = panels;
+  const { access } = panels;
+  const compact = parts.phone === "board-56m";
   return (
     <>
-      {(checklist !== null || rosters.length > 0) && (
-        <div className={checklist !== null && rosters.length > 0 ? GRID : "mt-5 md:mt-6"}>
-          {checklist !== null && <ChecklistPanel checklist={checklist} />}
-          {rosters.length > 0 && (
-            <div className="flex min-w-0 flex-col gap-4">
-              {rosters.map((roster) => (
-                <RosterPanel key={roster.title} roster={roster} />
-              ))}
-            </div>
-          )}
+      {board.stats.length > 0 && (
+        <div className="mt-5 grid grid-cols-2 gap-3 md:mt-6 md:gap-4 xl:grid-cols-4">
+          {board.stats.map((stat, index) => (
+            <StatCard key={stat.label} stat={stat} compact={compact} hiddenOnPhone={compact && index >= 2} />
+          ))}
         </div>
+      )}
+      {panels.layout === "leader-columns" ? (
+        <LeaderColumns board={board} parts={parts} panels={panels} />
+      ) : (
+        <BoardFirst board={board} parts={parts} panels={panels} />
       )}
 
       {access.kind === "lines" && <AccessPanel access={access.lines} />}
@@ -195,80 +187,119 @@ export function OverviewPanelsSection({ panels }: { panels: Omit<PersonalPanels,
   );
 }
 
-// Boards 40 and 56: four figures, then what needs the lead's attention (and,
-// on 56, the upcoming interviews under it) beside the recent activity. Board
-// 62 (a department head, issue #230) puts the Divisions panel under the
-// attention rows; its phone board 62m keeps the interviews and drops the
-// activity, as 56m does, while board 62 shows no interviews. Board 72 (the
-// team leader, issue #252) puts the Departments panel there instead. A board
-// with no figure (a member who holds no area grant) shows no figure row.
-function ScopeBoardView({
-  stats,
-  attention,
-  divisions,
-  departments,
-  interviews,
-  activity,
-  phone,
-}: {
-  stats: readonly Stat[];
-  attention: readonly AttentionItem[];
-  divisions: readonly DivisionSummary[] | null;
-  departments: { readonly list: readonly DepartmentSummary[]; readonly people: number } | null;
-  interviews: readonly UpcomingInterview[];
-  activity: readonly ActivityItem[];
-  phone: LeadPhoneForm;
-}) {
-  const compact = phone === "board-56m";
-  const left =
-    attention.length > 0 ||
-    interviews.length > 0 ||
-    (divisions !== null && divisions.length > 0) ||
-    (departments !== null && departments.list.length > 0);
+type BodyProps = { board: ScopeBoard; parts: ReturnType<typeof boardParts>; panels: Omit<PersonalPanels, "person"> };
+
+/** Whether the scope board has a panel of its own to show: attention rows, Divisions, Departments or interviews. */
+function hasScopePanels({ board, parts }: Pick<BodyProps, "board" | "parts">): boolean {
   return (
-    <>
-      {stats.length > 0 && (
-        <div className="mt-5 grid grid-cols-2 gap-3 md:mt-6 md:gap-4 xl:grid-cols-4">
-          {stats.map((stat, index) => (
-            <StatCard key={stat.label} stat={stat} compact={compact} hiddenOnPhone={compact && index >= 2} />
-          ))}
+    board.attention.length > 0 ||
+    parts.interviews.length > 0 ||
+    (parts.divisions !== null && parts.divisions.length > 0) ||
+    (parts.departments !== null && parts.departments.list.length > 0)
+  );
+}
+
+/**
+ * The scope board's own panels: what needs attention, then Departments
+ * (board 72), Divisions (board 62) or Upcoming interviews (board 56); a
+ * department head's phone board 62m keeps the interviews, which board 62
+ * leaves out. `checklist` slots their page on the site under the attention
+ * rows (boards 99 and 99b).
+ */
+function ScopePanels({ board, parts, checklist }: Pick<BodyProps, "board" | "parts"> & { checklist: Checklist | null }) {
+  const { divisions, departments, interviews } = parts;
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      {board.attention.length > 0 && <AttentionPanel attention={board.attention} compact={parts.phone === "board-56m"} />}
+      {checklist !== null && <ChecklistPanel checklist={checklist} />}
+      {divisions !== null && divisions.length > 0 && <DivisionsPanel divisions={divisions} />}
+      {departments !== null && departments.list.length > 0 && <DepartmentsPanel departments={departments.list} people={departments.people} />}
+      {interviews.length > 0 && (
+        <div className={divisions !== null ? "md:hidden" : undefined}>
+          <InterviewsPanel interviews={interviews} />
         </div>
       )}
-      {(left || activity.length > 0) && (
-        // With no recent activity the panels take the whole width, so no
-        // empty column is left on the right (Owner decision, 2026-10-21).
-        <div className={left && activity.length === 0 ? STACK : GRID}>
-          {left && (
-            <div className="flex min-w-0 flex-col gap-4">
-              {attention.length > 0 && <AttentionPanel attention={attention} compact={compact} />}
-              {divisions !== null && divisions.length > 0 && <DivisionsPanel divisions={divisions} />}
-              {departments !== null && departments.list.length > 0 && (
-                <DepartmentsPanel departments={departments.list} people={departments.people} />
-              )}
-              {interviews.length > 0 && (
-                <div className={divisions !== null ? "md:hidden" : undefined}>
-                  <InterviewsPanel interviews={interviews} />
-                </div>
-              )}
-            </div>
+    </div>
+  );
+}
+
+// Boards 99 and 99b (issue #652), for a department head, a division lead and
+// the team leader, the operations lead and the IT lead (issue #760), the
+// last three with no roster. Left: what needs attention, their page on the
+// site (gone once every step is done, issue #641), then the scope's own
+// panel. Right:
+// the roster of their own unit, then recent activity, which phones on boards
+// 56m and 62m drop. With one column empty the other takes the whole width,
+// so no empty column is left (Owner decision, 2026-10-21).
+function LeaderColumns({ board, parts, panels }: BodyProps) {
+  const { checklist, rosters } = panels;
+  const left = hasScopePanels({ board, parts }) || checklist !== null;
+  const right = rosters.length > 0 || board.activity.length > 0;
+  if (!left && !right) return null;
+  return (
+    <div className={left && right ? GRID : STACK}>
+      {left && <ScopePanels board={board} parts={parts} checklist={checklist} />}
+      {right && (
+        <div className="flex min-w-0 flex-col gap-4">
+          {rosters.map((roster) => (
+            <RosterPanel key={roster.title} roster={roster} />
+          ))}
+          {board.activity.length > 0 && <ActivityPanel activity={board.activity} compact={parts.phone === "board-56m"} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Every other team seat (boards 40 and 52): the scope board's panels beside
+// the recent activity, then their page on the site beside their roster (the
+// roster on its own once every step of the page is done, issue #641). With
+// no recent activity the panels take the whole width, so no empty column is
+// left on the right (Owner decision, 2026-10-21).
+function BoardFirst({ board, parts, panels }: BodyProps) {
+  const { checklist, rosters } = panels;
+  const left = hasScopePanels({ board, parts });
+  const activity = board.activity.length > 0;
+  return (
+    <>
+      {(left || activity) && (
+        <div className={left && !activity ? STACK : GRID}>
+          {left && <ScopePanels board={board} parts={parts} checklist={null} />}
+          {activity && (
+            <ActivityPanel activity={board.activity} compact={parts.phone === "board-56m"} className={left ? "" : "lg:col-start-2"} />
           )}
-          {activity.length > 0 && (
-            <Panel title="Recent activity" className={`${left ? "" : "lg:col-start-2"} ${compact ? "max-md:hidden" : ""}`}>
-              {activity.map((item) => (
-                <li key={`${item.text}-${item.when}`} className="flex items-start gap-3 px-5 py-3.5">
-                  {/* An activity item carries no person to read a photo off, so the row keeps the PRT mark it always drew. */}
-                  <Avatar size="sm" accent={item.self} person={null} />
-                  <span className="min-w-0">
-                    <span className="block text-[13px]">{item.text}</span>
-                    <span className="block text-[12px] text-prt-muted">{item.when}</span>
-                  </span>
-                </li>
+        </div>
+      )}
+      {(checklist !== null || rosters.length > 0) && (
+        <div className={checklist !== null && rosters.length > 0 ? GRID : "mt-5 md:mt-6"}>
+          {checklist !== null && <ChecklistPanel checklist={checklist} />}
+          {rosters.length > 0 && (
+            <div className="flex min-w-0 flex-col gap-4">
+              {rosters.map((roster) => (
+                <RosterPanel key={roster.title} roster={roster} />
               ))}
-            </Panel>
+            </div>
           )}
         </div>
       )}
     </>
+  );
+}
+
+function ActivityPanel({ activity, compact, className = "" }: { activity: readonly ActivityItem[]; compact: boolean; className?: string }) {
+  return (
+    <Panel title="Recent activity" className={`${className} ${compact ? "max-md:hidden" : ""}`}>
+      {activity.map((item) => (
+        <li key={`${item.text}-${item.when}`} className="flex items-start gap-3 px-5 py-3.5">
+          {/* An activity item carries no person to read a photo off, so the row keeps the PRT mark it always drew. */}
+          <Avatar size="sm" accent={item.self} person={null} />
+          <span className="min-w-0">
+            <span className="block text-[13px]">{item.text}</span>
+            <span className="block text-[12px] text-prt-muted">{item.when}</span>
+          </span>
+        </li>
+      ))}
+    </Panel>
   );
 }
 
@@ -335,13 +366,16 @@ function AttentionPanel({ attention, compact }: { attention: readonly AttentionI
 }
 
 // Board 56: booked interviews under a date tile with their time on the right,
-// then the ones waiting for the applicant to pick a time. Board 56m: each one
-// is its own card, with no tile and the time in a pill.
+// then the ones waiting for the applicant to pick a time. Board 99b (issue
+// #652) names who offered the times, "with Marco Bianchi", under the time.
+// Board 56m: each one is its own card, with no tile, the time in a pill, and
+// who offered it under the position.
 function InterviewsPanel({ interviews }: { interviews: readonly UpcomingInterview[] }) {
   return (
     <Panel title="Upcoming interviews" meta={interviewSummary(interviews)} phoneCards>
       {interviewOrder(interviews).map((interview) => {
         const slot = interview.state === "booked" ? interviewSlot(interview.start, interview.end) : null;
+        const setBy = interview.setBy === null ? null : `with ${interview.setBy}`;
         return (
           <li key={`${interview.applicant}-${interview.position}`} className="flex items-center gap-3.5 px-4 py-3.5 md:px-5">
             {slot ? (
@@ -357,19 +391,20 @@ function InterviewsPanel({ interviews }: { interviews: readonly UpcomingIntervie
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[15px] font-semibold md:text-[14px] md:font-medium">{interview.applicant}</span>
               <span className="block truncate text-[13px] text-prt-muted">{interview.position}</span>
+              {setBy && <span className="block truncate text-[12px] text-prt-muted md:hidden">{setBy}</span>}
+            </span>
+            <span className="hidden shrink-0 flex-col items-end text-right md:flex">
+              {slot ? (
+                <span className="text-[13px] font-semibold tabular-nums">{slot.when}</span>
+              ) : (
+                <span className="text-[13px] text-prt-muted">Waiting for a time</span>
+              )}
+              {setBy && <span className="text-[12px] text-prt-muted">{setBy}</span>}
             </span>
             {slot ? (
-              <>
-                <span className="hidden shrink-0 text-right text-[13px] font-semibold tabular-nums md:block">{slot.when}</span>
-                <span className="shrink-0 rounded-md bg-accent-soft px-2 py-0.5 text-[12px] tabular-nums text-accent md:hidden">
-                  {slot.short}
-                </span>
-              </>
+              <span className="shrink-0 rounded-md bg-accent-soft px-2 py-0.5 text-[12px] tabular-nums text-accent md:hidden">{slot.short}</span>
             ) : (
-              <>
-                <span className="hidden shrink-0 text-right text-[13px] text-prt-muted md:block">Waiting for a time</span>
-                <span className="shrink-0 rounded-md bg-white-10 px-2 py-0.5 text-[12px] text-text-2 md:hidden">No time yet</span>
-              </>
+              <span className="shrink-0 rounded-md bg-white-10 px-2 py-0.5 text-[12px] text-text-2 md:hidden">No time yet</span>
             )}
           </li>
         );
@@ -550,13 +585,17 @@ function ChecklistPanel({ checklist }: { checklist: Checklist }) {
   );
 }
 
+// Board 99b (issue #652): at most six people of the viewer's own division or
+// department, then "See all N on Members" to the Members page when they reach it.
 function RosterPanel({ roster }: { roster: Roster }) {
   return (
     <Panel title={roster.title} detail={roster.detail} phoneMeta={rosterSize(roster.size)}>
-      {roster.people.map((p) => (
+      {roster.people.map((p, index) => (
         <li
           key={p.name}
-          className={`flex items-center gap-3 px-4 py-2.5 md:px-5 ${p.self ? "max-md:rounded-b-xl max-md:bg-accent/[0.08]" : ""}`}
+          className={`flex items-center gap-3 px-4 py-2.5 md:px-5 ${p.self ? "max-md:bg-accent/[0.08]" : ""} ${
+            p.self && index === roster.people.length - 1 && roster.seeAll === null ? "max-md:rounded-b-xl" : ""
+          }`}
         >
           <Avatar size="sm" accent={p.lead} person={p} />
           <span className="min-w-0 flex-1">
@@ -575,6 +614,11 @@ function RosterPanel({ roster }: { roster: Roster }) {
           {p.self && <span className="font-mono text-[11px] font-semibold tracking-[0.1em] text-accent md:hidden">YOU</span>}
         </li>
       ))}
+      {roster.seeAll && (
+        <li>
+          <FootLink {...roster.seeAll} />
+        </li>
+      )}
     </Panel>
   );
 }

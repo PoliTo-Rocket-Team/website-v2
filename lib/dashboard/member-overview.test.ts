@@ -5,9 +5,9 @@ import { test } from "node:test";
 import type { DashboardData } from "./data";
 import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
-import { members, roles, users } from "@/db/schema";
+import { divisions, members, roles, scopes, users } from "@/db/schema";
 import { accountOf, EXTRA, seedFixture } from "./access-matrix/fixture";
-import { changeRows } from "./access-matrix/test-database";
+import { addRows, changeRows } from "./access-matrix/test-database";
 import { signInAs } from "./access-matrix/session";
 
 // One Overview for every team seat on the database path (issue #593): the
@@ -37,20 +37,52 @@ function personal(overview: TeamSideOverview) {
   };
 }
 
-const SEATS = ["member", "member with a positions grant across the team", "division lead", "department head", "team leader"] as const;
+const SEATS = ["member", "member with a positions grant across the team", "division lead", "department head", "team leader", "operations lead", "IT lead"] as const;
 
-test("every team seat gets the personal panels: profile with Edit profile, Your page on the site, and their division's roster", async () => {
+test("every team seat gets the personal panels: profile with Edit profile, Your page on the site, and their own unit's roster", async () => {
   const expected: Record<(typeof SEATS)[number], readonly string[]> = {
     member: ["Mission Analysis"],
     "member with a positions grant across the team": ["Mission Analysis"],
     "division lead": ["Mission Analysis"],
-    // The head's and the team leader's roles name no division, so there is no roster to show.
-    "department head": [],
+    // A head's roster is their department (issue #652).
+    "department head": ["Aerodynamics Department"],
+    // The whole team is on the Members page, so the team leader has no roster,
+    // nor the operations lead and the IT lead (issue #760).
     "team leader": [],
+    "operations lead": [],
+    "IT lead": [],
   };
   for (const seat of SEATS) {
     assert.deepEqual(personal(await overviewOf(seat)), { edit: "Edit profile", checklist: "Your page on the site", rosters: expected[seat] }, seat);
   }
+});
+
+// Issue #652: a grant reaches more of the team on the Members page, never on the Overview's roster.
+test("a member with a Members grant across the team gets their own division's roster, with See all to the Members page", async () => {
+  const own = (await overviewOf("member")).rosters;
+  const granted = (await overviewOf("member with a members grant across the team")).rosters;
+  assert.deepEqual(granted.map((r) => [r.title, r.size]), own.map((r) => [r.title, r.size]));
+  assert.equal(own[0].seeAll, null, "a plain member does not reach the Members page");
+  assert.match(granted[0].seeAll?.href ?? "", /^\/dashboard\/members\?division=\d+$/);
+});
+
+// Boards 99 and 99b are the leaders' layout (issues #652, #760); every other seat keeps the board first.
+test("the team leader, the operations lead, the IT lead, a department head and a division lead get the leader columns; every other seat keeps the board first", async () => {
+  const layouts = [
+    ["team leader", "leader-columns"],
+    ["operations lead", "leader-columns"],
+    ["IT lead", "leader-columns"],
+    ["department head", "leader-columns"],
+    ["division lead", "leader-columns"],
+    ["member", "board-first"],
+    ["member with a positions grant across the team", "board-first"],
+    ["member with a members grant across the team", "board-first"],
+    ["Project Manager", "board-first"],
+    ["Chief Engineer", "board-first"],
+    // Full access from an org scope row holds no seat.
+    ["org-wide editor", "board-first"],
+  ] as const;
+  for (const [seat, layout] of layouts) assert.equal((await overviewOf(seat)).layout, layout, seat);
 });
 
 // "Name and division" is done from the seat the viewer holds and names who sets it (issue #641).
@@ -71,6 +103,27 @@ test("every seat's Name and division step is done and names who sets it for that
   }
 });
 
+// Issue #760: the figure and the roster count one set, the head and everyone in the department's open divisions.
+test("a department head's My department figure counts the people their roster counts, the head with no division role included", async () => {
+  const closeOptimization = async () => changeRows(divisions, { id: 2 }, { closedAt: "2026-09-01" });
+  for (const lay of [undefined, closeOptimization]) {
+    const overview = await overviewOf("department head", lay);
+    const figure = overview.stats.find((s) => s.label === "My department");
+    const [roster] = overview.rosters;
+    assert.ok(roster.people.some((p) => p.self && p.role === "Department head"), "the head is on their roster");
+    assert.equal(figure?.value, String(roster.size), lay === undefined ? "every division open" : "a division closed");
+    assert.equal(roster.seeAll?.href, "/dashboard/members", "See all opens their department's Members page");
+  }
+});
+
+// Issue #760: See all opens the list the roster shows, or is left out.
+test("a member whose Members grant covers another division only gets their own division's roster with no See all", async () => {
+  const overview = await overviewOf("member", async ({ memberId }) => {
+    await addRows(scopes, [{ id: 9_000, memberId, scope: "division", target: "members", accessLevel: "view", divisionId: 3 }]);
+  });
+  assert.deepEqual(overview.rosters.map((r) => [r.title, r.seeAll]), [["Mission Analysis", null]]);
+});
+
 // The IT lead's seat as the team holds it is a lead role in the IT division, flagged as the seat (db/seed/people.ts).
 test("an IT lead whose flagged role sits in a division reads that the team leader sets their name and division", async () => {
   const overview = await overviewOf("IT lead", async ({ memberId }) => {
@@ -78,6 +131,8 @@ test("an IT lead whose flagged role sits in a division reads that the team leade
   });
   const step = overview.checklist?.items.find((item) => item.label === "Name and division");
   assert.deepEqual([step?.done, step?.detail], [true, "Set by the team leader"]);
+  // A lead role in a division is still the seat: the leader columns with no roster (issue #760).
+  assert.deepEqual([overview.layout, overview.rosters], ["leader-columns", []]);
 });
 
 /** A stored photo and a LinkedIn link: with name, division and email, every step of their page is done. */

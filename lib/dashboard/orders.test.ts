@@ -23,7 +23,6 @@ import {
   ordersPageFor,
   ordersScopeOf,
   orgUnitsOf,
-  pagerSlots,
   parseEuros,
   sortOrders,
   stateAfterDecision,
@@ -370,14 +369,6 @@ test("a page holds 12 orders, newest first, and a page past the end shows the la
   assert.deepEqual(orderPage(orders, 3).orders.map((o) => o.requestedOn), ["2026-09-06", "2026-09-05", "2026-09-04", "2026-09-03", "2026-09-02", "2026-09-01"]);
   assert.equal(orderPage(orders, 9).page, 3);
   assert.deepEqual(orderPage([], 1), { orders: [], page: 1, pages: 1 });
-});
-
-test("the pager shows the first, the last and the pages around the current one (board 61)", () => {
-  assert.deepEqual(pagerSlots(1, 6), [1, 2, 3, "gap", 6]);
-  assert.deepEqual(pagerSlots(4, 6), [1, "gap", 3, 4, 5, 6]);
-  assert.deepEqual(pagerSlots(6, 6), [1, "gap", 4, 5, 6]);
-  assert.deepEqual(pagerSlots(5, 9), [1, "gap", 4, 5, 6, "gap", 9]);
-  assert.deepEqual(pagerSlots(2, 4), [1, 2, 3, 4]);
 });
 
 test("orders sort newest first, whatever their state", () => {

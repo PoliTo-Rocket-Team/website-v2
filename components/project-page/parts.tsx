@@ -6,7 +6,25 @@ import type { Fact, LaunchPhoto, Title } from "@/lib/project-pages";
 
 // Pieces every project-page section shares: the accent rule over a numbered
 // eyebrow and the section title, the mono status pill, a photo slot, a row of
-// key facts, and the text that has a shorter phone version.
+// key facts, the text that has a shorter phone version, and the column a
+// page block sits in.
+
+/**
+ * Wraps a block's content on the page's column. The editor outlines it there
+ * (components/dashboard/project-edit.tsx); the public page draws it as it is.
+ */
+export type BlockFrame = (node: ReactNode) => ReactNode;
+
+export const asIs: BlockFrame = (node) => node;
+
+/** A page block's section: the block rhythm's top room, then its content on the page's column, wrapped in `frame`. */
+export function BlockColumn({ frame = asIs, children }: { frame?: BlockFrame; children: ReactNode }) {
+  return (
+    <section className="px-5 pt-14 md:px-16 md:pt-[120px]">
+      <div className="mx-auto max-w-[1312px]">{frame(children)}</div>
+    </section>
+  );
+}
 
 /**
  * A set holding a value as long as board 25's "Regenerative" needs room a

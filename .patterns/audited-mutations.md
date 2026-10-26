@@ -21,9 +21,11 @@ made stale. Client components import the action functions directly.
    ([lib/dashboard/acting-account.ts](../lib/dashboard/acting-account.ts)): "IT lead as Sara Conti".
    A "by" line read off the log itself, joined on `logs.changed_by`, also reads
    `logs.changed_by_acting_account` and shows it the same way (`readProjectStamps` in
-   [lib/dashboard/database-projects.ts](../lib/dashboard/database-projects.ts)). No page
-   lists the `logs` rows yet: the Activity log page is
-   [#642](https://github.com/PoliTo-Rocket-Team/website-v2/issues/642).
+   [lib/dashboard/database-projects.ts](../lib/dashboard/database-projects.ts)). The Activity log
+   page lists the `logs` rows ([#642](https://github.com/PoliTo-Rocket-Team/website-v2/issues/642)):
+   [lib/dashboard/database-activity-log.ts](../lib/dashboard/database-activity-log.ts) reads them
+   and [lib/dashboard/activity-log.ts](../lib/dashboard/activity-log.ts) reads the rows one
+   transaction stored, which share one `changed_at`, as one change with one sentence.
 
    ```ts
    async function setPositionOpen(identity: Identity, positionId: number, open: boolean): Promise<void> {

@@ -601,14 +601,14 @@ const BLOCK_OUTLINE = {
  *   is drawn, on the arc or in the grid below xl. The outline's foot stands
  *   further out than its other sides, so the chip on it stays clear of the
  *   person's contact icons.
- * - `bleed`: a block that fills the page's width, as a project's hero and
- *   numbered sections do. Outside it, the outline's sides would fall past the
- *   frame's edges, and the hero's chip row past its top, so both sit inside
- *   it, the row just under the outline's top. A page whose first line sits
- *   closer to the block's top than that row gives the block room there
- *   through `className`.
+ * - `column`: a block whose content runs past the page's column to the
+ *   frame's edges, as a project's gallery carousel does. The outline and its
+ *   chip row sit on the page's column as an `around` block's do (20px sides
+ *   on phones, 64px from md, the 1312px column centred), and the content
+ *   passes under the outline's sides, so no outline spans the frame and no
+ *   chip falls outside it.
  */
-export type BlockShape = "around" | "narrow" | "bleed";
+export type BlockShape = "around" | "narrow" | "column";
 
 const AROUND_OUTLINE = "-inset-3 md:-inset-[22px]";
 const ON_TOP_EDGE = "-top-3 -translate-y-1/2 md:-top-[22px]";
@@ -619,8 +619,8 @@ const ON_TOP_EDGE = "-top-3 -translate-y-1/2 md:-top-[22px]";
  * (board 74f): 244px wide, 16px in from the window's right edge, so the row
  * moves in from the block's right edge far enough to clear it. An `around`
  * block sits in the page's column, 64px in from md; from 1440px the column
- * is centred and leaves room for the board's own spot. A `bleed` block's
- * edge is the frame's.
+ * is centred and leaves room for the board's own spot. A `column` block's
+ * edge is the frame's, so its places count in from the frame to the column.
  */
 const BLOCK_SHAPE: Readonly<
   Record<
@@ -646,14 +646,14 @@ const BLOCK_SHAPE: Readonly<
     editAtFoot: true,
     room: "mb-10",
   },
-  bleed: {
-    outline: "inset-1.5 md:inset-2",
-    row: "top-3 md:top-4",
-    rowStart: "left-3 md:left-4",
-    rowEnd: "right-6 md:right-[33px]",
-    clearEnd: "right-6 md:right-[284px]",
+  column: {
+    outline: "-inset-y-3 inset-x-2 md:-inset-y-[22px] md:inset-x-[max(42px,calc((100%_-_1312px)/2_-_22px))]",
+    row: "top-0 md:-top-[22px] md:-translate-y-1/2",
+    rowStart: "left-6 md:left-[max(64px,calc((100%_-_1312px)/2))]",
+    rowEnd: "right-11 md:right-[max(97px,calc((100%_-_1312px)/2_+_33px))]",
+    clearEnd: "right-11 md:right-[284px]",
     editAtFoot: false,
-    room: "",
+    room: "max-md:pt-8",
   },
 };
 

@@ -49,6 +49,24 @@ export async function createProject(input: unknown): Promise<WriteResult<{ slug:
 }
 
 /**
+ * Delete project in the project editor (issue #768): the project goes with
+ * every version, a draft, a published one or one with draft changes, and the
+ * uploaded files only it showed. The public pages and the dashboard Projects
+ * list, which the editor goes back to, render again without it.
+ */
+export async function deleteProject(projectId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(projectId)) return refused("Unknown project.");
+  const opening = await openDashboard();
+  if (opening.kind !== "open") return refused("Sign in again to make changes.");
+  const result = await opening.data.projects.remove(projectId);
+  if (result.ok) {
+    refreshPublicProjects();
+    revalidatePath("/dashboard/projects");
+  }
+  return result;
+}
+
+/**
  * A launch or gallery photo picked in the Edit <project> panel (issue #299),
  * stored at once, through the same path as Outreach's, so the page can show
  * it; a save puts it on the project.

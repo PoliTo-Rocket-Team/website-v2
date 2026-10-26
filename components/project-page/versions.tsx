@@ -1,6 +1,6 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { specRows, versionList, type Version, type Versions } from "@/lib/project-pages";
-import { SectionHead, Value } from "./parts";
+import { BlockColumn, SectionHead, Value, type BlockFrame } from "./parts";
 
 // Versions. Boards 23 and 24 (from md): one table of the versions, the
 // highlighted one's column bold under an accent pill. Boards 23m and 24m
@@ -95,22 +95,20 @@ function VersionsTabs({ versions }: { versions: Versions }) {
   );
 }
 
-export function ProjectVersions({ num, name, versions }: { num: string; name: string; versions: Versions }) {
+export function ProjectVersions({ num, name, versions, frame }: { num: string; name: string; versions: Versions; frame?: BlockFrame }) {
   return (
-    <section className="px-5 pt-14 md:px-16 md:pt-[120px]">
-      <div className="mx-auto max-w-[1312px]">
-        <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end md:gap-8">
-          <SectionHead num={num} label="VERSIONS" title={versions.title} />
-          <p className="hidden max-w-[420px] text-[15px] leading-[22px] text-text-2 md:mb-2 md:block">
-            {versions.note.text}
-          </p>
-        </div>
-        <VersionsTable versions={versions} label={`${name} versions`} />
-        <VersionsTabs versions={versions} />
-        <p className="mt-4 text-[13px] text-prt-muted md:hidden">
-          {versions.note.phone ?? versions.note.text}
+    <BlockColumn frame={frame}>
+      <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end md:gap-8">
+        <SectionHead num={num} label="VERSIONS" title={versions.title} />
+        <p className="hidden max-w-[420px] text-[15px] leading-[22px] text-text-2 md:mb-2 md:block">
+          {versions.note.text}
         </p>
       </div>
-    </section>
+      <VersionsTable versions={versions} label={`${name} versions`} />
+      <VersionsTabs versions={versions} />
+      <p className="mt-4 text-[13px] text-prt-muted md:hidden">
+        {versions.note.phone ?? versions.note.text}
+      </p>
+    </BlockColumn>
   );
 }

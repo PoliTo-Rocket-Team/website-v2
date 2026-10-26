@@ -77,9 +77,14 @@ An admin column comes later. **Planned**, no issue yet.
   - **Exception 1, deciding orders:** by default only the team leader approves, rejects or asks
     for changes. The other full-access seats decide only with "Approve orders" (see
     "4. Orders").
-  - **Exception 2, the Activity log:** only the IT lead reaches it. The reach rule is in place;
-    the page itself is **Planned**
-    ([#642](https://github.com/PoliTo-Rocket-Team/website-v2/issues/642)), so no sidebar lists it yet.
+  - **Exception 2, the Activity log:** only the IT lead reaches it, and their sidebar lists it at
+    the end of TEAM (board 101,
+    [#642](https://github.com/PoliTo-Rocket-Team/website-v2/issues/642)). It lists every stored
+    change of the last 12 months, newest first, 12 to a page: When, Who, Change and Area, with
+    search, All / View as only, Area, Person and date range filters. A change made during View as
+    shows "<seat title> as <person>" with "by <acting person>" under it. View as starts and stops
+    are their own rows, and a start with no stop whose session has expired shows as ended by
+    timeout at that expiry, worked out when the page is read.
 - **The team leader's own pages** (boards 72 to 73c, #252). The team leader has full access like
   the operations lead and the IT lead, but some of their pages differ. The operations lead and the
   IT lead keep boards 40 and 46.
@@ -505,6 +510,8 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
 - Delete account: the person types DELETE. It closes the sign-in. The data is kept at least one
   year, then anonymized for statistics. The Privacy Policy must say so (#122). A non-member may
   also withdraw their open applications in the same dialog.
+- Anonymization also clears the person's free-text answers to a position's questions, on the
+  application and in the audit log copies (#729). The role, dates and outcome stay for statistics.
 - Alumni entries survive anonymization (#257). Anonymizing a deleted account clears the private
   fields, but keeps the person's alumni entry: their name, years, roles and founder mark stay on
   the Alumni page as part of the team's history. The entry's photo goes.
