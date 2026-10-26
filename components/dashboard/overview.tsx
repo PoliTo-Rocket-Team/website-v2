@@ -88,7 +88,7 @@ type LeadPhoneForm = "full" | "board-56m";
 
 /** The scope board's own parts, and the phone form it reads in: board 56m's for a division or department board, 40m's otherwise. */
 function boardParts(overview: ScopeBoard): {
-  divisions: readonly DivisionSummary[] | null;
+  divisions: { readonly list: readonly DivisionSummary[]; readonly people: number } | null;
   departments: { readonly list: readonly DepartmentSummary[]; readonly people: number } | null;
   interviews: readonly UpcomingInterview[];
   phone: LeadPhoneForm;
@@ -99,7 +99,7 @@ function boardParts(overview: ScopeBoard): {
     case "leader":
       return { divisions: null, departments: { list: overview.departments, people: overview.people }, interviews: [], phone: "full" };
     case "department":
-      return { divisions: overview.divisions, departments: null, interviews: overview.interviews, phone: "board-56m" };
+      return { divisions: { list: overview.divisions, people: overview.people }, departments: null, interviews: overview.interviews, phone: "board-56m" };
     case "division":
       return { divisions: null, departments: null, interviews: overview.interviews, phone: "board-56m" };
   }
@@ -194,7 +194,7 @@ function hasScopePanels({ board, parts }: Pick<BodyProps, "board" | "parts">): b
   return (
     board.attention.length > 0 ||
     parts.interviews.length > 0 ||
-    (parts.divisions !== null && parts.divisions.length > 0) ||
+    (parts.divisions !== null && parts.divisions.list.length > 0) ||
     (parts.departments !== null && parts.departments.list.length > 0)
   );
 }
@@ -212,7 +212,7 @@ function ScopePanels({ board, parts, checklist }: Pick<BodyProps, "board" | "par
     <div className="flex min-w-0 flex-col gap-4">
       {board.attention.length > 0 && <AttentionPanel attention={board.attention} compact={parts.phone === "board-56m"} />}
       {checklist !== null && <ChecklistPanel checklist={checklist} />}
-      {divisions !== null && divisions.length > 0 && <DivisionsPanel divisions={divisions} />}
+      {divisions !== null && divisions.list.length > 0 && <DivisionsPanel divisions={divisions.list} people={divisions.people} />}
       {departments !== null && departments.list.length > 0 && <DepartmentsPanel departments={departments.list} people={departments.people} />}
       {interviews.length > 0 && (
         <div className={divisions !== null ? "md:hidden" : undefined}>
@@ -418,9 +418,9 @@ function InterviewsPanel({ interviews }: { interviews: readonly UpcomingIntervie
 // 62m: each division is its own card, its initials in a small mono tag, the
 // leads on one line and the counts on the next, and a tap opens its
 // Positions tab.
-function DivisionsPanel({ divisions }: { divisions: readonly DivisionSummary[] }) {
+function DivisionsPanel({ divisions, people }: { divisions: readonly DivisionSummary[]; people: number }) {
   return (
-    <Panel title="Divisions" meta={divisionsMeta(divisions)} phoneMeta={String(divisions.length)} phoneCards>
+    <Panel title="Divisions" meta={divisionsMeta(divisions, people)} phoneMeta={String(divisions.length)} phoneCards>
       {divisions.map((division) => {
         const lead = leadsLabel(division.leads);
         const leads = lead === null ? "No lead yet" : `${lead} ${division.leads.join(", ")}`;

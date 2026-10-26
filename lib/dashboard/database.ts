@@ -39,9 +39,11 @@ import { databaseAlumniWrites, databaseOwnAlumni, readAlumniDirectory, readOwnAl
 import { decideRightOfStanding, formatEuro, waitingOrders, type Order } from "./orders";
 import { departmentLabel } from "./recruitment";
 import {
+  departmentHeadcount,
   departmentRoster,
   divisionRoster,
   holdsLeaderSeat,
+  myDepartmentStat,
   noPhotoItem,
   oldestLine,
   overviewLayoutOf,
@@ -655,8 +657,9 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
   const noPhoto = noPhotoItem(withoutPhoto);
   // One row per active role, so someone in two of the department's divisions
   // has two rows; the department figure counts each person once (issue #229),
-  // its heads included, the people the head's roster counts (issue #760).
-  const headcount = new Set(people.map((p) => p.memberId)).size;
+  // its heads included, the people the head's roster counts (issue #760) and
+  // the Divisions panel's header (issue #777).
+  const headcount = departmentHeadcount(people);
 
   const attention: AttentionItem[] = [
     ...unread.flatMap((p): AttentionItem[] =>
@@ -690,11 +693,7 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
         detail: `${formatEuro(waiting.total)} to be placed`,
         live: waiting.count > 0,
       },
-      {
-        label: "My department",
-        value: String(headcount),
-        detail: `${headcount === 1 ? "person" : "people"} in ${department?.name ?? identity.role?.departmentName ?? ""}`,
-      },
+      myDepartmentStat(headcount, department?.name ?? identity.role?.departmentName ?? ""),
     ],
     attention,
     divisions: (department?.divisions ?? []).map((division): DivisionSummary => {
@@ -709,6 +708,7 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
         openPositions: own.filter((p) => p.open).length,
       };
     }),
+    people: headcount,
     interviews,
     activity: [],
   };
