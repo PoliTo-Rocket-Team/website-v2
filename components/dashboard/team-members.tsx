@@ -252,7 +252,8 @@ export function ScopedMembersView({
       <PersonDrawer
         person={open}
         alias={open === null ? null : (aliases[open.id] ?? null)}
-        teamAddresses={open === null ? [] : (teamAddresses[open.id] ?? [])}
+        teamAddresses={open === null ? null : (teamAddresses.rows[open.id] ?? null)}
+        movesWith={teamAddresses.movesWith}
         editable={writes && page.panelEdits && open?.actions != null}
         onClose={() => setOpenId(null)}
         onEdit={editPerson}

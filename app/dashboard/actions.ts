@@ -343,6 +343,13 @@ export async function requestAlias(memberId: number): Promise<WriteResult<null>>
   return result;
 }
 
+/** Request team address in the member drawer (board 102b, epic #578): the drawer reads again; the request waits for an approver. */
+export async function requestTeamAddress(input: unknown): Promise<WriteResult<null>> {
+  const result = await write("members", (data) => data.requestTeamAddress(input));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
 /** Cancel request in the member drawer (board 94b). */
 export async function cancelAliasRequest(requestId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(requestId)) return refused("Unknown alias request.");

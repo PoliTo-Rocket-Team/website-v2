@@ -553,7 +553,11 @@ export function drawerTeamAddressesOf(data: SeedData, memberId: number) {
       moves_with_division_id: r.movesWithDivisionId ?? null,
     }),
   }));
-  return memberTeamAddressesFor({ memberIds: [memberId], team: teamOf(data), org: orgOf(data), held })[memberId] ?? [];
+  // The lines alone, which every viewer of the row reads the same; who may request is the viewer's.
+  return (
+    memberTeamAddressesFor({ viewerId: null, standing: viewerStandingOf(null), memberIds: [memberId], team: teamOf(data), org: orgOf(data), held }).rows[memberId]
+      ?.lines ?? []
+  );
 }
 
 /** The rows each approver reads under "Needs your attention" for the open requests. */

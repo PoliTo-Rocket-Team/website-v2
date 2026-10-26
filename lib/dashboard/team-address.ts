@@ -1,7 +1,10 @@
+import { z } from "zod";
+import { domainAddressOf, mayAskFor, TEAM_DOMAIN } from "./alias-request";
+import type { Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
 import { divisionShortName } from "./overview";
 import type { OrgChart } from "./team";
-import { SEAT_OF_FLAG, type FlaggedSeat, type SeatFlag } from "./viewer";
+import { FLAG_OF_SEAT, SEAT_OF_FLAG, type FlaggedSeat, type SeatFlag, type ViewerStanding } from "./viewer";
 
 // Shared team addresses (epic #578, issue #786; board 102). Besides each
 // member's PRT email, the team has shared addresses on the team domain, such
@@ -9,7 +12,9 @@ import { SEAT_OF_FLAG, type FlaggedSeat, type SeatFlag } from "./viewer";
 // what it is for, and may move with a role: when that role changes hands,
 // the address follows it (a later slice of the epic). This module owns the
 // tie, its label and how the member side view lists a member's addresses;
-// `team_addresses` stores what it says.
+// `team_addresses` stores what it says. It also owns Request team address
+// (issue #787, board 102b): who may ask, the address and purpose checks and
+// the one open request per address; `team_address_requests` stores it.
 
 /**
  * The role a team address moves with (grill #785, R1.1): one the org model
@@ -59,6 +64,22 @@ export function movesWithOf(row: StoredTie): MovesWith | null {
   }
 }
 
+/** The tie as the tables store it: `movesWithOf` read the other way. */
+export function storedTieOf(tie: MovesWith | null): StoredTie {
+  const none = { moves_with: null, moves_with_seat: null, moves_with_dept_id: null, moves_with_division_id: null } as const;
+  if (tie === null) return none;
+  switch (tie.kind) {
+    case "team-leader":
+      return { ...none, moves_with: "team_leader" };
+    case "full-access-seat":
+      return { ...none, moves_with: "full_access_seat", moves_with_seat: FLAG_OF_SEAT[tie.seat] };
+    case "department-head":
+      return { ...none, moves_with: "department_head", moves_with_dept_id: tie.departmentId };
+    case "division-lead":
+      return { ...none, moves_with: "division_lead", moves_with_division_id: tie.divisionId };
+  }
+}
+
 /** Each full-access seat as the org chart names it. */
 const SEAT_ROLE_NAMES: Readonly<Record<FlaggedSeat, string>> = {
   "operations-lead": "Operations Lead",
@@ -97,8 +118,176 @@ export type TeamAddressLine = {
   readonly movesWith: string | null;
 };
 
-/** The team addresses each member holds, by member id; a member holding none is left out. */
-export type MemberTeamAddresses = Readonly<Record<number, readonly TeamAddressLine[]>>;
+// Moves with (board 102b, grill #785 R1.1) ------------------------------------------
+
+/** The full-access seats in the order Moves with lists them. */
+const SEATS: readonly FlaggedSeat[] = ["operations-lead", "it-lead", "project-manager", "chief-engineer"];
+
+/**
+ * Every role a team address may move with on the current org chart (grill
+ * #785, R1.1): the team leader, each full-access seat, each department's
+ * head and each division's lead, in that order.
+ */
+export function movesWithChoices(org: OrgChart): MovesWith[] {
+  return [
+    { kind: "team-leader" },
+    ...SEATS.map((seat): MovesWith => ({ kind: "full-access-seat", seat })),
+    ...org.departments.map((d): MovesWith => ({ kind: "department-head", departmentId: d.id })),
+    ...org.divisions.map((d): MovesWith => ({ kind: "division-lead", divisionId: d.id })),
+  ];
+}
+
+/** How Moves with sends a tie: "team-leader", "seat:it-lead", "head:7", "lead:9". */
+export function movesWithKey(tie: MovesWith): string {
+  switch (tie.kind) {
+    case "team-leader":
+      return "team-leader";
+    case "full-access-seat":
+      return `seat:${tie.seat}`;
+    case "department-head":
+      return `head:${tie.departmentId}`;
+    case "division-lead":
+      return `lead:${tie.divisionId}`;
+  }
+}
+
+/** One role Moves with offers: the key it is sent as, and its name on the org chart. */
+export type MovesWithOption = { readonly key: string; readonly label: string };
+
+/** The roles Moves with offers (`movesWithChoices`), each named as the org chart names it. */
+export function movesWithOptions(org: OrgChart): MovesWithOption[] {
+  return movesWithChoices(org).map((tie) => ({ key: movesWithKey(tie), label: movesWithLabel(tie, org) }));
+}
+
+// Request team address (board 102b, issue #787) -------------------------------------
+
+/** The longest "What it's for" the dialog takes. */
+export const PURPOSE_MAX = 120;
+
+/**
+ * The address as typed, checked before it is sent: the alias address check
+ * (`domainAddressOf`), so one word or a dotted name, on the team domain
+ * only. Read in lower case.
+ */
+export function checkTeamAddress(input: string): Checked<string> {
+  const typed = input.trim();
+  const at = typed.lastIndexOf("@");
+  if ((at === -1 ? typed : typed.slice(0, at)) === "") return { ok: false, error: "Type the address." };
+  const checked = domainAddressOf(typed);
+  if (checked === "off-domain") return { ok: false, error: `A team address must end with @${TEAM_DOMAIN}.` };
+  if (checked === "shape") return { ok: false, error: "Use one word, such as recruitment, or a dotted name, such as team.events." };
+  return { ok: true, value: checked.address };
+}
+
+/** What the address is for, as typed: required, as `team_addresses.purpose` is, and at most `PURPOSE_MAX` characters. */
+export function checkPurpose(input: string): Checked<string> {
+  const purpose = input.trim();
+  if (purpose === "") return { ok: false, error: "Say what the address is for." };
+  if (purpose.length > PURPOSE_MAX) return { ok: false, error: `Keep it to ${PURPOSE_MAX} characters.` };
+  return { ok: true, value: purpose };
+}
+
+/** A request as the dialog sends it: the member, the whole address, what it is for, and the Moves with key or null. */
+export type TeamAddressRequestInput = {
+  readonly memberId: number;
+  readonly address: string;
+  readonly purpose: string;
+  readonly movesWith: string | null;
+};
+
+const requestSchema = z.object({
+  memberId: z.number().int().positive(),
+  address: z.string().max(200),
+  purpose: z.string().max(PURPOSE_MAX * 4),
+  movesWith: z.string().max(100).nullable(),
+});
+
+/** A request whose fields are checked: the address in lower case, the purpose trimmed, and the tie it names. */
+export type TeamAddressRequest = {
+  readonly memberId: number;
+  readonly address: string;
+  readonly purpose: string;
+  readonly movesWith: MovesWith | null;
+};
+
+/**
+ * A request as sent, checked field by field: the address
+ * (`checkTeamAddress`), what it is for (`checkPurpose`), and a Moves with
+ * that is a role on the current org chart (`movesWithChoices`) or none. Who
+ * may ask and the duplicates are `planTeamAddressRequest`'s.
+ */
+export function checkTeamAddressRequest(input: unknown, org: OrgChart): Checked<TeamAddressRequest> {
+  const parsed = requestSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Fill in the address and what it is for." };
+  const { memberId, movesWith: key } = parsed.data;
+  const address = checkTeamAddress(parsed.data.address);
+  if (!address.ok) return address;
+  const purpose = checkPurpose(parsed.data.purpose);
+  if (!purpose.ok) return purpose;
+  const movesWith = key === null ? null : movesWithChoices(org).find((tie) => movesWithKey(tie) === key);
+  if (movesWith === undefined) return { ok: false, error: "Choose Moves with from the list." };
+  return { ok: true, value: { memberId, address: address.value, purpose: purpose.value, movesWith } };
+}
+
+/** A request the rules allow, as it is stored open. */
+export type PlannedTeamAddressRequest = TeamAddressRequest & { readonly requesterId: number };
+
+/** The refusal of a second open request for an address, from the check or from the database index. */
+export function alreadyRequested(address: string): string {
+  return `${address} is already requested.`;
+}
+
+/**
+ * Request team address as the rules allow it, or the first reason it is
+ * refused: the requester may ask for the member by the alias rule of issue
+ * #721 (`mayAskFor`), and the address is neither a team address already nor
+ * asked for by an open request, in any letter case. The database refuses a
+ * second open request for an address too (`team_address_requests_one_open`).
+ */
+export function planTeamAddressRequest(input: {
+  readonly requesterId: number | null;
+  /** The requester's standing: full access asks for anyone on the team. */
+  readonly standing: ViewerStanding;
+  readonly request: TeamAddressRequest;
+  readonly team: readonly TeamPerson[];
+  readonly org: OrgChart;
+  /** Team addresses as stored; only one equal to the request's is read. */
+  readonly held: readonly string[];
+  /** The addresses open requests ask for; only one equal to the request's is read. */
+  readonly open: readonly string[];
+}): Checked<PlannedTeamAddressRequest> {
+  const { requesterId, standing, request, team, org } = input;
+  if (requesterId === null || !mayAskFor(requesterId, standing, request.memberId, team, org)) {
+    return { ok: false, error: "You can request a team address only for someone you lead or head." };
+  }
+  const same = (address: string) => address.toLowerCase() === request.address;
+  if (input.held.some(same)) return { ok: false, error: `${request.address} is already a team address.` };
+  if (input.open.some(same)) return { ok: false, error: alreadyRequested(request.address) };
+  return { ok: true, value: { ...request, requesterId } };
+}
+
+// How it reads (boards 102 and 102b) -------------------------------------------------
+
+/**
+ * One member's Team addresses row in the side view: the addresses they hold,
+ * sorted by address, and whether the viewer may request one for them, which
+ * puts Request team address at the row's end.
+ */
+export type TeamAddressRow = { readonly lines: readonly TeamAddressLine[]; readonly requestable: boolean };
+
+/**
+ * The Team addresses rows the Members page shows, by member id, and the
+ * roles the request dialog offers. A member who holds none and whom the
+ * viewer may not ask for is left out, so their row is hidden.
+ */
+export type MemberTeamAddresses = {
+  readonly rows: Readonly<Record<number, TeamAddressRow>>;
+  /** Moves with's roles (`movesWithOptions`); empty when the viewer may ask for nobody. */
+  readonly movesWith: readonly MovesWithOption[];
+};
+
+/** No rows: what a viewer who does not reach the Members page reads. */
+export const NO_TEAM_ADDRESSES: MemberTeamAddresses = { rows: {}, movesWith: [] };
 
 /** Orders addresses by the address, in any letter case. */
 function byAddress(a: TeamAddressLine, b: TeamAddressLine): number {
@@ -108,18 +297,23 @@ function byAddress(a: TeamAddressLine, b: TeamAddressLine): number {
 }
 
 /**
- * The Team addresses row of each of `memberIds` on the team (board 102):
- * every address they hold, sorted by address. A member off the team, or
- * holding none, is left out, so the row is hidden for them.
+ * The Team addresses row of each of `memberIds` on the team (boards 102 and
+ * 102b): every address they hold, sorted by address, and Request team
+ * address when `mayAskFor` lets the viewer ask for them, the check the
+ * server runs too. A member off the team, or one who holds none and whom
+ * the viewer may not ask for, is left out, so the row is hidden for them.
  */
 export function memberTeamAddressesFor(input: {
+  readonly viewerId: number | null;
+  /** The viewer's standing: full access may request for anyone on the team. */
+  readonly standing: ViewerStanding;
   readonly memberIds: readonly number[];
   readonly team: readonly TeamPerson[];
   readonly org: OrgChart;
   readonly held: readonly TeamAddress[];
 }): MemberTeamAddresses {
-  const { team, org, held } = input;
-  const out: Record<number, readonly TeamAddressLine[]> = {};
+  const { viewerId, standing, team, org, held } = input;
+  const rows: Record<number, TeamAddressRow> = {};
   for (const memberId of input.memberIds) {
     if (!team.some((p) => p.id === memberId)) continue;
     const lines = held
@@ -130,7 +324,9 @@ export function memberTeamAddressesFor(input: {
         movesWith: a.movesWith === null ? null : movesWithLabel(a.movesWith, org),
       }))
       .sort(byAddress);
-    if (lines.length > 0) out[memberId] = lines;
+    const requestable = viewerId !== null && mayAskFor(viewerId, standing, memberId, team, org);
+    if (lines.length > 0 || requestable) rows[memberId] = { lines, requestable };
   }
-  return out;
+  const asks = Object.values(rows).some((row) => row.requestable);
+  return { rows, movesWith: asks ? movesWithOptions(org) : [] };
 }

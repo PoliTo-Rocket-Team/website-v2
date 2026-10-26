@@ -855,9 +855,24 @@ These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 
   sorted by address. Under it are what it is for and, when tied, "moves with" the role as the org
   chart names it, for example "Logistics Lead".
 - The row shows to the same viewers who see the PRT email row: every viewer who reaches the
-  Members page and opens the member. It is hidden when the member holds no team address.
-- Nothing in the dashboard writes team addresses yet. Requesting one, answering the request and
-  moving an address on a hand-over come in later slices of epic #578.
+  Members page and opens the member. It is hidden when the member holds no team address and the
+  viewer may not request one for them.
+- Who may request a team address follows the alias rule of issue #721: a division lead for a
+  member of a division they lead, a department head for a member of their department, and anyone
+  with full access for any member on the team, themselves included. For them, "Request team
+  address" ends the row, so for a member holding none the row is the button alone (board 102b).
+  The server runs the same check (`mayAskFor`), so the button shows exactly when a request would
+  be accepted.
+- The request dialog asks for the address (the part before the team domain, which the box shows
+  as a fixed ending), what it is for (required, up to 120 characters) and, optionally, the role it
+  moves with: the team leader, a full-access seat, or a department head or division lead on the
+  current org chart. The address check is the alias one: one word or a dotted name, on the team
+  domain only.
+- One address has at most one open request, in any letter case. A request is refused when the
+  address is already a team address or already has an open request; the database index
+  `team_address_requests_one_open` refuses the second of two requests sent at once, with the same
+  message. Nothing in the dashboard answers a request or moves an address on a hand-over yet; those
+  come in later slices of epic #578.
 
 ### Access
 
