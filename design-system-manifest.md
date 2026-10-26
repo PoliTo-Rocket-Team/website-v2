@@ -566,6 +566,9 @@ the copyright line, the legal links (Terms of Service, Privacy Policy) side by s
 "POLITECNICO DI TORINO", which is hidden below md. Below lg the three stack, the copyright
 line first; from lg they are one row, copyright left, the legal links and Politecnico right.
 Each bottom-row item stays on one line at every width (`whitespace-nowrap`, issue #774).
+The gap above the bottom row (from the hairline, `mt-10`) equals the footer's bottom padding
+(`pb-10`): 40px at every breakpoint, so the row sits evenly between the line and the page end
+(issue #779).
 
 ## Accessibility
 
