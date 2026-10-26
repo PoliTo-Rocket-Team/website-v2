@@ -257,8 +257,8 @@ async function readJoining(identity: DashboardIdentity, divisionIds: readonly nu
     .leftJoin(members, eq(members.memberId, users.member))
     .where(
       and(
+        // A deleted position's accepted applicants still join (issue #772).
         inArray(applyPositions.divisionId, [...units.keys()]),
-        eq(applyPositions.isDeleted, false),
         eq(applications.status, "accepted"),
         isNull(users.member),
       ),

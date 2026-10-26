@@ -97,26 +97,38 @@ import { refused, written, type WriteResult } from "./write";
 type Identity = DashboardIdentity;
 type DbStatus = (typeof applications.$inferSelect)["status"];
 
-/** The division a position is in, with its department; null for a deleted position or a closed unit. */
-async function positionUnit(positionId: number): Promise<DivisionUnit | null> {
+/**
+ * The division a position is in, with its department; null for a closed
+ * unit. A deleted position (issue #772) is null in the Positions area only:
+ * its applications stay fully workable in the Applications area.
+ */
+async function positionUnit(positionId: number, area: "positions" | "applications"): Promise<DivisionUnit | null> {
   const [row] = await getDb()
     .select({ divisionId: divisions.id, departmentId: departments.id })
     .from(applyPositions)
     .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
     .innerJoin(departments, eq(divisions.deptId, departments.id))
-    .where(and(eq(applyPositions.id, positionId), eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)))
+    .where(
+      and(
+        eq(applyPositions.id, positionId),
+        area === "positions" ? eq(applyPositions.isDeleted, false) : undefined,
+        isNull(divisions.closedAt),
+        isNull(departments.closedAt),
+      ),
+    )
     .limit(1);
   return row ?? null;
 }
 
 /**
  * Whether the viewer may change `area` on the position (issues #160, #461):
- * it is live, in an open division, and the one rule every position and
- * application write asks (`mayChangePositionIn`, ./position-access.ts) lets
- * them change it there. False for a position that no longer exists.
+ * it is in an open division, live where `area` is Positions, and the one
+ * rule every position and application write asks (`mayChangePositionIn`,
+ * ./position-access.ts) lets them change it there. False for a position that
+ * no longer exists, and for a deleted one in the Positions area (issue #772).
  */
 async function mayChangePosition(identity: Identity, area: "positions" | "applications", positionId: number): Promise<boolean> {
-  const unit = await positionUnit(positionId);
+  const unit = await positionUnit(positionId, area);
   return unit !== null && mayChangePositionIn(identity, area, unit);
 }
 
@@ -131,8 +143,9 @@ async function mayChangePosition(identity: Identity, area: "positions" | "applic
  * Each row keeps the unit it sits in, for the Applications page's change
  * rule (issue #577); `rowOf` drops it before a page carries the row.
  * A deleted position (issue #772) leaves the Positions area, but stays in the
- * Applications area, so its applications still list under its title; there
- * it is marked `deleted`, and nothing on it can be changed.
+ * Applications area, so its applications still list under its title and stay
+ * fully workable; there it is marked `deleted`, and the position itself
+ * cannot be changed.
  */
 async function readPositionRows(identity: Identity, area: RecruitmentArea, now: Date): Promise<ReadPosition[]> {
   const db = getDb();
@@ -224,14 +237,6 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
 
 /** A position as `readPositionRows` reads it: its row, the unit it sits in, and whether it was deleted (Applications area only). */
 type ReadPosition = PositionRow & { readonly unit: DivisionUnit; readonly deleted: boolean };
-
-/**
- * Whether the viewer may move the applications on a position as read: never
- * on a deleted one, which every application write refuses (`mayChangePosition`).
- */
-function movesApplicationsOn(identity: Identity, position: ReadPosition): boolean {
-  return !position.deleted && mayChangePositionIn(identity, "applications", position.unit);
-}
 
 /** The row a page carries, without the unit and the deleted mark it was read with. */
 function rowOf({ unit: _unit, deleted: _deleted, ...row }: ReadPosition): PositionRow {
@@ -532,7 +537,6 @@ function documentOf(
   kind: DocumentKind,
   file: { id: number | null; name: string | null; size: number | null },
   storedName: string | null,
-  opens: boolean,
 ): ApplicationDocument[] {
   const name = file.name ?? storedName;
   if (name === null) return [];
@@ -541,9 +545,8 @@ function documentOf(
       kind,
       name,
       size: file.size === null ? null : fileSize(file.size),
-      // A stored file opens through the document route, which checks the reader again (issue #406)
-      // and refuses a deleted position's (issue #772), so that one is named with no link.
-      href: file.id === null || !opens ? null : documentHref(applicationId, kind),
+      // A stored file opens through the document route, which checks the reader again (issue #406).
+      href: file.id === null ? null : documentHref(applicationId, kind),
     },
   ];
 }
@@ -589,7 +592,7 @@ async function readStatusUses(): Promise<Record<string, number>> {
  * Applications on, by the rule every application move asks.
  */
 function managesStatuses(identity: Identity, positions: readonly ReadPosition[]): boolean {
-  return managesStatusList(positions, (p) => movesApplicationsOn(identity, p));
+  return managesStatusList(positions, (p) => mayChangePositionIn(identity, "applications", p.unit));
 }
 
 async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
@@ -684,19 +687,18 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
         position: { ref: position.ref, title: position.title, division: position.division },
         applied: appliedLabels(new Date(r.applied_at), now),
         documents: [
-          ...documentOf(r.id, "cv", { id: r.cv_file_id, name: r.cv_file_name, size: r.cv_file_size }, r.cv_name, !position.deleted),
+          ...documentOf(r.id, "cv", { id: r.cv_file_id, name: r.cv_file_name, size: r.cv_file_size }, r.cv_name),
           ...documentOf(
             r.id,
             "motivation-letter",
             { id: r.letter_file_id, name: r.letter_file_name, size: r.letter_file_size },
             r.letter_name,
-            !position.deleted,
           ),
         ],
         answers: answersOf(r.answers),
         otherApplications: otherApplicationsOf(r, others),
         // The rule the move write asks (`moveApplication`), so the panel never offers a step the server refuses.
-        canChange: movesApplicationsOn(identity, position),
+        canChange: mayChangePositionIn(identity, "applications", position.unit),
       },
     ];
   });
@@ -746,8 +748,9 @@ function acceptanceEmailRows(
 /**
  * How many applications wait for their acceptance email, team-wide: the
  * count on the team leader's Overview row (issue #744). It reads what the
- * team leader's Applications page lists (live positions in open units, no
- * withdrawn application) and counts by the box's own rule.
+ * team leader's Applications page lists (every position in an open unit,
+ * deleted ones included since issue #772, no withdrawn application) and
+ * counts by the box's own rule, so the row and the box show one number.
  */
 export async function readAcceptanceEmailCount(): Promise<number> {
   const rows = await getDb()
@@ -757,7 +760,7 @@ export async function readAcceptanceEmailCount(): Promise<number> {
     .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
     .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
     .innerJoin(departments, eq(divisions.deptId, departments.id))
-    .where(and(isNull(applications.withdrawnAt), eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)));
+    .where(and(isNull(applications.withdrawnAt), isNull(divisions.closedAt), isNull(departments.closedAt)));
   return acceptanceEmailsToSend(
     rows.map((r) => ({
       status: statusOfStored({ key: r.status_key, parentKey: r.status_parent_key }),
@@ -793,7 +796,7 @@ async function applicationDocument(identity: Identity, applicationId: number, ki
     .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
     .innerJoin(departments, eq(divisions.deptId, departments.id))
     .leftJoin(applicationFiles, eq(applicationFiles.id, kind === "cv" ? applications.cvFileId : applications.coverLetterFileId))
-    .where(and(eq(applications.id, applicationId), eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)))
+    .where(and(eq(applications.id, applicationId), isNull(divisions.closedAt), isNull(departments.closedAt)))
     .limit(1);
   const place = row ? { unit: { divisionId: row.division_id, departmentId: row.dept_id }, withdrawn: row.withdrawn_at !== null } : null;
   if (!mayOpenApplication(identity, place)) throw new DashboardRefused(`application ${applicationId}`);

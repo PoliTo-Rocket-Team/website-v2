@@ -5,10 +5,11 @@ import { describe, test } from "node:test";
 import * as recruitmentActions from "@/app/dashboard/recruitment-actions";
 import { getPublicPositions } from "@/app/actions/get-apply-positions";
 import { applications, applyPositions } from "@/db/schema";
+import { overviewOfSections } from "./overview";
 import { databaseApplyData } from "@/lib/apply/database";
 import { submitDepsOf } from "@/lib/apply/data";
 import { submitApplication } from "@/lib/apply/submit";
-import { tableRows } from "./access-matrix/test-database";
+import { changeRows, tableRows } from "./access-matrix/test-database";
 import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 import { openDashboard } from "./open";
@@ -17,7 +18,8 @@ import type { DashboardData } from "./data";
 // Delete position (issue #772), on the real database: a soft delete through
 // the audited path. The position leaves the Positions page, /apply and the
 // submit; its row and its applications stay, and the Applications page still
-// lists them under its title, with no step or file link the server refuses.
+// lists them under its title, fully workable: steps, files and the team
+// leader's acceptance emails work on them as before (Owner decision on #772).
 // It runs against the migrated in-memory Postgres the access matrix uses
 // (./access-matrix/test-database.ts).
 
@@ -88,7 +90,7 @@ describe("Delete position, on the real database (issue #772)", () => {
     );
   });
 
-  test("its applications still list on the Applications page under its title, with no step or file link the server refuses", async () => {
+  test("its applications still list on the Applications page under its title, and stay fully workable", async () => {
     await seedFixture();
     const before = await (await dashboardOf(EDITOR)).applications();
     const own = before.applications.filter((a) => a.position.ref === String(POSITION));
@@ -97,7 +99,8 @@ describe("Delete position, on the real database (issue #772)", () => {
     assert.deepEqual(await recruitmentActions.deletePosition(POSITION), { ok: true, value: null });
 
     for (const who of [EDITOR, "team leader"]) {
-      const after = await (await dashboardOf(who)).applications();
+      const data = await dashboardOf(who);
+      const after = await data.applications();
       const kept = after.applications.filter((a) => a.position.ref === String(POSITION));
       assert.deepEqual(
         kept.map((a) => a.id).sort(),
@@ -105,12 +108,40 @@ describe("Delete position, on the real database (issue #772)", () => {
         `${who}: the same applications list`,
       );
       for (const a of kept) {
-        assert.equal(a.position.title, own[0].position.title, `${who}: under the position's title`);
-        assert.equal(a.canChange, false, `${who}: no step is offered`);
-        assert.ok(a.documents.every((d) => d.href === null), `${who}: no file link is offered`);
-        const step = await recruitmentActions.moveApplication(a.id, { kind: "reject" });
-        assert.equal(step.ok, false, `${who}: the server refuses a step, as the page shows`);
+        const was = own.find((o) => o.id === a.id);
+        assert.equal(a.position.title, was?.position.title, `${who}: under the position's title`);
+        assert.equal(a.canChange, true, `${who}: a step is still offered`);
+        assert.deepEqual(a.documents, was?.documents, `${who}: the same files, with the same links`);
+        await assert.doesNotReject(data.applicationDocument(a.id, "cv"), `${who}: the document route still opens its file`);
       }
     }
+    const step = await recruitmentActions.moveApplication(own[0].id, { kind: "reject" });
+    assert.equal(step.ok, true, "the server takes a step on it, as the page offers");
+  });
+
+  test("an acceptance email to send on it is in the team leader's box and Overview count alike, and Mark email sent clears both", async () => {
+    await seedFixture();
+    const application = IDS.application("MA");
+    await changeRows(
+      applications,
+      { id: application },
+      { status: "accepted", statusKey: "accepted_email_to_be_sent", acceptedAt: new Date(Date.now() - 86_400_000).toISOString() },
+    );
+    signInAs(accountOf("team leader").userId);
+    assert.deepEqual(await recruitmentActions.deletePosition(POSITION), { ok: true, value: null });
+
+    const leader = await dashboardOf("team leader");
+    assert.deepEqual((await leader.applications()).acceptanceEmails?.map((r) => r.id), [application], "listed in the box");
+    const overview = await overviewOfSections(leader.overviewSections());
+    assert.equal(
+      overview.attention.find((a) => a.kind === "acceptance-emails")?.title,
+      "1 acceptance email to send",
+      "counted on the Overview row",
+    );
+
+    assert.equal((await recruitmentActions.moveApplication(application, { kind: "mark-email-sent" })).ok, true, "Mark email sent works");
+    assert.deepEqual((await leader.applications()).acceptanceEmails, [], "the box is empty");
+    const cleared = await overviewOfSections(leader.overviewSections());
+    assert.ok(!cleared.attention.some((a) => a.kind === "acceptance-emails"), "and the Overview row is gone");
   });
 });
