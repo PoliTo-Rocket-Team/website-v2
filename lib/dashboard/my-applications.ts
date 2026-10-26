@@ -83,8 +83,8 @@ export function hasNoneShown(mine: MyApplications): boolean {
   return mine.active.length === 0 && mine.past.length === 0;
 }
 
-/** The text of the "Next steps" box on an accepted application (board 50d, Huey's latest ruling). */
-export const NEXT_STEPS_TEXT = "The team will contact you about joining. Watch your inbox.";
+/** The text of the "Next steps" box on an accepted application (board 50d, issue #790): the applicant only sees Accepted once the acceptance email was sent. */
+export const NEXT_STEPS_TEXT = "Check your email.";
 
 /**
  * The step of an application the applicant sees (Owner decision on epic #588,

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { moveApplication } from "@/app/dashboard/recruitment-actions";
 import { cancelAdd, confirmJoin, confirmNda, removeFromDivision } from "@/app/dashboard/team-actions";
 import { noDetailsFilled } from "@/lib/dashboard/details";
+import { shortDate } from "@/lib/dashboard/write";
 import type { DivisionPerson, WaitingPerson } from "@/lib/dashboard/division-members";
 import type { Joining } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
@@ -17,7 +18,7 @@ import { GHOST_PILL } from "./page-header";
 
 // The parts a Members page and the Team tree's division panel share (boards
 // 61e to 61h2, issue #231): the people added by email who wait for Confirm
-// NDA, the amber note that the site sends no emails, a row's ⋯ menu and the
+// NDA, the amber note that they have not signed in yet, a row's ⋯ menu and the
 // "are you sure" dialogs behind it. The Members page itself is one view for
 // every role (issue #408, ./team-members.tsx).
 
@@ -171,11 +172,13 @@ export function MenuItem({
 }
 
 /**
- * The amber note under the table (board 61e): the site sends no emails, so
- * the lead tells the person themselves, with Fill details, Copy email and
- * Open email.
+ * The amber note under the table (board 61e): someone added by email who has
+ * not signed in, and what happened, why the box shows, what to do and when
+ * it goes away (issue #790), with Fill details, Copy email and Open email.
+ * Shown only while `mayNotKnowTheyWereAdded`; `unit` is the division they
+ * were added to.
  */
-export function NoEmailNote({ waiting, editable, onFill }: { waiting: WaitingPerson; editable: boolean; onFill: () => void }) {
+export function NoEmailNote({ waiting, unit, editable, onFill }: { waiting: WaitingPerson; unit: string; editable: boolean; onFill: () => void }) {
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(waiting.email);
@@ -186,13 +189,21 @@ export function NoEmailNote({ waiting, editable, onFill }: { waiting: WaitingPer
   };
   return (
     <section className="mt-4 rounded-xl border border-warning/30 bg-warning/[0.05] px-4 py-3.5">
-      <p className="flex items-start gap-2.5 text-[13px] leading-relaxed text-text-2">
+      <div className="flex items-start gap-2.5 text-[13px] leading-relaxed text-text-2">
         <Mail aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-warning" strokeWidth={1.75} />
-        <span>
-          The site doesn&apos;t send emails, so you need to let {waiting.email} know. A lead or head can fill in their details, or they can sign in
-          with this email and fill them in themselves.
-        </span>
-      </p>
+        <div className="min-w-0 space-y-1.5">
+          <h3 className="font-semibold text-prt-text">{waiting.name ?? waiting.email} hasn&apos;t signed in yet</h3>
+          <p>
+            You added them to {unit} on {shortDate(waiting.addedOn)} with {waiting.email}. The site doesn&apos;t send emails, so they don&apos;t know
+            yet.
+          </p>
+          <p>
+            Next: message them to sign in with Google using that address. Their profile stays empty until then
+            {editable ? "; you can fill in their details now instead." : "."}
+          </p>
+          <p>This box goes away once they sign in or their details are filled in.</p>
+        </div>
+      </div>
       <div className="mt-3 flex flex-wrap gap-2 md:pl-[26px]">
         {editable && (
           <button type="button" onClick={onFill} className={GHOST_PILL}>

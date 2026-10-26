@@ -915,7 +915,7 @@ describe("the decision rows come to every Overview whose viewer decides orders (
     const board = (await (await open(name)).overview()) as TeamSideOverview;
     assert.deepEqual(board.access, { kind: "lines", lines: [{ area: "approve-orders", href: "/dashboard/orders", waiting: ALL.length }] });
     const plain = (await (await open("member")).overview()) as TeamSideOverview;
-    assert.deepEqual(plain.access, { kind: "hint" }, "a member without it gets no Approve orders line, only the access hint");
+    assert.deepEqual(plain.access, { kind: "none" }, "a member without it gets no Approve orders line");
   });
 });
 

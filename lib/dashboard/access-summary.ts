@@ -26,20 +26,16 @@ export type AccessSummary =
 
 /**
  * What the Overview shows under the personal panels (issue #593): the "Your
- * access" lines when the viewer holds a grant; the access hint (`ACCESS_HINT`)
- * when they hold none and read no area, as a plain member; nothing for a seat
- * that reads its areas by role and holds no grant, so no lead is told to ask
- * their division lead for access.
+ * access" lines when the viewer holds a grant, and nothing when they hold
+ * none. A member with no grant is not told to ask for access (issue #790).
  */
 export type AccessSection =
   | { readonly kind: "lines"; readonly lines: readonly [AccessSummary, ...AccessSummary[]] }
-  | { readonly kind: "hint" }
   | { readonly kind: "none" };
 
-export function accessSectionOf(lines: readonly AccessSummary[], readsAnArea: boolean): AccessSection {
+export function accessSectionOf(lines: readonly AccessSummary[]): AccessSection {
   const [first, ...rest] = lines;
-  if (first !== undefined) return { kind: "lines", lines: [first, ...rest] };
-  return readsAnArea ? { kind: "none" } : { kind: "hint" };
+  return first === undefined ? { kind: "none" } : { kind: "lines", lines: [first, ...rest] };
 }
 
 /** The Content line: the editors a Content grant opens, in sidebar order (`siteContent` rows, ./access.ts). */

@@ -79,8 +79,8 @@ const CHECKED_PLACE: Readonly<Record<PostCheckedPage, string>> = { list: "the Ou
 /** The warning strip while Publish is held; a featured post is checked on the list alone. */
 function checkNotice(featured: boolean): string {
   return featured
-    ? "This changes how the post looks on the Outreach list. Check that tab before publishing."
-    : "This changes how the post looks on the Outreach list and Home. Check both tabs before publishing.";
+    ? "Your edits change the post's card on the Outreach list. Publish stays off until you check it there: open that tab and press Looks right. Then you can publish."
+    : "Your edits change the post's card on the Outreach list and Home. Publish stays off until you check it there: open each tab and press Looks right. Then you can publish.";
 }
 
 /** What the editor opens on: a stored post, or a new one not saved yet, dated `today`. */

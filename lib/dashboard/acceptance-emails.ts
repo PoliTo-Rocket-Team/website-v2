@@ -82,7 +82,7 @@ export function acceptanceEmailsAttention(count: number): AttentionItem | null {
   return {
     kind: "acceptance-emails",
     title: count === 1 ? "1 acceptance email to send" : `${count} acceptance emails to send`,
-    detail: "Send each with the NDA, then mark it sent.",
+    detail: "These applicants were accepted but don't know yet. Send each one the email with the NDA, then mark it sent. They can then return the signed NDA.",
     action: { label: "Open", href: ACCEPTANCE_EMAILS_HREF },
   };
 }

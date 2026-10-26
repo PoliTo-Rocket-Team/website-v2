@@ -60,7 +60,7 @@ test("a division's page lists its people with this division first, a code chip i
   assert.equal(page.division.leadsHint, null, "its own lead changes its leads (#594)");
   const granted = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1], ledDivisionIds: [] }, selfId: null, reach: [1], waiting: [], joining: [] })!;
   assert.equal(granted.division.leadsHint, "Leads are changed by the Head of Aerodynamics", "a Members grant does not");
-  assert.equal(headcountLine({ people: page.people, waiting: [{ joinId: 1, email: "e@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS }] }), "1 lead, 3 members");
+  assert.equal(headcountLine({ people: page.people, waiting: [{ joinId: 1, email: "e@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS, addedOn: "2026-10-20", signedIn: false }] }), "1 lead, 3 members");
 });
 
 test("Add member: a team member joins at once with no second NDA; anyone else waits for Confirm NDA (#231)", () => {

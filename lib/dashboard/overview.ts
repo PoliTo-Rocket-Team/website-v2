@@ -526,9 +526,6 @@ export function overviewLayoutOf(viewer: ViewerStanding): OverviewLayout {
   return "board-first";
 }
 
-/** The one-line strip under a member's panels when they hold no grant and read no area (board 40m). */
-export const ACCESS_HINT = "Need to work on recruitment or site content? Ask your division lead or the admin team for access.";
-
 /** The figures, rows and panels a seat's scope reads: the board its shape names. */
 export type ScopeBoard = TeamOverview | TeamLeaderOverview | DepartmentOverview | DivisionOverview;
 
@@ -629,7 +626,7 @@ export function noPhotoItem(names: readonly string[]): AttentionItem | null {
         ? `${names[0]} has no photo on the Team page`
         : `${names.length} members have no photo on the Team page`,
     phoneTitle: names.length === 1 ? `${names[0]} has no photo` : `${names.length} members have no photo`,
-    detail: names.length === 1 ? "Ask them to add one in My profile" : names.join(", "),
+    detail: names.length === 1 ? "Their Team page card shows no photo. Ask them to add one in My profile; this row goes away once they do." : names.join(", "),
     action: { label: "View", href: "/dashboard/members" },
   };
 }

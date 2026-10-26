@@ -189,7 +189,7 @@ export function attentionOf(notice: Notice, now: Date): AttentionItem {
       return {
         kind: "notice",
         title: `${attributedName(notice.data.by, notice.actingTitle)} declined the email alias for ${notice.subject}`,
-        detail: [shortDate(notice.createdAt, now.getUTCFullYear()), "you can ask again"].join(" · "),
+        detail: [shortDate(notice.createdAt, now.getUTCFullYear()), "to ask again, use Request alias on their panel in Members"].join(" · "),
         action,
         iconKind: "alias-request",
       };

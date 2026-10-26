@@ -30,7 +30,8 @@ export function AliasReadyCard({ alias }: { alias: OwnAlias }) {
       <div className="min-w-0 flex-1">
         <h2 className="break-words text-[15px] font-semibold leading-snug">Your email alias is ready: {alias.address}</h2>
         <p className="mt-2 text-[13px] text-prt-muted">
-          Set it up once to send from it. It only works for email: sharing files with the alias does not.
+          It already receives mail. To send from it too, set it up once in Gmail. It works for email only, not for sharing files. This card goes
+          away once you press I&apos;ve set it up in the steps.
         </p>
       </div>
       <button type="button" onClick={() => setOpen(true)} className={`${PAPER_PILL} self-start sm:self-center`}>

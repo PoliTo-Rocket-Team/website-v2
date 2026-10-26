@@ -275,7 +275,8 @@ export function NoHeadNote({ department }: { department: string }) {
     <p className="mt-3 flex items-start gap-2.5 rounded-xl border border-warning/30 bg-warning/[0.05] px-4 py-3 text-[13px] leading-snug text-warning">
       <TriangleAlert aria-hidden className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.75} />
       <span>
-        {department} will have no head. You can pick a new head when you save, or later on the Team tree. Head of a department only if you choose it under As.
+        Moving them leaves {department} with no head. When you save, you can pick a new head, or do it later on the Team tree. They become head of
+        their new department only if you choose that under As.
       </span>
     </p>
   );

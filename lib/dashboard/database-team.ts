@@ -296,6 +296,7 @@ const waitingColumns = {
   user_id: teamJoins.userId,
   division_id: teamJoins.divisionId,
   title: teamJoins.title,
+  added_at: teamJoins.addedAt,
   prt_email: teamJoins.prtEmail,
   discord: teamJoins.discord,
   email: users.email,
@@ -318,6 +319,7 @@ type WaitingRow = {
   user_id: string;
   division_id: number;
   title: string | null;
+  added_at: string;
   prt_email: string | null;
   discord: string | null;
   email: string;
@@ -382,8 +384,13 @@ function waitingPerson(identity: DashboardIdentity, row: WaitingRow): WaitingPer
     name: [row.first_name, row.last_name].filter(Boolean).join(" ") || null,
     title: row.title,
     details: waitingDetails(row),
+    addedOn: TEAM_DAY.format(new Date(row.added_at)),
+    signedIn: row.linked,
   };
 }
+
+/** A calendar day in the team's time zone, "2026-10-20". */
+const TEAM_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit" });
 
 /**
  * Each division's people joining (where the viewer reads Applications) and
