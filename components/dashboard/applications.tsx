@@ -91,6 +91,7 @@ import {
 import { shortUnitName } from "@/lib/dashboard/division-access";
 import { documentsLine, type ApplicationEntry, type ApplicationsPage, type OtherApplication, type PositionRef } from "@/lib/dashboard/recruitment";
 import { divisionLabel } from "@/lib/dashboard/team";
+import { AcceptanceEmailsBox } from "./acceptance-emails";
 import { Avatar } from "./avatar";
 import { ColumnFilter } from "./column-filter";
 import { FilterMenu, Segmented } from "./controls";
@@ -226,6 +227,15 @@ export function ApplicationsView({
           {model.intro}
         </p>
       </header>
+
+      {/* The team leader's acceptance emails (board 100): above the filters and blind to them; null for every other viewer. */}
+      {page.acceptanceEmails && (
+        <AcceptanceEmailsBox
+          rows={page.acceptanceEmails}
+          sentStatusName={listedStatusOf(page.statuses, { kind: "built-in", key: "accepted_email_sent" }).name}
+          onOpen={setChosenId}
+        />
+      )}
 
       <div className="flex flex-col gap-3 md:mt-6 md:flex-row md:flex-wrap md:items-center">
         <div className="flex min-w-0 flex-wrap items-center gap-3">
@@ -674,7 +684,7 @@ function Detail({
         pending={pending}
         onConfirm={() => run({ to: "rejected_email_to_be_sent" })}
       >
-        {capital(they.possessive)} status becomes Rejected · email to be sent. The site sends no email: tell {they.object} yourself, then mark the
+        {capital(they.possessive)} status becomes Rejected · email to be sent. The site sends no email: tell {they.object}{" "}yourself, then mark the
         email sent. You can&apos;t undo this.
       </DecisionDialog>
       <DecisionDialog

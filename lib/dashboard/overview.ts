@@ -37,8 +37,11 @@ export type Stat = {
  * "hand-over": a hand-over waiting for the viewer's answer (board 62c,
  * ./hand-over-request.ts), always the top row. The team leader's rows (board 72, ./leader-overview.ts): orders waiting for
  * their decision, approved orders not ordered yet, and positions closing soon.
+ * "acceptance-emails": the team leader's count of acceptance emails to send,
+ * linking to the box on Applications (board 100, ./acceptance-emails.ts).
  */
 export type AttentionKind =
+  | "acceptance-emails"
   | "applications"
   | "quiet-position"
   | "unassigned"
