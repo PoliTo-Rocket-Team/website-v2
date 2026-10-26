@@ -6,6 +6,7 @@ import { canReach, type DashboardPageKey } from "@/lib/dashboard/access";
 import type { TeamWrites } from "@/lib/dashboard/data";
 import type { TeamSearch } from "@/lib/dashboard/division-edit";
 import { isDetailsTarget, type AddLookup, type DetailsTarget } from "@/lib/dashboard/division-members";
+import type { MoveLookup } from "@/lib/dashboard/member-move";
 import { openDashboard } from "@/lib/dashboard/open";
 import { checkDeparture, type EditableRole } from "@/lib/dashboard/team";
 import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
@@ -143,6 +144,20 @@ export async function removeFromDivision(personId: number, divisionId: number): 
   const writes = await writesOn("members");
   if (!writes || !isId(personId) || !isId(divisionId)) return REFUSED;
   return done(await writes.removeFromDivision(personId, divisionId));
+}
+
+/** Where Edit details and the Team tree may move someone (issue #647): nothing for someone the viewer may not edit. */
+export async function findMoveTargets(personId: number): Promise<MoveLookup> {
+  const opening = await openDashboard();
+  if (opening.kind !== "open" || !canReach(opening.data.viewer, "members") || !isId(personId)) return { kind: "none" };
+  return opening.data.findMoveTargets(personId);
+}
+
+/** Move to another unit (issue #647): the one move Edit details and the Team tree both save through, checked again on the server. */
+export async function moveMember(input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes) return REFUSED;
+  return answered(await writes.moveMember(input));
 }
 
 /** Edit details: `divisionId` names the division whose title the form sets, or null for a seat with none (issue #584). */

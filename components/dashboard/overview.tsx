@@ -223,9 +223,11 @@ function ScopePanels({ board, parts, checklist }: Pick<BodyProps, "board" | "par
   );
 }
 
-// Boards 99 and 99b (issue #652), for the team leader, a department head and
-// a division lead. Left: what needs attention, their page on the site (gone
-// once every step is done, issue #641), then the scope's own panel. Right:
+// Boards 99 and 99b (issue #652), for a department head, a division lead and
+// the team leader, the operations lead and the IT lead (issue #760), the
+// last three with no roster. Left: what needs attention, their page on the
+// site (gone once every step is done, issue #641), then the scope's own
+// panel. Right:
 // the roster of their own unit, then recent activity, which phones on boards
 // 56m and 62m drop. With one column empty the other takes the whole width,
 // so no empty column is left (Owner decision, 2026-10-21).

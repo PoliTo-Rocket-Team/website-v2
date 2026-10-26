@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { saveProject } from "@/app/dashboard/project-actions";
+import { deleteProject, saveProject } from "@/app/dashboard/project-actions";
 import type { ProjectFrame } from "@/components/project-page/view";
 import type { EditDevice, PageTarget } from "@/lib/content/edit-shell";
 import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
@@ -21,7 +23,8 @@ import { editBlocksOf, outlinedPart, sectionOf, topPartOf } from "@/lib/project-
 import { cardLookOf, liveLookOf, PROJECT_CHECKED_PAGES, type ProjectCheckedPage } from "@/lib/project-content/card-look";
 import { homeCardOf, lineupWith, type ProjectBlock, type ProjectPlace, type ProjectRecord } from "@/lib/project-content/record";
 import type { ProjectPart, TopPart } from "@/lib/project-pages";
-import { EditableBlock, EditShell, type BlockShape } from "./edit-shell";
+import { ConfirmDialog } from "./confirm-dialog";
+import { BarButton, EditableBlock, EditShell, type BlockShape } from "./edit-shell";
 import { EditedProjectPage, ProjectCardPage, type ProjectPageId } from "./project-edit-pages";
 import { ProjectEditPanel, type FieldErrors, type PanelScroll } from "./project-edit-panel";
 
@@ -51,6 +54,11 @@ import { ProjectEditPanel, type FieldErrors, type PanelScroll } from "./project-
 //
 // The pages themselves, drawn without the site's navbar and footer (issue
 // #495), are in project-edit-pages.tsx.
+//
+// Delete project on the bar (issue #768) asks first in the shared confirm
+// dialog, which names the project; once it is deleted the editor goes back
+// to the Projects list. The list's rows have no menu (#506), so this is the
+// one place a project is deleted.
 
 /**
  * Every part sits on the page's column, its outline round its content; the
@@ -87,6 +95,49 @@ function errorsOf(fields: ProjectFields): FieldErrors {
   return Object.fromEntries(fieldProblems(fields).map((p) => [p.field, p.error]));
 }
 
+/** The "are you sure" before Delete project: a published project leaves the site at once. */
+function DeleteProjectDialog({
+  item,
+  name,
+  open,
+  onOpenChange,
+}: {
+  item: ContentItem<ProjectRecord>;
+  name: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const confirm = () =>
+    startTransition(async () => {
+      const result = await deleteProject(item.id);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`${name} was deleted.`);
+      router.replace("/dashboard/projects");
+    });
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      icon={<Trash2 className="h-5 w-5" strokeWidth={1.75} />}
+      title={`Delete ${name}?`}
+      description={
+        statusOf(item.version) === "draft"
+          ? `The draft of ${name} is deleted, with the photos only it shows. This cannot be undone.`
+          : `${name} leaves Home, the Projects list and its own page at once, with its draft and the photos only it shows. This cannot be undone.`
+      }
+      cancelLabel="Keep project"
+      confirmLabel="Delete"
+      danger
+      pending={pending}
+      onConfirm={confirm}
+    />
+  );
+}
 
 export function ProjectEdit({
   item: opening,
@@ -108,6 +159,7 @@ export function ProjectEdit({
   const [topPart, setTopPart] = useState<TopPart>("title");
   const [device, setDevice] = useState<EditDevice>("desktop");
   const [page, setPage] = useState<ProjectPageId>("page");
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const view = projectViewOf(fields, opened);
@@ -165,53 +217,61 @@ export function ProjectEdit({
   );
 
   return (
-    <EditShell
-      section={{ label: "Projects", href: "/dashboard/projects" }}
-      heading={`Editing ${view.name}`}
-      status={statusOf(item.version)}
-      saved={panelOpen ? "Changes show on the page as you type" : undefined}
-      onSaveDraft={pending ? null : () => save("save-draft")}
-      onPublish={pending ? null : () => save("publish")}
-      pages={{ targets: PAGE_TARGETS, current: page, onSelect: setPage }}
-      check={{
-        pages: PROJECT_CHECKED_PAGES,
-        look: cardLookOf(view),
-        live: liveLookOf(item.version),
-        notice: CHECK_NOTICE,
-        question: (checked) => `Is the ${view.name} card right on ${CHECKED_PLACE[checked]}?`,
-      }}
-      blocks={editBlocksOf(view)}
-      selected={page === "page" ? selected : undefined}
-      onEdit={openPart}
-      onDeviceChange={setDevice}
-      // Beside the open panel the page keeps its desktop layout, scaled (board 93, issue #526).
-      scalesDesktop
-      panel={
-        panelOpen && (
-          <ProjectEditPanel
-            key={revision}
-            name={view.name}
-            kind={view.kind}
-            model={projectModelOf(item.version)}
-            card={homeCardOf(view, place.position)}
-            fields={fields}
-            onChange={setFields}
-            device={device}
-            errors={refusedOnce ? errorsOf(fields) : {}}
-            expanded={expanded}
-            onExpandedChange={setExpanded}
-            onOpen={openBeside}
-            scrollTo={scrollTo}
-            onClose={() => setPanelOpen(false)}
-          />
-        )
-      }
-    >
-      {page === "page" ? (
-        <EditedProjectPage view={view} position={place.position} frame={outlined} />
-      ) : (
-        <ProjectCardPage page={page} lineup={lineupWith(place, view)} position={place.position} onEditCard={() => openSection("card")} />
-      )}
-    </EditShell>
+    <>
+      <EditShell
+        section={{ label: "Projects", href: "/dashboard/projects" }}
+        heading={`Editing ${view.name}`}
+        status={statusOf(item.version)}
+        saved={panelOpen ? "Changes show on the page as you type" : undefined}
+        actions={
+          <BarButton onClick={pending ? null : () => setDeleteOpen(true)} icon={<Trash2 aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}>
+            Delete project
+          </BarButton>
+        }
+        onSaveDraft={pending ? null : () => save("save-draft")}
+        onPublish={pending ? null : () => save("publish")}
+        pages={{ targets: PAGE_TARGETS, current: page, onSelect: setPage }}
+        check={{
+          pages: PROJECT_CHECKED_PAGES,
+          look: cardLookOf(view),
+          live: liveLookOf(item.version),
+          notice: CHECK_NOTICE,
+          question: (checked) => `Is the ${view.name} card right on ${CHECKED_PLACE[checked]}?`,
+        }}
+        blocks={editBlocksOf(view)}
+        selected={page === "page" ? selected : undefined}
+        onEdit={openPart}
+        onDeviceChange={setDevice}
+        // Beside the open panel the page keeps its desktop layout, scaled (board 93, issue #526).
+        scalesDesktop
+        panel={
+          panelOpen && (
+            <ProjectEditPanel
+              key={revision}
+              name={view.name}
+              kind={view.kind}
+              model={projectModelOf(item.version)}
+              card={homeCardOf(view, place.position)}
+              fields={fields}
+              onChange={setFields}
+              device={device}
+              errors={refusedOnce ? errorsOf(fields) : {}}
+              expanded={expanded}
+              onExpandedChange={setExpanded}
+              onOpen={openBeside}
+              scrollTo={scrollTo}
+              onClose={() => setPanelOpen(false)}
+            />
+          )
+        }
+      >
+        {page === "page" ? (
+          <EditedProjectPage view={view} position={place.position} frame={outlined} />
+        ) : (
+          <ProjectCardPage page={page} lineup={lineupWith(place, view)} position={place.position} onEditCard={() => openSection("card")} />
+        )}
+      </EditShell>
+      <DeleteProjectDialog item={item} name={view.name} open={deleteOpen} onOpenChange={setDeleteOpen} />
+    </>
   );
 }

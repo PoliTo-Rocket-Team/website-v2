@@ -15,7 +15,10 @@ import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
 import { betterAuthUsers, divisions, logs, members, orders, projects, projectVersions, recruitmentSetting, roles, scopes, teamLeaves, users } from "@/db/schema";
 import { databaseTeamRoles } from "@/lib/about/team-data";
 import { teamBuildOf } from "@/lib/about/team-roles";
+import { editorVersion } from "@/lib/content/versioned";
 import { importedProjects } from "@/lib/project-content/import";
+import { footerProjects, publishedProjects } from "@/lib/project-content/public";
+import { publishedPageOf } from "@/lib/project-content/record";
 import { readProjectStamps } from "./database-projects";
 import { GATE_OFF, GATE_ON, OTHER_DB, PREVIEW_DB } from "@/lib/dev-tester-fixture";
 import { ADMIN_TESTER_TITLE } from "./acting-account";
@@ -116,6 +119,7 @@ const READS: readonly Read[] = [
   { path: "members", args: [[null], ...ALL.map((u) => [IDS.division(u)])] },
   { path: "findForAdd", args: ALL.map((u) => [IDS.division(u), "person"]) },
   { path: "findPeople", args: [["person"]] },
+  { path: "findMoveTargets", args: ALL.map((u) => [IDS.person(u)]) },
   { path: "alumni" },
   { path: "teamTree" },
   { path: "teamStructure" },
@@ -125,6 +129,7 @@ const READS: readonly Read[] = [
   { path: "applicationDocument", args: ALL.flatMap((u) => [[IDS.application(u), "cv"], [IDS.application(u), "motivation-letter"]]) },
   { path: "divisionAccess" },
   { path: "orders" },
+  { path: "activityLog" },
   { path: "partners.list" },
   { path: "faqs.list" },
   { path: "teamPage.open" },
@@ -328,7 +333,6 @@ const DIRECT_WRITES = new Map<string, { readonly args: readonly unknown[]; reado
   ["outreach.posts.reorder", { args: [() => true, []], may: (r) => r.expect.siteContent, proves: "gate" }],
   ["projects.save", { args: [null, "save-draft", neverAsked], may: (r) => r.expect.siteContent, proves: "gate" }],
   ["projects.saveUnfinished", { args: [null, neverAsked], may: (r) => r.expect.siteContent, proves: "gate" }],
-  ["projects.remove", { args: [1], may: (r) => r.expect.siteContent, proves: "gate" }],
   ["projects.unpublish", { args: [1], may: (r) => r.expect.siteContent, proves: "gate" }],
   ["projects.reorder", { args: [() => true, []], may: (r) => r.expect.siteContent, proves: "gate" }],
   // The dashboard no longer sets the project order (issue #506); the stored write stays behind the gate.
@@ -520,6 +524,22 @@ const ACTION_CASES: readonly ActionCase[] = [
   { action: "team-actions.cancelAdd", run: () => teamActions.cancelAdd(IDS.join(DM)), may: changesDM("members"), control: by("team leader") },
   // Someone in DM and Testing: a division can let go of someone who stays on the team elsewhere.
   { action: "team-actions.removeFromDivision", run: () => teamActions.removeFromDivision(EXTRA.mover, IDS.division(DM)), may: changesDM("members"), control: by("team leader") },
+  // Moving DM's member to Testing (issue #647): out of DM and into Structures, the rules of removing and adding.
+  { action: "team-actions.findMoveTargets", run: () => teamActions.findMoveTargets(IDS.person(DM)), may: changesDM("members"), control: by("team leader", "answer") },
+  {
+    action: "team-actions.moveMember",
+    run: () =>
+      teamActions.moveMember({
+        personId: IDS.person(DM),
+        from: { kind: "division", divisionId: IDS.division(DM) },
+        to: { kind: "division", divisionId: EXTRA.testing, as: "member" },
+        title: "",
+        replaced: null,
+        successor: null,
+      }),
+    may: changesDM("members"),
+    control: by("team leader"),
+  },
   {
     action: "team-actions.saveMemberDetails",
     run: () => teamActions.saveMemberDetails({ kind: "person", id: IDS.person(DM) }, IDS.division(DM), { title: "Member", details: MEMBER_DETAILS }),
@@ -617,6 +637,8 @@ const ACTION_CASES: readonly ActionCase[] = [
   { action: "outreach-actions.unfeatureOutreachPost", run: () => outreachActions.unfeatureOutreachPost(1), may: siteContent, control: by("team leader", "gate") },
   { action: "project-actions.saveProject", run: () => projectActions.saveProject(1, "save-draft", {}), may: siteContent, control: by("team leader", "gate") },
   { action: "project-actions.createProject", run: () => projectActions.createProject({ name: "Rocket" }), may: siteContent, control: by("team leader", "gate") },
+  // The migrations import Cavour as project 1, published (drizzle/0037).
+  { action: "project-actions.deleteProject", run: () => projectActions.deleteProject(1), may: siteContent, control: by("team leader") },
   { action: "project-actions.uploadProjectPhoto", run: () => projectActions.uploadProjectPhoto(form({ photo: PHOTO() })), may: siteContent, control: by("team leader") },
   { action: "project-actions.discardProjectPhoto", run: () => projectActions.discardProjectPhoto(`https://${HOST}/project-photos/x.jpg`), may: siteContent, control: by("team leader") },
   { action: "project-actions.uploadProjectBackground", run: () => projectActions.uploadProjectBackground(form({ background: PHOTO() })), may: siteContent, control: by("team leader") },
@@ -1705,6 +1727,7 @@ describe("a division lead with no scope row edits their own division in the Team
 const EXPECTED_EXPORT_HEADER = [
   "Name",
   "Role",
+  "Department",
   "Divisions",
   "Member since",
   "PRT email",
@@ -2500,6 +2523,39 @@ describe("moving a project card on the Projects page is not an edit (issue #297,
   });
 });
 
+describe("Delete project in the project editor (issue #768)", () => {
+  const CAVOUR = 1;
+  const stored = async () => ({
+    projects: (await tableRows(projects)).map((p) => p.id),
+    versions: (await tableRows(projectVersions)).map((v) => v.projectId),
+  });
+
+  test("a site-content editor deletes a published project: its rows go through the audit log, and no public read or dashboard list shows it", async () => {
+    const data = await open("team leader");
+    const slug = editorVersion(importedProjects().find((item) => item.id === CAVOUR)!.version).slug;
+    assert.ok(publishedPageOf(await publishedProjects(), slug), "Cavour is published before the delete");
+
+    assert.deepEqual(await projectActions.deleteProject(CAVOUR), { ok: true, value: null });
+
+    const after = await stored();
+    assert.ok(!after.projects.includes(CAVOUR) && !after.versions.includes(CAVOUR), `the project and its versions are gone: ${JSON.stringify(after)}`);
+    assert.deepEqual(await loggedWriters(), [{ userId: accountOf("team leader").userId, actingAccountId: null }], "the delete is logged under its editor");
+    // Home and /projects draw publishedProjects(), the footer footerProjects(); /projects/<slug> is not found without a published page.
+    assert.ok(!(await publishedProjects()).some((r) => r.slug === slug), "Home and /projects");
+    assert.ok(!(await footerProjects()).some((p) => p.slug === slug), "the footer's PROJECTS column");
+    assert.equal(publishedPageOf(await publishedProjects(), slug), null, "/projects/<slug>");
+    assert.ok(!(await data.projects.board())?.items.some((item) => item.id === CAVOUR), "the dashboard Projects list");
+  });
+
+  test("a viewer the site-content gate refuses is answered its refusal, and the project and its versions stay", async () => {
+    await open("member");
+    const before = await stored();
+    assert.ok(before.projects.includes(CAVOUR) && before.versions.includes(CAVOUR));
+    assert.deepEqual(await projectActions.deleteProject(CAVOUR), { ok: false, error: SITE_CONTENT_REFUSAL });
+    assert.deepEqual(await stored(), before);
+  });
+});
+
 // The CV and letter links ---------------------------------------------------
 
 describe("the CV and letter routes open a file only where the viewer reads Applications", () => {
@@ -2957,5 +3013,40 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
     assert.deepEqual(head.board, leader.board);
     assert.ok((leader.board?.length ?? 0) >= 2);
     assert.deepEqual([leader.editable, head.editable], [true, false]);
+  });
+});
+
+// The Activity log (board 101, issue #642) ----------------------------------------
+
+describe("the Activity log reads the stored changes for the viewers its access row admits, and no one else", () => {
+  const itLead = accountOf("IT lead");
+  const teamLeader = accountOf("team leader");
+
+  async function openAs(userId: string): Promise<DashboardData> {
+    signInAs(userId);
+    const opening = await openDashboard();
+    assert.equal(opening.kind, "open", "the dashboard opens");
+    return (opening as { data: DashboardData }).data;
+  }
+
+  test("a write made while viewing as someone reads under both people, beside a View as start and its timeout", async () => {
+    await seedFixture();
+    resetFiles();
+    viewAs(teamLeader.userId, itLead.userId);
+    const answer = await actions.decideOrder(IDS.order(DM), { kind: "approve" });
+    assert.ok(!isRefusal(answer), JSON.stringify(answer));
+    // A start with no stop whose session row is gone, three hours ago: it has timed out since.
+    await recordViewAs({ event: "start", sessionId: "gone-session", personId: teamLeader.userId, actingAccountId: itLead.userId });
+    await changeRows(logs, { operation: "VIEW_AS_START" }, { changedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() });
+
+    const log = await (await openAs(itLead.userId)).activityLog();
+    assert.ok(log !== null, "the IT lead reads it");
+    const approved = log.entries.find((e) => e.change.kind === "write" && e.change.area === "orders");
+    assert.equal(approved?.who.kind === "as" && approved.who.actingId, itLead.userId, JSON.stringify(approved));
+    assert.ok(approved?.change.kind === "write" && approved.change.sentence.startsWith("Approved order"), JSON.stringify(approved));
+    const events = log.entries.flatMap((e) => (e.change.kind === "view-as" ? [e.change.event] : []));
+    assert.deepEqual(events.sort(), ["start", "timeout"]);
+
+    assert.equal(await (await openAs(teamLeader.userId)).activityLog(), null, "the team leader does not");
   });
 });

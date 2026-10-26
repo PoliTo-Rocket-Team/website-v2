@@ -96,8 +96,11 @@ test("the team leader's sidebar is board 72's: Team holds Members, Access and Or
 });
 
 test("the operations lead's, the IT lead's, the Project Manager's and the Chief Engineer's sidebars are the team leader's, Content group included (issues #408, #485)", () => {
+  // The IT lead's adds the Activity log at the end of Team (issue #642), and nothing else.
+  const withoutLog = (viewer: ViewerStanding) =>
+    shape(viewer, withoutApplications).map(([label, items]) => [label, (items as string[]).filter((item) => item !== "Activity log")]);
   for (const seat of ["operations-lead", "it-lead", "project-manager", "chief-engineer", null] as const) {
-    assert.deepEqual(shape(fullAccess(seat), withoutApplications), shape(fullAccess("team-leader"), withoutApplications), String(seat));
+    assert.deepEqual(withoutLog(fullAccess(seat)), shape(fullAccess("team-leader"), withoutApplications), String(seat));
   }
 });
 
@@ -142,6 +145,7 @@ test("each dashboard page sits in the same sidebar group for every viewer who re
     members: "team",
     "division-access": "team",
     orders: "team",
+    "activity-log": "team",
     projects: "content",
     outreach: "content",
     partners: "content",
@@ -198,7 +202,7 @@ test("the break-glass standing reaches the Activity log, and every other page th
     order.filter((key) => teamLeader.includes(key) || key === "activity-log"),
   );
   const listed = sidebarFor(BREAK_GLASS_STANDING, withoutApplications).some((s) => s.items.some((item) => item.key === "activity-log"));
-  assert.equal(listed, false);
+  assert.equal(listed, true);
 });
 
 test("a real team leader never reaches the Activity log by the team leader's seat, whatever grant they hold (issue #727)", () => {
@@ -211,14 +215,18 @@ test("a real team leader never reaches the Activity log by the team leader's sea
   assert.equal(canReach(kindOnly("team-leader", true), "activity-log"), false);
 });
 
-test("only the IT lead reaches the Activity log, and no sidebar lists it until the page is built (issue #238)", () => {
+test("only the IT lead reaches the Activity log, and the sidebar lists it under Team for them alone (issues #238, #642)", () => {
   assert.equal(canReach(fullAccess("it-lead"), "activity-log"), true);
   for (const seat of ["team-leader", "operations-lead", "project-manager", "chief-engineer", null] as const) assert.equal(canReach(fullAccess(seat), "activity-log"), false, String(seat));
   for (const kind of ["department-head", "division-lead", "member", "non-member"] as const) {
     assert.equal(canReach(kindOnly(kind), "activity-log"), false, kind);
   }
-  const listed = sidebarFor(fullAccess("it-lead"), withoutApplications).some((s) => s.items.some((item) => item.key === "activity-log"));
-  assert.equal(listed, false);
+  const team = sidebarFor(fullAccess("it-lead"), withoutApplications).find((s) => s.group === "team");
+  assert.equal(team?.items.at(-1)?.key, "activity-log");
+  for (const seat of ["team-leader", "operations-lead", "project-manager", "chief-engineer", null] as const) {
+    const listed = sidebarFor(fullAccess(seat), withoutApplications).some((s) => s.items.some((item) => item.key === "activity-log"));
+    assert.equal(listed, false, String(seat));
+  }
 });
 
 test("the Alumni page follows the site-content rule: full access and a Content grant, never a lead's role (issues #234, #589)", () => {
@@ -362,7 +370,7 @@ test("heads, leads and every full-access seat reach and list the pages they did 
     ["division lead", kindOnly("division-lead"), lead],
     ["team leader", fullAccess("team-leader"), full],
     ["operations lead", fullAccess("operations-lead"), full],
-    ["IT lead", fullAccess("it-lead"), full],
+    ["IT lead", fullAccess("it-lead"), [...lead, "activity-log", "projects", "outreach", "partners", "alumni", "faq", "team-page"]],
     ["Project Manager", fullAccess("project-manager"), full],
     ["Chief Engineer", fullAccess("chief-engineer"), full],
   ];

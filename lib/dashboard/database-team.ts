@@ -72,6 +72,7 @@ import {
   type TeamActor,
 } from "./team";
 import { departmentMembers } from "./department-members";
+import { checkMove, moveTargetsOf, planMove, type MoveLookup, type MovePlan } from "./member-move";
 import { wholeTeamMembers } from "./team-members";
 import {
   ADVISOR_TITLE,
@@ -429,6 +430,17 @@ export async function readTeamStructure(identity: DashboardIdentity): Promise<Te
     openPositions,
     seats: seatsOf(snapshot),
   });
+}
+
+/**
+ * The divisions `readDivisionMembers` opens when `?division=` names one: the
+ * viewer's division reach on the Members page (issue #760). Empty for a page
+ * that is not one division's: the whole team, a head's department, or no page.
+ */
+export async function readMembersDivisionReach(identity: DashboardIdentity): Promise<readonly number[]> {
+  const snapshotRead = readTeamSnapshot();
+  const [snapshot, viewing] = await Promise.all([snapshotRead, readViewingActor(identity, snapshotRead.then((s) => s.org))]);
+  return viewing === null || viewing.kind !== "lead" ? [] : reachOf(identity, viewing, snapshot.org);
 }
 
 /**
@@ -857,6 +869,116 @@ async function removeFromDivision(identity: DashboardIdentity, personId: number,
 }
 
 const NOT_IN_SCOPE = "You can edit only people your Members page lets you change.";
+
+/**
+ * Where Edit details and the Team tree may move `personId` (issue #647): the
+ * units the viewer may move them into (`moveTargetsOf`), for someone the
+ * viewer may edit (`rolesTheViewerChanges`), never the viewer themselves.
+ */
+export async function findMoveTargets(identity: DashboardIdentity, personId: number): Promise<MoveLookup> {
+  const snapshot = await readTeamSnapshot();
+  const actor = await readActor(identity, snapshot.org);
+  if (actor === null || (await rolesTheViewerChanges(identity, actor, personId)) === null) return { kind: "none" };
+  return { kind: "targets", departments: moveTargetsOf(recordsOf(snapshot), snapshot.org, actor) };
+}
+
+/**
+ * Move to another unit (issue #647; Owner decisions, 2026-10-24), as
+ * `planMove` (./member-move.ts) allows it, in one batch: the person's rows in
+ * the place they leave end and the access given them there goes; a head they
+ * replace steps down as the editor picked, before their headship starts, so a
+ * department never has two heads; the new row starts, with the full-access
+ * seat of the head it replaces (issue #501); and the head picked for the
+ * department they leave starts with that department's seat. A refused or
+ * failed move writes nothing, so the person stays exactly where they were.
+ * The batch fails unless it ended every row it planned to end (`endRoleRows`),
+ * so of two overlapping moves of one person only the first to land is
+ * written, and the other is refused.
+ */
+async function moveMember(identity: DashboardIdentity, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkMove(input);
+  if (!checked.ok) return refused(checked.error);
+  const request = checked.value;
+  const snapshot = await readTeamSnapshot();
+  const actor = await readActor(identity, snapshot.org);
+  if (actor === null || (await rolesTheViewerChanges(identity, actor, request.personId)) === null) return refused(NOT_IN_SCOPE);
+  const [active, headRows] = await Promise.all([
+    activeRoles(request.personId),
+    getDb()
+      .select({ id: roles.id, member_id: roles.memberId, dept_id: roles.deptId, division_id: roles.divisionId, full_access: roles.fullAccess })
+      .from(roles)
+      .where(and(eq(roles.type, "head"), isNull(roles.leavedAt))),
+  ]);
+  const planned = planMove({
+    actor,
+    org: snapshot.org,
+    viewerId: identity.memberId,
+    request,
+    roles: active.map(roleSeat),
+    heads: headRows.flatMap((r) =>
+      r.member_id === null ? [] : [{ id: r.id, memberId: r.member_id, departmentId: r.dept_id, divisionId: r.division_id, fullAccess: seatOfFlag(r.full_access) }],
+    ),
+    team: teamPeopleOf(snapshot),
+  });
+  if (!planned.ok) return refused(planned.error);
+  const plan = planned.value;
+  const on = today();
+  const replacedRoles = plan.replaced === null ? [] : await activeRoles(plan.replaced.memberId);
+  const aliasAsked = await automaticAliasRequests(plan.newLeads);
+  // Every row the move ends, the head it replaces' included, ends in one guarded statement (issue #666), so an overlapping move ends nothing twice.
+  const ending: readonly [number, ...number[]] = [...plan.end, ...(plan.replaced?.rows ?? [])];
+  try {
+    await runAuditBatch((db) => [
+      endRoleRows(db, ending, on),
+      ...moveWrites(db, plan, replacedRoles, on),
+      ...aliasAsked(db),
+    ]);
+  } catch (error) {
+    if (!isEndGuardFailure(error)) throw error;
+    const stillActive = await getDb().select({ id: roles.id }).from(roles).where(and(inArray(roles.id, [...ending]), isNull(roles.leavedAt)));
+    if (stillActive.length < ending.length) return refused(MOVED_SINCE);
+    throw error;
+  }
+  done();
+  return written(null);
+}
+
+const MOVED_SINCE = "Someone changed this placement since you opened it. Reload and try again.";
+
+/**
+ * The move's writes after its rows end (`moveMember`): the access given in
+ * the place they leave goes, the head they replace steps down, the new row
+ * starts and the head picked for the department they leave starts.
+ */
+function moveWrites(db: Tx, plan: MovePlan, replacedRoles: readonly ActiveRole[], on: string): BatchItem<"pg">[] {
+  const { personId, start, leaves } = plan;
+  return [
+    leaves.kind === "division"
+      ? db.delete(scopes).where(and(eq(scopes.memberId, personId), eq(scopes.scope, "division"), eq(scopes.divisionId, leaves.divisionId)))
+      : db.delete(scopes).where(and(eq(scopes.memberId, personId), eq(scopes.scope, "department"), eq(scopes.deptId, leaves.departmentId), isNull(scopes.divisionId))),
+    // The head they replace steps down before their headship starts: the database keeps one active head per department.
+    // Their head rows already ended in `endRoleRows`, so none is passed to end here.
+    ...(plan.replaced === null ? [] : steppingDownWrites(db, { memberId: plan.replaced.memberId, active: replacedRoles }, plan.replaced.steppingDown, [], on)),
+    start.kind === "division"
+      ? db.insert(roles).values({ memberId: personId, divisionId: start.divisionId, title: start.title, type: start.type, startedAt: on })
+      : db
+          .insert(roles)
+          .values({ memberId: personId, deptId: start.departmentId, divisionId: null, title: start.title, type: "head", startedAt: on, ...seatFor(start.seat, personId) }),
+    ...(plan.successor === null
+      ? []
+      : [
+          db.insert(roles).values({
+            memberId: plan.successor.memberId,
+            deptId: plan.successor.departmentId,
+            divisionId: null,
+            title: plan.successor.title,
+            type: "head",
+            startedAt: on,
+            ...seatFor(plan.successor.seat, plan.successor.memberId),
+          }),
+        ]),
+  ];
+}
 
 /**
  * Edit details (board 61g, issue #584) for anyone the viewer may edit
@@ -1439,24 +1561,32 @@ async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): 
 const SEAT_NO_LONGER_HELD = "That seat is no longer held.";
 
 /**
- * Ends the seat row, and fails the whole batch unless that ended exactly one
- * row (issue #666). The batch cannot read one write's result in the next, so
- * the check lives in this one statement: two overlapping writes on one seat
- * both pass their "still held" read, and the second one's update waits for
- * the first's row lock, then ends nothing, so its batch rolls back and none
- * of the writes after this one land.
+ * Ends the role rows `roleIds`, and fails the whole batch unless that ended
+ * every one of them (issues #666, #647). The batch cannot read one write's
+ * result in the next, so the check lives in this one statement: two
+ * overlapping writes on the same rows both pass their "still active" read,
+ * and the second one's update waits for the first's row locks, then ends
+ * fewer rows than it planned, so its batch rolls back and none of the writes
+ * after this one land.
  */
-function endSeatRow(db: Tx, roleId: number, on: string): BatchItem<"pg"> {
-  const ended = db.$with("ended").as(db.update(roles).set({ leavedAt: on }).where(and(eq(roles.id, roleId), isNull(roles.leavedAt))).returning({ id: roles.id }));
+function endRoleRows(db: Tx, roleIds: readonly [number, ...number[]], on: string): BatchItem<"pg"> {
+  const ended = db
+    .$with("ended")
+    .as(db.update(roles).set({ leavedAt: on }).where(and(inArray(roles.id, [...roleIds]), isNull(roles.leavedAt))).returning({ id: roles.id }));
   // Division by zero is how one plain statement fails its transaction.
-  return db.with(ended).select({ ended: sql<number>`1 / (count(*) = 1)::int` }).from(ended);
+  return db.with(ended).select({ ended: sql<number>`1 / (count(*) = ${roleIds.length})::int` }).from(ended);
 }
 
-/** Postgres' division_by_zero: how `endSeatRow` fails its batch when it ended no seat row. */
+/** Ends the seat row, failing the whole batch unless it was still held (`endRoleRows`, issue #666). */
+function endSeatRow(db: Tx, roleId: number, on: string): BatchItem<"pg"> {
+  return endRoleRows(db, [roleId], on);
+}
+
+/** Postgres' division_by_zero: how `endRoleRows` fails its batch when it ended fewer rows than it planned. */
 const DIVISION_BY_ZERO = "22012";
 
-/** Whether the error, or one of its causes, is `endSeatRow`'s own guard failing (issue #696). */
-function isSeatGuardFailure(error: unknown): boolean {
+/** Whether the error, or one of its causes, is `endRoleRows`' own guard failing (issue #696). */
+function isEndGuardFailure(error: unknown): boolean {
   for (let e = error; e instanceof Error; e = e.cause) {
     if ((e as { code?: unknown }).code === DIVISION_BY_ZERO) return true;
   }
@@ -1473,7 +1603,7 @@ async function writeSeat(roleId: number, on: string, after: (db: Tx) => BatchIte
   try {
     await runAuditBatch((db) => [endSeatRow(db, roleId, on), ...after(db)]);
   } catch (error) {
-    if (!isSeatGuardFailure(error)) throw error;
+    if (!isEndGuardFailure(error)) throw error;
     const [held] = await getDb().select({ id: roles.id }).from(roles).where(and(eq(roles.id, roleId), isNull(roles.leavedAt)));
     if (held === undefined) return refused(SEAT_NO_LONGER_HELD);
     throw error;
@@ -1669,6 +1799,7 @@ export function databaseTeamWrites(
     confirmNda: (joinId) => confirmNda(identity, joinId),
     cancelAdd: (joinId) => cancelAdd(identity, joinId),
     removeFromDivision: (personId, divisionId) => removeFromDivision(identity, personId, divisionId),
+    moveMember: (input) => moveMember(identity, input),
     saveMemberDetails: (target, divisionId, input) => saveMemberDetails(identity, target, divisionId, input),
     setMemberPhoto: (personId, photo) => setMemberPhoto(identity, personId, photo),
     createDivision: (departmentId, input) => createDivision(identity, departmentId, input),
