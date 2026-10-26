@@ -560,8 +560,12 @@ plus a starfield and one shooting star about every 20s in the upper half. Brand 
 four columns (About, Projects, Get involved, Contact); the email link is accent
 (`footer.tsx`). From lg the brand block and the four columns are one row, each as wide as its
 widest line, spread edge to edge, so every gap between columns is the same, brand to About
-included. Phones (board 24): brand block, then the columns 2 x 2, then the address lines
-stacked.
+included. The street address sits under the tagline (issue #737). Phones (board 24): brand
+block, then the columns 2 x 2. Bottom row, under the hairline, in `font-mono` 11px `text-dim`:
+the copyright line, the legal links (Terms of Service, Privacy Policy) side by side, then
+"POLITECNICO DI TORINO", which is hidden below md. Below lg the three stack, the copyright
+line first; from lg they are one row, copyright left, the legal links and Politecnico right.
+Each bottom-row item stays on one line at every width (`whitespace-nowrap`, issue #774).
 
 ## Accessibility
 
