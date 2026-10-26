@@ -3,6 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNotNull, isNull, ne, sql, type SQL } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
+import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
 import {
@@ -47,6 +48,7 @@ import {
   type AddLookup,
   type AddStanding,
   type DetailsTarget,
+  type WaitingAdder,
   type WaitingPerson,
 } from "./division-members";
 import {
@@ -316,7 +318,20 @@ const waitingColumns = {
   linked: signedIn,
 };
 
+/** The user row of the member who added someone waiting (`team_joins.added_by`, issue #799). */
+const adder = alias(users, "adder");
+
+/** Who added each person waiting, read with the list (issue #799); Confirm NDA does not need it. */
+const adderColumns = {
+  added_by: teamJoins.addedBy,
+  adder_first_name: adder.firstName,
+  adder_last_name: adder.lastName,
+};
+
 type WaitingRow = {
+  added_by: number | null;
+  adder_first_name: string | null;
+  adder_last_name: string | null;
   join_id: number;
   user_id: string;
   division_id: number;
@@ -369,9 +384,10 @@ async function readWaitingIn(divisionIds: readonly number[]): Promise<Map<number
   const waiting = new Map<number, WaitingRow[]>();
   if (divisionIds.length === 0) return waiting;
   const rows = await getDb()
-    .select(waitingColumns)
+    .select({ ...waitingColumns, ...adderColumns })
     .from(teamJoins)
     .innerJoin(users, eq(users.id, teamJoins.userId))
+    .leftJoin(adder, eq(adder.member, teamJoins.addedBy))
     .where(inArray(teamJoins.divisionId, [...divisionIds]))
     .orderBy(asc(teamJoins.addedAt));
   for (const row of rows) waiting.set(row.division_id, [...(waiting.get(row.division_id) ?? []), row]);
@@ -388,7 +404,20 @@ function waitingPerson(identity: DashboardIdentity, row: WaitingRow): WaitingPer
     details: waitingDetails(row),
     addedOn: TEAM_DAY.format(new Date(row.added_at)),
     signedIn: row.linked,
+    addedBy: adderOf(identity, row),
   };
+}
+
+/**
+ * Who added them, as the viewer reads it (issue #799). The viewer is matched
+ * by member id, so View as reads the viewed-as member's adds as "You". An
+ * adder whose record has no name is named by no one rather than by a blank.
+ */
+function adderOf(identity: DashboardIdentity, row: WaitingRow): WaitingAdder {
+  if (row.added_by === null) return { kind: "unknown" };
+  if (row.added_by === identity.memberId) return { kind: "viewer" };
+  const name = [row.adder_first_name, row.adder_last_name].filter(Boolean).join(" ");
+  return name === "" ? { kind: "unknown" } : { kind: "member", name };
 }
 
 /** A calendar day in the team's time zone, "2026-10-20". */
