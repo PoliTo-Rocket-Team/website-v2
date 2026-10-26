@@ -565,7 +565,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
   const [positions, scope, statuses] = await Promise.all([readPositionRows(identity, "applications", now), applicationsScope(identity), readStatusList()]);
   const { teamLeader } = setterViewerOf(identity);
   if (positions.length === 0) {
-    return { scope, now: now.toISOString(), positions: [], statuses, teamLeader, statusUses: null, acceptanceEmails: acceptanceEmailRows(identity, [], positions), applications: [] };
+    return { scope, now: now.toISOString(), positions: [], statuses, teamLeader, statusUses: null, acceptanceEmails: acceptanceEmailRows(identity, [], positions, new Map()), applications: [] };
   }
 
   const db = getDb();
@@ -673,7 +673,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
     statuses,
     teamLeader,
     statusUses,
-    acceptanceEmails: acceptanceEmailRows(identity, entries, positions),
+    acceptanceEmails: acceptanceEmailRows(identity, entries, positions, new Map(rows.map((r) => [r.id, storedAcceptanceDay(r.accepted_at)]))),
     applications: entries,
   };
 }
@@ -682,11 +682,19 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
  * The team leader's box (board 100, issue #744): the listed applications that
  * wait for their acceptance email, by `acceptanceEmailsFor`. The team
  * leader's page lists the whole team, so the box does too, whatever the
- * page's filters; null for any other viewer.
+ * page's filters; null for any other viewer. The accepted date is the stored
+ * acceptance day (`acceptedDays`, by application id), never the state's
+ * fallback to the applied day: an application with none shows no date and
+ * goes last.
  */
-function acceptanceEmailRows(identity: Identity, entries: readonly ApplicationEntry[], positions: readonly ReadPosition[]): AcceptanceEmailRow[] | null {
+function acceptanceEmailRows(
+  identity: Identity,
+  entries: readonly ApplicationEntry[],
+  positions: readonly ReadPosition[],
+  acceptedDays: ReadonlyMap<number, string | null>,
+): AcceptanceEmailRow[] | null {
   const departmentOf = new Map(positions.map((p) => [p.ref, p.department]));
-  const candidates = entries.map((entry) => ({ entry, status: entry.status, acceptedAt: "acceptedAt" in entry.state ? entry.state.acceptedAt : null }));
+  const candidates = entries.map((entry) => ({ entry, status: entry.status, acceptedAt: acceptedDays.get(entry.id) ?? null }));
   return (
     acceptanceEmailsFor(identity, candidates)?.map(({ entry, acceptedAt }) => ({
       id: entry.id,
@@ -719,9 +727,14 @@ export async function readAcceptanceEmailCount(): Promise<number> {
   return acceptanceEmailsToSend(
     rows.map((r) => ({
       status: statusOfStored({ key: r.status_key, parentKey: r.status_parent_key }),
-      acceptedAt: r.accepted_at === null ? null : new Date(r.accepted_at).toISOString(),
+      acceptedAt: storedAcceptanceDay(r.accepted_at),
     })),
   ).length;
+}
+
+/** The stored acceptance day as ISO, or null where `applications.accepted_at` holds none. */
+function storedAcceptanceDay(acceptedAt: string | null): string | null {
+  return acceptedAt === null ? null : new Date(acceptedAt).toISOString();
 }
 
 /**

@@ -56,6 +56,24 @@ describe("The team leader's acceptance emails (issue #744)", () => {
     }
   });
 
+  test("an application with no stored acceptance day shows no date and goes last, not its applied day", async () => {
+    await seedFixture();
+    const dated = APPLICATION; // applied 3 days ago, accepted yesterday
+    const undated = IDS.interview("MA"); // applied 10 days ago, no acceptance day stored
+    const acceptedAt = new Date(Date.now() - 86_400_000).toISOString();
+    await changeRows(applications, { id: dated }, { status: "accepted", statusKey: "accepted_email_to_be_sent", acceptedAt });
+    await changeRows(applications, { id: undated }, { status: "accepted", statusKey: "accepted_email_to_be_sent", acceptedAt: null });
+
+    const page = await (await dashboardOf("team leader")).applications();
+    assert.deepEqual(
+      page.acceptanceEmails?.map((r) => ({ id: r.id, acceptedAt: r.acceptedAt })),
+      [
+        { id: dated, acceptedAt },
+        { id: undated, acceptedAt: null },
+      ],
+    );
+  });
+
   test("with no acceptance email to send, the team leader gets an empty box and no Overview row", async () => {
     await seedFixture();
     const leader = await dashboardOf("team leader");
