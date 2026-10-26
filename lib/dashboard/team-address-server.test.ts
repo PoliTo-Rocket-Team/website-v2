@@ -4,15 +4,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as actions from "@/app/dashboard/actions";
 import * as teamActions from "@/app/dashboard/team-actions";
-import { dashboardNotices, divisions, teamAddresses, teamAddressReroutes, teamAddressRequests } from "@/db/schema";
-import { addRows, tableRows } from "./access-matrix/test-database";
-import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
+import { dashboardNotices, divisions, roles, teamAddresses, teamAddressReroutes, teamAddressRequests } from "@/db/schema";
+import { addRows, changeRows, tableRows } from "./access-matrix/test-database";
+import { accountOf, EXTRA, IDS, seedFixture } from "./access-matrix/fixture";
 import { ALL, UNITS } from "./access-matrix/matrix";
 import { signInAs } from "./access-matrix/session";
 import type { DashboardData } from "./data";
 import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
-import { NO_TEAM_ADDRESSES } from "./team-address";
+import { moveTeamAddress, readRerouteMove } from "./database-team-address";
+import { NO_TEAM_ADDRESSES, REROUTE_ROLE_MOVED } from "./team-address";
 
 // Shared team addresses on the migrated in-memory Postgres (epic #578): the
 // member side view's Team addresses row (issue #786, board 102), read with
@@ -207,11 +208,14 @@ async function rerouteRowsSeenBy(viewer: string) {
   return overview.attention.filter((a) => a.kind === "team-address-reroute");
 }
 
-/** Edit division's save of MA, as the team leader sends it. */
-async function saveMA(change: { newLeads?: number[]; oldLeads?: unknown[] }) {
-  const division = (await tableRows(divisions)).find((d) => d.id === UNITS.MA.divisionId)!;
-  return teamActions.saveDivision(UNITS.MA.divisionId, { name: String(division.name), code: String(division.code), newLeads: [], oldLeads: [], members: [], emails: [], ...change });
+/** Edit division's save of a division, as the signed-in viewer sends it. */
+async function saveDivision(divisionId: number, change: { newLeads?: number[]; oldLeads?: unknown[] }) {
+  const division = (await tableRows(divisions)).find((d) => d.id === divisionId)!;
+  return teamActions.saveDivision(divisionId, { name: String(division.name), code: String(division.code), newLeads: [], oldLeads: [], members: [], emails: [], ...change });
 }
+
+/** Edit division's save of MA. */
+const saveMA = (change: { newLeads?: number[]; oldLeads?: unknown[] }) => saveDivision(UNITS.MA.divisionId, change);
 
 test("a confirmed hand-over of a tied division lead raises one routing item each approver seat sees with the new holder's sign-in email; Mark done moves the address once", async () => {
   await seededTied();
@@ -265,13 +269,126 @@ test("adding a co-lead beside the holder raises no routing item, and neither doe
   assert.deepEqual(await tableRows(teamAddressReroutes), []);
 });
 
-test("a second change before Mark done leaves one open routing item for the address", async () => {
+test("a second change before Mark done leaves one open routing item, naming the role's holder now; Mark done moves the address to them", async () => {
+  const OA = IDS.person("OA");
   await seededTied();
   signInAs(accountOf("team leader").userId);
   assert.deepEqual(await saveMA({ newLeads: [MA_MEMBER], oldLeads: [{ personId: MA_LEAD, via: "replaced", outcome: "advisor" }] }), { ok: true });
-  assert.deepEqual(await saveMA({ newLeads: [IDS.person("OA")], oldLeads: [{ personId: MA_MEMBER, via: "replaced", outcome: "advisor" }] }), { ok: true });
+  assert.deepEqual(await saveMA({ newLeads: [OA], oldLeads: [{ personId: MA_MEMBER, via: "replaced", outcome: "advisor" }] }), { ok: true });
   assert.deepEqual(
-    (await tableRows(teamAddressReroutes)).map((r) => [r.addressId, r.toMember, r.fromMember]),
-    [[2, MA_MEMBER, MA_LEAD]],
+    (await tableRows(teamAddressReroutes)).map((r) => [r.addressId, r.toMember, r.fromMember, r.doneAt]),
+    [[2, OA, MA_LEAD, null]],
+  );
+  assert.deepEqual(
+    (await rerouteRowsSeenBy("team leader")).map((r) => r.title),
+    ["mission@politorocketteam.it goes to Person OA"],
+  );
+  signInAs(accountOf("IT lead").userId);
+  assert.deepEqual(await actions.markTeamAddressRerouteDone(1), { ok: true, value: null });
+  assert.deepEqual(
+    (await tableRows(teamAddresses)).filter((r) => r.id === 2).map((r) => r.holderId),
+    [OA],
+  );
+  assert.deepEqual((await tableRows(teamAddressReroutes)).map((r) => [r.toMember, r.doneAt !== null]), [[OA, true]]);
+});
+
+test("Mark done moves the address to whoever took the tied role over, even when the item named someone who left it since", async () => {
+  const OA = IDS.person("OA");
+  await seededTied();
+  // MA's lead hands MA to its member: the item names MA's member.
+  signInAs(accountOf("team leader").userId);
+  assert.deepEqual(await saveMA({ newLeads: [MA_MEMBER], oldLeads: [{ personId: MA_LEAD, via: "replaced", outcome: "advisor" }] }), { ok: true });
+  assert.deepEqual(await saveMA({ newLeads: [OA], oldLeads: [{ personId: MA_MEMBER, via: "replaced", outcome: "advisor" }] }), { ok: true });
+  // Laid back to name MA's member, who left the role, as an item stored before this rule reads: Mark done reads the role's holder anyway.
+  await changeRows(teamAddressReroutes, { addressId: 2 }, { toMember: MA_MEMBER });
+  signInAs(accountOf("IT lead").userId);
+  assert.deepEqual(await actions.markTeamAddressRerouteDone(1), { ok: true, value: null });
+  assert.deepEqual(
+    (await tableRows(teamAddresses)).filter((r) => r.id === 2).map((r) => r.holderId),
+    [OA],
+  );
+});
+
+test("a role change between Mark done's read and its write refuses the move with a plain reason and leaves the item open, naming the role's holder now", async () => {
+  const OA = IDS.person("OA");
+  await seededTied();
+  signInAs(accountOf("team leader").userId);
+  assert.deepEqual(await saveMA({ newLeads: [MA_MEMBER], oldLeads: [{ personId: MA_LEAD, via: "replaced", outcome: "advisor" }] }), { ok: true });
+  // What Mark done read: the address goes to MA's member, who leads MA now.
+  const read = await readRerouteMove(1);
+  assert.ok(read.ok, JSON.stringify(read));
+  assert.equal(read.value.toId, MA_MEMBER);
+  // The role changes hands before Mark done's write: the item now names OA.
+  assert.deepEqual(await saveMA({ newLeads: [OA], oldLeads: [{ personId: MA_MEMBER, via: "replaced", outcome: "advisor" }] }), { ok: true });
+  const mover = { memberId: accountOf("IT lead").memberId, actingAccountId: null };
+  assert.deepEqual(await moveTeamAddress(mover, read.value), { ok: false, error: REROUTE_ROLE_MOVED }, "the item was re-pointed");
+  // As if the re-point had not landed: the item names MA's member, who left the role, so the write is refused all the same.
+  await changeRows(teamAddressReroutes, { addressId: 2 }, { toMember: MA_MEMBER });
+  assert.deepEqual(await moveTeamAddress(mover, read.value), { ok: false, error: REROUTE_ROLE_MOVED }, "the member it chose left the role");
+  await changeRows(teamAddressReroutes, { addressId: 2 }, { toMember: OA });
+  assert.deepEqual(
+    (await tableRows(teamAddresses)).filter((r) => r.id === 2).map((r) => r.holderId),
+    [MA_LEAD],
+    "nothing was moved",
+  );
+  assert.deepEqual((await tableRows(teamAddressReroutes)).map((r) => [r.toMember, r.doneAt]), [[OA, null]], "the item stays open");
+  assert.deepEqual(
+    (await rerouteRowsSeenBy("IT lead")).map((r) => r.title),
+    ["mission@politorocketteam.it goes to Person OA"],
+  );
+  // Mark done again reads the role's holder now and moves the address to them.
+  assert.deepEqual(await actions.markTeamAddressRerouteDone(1), { ok: true, value: null });
+  assert.deepEqual(
+    (await tableRows(teamAddresses)).filter((r) => r.id === 2).map((r) => r.holderId),
+    [OA],
+  );
+});
+
+test("Mark done's write reads each tie kind's holder as the read does: the team leader, a full-access seat, and a department's head on the department or on one of its divisions", async () => {
+  const LEADER = accountOf("team leader").memberId!;
+  const IT = accountOf("IT lead").memberId!;
+  const HEAD = EXTRA.head;
+  await seedFixture();
+  const tied = [
+    { id: 3, address: "leader@politorocketteam.it", movesWith: "team_leader" as const, to: LEADER },
+    { id: 4, address: "it@politorocketteam.it", movesWith: "full_access_seat" as const, movesWithSeat: "it_lead" as const, to: IT },
+    { id: 5, address: "structures-head@politorocketteam.it", movesWith: "department_head" as const, movesWithDeptId: UNITS.DM.departmentId, to: HEAD },
+    { id: 6, address: "structures-office@politorocketteam.it", movesWith: "department_head" as const, movesWithDeptId: UNITS.DM.departmentId, to: HEAD },
+  ];
+  await addRows(
+    teamAddresses,
+    tied.map(({ to: _, ...a }) => ({ ...a, purpose: "Office", holderId: MA_MEMBER })),
+  );
+  await addRows(
+    teamAddressReroutes,
+    tied.map((a) => ({ id: a.id + 10, addressId: a.id, toMember: a.to, fromMember: MA_MEMBER })),
+  );
+  signInAs(accountOf("IT lead").userId);
+  for (const a of tied.slice(0, 3)) assert.deepEqual(await actions.markTeamAddressRerouteDone(a.id + 10), { ok: true, value: null }, a.address);
+  // The head's row kept on one of the department's divisions instead.
+  await changeRows(roles, { memberId: HEAD, type: "head" }, { deptId: null, divisionId: UNITS.DM.divisionId });
+  assert.deepEqual(await actions.markTeamAddressRerouteDone(16), { ok: true, value: null }, "head row on a division");
+  assert.deepEqual(
+    (await tableRows(teamAddresses)).filter((r) => Number(r.id) >= 3).map((r) => [r.id, r.holderId]),
+    tied.map((a) => [a.id, a.to]),
+  );
+});
+
+test("a lead handing a division over to someone who already co-leads raises one routing item naming that co-lead", async () => {
+  await seededTied();
+  // DM's member becomes a co-lead beside DM's lead, who holds the address: nothing is raised.
+  signInAs(accountOf("team leader").userId);
+  assert.deepEqual(await saveDivision(UNITS.DM.divisionId, { newLeads: [DM_MEMBER] }), { ok: true });
+  assert.deepEqual(await tableRows(teamAddressReroutes), []);
+  // DM's lead hands DM over to that co-lead.
+  signInAs("head-str");
+  assert.deepEqual(await actions.answerHandOver(IDS.handOver("DM"), "confirm"), { ok: true, value: null });
+  assert.deepEqual(
+    (await tableRows(teamAddressReroutes)).map((r) => [r.addressId, r.toMember, r.fromMember, r.doneAt]),
+    [[1, DM_MEMBER, DM_LEAD, null]],
+  );
+  assert.deepEqual(
+    (await rerouteRowsSeenBy("team leader")).map((r) => r.title),
+    [`${STRUCTURES} goes to Person DM`],
   );
 });

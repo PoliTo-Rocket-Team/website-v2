@@ -1838,11 +1838,12 @@ async function confirmedHandOverWrites(
     const seatRow = promote[0] ?? theirs.find((r) => r.type === "lead")?.id ?? theirs[0]?.id;
     // A successor who becomes the lead here is owed an alias request when they have none (issue #543).
     const aliasAsked = await automaticAliasRequests(promote.length === 0 ? [] : [toId]);
-    // A team address tied to this lead, or to the seat on the sender's row, is owed a routing item (issue #789).
+    // A team address tied to this lead, or to the seat on the sender's row, is owed a routing item (issue #789),
+    // when the successor leads after it, one who already co-leads included (issue #795).
     const reroutesAsked = await automaticTeamAddressReroutes([
       {
         tie: { kind: "division-lead", divisionId: role.divisionId },
-        becoming: promote.length === 0 ? [] : [toId],
+        becoming: promote.length > 0 || theirs.some((r) => r.type === "lead") ? [toId] : [],
         staying: leadsIn(held).filter((id) => id !== fromId),
       },
       ...seatHandedTo(seat),

@@ -477,11 +477,25 @@ const addTeamAddressRequest = () =>
 /** DM's lead's team address, not set up yet. */
 const TEAM_ADDRESS = 1;
 const addTeamAddress = () => addRows(teamAddresses, [{ id: TEAM_ADDRESS, address: "structures@politorocketteam.it", purpose: "Structures", holderId: IDS.lead(DM) }]);
-/** An open routing item: DM's lead's team address goes to the member of DM. */
+/**
+ * An open routing item: a team address tied to DM's lead, held by the member
+ * of DM, goes to DM's lead. Mark done moves an address only to whoever holds
+ * the tied role then (issue #795), so the item is one a role change could
+ * have left.
+ */
 const TEAM_ADDRESS_REROUTE = 1;
 const addTeamAddressReroute = async () => {
-  await addTeamAddress();
-  await addRows(teamAddressReroutes, [{ id: TEAM_ADDRESS_REROUTE, addressId: TEAM_ADDRESS, toMember: IDS.person(DM), fromMember: IDS.lead(DM) }]);
+  await addRows(teamAddresses, [
+    {
+      id: TEAM_ADDRESS,
+      address: "structures@politorocketteam.it",
+      purpose: "Structures",
+      holderId: IDS.person(DM),
+      movesWith: "division_lead",
+      movesWithDivisionId: IDS.division(DM),
+    },
+  ]);
+  await addRows(teamAddressReroutes, [{ id: TEAM_ADDRESS_REROUTE, addressId: TEAM_ADDRESS, toMember: IDS.lead(DM), fromMember: IDS.person(DM) }]);
 };
 const changesDM = (area: "positions" | "applications" | "members") => (r: MatrixRow) => r.expect.changes[area].includes(DM);
 const reaches = (page: Expect["pages"][number]) => (r: MatrixRow) => r.expect.pages.includes(page);
