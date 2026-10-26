@@ -46,10 +46,10 @@ import {
   canWithdraw,
   isShownAt,
   mayOfferInterview,
-  OPEN_STATUSES,
   pickableSlot,
   placeOf,
   WITHDRAWABLE_STATUS_KEYS,
+  WITHDRAWN_STATUS_KEY,
   withdrawnOnDelete,
   type ActiveApplication,
   type ApplicationAnswer,
@@ -216,6 +216,20 @@ async function leaveTeam(identity: DashboardIdentity, reason: string, removeFrom
   return written(null);
 }
 
+/**
+ * The built-in status an `applications` row's status behaves like, in SQL: its
+ * own key or its added status's parent, and New for no reference
+ * (./application-status.ts).
+ */
+const BUILT_IN_STATUS_OF_ROW = sql<string>`coalesce((select coalesce(${applicationStatuses.parentKey}, ${applicationStatuses.key}) from ${applicationStatuses} where ${applicationStatuses.key} = ${applications.statusKey}), 'new')`;
+
+/**
+ * An application its applicant can still withdraw, in SQL: not withdrawn, at a
+ * status that behaves like one of `WITHDRAWABLE_STATUS_KEYS`. My account's
+ * count, Delete account and the Withdraw button all ask this (issue #759).
+ */
+const WITHDRAWABLE_ROW = and(inArray(BUILT_IN_STATUS_OF_ROW, [...WITHDRAWABLE_STATUS_KEYS]), isNull(applications.withdrawnAt));
+
 async function readAccount(identity: DashboardIdentity): Promise<MyAccount | null> {
   if (!isOffTeam(identity.kind)) return null;
   const [details, open] = await Promise.all([
@@ -223,13 +237,7 @@ async function readAccount(identity: DashboardIdentity): Promise<MyAccount | nul
     getDb()
       .select({ id: applications.id })
       .from(applications)
-      .where(
-        and(
-          eq(applications.userId, identity.userId),
-          inArray(applications.status, [...OPEN_STATUSES]),
-          isNull(applications.withdrawnAt),
-        ),
-      ),
+      .where(and(eq(applications.userId, identity.userId), WITHDRAWABLE_ROW)),
   ]);
   return {
     name: identity.name,
@@ -276,13 +284,20 @@ async function deleteAccount(identity: DashboardIdentity, options: DeleteAccount
         await getDb()
           .select({
             id: applications.id,
-            status: applications.status,
+            ...STATUS_COLUMNS,
             withdrawnAt: applications.withdrawnAt,
             cvFileId: applications.cvFileId,
             coverLetterFileId: applications.coverLetterFileId,
           })
           .from(applications)
-          .where(eq(applications.userId, userId)),
+          .leftJoin(applicationStatuses, STATUS_JOIN)
+          .where(eq(applications.userId, userId))
+          .then((rows) =>
+            rows.map(({ status_key, status_parent_key, ...r }) => ({
+              ...r,
+              status: statusOfStored({ key: status_key, parentKey: status_parent_key }),
+            })),
+          ),
       )
     : { applicationIds: [], fileIds: [] };
   const files =
@@ -305,15 +320,8 @@ async function deleteAccount(identity: DashboardIdentity, options: DeleteAccount
       : [
           db
             .update(applications)
-            .set({ withdrawnAt: sql`now()` })
-            .where(
-              and(
-                inArray(applications.id, [...applicationIds]),
-                eq(applications.userId, userId),
-                inArray(applications.status, [...OPEN_STATUSES]),
-                isNull(applications.withdrawnAt),
-              ),
-            ),
+            .set({ withdrawnAt: sql`now()`, statusKey: WITHDRAWN_STATUS_KEY })
+            .where(and(inArray(applications.id, [...applicationIds]), eq(applications.userId, userId), WITHDRAWABLE_ROW)),
         ]),
     ...(fileIds.length === 0
       ? []
@@ -490,13 +498,6 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
   return { firstName: me?.first_name ?? identity.name, email: identity.email, active, past };
 }
 
-/**
- * The built-in status an `applications` row's status behaves like, in SQL: its
- * own key or its added status's parent, and New for no reference
- * (./application-status.ts).
- */
-const BUILT_IN_STATUS_OF_ROW = sql<string>`coalesce((select coalesce(${applicationStatuses.parentKey}, ${applicationStatuses.key}) from ${applicationStatuses} where ${applicationStatuses.key} = ${applications.statusKey}), 'new')`;
-
 /** Board 50b: marks it withdrawn, with the Withdrawn status (issue #749); the lead's list leaves it out from then on (./database.ts). */
 async function withdrawApplication(identity: DashboardIdentity, applicationId: number): Promise<WriteResult<null>> {
   const mine = await readMyApplications(identity);
@@ -506,15 +507,8 @@ async function withdrawApplication(identity: DashboardIdentity, applicationId: n
   const changed = await runAuditQuery((db) =>
     db
       .update(applications)
-      .set({ withdrawnAt: sql`now()`, statusKey: "withdrawn" })
-      .where(
-        and(
-          eq(applications.id, applicationId),
-          eq(applications.userId, identity.userId),
-          inArray(BUILT_IN_STATUS_OF_ROW, [...WITHDRAWABLE_STATUS_KEYS]),
-          isNull(applications.withdrawnAt),
-        ),
-      )
+      .set({ withdrawnAt: sql`now()`, statusKey: WITHDRAWN_STATUS_KEY })
+      .where(and(eq(applications.id, applicationId), eq(applications.userId, identity.userId), WITHDRAWABLE_ROW))
       .returning({ id: applications.id }),
   );
   // A lead accepted or closed it between the read and the write.
