@@ -433,6 +433,17 @@ export async function readTeamStructure(identity: DashboardIdentity): Promise<Te
 }
 
 /**
+ * The divisions `readDivisionMembers` opens when `?division=` names one: the
+ * viewer's division reach on the Members page (issue #760). Empty for a page
+ * that is not one division's: the whole team, a head's department, or no page.
+ */
+export async function readMembersDivisionReach(identity: DashboardIdentity): Promise<readonly number[]> {
+  const snapshotRead = readTeamSnapshot();
+  const [snapshot, viewing] = await Promise.all([snapshotRead, readViewingActor(identity, snapshotRead.then((s) => s.org))]);
+  return viewing === null || viewing.kind !== "lead" ? [] : reachOf(identity, viewing, snapshot.org);
+}
+
+/**
  * The Members page of a division lead (boards 61e to 61h2): one of the
  * divisions they reach, `divisionId` or the first, with everyone in it, the
  * people waiting for Confirm NDA and the accepted applicants joining. A head

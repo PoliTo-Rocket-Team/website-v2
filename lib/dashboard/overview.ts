@@ -20,7 +20,7 @@ import type { AccessSection } from "./access-summary";
 import type { ApplicantOverview } from "./applicant-overview";
 import type { AlumniOverview } from "./my-alumni";
 import type { RoleType } from "./team";
-import { isTeamLeader, type FlaggedSeat, type ViewerStanding } from "./viewer";
+import { seatOf, type FlaggedSeat, type FullAccessSeat, type ViewerStanding } from "./viewer";
 
 export type Link = { readonly label: string; readonly href: string };
 
@@ -456,8 +456,8 @@ export function departmentRoster(
  * Board 52's panels, on every team seat's Overview (issue #593): who the
  * viewer is, their page on the site, the roster of their own division or
  * department (issue #652: never wider, whatever their grants reach, and none
- * for the team leader, whose whole team is on the Members page), and "Your
- * access".
+ * for a seat of `LEADER_SEATS`, whose whole team is on the Members page), and
+ * "Your access".
  */
 export type PersonalPanels = {
   readonly person: PersonHeader;
@@ -479,13 +479,27 @@ export type PersonalPanels = {
 export type OverviewLayout = "leader-columns" | "board-first";
 
 /**
- * Boards 99 and 99b are for the three leaders the issue names: the team
- * leader, a department head and a division lead. Every other team seat (a
- * member, with or without grants, and a full-access seat that is not the team
- * leader) keeps the board-first order.
+ * The full-access seats whose Overview is boards 99 and 99b with no roster
+ * panel: the team leader (issue #652), the operations lead and the IT lead
+ * (Owner decision, 2026-10-25, issue #760). None has a division or department
+ * of their own, and the whole team is on their Members page.
+ */
+const LEADER_SEATS = ["team-leader", "operations-lead", "it-lead"] as const satisfies readonly FullAccessSeat[];
+
+/** Whether the viewer holds one of `LEADER_SEATS`. */
+export function holdsLeaderSeat(viewer: ViewerStanding): boolean {
+  const seat = seatOf(viewer);
+  return seat !== null && (LEADER_SEATS as readonly FullAccessSeat[]).includes(seat);
+}
+
+/**
+ * Boards 99 and 99b are for the leaders: a department head, a division lead
+ * and the seats of `LEADER_SEATS`. Every other team seat (a member, with or
+ * without grants, the Project Manager, the Chief Engineer, and a full-access
+ * standing that holds no seat) keeps the board-first order.
  */
 export function overviewLayoutOf(viewer: ViewerStanding): OverviewLayout {
-  if (viewer.kind === "department-head" || viewer.kind === "division-lead" || isTeamLeader(viewer)) return "leader-columns";
+  if (viewer.kind === "department-head" || viewer.kind === "division-lead" || holdsLeaderSeat(viewer)) return "leader-columns";
   return "board-first";
 }
 
