@@ -1,13 +1,14 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, ne, sql, type SQL } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
 import {
   applications,
   applyPositions,
+  betterAuthUsers,
   dashboardNotices,
   departments,
   divisions,
@@ -116,6 +117,7 @@ import { mayChangePositionIn } from "./position-access";
 import { readsRecruitmentIn } from "./application-documents";
 import { readTeamSnapshot, recordsOf, seatsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
+import { correctsSignInEmail, planSignInEmailCorrection, type SignInEmailCorrection, type SignInEmailRow } from "./sign-in-email";
 
 // The Members page's reads and writes on the database (Dashboard v2 boards 59
 // to 59e, issue #172; boards 61e to 61h2, issue #231): who is in the lead's
@@ -279,6 +281,16 @@ async function readJoining(identity: DashboardIdentity, divisionIds: readonly nu
   return joining;
 }
 
+/**
+ * Whether a sign-in account holds the `public.users` row: a Better Auth user
+ * with its id, as the `sync_auth_users` trigger (drizzle/0001) leaves it once
+ * the person signs in. Only read here: nothing in this file writes the
+ * `better_auth` schema. Both ids are named with their table: a one-table
+ * select names its columns bare, and a bare `id` inside the subquery would
+ * read the Better Auth row's own.
+ */
+const signedIn = sql<boolean>`exists (select 1 from ${betterAuthUsers} as account where account.id = ${users}.${sql.identifier(users.id.name)})`;
+
 const waitingColumns = {
   join_id: teamJoins.id,
   user_id: teamJoins.userId,
@@ -298,6 +310,7 @@ const waitingColumns = {
   country: users.country,
   date_of_birth: users.dateOfBirth,
   gender: users.gender,
+  linked: signedIn,
 };
 
 type WaitingRow = {
@@ -319,6 +332,7 @@ type WaitingRow = {
   country: string | null;
   date_of_birth: string | null;
   gender: string | null;
+  linked: boolean;
 };
 
 function waitingDetails(row: WaitingRow): MemberDetails {
@@ -360,10 +374,11 @@ async function readWaitingIn(divisionIds: readonly number[]): Promise<Map<number
   return waiting;
 }
 
-function waitingPerson(row: WaitingRow): WaitingPerson {
+function waitingPerson(identity: DashboardIdentity, row: WaitingRow): WaitingPerson {
   return {
     joinId: row.join_id,
     email: row.email,
+    correctsSignInEmail: correctsSignInEmail(identity, row.linked),
     name: [row.first_name, row.last_name].filter(Boolean).join(" ") || null,
     title: row.title,
     details: waitingDetails(row),
@@ -401,7 +416,7 @@ async function readDepartmentMembers(
     departmentId,
     actor,
     selfId: identity.memberId,
-    waiting: Object.fromEntries(perDivision.map((d) => [d.id, d.waiting.map(waitingPerson)])),
+    waiting: Object.fromEntries(perDivision.map((d) => [d.id, d.waiting.map((w) => waitingPerson(identity, w))])),
     joining: Object.fromEntries(perDivision.map((d) => [d.id, d.joining])),
   });
   return page === null ? NO_MEMBERS : { scope: "department", ...page };
@@ -425,7 +440,7 @@ export async function readTeamStructure(identity: DashboardIdentity): Promise<Te
     actor,
     selfId: identity.memberId,
     seat: seatOf(identity),
-    waiting: Object.fromEntries(perDivision.map((d) => [d.id, d.waiting.map(waitingPerson)])),
+    waiting: Object.fromEntries(perDivision.map((d) => [d.id, d.waiting.map((w) => waitingPerson(identity, w))])),
     joining: Object.fromEntries(perDivision.map((d) => [d.id, d.joining])),
     openPositions,
     seats: seatsOf(snapshot),
@@ -473,7 +488,7 @@ export async function readDivisionMembers(identity: DashboardIdentity, divisionI
     actor,
     selfId: identity.memberId,
     reach,
-    waiting: waiting.map(waitingPerson),
+    waiting: waiting.map((w) => waitingPerson(identity, w)),
     joining: joining.get(division) ?? [],
   });
   return page === null ? NO_MEMBERS : { scope: "division", ...page };
@@ -493,18 +508,64 @@ export async function readWholeTeamMembers(identity: DashboardIdentity): Promise
   const [snapshot, actor] = await Promise.all([snapshotRead, readActor(identity, snapshotRead.then((s) => s.org))]);
   const records = recordsOf(snapshot);
   const divisionIds = snapshot.org.divisions.map((d) => d.id);
-  const perDivision = await readPerDivision(identity, divisionIds, snapshot.org);
+  const [perDivision, correctable] = await Promise.all([readPerDivision(identity, divisionIds, snapshot.org), readSignInEmailCorrectable(identity)]);
   return {
     scope: "whole-team",
     positions: positionsOf(records, snapshot.org, actor, identity.memberId),
+    correctsSignInEmail: correctable,
     queues: perDivision.map((d) => ({
       divisionId: d.id,
-      waiting: d.waiting.map(waitingPerson),
+      waiting: d.waiting.map((w) => waitingPerson(identity, w)),
       joining: d.joining,
       editable: actor !== null && reachesDivision(actor, d.id, snapshot.org),
     })),
     ...wholeTeamMembers({ records, org: snapshot.org, selfId: identity.memberId }),
   };
+}
+
+/** The members whose sign-in email the viewer may correct in Edit details (issue #741): none unless full access, and never one who signs in. */
+async function readSignInEmailCorrectable(identity: DashboardIdentity): Promise<number[]> {
+  if (!correctsSignInEmail(identity, false)) return [];
+  const rows = await getDb().select({ member: users.member, linked: signedIn }).from(users).where(isNotNull(users.member));
+  return rows.flatMap((r) => (r.member !== null && correctsSignInEmail(identity, r.linked) ? [r.member] : []));
+}
+
+/** The user row a sign-in email correction is aimed at, with whether a sign-in account holds it; null unless exactly one row matches. */
+async function signInEmailRowOf(where: SQL): Promise<SignInEmailRow | null> {
+  const rows = await getDb().select({ id: users.id, email: users.email, linked: signedIn }).from(users).where(where);
+  return rows.length === 1 ? rows[0] : null;
+}
+
+/** Whether any user row but `userId`'s holds `email`, compared case-insensitively: another member, someone waiting, or an account. */
+async function signInEmailTaken(userId: string, email: string): Promise<boolean> {
+  const [row] = await getDb()
+    .select({ id: users.id })
+    .from(users)
+    .where(and(sql`lower(${users.email}) = ${email}`, ne(users.id, userId)))
+    .limit(1);
+  return row !== undefined;
+}
+
+/** The correction Edit details sent for the user row `where` names (`planSignInEmailCorrection`, ./sign-in-email.ts), read for the rule. */
+async function planCorrection(identity: DashboardIdentity, sent: string | null, where: SQL): Promise<SignInEmailCorrection> {
+  if (sent === null) return planSignInEmailCorrection(identity, null, null, false);
+  const row = await signInEmailRowOf(where);
+  return planSignInEmailCorrection(identity, sent, row, row !== null && (await signInEmailTaken(row.id, sent)));
+}
+
+/**
+ * The write of a planned correction, in the caller's audited batch: the
+ * `public.users` email alone, on a row no sign-in account holds, which the
+ * `where` checks again so a sign-in between the read and the write keeps it.
+ */
+function correctionWrites(db: Tx, correction: SignInEmailCorrection): BatchItem<"pg">[] {
+  if (correction.kind !== "write") return [];
+  return [
+    db
+      .update(users)
+      .set({ email: correction.email, updatedAt: sql`now()` })
+      .where(and(eq(users.id, correction.userId), sql`not ${signedIn}`)),
+  ];
 }
 
 /** Add member's field (boards 61h, 69c): the team, searched by name or email, and who is waiting here. */
@@ -1005,7 +1066,7 @@ async function saveMemberDetails(
 ): Promise<WriteResult<null>> {
   const checked = checkMemberEdit(input);
   if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
-  const { title, details, name } = checked.value;
+  const { title, details, name, signInEmail } = checked.value;
   const columns = columnsFromMemberDetails(details);
 
   if (target.kind === "waiting") {
@@ -1018,9 +1079,12 @@ async function saveMemberDetails(
       .where(and(eq(teamJoins.id, target.joinId), eq(teamJoins.divisionId, divisionId)))
       .limit(1);
     if (!join) return refused("They are not waiting to join this division.");
+    const correction = await planCorrection(identity, signInEmail, eq(users.id, join.user_id));
+    if (correction.kind === "refused") return refused(correction.error);
     await runAuditBatch((db) => [
       db.update(teamJoins).set({ title, ...columns.member }).where(eq(teamJoins.id, target.joinId)),
       db.update(users).set({ ...columns.user, updatedAt: sql`now()` }).where(eq(users.id, join.user_id)),
+      ...correctionWrites(db, correction),
     ]);
     return written(null);
   }
@@ -1040,6 +1104,8 @@ async function saveMemberDetails(
     titled = divisionRowsIn(active, divisionId).map((r) => r.id);
     if (titled.length === 0 || !reachesDivision(actor, divisionId, org)) return refused(NOT_IN_SCOPE);
   }
+  const correction = await planCorrection(identity, signInEmail, eq(users.member, target.id));
+  if (correction.kind === "refused") return refused(correction.error);
   await runAuditBatch((db) => [
     db
       .update(users)
@@ -1054,6 +1120,7 @@ async function saveMemberDetails(
             .set({ title: title ?? "" })
             .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
         ]),
+    ...correctionWrites(db, correction),
   ]);
   done();
   return written(null);

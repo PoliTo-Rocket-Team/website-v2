@@ -202,6 +202,12 @@ export type WaitingPerson = {
   /** The add, which Confirm NDA and Fill details act on. */
   readonly joinId: number;
   readonly email: string;
+  /**
+   * Whether the viewer may correct `email` in Fill details (issue #741): full
+   * access only, while no sign-in account holds their user row
+   * (`correctsSignInEmail`, ./sign-in-email.ts). Set on the server.
+   */
+  readonly correctsSignInEmail: boolean;
   /** Null until a name is given. */
   readonly name: string | null;
   readonly title: string | null;
@@ -428,7 +434,7 @@ export type AddMember =
       readonly details: MemberDetails | null;
     };
 
-export type AddMemberErrors = Partial<Record<"email" | "firstName" | "lastName" | "title" | "person", string>> & MemberDetailErrors;
+export type AddMemberErrors = Partial<Record<"email" | "firstName" | "lastName" | "title" | "person" | "signInEmail", string>> & MemberDetailErrors;
 
 const MAX_TITLE = 80;
 
@@ -566,13 +572,18 @@ export function lookupForAdd(
  * What Edit details saves: the title in the editor's own division, the
  * details, and for someone on the team their first and last name (issue
  * #668). `name` is null when the form sent none, as Fill details does for
- * someone waiting: nothing renames them.
+ * someone waiting: nothing renames them. `signInEmail` is a corrected
+ * sign-in email (issue #741), null when the form sent none.
  */
 export type MemberEditDetails = {
   readonly title: string | null;
   readonly details: MemberDetails;
   readonly name: PersonName | null;
+  readonly signInEmail: string | null;
 };
+
+/** A corrected sign-in email: the rule of the other email fields, never blank, keyed as Google answers it. */
+const signInEmailRule = z.string().transform(signInEmailOf).pipe(z.email("Write an email address.").max(200, "Too long."));
 
 const renameSchema = z.object({ firstName: nameRule("Enter their first name."), lastName: nameRule("Enter their last name.") });
 
@@ -604,7 +615,10 @@ export function checkMemberEdit(
   if (titled === "required" && t.data === null) return { ok: false, errors: { title: SEAT_TITLE_REQUIRED } };
   const details = parseMemberDetails(sent.details);
   if (!details.ok) return { ok: false, errors: details.errors };
-  if (sent.firstName === undefined && sent.lastName === undefined) return { ok: true, value: { title: t.data, details: details.value, name: null } };
+  const email = sent.signInEmail === undefined ? null : signInEmailRule.safeParse(sent.signInEmail);
+  if (email !== null && !email.success) return { ok: false, errors: { signInEmail: email.error.issues[0]?.message ?? "Write an email address." } };
+  const signInEmail = email === null ? null : email.data;
+  if (sent.firstName === undefined && sent.lastName === undefined) return { ok: true, value: { title: t.data, details: details.value, name: null, signInEmail } };
   // A rename sends both names, each trimmed and never blank, so the Team page never shows a nameless person.
   const name = renameSchema.safeParse({ firstName: sent.firstName ?? "", lastName: sent.lastName ?? "" });
   if (!name.success) {
@@ -612,7 +626,7 @@ export function checkMemberEdit(
     for (const issue of name.error.issues) errors[issue.path[0] as "firstName" | "lastName"] ??= issue.message;
     return { ok: false, errors };
   }
-  return { ok: true, value: { title: t.data, details: details.value, name: name.data } };
+  return { ok: true, value: { title: t.data, details: details.value, name: name.data, signInEmail } };
 }
 
 /** A member photo set from Edit details (board 61g): a square JPEG under 500 KB, as the crop dialog makes it. */

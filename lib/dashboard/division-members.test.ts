@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { NO_MEMBER_DETAILS } from "./details";
 import { NO_NAME } from "./person-name";
-import { addOutcome, checkAddMember, divisionMembers, headcountLine, lookupForAdd, type PersonRecord } from "./division-members";
+import { addOutcome, checkAddMember, checkMemberEdit, divisionMembers, headcountLine, lookupForAdd, type PersonRecord } from "./division-members";
 import { membershipsOf, type OrgChart } from "./team";
 
 // Issue #231: the division page's shapes and Add member's rules, as both
@@ -60,7 +60,7 @@ test("a division's page lists its people with this division first, a code chip i
   assert.equal(page.division.leadsHint, null, "its own lead changes its leads (#594)");
   const granted = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1], ledDivisionIds: [] }, selfId: null, reach: [1], waiting: [], joining: [] })!;
   assert.equal(granted.division.leadsHint, "Leads are changed by the Head of Aerodynamics", "a Members grant does not");
-  assert.equal(headcountLine({ people: page.people, waiting: [{ joinId: 1, email: "e@x.it", name: null, title: null, details: NO_MEMBER_DETAILS }] }), "1 lead, 3 members");
+  assert.equal(headcountLine({ people: page.people, waiting: [{ joinId: 1, email: "e@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS }] }), "1 lead, 3 members");
 });
 
 test("Add member: a team member joins at once with no second NDA; anyone else waits for Confirm NDA (#231)", () => {
@@ -110,4 +110,11 @@ test("a viewer who may change the division gets the row actions their actor allo
   const page = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1, 2], ledDivisionIds: [1, 2] }, selfId: null, reach: [1, 2], waiting: [], joining: [] })!;
   assert.equal(page.editable, true);
   assert.equal(page.people.find((p) => p.name === "Davide Russo")!.removal.kind, "offered");
+});
+
+test("a corrected sign-in email is checked like the other email fields, and its error lands on its own field (issue #741)", () => {
+  const edit = (signInEmail?: string) => checkMemberEdit({ title: "", details: NO_MEMBER_DETAILS, ...(signInEmail === undefined ? {} : { signInEmail }) });
+  assert.deepEqual(edit(), { ok: true, value: { title: null, details: NO_MEMBER_DETAILS, name: null, signInEmail: null } });
+  assert.deepEqual(edit(" New.Person@Example.com "), { ok: true, value: { title: null, details: NO_MEMBER_DETAILS, name: null, signInEmail: "new.person@example.com" } });
+  for (const bad of ["", "not-an-email"]) assert.deepEqual(edit(bad), { ok: false, errors: { signInEmail: "Write an email address." } }, JSON.stringify(bad));
 });

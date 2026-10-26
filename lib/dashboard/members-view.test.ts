@@ -52,7 +52,7 @@ const records = [
   record(7, "Alessandro Greco", [], [{ kind: "team-leader", title: "" }]),
 ];
 
-const elena: WaitingPerson = { joinId: 9, email: "elena@x.it", name: null, title: null, details: NO_MEMBER_DETAILS };
+const elena: WaitingPerson = { joinId: 9, email: "elena@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS };
 const giulia: Joining = { applicationId: 41, name: "Giulia Rossi", photoUrl: null, position: "Mission Analyst", ndaArrived: true, canConfirm: true };
 const paolo: Joining = { applicationId: 42, name: "Paolo Neri", photoUrl: null, position: "CAD Engineer", ndaArrived: true, canConfirm: false };
 
@@ -70,7 +70,7 @@ function leaderPage(): MembersModel {
 // Every full-access seat's whole team, the team leader's included (issue #444): the one Edit details panel's position for each person (issue #584).
 function seatPage(selfId: number): MembersModel {
   const positions = positionsOf(records, org, { kind: "team" }, selfId);
-  return membersModelOf({ scope: "whole-team", positions, queues, ...wholeTeamMembers({ records, org, selfId }) })!;
+  return membersModelOf({ scope: "whole-team", positions, queues, correctsSignInEmail: [], ...wholeTeamMembers({ records, org, selfId }) })!;
 }
 
 /** Where a row's menu and Edit details may remove someone from; null where the row offers no change. */
