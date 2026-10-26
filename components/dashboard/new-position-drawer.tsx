@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Check, ChevronDown, Lock, MessageSquare, Plus, X } from "lucide-react";
+import { useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { Check, ChevronDown, Lock, MessageSquare, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { createPosition, editPosition } from "@/app/dashboard/recruitment-actions";
+import { createPosition, deletePosition, editPosition } from "@/app/dashboard/recruitment-actions";
 import {
   checkNewPosition,
   checkPositionContent,
@@ -20,7 +20,8 @@ import { Toggle } from "./controls";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { DialogClose } from "@/components/ui/dialog";
-import { Drawer, PANEL_GHOST_BUTTON, PanelBody, SidePanel } from "./drawer";
+import { ConfirmDialog } from "./confirm-dialog";
+import { Drawer, PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, GroupLabel, inputClass, LOCKED_INPUT } from "./field";
 
 // New position (boards 57a and 57b): the division first, locked when the lead
@@ -35,6 +36,11 @@ import { Field, GroupLabel, inputClass, LOCKED_INPUT } from "./field";
 // the same drawer shows it read-only: its text and lists as plain text, no
 // input, and only Close at the foot, as the Members panel does for a viewer
 // who may not edit.
+// Delete position (issue #772) sits last in Edit position, so only a viewer
+// who may change the role sees it. It asks first in the shared confirm
+// dialog, which names the role; once deleted, the drawer closes and the row
+// leaves the page. The Positions rows have no menu, so this is the one place
+// a position is deleted.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -115,6 +121,7 @@ export function NewPositionDrawer({
   const [form, setForm] = useState<Form>(() => (editing ? savedForm(editing.content) : emptyForm(startDivisionId)));
   const [errors, setErrors] = useState<NewPositionErrors>({});
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const field = divisionField(divisions);
   const chosen = divisions.find((d) => d.id === form.divisionId) ?? null;
 
@@ -176,139 +183,200 @@ export function NewPositionDrawer({
   if (editing !== null && positionDrawerModeOf(editing) === "view") return <PositionReadOnly open={open} onOpenChange={onOpenChange} position={editing} />;
 
   return (
-    <Drawer
-      open={open}
-      onOpenChange={close}
-      title={editing ? "Edit position" : "New position"}
-      detail={
-        editing
-          ? `Code ${editing.code}`
-          : chosen
-            ? `Code ${newPositionCode(chosen, nextId)} · made from the division`
-            : "Pick a division to get the position code"
-      }
-      submitLabel={editing ? "Save changes" : "Create position"}
-      submitting={submitting}
-      onSubmit={submit}
-    >
-      <div className="flex flex-col gap-6">
-        {editing ? (
-          <Field label="Division" hint="a role keeps its division">
-            {(id) => (
-              <div id={id} className={LOCKED_INPUT}>
-                <span className="min-w-0 flex-1 truncate text-prt-text">
-                  {editing.department} · {editing.division}
-                </span>
-                <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-              </div>
-            )}
-          </Field>
-        ) : field === null ? null : field.kind === "locked" ? (
-          <Field label="Division" hint="the only one you lead">
-            {(id) => (
-              <div id={id} className={LOCKED_INPUT}>
-                <span className="min-w-0 flex-1 truncate text-prt-text">
-                  {field.division.department} · {field.division.name}
-                </span>
-                <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-              </div>
-            )}
-          </Field>
-        ) : (
-          <Field label="Division" hint={divisionHint ?? `you lead ${field.divisions.length}`} error={errors.division}>
+    <>
+      <Drawer
+        open={open}
+        onOpenChange={close}
+        title={editing ? "Edit position" : "New position"}
+        detail={
+          editing
+            ? `Code ${editing.code}`
+            : chosen
+              ? `Code ${newPositionCode(chosen, nextId)} · made from the division`
+              : "Pick a division to get the position code"
+        }
+        submitLabel={editing ? "Save changes" : "Create position"}
+        submitting={submitting}
+        onSubmit={submit}
+      >
+        <div className="flex flex-col gap-6">
+          {editing ? (
+            <Field label="Division" hint="a role keeps its division">
+              {(id) => (
+                <div id={id} className={LOCKED_INPUT}>
+                  <span className="min-w-0 flex-1 truncate text-prt-text">
+                    {editing.department} · {editing.division}
+                  </span>
+                  <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                </div>
+              )}
+            </Field>
+          ) : field === null ? null : field.kind === "locked" ? (
+            <Field label="Division" hint="the only one you lead">
+              {(id) => (
+                <div id={id} className={LOCKED_INPUT}>
+                  <span className="min-w-0 flex-1 truncate text-prt-text">
+                    {field.division.department} · {field.division.name}
+                  </span>
+                  <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                </div>
+              )}
+            </Field>
+          ) : (
+            <Field label="Division" hint={divisionHint ?? `you lead ${field.divisions.length}`} error={errors.division}>
+              {(id, describedBy) => (
+                <DivisionMenu id={id} describedBy={describedBy} divisions={field.divisions} value={chosen} onChange={(d) => set("divisionId", d.id)} invalid={errors.division !== undefined} />
+              )}
+            </Field>
+          )}
+
+          <Field label="Title" error={errors.title}>
             {(id, describedBy) => (
-              <DivisionMenu id={id} describedBy={describedBy} divisions={field.divisions} value={chosen} onChange={(d) => set("divisionId", d.id)} invalid={errors.division !== undefined} />
+              <input
+                id={id}
+                aria-describedby={describedBy}
+                value={form.title}
+                maxLength={NEW_POSITION_LIMITS.title}
+                onChange={(e) => set("title", e.target.value)}
+                className={inputClass(errors.title)}
+              />
             )}
           </Field>
-        )}
 
-        <Field label="Title" error={errors.title}>
-          {(id, describedBy) => (
-            <input
-              id={id}
-              aria-describedby={describedBy}
-              value={form.title}
-              maxLength={NEW_POSITION_LIMITS.title}
-              onChange={(e) => set("title", e.target.value)}
-              className={inputClass(errors.title)}
-            />
-          )}
-        </Field>
-
-        <Field label="Description" hint="shown on the site" error={errors.description}>
-          {(id, describedBy) => (
-            <textarea
-              id={id}
-              aria-describedby={describedBy}
-              rows={4}
-              value={form.description}
-              maxLength={NEW_POSITION_LIMITS.description}
-              onChange={(e) => set("description", e.target.value)}
-              className={`${inputClass(errors.description)} h-auto resize-none py-2.5 leading-relaxed`}
-            />
-          )}
-        </Field>
-
-        {LISTS.map((list) => (
-          <ListField
-            key={list.key}
-            label={list.label}
-            hint={list.hint}
-            icon={list.icon}
-            placeholder={list.placeholder}
-            items={form[list.key]}
-            onChange={(items) => set(list.key, items)}
-            error={list.key === "required" ? errors.required : undefined}
-          />
-        ))}
-
-        <div>
-          <GroupLabel id="new-position-documents" label="Documents to ask for" hint="PDF, up to 2 MB each" />
-          <div role="group" aria-labelledby="new-position-documents" className="divide-y divide-hairline rounded-[10px] border border-white-10">
-            <div className="flex items-center gap-3 px-3.5 py-3">
-              <span aria-hidden className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border border-border-strong bg-white-10 text-text-2">
-                <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[14px]">CV</span>
-                <span className="block text-[12px] text-prt-muted">Every applicant uploads one</span>
-              </span>
-              <span className="rounded-full bg-white-10 px-2 py-0.5 text-[11px] text-text-2">Always asked</span>
-            </div>
-            <label className="flex cursor-pointer items-center gap-3 px-3.5 py-3">
-              <input
-                type="checkbox"
-                checked={form.motivationLetter}
-                onChange={(e) => set("motivationLetter", e.target.checked)}
-                className="peer sr-only"
+          <Field label="Description" hint="shown on the site" error={errors.description}>
+            {(id, describedBy) => (
+              <textarea
+                id={id}
+                aria-describedby={describedBy}
+                rows={4}
+                value={form.description}
+                maxLength={NEW_POSITION_LIMITS.description}
+                onChange={(e) => set("description", e.target.value)}
+                className={`${inputClass(errors.description)} h-auto resize-none py-2.5 leading-relaxed`}
               />
-              <span
-                aria-hidden
-                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border transition-colors duration-300 ease-out peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent ${
-                  form.motivationLetter ? "border-accent bg-accent text-accent-on-accent" : "border-border-strong"
-                }`}
-              >
-                {form.motivationLetter && <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[14px]">Motivation letter</span>
-                <span className="block text-[12px] text-prt-muted">Why this role, in their words</span>
-              </span>
-            </label>
-          </div>
-        </div>
+            )}
+          </Field>
 
-        {!editing && (
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-[14px]">Open now</p>
-              <p className="text-[12px] text-prt-muted">Shows on the site while recruitment is on</p>
+          {LISTS.map((list) => (
+            <ListField
+              key={list.key}
+              label={list.label}
+              hint={list.hint}
+              icon={list.icon}
+              placeholder={list.placeholder}
+              items={form[list.key]}
+              onChange={(items) => set(list.key, items)}
+              error={list.key === "required" ? errors.required : undefined}
+            />
+          ))}
+
+          <div>
+            <GroupLabel id="new-position-documents" label="Documents to ask for" hint="PDF, up to 2 MB each" />
+            <div role="group" aria-labelledby="new-position-documents" className="divide-y divide-hairline rounded-[10px] border border-white-10">
+              <div className="flex items-center gap-3 px-3.5 py-3">
+                <span aria-hidden className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border border-border-strong bg-white-10 text-text-2">
+                  <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14px]">CV</span>
+                  <span className="block text-[12px] text-prt-muted">Every applicant uploads one</span>
+                </span>
+                <span className="rounded-full bg-white-10 px-2 py-0.5 text-[11px] text-text-2">Always asked</span>
+              </div>
+              <label className="flex cursor-pointer items-center gap-3 px-3.5 py-3">
+                <input
+                  type="checkbox"
+                  checked={form.motivationLetter}
+                  onChange={(e) => set("motivationLetter", e.target.checked)}
+                  className="peer sr-only"
+                />
+                <span
+                  aria-hidden
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border transition-colors duration-300 ease-out peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent ${
+                    form.motivationLetter ? "border-accent bg-accent text-accent-on-accent" : "border-border-strong"
+                  }`}
+                >
+                  {form.motivationLetter && <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14px]">Motivation letter</span>
+                  <span className="block text-[12px] text-prt-muted">Why this role, in their words</span>
+                </span>
+              </label>
             </div>
-            <Toggle checked={form.open} onCheckedChange={(on) => set("open", on)} label="Open now" />
           </div>
-        )}
-      </div>
-    </Drawer>
+
+          {!editing && (
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[14px]">Open now</p>
+                <p className="text-[12px] text-prt-muted">Shows on the site while recruitment is on</p>
+              </div>
+              <Toggle checked={form.open} onCheckedChange={(on) => set("open", on)} label="Open now" />
+            </div>
+          )}
+
+          {editing && (
+            <div>
+              <button type="button" onClick={() => setDeleting(true)} disabled={submitting} className={`${PANEL_DANGER_BUTTON} gap-2`}>
+                <Trash2 aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+                Delete position
+              </button>
+            </div>
+          )}
+        </div>
+      </Drawer>
+      {editing && (
+        <DeletePositionDialog
+          position={editing}
+          open={deleting}
+          onOpenChange={setDeleting}
+          onDeleted={() => {
+            setDeleting(false);
+            onOpenChange(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/** The "are you sure" before Delete position (issue #772): the role leaves the site, its applications stay. */
+function DeletePositionDialog({
+  position,
+  open,
+  onOpenChange,
+  onDeleted,
+}: {
+  position: PositionRow;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onDeleted: () => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  const confirm = () =>
+    startTransition(async () => {
+      const result = await deletePosition(position.id);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`${position.title} was deleted.`);
+      onDeleted();
+    });
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      icon={<Trash2 className="h-5 w-5" strokeWidth={1.75} />}
+      title={`Delete ${position.title}?`}
+      description={`${position.title} leaves the Positions page and the Apply page at once, and takes no new applications. Its applications stay on the Applications page.`}
+      cancelLabel="Keep position"
+      confirmLabel="Delete"
+      danger
+      pending={pending}
+      onConfirm={confirm}
+    />
   );
 }
 

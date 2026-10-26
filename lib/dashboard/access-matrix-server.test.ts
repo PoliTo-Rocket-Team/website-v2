@@ -486,6 +486,7 @@ const ACTION_CASES: readonly ActionCase[] = [
   // Positions and Applications.
   { action: "recruitment-actions.setPositionOpen", run: () => recruitmentActions.setPositionOpen(IDS.position(DM), false), may: changesDM("positions"), control: by("team leader") },
   { action: "recruitment-actions.editPosition", run: () => recruitmentActions.editPosition(IDS.position(DM), POSITION), may: changesDM("positions"), control: by("team leader") },
+  { action: "recruitment-actions.deletePosition", run: () => recruitmentActions.deletePosition(IDS.position(DM)), may: changesDM("positions"), control: by("team leader") },
   {
     action: "recruitment-actions.createPosition",
     run: () => recruitmentActions.createPosition({ ...POSITION, divisionId: IDS.division(DM) }),

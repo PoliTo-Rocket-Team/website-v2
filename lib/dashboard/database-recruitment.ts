@@ -129,6 +129,9 @@ async function mayChangePosition(identity: Identity, area: "positions" | "applic
  * reads Applications, so a Positions grant alone gets none (issue #477).
  * Each row keeps the unit it sits in, for the Applications page's change
  * rule (issue #577); `rowOf` drops it before a page carries the row.
+ * A deleted position (issue #772) leaves the Positions area, but stays in the
+ * Applications area, so its applications still list under its title; there
+ * it is marked `deleted`, and nothing on it can be changed.
  */
 async function readPositionRows(identity: Identity, area: RecruitmentArea, now: Date): Promise<ReadPosition[]> {
   const db = getDb();
@@ -153,11 +156,18 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
         dept_id: departments.id,
         dept_name: departments.name,
         dept_code: departments.code,
+        deleted: applyPositions.isDeleted,
       })
       .from(applyPositions)
       .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
       .innerJoin(departments, eq(divisions.deptId, departments.id))
-      .where(and(eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)))
+      .where(
+        and(
+          area === "positions" ? eq(applyPositions.isDeleted, false) : undefined,
+          isNull(divisions.closedAt),
+          isNull(departments.closedAt),
+        ),
+      )
       .orderBy(desc(applyPositions.createdAt)),
     readsRecruitment(identity, "applications")
       ? db
@@ -180,6 +190,7 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
     const latest = own.reduce<string | null>((at, t) => (t.last !== null && (at === null || t.last > at) ? t.last : at), null);
     return {
       unit,
+      deleted: r.deleted,
       id: r.id,
       ref: String(r.id),
       title: r.title ?? "Untitled position",
@@ -194,7 +205,7 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
           }
         : null,
       // The rule the open switch's write asks (`setPositionOpen`), so the page never offers what the server refuses (issue #487).
-      canChange: mayChangePositionIn(identity, "positions", unit),
+      canChange: !r.deleted && mayChangePositionIn(identity, "positions", unit),
       // The table has no edit time; a role's creation is the last change it records.
       updated: ago(created, now),
       code: positionCode({ id: r.id, dept_code: r.dept_code ?? "", div_code: r.div_code ?? "" }),
@@ -210,11 +221,19 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
   });
 }
 
-/** A position as `readPositionRows` reads it: its row, and the unit it sits in. */
-type ReadPosition = PositionRow & { readonly unit: DivisionUnit };
+/** A position as `readPositionRows` reads it: its row, the unit it sits in, and whether it was deleted (Applications area only). */
+type ReadPosition = PositionRow & { readonly unit: DivisionUnit; readonly deleted: boolean };
 
-/** The row a page carries, without the unit it was read with. */
-function rowOf({ unit: _unit, ...row }: ReadPosition): PositionRow {
+/**
+ * Whether the viewer may move the applications on a position as read: never
+ * on a deleted one, which every application write refuses (`mayChangePosition`).
+ */
+function movesApplicationsOn(identity: Identity, position: ReadPosition): boolean {
+  return !position.deleted && mayChangePositionIn(identity, "applications", position.unit);
+}
+
+/** The row a page carries, without the unit and the deleted mark it was read with. */
+function rowOf({ unit: _unit, deleted: _deleted, ...row }: ReadPosition): PositionRow {
   return row;
 }
 
@@ -357,6 +376,17 @@ async function editPosition(identity: Identity, positionId: number, input: unkno
   return written(null);
 }
 
+/**
+ * Delete position (issue #772): a soft delete. The row and its applications
+ * stay; `is_deleted` takes the position off the Positions page, /apply and
+ * the submit, and the activity log names it "Deleted the position".
+ */
+async function deletePosition(identity: Identity, positionId: number): Promise<void> {
+  if (!(await mayChangePosition(identity, "positions", positionId))) throw new DashboardRefused(`position ${positionId}`);
+  await runAuditQuery((db) => db.update(applyPositions).set({ isDeleted: true }).where(eq(applyPositions.id, positionId)));
+  refreshAfter("positions", updateTag);
+}
+
 // Applications ----------------------------------------------------------------
 
 /** Where a stored application stands (./stored-application.ts). */
@@ -458,7 +488,8 @@ async function readApplicantsApplications(listed: SQL): Promise<ApplicantsApplic
       .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
       .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
       .innerJoin(departments, eq(divisions.deptId, departments.id))
-      .where(and(live, eq(applyPositions.isDeleted, false)))
+      // A deleted position's applications are kept, and named with its title (issue #772).
+      .where(live)
       .orderBy(desc(applications.appliedAt)),
     readSlotsWhere(
       inArray(
@@ -500,6 +531,7 @@ function documentOf(
   kind: DocumentKind,
   file: { id: number | null; name: string | null; size: number | null },
   storedName: string | null,
+  opens: boolean,
 ): ApplicationDocument[] {
   const name = file.name ?? storedName;
   if (name === null) return [];
@@ -508,8 +540,9 @@ function documentOf(
       kind,
       name,
       size: file.size === null ? null : fileSize(file.size),
-      // A stored file opens through the document route, which checks the reader again (issue #406).
-      href: file.id === null ? null : documentHref(applicationId, kind),
+      // A stored file opens through the document route, which checks the reader again (issue #406)
+      // and refuses a deleted position's (issue #772), so that one is named with no link.
+      href: file.id === null || !opens ? null : documentHref(applicationId, kind),
     },
   ];
 }
@@ -555,7 +588,7 @@ async function readStatusUses(): Promise<Record<string, number>> {
  * Applications on, by the rule every application move asks.
  */
 function managesStatuses(identity: Identity, positions: readonly ReadPosition[]): boolean {
-  return managesStatusList(positions, (p) => mayChangePositionIn(identity, "applications", p.unit));
+  return managesStatusList(positions, (p) => movesApplicationsOn(identity, p));
 }
 
 async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
@@ -655,18 +688,19 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
           position: { ref: position.ref, title: position.title, division: position.division },
           applied: appliedLabels(new Date(r.applied_at), now),
           documents: [
-            ...documentOf(r.id, "cv", { id: r.cv_file_id, name: r.cv_file_name, size: r.cv_file_size }, r.cv_name),
+            ...documentOf(r.id, "cv", { id: r.cv_file_id, name: r.cv_file_name, size: r.cv_file_size }, r.cv_name, !position.deleted),
             ...documentOf(
               r.id,
               "motivation-letter",
               { id: r.letter_file_id, name: r.letter_file_name, size: r.letter_file_size },
               r.letter_name,
+              !position.deleted,
             ),
           ],
           answers: answersOf(r.answers),
           otherApplications: otherApplicationsOf(r, others),
           // The rule the move write asks (`moveApplication`), so the panel never offers a step the server refuses.
-          canChange: mayChangePositionIn(identity, "applications", position.unit),
+          canChange: movesApplicationsOn(identity, position),
         },
       ];
     }),
@@ -1157,6 +1191,7 @@ export function databaseRecruitmentPages(identity: Identity) {
     setPositionOpen: (id: number, open: boolean) => setPositionOpen(identity, id, open),
     createPosition: (input: unknown) => createPosition(identity, input),
     editPosition: (id: number, input: unknown) => editPosition(identity, id, input),
+    deletePosition: (id: number) => deletePosition(identity, id),
     moveApplication: (id: number, move: ApproverMove) => moveApplication(identity, id, move),
     changeStatusList: (change: StatusListChange) => changeStatusList(identity, change),
   };

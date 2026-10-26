@@ -39,7 +39,7 @@ test("a position write refreshes every tag the /apply public read carries", () =
   assert.ok(refreshed.includes(PUBLIC_POSITIONS_CACHE_TAG));
 });
 
-for (const name of ["createPosition", "setPositionOpen", "editPosition"]) {
+for (const name of ["createPosition", "setPositionOpen", "editPosition", "deletePosition"]) {
   test(`${name} refreshes the public positions after its write`, () => {
     const body = functionBody(WRITES, name);
     const write = body.indexOf("runAuditQuery(");
