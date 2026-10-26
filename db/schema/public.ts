@@ -618,6 +618,133 @@ export const aliasRequests = pgTable("alias_requests", {
   answered: check("alias_requests_answered", sql`(${table.outcome} is null) = (${table.answeredAt} is null)`),
 }));
 
+/**
+ * The role a team address moves with (epic #578, grill #785 R1.1): the team
+ * leader, a full-access seat by its `roles.full_access` flag, a department's
+ * head or a division's lead. lib/dashboard/team-address.ts owns it.
+ */
+export const teamAddressTieEnum = pgEnum("team_address_tie", [
+  "team_leader",
+  "full_access_seat",
+  "department_head",
+  "division_lead",
+]);
+
+/**
+ * A shared address on the team domain and the one member who holds it (epic
+ * #578, issue #786, drizzle/0066): what it is for, and the role it moves with
+ * on a hand-over, if any. One holder per address in any letter case
+ * (`team_addresses_address`); the tie's reference matches its kind
+ * (`team_addresses_tie`). lib/dashboard/team-address.ts owns the rules.
+ */
+export const teamAddresses = pgTable("team_addresses", {
+  id: serial("id").primaryKey(),
+  address: text("address").notNull(),
+  purpose: text("purpose").notNull(),
+  holderId: integer("holder_id")
+    .references(() => members.memberId)
+    .notNull(),
+  movesWith: teamAddressTieEnum("moves_with"),
+  movesWithSeat: fullAccessSeatEnum("moves_with_seat"),
+  movesWithDeptId: integer("moves_with_dept_id").references(() => departments.id),
+  movesWithDivisionId: integer("moves_with_division_id").references(() => divisions.id),
+  /**
+   * When the holder pressed I've set it up (drizzle/0069); null until then.
+   * Mark done on a routing item clears it, so the new holder sets it up.
+   */
+  setUpAt: timestamp("set_up_at", { withTimezone: true, mode: "string" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+}, (table) => ({
+  oneHolder: uniqueIndex("team_addresses_address").on(sql`lower(${table.address})`),
+  holderIdx: index("team_addresses_holder_idx").on(table.holderId),
+  tie: check(
+    "team_addresses_tie",
+    sql`(${table.movesWith} is null and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'team_leader' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'full_access_seat' and ${table.movesWithSeat} is not null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'department_head' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is not null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'division_lead' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is not null)`,
+  ),
+}));
+
+/** How a team address request closed (lib/dashboard/team-address.ts); null while it is open. */
+export const teamAddressRequestOutcomeEnum = pgEnum("team_address_request_outcome", ["created", "declined", "cancelled"]);
+
+/**
+ * A request for a shared team address for one member (epic #578, issue
+ * #787, drizzle/0067), shaped like `alias_requests`: the address asked for,
+ * what it is for and the role it would move with, with the same tie columns
+ * and check as `team_addresses`. One address has at most one open request in
+ * any letter case (`team_address_requests_one_open`);
+ * lib/dashboard/team-address.ts owns the rules.
+ */
+export const teamAddressRequests = pgTable("team_address_requests", {
+  id: serial("id").primaryKey(),
+  memberId: integer("member_id")
+    .references(() => members.memberId, { onDelete: "cascade" })
+    .notNull(),
+  address: text("address").notNull(),
+  purpose: text("purpose").notNull(),
+  movesWith: teamAddressTieEnum("moves_with"),
+  movesWithSeat: fullAccessSeatEnum("moves_with_seat"),
+  movesWithDeptId: integer("moves_with_dept_id").references(() => departments.id),
+  movesWithDivisionId: integer("moves_with_division_id").references(() => divisions.id),
+  requestedBy: integer("requested_by").references(() => members.memberId, { onDelete: "set null" }),
+  requestedByActingAccount: actingAccount("requested_by_acting_account"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  outcome: teamAddressRequestOutcomeEnum("outcome"),
+  answeredBy: integer("answered_by").references(() => members.memberId, { onDelete: "set null" }),
+  answeredByActingAccount: actingAccount("answered_by_acting_account"),
+  answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }),
+}, (table) => ({
+  oneOpen: uniqueIndex("team_address_requests_one_open").on(sql`lower(${table.address})`).where(sql`${table.outcome} is null`),
+  memberIdx: index("team_address_requests_member_idx").on(table.memberId),
+  tie: check(
+    "team_address_requests_tie",
+    sql`(${table.movesWith} is null and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'team_leader' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'full_access_seat' and ${table.movesWithSeat} is not null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'department_head' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is not null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'division_lead' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is not null)`,
+  ),
+  answered: check("team_address_requests_answered", sql`(${table.outcome} is null) = (${table.answeredAt} is null)`),
+}));
+
+/**
+ * A routing item (epic #578, issue #789, drizzle/0068): the role a team
+ * address moves with changed hands, so the approvers move the address to its
+ * new holder with Mark done. It names the address, the member it goes to and
+ * the member it came from; done by and done at stay null while it is open.
+ * One address has at most one open item (`team_address_reroutes_one_open`);
+ * lib/dashboard/team-address.ts owns the rules.
+ */
+export const teamAddressReroutes = pgTable("team_address_reroutes", {
+  id: serial("id").primaryKey(),
+  addressId: integer("address_id")
+    .references(() => teamAddresses.id, { onDelete: "cascade" })
+    .notNull(),
+  toMember: integer("to_member")
+    .references(() => members.memberId, { onDelete: "cascade" })
+    .notNull(),
+  fromMember: integer("from_member").references(() => members.memberId, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  doneBy: integer("done_by").references(() => members.memberId, { onDelete: "set null" }),
+  doneByActingAccount: actingAccount("done_by_acting_account"),
+  doneAt: timestamp("done_at", { withTimezone: true, mode: "string" }),
+}, (table) => ({
+  oneOpen: uniqueIndex("team_address_reroutes_one_open").on(table.addressId).where(sql`${table.doneAt} is null`),
+  done: check("team_address_reroutes_done", sql`${table.doneBy} is null or ${table.doneAt} is not null`),
+}));
+
 // The Alumni page (issue #257). The page is built from the roles; an entry
 // holds only how one person shows on it, so a fix never writes a role, a
 // division or access. A member's entry is keyed by their member row and made

@@ -13,7 +13,8 @@ import { CopyButton } from "./copy-button";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
 import { rowActionClass } from "./panel";
 
-const PAPER =
+/** The paper pill of boards 94c and 94d: Mark created, on the row and in its dialog. */
+export const PAPER =
   "inline-flex shrink-0 items-center justify-center rounded-full bg-prt-text font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60";
 
 /**
@@ -49,6 +50,25 @@ export function AnswerAlias({ action, chip = false }: { action: AnswerAliasActio
       </button>
       <MarkCreatedDialog open={marking} onOpenChange={setMarking} action={action} />
     </span>
+  );
+}
+
+/**
+ * Board 94d's "Forwards to" row (issue #586): the member's sign-in email an
+ * address forwards to, read-only with a copy button, for Google Workspace's
+ * recipient address map. The approvers' dialogs alone show it: the alias and
+ * team address Mark created, and a team address routing item's Mark done.
+ */
+export function ForwardsTo({ signInEmail, className }: { signInEmail: string; className?: string }) {
+  return (
+    <Field label="Forwards to" hint="their sign-in email" className={className}>
+      {(id) => (
+        <span id={id} className={cn(LOCKED_INPUT, "pr-2")}>
+          <span className="min-w-0 flex-1 truncate text-prt-text">{signInEmail}</span>
+          <CopyButton value={signInEmail} what="Sign-in email" />
+        </span>
+      )}
+    </Field>
   );
 }
 
@@ -101,14 +121,7 @@ function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOp
               Create it in Google Workspace first (recipient address map), then type it here. It is saved to {first}&apos;s details and {first} gets the
               setup steps.
             </p>
-            <Field label="Forwards to" hint="their sign-in email" className="mt-6">
-              {(id) => (
-                <span id={id} className={cn(LOCKED_INPUT, "pr-2")}>
-                  <span className="min-w-0 flex-1 truncate text-prt-text">{action.signInEmail}</span>
-                  <CopyButton value={action.signInEmail} what="Sign-in email" />
-                </span>
-              )}
-            </Field>
+            <ForwardsTo signInEmail={action.signInEmail} className="mt-6" />
             <Field label="Alias address" error={error} className="mt-5">
               {(id, describedBy) => (
                 <>

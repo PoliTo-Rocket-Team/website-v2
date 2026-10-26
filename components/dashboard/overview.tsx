@@ -29,7 +29,9 @@ import {
   type ActivityItem,
   isAnswerAlias,
   isAnswerHandOver,
+  isAnswerTeamAddress,
   isDismissNotice,
+  isMarkRerouteDone,
   type AttentionAction,
   type AttentionItem,
   type AttentionKind,
@@ -43,13 +45,14 @@ import {
   type Stat,
   type UpcomingInterview,
 } from "@/lib/dashboard/overview";
-import type { OwnAlias } from "@/lib/dashboard/alias-setup";
 import type { Pictured } from "@/lib/dashboard/stored-photo";
-import { AliasReadyCard } from "./alias-setup";
+import { AddressReadyCard, type ReadyAddress } from "./alias-setup";
 import { Avatar } from "./avatar";
 import { AnswerAlias } from "./answer-alias";
 import { AnswerHandOver } from "./answer-hand-over";
+import { AnswerTeamAddress } from "./answer-team-address";
 import { DismissNotice } from "./dismiss-notice";
+import { MarkTeamAddressMoved } from "./team-address-reroute";
 import { departmentLabel } from "@/lib/dashboard/recruitment";
 import { PANEL, Panel, RowAction } from "./panel";
 
@@ -59,13 +62,13 @@ import { PANEL, Panel, RowAction } from "./panel";
 // division lead, and 56 over their grants for a member); 50e and 50f for a
 // non-member, and issue #317's board 56 for an alumnus. Props in, nothing
 // fetched: the page hands over what the dashboard data interface answered.
-export function OverviewView({ overview, aliasCard = null }: { overview: Overview; aliasCard?: OwnAlias | null }) {
+export function OverviewView({ overview, readyCards = [] }: { overview: Overview; readyCards?: readonly ReadyAddress[] }) {
   switch (overview.shape) {
     case "team":
     case "leader":
     case "department":
     case "division":
-      return <TeamView overview={overview} aliasCard={aliasCard} />;
+      return <TeamView overview={overview} readyCards={readyCards} />;
     case "applicant":
       return <ApplicantView overview={overview} />;
     case "alumni":
@@ -106,7 +109,8 @@ function boardParts(overview: ScopeBoard): {
 
 // One Overview for every team seat (issue #593). Board 52's person leads it,
 // with Edit profile from md, and board 94f's alias card under it until the
-// alias is set up. The seat's figures follow, then its panels: in the two
+// alias is set up, with the same card for each team address the person holds
+// and has not set up yet. The seat's figures follow, then its panels: in the two
 // columns boards 99 and 99b set for every leader (issue #652), or board
 // first, then their page on the site beside the roster, for every other seat.
 // "Your access" closes the page: each grant, or nothing for a seat that
@@ -114,11 +118,11 @@ function boardParts(overview: ScopeBoard): {
 // no frame and no edit button (My profile is in the user menu), and each
 // panel's count moves beside its title. The page streams the person first
 // and the rest once both its reads arrive (issue #397).
-function TeamView({ overview, aliasCard }: { overview: TeamSideOverview; aliasCard: OwnAlias | null }) {
+function TeamView({ overview, readyCards }: { overview: TeamSideOverview; readyCards: readonly ReadyAddress[] }) {
   return (
     <>
       <OverviewPersonSection person={overview.person} />
-      {aliasCard && <OverviewAliasSection alias={aliasCard} />}
+      <OverviewReadySection cards={readyCards} />
       <OverviewBodySection board={overview} panels={overview} />
     </>
   );
@@ -142,11 +146,17 @@ export function OverviewPersonSection({ person }: { person: PersonHeader }) {
   );
 }
 
-/** Board 94f's alias card, under the person until the alias is set up. */
-export function OverviewAliasSection({ alias }: { alias: OwnAlias }) {
+/**
+ * Board 94f's cards under the person: the alias card until the alias is set
+ * up, then one per team address not set up yet, by address. None, nothing.
+ */
+export function OverviewReadySection({ cards }: { cards: readonly ReadyAddress[] }) {
+  if (cards.length === 0) return null;
   return (
-    <div className="mt-5 md:mt-6">
-      <AliasReadyCard alias={alias} />
+    <div className="mt-5 flex flex-col gap-3 md:mt-6">
+      {cards.map((ready) => (
+        <AddressReadyCard key={`${ready.kind}-${ready.own.address}`} ready={ready} />
+      ))}
     </div>
   );
 }
@@ -299,7 +309,10 @@ function ActivityPanel({ activity, compact, className = "" }: { activity: readon
 // title and a small filled pill. A hand-over waiting for the viewer (board
 // 62c, issue #262) is the top row, on an accent tint with an accent icon
 // tile, and answers with Decline and Confirm. An open alias request (board
-// 94c, epic #538) follows it the same way, with Decline and Mark created.
+// 94c, epic #538) follows it the same way, with Decline and Mark created,
+// and so does an open team address request (epic #578, issue #788), with the
+// alias row's at-sign, and a team address routing item (issue #789), with a
+// copy button for the new holder's sign-in email and Mark done.
 // Below md, outside board 56m's cards, every row's buttons move under the
 // text, Dismiss on a notice included, so the title and detail keep the row's
 // width (issue #546); a detail with a long address wraps inside its column
@@ -310,7 +323,7 @@ function AttentionPanel({ attention, compact }: { attention: readonly AttentionI
     <Panel title="Needs your attention" meta={attention.length === 1 ? "1 item" : `${attention.length} items`} phoneCards={compact}>
       {attention.map((item) => {
         const Icon = ATTENTION_ICONS[item.iconKind ?? item.kind];
-        const handOver = item.kind === "hand-over" || item.kind === "alias-request";
+        const handOver = (ANSWERED_HERE as readonly AttentionKind[]).includes(item.kind);
         return (
           <li
             key={attentionKey(item)}
@@ -495,6 +508,8 @@ function waitingCounts({ newApplications, openPositions }: { newApplications: nu
 function AttentionButton({ action, chip = false }: { action: AttentionAction; chip?: boolean }) {
   if (isAnswerHandOver(action)) return <AnswerHandOver requestId={action.answerHandOver} chip={chip} />;
   if (isAnswerAlias(action)) return <AnswerAlias action={action} chip={chip} />;
+  if (isAnswerTeamAddress(action)) return <AnswerTeamAddress action={action} chip={chip} />;
+  if (isMarkRerouteDone(action)) return <MarkTeamAddressMoved action={action} chip={chip} />;
   return isDismissNotice(action) ? (
     <DismissNotice noticeId={action.dismissNotice} label={action.label} chip={chip} />
   ) : (
@@ -506,6 +521,8 @@ function AttentionButton({ action, chip = false }: { action: AttentionAction; ch
 function attentionKey(item: AttentionItem): string {
   if (isAnswerHandOver(item.action)) return `hand-over-${item.action.answerHandOver}`;
   if (isAnswerAlias(item.action)) return `alias-${item.action.answerAlias}`;
+  if (isAnswerTeamAddress(item.action)) return `team-address-${item.action.answerTeamAddress}`;
+  if (isMarkRerouteDone(item.action)) return `team-address-reroute-${item.action.markRerouteDone}`;
   return isDismissNotice(item.action) ? `notice-${item.action.dismissNotice}` : item.title;
 }
 
@@ -520,7 +537,12 @@ const ATTENTION_ICONS: Readonly<Record<AttentionKind, LucideIcon>> = {
   "approved-orders": Package,
   "hand-over": ArrowRightLeft,
   "alias-request": AtSign,
+  "team-address-request": AtSign,
+  "team-address-reroute": AtSign,
 };
+
+/** The rows the viewer answers on the row itself, drawn on the accent tint. */
+const ANSWERED_HERE = ["hand-over", "alias-request", "team-address-request", "team-address-reroute"] as const satisfies readonly AttentionKind[];
 
 function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boolean; hiddenOnPhone: boolean }) {
   return (

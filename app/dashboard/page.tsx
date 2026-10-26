@@ -2,14 +2,16 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { OverviewSectionSkeleton, PageSkeleton } from "@/components/dashboard/page-skeleton";
+import type { ReadyAddress } from "@/components/dashboard/alias-setup";
 import {
-  OverviewAliasSection,
   OverviewBodySection,
   OverviewPersonSection,
+  OverviewReadySection,
   OverviewView,
 } from "@/components/dashboard/overview";
 import { canReach } from "@/lib/dashboard/access";
 import { showsAliasCard, type OwnAlias } from "@/lib/dashboard/alias-setup";
+import { teamAddressCardsOf, type OwnTeamAddress } from "@/lib/dashboard/team-address";
 import { applicantOverview } from "@/lib/dashboard/applicant-overview";
 import type { DashboardData } from "@/lib/dashboard/data";
 import { alumniOverview } from "@/lib/dashboard/my-alumni";
@@ -66,13 +68,15 @@ async function LiveOverview() {
 // side in one pair of columns (issue #652).
 function TeamOverview({ data }: { data: DashboardData }) {
   const { person, board, panels } = data.overviewSections();
-  // The viewer's own email alias card (board 94f, issue #542), until the alias is set up.
+  // The viewer's own email alias card (board 94f, issue #542), until the alias is set up,
+  // and the same card for each team address they hold and have not set up.
   const alias = data.myAlias();
+  const teamAddresses = data.myTeamAddresses();
   return (
     <>
       <OverviewPersonSection person={person} />
       <Suspense fallback={null}>
-        <LiveAlias alias={alias} />
+        <LiveReadyCards alias={alias} teamAddresses={teamAddresses} />
       </Suspense>
       <Suspense fallback={<OverviewSectionSkeleton section="board" />}>
         <LiveBody board={board} panels={panels} />
@@ -81,9 +85,13 @@ function TeamOverview({ data }: { data: DashboardData }) {
   );
 }
 
-async function LiveAlias({ alias }: { alias: Promise<OwnAlias | null> }) {
-  const own = await alias;
-  return showsAliasCard(own) ? <OverviewAliasSection alias={own} /> : null;
+async function LiveReadyCards({ alias, teamAddresses }: { alias: Promise<OwnAlias | null>; teamAddresses: Promise<OwnTeamAddress[]> }) {
+  const [own, held] = await Promise.all([alias, teamAddresses]);
+  const cards: ReadyAddress[] = [
+    ...(showsAliasCard(own) ? [{ kind: "alias", own } as const] : []),
+    ...teamAddressCardsOf(held).map((address) => ({ kind: "team-address", own: address }) as const),
+  ];
+  return <OverviewReadySection cards={cards} />;
 }
 
 async function LiveBody({ board, panels }: { board: Promise<ScopeBoard>; panels: Promise<Omit<PersonalPanels, "person">> }) {

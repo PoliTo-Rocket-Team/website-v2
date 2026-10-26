@@ -449,6 +449,34 @@
       "when": 1794590400000,
       "tag": "0065_application_statuses",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1794676800000,
+      "tag": "0066_team_addresses",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1794763200000,
+      "tag": "0067_team_address_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1794849600000,
+      "tag": "0068_team_address_reroutes",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1794936000000,
+      "tag": "0069_team_address_set_up",
+      "breakpoints": true
     }
   ]
 }

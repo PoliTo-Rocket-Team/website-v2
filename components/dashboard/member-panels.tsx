@@ -3,10 +3,13 @@
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, Lock, Mail, Upload, UserMinus, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
-import { DialogClose } from "@/components/ui/dialog";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { addMember, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
-import { cancelAliasRequest, requestAlias } from "@/app/dashboard/actions";
-import type { MemberAlias } from "@/lib/dashboard/alias-request";
+import { cancelAliasRequest, requestAlias, requestTeamAddress } from "@/app/dashboard/actions";
+import { TEAM_DOMAIN, type MemberAlias } from "@/lib/dashboard/alias-request";
+import { checkPurpose, checkTeamAddress, PURPOSE_MAX, type MovesWithOption, type TeamAddressRow } from "@/lib/dashboard/team-address";
 import { DEGREE_PROGRAMMES, GENDERS, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
 import {
   levelLabel,
@@ -53,6 +56,7 @@ import {
   type MoveChoice,
 } from "./member-move";
 import { titleOnMove, type MovablePlace } from "@/lib/dashboard/member-move";
+import { SHEET_BUTTONS, SHEET_CANCEL, SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber, sheetConfirm } from "./confirm-dialog";
 import { Drawer, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
 import { PersonCombobox } from "./person-combobox";
@@ -177,6 +181,8 @@ function PlaceRow({ place }: { place: PersonPlace }) {
 export function PersonDrawer<P extends PanelPerson>({
   person,
   alias,
+  teamAddresses,
+  movesWith,
   editable,
   onClose,
   onEdit,
@@ -184,6 +190,14 @@ export function PersonDrawer<P extends PanelPerson>({
   person: P | null;
   /** Their email alias, their PRT email, as the viewer sees it (epic #538, issue #563); null when it was not read. */
   alias: MemberAlias | null;
+  /**
+   * Their Team addresses row (epic #578, boards 102 and 102b): the shared
+   * addresses they hold and whether the viewer may request one; null when
+   * the row is hidden.
+   */
+  teamAddresses: TeamAddressRow | null;
+  /** The roles the request dialog's Moves with offers. */
+  movesWith: readonly MovesWithOption[];
   editable: boolean;
   onClose: () => void;
   onEdit: (person: P) => void;
@@ -227,6 +241,7 @@ export function PersonDrawer<P extends PanelPerson>({
         <Section title="Contact">
           <dl className="flex flex-col gap-1.5">
             <PrtEmailFact memberId={p.id} name={p.name} address={memberDetailText(d, "prtEmail")} alias={alias} />
+            {teamAddresses !== null && <TeamAddressesFact memberId={p.id} name={p.name} row={teamAddresses} movesWith={movesWith} />}
             <Fact label="Personal email" value={p.signInEmail} copy="Email" wrap stack />
             <Fact label="Phone" value={memberDetailText(d, "phone")} hidden />
             <Fact label="Discord" value={memberDetailText(d, "discord")} copy="Discord" />
@@ -329,6 +344,259 @@ function PrtEmailFact({ memberId, name, address, alias }: { memberId: number; na
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * The shared team addresses the member holds (epic #578, issues #786 and
+ * #787, boards 102 and 102b), under the PRT email row: each address on its
+ * own line with a copy button, and under it what it is for and the role it
+ * moves with, if any. Request team address ends the row for a viewer who may
+ * ask, so for a member holding none the row is the button alone. The server
+ * decides both; the drawer leaves the row out when it has neither.
+ */
+function TeamAddressesFact({
+  memberId,
+  name,
+  row,
+  movesWith,
+}: {
+  memberId: number;
+  name: string;
+  row: TeamAddressRow;
+  movesWith: readonly MovesWithOption[];
+}) {
+  const [asking, setAsking] = useState(false);
+  return (
+    <div className="flex flex-wrap items-start gap-x-3 md:flex-nowrap">
+      <dt className={`${factLabel(true)} md:py-1`}>Team addresses</dt>
+      <dd className="flex min-w-0 flex-1 flex-col items-start gap-2">
+        {row.lines.length > 0 && (
+          <ul className="flex w-full flex-col gap-1">
+            {row.lines.map((line) => (
+              <li key={line.address} className="flex items-start gap-x-3">
+                <span className="min-w-0 flex-1 py-1">
+                  <span className="block break-words text-[14px] text-prt-text">{line.address}</span>
+                  <span className="block break-words text-[12px] text-prt-muted">
+                    {line.movesWith === null ? line.purpose : `${line.purpose} · moves with ${line.movesWith}`}
+                  </span>
+                </span>
+                <CopyButton value={line.address} what="Team address" />
+              </li>
+            ))}
+          </ul>
+        )}
+        {row.requestable && (
+          <>
+            <button type="button" onClick={() => setAsking(true)} className={GHOST_PILL}>
+              <Mail aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
+              Request team address
+            </button>
+            <RequestTeamAddressDialog open={asking} onOpenChange={setAsking} memberId={memberId} name={name} movesWith={movesWith} />
+          </>
+        )}
+      </dd>
+    </div>
+  );
+}
+
+/** The address box's fixed ending (board 102b): the team domain, which the person never types. */
+const DOMAIN_SUFFIX = `@${TEAM_DOMAIN}`;
+
+/**
+ * What the Address box sends: the part typed with the team domain after it.
+ * A part typed with another domain is kept whole, so the address check
+ * refuses it with the off-domain message.
+ */
+function addressOf(local: string): string {
+  const typed = local.trim();
+  return typed.includes("@") ? typed : `${typed}${DOMAIN_SUFFIX}`;
+}
+
+/** A pasted whole team address loses its domain, which the box shows already. */
+function localOf(typed: string): string {
+  return typed.toLowerCase().endsWith(DOMAIN_SUFFIX) ? typed.slice(0, -DOMAIN_SUFFIX.length) : typed;
+}
+
+/**
+ * Request team address (board 102b, issue #787): the address, with the team
+ * domain as the box's fixed ending; what it is for; and an optional Moves
+ * with role from the current org chart. Address and purpose are checked
+ * before sending, under their fields; a refusal from the server (taken,
+ * already requested, not allowed) shows above the buttons and keeps the
+ * dialog open. 480px wide with a 24px pad and 40px fields and buttons, as
+ * the board draws it. Closing it drops what was typed.
+ */
+function RequestTeamAddressDialog({
+  open,
+  onOpenChange,
+  memberId,
+  name,
+  movesWith,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  memberId: number;
+  name: string;
+  movesWith: readonly MovesWithOption[];
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogPortal>
+        <DialogOverlay className={SHEET_OVERLAY} />
+        <DialogPrimitive.Content aria-describedby={undefined} className={cn(SHEET_CONTENT, "sm:w-[480px] sm:p-6")}>
+          <SheetGrabber />
+          <RequestTeamAddressForm memberId={memberId} name={name} movesWith={movesWith} onDone={() => onOpenChange(false)} />
+        </DialogPrimitive.Content>
+      </DialogPortal>
+    </Dialog>
+  );
+}
+
+/** The 40px box of board 102b. */
+const BOX = "h-10";
+
+function RequestTeamAddressForm({
+  memberId,
+  name,
+  movesWith,
+  onDone,
+}: {
+  memberId: number;
+  name: string;
+  movesWith: readonly MovesWithOption[];
+  onDone: () => void;
+}) {
+  const [local, setLocal] = useState("");
+  const [purpose, setPurpose] = useState("");
+  const [tie, setTie] = useState("");
+  const [errors, setErrors] = useState<{ address?: string; purpose?: string }>({});
+  const [refusal, setRefusal] = useState<string>();
+  const [pending, startTransition] = useTransition();
+
+  const send = () => {
+    const address = addressOf(local);
+    const checkedAddress = checkTeamAddress(address);
+    const checkedPurpose = checkPurpose(purpose);
+    const next = {
+      address: checkedAddress.ok ? undefined : checkedAddress.error,
+      purpose: checkedPurpose.ok ? undefined : checkedPurpose.error,
+    };
+    setErrors(next);
+    setRefusal(undefined);
+    if (next.address !== undefined || next.purpose !== undefined) return;
+    startTransition(async () => {
+      const result = await requestTeamAddress({ memberId, address, purpose, movesWith: tie === "" ? null : tie });
+      if (!result.ok) {
+        setRefusal(result.error);
+        return;
+      }
+      toast.success(`Team address requested for ${name}`);
+      onDone();
+    });
+  };
+
+  return (
+    <form
+      noValidate
+      aria-busy={pending}
+      onSubmit={(event) => {
+        event.preventDefault();
+        send();
+      }}
+    >
+      <DialogTitle className="text-[17px] font-bold leading-snug">Request team address</DialogTitle>
+      <p className="mt-1.5 text-[14px] leading-relaxed text-prt-muted">For {name}</p>
+      <Field label="Address" error={errors.address} className="mt-6">
+        {(id, describedBy) => (
+          <div
+            className={cn(
+              inputClass(errors.address),
+              BOX,
+              "flex items-center px-0 focus-within:border-accent focus-within:bg-accent/[0.06]",
+            )}
+          >
+            <input
+              id={id}
+              type="text"
+              value={local}
+              onChange={(event) => {
+                setLocal(localOf(event.target.value));
+                setErrors((e) => ({ ...e, address: undefined }));
+              }}
+              placeholder="recruitment"
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              aria-invalid={errors.address !== undefined}
+              aria-describedby={describedBy}
+              className="h-full min-w-0 flex-1 bg-transparent pl-3.5 text-[14px] text-prt-text placeholder:text-dim focus:outline-none"
+            />
+            <span aria-hidden className="shrink-0 pr-3.5 text-[14px] text-prt-muted">
+              {DOMAIN_SUFFIX}
+            </span>
+          </div>
+        )}
+      </Field>
+      <Field label="What it's for" error={errors.purpose} className="mt-5">
+        {(id, describedBy) => (
+          <input
+            id={id}
+            type="text"
+            value={purpose}
+            maxLength={PURPOSE_MAX}
+            onChange={(event) => {
+              setPurpose(event.target.value);
+              setErrors((e) => ({ ...e, purpose: undefined }));
+            }}
+            placeholder="Recruitment"
+            autoComplete="off"
+            aria-invalid={errors.purpose !== undefined}
+            aria-describedby={describedBy}
+            className={cn(inputClass(errors.purpose), BOX)}
+          />
+        )}
+      </Field>
+      <Field label="Moves with" hint="optional" className="mt-5">
+        {(id) => (
+          <>
+            <div className="relative">
+              <select
+                id={id}
+                value={tie}
+                onChange={(event) => setTie(event.target.value)}
+                aria-describedby={`${id}-help`}
+                className={cn(inputClass(), BOX, "cursor-pointer appearance-none truncate pr-10", tie === "" && "text-dim")}
+              >
+                <option value="" className="bg-panel text-prt-text">
+                  None
+                </option>
+                {movesWith.map((o) => (
+                  <option key={o.key} value={o.key} className="bg-panel text-prt-text">
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
+            </div>
+            <p id={`${id}-help`} className="mt-2 text-[12px] leading-relaxed text-prt-muted">
+              When the role changes hands, the address goes to the new holder. Leave empty to keep it with this person.
+            </p>
+          </>
+        )}
+      </Field>
+      {refusal !== undefined && (
+        <p role="alert" className="mt-5 text-[13px] text-danger">
+          {refusal}
+        </p>
+      )}
+      <div className={SHEET_BUTTONS}>
+        <DialogClose className={cn(SHEET_CANCEL, "sm:h-10")}>Cancel</DialogClose>
+        <button type="submit" disabled={pending} className={cn(sheetConfirm(false), "sm:h-10")}>
+          Request
+        </button>
+      </div>
+    </form>
   );
 }
 

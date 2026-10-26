@@ -39,6 +39,10 @@ export type Stat = {
  * their decision, approved orders not ordered yet, and positions closing soon.
  * "acceptance-emails": the team leader's count of acceptance emails to send,
  * linking to the box on Applications (board 100, ./acceptance-emails.ts).
+ * "alias-request" and "team-address-request": an open request waiting for
+ * an approver's answer (./alias-request.ts, ./team-address.ts).
+ * "team-address-reroute": a team address whose role changed hands, waiting
+ * for an approver to move it (./team-address.ts).
  */
 export type AttentionKind =
   | "acceptance-emails"
@@ -50,7 +54,9 @@ export type AttentionKind =
   | "orders-to-decide"
   | "approved-orders"
   | "hand-over"
-  | "alias-request";
+  | "alias-request"
+  | "team-address-request"
+  | "team-address-reroute";
 
 /** A row's button that dismisses the stored notice it shows (./notices.ts). */
 export type DismissNotice = { readonly label: string; readonly dismissNotice: number };
@@ -67,8 +73,33 @@ export type AnswerHandOver = { readonly answerHandOver: number };
  */
 export type AnswerAlias = { readonly answerAlias: number; readonly member: string; readonly prefill: string; readonly signInEmail: string };
 
+/**
+ * A row's Decline and Mark created on an open team address request (epic
+ * #578, issue #788, ./team-address.ts): the member it is for, and the
+ * address and purpose asked for; Mark created's dialog starts from that
+ * address and shows the member's sign-in email, which the address forwards
+ * to, as the alias dialog does (issue #586). Only the approver seats get
+ * these rows (`teamAddressAttentionFor`).
+ */
+export type AnswerTeamAddress = {
+  readonly answerTeamAddress: number;
+  readonly member: string;
+  readonly address: string;
+  readonly purpose: string;
+  readonly signInEmail: string;
+};
+
+/**
+ * A row's Mark done on an open routing item (epic #578, issue #789,
+ * ./team-address.ts): the address, the member it goes to, and their sign-in
+ * email, which the address forwards to; Mark done's dialog shows it as
+ * Forwards to. Only the approver seats get these rows
+ * (`teamAddressRerouteAttentionFor`).
+ */
+export type MarkRerouteDone = { readonly markRerouteDone: number; readonly address: string; readonly member: string; readonly signInEmail: string };
+
 /** Where a row's button goes, the notice it dismisses, or the request it answers. */
-export type AttentionAction = Link | DismissNotice | AnswerHandOver | AnswerAlias;
+export type AttentionAction = Link | DismissNotice | AnswerHandOver | AnswerAlias | AnswerTeamAddress | MarkRerouteDone;
 
 export function isDismissNotice(action: AttentionAction): action is DismissNotice {
   return "dismissNotice" in action;
@@ -80,6 +111,14 @@ export function isAnswerHandOver(action: AttentionAction): action is AnswerHandO
 
 export function isAnswerAlias(action: AttentionAction): action is AnswerAlias {
   return "answerAlias" in action;
+}
+
+export function isAnswerTeamAddress(action: AttentionAction): action is AnswerTeamAddress {
+  return "answerTeamAddress" in action;
+}
+
+export function isMarkRerouteDone(action: AttentionAction): action is MarkRerouteDone {
+  return "markRerouteDone" in action;
 }
 
 export type AttentionItem = {

@@ -343,6 +343,29 @@ export async function requestAlias(memberId: number): Promise<WriteResult<null>>
   return result;
 }
 
+/** Request team address in the member drawer (board 102b, epic #578): the drawer reads again; the request waits for an approver. */
+export async function requestTeamAddress(input: unknown): Promise<WriteResult<null>> {
+  const result = await write("members", (data) => data.requestTeamAddress(input));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+/** Decline or Mark created on the Overview (epic #578, issue #788): the row leaves, and Mark created shows the address in the member drawer. */
+export async function answerTeamAddress(requestId: number, answer: unknown): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(requestId)) return refused("Unknown team address request.");
+  const result = await write("overview", (data) => data.answerTeamAddress(requestId, answer));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+/** Mark done on a team address routing item (epic #578, issue #789): the row leaves, and the address shows under its new holder. */
+export async function markTeamAddressRerouteDone(rerouteId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(rerouteId)) return refused("Unknown team address routing item.");
+  const result = await write("overview", (data) => data.markTeamAddressRerouteDone(rerouteId));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
 /** Cancel request in the member drawer (board 94b). */
 export async function cancelAliasRequest(requestId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(requestId)) return refused("Unknown alias request.");
@@ -366,6 +389,18 @@ export async function answerAlias(requestId: number, answer: unknown): Promise<W
  */
 export async function confirmAliasSetUp(): Promise<WriteResult<null>> {
   const result = await write(["overview", "my-profile"], (data) => data.confirmAliasSetUp());
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+/**
+ * "I've set it up" in a team address's set-up steps (owner finding on PR
+ * #794): stored on that address only while the viewer holds it. The Overview
+ * reads again without its card.
+ */
+export async function confirmTeamAddressSetUp(addressId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(addressId)) return refused("Unknown team address.");
+  const result = await write("overview", (data) => data.confirmTeamAddressSetUp(addressId));
   if (result.ok) revalidatePath("/dashboard", "layout");
   return result;
 }

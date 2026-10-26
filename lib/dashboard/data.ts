@@ -28,6 +28,7 @@ import type { AlumnusKey } from "@/lib/about/alumni-record";
 import type { AlumniDirectory } from "./alumni";
 import type { HandOverAnswer } from "./hand-over-request";
 import type { MemberAliases } from "./alias-request";
+import type { MemberTeamAddresses, OwnTeamAddress } from "./team-address";
 import type { OwnAlias } from "./alias-setup";
 import type { Departure, MemberDirectory, MemberEdit, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
@@ -324,6 +325,53 @@ export interface DashboardData {
    * ./alias-request.ts). Someone not on the team is left out.
    */
   memberAliases(memberIds: readonly number[]): Promise<MemberAliases>;
+  /**
+   * Epic #578 (boards 102 and 102b, issues #786 and #787): the shared team
+   * addresses each of `memberIds` on the team holds, as the member drawer's
+   * Team addresses row lists them, sorted by address with the role each
+   * moves with, and whether the viewer may request one for them, with the
+   * roles the request dialog offers (`memberTeamAddressesFor`,
+   * ./team-address.ts). It reaches every viewer of the PRT email row; a
+   * member holding none whom the viewer may not ask for, or not on the
+   * team, is left out.
+   */
+  memberTeamAddresses(memberIds: readonly number[]): Promise<MemberTeamAddresses>;
+  /**
+   * Request team address (board 102b, issue #787): checked by
+   * `checkTeamAddressRequest` and `planTeamAddressRequest`; refused for
+   * anyone but a full-access holder (any member, themselves included) or a
+   * lead or head who manages the member, and while the address is a team
+   * address or has an open request.
+   */
+  requestTeamAddress(input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Decline or Mark created on an open team address request (issue #788),
+   * checked by `planTeamAddressAnswer`: only the team leader, the operations
+   * lead and the IT lead. Mark created stores the confirmed address under
+   * the member; either answer writes the notice `teamAddressAnswerNotices`
+   * names.
+   */
+  answerTeamAddress(requestId: number, answer: unknown): Promise<WriteResult<null>>;
+  /**
+   * Mark done on an open team address routing item (issue #789), checked by
+   * `planRerouteDone`: only the team leader, the operations lead and the IT
+   * lead. It moves the address to the member the item names; a second Mark
+   * done is refused.
+   */
+  markTeamAddressRerouteDone(rerouteId: number): Promise<WriteResult<null>>;
+  /**
+   * The team addresses the viewer holds and whether they set each up
+   * (`ownTeamAddressesOf`, ./team-address.ts), for the Overview's ready
+   * cards (board 94f's, for a team address); none off the team. It reads the
+   * viewer's own rows and nobody else's.
+   */
+  myTeamAddresses(): Promise<OwnTeamAddress[]>;
+  /**
+   * "I've set it up" on a team address the viewer holds, checked by
+   * `planTeamAddressSetUp`: stored on that address only, and refused for one
+   * they do not hold or once set up.
+   */
+  confirmTeamAddressSetUp(addressId: number): Promise<WriteResult<null>>;
   /**
    * Request alias (board 94): checked by `planAliasRequest`; refused for
    * anyone but a full-access holder (any member, themselves included) or a

@@ -12,7 +12,23 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
 import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
-import { betterAuthUsers, divisions, logs, members, orders, projects, projectVersions, recruitmentSetting, roles, scopes, teamLeaves, users } from "@/db/schema";
+import {
+  betterAuthUsers,
+  divisions,
+  logs,
+  members,
+  orders,
+  projects,
+  projectVersions,
+  recruitmentSetting,
+  roles,
+  scopes,
+  teamAddresses,
+  teamAddressReroutes,
+  teamAddressRequests,
+  teamLeaves,
+  users,
+} from "@/db/schema";
 import { databaseTeamRoles } from "@/lib/about/team-data";
 import { teamBuildOf } from "@/lib/about/team-roles";
 import { editorVersion } from "@/lib/content/versioned";
@@ -143,7 +159,9 @@ const READS: readonly Read[] = [
   { path: "myAccount" },
   { path: "myApplications" },
   { path: "memberAliases", args: [[ALL.map((u) => IDS.person(u))]] },
+  { path: "memberTeamAddresses", args: [[ALL.map((u) => IDS.person(u))]] },
   { path: "myAlias" },
+  { path: "myTeamAddresses" },
 ];
 
 /** Calls the method at `path` on the data interface. */
@@ -450,6 +468,21 @@ const DM: Unit = "DM";
 /** An email alias as Mark created leaves it, the member's PRT email (epic #538, issue #563), laid over the seeded row. */
 const aliasOf = (memberId: number) => `alias-${memberId}@politorocketteam.it`;
 const giveAlias = (memberId: number) => changeRows(members, { memberId }, { prtEmail: aliasOf(memberId) });
+/** An open team address request for the member of DM, sent by its lead. */
+const TEAM_ADDRESS_REQUEST = 1;
+const addTeamAddressRequest = () =>
+  addRows(teamAddressRequests, [
+    { id: TEAM_ADDRESS_REQUEST, memberId: IDS.person(DM), address: "design@politorocketteam.it", purpose: "Design", requestedBy: IDS.lead(DM) },
+  ]);
+/** DM's lead's team address, not set up yet. */
+const TEAM_ADDRESS = 1;
+const addTeamAddress = () => addRows(teamAddresses, [{ id: TEAM_ADDRESS, address: "structures@politorocketteam.it", purpose: "Structures", holderId: IDS.lead(DM) }]);
+/** An open routing item: DM's lead's team address goes to the member of DM. */
+const TEAM_ADDRESS_REROUTE = 1;
+const addTeamAddressReroute = async () => {
+  await addTeamAddress();
+  await addRows(teamAddressReroutes, [{ id: TEAM_ADDRESS_REROUTE, addressId: TEAM_ADDRESS, toMember: IDS.person(DM), fromMember: IDS.lead(DM) }]);
+};
 const changesDM = (area: "positions" | "applications" | "members") => (r: MatrixRow) => r.expect.changes[area].includes(DM);
 const reaches = (page: Expect["pages"][number]) => (r: MatrixRow) => r.expect.pages.includes(page);
 const fullAccess = (r: MatrixRow) => r.expect.wholeTeamMembers;
@@ -671,9 +704,37 @@ const ACTION_CASES: readonly ActionCase[] = [
     control: by("team leader"),
   },
   { action: "actions.answerAlias", run: () => actions.answerAlias(IDS.aliasRequest(DM), { kind: "decline" }), may: (r) => r.expect.aliases.answers, control: by("IT lead") },
+  // Team addresses (epic #578, issue #787): who asks follows the alias rule.
+  {
+    action: "actions.requestTeamAddress",
+    run: () => actions.requestTeamAddress({ memberId: IDS.person(DM), address: "design@politorocketteam.it", purpose: "Design", movesWith: null }),
+    may: (r) => r.expect.aliases.requests.includes(DM),
+    control: by("team leader"),
+  },
+  // Who answers is the alias rule (issue #788): the request is added first, as the fixture holds none.
+  {
+    action: "actions.answerTeamAddress",
+    run: async () => (await addTeamAddressRequest(), actions.answerTeamAddress(TEAM_ADDRESS_REQUEST, { kind: "decline" })),
+    may: (r) => r.expect.aliases.answers,
+    control: by("IT lead"),
+  },
+  // Who moves a team address is the alias rule too (issue #789): the routing item is added first, as the fixture holds none.
+  {
+    action: "actions.markTeamAddressRerouteDone",
+    run: async () => (await addTeamAddressReroute(), actions.markTeamAddressRerouteDone(TEAM_ADDRESS_REROUTE)),
+    may: (r) => r.expect.aliases.answers,
+    control: by("IT lead"),
+  },
   // "I've set it up" (issue #542): DM's lead has an alias and stores it; no matrix viewer has one of their own,
   // so each is refused, and nobody's press reaches the lead's record.
   { action: "actions.confirmAliasSetUp", run: async () => (await giveAlias(IDS.lead(DM)), actions.confirmAliasSetUp()), may: nobody, control: by("lead-dm") },
+  // "I've set it up" on a team address (owner finding on PR #794): only its holder, DM's lead, stores it; no matrix viewer holds it.
+  {
+    action: "actions.confirmTeamAddressSetUp",
+    run: async () => (await addTeamAddress(), actions.confirmTeamAddressSetUp(TEAM_ADDRESS)),
+    may: nobody,
+    control: by("lead-dm"),
+  },
   // A notice, an application and an interview of someone else's.
   { action: "actions.dismissNotice", run: () => actions.dismissNotice(IDS.notice(DM)), may: nobody, control: by("lead-dm") },
   { action: "actions.withdrawApplication", run: () => actions.withdrawApplication(IDS.application(DM)), may: nobody, control: by("applicant-dm") },

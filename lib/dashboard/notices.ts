@@ -14,7 +14,15 @@ import { shortDate } from "./write";
 // The member's own "alias ready" news is the board 94f card on their Overview,
 // never a notice row (owner ruling on #550, 2026-10-22): an `alias-ready` row
 // an earlier answer wrote is a kind this code no longer knows, so it is not shown.
-export const NOTICE_KINDS = ["member-left", "promoted", "hand-over-answered", "alias-created", "alias-declined"] as const;
+export const NOTICE_KINDS = [
+  "member-left",
+  "promoted",
+  "hand-over-answered",
+  "alias-created",
+  "alias-declined",
+  "team-address-created",
+  "team-address-declined",
+] as const;
 
 /** How the next level up answered a hand-over (issue #262). */
 export type HandOverAnswered = "confirmed" | "declined";
@@ -41,6 +49,10 @@ type NoticeData = {
   readonly "alias-created": { readonly address: string };
   /** The alias the recipient asked for was declined (epic #538): the subject is the member, `by` who declined it. */
   readonly "alias-declined": { readonly by: string };
+  /** The team address the recipient asked for was marked created (epic #578): the subject is the holder, with the address saved. */
+  readonly "team-address-created": { readonly address: string };
+  /** The team address the recipient asked for was declined (epic #578): the subject is the member, with the address asked for and `by` who declined it. */
+  readonly "team-address-declined": { readonly address: string; readonly by: string };
 };
 
 /** A notice to write: its kind and what it stores. */
@@ -101,6 +113,9 @@ const READ: { readonly [K in NoticeKind]: (data: unknown) => NoticeData[K] | nul
   },
   "alias-created": readAddress,
   "alias-declined": (data) => (isRecord(data) && typeof data.by === "string" ? { by: data.by } : null),
+  "team-address-created": readAddress,
+  "team-address-declined": (data) =>
+    isRecord(data) && typeof data.address === "string" && typeof data.by === "string" ? { address: data.address, by: data.by } : null,
 };
 
 function readAddress(data: unknown): { readonly address: string } | null {
@@ -128,6 +143,10 @@ export function noticeOf(row: StoredNotice): Notice | null {
     case "alias-created":
       return read(row.kind);
     case "alias-declined":
+      return read(row.kind);
+    case "team-address-created":
+      return read(row.kind);
+    case "team-address-declined":
       return read(row.kind);
   }
 }
@@ -192,6 +211,22 @@ export function attentionOf(notice: Notice, now: Date): AttentionItem {
         detail: [shortDate(notice.createdAt, now.getUTCFullYear()), "to ask again, use Request alias on their panel in Members"].join(" · "),
         action,
         iconKind: "alias-request",
+      };
+    case "team-address-created":
+      return {
+        kind: "notice",
+        title: `${notice.data.address} is ready for ${notice.subject}`,
+        detail: shortDate(notice.createdAt, now.getUTCFullYear()),
+        action,
+        iconKind: "team-address-request",
+      };
+    case "team-address-declined":
+      return {
+        kind: "notice",
+        title: `${attributedName(notice.data.by, notice.actingTitle)} declined ${notice.data.address} for ${notice.subject}`,
+        detail: [shortDate(notice.createdAt, now.getUTCFullYear()), "you can ask again"].join(" · "),
+        action,
+        iconKind: "team-address-request",
       };
   }
 }

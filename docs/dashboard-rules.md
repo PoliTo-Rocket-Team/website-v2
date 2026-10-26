@@ -839,6 +839,92 @@ These rules come from the Owner decisions of 2026-10-22 on epic #538 and issue #
 - The alias is created by hand in Google Workspace. The site creates nothing there and sends no
   email.
 
+### Team addresses
+
+These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 and 102b,
+`lib/dashboard/team-address.ts`).
+
+- A team address is a shared address on the team domain, such as a recruitment or logistics
+  address. It is held by one member, says what it is for, and may move with a role: the team
+  leader, a full-access seat, a department's head or a division's lead (grill #785). It is
+  separate from the PRT email and the email alias, whose rules do not change.
+- One address has one holder, in any letter case (`team_addresses_address`). A tie stores
+  exactly the reference its kind needs (`team_addresses_tie`).
+- The member side view shows a "Team addresses" row in the Contact section, directly under the
+  PRT email row (board 102). Each address the member holds is on its own line with a copy button,
+  sorted by address. Under it are what it is for and, when tied, "moves with" the role as the org
+  chart names it, for example "Logistics Lead".
+- The row shows to the same viewers who see the PRT email row: every viewer who reaches the
+  Members page and opens the member. It is hidden when the member holds no team address and the
+  viewer may not request one for them.
+- Who may request a team address follows the alias rule of issue #721: a division lead for a
+  member of a division they lead, a department head for a member of their department, and anyone
+  with full access for any member on the team, themselves included. For them, "Request team
+  address" ends the row, so for a member holding none the row is the button alone (board 102b).
+  The server runs the same check (`mayAskFor`), so the button shows exactly when a request would
+  be accepted.
+- The request dialog asks for the address (the part before the team domain, which the box shows
+  as a fixed ending), what it is for (required, up to 120 characters) and, optionally, the role it
+  moves with: the team leader, a full-access seat, or a department head or division lead on the
+  current org chart. The address check is the alias one: one word or a dotted name, on the team
+  domain only.
+- One address has at most one open request, in any letter case. A request is refused when the
+  address is already a team address or already has an open request; the database index
+  `team_address_requests_one_open` refuses the second of two requests sent at once, with the same
+  message.
+- The alias approvers answer team address requests (issue #788): the team leader, the operations
+  lead and the IT lead (`ALIAS_APPROVER_SEATS`). The Project Manager, the Chief Engineer, a lead,
+  a head and full access from an access row alone do not, and the server refuses them.
+- Each approver sees one Needs your attention row per open request, oldest first, drawn like the
+  alias row (board 94c) with its at-sign: who asked for which address for which member, then what
+  it is for, the role it moves with, if any, and when it was sent. A request for someone no longer
+  on the team is not shown.
+- **Decline** closes the request and stores nothing under the member. **Mark created** opens a
+  dialog like the alias one (board 94d): what it is for, read-only; a "Forwards to" row with the
+  member's sign-in email and a copy button, as in the alias dialog (issue #586), for Google
+  Workspace's recipient address map; and the address, prefilled with the one asked for. The address
+  is checked again on the team domain, then stored under the member with the request's purpose and
+  moves-with role, and the request closes. It is refused, and the request stays open, when the address is a
+  team address already (also when it became one meanwhile: `team_addresses_address` refuses the
+  second holder) or another open request asks for it.
+- The request is closed first, so a second answer is refused with "This team address request was
+  already answered." If saving the address or the notice then fails, the request opens again; when
+  a newer request for the address came in meanwhile, that one is kept and the answer is refused.
+- Either answer leaves the requester a notice, themselves included when they asked for their own
+  address: "recruitment@politorocketteam.it is ready for Davide Russo", or "Sara Conti declined
+  recruitment@politorocketteam.it for Davide Russo · you can ask again". A request whose
+  requester's record is gone tells nobody.
+- When the role an address moves with changes hands, the role change raises one routing item for
+  the address (issue #789; grill #785, R1.2): when the change makes someone a holder of that role
+  and the address's holder does not hold it after the change. Adding a co-lead while the holder
+  still leads the division raises none, and so does an address tied to no role. When one change
+  makes two new holders, the first by member id is named. The item names the address, the member
+  it goes to and the member it came from.
+- Every role change that asks for an automatic alias raises the routing items it owes, in the
+  same batch: Move to another unit, Edit division and New division, New department, Change head,
+  the team leader hand-over and a confirmed hand-over request. Change holder on a seat raises the
+  item for an address tied to that full-access seat, and so does any of those changes that moves
+  a seat with the role. A role change that is refused or fails leaves no routing item.
+- One address has at most one open routing item (`team_address_reroutes_one_open`). A second role
+  change before Mark done adds no second item; the open one stays as it is.
+- Each approver (the team leader, the operations lead and the IT lead) sees one Needs your
+  attention row per open item, oldest first, with the at-sign: the address and who it goes to,
+  then the role and when it changed hands, whose address it was and the new holder's sign-in
+  email, with **Mark done**. Mark done opens a dialog drawn like Mark created's: the new holder's
+  sign-in email as the "Forwards to" row with a copy button, then Cancel and Mark done. An item for
+  someone no longer on the team is not shown.
+- **Mark done** in that dialog claims the item and, in the same batch, makes the new holder the
+  address's holder and clears its set-up, so it leaves the previous holder's Team addresses row and
+  shows on the new holder's. A second Mark done is refused with "This team address was already
+  moved." Nobody else may mark it done, and the server refuses them.
+- The holder of a team address gets the alias's ready card (board 94f) on their own Overview, under
+  the person, after Mark created and after a routing item's Mark done (owner findings of
+  2026-10-26 on PR #794): "Your team address is ready:" and the address, with Open setup steps. The steps are the alias's (board 94g), titled "Set up your
+  team address". The card stays until the holder presses **I've set it up** in the steps; Close
+  only closes them. The press is stored on the address (`team_addresses.set_up_at`), only by its
+  holder and only once, so each address not set up has its own card, by address, under the alias
+  card. The steps for a team address have no way back from My profile.
+
 ### Access
 
 These rules come from #213 (boards 60, 60b, 60c and 60m).

@@ -385,6 +385,9 @@ for (const [shape, lastRecordedTag] of [
         "members_nda_confirmed_by_acting_account_users_id_fk",
         "orders_reviewed_by_acting_account_users_id_fk",
         "scopes_given_by_acting_account_users_id_fk",
+        "team_address_requests_answered_by_acting_account_users_id_fk",
+        "team_address_requests_requested_by_acting_account_users_id_fk",
+        "team_address_reroutes_done_by_acting_account_users_id_fk",
         "team_joins_added_by_acting_account_users_id_fk",
       ],
       "each acting-account foreign key exists once",
@@ -468,4 +471,132 @@ test("after 0065 the table takes an added status only under a built-in parent, a
   await refuses(`update applications set status_key = 'no_such_status' where id = 1`, "a reference to no status");
   await db.exec(`update applications set status_key = 'interview' where id = 1; delete from application_statuses where key = 'second_interview'`);
   assert.equal((await db.query(`select 1 from application_statuses where key = 'second_interview'`)).rows.length, 0, "an unused added status is deleted");
+});
+
+// Shared team addresses (issue #786) add one type and one table with its
+// indexes, check and audit trigger. The table keeps one holder per address
+// in any letter case, and each tie holds exactly the reference its kind needs
+// (lib/dashboard/team-address.ts).
+const TEAM_ADDRESS_TAG = "0066_team_addresses";
+
+test("0066_team_addresses.sql drops, renames and rewrites nothing, and applies again", async () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${TEAM_ADDRESS_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  const { apply } = await databaseBefore(TEAM_ADDRESS_TAG);
+  await apply();
+  await apply();
+});
+
+test("after 0066 the database refuses a second holder of an address in any case, and a tie whose kind and reference disagree", async () => {
+  const { db, apply } = await databaseBefore(TEAM_ADDRESS_TAG);
+  await apply();
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id) values (1), (2);
+    insert into departments (id, name) values (1, 'Operations');
+    insert into divisions (id, dept_id, name) values (1, 1, 'Logistics');
+    set session_replication_role = origin;
+  `);
+  const add = (values: string) =>
+    db.exec(`insert into team_addresses (address, purpose, holder_id, moves_with, moves_with_seat, moves_with_dept_id, moves_with_division_id) values ${values}`);
+  await add(`('logistics@politorocketteam.it', 'Logistics', 1, 'division_lead', null, null, 1)`);
+  await add(`('recruitment@politorocketteam.it', 'Recruitment', 1, null, null, null, null)`);
+  await add(`('it@politorocketteam.it', 'IT', 2, 'full_access_seat', 'it_lead', null, null)`);
+  await add(`('team@politorocketteam.it', 'Team', 2, 'team_leader', null, null, null)`);
+  await add(`('ops@politorocketteam.it', 'Operations', 2, 'department_head', null, 1, null)`);
+  await assert.rejects(add(`('Logistics@PoliToRocketTeam.it', 'Logistics', 2, null, null, null, null)`), Error, "the same address in another case");
+  const disagree = [
+    `('a@politorocketteam.it', 'A', 1, 'division_lead', null, 1, null)`,
+    `('b@politorocketteam.it', 'B', 1, 'department_head', null, null, 1)`,
+    `('c@politorocketteam.it', 'C', 1, 'full_access_seat', null, null, null)`,
+    `('d@politorocketteam.it', 'D', 1, 'team_leader', 'it_lead', null, null)`,
+    `('e@politorocketteam.it', 'E', 1, null, null, null, 1)`,
+  ];
+  for (const values of disagree) await assert.rejects(add(values), Error, values);
+});
+
+// Team address requests (issue #787) add one type and one table with its
+// indexes, checks and audit trigger. The table keeps one open request per
+// address in any letter case, so a race between two requests is refused by
+// the database too; an answered request frees the address.
+const TEAM_ADDRESS_REQUEST_TAG = "0067_team_address_requests";
+
+test("0067_team_address_requests.sql drops, renames and rewrites nothing, and applies again", async () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${TEAM_ADDRESS_REQUEST_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  const { apply } = await databaseBefore(TEAM_ADDRESS_REQUEST_TAG);
+  await apply();
+  await apply();
+});
+
+test("after 0067 the database refuses a second open request for an address in any case, and takes one once the first is answered", async () => {
+  const { db, apply } = await databaseBefore(TEAM_ADDRESS_REQUEST_TAG);
+  await apply();
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id) values (1), (2);
+    set session_replication_role = origin;
+  `);
+  const ask = (address: string) =>
+    db.exec(`insert into team_address_requests (member_id, address, purpose, moves_with, requested_by) values (1, '${address}', 'Events', 'team_leader', 2)`);
+  await ask("events@politorocketteam.it");
+  await assert.rejects(ask("Events@PoliToRocketTeam.it"), Error, "the same address in another case while one is open");
+  await db.exec(`update team_address_requests set outcome = 'declined', answered_at = now()`);
+  await ask("events@politorocketteam.it");
+  await assert.rejects(
+    db.exec(`insert into team_address_requests (member_id, address, purpose, moves_with) values (1, 'it@politorocketteam.it', 'IT', 'division_lead')`),
+    Error,
+    "a tie whose kind and reference disagree",
+  );
+});
+
+// Team address routing items (issue #789) add one table with its foreign
+// keys, its one-open index, its check and its audit trigger. The table keeps
+// one open item per address, so a second role change before Mark done adds
+// no second one; a done item frees the address.
+const TEAM_ADDRESS_REROUTE_TAG = "0068_team_address_reroutes";
+
+test("0068_team_address_reroutes.sql drops, renames and rewrites nothing, and applies again", async () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${TEAM_ADDRESS_REROUTE_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  const { apply } = await databaseBefore(TEAM_ADDRESS_REROUTE_TAG);
+  await apply();
+  await apply();
+});
+
+test("after 0068 the database keeps one open routing item per address, and takes another once it is done", async () => {
+  const { db, apply } = await databaseBefore(TEAM_ADDRESS_REROUTE_TAG);
+  await apply();
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id) values (1), (2), (3);
+    set session_replication_role = origin;
+    insert into team_addresses (id, address, purpose, holder_id, moves_with) values (1, 'events@politorocketteam.it', 'Events', 1, 'team_leader');
+  `);
+  const route = (to: number) => db.exec(`insert into team_address_reroutes (address_id, to_member, from_member) values (1, ${to}, 1)`);
+  await route(2);
+  await assert.rejects(route(3), Error, "a second open item for the address");
+  await db.exec(`update team_address_reroutes set done_by = 1, done_at = now()`);
+  await route(3);
+  await assert.rejects(db.exec(`update team_address_reroutes set done_by = 1 where done_at is null`), Error, "done by with no done at");
+});
+
+// A team address's set-up (owner finding on PR #794) adds one nullable
+// column; an address already stored reads as not set up, so its holder gets
+// the ready card.
+const TEAM_ADDRESS_SET_UP_TAG = "0069_team_address_set_up";
+
+test("0069_team_address_set_up.sql drops, renames and rewrites nothing, applies again and leaves stored addresses not set up", async () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${TEAM_ADDRESS_SET_UP_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  const { db, apply } = await databaseBefore(TEAM_ADDRESS_SET_UP_TAG);
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id) values (1);
+    set session_replication_role = origin;
+    insert into team_addresses (address, purpose, holder_id) values ('events@politorocketteam.it', 'Events', 1);
+  `);
+  await apply();
+  await apply();
+  assert.deepEqual((await db.query(`select set_up_at from team_addresses`)).rows, [{ set_up_at: null }]);
 });

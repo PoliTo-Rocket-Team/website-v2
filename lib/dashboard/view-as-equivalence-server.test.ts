@@ -207,7 +207,9 @@ function readsOf(units: Awaited<ReturnType<typeof seedUnits>>): readonly (readon
     ["myAccount", (d) => d.myAccount()],
     ["myApplications", (d) => d.myApplications()],
     ["memberAliases", (d) => d.memberAliases(units.memberIds)],
+    ["memberTeamAddresses", (d) => d.memberTeamAddresses(units.memberIds)],
     ["myAlias", (d) => d.myAlias()],
+    ["myTeamAddresses", (d) => d.myTeamAddresses()],
   ];
 }
 

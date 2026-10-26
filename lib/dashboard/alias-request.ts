@@ -91,8 +91,10 @@ function managesById(viewerId: number | null, memberId: number, team: readonly T
  * a member they lead or head (`managesMember`). Request alias
  * (`planAliasRequest`) and the drawer's button (`memberAliasesFor`) both read
  * this one check, so the button shows exactly when the server would accept.
+ * Request team address follows the same rule (epic #578, issue #787,
+ * ./team-address.ts).
  */
-function mayAskFor(
+export function mayAskFor(
   requesterId: number | null,
   standing: ViewerStanding,
   memberId: number,
@@ -150,19 +152,33 @@ const SPECIAL = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 export type AliasAddress = { readonly address: string; readonly form: "personal" | "special" };
 
 /**
+ * An address on the team domain, as typed, read in lower case: the address
+ * and its form, or why it is not one. "off-domain" is anything that does not
+ * end with the team domain; "shape" is a part before it that is neither
+ * firstname.lastname nor one word. The alias check and the team address
+ * check (./team-address.ts) both read it and word the reason their own way.
+ */
+export function domainAddressOf(input: string): AliasAddress | "off-domain" | "shape" {
+  const address = input.trim().toLowerCase();
+  const at = address.lastIndexOf("@");
+  if (at === -1 || address.slice(at + 1) !== TEAM_DOMAIN) return "off-domain";
+  const local = address.slice(0, at);
+  if (PERSONAL.test(local)) return { address, form: "personal" };
+  if (SPECIAL.test(local)) return { address, form: "special" };
+  return "shape";
+}
+
+/**
  * The address as typed, checked before it is saved: it ends with the team
  * domain, and before it is firstname.lastname, or one word for a
  * special-purpose address such as sponsoring (Owner input, 2026-10-22).
  * Saved in lower case.
  */
 export function checkAliasAddress(input: string): Checked<AliasAddress> {
-  const address = input.trim().toLowerCase();
-  const at = address.lastIndexOf("@");
-  if (at === -1 || address.slice(at + 1) !== TEAM_DOMAIN) return { ok: false, error: `The alias must end with @${TEAM_DOMAIN}.` };
-  const local = address.slice(0, at);
-  if (PERSONAL.test(local)) return { ok: true, value: { address, form: "personal" } };
-  if (SPECIAL.test(local)) return { ok: true, value: { address, form: "special" } };
-  return { ok: false, error: `Use ${ALIAS_FORM_HINT}, or one word for a special-purpose address.` };
+  const checked = domainAddressOf(input);
+  if (checked === "off-domain") return { ok: false, error: `The alias must end with @${TEAM_DOMAIN}.` };
+  if (checked === "shape") return { ok: false, error: `Use ${ALIAS_FORM_HINT}, or one word for a special-purpose address.` };
+  return { ok: true, value: checked };
 }
 
 // Request alias (boards 94, 94b) -----------------------------------------------------
