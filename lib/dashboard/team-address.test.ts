@@ -1,15 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { TeamPerson } from "./division-edit";
+import { attentionOf, noticeOf } from "./notices";
 import { membershipsOf, type OrgChart } from "./team";
 import {
   checkTeamAddress,
+  checkTeamAddressAnswer,
   checkTeamAddressRequest,
   memberTeamAddressesFor,
   movesWithOptions,
+  planTeamAddressAnswer,
   planTeamAddressRequest,
+  teamAddressAnswerNotices,
+  teamAddressAttentionFor,
   type MovesWith,
+  type OpenTeamAddressRequest,
   type TeamAddress,
+  type TeamAddressAnswer,
   type TeamAddressRequest,
 } from "./team-address";
 import { plainSeatStanding, type ViewerStanding } from "./viewer";
@@ -149,4 +156,86 @@ test("a request is refused for someone the requester may not ask for, and for an
   assert.ok(!taken.ok && /already a team address/.test(taken.error));
   const asked = plan(FULL_ACCESS, IT_LEAD, { open: ["LOGISTICS@politorocketteam.it"] });
   assert.ok(!asked.ok && /already requested/.test(asked.error));
+});
+
+// Decline and Mark created (issue #788) ------------------------------------------------
+
+const open = (id: number, extra: Partial<OpenTeamAddressRequest> = {}): OpenTeamAddressRequest => ({
+  id,
+  memberId: IN_LOGISTICS,
+  address: "logistics@politorocketteam.it",
+  purpose: "Logistics",
+  movesWith: { kind: "division-lead", divisionId: 9 },
+  requesterId: LEAD,
+  sentAt: "2026-10-25T10:00:00+01:00",
+  ...extra,
+});
+const answerPlan = (viewer: ViewerStanding, answer: TeamAddressAnswer, extra: { held?: string[]; openElsewhere?: string[] } = {}) =>
+  planTeamAddressAnswer({ viewer, request: open(1), answer, held: extra.held ?? [], openElsewhere: extra.openElsewhere ?? [] });
+
+test("only the team leader, the operations lead and the IT lead answer a team address request", () => {
+  const answers = (viewer: ViewerStanding) => answerPlan(viewer, { kind: "decline" }).ok;
+  assert.ok(answers(plainSeatStanding("team-leader")));
+  assert.ok(answers(plainSeatStanding("operations-lead")));
+  assert.ok(answers(IT_LEAD));
+  for (const seat of ["project-manager", "chief-engineer", null] as const) {
+    assert.equal(answers({ kind: "operations-lead", seat, siteContent: false, approveOrders: false }), false, `seat ${seat}`);
+  }
+  for (const kind of ["department-head", "division-lead", "member"] as const) assert.equal(answers(plainSeatStanding(kind)), false, kind);
+});
+
+test("Mark created checks the confirmed address again on the team domain, and refuses one held or asked for by another open request", () => {
+  const viewer = plainSeatStanding("team-leader");
+  assert.deepEqual(answerPlan(viewer, { kind: "created", address: " Logistics@PoliToRocketTeam.it " }), {
+    ok: true,
+    value: { kind: "created", request: open(1), address: "logistics@politorocketteam.it" },
+  });
+  assert.equal(answerPlan(viewer, { kind: "created", address: "logistics@gmail.com" }).ok, false, "off the team domain");
+  const held = answerPlan(viewer, { kind: "created", address: "logistics@politorocketteam.it" }, { held: ["LOGISTICS@politorocketteam.it"] });
+  assert.ok(!held.ok && /already a team address/.test(held.error));
+  const asked = answerPlan(viewer, { kind: "created", address: "logistics@politorocketteam.it" }, { openElsewhere: ["logistics@politorocketteam.it"] });
+  assert.ok(!asked.ok && /already requested/.test(asked.error));
+  assert.equal(checkTeamAddressAnswer({ kind: "created" }).ok, false);
+  assert.equal(checkTeamAddressAnswer({ kind: "confirm" }).ok, false);
+});
+
+test("Mark created and Decline each tell the requester, a self-requester included; a request whose requester is gone tells nobody", () => {
+  const created = { kind: "created", request: open(1), address: "logistics@politorocketteam.it" } as const;
+  assert.deepEqual(teamAddressAnswerNotices(created, "Sara Conti"), [
+    { recipientId: LEAD, notice: { kind: "team-address-created", data: { address: "logistics@politorocketteam.it" } } },
+  ]);
+  assert.deepEqual(teamAddressAnswerNotices({ kind: "decline", request: open(1) }, "Sara Conti"), [
+    { recipientId: LEAD, notice: { kind: "team-address-declined", data: { address: "logistics@politorocketteam.it", by: "Sara Conti" } } },
+  ]);
+  const self = teamAddressAnswerNotices({ ...created, request: open(1, { requesterId: IN_LOGISTICS }) }, "Sara Conti");
+  assert.deepEqual(
+    self.map((n) => n.recipientId),
+    [IN_LOGISTICS],
+  );
+  assert.deepEqual(teamAddressAnswerNotices({ kind: "decline", request: open(1, { requesterId: null }) }, "Sara Conti"), []);
+  const now = new Date("2026-10-26T12:00:00Z");
+  const read = (kind: string, data: unknown) =>
+    attentionOf(noticeOf({ id: 1, kind, subject: "Person 5", createdAt: "2026-10-26T10:00:00Z", data })!, now).title;
+  assert.equal(read("team-address-created", { address: "logistics@politorocketteam.it" }), "logistics@politorocketteam.it is ready for Person 5");
+  assert.equal(
+    read("team-address-declined", { address: "logistics@politorocketteam.it", by: "Sara Conti" }),
+    "Sara Conti declined logistics@politorocketteam.it for Person 5",
+  );
+});
+
+test("the approver's rows: one per open request, oldest first, with the address, purpose, moves-with role, requester and when; none for anyone else", () => {
+  const now = new Date("2026-10-26T12:00:00+01:00");
+  const later = open(2, { address: "events@politorocketteam.it", purpose: "Events", movesWith: null, requesterId: FULL_ACCESS, sentAt: "2026-10-26T10:00:00+01:00" });
+  const requests = [later, open(1)];
+  const rows = teamAddressAttentionFor(plainSeatStanding("team-leader"), requests, team, org, now);
+  assert.deepEqual(
+    rows.map((r) => [r.kind, r.title, r.detail]),
+    [
+      ["team-address-request", "Person 4 asks for logistics@politorocketteam.it for Person 5", "Logistics · moves with Logistics Lead · sent yesterday"],
+      ["team-address-request", "Person 7 asks for events@politorocketteam.it for Person 5", "Events · sent today"],
+    ],
+  );
+  assert.deepEqual(rows[0]?.action, { answerTeamAddress: 1, member: "Person 5", address: "logistics@politorocketteam.it", purpose: "Logistics" });
+  assert.deepEqual(teamAddressAttentionFor(plainSeatStanding("division-lead"), requests, team, org, now), []);
+  assert.deepEqual(teamAddressAttentionFor(IT_LEAD, [open(3, { memberId: OFF_TEAM })], team, org, now), [], "someone off the team");
 });

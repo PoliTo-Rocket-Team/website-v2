@@ -12,7 +12,21 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
 import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
-import { betterAuthUsers, divisions, logs, members, orders, projects, projectVersions, recruitmentSetting, roles, scopes, teamLeaves, users } from "@/db/schema";
+import {
+  betterAuthUsers,
+  divisions,
+  logs,
+  members,
+  orders,
+  projects,
+  projectVersions,
+  recruitmentSetting,
+  roles,
+  scopes,
+  teamAddressRequests,
+  teamLeaves,
+  users,
+} from "@/db/schema";
 import { databaseTeamRoles } from "@/lib/about/team-data";
 import { teamBuildOf } from "@/lib/about/team-roles";
 import { editorVersion } from "@/lib/content/versioned";
@@ -451,6 +465,12 @@ const DM: Unit = "DM";
 /** An email alias as Mark created leaves it, the member's PRT email (epic #538, issue #563), laid over the seeded row. */
 const aliasOf = (memberId: number) => `alias-${memberId}@politorocketteam.it`;
 const giveAlias = (memberId: number) => changeRows(members, { memberId }, { prtEmail: aliasOf(memberId) });
+/** An open team address request for the member of DM, sent by its lead. */
+const TEAM_ADDRESS_REQUEST = 1;
+const addTeamAddressRequest = () =>
+  addRows(teamAddressRequests, [
+    { id: TEAM_ADDRESS_REQUEST, memberId: IDS.person(DM), address: "design@politorocketteam.it", purpose: "Design", requestedBy: IDS.lead(DM) },
+  ]);
 const changesDM = (area: "positions" | "applications" | "members") => (r: MatrixRow) => r.expect.changes[area].includes(DM);
 const reaches = (page: Expect["pages"][number]) => (r: MatrixRow) => r.expect.pages.includes(page);
 const fullAccess = (r: MatrixRow) => r.expect.wholeTeamMembers;
@@ -678,6 +698,13 @@ const ACTION_CASES: readonly ActionCase[] = [
     run: () => actions.requestTeamAddress({ memberId: IDS.person(DM), address: "design@politorocketteam.it", purpose: "Design", movesWith: null }),
     may: (r) => r.expect.aliases.requests.includes(DM),
     control: by("team leader"),
+  },
+  // Who answers is the alias rule (issue #788): the request is added first, as the fixture holds none.
+  {
+    action: "actions.answerTeamAddress",
+    run: async () => (await addTeamAddressRequest(), actions.answerTeamAddress(TEAM_ADDRESS_REQUEST, { kind: "decline" })),
+    may: (r) => r.expect.aliases.answers,
+    control: by("IT lead"),
   },
   // "I've set it up" (issue #542): DM's lead has an alias and stores it; no matrix viewer has one of their own,
   // so each is refused, and nobody's press reaches the lead's record.

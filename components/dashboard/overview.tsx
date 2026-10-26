@@ -30,6 +30,7 @@ import {
   type ActivityItem,
   isAnswerAlias,
   isAnswerHandOver,
+  isAnswerTeamAddress,
   isDismissNotice,
   type AttentionAction,
   type AttentionItem,
@@ -50,6 +51,7 @@ import { AliasReadyCard } from "./alias-setup";
 import { Avatar } from "./avatar";
 import { AnswerAlias } from "./answer-alias";
 import { AnswerHandOver } from "./answer-hand-over";
+import { AnswerTeamAddress } from "./answer-team-address";
 import { DismissNotice } from "./dismiss-notice";
 import { departmentLabel } from "@/lib/dashboard/recruitment";
 import { PANEL, Panel, RowAction } from "./panel";
@@ -307,7 +309,9 @@ function ActivityPanel({ activity, compact, className = "" }: { activity: readon
 // title and a small filled pill. A hand-over waiting for the viewer (board
 // 62c, issue #262) is the top row, on an accent tint with an accent icon
 // tile, and answers with Decline and Confirm. An open alias request (board
-// 94c, epic #538) follows it the same way, with Decline and Mark created.
+// 94c, epic #538) follows it the same way, with Decline and Mark created,
+// and so does an open team address request (epic #578, issue #788), with the
+// alias row's at-sign.
 // Below md, outside board 56m's cards, every row's buttons move under the
 // text, Dismiss on a notice included, so the title and detail keep the row's
 // width (issue #546); a detail with a long address wraps inside its column
@@ -318,7 +322,7 @@ function AttentionPanel({ attention, compact }: { attention: readonly AttentionI
     <Panel title="Needs your attention" meta={attention.length === 1 ? "1 item" : `${attention.length} items`} phoneCards={compact}>
       {attention.map((item) => {
         const Icon = ATTENTION_ICONS[item.iconKind ?? item.kind];
-        const handOver = item.kind === "hand-over" || item.kind === "alias-request";
+        const handOver = item.kind === "hand-over" || item.kind === "alias-request" || item.kind === "team-address-request";
         return (
           <li
             key={attentionKey(item)}
@@ -503,6 +507,7 @@ function waitingCounts({ newApplications, openPositions }: { newApplications: nu
 function AttentionButton({ action, chip = false }: { action: AttentionAction; chip?: boolean }) {
   if (isAnswerHandOver(action)) return <AnswerHandOver requestId={action.answerHandOver} chip={chip} />;
   if (isAnswerAlias(action)) return <AnswerAlias action={action} chip={chip} />;
+  if (isAnswerTeamAddress(action)) return <AnswerTeamAddress action={action} chip={chip} />;
   return isDismissNotice(action) ? (
     <DismissNotice noticeId={action.dismissNotice} label={action.label} chip={chip} />
   ) : (
@@ -514,6 +519,7 @@ function AttentionButton({ action, chip = false }: { action: AttentionAction; ch
 function attentionKey(item: AttentionItem): string {
   if (isAnswerHandOver(item.action)) return `hand-over-${item.action.answerHandOver}`;
   if (isAnswerAlias(item.action)) return `alias-${item.action.answerAlias}`;
+  if (isAnswerTeamAddress(item.action)) return `team-address-${item.action.answerTeamAddress}`;
   return isDismissNotice(item.action) ? `notice-${item.action.dismissNotice}` : item.title;
 }
 
@@ -528,6 +534,7 @@ const ATTENTION_ICONS: Readonly<Record<AttentionKind, LucideIcon>> = {
   "approved-orders": Package,
   "hand-over": ArrowRightLeft,
   "alias-request": AtSign,
+  "team-address-request": AtSign,
 };
 
 function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boolean; hiddenOnPhone: boolean }) {

@@ -1,8 +1,11 @@
 import { z } from "zod";
-import { domainAddressOf, mayAskFor, TEAM_DOMAIN } from "./alias-request";
+import { attributedName } from "./acting-account";
+import { answersAliasRequests, domainAddressOf, mayAskFor, TEAM_DOMAIN } from "./alias-request";
 import type { Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
-import { divisionShortName } from "./overview";
+import { sentWhen } from "./hand-over-request";
+import type { AddressedNotice } from "./notices";
+import { divisionShortName, type AttentionItem } from "./overview";
 import type { OrgChart } from "./team";
 import { FLAG_OF_SEAT, SEAT_OF_FLAG, type FlaggedSeat, type SeatFlag, type ViewerStanding } from "./viewer";
 
@@ -14,7 +17,10 @@ import { FLAG_OF_SEAT, SEAT_OF_FLAG, type FlaggedSeat, type SeatFlag, type Viewe
 // tie, its label and how the member side view lists a member's addresses;
 // `team_addresses` stores what it says. It also owns Request team address
 // (issue #787, board 102b): who may ask, the address and purpose checks and
-// the one open request per address; `team_address_requests` stores it.
+// the one open request per address; `team_address_requests` stores it. And
+// the approvers' answer (issue #788, the alias boards 94c and 94d): who
+// answers, Decline and Mark created, their rows under Needs your attention
+// and the notices to the requester.
 
 /**
  * The role a team address moves with (grill #785, R1.1): one the org model
@@ -329,4 +335,139 @@ export function memberTeamAddressesFor(input: {
   }
   const asks = Object.values(rows).some((row) => row.requestable);
   return { rows, movesWith: asks ? movesWithOptions(org) : [] };
+}
+
+// Decline and Mark created (the alias boards 94c and 94d, issue #788) ---------------
+
+/** An open team address request, as the approvers' rows and their answer read it. `requesterId` is null once the requester's record is gone. */
+export type OpenTeamAddressRequest = {
+  readonly id: number;
+  readonly memberId: number;
+  /** The address asked for, in lower case. */
+  readonly address: string;
+  readonly purpose: string;
+  readonly movesWith: MovesWith | null;
+  readonly requesterId: number | null;
+  /** The acting seat's title when it was sent while viewing as the requester (issue #605); absent or null otherwise. */
+  readonly requesterActingTitle?: string | null;
+  /** When it was sent, an ISO timestamp. */
+  readonly sentAt: string;
+};
+
+/** An approver's answer: Decline, or Mark created with the address as confirmed in the dialog. */
+export type TeamAddressAnswer = { readonly kind: "decline" } | { readonly kind: "created"; readonly address: string };
+
+const answerSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("decline") }),
+  z.object({ kind: z.literal("created"), address: z.string().max(200) }),
+]);
+
+/** An answer as sent, in its shape; the rules are `planTeamAddressAnswer`'s. */
+export function checkTeamAddressAnswer(input: unknown): Checked<TeamAddressAnswer> {
+  const result = answerSchema.safeParse(input);
+  return result.success ? { ok: true, value: result.data } : { ok: false, error: "Choose Decline or Mark created." };
+}
+
+/** An answer as the rules allow it: what closes the request, and for Mark created the address saved under the member. */
+export type TeamAddressAnswerPlan =
+  | { readonly kind: "decline"; readonly request: OpenTeamAddressRequest }
+  | { readonly kind: "created"; readonly request: OpenTeamAddressRequest; readonly address: string };
+
+/** The refusal of an address someone already holds, from the check or from the database index. */
+export function alreadyHeld(address: string): string {
+  return `${address} is already a team address.`;
+}
+
+/**
+ * Decline or Mark created as the rules allow it, or the first reason it is
+ * refused (Owner decision, 2026-10-26): only the alias approver seats answer
+ * (`answersAliasRequests`: the team leader, the operations lead and the IT
+ * lead). Mark created checks the confirmed address again (`checkTeamAddress`),
+ * and refuses one that is a team address already or that another open
+ * request asks for, in any letter case. The database refuses a second holder
+ * too (`team_addresses_address`).
+ */
+export function planTeamAddressAnswer(input: {
+  readonly viewer: ViewerStanding;
+  readonly request: OpenTeamAddressRequest;
+  readonly answer: TeamAddressAnswer;
+  /** Team addresses as stored; only one equal to the confirmed address is read. */
+  readonly held: readonly string[];
+  /** The addresses the other open requests ask for; only one equal to the confirmed address is read. */
+  readonly openElsewhere: readonly string[];
+}): Checked<TeamAddressAnswerPlan> {
+  const { viewer, request, answer } = input;
+  if (!answersAliasRequests(viewer)) {
+    return { ok: false, error: "Only the team leader, the operations lead or the IT lead can answer team address requests." };
+  }
+  if (answer.kind === "decline") return { ok: true, value: { kind: "decline", request } };
+  const checked = checkTeamAddress(answer.address);
+  if (!checked.ok) return checked;
+  const address = checked.value;
+  const same = (other: string) => other.toLowerCase() === address;
+  if (input.held.some(same)) return { ok: false, error: alreadyHeld(address) };
+  if (input.openElsewhere.some(same)) return { ok: false, error: alreadyRequested(address) };
+  return { ok: true, value: { kind: "created", request, address } };
+}
+
+/**
+ * Who an answer tells: Mark created and Decline each tell the requester,
+ * themselves included when they asked for their own address, since no card
+ * tells the member of it as one tells them of their alias. A request whose
+ * requester's record is gone tells nobody. Each notice is about the member;
+ * `approver` names who declined.
+ */
+export function teamAddressAnswerNotices(plan: TeamAddressAnswerPlan, approver: string): AddressedNotice[] {
+  const { requesterId } = plan.request;
+  if (requesterId === null) return [];
+  if (plan.kind === "decline") {
+    return [{ recipientId: requesterId, notice: { kind: "team-address-declined", data: { address: plan.request.address, by: approver } } }];
+  }
+  return [{ recipientId: requesterId, notice: { kind: "team-address-created", data: { address: plan.address } } }];
+}
+
+/**
+ * An open request as the approver's row under Needs your attention, drawn as
+ * board 94c draws an alias request: "Marco Bianchi asks for
+ * recruitment@politorocketteam.it for Davide Russo", then what it is for,
+ * the role it moves with and when it was sent, with Decline and Mark
+ * created. Mark created's dialog starts from the address asked for.
+ */
+export function teamAddressAttention(
+  request: OpenTeamAddressRequest,
+  member: TeamPerson,
+  team: readonly TeamPerson[],
+  org: OrgChart,
+  now: Date,
+): AttentionItem {
+  const requester = attributedName(team.find((p) => p.id === request.requesterId)?.name ?? "Someone", request.requesterActingTitle ?? null);
+  const movesWith = request.movesWith === null ? null : `moves with ${movesWithLabel(request.movesWith, org)}`;
+  return {
+    kind: "team-address-request",
+    title: `${requester} asks for ${request.address} for ${member.name}`,
+    phoneTitle: `${request.address} for ${member.name}`,
+    detail: [request.purpose, movesWith, `sent ${sentWhen(request.sentAt, now)}`].filter(Boolean).join(" · "),
+    action: { answerTeamAddress: request.id, member: member.name, address: request.address, purpose: request.purpose },
+  };
+}
+
+/**
+ * The open requests as the viewer's rows, oldest first: one per request for
+ * each approver seat (`answersAliasRequests`), none for anyone else. A
+ * request for someone no longer on the team is not shown.
+ */
+export function teamAddressAttentionFor(
+  viewer: ViewerStanding,
+  open: readonly OpenTeamAddressRequest[],
+  team: readonly TeamPerson[],
+  org: OrgChart,
+  now: Date,
+): AttentionItem[] {
+  if (!answersAliasRequests(viewer)) return [];
+  return [...open]
+    .sort((a, b) => Date.parse(a.sentAt) - Date.parse(b.sentAt) || a.id - b.id)
+    .flatMap((r) => {
+      const member = team.find((p) => p.id === r.memberId);
+      return member === undefined ? [] : [teamAddressAttention(r, member, team, org, now)];
+    });
 }

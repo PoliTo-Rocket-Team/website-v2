@@ -13,7 +13,8 @@ import { CopyButton } from "./copy-button";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
 import { rowActionClass } from "./panel";
 
-const PAPER =
+/** The paper pill of boards 94c and 94d: Mark created, on the row and in its dialog. */
+export const PAPER =
   "inline-flex shrink-0 items-center justify-center rounded-full bg-prt-text font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60";
 
 /**

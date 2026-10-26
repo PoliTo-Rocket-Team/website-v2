@@ -94,7 +94,7 @@ import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { readsRecruitmentIn } from "./application-documents";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { answerAlias, cancelAliasRequest, confirmAliasSetUp, readAliasAttention, readMemberAliases, readOwnAlias, requestAlias } from "./database-alias";
-import { readMemberTeamAddresses, requestTeamAddress } from "./database-team-address";
+import { answerTeamAddress, readMemberTeamAddresses, readTeamAddressAttention, requestTeamAddress } from "./database-team-address";
 import { NO_TEAM_ADDRESSES } from "./team-address";
 import { upcomingInterviews } from "./interview-slots";
 import { BREAK_GLASS_STANDING, SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, hasOwnProfile, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type BreakGlassStanding, type ViewerStanding } from "./viewer";
@@ -937,7 +937,7 @@ async function readMemberAccess(identity: Identity): Promise<NonNullable<AccessF
  * top attention rows (board 62c, issue #262): a head of the sender's
  * department or the team leader, whatever their Overview's shape. The open
  * alias requests follow them for the three approver seats (board 94c, epic
- * #538). Whoever decides orders (`decideRightOfStanding`), whatever the
+ * #538), then the open team address requests (epic #578, issue #788). Whoever decides orders (`decideRightOfStanding`), whatever the
  * shape, then gets what waits for their decision across the team
  * (`leaderAttention`, issue #592); nobody else's Overview reads the team's
  * orders for it. The team leader alone also gets the count of acceptance
@@ -954,11 +954,12 @@ function overviewSectionsOf(identity: Identity): OverviewSections {
     scopeBoardOf(identity, teamOrders),
     readHandOverAttention(identity, now),
     readAliasAttention(identity, now),
+    readTeamAddressAttention(identity, now),
     isTeamLeader(identity) ? readAcceptanceEmailCount().then(acceptanceEmailsAttention) : null,
     teamOrders?.then((orders) => leaderAttention({ orders, now })) ?? [],
-  ]).then(([scope, handOvers, aliases, acceptance, decisions]) => ({
+  ]).then(([scope, handOvers, aliases, teamAddressRequests, acceptance, decisions]) => ({
     ...scope,
-    attention: [...handOvers, ...aliases, ...(acceptance === null ? [] : [acceptance]), ...decisions, ...scope.attention],
+    attention: [...handOvers, ...aliases, ...teamAddressRequests, ...(acceptance === null ? [] : [acceptance]), ...decisions, ...scope.attention],
   }));
   return { person: personHeaderOf(identity), board, panels: personalPanelsOf(identity, teamOrders) };
 }
@@ -1083,6 +1084,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     memberAliases: async (memberIds) => (canReach(identity, "members") ? readMemberAliases(identity, memberIds) : {}),
     memberTeamAddresses: async (memberIds) => (canReach(identity, "members") ? readMemberTeamAddresses(identity, memberIds) : NO_TEAM_ADDRESSES),
     requestTeamAddress: (input) => requestTeamAddress(identity, input),
+    answerTeamAddress: (requestId, answer) => answerTeamAddress(identity, requestId, answer),
     requestAlias: (memberId) => requestAlias(identity, memberId),
     cancelAliasRequest: (requestId) => cancelAliasRequest(identity, requestId),
     answerAlias: (requestId, answer) => answerAlias(identity, requestId, answer),

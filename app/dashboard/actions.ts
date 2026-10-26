@@ -350,6 +350,14 @@ export async function requestTeamAddress(input: unknown): Promise<WriteResult<nu
   return result;
 }
 
+/** Decline or Mark created on the Overview (epic #578, issue #788): the row leaves, and Mark created shows the address in the member drawer. */
+export async function answerTeamAddress(requestId: number, answer: unknown): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(requestId)) return refused("Unknown team address request.");
+  const result = await write("overview", (data) => data.answerTeamAddress(requestId, answer));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
 /** Cancel request in the member drawer (board 94b). */
 export async function cancelAliasRequest(requestId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(requestId)) return refused("Unknown alias request.");
