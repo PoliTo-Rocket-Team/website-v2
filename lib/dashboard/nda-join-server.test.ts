@@ -4,19 +4,21 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import * as recruitmentActions from "@/app/dashboard/recruitment-actions";
 import * as teamActions from "@/app/dashboard/team-actions";
-import { applications, members, users } from "@/db/schema";
-import { addRows, changeRows, databaseWrites, tableRows } from "./access-matrix/test-database";
+import { applications, members, roles, users } from "@/db/schema";
+import { addRows, changeRows, databaseWrites, logRowsSinceSeed, tableRows } from "./access-matrix/test-database";
 import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
 import { VIEWERS, type MatrixRow, type Unit } from "./access-matrix/matrix";
 import { signInAs } from "./access-matrix/session";
 import { membersModelOf, NO_MEMBERS_FILTER, shownMembers } from "./members-view";
+import { confirmJoin, type ReadStatus } from "./database-recruitment";
 import { openDashboard } from "./open";
 import type { DashboardData } from "./data";
 
-// Mark NDA received, then Confirm join, on the real database (issues #687
-// and #749): an accepted applicant whose signed NDA has not arrived cannot
+// Mark NDA received, then Confirm join, on the real database (issues #687,
+// #749 and #761): an accepted applicant whose signed NDA has not arrived cannot
 // join, the `nda-received` move records it for a viewer who may change the
-// application and for nobody else, and the join then goes through. It runs against the
+// application and for nobody else, the join then goes through, and a second
+// join on the same read writes nothing. It runs against the
 // migrated in-memory Postgres the access matrix uses
 // (./access-matrix/test-database.ts); the fixture's joining application has
 // its NDA in, so each test takes it back out first.
@@ -113,5 +115,33 @@ describe("Mark NDA received, then Confirm join, on the real database (issue #687
     assert.equal(rows.find((a) => a.id === 990)?.status, "accepted_by_another_team", "the old column beside it");
     assert.equal(statusKeyOf(991), "rejected_email_sent", "the decided application keeps its status");
     assert.equal(statusKeyOf(992), "new", "the withdrawn application keeps its status");
+  });
+
+  test("a second Confirm join on the status the first one read writes nothing (issue #761)", async () => {
+    await seedFixture();
+    const since = "2026-10-01 09:00:00+02";
+    // Open: at interview for OA, so the join sets it to Accepted for another position.
+    await addRows(applications, [{ id: 990, applyPositionId: IDS.position("OA"), userId: APPLICANT, appliedAt: since, status: "interview", statusKey: "interview", customAnswers: [] }]);
+    const membersBefore = (await tableRows(members)).length;
+    assert.equal((await applicant()).member, null, "the applicant is not yet a member");
+
+    // What two approvers acting at once both read: the application before either join landed.
+    const stored = await storedApplication();
+    const read: ReadStatus = { id: JOINING, status: stored.status as ReadStatus["status"], status_key: stored.statusKey as string | null };
+    const approver = { memberId: accountOf(MAY).memberId, actingAccountId: null };
+
+    assert.equal(await confirmJoin(approver, read, "2026-10-26T09:00:00Z", "new-member"), true, "the first join lands");
+    const writesAfterFirst = (await databaseWrites()).length;
+    assert.equal(await confirmJoin(approver, read, "2026-10-26T09:00:05Z", "new-member"), false, "the second finds no row in the status it read");
+    assert.equal((await databaseWrites()).length, writesAfterFirst, "the second join writes nothing");
+
+    const memberId = (await applicant()).member;
+    assert.notEqual(memberId, null, "the applicant is now a member");
+    assert.equal((await tableRows(members)).length, membersBefore + 1, "exactly one members row added");
+    const activeRoles = (await tableRows(roles)).filter((r) => r.memberId === memberId && r.divisionId === IDS.division(UNIT) && r.leavedAt === null);
+    assert.equal(activeRoles.length, 1, "exactly one active role in the division");
+    const otherChanges = (await logRowsSinceSeed()).filter((l) => l.tableName === "applications" && l.recordId === "990");
+    assert.equal(otherChanges.length, 1, "the other open application was changed once");
+    assert.equal((await tableRows(applications)).find((a) => a.id === 990)?.statusKey, "accepted_for_another_position");
   });
 });
