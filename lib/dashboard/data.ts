@@ -7,6 +7,7 @@ import type { OutreachEditor } from "@/lib/outreach-editor";
 import type { PartnerEditor } from "@/lib/partners-editor";
 import type { ProjectEditor } from "@/lib/project-content/editor";
 import type { DashboardLanding, NavCounts } from "./access";
+import type { ActivityLogPage } from "./activity-log";
 import type { AccessGrant, AccessPage } from "./division-access";
 import type { Order, OrdersPage } from "./orders";
 import type { OverviewSections, TeamSideOverview } from "./overview";
@@ -171,6 +172,13 @@ export interface DashboardData {
    * nothing else changes. Answers all the person's grants as the table shows them.
    */
   removeGrant(input: unknown): Promise<WriteResult<readonly AccessGrant[]>>;
+
+  /**
+   * Board 101 (issue #642): the Activity log, every stored change of the last
+   * 12 months newest first; null for a viewer the `activity-log` row of
+   * ./access.ts does not admit.
+   */
+  activityLog(): Promise<ActivityLogPage | null>;
 
   /**
    * Boards 61 to 61d, 61m, 67 and 67b (issue #233): every order in the team,

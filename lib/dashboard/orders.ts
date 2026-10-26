@@ -647,18 +647,6 @@ export function orderPage(orders: readonly Order[], page: number): { orders: Ord
 }
 
 /**
- * The pager's numbers (board 61: "‹ 1 2 3 … 6 ›"): the first and last page,
- * the current one with its neighbours (three at either end), and a gap where
- * numbers are left out. Up to five pages show every number.
- */
-export function pagerSlots(page: number, pages: number): (number | "gap")[] {
-  if (pages <= 5) return Array.from({ length: pages }, (_, i) => i + 1);
-  const window = page <= 2 ? [1, 2, 3] : page >= pages - 1 ? [pages - 2, pages - 1, pages] : [page - 1, page, page + 1];
-  const shown = [...new Set([1, ...window, pages])].sort((a, b) => a - b);
-  return shown.flatMap((n, i): (number | "gap")[] => (i > 0 && n - shown[i - 1] > 1 ? ["gap", n] : [n]));
-}
-
-/**
  * Euros as a person types them, to cents: "59.55", "59,55", "€ 59.55",
  * "1,234.50". Null for anything else, or for more than two decimals.
  */

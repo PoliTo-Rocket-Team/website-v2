@@ -59,6 +59,7 @@ import {
   type TeamOverview,
   type UpcomingInterview,
 } from "./overview";
+import { readActivityLog } from "./database-activity-log";
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
 import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
 import { divisionOverviewOf, membersScopeOf, overviewAreasOf, type DivisionFigures } from "./division-overview";
@@ -1055,6 +1056,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
       }),
     ...databaseRecruitmentPages(identity),
     ...databaseDivisionPages(identity),
+    activityLog: async () => (canReach(identity, "activity-log") ? readActivityLog(new Date()) : null),
     partners: partnerEditor(identity, databasePartnerStore, blobLogoFiles),
     faqs: faqEditor(identity, databaseFaqStore, () => new Date()),
     teamPage: teamPageEditor(identity, databaseTeamPageStore, databaseTeamRoles, teamRecord, blobTeamPagePhotos()),

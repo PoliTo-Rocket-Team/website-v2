@@ -125,6 +125,7 @@ const READS: readonly Read[] = [
   { path: "applicationDocument", args: ALL.flatMap((u) => [[IDS.application(u), "cv"], [IDS.application(u), "motivation-letter"]]) },
   { path: "divisionAccess" },
   { path: "orders" },
+  { path: "activityLog" },
   { path: "partners.list" },
   { path: "faqs.list" },
   { path: "teamPage.open" },
@@ -2951,5 +2952,40 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
     assert.deepEqual(head.board, leader.board);
     assert.ok((leader.board?.length ?? 0) >= 2);
     assert.deepEqual([leader.editable, head.editable], [true, false]);
+  });
+});
+
+// The Activity log (board 101, issue #642) ----------------------------------------
+
+describe("the Activity log reads the stored changes for the viewers its access row admits, and no one else", () => {
+  const itLead = accountOf("IT lead");
+  const teamLeader = accountOf("team leader");
+
+  async function openAs(userId: string): Promise<DashboardData> {
+    signInAs(userId);
+    const opening = await openDashboard();
+    assert.equal(opening.kind, "open", "the dashboard opens");
+    return (opening as { data: DashboardData }).data;
+  }
+
+  test("a write made while viewing as someone reads under both people, beside a View as start and its timeout", async () => {
+    await seedFixture();
+    resetFiles();
+    viewAs(teamLeader.userId, itLead.userId);
+    const answer = await actions.decideOrder(IDS.order(DM), { kind: "approve" });
+    assert.ok(!isRefusal(answer), JSON.stringify(answer));
+    // A start with no stop whose session row is gone, three hours ago: it has timed out since.
+    await recordViewAs({ event: "start", sessionId: "gone-session", personId: teamLeader.userId, actingAccountId: itLead.userId });
+    await changeRows(logs, { operation: "VIEW_AS_START" }, { changedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() });
+
+    const log = await (await openAs(itLead.userId)).activityLog();
+    assert.ok(log !== null, "the IT lead reads it");
+    const approved = log.entries.find((e) => e.change.kind === "write" && e.change.area === "orders");
+    assert.equal(approved?.who.kind === "as" && approved.who.actingId, itLead.userId, JSON.stringify(approved));
+    assert.ok(approved?.change.kind === "write" && approved.change.sentence.startsWith("Approved order"), JSON.stringify(approved));
+    const events = log.entries.flatMap((e) => (e.change.kind === "view-as" ? [e.change.event] : []));
+    assert.deepEqual(events.sort(), ["start", "timeout"]);
+
+    assert.equal(await (await openAs(teamLeader.userId)).activityLog(), null, "the team leader does not");
   });
 });
