@@ -5,6 +5,7 @@ import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { MembersView } from "@/components/dashboard/members";
 import { canReach } from "@/lib/dashboard/access";
 import { mayExportMembers } from "@/lib/dashboard/members-export";
+import { NO_TEAM_ADDRESSES } from "@/lib/dashboard/team-address";
 import { memberIdsOf, membersModelOf } from "@/lib/dashboard/members-view";
 import { openDashboard } from "@/lib/dashboard/open";
 
@@ -37,10 +38,10 @@ async function LiveMembers({ searchParams }: { searchParams: Search }) {
   const divisionId = Number(typeof division === "string" ? division : undefined);
   const directory = await data.members(Number.isSafeInteger(divisionId) && divisionId > 0 ? divisionId : null);
   // Each member's email alias on their PRT email row: the address, or the request state while it is empty (epic #538, boards 94 to 94e; issue #563).
-  // Beside it, the shared team addresses each one holds (epic #578, board 102, issue #786).
+  // Beside it, the shared team addresses each one holds and Request team address (epic #578, boards 102 and 102b, issues #786 and #787).
   const model = membersModelOf(directory);
   const memberIds = model === null ? [] : memberIdsOf(model);
-  const [aliases, teamAddresses] = model === null ? [{}, {}] : await Promise.all([data.memberAliases(memberIds), data.memberTeamAddresses(memberIds)]);
+  const [aliases, teamAddresses] = model === null ? [{}, NO_TEAM_ADDRESSES] : await Promise.all([data.memberAliases(memberIds), data.memberTeamAddresses(memberIds)]);
   return (
     <MembersView
       directory={directory}

@@ -385,6 +385,8 @@ for (const [shape, lastRecordedTag] of [
         "members_nda_confirmed_by_acting_account_users_id_fk",
         "orders_reviewed_by_acting_account_users_id_fk",
         "scopes_given_by_acting_account_users_id_fk",
+        "team_address_requests_answered_by_acting_account_users_id_fk",
+        "team_address_requests_requested_by_acting_account_users_id_fk",
         "team_joins_added_by_acting_account_users_id_fk",
       ],
       "each acting-account foreign key exists once",
@@ -510,4 +512,39 @@ test("after 0066 the database refuses a second holder of an address in any case,
     `('e@politorocketteam.it', 'E', 1, null, null, null, 1)`,
   ];
   for (const values of disagree) await assert.rejects(add(values), Error, values);
+});
+
+// Team address requests (issue #787) add one type and one table with its
+// indexes, checks and audit trigger. The table keeps one open request per
+// address in any letter case, so a race between two requests is refused by
+// the database too; an answered request frees the address.
+const TEAM_ADDRESS_REQUEST_TAG = "0067_team_address_requests";
+
+test("0067_team_address_requests.sql drops, renames and rewrites nothing, and applies again", async () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${TEAM_ADDRESS_REQUEST_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  const { apply } = await databaseBefore(TEAM_ADDRESS_REQUEST_TAG);
+  await apply();
+  await apply();
+});
+
+test("after 0067 the database refuses a second open request for an address in any case, and takes one once the first is answered", async () => {
+  const { db, apply } = await databaseBefore(TEAM_ADDRESS_REQUEST_TAG);
+  await apply();
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id) values (1), (2);
+    set session_replication_role = origin;
+  `);
+  const ask = (address: string) =>
+    db.exec(`insert into team_address_requests (member_id, address, purpose, moves_with, requested_by) values (1, '${address}', 'Events', 'team_leader', 2)`);
+  await ask("events@politorocketteam.it");
+  await assert.rejects(ask("Events@PoliToRocketTeam.it"), Error, "the same address in another case while one is open");
+  await db.exec(`update team_address_requests set outcome = 'declined', answered_at = now()`);
+  await ask("events@politorocketteam.it");
+  await assert.rejects(
+    db.exec(`insert into team_address_requests (member_id, address, purpose, moves_with) values (1, 'it@politorocketteam.it', 'IT', 'division_lead')`),
+    Error,
+    "a tie whose kind and reference disagree",
+  );
 });

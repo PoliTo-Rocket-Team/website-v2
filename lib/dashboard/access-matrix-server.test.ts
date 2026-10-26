@@ -672,6 +672,13 @@ const ACTION_CASES: readonly ActionCase[] = [
     control: by("team leader"),
   },
   { action: "actions.answerAlias", run: () => actions.answerAlias(IDS.aliasRequest(DM), { kind: "decline" }), may: (r) => r.expect.aliases.answers, control: by("IT lead") },
+  // Team addresses (epic #578, issue #787): who asks follows the alias rule.
+  {
+    action: "actions.requestTeamAddress",
+    run: () => actions.requestTeamAddress({ memberId: IDS.person(DM), address: "design@politorocketteam.it", purpose: "Design", movesWith: null }),
+    may: (r) => r.expect.aliases.requests.includes(DM),
+    control: by("team leader"),
+  },
   // "I've set it up" (issue #542): DM's lead has an alias and stores it; no matrix viewer has one of their own,
   // so each is refused, and nobody's press reaches the lead's record.
   { action: "actions.confirmAliasSetUp", run: async () => (await giveAlias(IDS.lead(DM)), actions.confirmAliasSetUp()), may: nobody, control: by("lead-dm") },

@@ -667,6 +667,51 @@ export const teamAddresses = pgTable("team_addresses", {
   ),
 }));
 
+/** How a team address request closed (lib/dashboard/team-address.ts); null while it is open. */
+export const teamAddressRequestOutcomeEnum = pgEnum("team_address_request_outcome", ["created", "declined", "cancelled"]);
+
+/**
+ * A request for a shared team address for one member (epic #578, issue
+ * #787, drizzle/0067), shaped like `alias_requests`: the address asked for,
+ * what it is for and the role it would move with, with the same tie columns
+ * and check as `team_addresses`. One address has at most one open request in
+ * any letter case (`team_address_requests_one_open`);
+ * lib/dashboard/team-address.ts owns the rules.
+ */
+export const teamAddressRequests = pgTable("team_address_requests", {
+  id: serial("id").primaryKey(),
+  memberId: integer("member_id")
+    .references(() => members.memberId, { onDelete: "cascade" })
+    .notNull(),
+  address: text("address").notNull(),
+  purpose: text("purpose").notNull(),
+  movesWith: teamAddressTieEnum("moves_with"),
+  movesWithSeat: fullAccessSeatEnum("moves_with_seat"),
+  movesWithDeptId: integer("moves_with_dept_id").references(() => departments.id),
+  movesWithDivisionId: integer("moves_with_division_id").references(() => divisions.id),
+  requestedBy: integer("requested_by").references(() => members.memberId, { onDelete: "set null" }),
+  requestedByActingAccount: actingAccount("requested_by_acting_account"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  outcome: teamAddressRequestOutcomeEnum("outcome"),
+  answeredBy: integer("answered_by").references(() => members.memberId, { onDelete: "set null" }),
+  answeredByActingAccount: actingAccount("answered_by_acting_account"),
+  answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }),
+}, (table) => ({
+  oneOpen: uniqueIndex("team_address_requests_one_open").on(sql`lower(${table.address})`).where(sql`${table.outcome} is null`),
+  memberIdx: index("team_address_requests_member_idx").on(table.memberId),
+  tie: check(
+    "team_address_requests_tie",
+    sql`(${table.movesWith} is null and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'team_leader' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'full_access_seat' and ${table.movesWithSeat} is not null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'department_head' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is not null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'division_lead' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is not null)`,
+  ),
+  answered: check("team_address_requests_answered", sql`(${table.outcome} is null) = (${table.answeredAt} is null)`),
+}));
+
 // The Alumni page (issue #257). The page is built from the roles; an entry
 // holds only how one person shows on it, so a fix never writes a role, a
 // division or access. A member's entry is keyed by their member row and made

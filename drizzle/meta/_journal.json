@@ -456,6 +456,13 @@
       "when": 1794676800000,
       "tag": "0066_team_addresses",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1794763200000,
+      "tag": "0067_team_address_requests",
+      "breakpoints": true
     }
   ]
 }

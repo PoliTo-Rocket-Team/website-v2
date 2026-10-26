@@ -94,7 +94,8 @@ import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { readsRecruitmentIn } from "./application-documents";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { answerAlias, cancelAliasRequest, confirmAliasSetUp, readAliasAttention, readMemberAliases, readOwnAlias, requestAlias } from "./database-alias";
-import { readMemberTeamAddresses } from "./database-team-address";
+import { readMemberTeamAddresses, requestTeamAddress } from "./database-team-address";
+import { NO_TEAM_ADDRESSES } from "./team-address";
 import { upcomingInterviews } from "./interview-slots";
 import { BREAK_GLASS_STANDING, SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, hasOwnProfile, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type BreakGlassStanding, type ViewerStanding } from "./viewer";
 import { written } from "./write";
@@ -1080,7 +1081,8 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     sendHandOver: (input) => sendHandOver(identity, input),
     answerHandOver: (requestId, answer) => answerHandOver(identity, requestId, answer),
     memberAliases: async (memberIds) => (canReach(identity, "members") ? readMemberAliases(identity, memberIds) : {}),
-    memberTeamAddresses: async (memberIds) => (canReach(identity, "members") ? readMemberTeamAddresses(memberIds) : {}),
+    memberTeamAddresses: async (memberIds) => (canReach(identity, "members") ? readMemberTeamAddresses(identity, memberIds) : NO_TEAM_ADDRESSES),
+    requestTeamAddress: (input) => requestTeamAddress(identity, input),
     requestAlias: (memberId) => requestAlias(identity, memberId),
     cancelAliasRequest: (requestId) => cancelAliasRequest(identity, requestId),
     answerAlias: (requestId, answer) => answerAlias(identity, requestId, answer),

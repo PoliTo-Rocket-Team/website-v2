@@ -326,14 +326,24 @@ export interface DashboardData {
    */
   memberAliases(memberIds: readonly number[]): Promise<MemberAliases>;
   /**
-   * Epic #578 (board 102, issue #786): the shared team addresses each of
-   * `memberIds` on the team holds, as the member drawer's Team addresses row
-   * lists them, sorted by address with the role each moves with
-   * (`memberTeamAddressesFor`, ./team-address.ts). It reaches every viewer
-   * of the PRT email row; a member holding none, or not on the team, is
-   * left out.
+   * Epic #578 (boards 102 and 102b, issues #786 and #787): the shared team
+   * addresses each of `memberIds` on the team holds, as the member drawer's
+   * Team addresses row lists them, sorted by address with the role each
+   * moves with, and whether the viewer may request one for them, with the
+   * roles the request dialog offers (`memberTeamAddressesFor`,
+   * ./team-address.ts). It reaches every viewer of the PRT email row; a
+   * member holding none whom the viewer may not ask for, or not on the
+   * team, is left out.
    */
   memberTeamAddresses(memberIds: readonly number[]): Promise<MemberTeamAddresses>;
+  /**
+   * Request team address (board 102b, issue #787): checked by
+   * `checkTeamAddressRequest` and `planTeamAddressRequest`; refused for
+   * anyone but a full-access holder (any member, themselves included) or a
+   * lead or head who manages the member, and while the address is a team
+   * address or has an open request.
+   */
+  requestTeamAddress(input: unknown): Promise<WriteResult<null>>;
   /**
    * Request alias (board 94): checked by `planAliasRequest`; refused for
    * anyone but a full-access holder (any member, themselves included) or a
