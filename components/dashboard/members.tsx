@@ -1,6 +1,7 @@
 "use client";
 
 import type { MemberAliases } from "@/lib/dashboard/alias-request";
+import type { MemberTeamAddresses } from "@/lib/dashboard/team-address";
 import type { MemberDirectory } from "@/lib/dashboard/team";
 import { membersModelOf } from "@/lib/dashboard/members-view";
 import { ScopedMembersView } from "./team-members";
@@ -15,11 +16,13 @@ import { PageHeader } from "./page-header";
 export function MembersView({
   directory,
   aliases,
+  teamAddresses,
   editable,
   exportable,
 }: {
   directory: MemberDirectory;
   aliases: MemberAliases;
+  teamAddresses: MemberTeamAddresses;
   editable: boolean;
   exportable: boolean;
 }) {
@@ -27,6 +30,6 @@ export function MembersView({
   return page === null ? (
     <PageHeader title="Members" intro="" phone="bar" />
   ) : (
-    <ScopedMembersView page={page} aliases={aliases} editable={editable} exportable={exportable} />
+    <ScopedMembersView page={page} aliases={aliases} teamAddresses={teamAddresses} editable={editable} exportable={exportable} />
   );
 }

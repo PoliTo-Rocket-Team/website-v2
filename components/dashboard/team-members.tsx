@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { FileSpreadsheet, List, Lock, Pencil, Plus, Table2, UserMinus, UserX } from "lucide-react";
 import type { MemberAliases } from "@/lib/dashboard/alias-request";
+import type { MemberTeamAddresses } from "@/lib/dashboard/team-address";
 import { memberDetailText } from "@/lib/dashboard/details";
 import type { DivisionHeader, WaitingPerson } from "@/lib/dashboard/division-members";
 import {
@@ -76,11 +77,13 @@ type Waiting = ShownMembers["waiting"][number];
 export function ScopedMembersView({
   page,
   aliases,
+  teamAddresses,
   editable: writes,
   exportable,
 }: {
   page: MembersModel;
   aliases: MemberAliases;
+  teamAddresses: MemberTeamAddresses;
   editable: boolean;
   exportable: boolean;
 }) {
@@ -249,6 +252,7 @@ export function ScopedMembersView({
       <PersonDrawer
         person={open}
         alias={open === null ? null : (aliases[open.id] ?? null)}
+        teamAddresses={open === null ? [] : (teamAddresses[open.id] ?? [])}
         editable={writes && page.panelEdits && open?.actions != null}
         onClose={() => setOpenId(null)}
         onEdit={editPerson}

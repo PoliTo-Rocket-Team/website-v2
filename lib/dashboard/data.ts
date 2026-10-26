@@ -28,6 +28,7 @@ import type { AlumnusKey } from "@/lib/about/alumni-record";
 import type { AlumniDirectory } from "./alumni";
 import type { HandOverAnswer } from "./hand-over-request";
 import type { MemberAliases } from "./alias-request";
+import type { MemberTeamAddresses } from "./team-address";
 import type { OwnAlias } from "./alias-setup";
 import type { Departure, MemberDirectory, MemberEdit, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
@@ -324,6 +325,15 @@ export interface DashboardData {
    * ./alias-request.ts). Someone not on the team is left out.
    */
   memberAliases(memberIds: readonly number[]): Promise<MemberAliases>;
+  /**
+   * Epic #578 (board 102, issue #786): the shared team addresses each of
+   * `memberIds` on the team holds, as the member drawer's Team addresses row
+   * lists them, sorted by address with the role each moves with
+   * (`memberTeamAddressesFor`, ./team-address.ts). It reaches every viewer
+   * of the PRT email row; a member holding none, or not on the team, is
+   * left out.
+   */
+  memberTeamAddresses(memberIds: readonly number[]): Promise<MemberTeamAddresses>;
   /**
    * Request alias (board 94): checked by `planAliasRequest`; refused for
    * anyone but a full-access holder (any member, themselves included) or a

@@ -839,6 +839,26 @@ These rules come from the Owner decisions of 2026-10-22 on epic #538 and issue #
 - The alias is created by hand in Google Workspace. The site creates nothing there and sends no
   email.
 
+### Team addresses
+
+These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 and 102b,
+`lib/dashboard/team-address.ts`).
+
+- A team address is a shared address on the team domain, such as a recruitment or logistics
+  address. It is held by one member, says what it is for, and may move with a role: the team
+  leader, a full-access seat, a department's head or a division's lead (grill #785). It is
+  separate from the PRT email and the email alias, whose rules do not change.
+- One address has one holder, in any letter case (`team_addresses_address`). A tie stores
+  exactly the reference its kind needs (`team_addresses_tie`).
+- The member side view shows a "Team addresses" row in the Contact section, directly under the
+  PRT email row (board 102). Each address the member holds is on its own line with a copy button,
+  sorted by address. Under it are what it is for and, when tied, "moves with" the role as the org
+  chart names it, for example "Logistics Lead".
+- The row shows to the same viewers who see the PRT email row: every viewer who reaches the
+  Members page and opens the member. It is hidden when the member holds no team address.
+- Nothing in the dashboard writes team addresses yet. Requesting one, answering the request and
+  moving an address on a hand-over come in later slices of epic #578.
+
 ### Access
 
 These rules come from #213 (boards 60, 60b, 60c and 60m).

@@ -7,6 +7,7 @@ import { DialogClose } from "@/components/ui/dialog";
 import { addMember, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
 import { cancelAliasRequest, requestAlias } from "@/app/dashboard/actions";
 import type { MemberAlias } from "@/lib/dashboard/alias-request";
+import type { TeamAddressLine } from "@/lib/dashboard/team-address";
 import { DEGREE_PROGRAMMES, GENDERS, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
 import {
   levelLabel,
@@ -177,6 +178,7 @@ function PlaceRow({ place }: { place: PersonPlace }) {
 export function PersonDrawer<P extends PanelPerson>({
   person,
   alias,
+  teamAddresses,
   editable,
   onClose,
   onEdit,
@@ -184,6 +186,8 @@ export function PersonDrawer<P extends PanelPerson>({
   person: P | null;
   /** Their email alias, their PRT email, as the viewer sees it (epic #538, issue #563); null when it was not read. */
   alias: MemberAlias | null;
+  /** The shared team addresses they hold, sorted by address (epic #578, board 102); empty when they hold none. */
+  teamAddresses: readonly TeamAddressLine[];
   editable: boolean;
   onClose: () => void;
   onEdit: (person: P) => void;
@@ -227,6 +231,7 @@ export function PersonDrawer<P extends PanelPerson>({
         <Section title="Contact">
           <dl className="flex flex-col gap-1.5">
             <PrtEmailFact memberId={p.id} name={p.name} address={memberDetailText(d, "prtEmail")} alias={alias} />
+            {teamAddresses.length > 0 && <TeamAddressesFact lines={teamAddresses} />}
             <Fact label="Personal email" value={p.signInEmail} copy="Email" wrap stack />
             <Fact label="Phone" value={memberDetailText(d, "phone")} hidden />
             <Fact label="Discord" value={memberDetailText(d, "discord")} copy="Discord" />
@@ -328,6 +333,35 @@ function PrtEmailFact({ memberId, name, address, alias }: { memberId: number; na
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * The shared team addresses the member holds (epic #578, issue #786, board
+ * 102), under the PRT email row: each address on its own line with a copy
+ * button, and under it what it is for and the role it moves with, if any.
+ * The drawer leaves the row out while the member holds none.
+ */
+function TeamAddressesFact({ lines }: { lines: readonly TeamAddressLine[] }) {
+  return (
+    <div className="flex flex-wrap items-start gap-x-3 md:flex-nowrap">
+      <dt className={`${factLabel(true)} md:py-1`}>Team addresses</dt>
+      <dd className="min-w-0 flex-1">
+        <ul className="flex flex-col gap-1">
+          {lines.map((line) => (
+            <li key={line.address} className="flex items-start gap-x-3">
+              <span className="min-w-0 flex-1 py-1">
+                <span className="block break-words text-[14px] text-prt-text">{line.address}</span>
+                <span className="block break-words text-[12px] text-prt-muted">
+                  {line.movesWith === null ? line.purpose : `${line.purpose} · moves with ${line.movesWith}`}
+                </span>
+              </span>
+              <CopyButton value={line.address} what="Team address" />
+            </li>
+          ))}
+        </ul>
+      </dd>
     </div>
   );
 }

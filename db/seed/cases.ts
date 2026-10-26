@@ -32,6 +32,7 @@ import {
   type recruitmentSetting,
   type roles,
   type scopes,
+  type teamAddresses,
   type teamPageAdvisors,
   type teamPageAdvisorVersions,
   type teamJoins,
@@ -77,7 +78,8 @@ import {
   type PlainSeat,
   type ViewerStanding,
 } from "@/lib/dashboard/viewer";
-import { ALIAS_NOTICE_ROWS, ALIAS_REQUEST_ROWS, AUTOMATIC_REQUEST, CREATED_ALIAS, DECLINED_REQUEST, OPEN_REQUEST } from "./aliases";
+import { memberTeamAddressesFor, movesWithOf } from "@/lib/dashboard/team-address";
+import { ALIAS_NOTICE_ROWS, ALIAS_REQUEST_ROWS, AUTOMATIC_REQUEST, CREATED_ALIAS, DECLINED_REQUEST, OPEN_REQUEST, TEAM_ADDRESS_ROWS } from "./aliases";
 import { ALUMNI_ENTRY_ROWS, ALUMNI_IMPORTED_ROLE_ROWS } from "./alumni";
 import { SCOPE_ROWS } from "./access";
 import { FAQ_ROWS, FAQ_VERSION_ROWS } from "./faq";
@@ -131,6 +133,7 @@ export type SeedData = {
   readonly handOvers: readonly InferInsertModel<typeof handOverRequests>[];
   readonly aliasRequests: readonly InferInsertModel<typeof aliasRequests>[];
   readonly aliasNotices: readonly InferInsertModel<typeof dashboardNotices>[];
+  readonly teamAddresses: readonly InferInsertModel<typeof teamAddresses>[];
   readonly outreachTags: readonly InferInsertModel<typeof outreachTags>[];
   readonly outreachPosts: readonly InferInsertModel<typeof outreachPosts>[];
   readonly outreachPostVersions: readonly InferInsertModel<typeof outreachPostVersions>[];
@@ -167,6 +170,7 @@ export const SEED_DATA: SeedData = {
   handOvers: HAND_OVER_ROWS.rows,
   aliasRequests: ALIAS_REQUEST_ROWS.rows,
   aliasNotices: ALIAS_NOTICE_ROWS.rows,
+  teamAddresses: TEAM_ADDRESS_ROWS.rows,
   outreachTags: OUTREACH_TAG_ROWS.rows,
   outreachPosts: OUTREACH_POST_ROWS.rows,
   outreachPostVersions: OUTREACH_POST_VERSION_ROWS.rows,
@@ -534,6 +538,22 @@ export function drawerAliasOf(data: SeedData, viewer: number | null, memberId: n
     open: openAliasRequestsOf(data),
     now: new Date(),
   })[memberId];
+}
+
+/** The Team addresses row of `memberId`'s side view (board 102), as `readMemberTeamAddresses` reads it. */
+export function drawerTeamAddressesOf(data: SeedData, memberId: number) {
+  const held = data.teamAddresses.map((r) => ({
+    address: r.address,
+    purpose: r.purpose,
+    holderId: r.holderId,
+    movesWith: movesWithOf({
+      moves_with: r.movesWith ?? null,
+      moves_with_seat: r.movesWithSeat ?? null,
+      moves_with_dept_id: r.movesWithDeptId ?? null,
+      moves_with_division_id: r.movesWithDivisionId ?? null,
+    }),
+  }));
+  return memberTeamAddressesFor({ memberIds: [memberId], team: teamOf(data), org: orgOf(data), held })[memberId] ?? [];
 }
 
 /** The rows each approver reads under "Needs your attention" for the open requests. */
@@ -1452,6 +1472,17 @@ export const SEED_CASES: readonly SeedCase[] = [
         drawer.requestable &&
         aliasNoticeRowsOf(data, DECLINED_REQUEST.by).some((r) => r.title.includes("declined the email alias for"))
       );
+    },
+  },
+  {
+    area: "aliases",
+    case: "Two team addresses the member plain seat holds, one that moves with the Logistics lead and one tied to no role, so their side view shows the Team addresses row",
+    data: "invented",
+    rows: "`team_addresses`, member 140, `logistics@prt.example.com` (division 15) and `recruitment@prt.example.com`",
+    exercisedBy: issue(786),
+    holds: (data) => {
+      const lines = drawerTeamAddressesOf(data, memberOfUser(data, PLAIN_SEAT_PEOPLE.member) ?? -1);
+      return lines.length === 2 && lines[0].movesWith === "Logistics Lead" && lines[1].movesWith === null;
     },
   },
   {

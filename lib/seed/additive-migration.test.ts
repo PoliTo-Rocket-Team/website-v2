@@ -469,3 +469,45 @@ test("after 0065 the table takes an added status only under a built-in parent, a
   await db.exec(`update applications set status_key = 'interview' where id = 1; delete from application_statuses where key = 'second_interview'`);
   assert.equal((await db.query(`select 1 from application_statuses where key = 'second_interview'`)).rows.length, 0, "an unused added status is deleted");
 });
+
+// Shared team addresses (issue #786) add one type and one table with its
+// indexes, check and audit trigger. The table keeps one holder per address
+// in any letter case, and each tie holds exactly the reference its kind needs
+// (lib/dashboard/team-address.ts).
+const TEAM_ADDRESS_TAG = "0066_team_addresses";
+
+test("0066_team_addresses.sql drops, renames and rewrites nothing, and applies again", async () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${TEAM_ADDRESS_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  const { apply } = await databaseBefore(TEAM_ADDRESS_TAG);
+  await apply();
+  await apply();
+});
+
+test("after 0066 the database refuses a second holder of an address in any case, and a tie whose kind and reference disagree", async () => {
+  const { db, apply } = await databaseBefore(TEAM_ADDRESS_TAG);
+  await apply();
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id) values (1), (2);
+    insert into departments (id, name) values (1, 'Operations');
+    insert into divisions (id, dept_id, name) values (1, 1, 'Logistics');
+    set session_replication_role = origin;
+  `);
+  const add = (values: string) =>
+    db.exec(`insert into team_addresses (address, purpose, holder_id, moves_with, moves_with_seat, moves_with_dept_id, moves_with_division_id) values ${values}`);
+  await add(`('logistics@politorocketteam.it', 'Logistics', 1, 'division_lead', null, null, 1)`);
+  await add(`('recruitment@politorocketteam.it', 'Recruitment', 1, null, null, null, null)`);
+  await add(`('it@politorocketteam.it', 'IT', 2, 'full_access_seat', 'it_lead', null, null)`);
+  await add(`('team@politorocketteam.it', 'Team', 2, 'team_leader', null, null, null)`);
+  await add(`('ops@politorocketteam.it', 'Operations', 2, 'department_head', null, 1, null)`);
+  await assert.rejects(add(`('Logistics@PoliToRocketTeam.it', 'Logistics', 2, null, null, null, null)`), Error, "the same address in another case");
+  const disagree = [
+    `('a@politorocketteam.it', 'A', 1, 'division_lead', null, 1, null)`,
+    `('b@politorocketteam.it', 'B', 1, 'department_head', null, null, 1)`,
+    `('c@politorocketteam.it', 'C', 1, 'full_access_seat', null, null, null)`,
+    `('d@politorocketteam.it', 'D', 1, 'team_leader', 'it_lead', null, null)`,
+    `('e@politorocketteam.it', 'E', 1, null, null, null, 1)`,
+  ];
+  for (const values of disagree) await assert.rejects(add(values), Error, values);
+});

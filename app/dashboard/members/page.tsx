@@ -37,12 +37,15 @@ async function LiveMembers({ searchParams }: { searchParams: Search }) {
   const divisionId = Number(typeof division === "string" ? division : undefined);
   const directory = await data.members(Number.isSafeInteger(divisionId) && divisionId > 0 ? divisionId : null);
   // Each member's email alias on their PRT email row: the address, or the request state while it is empty (epic #538, boards 94 to 94e; issue #563).
+  // Beside it, the shared team addresses each one holds (epic #578, board 102, issue #786).
   const model = membersModelOf(directory);
-  const aliases = model === null ? {} : await data.memberAliases(memberIdsOf(model));
+  const memberIds = model === null ? [] : memberIdsOf(model);
+  const [aliases, teamAddresses] = model === null ? [{}, {}] : await Promise.all([data.memberAliases(memberIds), data.memberTeamAddresses(memberIds)]);
   return (
     <MembersView
       directory={directory}
       aliases={aliases}
+      teamAddresses={teamAddresses}
       editable={data.teamWrites !== null}
       exportable={mayExportMembers(data.viewer)}
     />

@@ -618,6 +618,55 @@ export const aliasRequests = pgTable("alias_requests", {
   answered: check("alias_requests_answered", sql`(${table.outcome} is null) = (${table.answeredAt} is null)`),
 }));
 
+/**
+ * The role a team address moves with (epic #578, grill #785 R1.1): the team
+ * leader, a full-access seat by its `roles.full_access` flag, a department's
+ * head or a division's lead. lib/dashboard/team-address.ts owns it.
+ */
+export const teamAddressTieEnum = pgEnum("team_address_tie", [
+  "team_leader",
+  "full_access_seat",
+  "department_head",
+  "division_lead",
+]);
+
+/**
+ * A shared address on the team domain and the one member who holds it (epic
+ * #578, issue #786, drizzle/0066): what it is for, and the role it moves with
+ * on a hand-over, if any. One holder per address in any letter case
+ * (`team_addresses_address`); the tie's reference matches its kind
+ * (`team_addresses_tie`). lib/dashboard/team-address.ts owns the rules.
+ */
+export const teamAddresses = pgTable("team_addresses", {
+  id: serial("id").primaryKey(),
+  address: text("address").notNull(),
+  purpose: text("purpose").notNull(),
+  holderId: integer("holder_id")
+    .references(() => members.memberId)
+    .notNull(),
+  movesWith: teamAddressTieEnum("moves_with"),
+  movesWithSeat: fullAccessSeatEnum("moves_with_seat"),
+  movesWithDeptId: integer("moves_with_dept_id").references(() => departments.id),
+  movesWithDivisionId: integer("moves_with_division_id").references(() => divisions.id),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+}, (table) => ({
+  oneHolder: uniqueIndex("team_addresses_address").on(sql`lower(${table.address})`),
+  holderIdx: index("team_addresses_holder_idx").on(table.holderId),
+  tie: check(
+    "team_addresses_tie",
+    sql`(${table.movesWith} is null and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'team_leader' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'full_access_seat' and ${table.movesWithSeat} is not null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'department_head' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is not null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'division_lead' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is not null)`,
+  ),
+}));
+
 // The Alumni page (issue #257). The page is built from the roles; an entry
 // holds only how one person shows on it, so a fix never writes a role, a
 // division or access. A member's entry is keyed by their member row and made
