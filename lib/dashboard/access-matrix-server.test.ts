@@ -116,6 +116,7 @@ const READS: readonly Read[] = [
   { path: "members", args: [[null], ...ALL.map((u) => [IDS.division(u)])] },
   { path: "findForAdd", args: ALL.map((u) => [IDS.division(u), "person"]) },
   { path: "findPeople", args: [["person"]] },
+  { path: "findMoveTargets", args: ALL.map((u) => [IDS.person(u)]) },
   { path: "alumni" },
   { path: "teamTree" },
   { path: "teamStructure" },
@@ -514,6 +515,22 @@ const ACTION_CASES: readonly ActionCase[] = [
   { action: "team-actions.cancelAdd", run: () => teamActions.cancelAdd(IDS.join(DM)), may: changesDM("members"), control: by("team leader") },
   // Someone in DM and Testing: a division can let go of someone who stays on the team elsewhere.
   { action: "team-actions.removeFromDivision", run: () => teamActions.removeFromDivision(EXTRA.mover, IDS.division(DM)), may: changesDM("members"), control: by("team leader") },
+  // Moving DM's member to Testing (issue #647): out of DM and into Structures, the rules of removing and adding.
+  { action: "team-actions.findMoveTargets", run: () => teamActions.findMoveTargets(IDS.person(DM)), may: changesDM("members"), control: by("team leader", "answer") },
+  {
+    action: "team-actions.moveMember",
+    run: () =>
+      teamActions.moveMember({
+        personId: IDS.person(DM),
+        from: { kind: "division", divisionId: IDS.division(DM) },
+        to: { kind: "division", divisionId: EXTRA.testing, as: "member" },
+        title: "",
+        replaced: null,
+        successor: null,
+      }),
+    may: changesDM("members"),
+    control: by("team leader"),
+  },
   {
     action: "team-actions.saveMemberDetails",
     run: () => teamActions.saveMemberDetails({ kind: "person", id: IDS.person(DM) }, IDS.division(DM), { title: "Member", details: MEMBER_DETAILS }),

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { Lock, Pencil, RefreshCw, Undo2, UserMinus, UserX, X } from "lucide-react";
+import { ArrowRightLeft, Lock, Pencil, RefreshCw, Undo2, UserMinus, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { addMember, createDivision, findPeople, saveDivision } from "@/app/dashboard/team-actions";
 import {
@@ -25,6 +25,8 @@ import { ConfirmNdaButton, MailAvatar, MemberDialogs, MenuItem, NoEmailNote, Row
 import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, inputClass } from "./field";
 import { HandOverChoice } from "./hand-over-choice";
+import { MoveDialog } from "./member-move";
+import type { MovablePlace } from "@/lib/dashboard/member-move";
 import { PersonCombobox } from "./person-combobox";
 import { SearchField } from "./search-field";
 
@@ -859,7 +861,11 @@ function WaitingItem({
   );
 }
 
-/** A member's row and ⋯ menu (board 68b5): Remove from the division, and Leaves the team, each locked with a reason when it is not theirs. */
+/**
+ * A member's row and ⋯ menu (board 68b5): Move to… (issue #647), the move
+ * Edit details makes, through the same control; Remove from the division,
+ * and Leaves the team, each locked with a reason when it is not theirs.
+ */
 function MemberItem({
   person,
   editable,
@@ -874,7 +880,9 @@ function MemberItem({
   onAsk: (asking: Asking) => void;
 }) {
   const { removal, leave } = person;
+  const [moving, setMoving] = useState(false);
   const others = person.divisions.filter((d) => d.divisionId !== divisionId).map((d) => d.name);
+  const place = person.position?.moves.find((m): m is Extract<MovablePlace, { kind: "division" }> => m.kind === "division" && m.divisionId === divisionId) ?? null;
   return (
     <li className="flex items-center gap-3 px-3.5 py-2.5">
       <Avatar size="md" person={person} />
@@ -882,8 +890,23 @@ function MemberItem({
         <span className="shrink-0 text-[14px] text-prt-text">{person.name}</span>
         <span className="truncate text-[12px] text-prt-muted">{memberLine(person)}</span>
       </span>
+      {editable && !person.self && place !== null && (
+        <MoveDialog
+          open={moving}
+          onOpenChange={setMoving}
+          personId={person.id}
+          name={person.name}
+          place={place}
+          taken={person.divisions.map((d) => d.divisionId).filter((id) => id !== divisionId)}
+        />
+      )}
       {editable && !person.self && (
         <RowMenu label={`Actions for ${person.name}`}>
+          {place !== null && (
+            <MenuItem onSelect={() => setMoving(true)} icon={<ArrowRightLeft className="h-3.5 w-3.5" strokeWidth={1.75} />}>
+              Move to…
+            </MenuItem>
+          )}
           {(removal.kind === "offered" || removal.kind === "locked") && (
             <MenuItem
               onSelect={() => onAsk({ kind: "remove", person, divisionId, short })}
