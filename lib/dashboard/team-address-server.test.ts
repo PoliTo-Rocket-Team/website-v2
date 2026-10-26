@@ -4,15 +4,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as actions from "@/app/dashboard/actions";
 import * as teamActions from "@/app/dashboard/team-actions";
-import { dashboardNotices, divisions, teamAddresses, teamAddressReroutes, teamAddressRequests } from "@/db/schema";
+import { dashboardNotices, divisions, roles, teamAddresses, teamAddressReroutes, teamAddressRequests } from "@/db/schema";
 import { addRows, changeRows, tableRows } from "./access-matrix/test-database";
-import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
+import { accountOf, EXTRA, IDS, seedFixture } from "./access-matrix/fixture";
 import { ALL, UNITS } from "./access-matrix/matrix";
 import { signInAs } from "./access-matrix/session";
 import type { DashboardData } from "./data";
 import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
-import { NO_TEAM_ADDRESSES } from "./team-address";
+import { moveTeamAddress, readRerouteMove } from "./database-team-address";
+import { NO_TEAM_ADDRESSES, REROUTE_ROLE_MOVED } from "./team-address";
 
 // Shared team addresses on the migrated in-memory Postgres (epic #578): the
 // member side view's Team addresses row (issue #786, board 102), read with
@@ -305,6 +306,71 @@ test("Mark done moves the address to whoever took the tied role over, even when 
   assert.deepEqual(
     (await tableRows(teamAddresses)).filter((r) => r.id === 2).map((r) => r.holderId),
     [OA],
+  );
+});
+
+test("a role change between Mark done's read and its write refuses the move with a plain reason and leaves the item open, naming the role's holder now", async () => {
+  const OA = IDS.person("OA");
+  await seededTied();
+  signInAs(accountOf("team leader").userId);
+  assert.deepEqual(await saveMA({ newLeads: [MA_MEMBER], oldLeads: [{ personId: MA_LEAD, via: "replaced", outcome: "advisor" }] }), { ok: true });
+  // What Mark done read: the address goes to MA's member, who leads MA now.
+  const read = await readRerouteMove(1);
+  assert.ok(read.ok, JSON.stringify(read));
+  assert.equal(read.value.toId, MA_MEMBER);
+  // The role changes hands before Mark done's write: the item now names OA.
+  assert.deepEqual(await saveMA({ newLeads: [OA], oldLeads: [{ personId: MA_MEMBER, via: "replaced", outcome: "advisor" }] }), { ok: true });
+  const mover = { memberId: accountOf("IT lead").memberId, actingAccountId: null };
+  assert.deepEqual(await moveTeamAddress(mover, read.value), { ok: false, error: REROUTE_ROLE_MOVED }, "the item was re-pointed");
+  // As if the re-point had not landed: the item names MA's member, who left the role, so the write is refused all the same.
+  await changeRows(teamAddressReroutes, { addressId: 2 }, { toMember: MA_MEMBER });
+  assert.deepEqual(await moveTeamAddress(mover, read.value), { ok: false, error: REROUTE_ROLE_MOVED }, "the member it chose left the role");
+  await changeRows(teamAddressReroutes, { addressId: 2 }, { toMember: OA });
+  assert.deepEqual(
+    (await tableRows(teamAddresses)).filter((r) => r.id === 2).map((r) => r.holderId),
+    [MA_LEAD],
+    "nothing was moved",
+  );
+  assert.deepEqual((await tableRows(teamAddressReroutes)).map((r) => [r.toMember, r.doneAt]), [[OA, null]], "the item stays open");
+  assert.deepEqual(
+    (await rerouteRowsSeenBy("IT lead")).map((r) => r.title),
+    ["mission@politorocketteam.it goes to Person OA"],
+  );
+  // Mark done again reads the role's holder now and moves the address to them.
+  assert.deepEqual(await actions.markTeamAddressRerouteDone(1), { ok: true, value: null });
+  assert.deepEqual(
+    (await tableRows(teamAddresses)).filter((r) => r.id === 2).map((r) => r.holderId),
+    [OA],
+  );
+});
+
+test("Mark done's write reads each tie kind's holder as the read does: the team leader, a full-access seat, and a department's head on the department or on one of its divisions", async () => {
+  const LEADER = accountOf("team leader").memberId!;
+  const IT = accountOf("IT lead").memberId!;
+  const HEAD = EXTRA.head;
+  await seedFixture();
+  const tied = [
+    { id: 3, address: "leader@politorocketteam.it", movesWith: "team_leader" as const, to: LEADER },
+    { id: 4, address: "it@politorocketteam.it", movesWith: "full_access_seat" as const, movesWithSeat: "it_lead" as const, to: IT },
+    { id: 5, address: "structures-head@politorocketteam.it", movesWith: "department_head" as const, movesWithDeptId: UNITS.DM.departmentId, to: HEAD },
+    { id: 6, address: "structures-office@politorocketteam.it", movesWith: "department_head" as const, movesWithDeptId: UNITS.DM.departmentId, to: HEAD },
+  ];
+  await addRows(
+    teamAddresses,
+    tied.map(({ to: _, ...a }) => ({ ...a, purpose: "Office", holderId: MA_MEMBER })),
+  );
+  await addRows(
+    teamAddressReroutes,
+    tied.map((a) => ({ id: a.id + 10, addressId: a.id, toMember: a.to, fromMember: MA_MEMBER })),
+  );
+  signInAs(accountOf("IT lead").userId);
+  for (const a of tied.slice(0, 3)) assert.deepEqual(await actions.markTeamAddressRerouteDone(a.id + 10), { ok: true, value: null }, a.address);
+  // The head's row kept on one of the department's divisions instead.
+  await changeRows(roles, { memberId: HEAD, type: "head" }, { deptId: null, divisionId: UNITS.DM.divisionId });
+  assert.deepEqual(await actions.markTeamAddressRerouteDone(16), { ok: true, value: null }, "head row on a division");
+  assert.deepEqual(
+    (await tableRows(teamAddresses)).filter((r) => Number(r.id) >= 3).map((r) => [r.id, r.holderId]),
+    tied.map((a) => [a.id, a.to]),
   );
 });
 

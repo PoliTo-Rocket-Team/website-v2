@@ -645,6 +645,37 @@ export const REROUTE_ALREADY_DONE = "This team address was already moved.";
 export const REROUTE_NOWHERE =
   "Nobody else holds this role now, so the team address stays with its holder. There is nothing to move; a new item shows when the role changes hands.";
 
+/** What Mark done reads when the role changed hands while it was moving the address (issue #795). */
+export const REROUTE_ROLE_MOVED =
+  "The role changed hands while you were moving this team address, so nothing was moved. The item now names who holds the role; check it and press Mark done again.";
+
+/**
+ * What one Mark done moves (issue #795): the item and its address, the role
+ * the address moves with, and what Mark done read beside them: the address's
+ * holder, the member the item named, and the member the address goes to
+ * (`rerouteTargetNow`). The write moves the address only while all of these
+ * still stand, so a role change between the read and the write cannot send
+ * the address to someone who left the role.
+ */
+export type RerouteMove = {
+  readonly rerouteId: number;
+  readonly addressId: number;
+  readonly movesWith: MovesWith;
+  readonly holderId: number;
+  readonly namedId: number;
+  readonly toId: number;
+};
+
+/** The move Mark done makes on an open item now, or why there is none: nobody but its holder, or nobody at all, holds the role. */
+export function rerouteMoveOf(reroute: StoredTeamAddressReroute, active: readonly TieRoleRow[], org: OrgChart): Checked<RerouteMove> {
+  const toId = rerouteTargetNow(reroute, active, org);
+  if (reroute.movesWith === null || toId === null) return { ok: false, error: REROUTE_NOWHERE };
+  return {
+    ok: true,
+    value: { rerouteId: reroute.id, addressId: reroute.addressId, movesWith: reroute.movesWith, holderId: reroute.holderId, namedId: reroute.toId, toId },
+  };
+}
+
 /** Mark done as the rules allow it: only the alias approver seats (`answersAliasRequests`), who answer team address requests too. */
 export function planRerouteDone(viewer: ViewerStanding): Checked<null> {
   return answersAliasRequests(viewer)

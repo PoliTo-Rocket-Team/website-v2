@@ -15,6 +15,8 @@ import {
   planTeamAddressAnswer,
   planTeamAddressRequest,
   planTeamAddressSetUp,
+  REROUTE_NOWHERE,
+  rerouteMoveOf,
   rerouteTargetNow,
   reroutesNow,
   teamAddressAnswerNotices,
@@ -360,6 +362,14 @@ test("an open routing item moves its address to whoever holds the tied role now,
   const rows = teamAddressRerouteAttentionFor(IT_LEAD, [open!], team, org, now);
   assert.deepEqual(rows.map((r) => r.title), ["logistics@politorocketteam.it goes to Person 6"]);
   assert.deepEqual(teamAddressRerouteAttentionFor(IT_LEAD, reroutesNow([item(B)], [lead(A)], org), team, org, now), [], "nothing to move: no row");
+
+  // What Mark done moves, with what it read beside it, so its write can check those still stand (issue #795).
+  assert.deepEqual(rerouteMoveOf(item(B), [lead(C)], org), {
+    ok: true,
+    value: { rerouteId: 1, addressId: 1, movesWith: LOGISTICS_LEAD, holderId: A, namedId: B, toId: C },
+  });
+  assert.deepEqual(rerouteMoveOf(item(B), [lead(A)], org), { ok: false, error: REROUTE_NOWHERE }, "A leads again: nothing to move");
+  assert.deepEqual(rerouteMoveOf(item(B, null), [lead(C)], org), { ok: false, error: REROUTE_NOWHERE }, "no role: nothing to move");
 });
 
 // The holder's ready card (owner finding on PR #794) ---------------------------------
