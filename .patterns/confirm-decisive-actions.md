@@ -53,6 +53,7 @@ Call sites, by action:
 | Remove partner | `ConfirmDialog` in [partners.tsx](../components/dashboard/partners.tsx) |
 | Remove question | `ConfirmDialog` in [faq.tsx](../components/dashboard/faq.tsx) |
 | Delete project | `ConfirmDialog` in [project-edit.tsx](../components/dashboard/project-edit.tsx) |
+| Delete position | `ConfirmDialog` in [new-position-drawer.tsx](../components/dashboard/new-position-drawer.tsx) |
 
 ## When this applies
 

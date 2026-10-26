@@ -77,6 +77,12 @@ export async function editPosition(positionId: number, input: unknown): Promise<
   return answer((data) => data.editPosition(positionId, input));
 }
 
+/** Delete position (issue #772): a soft delete, run from the Edit position drawer's confirm. */
+export async function deletePosition(positionId: number): Promise<WriteResult<null>> {
+  if (!isId(positionId)) return refused("That change is not valid.");
+  return write((data) => data.deletePosition(positionId));
+}
+
 /** The site-wide switch is #121's: its own write answers a refusal rather than throwing one. */
 export async function setRecruitment(open: boolean): Promise<WriteResult<null>> {
   if (typeof open !== "boolean") return refused("That change is not valid.");

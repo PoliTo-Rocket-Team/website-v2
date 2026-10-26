@@ -97,26 +97,38 @@ import { refused, written, type WriteResult } from "./write";
 type Identity = DashboardIdentity;
 type DbStatus = (typeof applications.$inferSelect)["status"];
 
-/** The division a position is in, with its department; null for a deleted position or a closed unit. */
-async function positionUnit(positionId: number): Promise<DivisionUnit | null> {
+/**
+ * The division a position is in, with its department; null for a closed
+ * unit. A deleted position (issue #772) is null in the Positions area only:
+ * its applications stay fully workable in the Applications area.
+ */
+async function positionUnit(positionId: number, area: "positions" | "applications"): Promise<DivisionUnit | null> {
   const [row] = await getDb()
     .select({ divisionId: divisions.id, departmentId: departments.id })
     .from(applyPositions)
     .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
     .innerJoin(departments, eq(divisions.deptId, departments.id))
-    .where(and(eq(applyPositions.id, positionId), eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)))
+    .where(
+      and(
+        eq(applyPositions.id, positionId),
+        area === "positions" ? eq(applyPositions.isDeleted, false) : undefined,
+        isNull(divisions.closedAt),
+        isNull(departments.closedAt),
+      ),
+    )
     .limit(1);
   return row ?? null;
 }
 
 /**
  * Whether the viewer may change `area` on the position (issues #160, #461):
- * it is live, in an open division, and the one rule every position and
- * application write asks (`mayChangePositionIn`, ./position-access.ts) lets
- * them change it there. False for a position that no longer exists.
+ * it is in an open division, live where `area` is Positions, and the one
+ * rule every position and application write asks (`mayChangePositionIn`,
+ * ./position-access.ts) lets them change it there. False for a position that
+ * no longer exists, and for a deleted one in the Positions area (issue #772).
  */
 async function mayChangePosition(identity: Identity, area: "positions" | "applications", positionId: number): Promise<boolean> {
-  const unit = await positionUnit(positionId);
+  const unit = await positionUnit(positionId, area);
   return unit !== null && mayChangePositionIn(identity, area, unit);
 }
 
@@ -130,6 +142,10 @@ async function mayChangePosition(identity: Identity, area: "positions" | "applic
  * reads Applications, so a Positions grant alone gets none (issue #477).
  * Each row keeps the unit it sits in, for the Applications page's change
  * rule (issue #577); `rowOf` drops it before a page carries the row.
+ * A deleted position (issue #772) leaves the Positions area, but stays in the
+ * Applications area, so its applications still list under its title and stay
+ * fully workable; there it is marked `deleted`, and the position itself
+ * cannot be changed.
  */
 async function readPositionRows(identity: Identity, area: RecruitmentArea, now: Date): Promise<ReadPosition[]> {
   const db = getDb();
@@ -154,11 +170,18 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
         dept_id: departments.id,
         dept_name: departments.name,
         dept_code: departments.code,
+        deleted: applyPositions.isDeleted,
       })
       .from(applyPositions)
       .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
       .innerJoin(departments, eq(divisions.deptId, departments.id))
-      .where(and(eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)))
+      .where(
+        and(
+          area === "positions" ? eq(applyPositions.isDeleted, false) : undefined,
+          isNull(divisions.closedAt),
+          isNull(departments.closedAt),
+        ),
+      )
       .orderBy(desc(applyPositions.createdAt)),
     readsRecruitment(identity, "applications")
       ? db
@@ -181,6 +204,7 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
     const latest = own.reduce<string | null>((at, t) => (t.last !== null && (at === null || t.last > at) ? t.last : at), null);
     return {
       unit,
+      deleted: r.deleted,
       id: r.id,
       ref: String(r.id),
       title: r.title ?? "Untitled position",
@@ -195,7 +219,7 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
           }
         : null,
       // The rule the open switch's write asks (`setPositionOpen`), so the page never offers what the server refuses (issue #487).
-      canChange: mayChangePositionIn(identity, "positions", unit),
+      canChange: !r.deleted && mayChangePositionIn(identity, "positions", unit),
       // The table has no edit time; a role's creation is the last change it records.
       updated: ago(created, now),
       code: positionCode({ id: r.id, dept_code: r.dept_code ?? "", div_code: r.div_code ?? "" }),
@@ -211,11 +235,11 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
   });
 }
 
-/** A position as `readPositionRows` reads it: its row, and the unit it sits in. */
-type ReadPosition = PositionRow & { readonly unit: DivisionUnit };
+/** A position as `readPositionRows` reads it: its row, the unit it sits in, and whether it was deleted (Applications area only). */
+type ReadPosition = PositionRow & { readonly unit: DivisionUnit; readonly deleted: boolean };
 
-/** The row a page carries, without the unit it was read with. */
-function rowOf({ unit: _unit, ...row }: ReadPosition): PositionRow {
+/** The row a page carries, without the unit and the deleted mark it was read with. */
+function rowOf({ unit: _unit, deleted: _deleted, ...row }: ReadPosition): PositionRow {
   return row;
 }
 
@@ -358,6 +382,17 @@ async function editPosition(identity: Identity, positionId: number, input: unkno
   return written(null);
 }
 
+/**
+ * Delete position (issue #772): a soft delete. The row and its applications
+ * stay; `is_deleted` takes the position off the Positions page, /apply and
+ * the submit, and the activity log names it "Deleted the position".
+ */
+async function deletePosition(identity: Identity, positionId: number): Promise<void> {
+  if (!(await mayChangePosition(identity, "positions", positionId))) throw new DashboardRefused(`position ${positionId}`);
+  await runAuditQuery((db) => db.update(applyPositions).set({ isDeleted: true }).where(eq(applyPositions.id, positionId)));
+  refreshAfter("positions", updateTag);
+}
+
 // Applications ----------------------------------------------------------------
 
 /** Where a stored application stands (./stored-application.ts). */
@@ -459,7 +494,8 @@ async function readApplicantsApplications(listed: SQL): Promise<ApplicantsApplic
       .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
       .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
       .innerJoin(departments, eq(divisions.deptId, departments.id))
-      .where(and(live, eq(applyPositions.isDeleted, false)))
+      // A deleted position's applications are kept, and named with its title (issue #772).
+      .where(live)
       .orderBy(desc(applications.appliedAt)),
     readSlotsWhere(
       inArray(
@@ -712,8 +748,9 @@ function acceptanceEmailRows(
 /**
  * How many applications wait for their acceptance email, team-wide: the
  * count on the team leader's Overview row (issue #744). It reads what the
- * team leader's Applications page lists (live positions in open units, no
- * withdrawn application) and counts by the box's own rule.
+ * team leader's Applications page lists (every position in an open unit,
+ * deleted ones included since issue #772, no withdrawn application) and
+ * counts by the box's own rule, so the row and the box show one number.
  */
 export async function readAcceptanceEmailCount(): Promise<number> {
   const rows = await getDb()
@@ -723,7 +760,7 @@ export async function readAcceptanceEmailCount(): Promise<number> {
     .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
     .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
     .innerJoin(departments, eq(divisions.deptId, departments.id))
-    .where(and(isNull(applications.withdrawnAt), eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)));
+    .where(and(isNull(applications.withdrawnAt), isNull(divisions.closedAt), isNull(departments.closedAt)));
   return acceptanceEmailsToSend(
     rows.map((r) => ({
       status: statusOfStored({ key: r.status_key, parentKey: r.status_parent_key }),
@@ -759,7 +796,7 @@ async function applicationDocument(identity: Identity, applicationId: number, ki
     .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
     .innerJoin(departments, eq(divisions.deptId, departments.id))
     .leftJoin(applicationFiles, eq(applicationFiles.id, kind === "cv" ? applications.cvFileId : applications.coverLetterFileId))
-    .where(and(eq(applications.id, applicationId), eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)))
+    .where(and(eq(applications.id, applicationId), isNull(divisions.closedAt), isNull(departments.closedAt)))
     .limit(1);
   const place = row ? { unit: { divisionId: row.division_id, departmentId: row.dept_id }, withdrawn: row.withdrawn_at !== null } : null;
   if (!mayOpenApplication(identity, place)) throw new DashboardRefused(`application ${applicationId}`);
@@ -1233,6 +1270,7 @@ export function databaseRecruitmentPages(identity: Identity) {
     setPositionOpen: (id: number, open: boolean) => setPositionOpen(identity, id, open),
     createPosition: (input: unknown) => createPosition(identity, input),
     editPosition: (id: number, input: unknown) => editPosition(identity, id, input),
+    deletePosition: (id: number) => deletePosition(identity, id),
     moveApplication: (id: number, move: ApproverMove) => moveApplication(identity, id, move),
     changeStatusList: (change: StatusListChange) => changeStatusList(identity, change),
   };

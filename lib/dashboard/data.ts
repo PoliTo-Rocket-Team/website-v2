@@ -158,6 +158,13 @@ export interface DashboardData {
    */
   editPosition(positionId: number, input: unknown): Promise<WriteResult<null>>;
   /**
+   * Delete position (issue #772): a soft delete, by the rule Edit position
+   * asks. The position leaves the Positions page, /apply and the submit; its
+   * applications stay on the Applications page under its title. A position
+   * the viewer does not reach rejects with DashboardRefused.
+   */
+  deletePosition(positionId: number): Promise<void>;
+  /**
    * One step on an application (boards 58 to 58i and 97 to 97c): an action
    * button, or a saved hand pick in the Status picker, which runs the same
    * write (issue #750). Which steps are legal is ./application-flow.ts's; an
