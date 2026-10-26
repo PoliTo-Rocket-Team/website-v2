@@ -19,6 +19,7 @@ import {
   users,
 } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
+import { acceptanceEmailsFor, acceptanceEmailsToSend, type AcceptanceEmailRow } from "./acceptance-emails";
 import {
   applyMove,
   joinChange,
@@ -563,7 +564,9 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
   const now = new Date();
   const [positions, scope, statuses] = await Promise.all([readPositionRows(identity, "applications", now), applicationsScope(identity), readStatusList()]);
   const { teamLeader } = setterViewerOf(identity);
-  if (positions.length === 0) return { scope, now: now.toISOString(), positions: [], statuses, teamLeader, statusUses: null, applications: [] };
+  if (positions.length === 0) {
+    return { scope, now: now.toISOString(), positions: [], statuses, teamLeader, statusUses: null, acceptanceEmails: acceptanceEmailRows(identity, [], positions, new Map()), applications: [] };
+  }
 
   const db = getDb();
   const cvFiles = alias(applicationFiles, "cv_files");
@@ -621,6 +624,48 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
   ]);
   const { slots } = others;
   const byId = new Map(positions.map((p) => [p.id, p]));
+  const entries = rows.flatMap((r): ApplicationEntry[] => {
+    const position = r.position_id === null ? undefined : byId.get(r.position_id);
+    if (!position) return [];
+    return [
+      {
+        id: r.id,
+        state: stateOf(r, slots.get(r.id) ?? []),
+        status: statusOfStored({ key: r.status_key, parentKey: r.status_parent_key }),
+        applicant: {
+          name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email,
+          photoUrl: r.picture,
+          email: r.email,
+          phone: r.phone,
+          politoId: r.polito_id,
+          year: r.year,
+          degree: r.degree,
+          birthDate: r.birth_date,
+          gender: r.gender,
+          country: r.country,
+          origin: r.origin,
+          linkedin: r.linkedin,
+          referral: r.referral,
+        },
+        standing: standings.get(r.id) ?? NEW_APPLICANT,
+        position: { ref: position.ref, title: position.title, division: position.division },
+        applied: appliedLabels(new Date(r.applied_at), now),
+        documents: [
+          ...documentOf(r.id, "cv", { id: r.cv_file_id, name: r.cv_file_name, size: r.cv_file_size }, r.cv_name),
+          ...documentOf(
+            r.id,
+            "motivation-letter",
+            { id: r.letter_file_id, name: r.letter_file_name, size: r.letter_file_size },
+            r.letter_name,
+          ),
+        ],
+        answers: answersOf(r.answers),
+        otherApplications: otherApplicationsOf(r, others),
+        // The rule the move write asks (`moveApplication`), so the panel never offers a step the server refuses.
+        canChange: mayChangePositionIn(identity, "applications", position.unit),
+      },
+    ];
+  });
   return {
     scope,
     now: now.toISOString(),
@@ -628,49 +673,68 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
     statuses,
     teamLeader,
     statusUses,
-    applications: rows.flatMap((r): ApplicationEntry[] => {
-      const position = r.position_id === null ? undefined : byId.get(r.position_id);
-      if (!position) return [];
-      return [
-        {
-          id: r.id,
-          state: stateOf(r, slots.get(r.id) ?? []),
-          status: statusOfStored({ key: r.status_key, parentKey: r.status_parent_key }),
-          applicant: {
-            name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email,
-            photoUrl: r.picture,
-            email: r.email,
-            phone: r.phone,
-            politoId: r.polito_id,
-            year: r.year,
-            degree: r.degree,
-            birthDate: r.birth_date,
-            gender: r.gender,
-            country: r.country,
-            origin: r.origin,
-            linkedin: r.linkedin,
-            referral: r.referral,
-          },
-          standing: standings.get(r.id) ?? NEW_APPLICANT,
-          position: { ref: position.ref, title: position.title, division: position.division },
-          applied: appliedLabels(new Date(r.applied_at), now),
-          documents: [
-            ...documentOf(r.id, "cv", { id: r.cv_file_id, name: r.cv_file_name, size: r.cv_file_size }, r.cv_name),
-            ...documentOf(
-              r.id,
-              "motivation-letter",
-              { id: r.letter_file_id, name: r.letter_file_name, size: r.letter_file_size },
-              r.letter_name,
-            ),
-          ],
-          answers: answersOf(r.answers),
-          otherApplications: otherApplicationsOf(r, others),
-          // The rule the move write asks (`moveApplication`), so the panel never offers a step the server refuses.
-          canChange: mayChangePositionIn(identity, "applications", position.unit),
-        },
-      ];
-    }),
+    acceptanceEmails: acceptanceEmailRows(identity, entries, positions, new Map(rows.map((r) => [r.id, storedAcceptanceDay(r.accepted_at)]))),
+    applications: entries,
   };
+}
+
+/**
+ * The team leader's box (board 100, issue #744): the listed applications that
+ * wait for their acceptance email, by `acceptanceEmailsFor`. The team
+ * leader's page lists the whole team, so the box does too, whatever the
+ * page's filters; null for any other viewer. The accepted date is the stored
+ * acceptance day (`acceptedDays`, by application id), never the state's
+ * fallback to the applied day: an application with none shows no date and
+ * goes last.
+ */
+function acceptanceEmailRows(
+  identity: Identity,
+  entries: readonly ApplicationEntry[],
+  positions: readonly ReadPosition[],
+  acceptedDays: ReadonlyMap<number, string | null>,
+): AcceptanceEmailRow[] | null {
+  const departmentOf = new Map(positions.map((p) => [p.ref, p.department]));
+  const candidates = entries.map((entry) => ({ entry, status: entry.status, acceptedAt: acceptedDays.get(entry.id) ?? null }));
+  return (
+    acceptanceEmailsFor(identity, candidates)?.map(({ entry, acceptedAt }) => ({
+      id: entry.id,
+      name: entry.applicant.name,
+      photoUrl: entry.applicant.photoUrl,
+      email: entry.applicant.email,
+      role: entry.position.title,
+      department: departmentOf.get(entry.position.ref) ?? "",
+      division: entry.position.division,
+      acceptedAt,
+    })) ?? null
+  );
+}
+
+/**
+ * How many applications wait for their acceptance email, team-wide: the
+ * count on the team leader's Overview row (issue #744). It reads what the
+ * team leader's Applications page lists (live positions in open units, no
+ * withdrawn application) and counts by the box's own rule.
+ */
+export async function readAcceptanceEmailCount(): Promise<number> {
+  const rows = await getDb()
+    .select({ ...STATUS_COLUMNS, accepted_at: applications.acceptedAt })
+    .from(applications)
+    .leftJoin(applicationStatuses, STATUS_JOIN)
+    .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
+    .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
+    .innerJoin(departments, eq(divisions.deptId, departments.id))
+    .where(and(isNull(applications.withdrawnAt), eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)));
+  return acceptanceEmailsToSend(
+    rows.map((r) => ({
+      status: statusOfStored({ key: r.status_key, parentKey: r.status_parent_key }),
+      acceptedAt: storedAcceptanceDay(r.accepted_at),
+    })),
+  ).length;
+}
+
+/** The stored acceptance day as ISO, or null where `applications.accepted_at` holds none. */
+function storedAcceptanceDay(acceptedAt: string | null): string | null {
+  return acceptedAt === null ? null : new Date(acceptedAt).toISOString();
 }
 
 /**
