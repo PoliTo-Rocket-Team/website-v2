@@ -41,7 +41,7 @@ export function LandingFooter({ inSky = false, projects }: {
         <ShootingStar />
       </div>
 
-      <div className="px-5 pb-12 md:px-16">
+      <div className="px-5 pb-10 md:px-16">
         <div className="mx-auto max-w-[1312px]">
           {/* From lg the brand block and the four columns are one row, each as
               wide as its widest line, spread edge to edge: the space between
@@ -110,7 +110,7 @@ export function LandingFooter({ inSky = false, projects }: {
           {/* No item ever breaks inside itself (issue #774). At the wide
               tracking the full row needs about 770px, more than the md
               content width up to ~900px, so it stays stacked until lg. */}
-          <div className="mt-7 flex flex-col justify-between gap-3 font-mono text-[11px] tracking-[0.12em] text-dim md:tracking-[0.2em] lg:flex-row">
+          <div className="mt-10 flex flex-col justify-between gap-3 font-mono text-[11px] tracking-[0.12em] text-dim md:tracking-[0.2em] lg:flex-row">
             <p className="whitespace-nowrap">POLITO ROCKET TEAM ™ 2026</p>
             {/* The legal pages (issue #122) sit on the right, where the street
                 address was before it moved under the tagline (issue #737). */}
