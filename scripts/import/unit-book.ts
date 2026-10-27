@@ -75,12 +75,6 @@ export class UnitBook {
     return null;
   }
 
-  /** The department an existing unit name finds, without noting anything: for reading a current-year row's seats ahead of the plan. */
-  peekDepartment(value: UnitName): UnitRef | null {
-    const lookup = lookupDepartment(this.units, value);
-    return lookup.kind === "found" ? { kind: "existing", id: lookup.unit.id } : null;
-  }
-
   /** The departments the plan creates, open or closed. */
   newDepartments(): NewDepartment[] {
     return this.departments.map((d) => this.span(d, this.current.departments));

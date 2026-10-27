@@ -255,6 +255,14 @@ const seatKeyOf = (type: PositionType | null, fullAccess: FullAccessSeat | null,
 
 const ADVISOR_SEAT: Seat = { type: "advisor", fullAccess: null, unit: "member-unit" };
 const NO_PLACE: Placement = { dept: null, division: null };
+/** The role that keeps a seat's earlier holder on the team when the seat they handed over was their only role: a plain member's, as the dashboard titles one. */
+const MEMBERSHIP: Extract<SeatReading, { kind: "seat" }> = {
+  kind: "seat",
+  seat: { type: "core", fullAccess: null, unit: "member-unit" },
+  title: "Member",
+  acting: false,
+  project: null,
+};
 
 /** Each place once. */
 const unique = (list: readonly Placement[]): Placement[] => [
@@ -366,11 +374,11 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
 
   // Handovers ----------------------------------------------------------------
 
-  /** The seat keys a current-year row's title gives, resolved against the units the database holds. */
+  /** The seat keys a current-year row's title gives, its departments resolved as its roles will be (a unit the run creates included). */
   const seatKeysOf = (person: Person): Set<string> => {
     const c = cellsOf(person, currentYear!);
     const names = rowUnitNames(c.subteam, c.division, snapshot.projects, c.reading);
-    const depts = names.departments.flatMap((d) => book?.peekDepartment(d.value) ?? []);
+    const depts = names.departments.flatMap((d) => book?.department(d.value, currentYear!) ?? []);
     const keys = new Set<string>();
     for (const reading of seatsOf(c.title)) {
       if (reading.kind !== "seat") continue;
@@ -420,6 +428,21 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     importedNames.set(key, [...(importedNames.get(key) ?? []), ...entry.years]);
   }
 
+  /**
+   * The day a year-sheet row's roles start: its "Date of joining" where the
+   * sheet gives one (only the 2022-2023 sheet does, owner decision), else the
+   * academic year's first day. A joining day that does not read, or falls
+   * after the year, is reported, and the year's first day is used.
+   */
+  const startOf = (row: PersonRow, year: number): string => {
+    const text = row.value.joinedOn.trim();
+    if (text === "") return yearStart(year);
+    const day = dayOf(text);
+    if (day !== null && day <= yearEnd(year)) return day;
+    conflicts.push({ kind: "joined-date-unreadable", at: row.at, field: "joinedOn" });
+    return yearStart(year);
+  };
+
   /** The stints a person's rows give, oldest first, and the row the report names for the person; null for an unclear quitter-only row, reported here. */
   const stintsOf = (person: Person): { readonly stints: readonly Stint[]; readonly at: At } | null => {
     if (person.years.size === 0) {
@@ -434,7 +457,12 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
       return { stints: [{ year: stint.year, cells, startedAt: stint.startedAt, leavedAt: stint.leftAt }], at: row.at };
     }
     const years = [...person.years.keys()].sort((a, b) => a - b);
-    const stints = years.map((year) => ({ year, cells: cellsOf(person, year), startedAt: yearStart(year), leavedAt: year === currentYear ? null : yearEnd(year) }));
+    const stints = years.map((year) => ({
+      year,
+      cells: cellsOf(person, year),
+      startedAt: startOf(person.years.get(year)!, year),
+      leavedAt: year === currentYear ? null : yearEnd(year),
+    }));
     return { stints, at: person.years.get(years[years.length - 1])!.at };
   };
 
@@ -507,6 +535,32 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
       const cells = rowUnits(c, year);
       const active = leavedAt === null;
       const handed = active ? handedOver.get(row.at.row) : undefined;
+      /** How many of this row's roles are planned (inserted or present) and stay active, and how many are seats it handed over. */
+      let kept = 0;
+      let handedSeats = 0;
+      /** Plans one role of the row: present when the database has it, refused when its seat already has an active holder, else inserted. */
+      const planRole = (role: Omit<NewRole, "who">, seatKey: string | null, handedOverSeat: boolean): void => {
+        if (role.division !== null) {
+          const byYear = divisionsByYear.get(person.id) ?? new Map<number, Map<string, UnitRef>>();
+          byYear.set(year, (byYear.get(year) ?? new Map()).set(refKey(role.division), role.division));
+          divisionsByYear.set(person.id, byYear);
+        }
+        if (existingRoles.some((r) => sameRole(r, role, handedOverSeat))) {
+          counter.add("roles", "present");
+        } else {
+          const key = active && !handedOverSeat ? seatKey : null;
+          if (key !== null && heldSeats.has(key)) {
+            conflicts.push({ kind: "seat-taken", at: row.at, field: "title" });
+            counter.add("roles", "refused");
+            return;
+          }
+          if (key !== null) heldSeats.add(key);
+          newRoles.push({ who: ref, ...role });
+          counter.add("roles", "insert");
+        }
+        if (handedOverSeat) handedSeats++;
+        else if (role.leavedAt === null) kept++;
+      };
       for (const reading of seatsOf(title)) {
         if (reading.kind === "unknown") {
           conflicts.push({ kind: "unknown-title", at: row.at, field: "title" });
@@ -535,24 +589,14 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
             startedAt,
             leavedAt: handedOverSeat ? today : leavedAt,
           };
-          if (place.division !== null) {
-            const byYear = divisionsByYear.get(person.id) ?? new Map<number, Map<string, UnitRef>>();
-            byYear.set(year, (byYear.get(year) ?? new Map()).set(refKey(place.division), place.division));
-            divisionsByYear.set(person.id, byYear);
-          }
-          if (existingRoles.some((r) => sameRole(r, role, handedOverSeat))) {
-            counter.add("roles", "present");
-            continue;
-          }
-          const key = active && !handedOverSeat ? seatKey : null;
-          if (key !== null && heldSeats.has(key)) {
-            conflicts.push({ kind: "seat-taken", at: row.at, field: "title" });
-            counter.add("roles", "refused");
-            continue;
-          }
-          if (key !== null) heldSeats.add(key);
-          newRoles.push({ who: ref, ...role });
-          counter.add("roles", "insert");
+          planRole(role, seatKey, handedOverSeat);
+        }
+      }
+      // A row that handed over every seat it held keeps an active membership: a plain member's role in the row's units (none when it names none), from its stint's start.
+      if (handedSeats > 0 && kept === 0) {
+        const places = placements(MEMBERSHIP, MEMBERSHIP.seat, cells);
+        for (const place of Array.isArray(places) ? places : [NO_PLACE]) {
+          planRole({ ...place, title: MEMBERSHIP.title, type: "core", fullAccess: null, startedAt, leavedAt: null }, null, false);
         }
       }
     }

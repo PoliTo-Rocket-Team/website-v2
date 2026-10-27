@@ -23,6 +23,8 @@ export const CONFLICT_TEXT = {
     "Unclear quitter: on Quitters and on no year sheet, with no leave day and no quitter-year line in overrides.csv, so no academic year can be given; not imported.",
   "quitter-date-unreadable":
     "Unclear quitter: on Quitters and on no year sheet, and a date cell does not read as a day (or the join day is after the leave day); not imported.",
+  "joined-date-unreadable":
+    "The year sheet's \"Date of joining\" cell does not read as a day, or falls after that academic year; the row's roles start on the year's first day.",
   "schema-misfit": "The value does not fit the schema; the row was not imported.",
   "unresolved-requester": "The order's requester resolves to no imported member; the order was not imported.",
   "project-only-unit": "The subteam cell names only a project, and the schema has no project on roles; the role was not imported.",

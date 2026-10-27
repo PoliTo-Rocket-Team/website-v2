@@ -81,18 +81,20 @@ test("a dry run lists each unit it would create by name, open or closed, reports
   ]) {
     assert.ok(report.includes(`\n  ${line}\n`), `the report lists ${line}`);
   }
-  assert.match(report, /^Seat handovers applied \(overrides\.csv\): 1$/m);
+  assert.match(report, /^Seat handovers applied \(overrides\.csv\): 2$/m);
   assert.match(report, /^Quitter years applied \(overrides\.csv\): 1$/m);
   assert.match(report, /^Sheet rows with no name, skipped: 2$/m);
   assert.match(report, /^Unclear quitters: 2$/m);
   // From 2024-2025 on, a subteam that names a project is a project again. An override line on a past sheet,
-  // on a quitter who is on a year sheet, or of an unknown kind is not applied. Two quitters have no usable date.
+  // on a quitter who is on a year sheet, or of an unknown kind is not applied. A 2022-2023 joining day does
+  // not read. Two quitters have no usable date. The Roles 22-23 sheet is not read, so its unmatched row raises nothing.
   assert.deepEqual(
     plan.conflicts.map((c) => [c.kind, c.at.file, c.at.sheet ?? null, c.at.row, c.field ?? null]),
     [
       ["override-unmatched", "overrides.csv", null, 3, "sheet"],
       ["override-unmatched", "overrides.csv", null, 5, "row"],
       ["override-unmatched", "overrides.csv", null, 6, "kind"],
+      ["joined-date-unreadable", "roster.xlsx", "2022-2023", 5, "joinedOn"],
       ["project-only-unit", "roster.xlsx", "2024-2025", 3, "subteam"],
       ["quitter-no-date", "roster.xlsx", "Quitters", 7, "leftOn"],
       ["quitter-date-unreadable", "roster.xlsx", "Quitters", 8, "leftOn"],
@@ -132,11 +134,12 @@ test("past subteams are departments, created closed over the years the roster na
   // Quinto's subteam comes from the Roles 24-25 sheet, which reads a project's name as a past subteam.
   assert.deepEqual((await rolesOf("Quinto", "Rossi")).map(shape), [["Engineer", "core", null, efesto, null, "2024-10-01", "2025-09-30"]]);
   const injectors = await unitId(divisions, "Injectors");
+  // Mario's 2022-2023 division is in that sheet's "A" column, and his role starts on its "Date of joining".
   assert.deepEqual(
     (await rolesOf("Mario", "Lodi")).map(shape).sort((a, b) => String(a[5]).localeCompare(String(b[5]))),
     [
       ["Engineer", "core", null, liquid, null, "2021-10-01", "2022-09-30"],
-      ["Engineer", "core", null, liquid, injectors, "2022-10-01", "2023-09-30"],
+      ["Engineer", "core", null, liquid, injectors, "2022-11-15", "2023-09-30"],
     ],
   );
   const ves = await unitId(departments, "Vittorio Emanuele II");
@@ -189,16 +192,51 @@ test("the #816 titles: Safety Officer, '<Dept> Head of Department - <Division> L
   ]);
 });
 
-test("a seat handed over this year: the later holder holds it, the earlier one keeps the membership and an ended role, and no seat-taken", async () => {
+test("the 2022-2023 sheet: Roles 22-23 is not read, the 'A' column is Division, and 'Date of joining' starts the year's roles", async () => {
+  await world();
+  const { plan, sources } = await importOn(FIRST_DAY);
+  assert.ok(sources.skipped.some((s) => s.endsWith("› Roles 22-23: not read (owner decision); that year's own sheet is its only source")));
+  assert.ok(!sources.read.some((s) => s.endsWith("› Roles 22-23")));
+  assert.ok(!plan.conflicts.some((c) => c.kind === "roles-sheet-unmatched"), "no roles-sheet-unmatched");
+  assert.ok(!(await tableRows(divisions)).some((d) => d.name === "Hydraulics"), "nothing comes from Roles 22-23");
+  const cavour = await unitId(departments, "Cavour");
+  // No joining day: the year's first day. Lia's empty Division cell stays empty.
+  assert.deepEqual((await rolesOf("Lia", "Kent")).map((r) => [r.deptId, r.divisionId, r.startedAt]), [
+    [null, null, "2022-10-01"],
+    [cavour, null, "2022-10-01"],
+  ]);
+  // A "d/m/yyyy" joining day; a joining day that does not read is reported and the year's first day used.
+  assert.deepEqual((await rolesOf("Nora", "Monti")).map((r) => r.startedAt), ["2022-12-01", "2022-12-01"]);
+  assert.deepEqual((await rolesOf("Ivo", "Jori")).map((r) => r.startedAt).sort(), ["2022-10-01", "2024-10-01"]);
+});
+
+/** A member's active roles: the ones the app reads to place them on the team. */
+const activeOf = async (first: string, last: string) => (await rolesOf(first, last)).filter((r) => r.leavedAt === null);
+
+test("a seat handed over this year: the later holder holds it, the earlier one keeps an active membership and an ended role, and no seat-taken", async () => {
   await world();
   const { plan } = await importOn(FIRST_DAY);
   assert.ok(!plan.conflicts.some((c) => c.kind === "seat-taken"));
+  assert.ok(!plan.conflicts.some((c) => c.kind === "override-unmatched" && c.at.row === 7), "the head seat of a department this run creates is handed over");
   assert.deepEqual((await rolesOf("Davide", "Elia")).map(shape), [["Project Manager", "core", "project_manager", null, null, "2025-10-01", null]]);
-  assert.deepEqual((await rolesOf("Carlo", "Dini")).map(shape), [["Project Manager", "core", "project_manager", null, null, "2025-10-01", FIRST_DAY]]);
+  // The Project Manager seat was Carlo's only role: he keeps a plain member's role, so he is still on the team.
+  assert.deepEqual((await rolesOf("Carlo", "Dini")).map(shape), [
+    ["Project Manager", "core", "project_manager", null, null, "2025-10-01", FIRST_DAY],
+    ["Member", "core", null, null, null, "2025-10-01", null],
+  ]);
+  assert.equal((await activeOf("Carlo", "Dini")).length, 1, "one active role");
   const carlo = (await tableRows(users)).find((u) => u.firstName === "Carlo")!;
   const [member] = (await tableRows(members)).filter((m) => m.memberId === carlo.member);
   assert.deepEqual([member.teamFrom, member.teamTo], [null, null], "an active member");
   assert.equal((await tableRows(teamLeaves)).filter((l) => l.memberId === carlo.member).length, 0, "no team leave");
+  // A head seat: Yara keeps a member's role in the department she headed.
+  const avionics = await unitId(departments, "Avionics");
+  assert.deepEqual((await rolesOf("Leo", "Pini")).map(shape), [["Head of Department", "head", null, avionics, null, "2025-10-01", null]]);
+  assert.deepEqual((await rolesOf("Yara", "Gori")).map(shape), [
+    ["Head of Department", "head", null, avionics, null, "2025-10-01", FIRST_DAY],
+    ["Member", "core", null, avionics, null, "2025-10-01", null],
+  ]);
+  assert.equal((await activeOf("Yara", "Gori")).length, 1, "one active role");
 });
 
 test("units the current sheet names and the database lacks are created open, a division under its paired department", async () => {
@@ -273,6 +311,6 @@ test("a second run, on a later day, creates no second closed unit and no second 
   }
   assert.deepEqual([await tableRows(departments), await tableRows(divisions)], units);
   assert.equal((await tableRows(roles)).length, roleCount);
-  assert.deepEqual((await rolesOf("Carlo", "Dini")).map((r) => r.leavedAt), [FIRST_DAY], "the handed-over role keeps its first end day");
+  assert.deepEqual((await rolesOf("Carlo", "Dini")).map((r) => r.leavedAt), [FIRST_DAY, null], "the handed-over role keeps its first end day, and no second membership role");
   assert.ok(!second.plan.conflicts.some((c) => c.kind === "seat-taken"));
 });

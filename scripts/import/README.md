@@ -50,11 +50,18 @@ From the workbook:
 
 - every `YYYY-YYYY` sheet up to the current year. The current one gives active members and active
   roles. Each earlier one gives ended roles for that academic year.
+- `2022-2023` reads two columns of its own (owner decision, issue #816). The column headed "A"
+  (next to Subteam) is its Division column. Its "Date of joining" column, where a row fills it, is
+  the day that row's roles start that year (see **Dates**).
 - `Quitters`: who left, the day they left (`Left the Team on:`) and the day they joined
   (`Joined the Team on:`).
-- `Roles YY-YY` (for example `Roles 22-23`): that year's seats with the division the year's own
+- `Roles YY-YY` (for example `Roles 23-24`): that year's seats with the division the year's own
   sheet lacks. A row joins that year's sheet by the person-match rule below. Its subteam, division
-  and title fill only the cells the year sheet left empty.
+  and title fill only the cells the year sheet left empty. A row that matches nobody on that
+  year's sheet is reported as `roles-sheet-unmatched`.
+- `Roles 22-23` is not read at all (owner decision, issue #816): 2022-2023 data comes only from
+  the `2022-2023` sheet. The report lists it under the sheets left out, and none of its rows
+  raises a conflict.
 - `Stats` and any other sheet are not read.
 
 Columns are found by header text through the alias table in `columns.ts`, never by position. The
@@ -144,7 +151,11 @@ the person running the import writes. See **The override input** below.
       is one the team has now: it is created with no `closed_at`. A past row naming it is placed
       in that same unit.
 - **Dates**: current-year roles are active. Earlier years' roles run `YYYY-10-01` to
-  `(YYYY+1)-09-30`. A quitter-only alumnus's roles run as **Quitters** says.
+  `(YYYY+1)-09-30`. On the `2022-2023` sheet, a row whose "Date of joining" cell is filled starts
+  its roles that year on that day instead of `2022-10-01` (the date forms of **Quitters** all
+  read). A joining day that does not read, or falls after `2023-09-30`, is reported as
+  `joined-date-unreadable` and the row's roles start on `2022-10-01`. A quitter-only alumnus's
+  roles run as **Quitters** says.
 - **Seats**: a second active holder of the team leader seat, a department head seat or a
   full-access seat this year is refused and reported. Rows already in the database count. A seat
   handed over this year (see **The override input**) is the exception.
@@ -163,7 +174,8 @@ the person running the import writes. See **The override input** below.
     and ends on the leave day. Their `team_leaves` day is the leave day.
   - A date cell is read in any of these forms: an Excel date cell (a day serial), `dd/mm/yyyy`,
     `d/m/yyyy`, `dd.mm.yyyy`, or `yyyy-mm-dd`. The day comes first. A cell that is none of these,
-    or no real day between 1990 and 2100 ("31/02/2024", a bare "2024"), does not read.
+    or no real day between 1990 and 2100 ("31/02/2024", a bare "2024", a serial too large for any
+    day), does not read.
   - A `quitter-year` line of the override input gives a Quitters row an academic year. That row
     then imports as an alumnus of that year, its roles running from the year's first day to its
     last, and its leave day the year's last day, whatever its date cells hold.
@@ -219,10 +231,14 @@ quitter-year,Quitters,7,2022-2023
 **`handover`**: a seat that changed holder within the current year. `sheet` is the current year's
 sheet, `row` the holder who handed the seat over, `value` the holder who took it. The seats handed
 over are those both rows' titles give (team leader, a department head seat, or a full-access seat).
-The new holder gets the active seat. The earlier holder keeps an active membership and their other
-roles, plus the handed-over seat as a role that ended on the day of the import (the roster gives no
-handover day). No `seat-taken` conflict is raised for that pair. A later run finds the ended role
-present whatever day it runs.
+A head seat's department may be one the run creates. The new holder gets the active seat. The
+earlier holder gets the handed-over seat as a role that ended on the day of the import (the roster
+gives no handover day), and keeps the other roles their row gives. They stay an active member: the
+app counts a member with no active role as off the team, so when the handed-over seats were their
+row's only roles, they also get an active plain member's role titled "Member" (type `core`),
+placed in their row's units by the member rule of **Units** (no unit when the row names none),
+from the start of the current year. No `seat-taken` conflict is raised for that pair. A later run
+finds the ended role and the member's role present whatever day it runs.
 
 **`quitter-year`**: a Quitters row of a person on no year sheet, placed in the academic year
 `value` (see **Quitters**).

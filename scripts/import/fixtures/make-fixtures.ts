@@ -57,16 +57,22 @@ import writeXlsxFile from "write-excel-file/node";
 //   divisions split by "/" and ","; Franco Gatti with two subteams and one
 //   division, under the second subteam's department only by its subteam;
 //   Rosa Sarti in a department and division the database lacks (created
-//   open); last, a template row with no name and Anna's email.
+//   open); a template row with no name and Anna's email; Yara Gori (row 10)
+//   and Leo Pini (row 11) both head of Avionics, row 10 handing the seat to
+//   row 11.
 // - 2024-2025: Gina Hale "Electronics Head of Department - Hardware Lead
 //   Engineer" with a "<Dept> Department - <Division>" Division cell; Franco
 //   under "Cavour" (from 2024-2025 on a project, not a department); Ivo Jori
 //   in a division the database lacks; Quinto Rossi whose subteam only the
 //   "Roles 24-25" sheet gives ("Efesto").
-// - 2022-2023: Lia Kent "President-Advisor (Project Cavour)" under "Cavour";
-//   Mario Lodi whose units only "Roles 22-23" gives (a past subteam and a
-//   division paired with it); Nora Monti under "Vittorio Emanuele II (VES) -
-//   Management"; Ivo again.
+// - 2022-2023, its Division column headed "A" and a "Date of joining"
+//   column: Lia Kent "President-Advisor (Project Cavour)" under "Cavour", no
+//   joining day; Mario Lodi under a past subteam and a division paired with it
+//   in the "A" column, joined on a date cell; Nora Monti under "Vittorio
+//   Emanuele II (VES) - Management", joined on a "d/m/yyyy" day; Ivo again,
+//   with a joining day that does not read (row 5).
+// - Roles 22-23: not read. It gives Lia a division and holds a row that
+//   matches nobody, so reading it would show.
 // - 2021-2022: Oscar Neri "President & Chief Engineer"; Mario under "Liquid
 //   Propulsion"; Pia Orsi under "Efesto", and on Quitters.
 // - Quitters, on no year sheet: Sergio Tosi (row 3, a date cell and a
@@ -78,7 +84,8 @@ import writeXlsxFile from "write-excel-file/node";
 // - overrides.csv: line 2 hands the 2025-2026 row 4 seat to row 5; line 3
 //   names a past sheet; line 4 places Quitters row 6 in 2022-2023; line 5
 //   names Pia's Quitters row, who is on a year sheet; line 6 has an unknown
-//   kind. Lines 3, 5 and 6 are not applied.
+//   kind; line 7 hands the 2025-2026 row 10 head seat to row 11. Lines 3, 5
+//   and 6 are not applied.
 
 const OUT = join(__dirname, "files");
 const RULES_OUT = join(__dirname, "rules");
@@ -311,6 +318,9 @@ const RULES_CURRENT: NewRow[] = [
   { first: "Rosa", last: "Sarti", personal: "rosa.sarti@example.com", subteam: "Avionics (AVI)", division: "Flight Software (FSW)", title: "Engineer" },
   // A template row: no name, only email placeholders, one of them Anna's.
   { first: "", last: "", personal: "anna.bello@example.com", student: "name.surname@studenti.example.com" },
+  // Rows 10 and 11: the head seat of Avionics, a department this run creates, handed from row 10 to row 11.
+  { first: "Yara", last: "Gori", personal: "yara.gori@example.com", subteam: "Avionics (AVI)", title: "Head of Department" },
+  { first: "Leo", last: "Pini", personal: "leo.pini@example.com", subteam: "Avionics (AVI)", title: "Head of Department" },
 ];
 
 const RULES_2024: OldRow[] = [
@@ -326,11 +336,13 @@ const RULES_2024: OldRow[] = [
   { first: "Quinto", last: "Rossi", gmail: "quinto.rossi@example.com", title: "Engineer" },
 ];
 
-const RULES_2022: OldRow[] = [
-  { first: "Lia", last: "Kent", gmail: "lia.kent@example.com", subteam: "Cavour", title: "President-Advisor (Project Cavour)" },
-  { first: "Mario", last: "Lodi", gmail: "mario.lodi@example.com", title: "Engineer" },
-  { first: "Nora", last: "Monti", gmail: "nora.monti@example.com", subteam: "Vittorio Emanuele II (VES) - Management", title: "Engineer" },
-  { first: "Ivo", last: "Jori", gmail: "ivo.jori@example.com", subteam: "Propulsion", division: "Solid Motors", title: "Engineer" },
+// 2022-2023: its Division column is headed "A", and a "Date of joining" column gives the day each role started.
+const HEADER_2022 = ["Number", "First Name", "Last Name", "St. ID", "Gmail", "poli email", "linkedin", "Subteam", "A", "Team Role", "Date of joining", "program"];
+const RULES_2022: Cell[][] = [
+  [1, "Lia", "Kent", null, "lia.kent@example.com", null, null, "Cavour", null, "President-Advisor (Project Cavour)", null, null],
+  [2, "Mario", "Lodi", null, "mario.lodi@example.com", null, null, "Liquid Propulsion", "Injectors (INJ)", "Engineer", new Date(Date.UTC(2022, 10, 15)), null],
+  [3, "Nora", "Monti", null, "nora.monti@example.com", null, null, "Vittorio Emanuele II (VES) - Management", null, "Engineer", "1/12/2022", null],
+  [4, "Ivo", "Jori", null, "ivo.jori@example.com", null, null, "Propulsion", "Solid Motors", "Engineer", "after the exams", null],
 ];
 
 const RULES_2021: OldRow[] = [
@@ -362,6 +374,7 @@ const RULES_FILES: Record<string, string[][]> = {
     ["quitter-year", "Quitters", "6", "2022-2023"],
     ["quitter-year", "Quitters", "2", "2022-2023"],
     ["swap", "2025-2026", "1", "2"],
+    ["handover", "2025-2026", "10", "11"],
   ],
 };
 
@@ -370,10 +383,14 @@ async function writeRules() {
   const sheets = [
     { sheet: "2025-2026", data: text([NEW_HEADER, ...RULES_CURRENT.map((r, i) => newRow(i + 1, r))]) },
     { sheet: "2024-2025", data: text([OLD_HEADER, ...RULES_2024.map((r, i) => oldRow(i + 1, r))]) },
-    { sheet: "2022-2023", data: text([OLD_HEADER, ...RULES_2022.map((r, i) => oldRow(i + 1, r))]) },
+    { sheet: "2022-2023", data: text([HEADER_2022, ...RULES_2022]) },
     { sheet: "2021-2022", data: text([OLD_HEADER, ...RULES_2021.map((r, i) => oldRow(i + 1, r))]) },
     { sheet: "Quitters", data: text(RULES_QUITTERS) },
-    { sheet: "Roles 22-23", data: text([ROLES_HEADER, ["Mario", "Lodi", "Liquid Propulsion", "Injectors (INJ)", null, "Engineer"]]) },
+    // Not read (owner decision): were it read, Lia's empty Division cell would take "Hydraulics" and the unknown row would raise roles-sheet-unmatched.
+    {
+      sheet: "Roles 22-23",
+      data: text([ROLES_HEADER, ["Lia", "Kent", "Cavour", "Hydraulics (HYD)", null, "President-Advisor (Project Cavour)"], ["Nobody", "Known", "Management", null, null, "Engineer"]]),
+    },
     { sheet: "Roles 24-25", data: text([ROLES_HEADER, ["Quinto", "Rossi", "Efesto", null, null, "Engineer"]]) },
   ];
   writeFileSync(join(RULES_OUT, "roster.xlsx"), await writeXlsxFile(sheets as never).toBuffer());

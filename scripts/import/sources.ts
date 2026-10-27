@@ -14,9 +14,10 @@ import {
   ROLES_SHEET,
   SUBTEAMS_CSV,
   TEAM_MEMBERS_CSV,
-  YEAR_SHEET,
+  yearSheetOf,
   type PersonField,
   type SourceSpec,
+  type YearField,
 } from "./columns";
 import { parseCsv } from "./csv";
 import type { Conflict, At } from "./conflicts";
@@ -45,7 +46,8 @@ type CsvName = keyof typeof CSV_FILES;
 /** One located row: where it sits and each field's value ("" when the source has none). */
 export type Row<F extends string> = { readonly at: At; readonly value: Readonly<Record<F, string>> };
 
-export type PersonRow = Row<PersonField>;
+/** A year sheet's row. Its `joinedOn` is "" on every sheet but 2022-2023's. */
+export type PersonRow = Row<YearField>;
 
 /** One `YYYY-YYYY` sheet: the academic year it starts in (2025 for "2025-2026"). */
 export type YearSheet = { readonly year: number; readonly sheet: string; readonly rows: readonly PersonRow[] };
@@ -86,6 +88,9 @@ export type Sources = {
 const YEAR_SHEET_NAME = /^(\d{4})-(\d{4})$/;
 const ROLES_SHEET_NAME = /^roles (\d{2})-(\d{2})$/i;
 const QUITTERS_SHEET_NAME = /^quitters$/i;
+
+/** The academic years whose `Roles YY-YY` sheet is not read at all (owner decision, issue #816): `Roles 22-23`. */
+const UNREAD_ROLES_YEARS: ReadonlySet<number> = new Set([2022]);
 
 /** The academic year a `YYYY-YYYY` name starts in, or null when the name is no such year. */
 export function yearOfSheet(name: string): number | null {
@@ -191,7 +196,7 @@ export function readSources(directory: string, year?: number): Sources {
           skipped.push(`${file} › ${sheet.name}: newer than the current year`);
           continue;
         }
-        const rows = rowsBelow(sheet.rows, YEAR_SHEET, where, conflicts);
+        const rows = rowsBelow(sheet.rows, yearSheetOf(y), where, conflicts);
         if (rows === null) continue;
         read.push(`${file} › ${sheet.name}`);
         years.push({ year: y, sheet: sheet.name, rows: named(rows, nameless) });
@@ -200,6 +205,8 @@ export function readSources(directory: string, year?: number): Sources {
         if (rows === null) continue;
         read.push(`${file} › ${sheet.name}`);
         quitters = named(rows, nameless);
+      } else if (rolesYear !== null && UNREAD_ROLES_YEARS.has(rolesYear)) {
+        skipped.push(`${file} › ${sheet.name}: not read (owner decision); that year's own sheet is its only source`);
       } else if (rolesYear !== null) {
         const rows = rowsBelow(sheet.rows, ROLES_SHEET, where, conflicts);
         if (rows === null) continue;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { test } from "node:test";
-import { cell, locate, QUITTERS_SHEET, ROLES_SHEET, TEAM_MEMBERS_CSV, YEAR_SHEET } from "./columns";
+import { cell, locate, QUITTERS_SHEET, ROLES_SHEET, TEAM_MEMBERS_CSV, YEAR_SHEET, yearSheetOf } from "./columns";
 import { parseCsv } from "./csv";
 import { readOverrides } from "./overrides";
 import { listOf, linkedinLink } from "./plan";
@@ -40,6 +40,16 @@ test("the header row is found below title rows and beside stray cells, not assum
   assert.equal(locate([["Roles"], ["First Name", "Last Name", "Subteam", "Division", "Group", "Team Role"]], ROLES_SHEET)?.headerRow, 2);
   assert.equal(locate([["first_name", "last_name", "poli_email"]], TEAM_MEMBERS_CSV)?.headerRow, 1);
   assert.equal(locate([["no", "header", "here"]], YEAR_SHEET), null);
+});
+
+test("only the 2022-2023 sheet reads an 'A' column as Division and 'Date of joining' as the role start", () => {
+  const header = [["Number", "First Name", "Last Name", "Subteam", "A", "Team Role", "Date of joining"]];
+  const of2022 = locate(header, yearSheetOf(2022));
+  assert.deepEqual([of2022?.columns.division, of2022?.columns.joinedOn], [[4], [6]]);
+  const of2023 = locate(header, yearSheetOf(2023));
+  assert.deepEqual([of2023?.columns.division, of2023?.columns.joinedOn], [[], []]);
+  // The 2022-2023 sheet still reads a column headed "Division".
+  assert.deepEqual(locate([["First Name", "Last Name", "Division"]], yearSheetOf(2022))?.columns.division, [2]);
 });
 
 test("year sheets are named YYYY-YYYY with consecutive years, and the current one is the newest unless the run names another", () => {
@@ -277,6 +287,8 @@ test("a roster day reads from a date cell's serial and from dd/mm/yyyy, d/m/yyyy
   assert.equal(dayOf("30.06.2022"), "2022-06-30");
   assert.equal(dayOf("2024-06-30"), "2024-06-30");
   for (const text of ["", "sometime in 2023", "31/02/2024", "30/06.2022", "2024", "13/13/2024", "06/30/2022"]) assert.equal(dayOf(text), null, `"${text}" is no day`);
+  // A serial too large for any day is no day, not a crash.
+  for (const text of ["999999999", "9".repeat(400)]) assert.equal(dayOf(text), null, `"${text.slice(0, 12)}" is no day`);
 });
 
 test("a quitter-only row's stint: its leave year, its join day or the year's start; an override year wins; no date or an unreadable one is unclear", () => {
@@ -288,6 +300,7 @@ test("a quitter-only row's stint: its leave year, its join day or the year's sta
   assert.deepEqual(quitterStint(row("", "10/11/2021"), null), { kind: "unclear", conflict: "quitter-no-date", field: "leftOn" });
   assert.deepEqual(quitterStint(row("not a day", ""), null), { kind: "unclear", conflict: "quitter-date-unreadable", field: "leftOn" });
   assert.deepEqual(quitterStint(row("15/02/2023", "1/1/2024"), null), { kind: "unclear", conflict: "quitter-date-unreadable", field: "joinedOn" });
+  assert.deepEqual(quitterStint(row("999999999", ""), null), { kind: "unclear", conflict: "quitter-date-unreadable", field: "leftOn" });
 });
 
 test("an override line reads as a handover or a quitter year; an unknown kind or an unreadable row or value is reported on its field", () => {

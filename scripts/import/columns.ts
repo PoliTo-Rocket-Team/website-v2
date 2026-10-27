@@ -89,8 +89,25 @@ const PERSON_FIELDS = {
 
 export type PersonField = keyof typeof PERSON_FIELDS;
 
-/** A `YYYY-YYYY` year sheet. */
-export const YEAR_SHEET: SourceSpec<PersonField> = PERSON_FIELDS;
+/** A year sheet's fields: a person's, and the day their role that year started, which only the 2022-2023 sheet gives. */
+export type YearField = PersonField | "joinedOn";
+
+/** A `YYYY-YYYY` year sheet: its roles start on the academic year's first day. */
+export const YEAR_SHEET: SourceSpec<YearField> = { ...PERSON_FIELDS, joinedOn: { aliases: [] } };
+
+/**
+ * The `2022-2023` sheet (owner decision, issue #816): its Division column is
+ * headed "A", and its "Date of joining" column, where filled, is the day each
+ * role that year started.
+ */
+const YEAR_2022_SHEET: SourceSpec<YearField> = {
+  ...PERSON_FIELDS,
+  division: { aliases: ["Division", "A"] },
+  joinedOn: { aliases: ["Date of joining"] },
+};
+
+/** The columns of the year sheet for the academic year starting in `year`. */
+export const yearSheetOf = (year: number): SourceSpec<YearField> => (year === 2022 ? YEAR_2022_SHEET : YEAR_SHEET);
 
 /** The `Quitters` sheet: a title above the header, the day each person left and the day they joined. */
 export const QUITTERS_SHEET: SourceSpec<PersonField | "leftOn" | "joinedOn"> = {
