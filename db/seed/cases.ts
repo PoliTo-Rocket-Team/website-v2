@@ -497,7 +497,7 @@ export function waitingHandOversOf(data: SeedData): HandOverRequest[] {
 /** The requests still open, as `readOpenAliasRequests` reads them. */
 export function openAliasRequestsOf(data: SeedData): AliasRequest[] {
   return data.aliasRequests.flatMap((r) =>
-    r.outcome != null ? [] : [{ id: r.id!, memberId: r.memberId, requesterId: r.requestedBy ?? null, sentAt: r.createdAt! }],
+    r.outcome != null ? [] : [{ id: r.id!, memberId: r.memberId, requesterId: r.requestedBy ?? null, address: r.address ?? null, sentAt: r.createdAt! }],
   );
 }
 
@@ -1417,7 +1417,7 @@ export const SEED_CASES: readonly SeedCase[] = [
         drawer.cancellable &&
         drawer.line.startsWith("by you") &&
         approvers.length === 3 &&
-        approvers.every((a) => aliasRowsOf(data, a).some((r) => r.kind === "alias-request" && "answerAlias" in r.action && r.action.answerAlias === OPEN_REQUEST.id))
+        approvers.every((a) => aliasRowsOf(data, a).some((r) => r.kind === "prt-email-request" && "answerAlias" in r.action && r.action.answerAlias === OPEN_REQUEST.id))
       );
     },
   },
@@ -1430,13 +1430,13 @@ export const SEED_CASES: readonly SeedCase[] = [
     holds: (data) => {
       const request = openAliasRequestsOf(data).find((r) => r.id === AUTOMATIC_REQUEST.id);
       const [leader] = aliasApproversOf(data);
-      const row = leader === undefined ? undefined : aliasRowsOf(data, leader).find((r) => r.kind === "alias-request" && "answerAlias" in r.action && r.action.answerAlias === AUTOMATIC_REQUEST.id);
+      const row = leader === undefined ? undefined : aliasRowsOf(data, leader).find((r) => r.kind === "prt-email-request" && "answerAlias" in r.action && r.action.answerAlias === AUTOMATIC_REQUEST.id);
       return (
         request?.requesterId === null &&
         teamOf(data).some((p) => p.id === AUTOMATIC_REQUEST.member && p.memberships.some((m) => m.role === "lead")) &&
         row !== undefined &&
-        row.title.endsWith("needs an email alias") &&
-        row.detail.startsWith("Automatic · became")
+        row.title.startsWith("PRT email request for ") &&
+        row.detail.startsWith("Personal · automatic · became")
       );
     },
   },
@@ -1458,8 +1458,8 @@ export const SEED_CASES: readonly SeedCase[] = [
         own.address === CREATED_ALIAS.address &&
         data.aliasRequests.some((r) => r.id === CREATED_ALIAS.id && r.memberId === member && r.outcome === "created") &&
         drawer?.kind === "set" &&
-        !aliasNoticeRowsOf(data, member).some((r) => r.title.includes("email alias")) &&
-        aliasNoticeRowsOf(data, CREATED_ALIAS.by).some((r) => r.title.endsWith("'s email alias is ready"))
+        !aliasNoticeRowsOf(data, member).some((r) => r.title.includes("PRT email is ready")) &&
+        aliasNoticeRowsOf(data, CREATED_ALIAS.by).some((r) => r.title.endsWith("'s PRT email is ready"))
       );
     },
   },
@@ -1475,13 +1475,13 @@ export const SEED_CASES: readonly SeedCase[] = [
         data.aliasRequests.some((r) => r.id === DECLINED_REQUEST.id && r.outcome === "declined" && r.answeredBy === DECLINED_REQUEST.declinedBy) &&
         drawer?.kind === "none" &&
         drawer.requestable &&
-        aliasNoticeRowsOf(data, DECLINED_REQUEST.by).some((r) => r.title.includes("declined the email alias for"))
+        aliasNoticeRowsOf(data, DECLINED_REQUEST.by).some((r) => r.title.includes("declined the PRT email for"))
       );
     },
   },
   {
     area: "aliases",
-    case: "Two team addresses the member plain seat holds, one that moves with the Logistics lead and one tied to no role, so their side view shows the Team addresses row",
+    case: "Two team addresses the member plain seat holds, one that moves with the Logistics lead and one tied to no role, so their side view lists them as special lines of the PRT emails row",
     data: "invented",
     rows: "`team_addresses`, member 140, `logistics@prt.example.com` (division 15) and `recruitment@prt.example.com`",
     exercisedBy: issue(786),
@@ -1492,7 +1492,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "aliases",
-    case: "Of the member plain seat's two team addresses, the Logistics one is set up and the recruitment one is not, so their Overview shows one team address ready card",
+    case: "Of the member plain seat's two team addresses, the Logistics one is set up and the recruitment one is not, so their Overview shows one PRT email ready card",
     data: "invented",
     rows: "`team_addresses` `set_up_at`, member 140, `logistics@prt.example.com` set up, `recruitment@prt.example.com` not",
     exercisedBy: issue(578),

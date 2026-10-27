@@ -792,21 +792,52 @@ These rules come from the Owner decisions of 2026-10-11 on #232 (boards 68b to 6
 - The site sends no emails here either: the drawer shows the amber note for anyone added by
   email.
 
+### PRT emails
+
+These rules come from the Owner decisions of 2026-10-27 on issue #798. They set how the two
+stored kinds below, the email alias and the team address, read in the dashboard. Who may ask,
+who may answer and hand-over routing do not change.
+
+- The dashboard calls both kinds a "PRT email". The member's own address is the **personal**
+  one; a shared address such as recruitment@ is a **special** one. Neither "alias" nor "team
+  address" shows in the dashboard.
+- The member side view's Contact section has one "PRT emails" row, in place of the PRT email and
+  Team addresses rows. It lists the personal address, labelled "personal", or the open personal
+  request (Requested, who sent it and when, and Cancel request where allowed), then each special
+  address, labelled "special" with what it is for and "moves with" its role when tied. Each
+  address has a copy button; each special line keeps Remove (issue #797), and the personal line
+  has none. "Removal waiting" sits under its address, and the copy button keeps the same place on
+  every line. The row is hidden when the member holds nothing, has no open request and the
+  viewer may not ask.
+- **Request PRT email** ends the row whenever `mayAskFor` lets the viewer ask for the member,
+  whatever they hold. It opens one dialog with two choices. **Personal** is offered only while
+  the member has no personal address and no open personal request: its address is pre-filled as
+  firstname.lastname on the team domain, may be edited, and is checked on both sides with the
+  alias address check, then Cancel or Confirm. It is refused when the address is already a PRT
+  email of either kind. The request stores the address (`alias_requests.address`); a request the
+  site makes by itself stores none. **Special** is the request form of the Team addresses
+  section below, unchanged.
+- Each approver sees every open personal or special request as one kind of item, "PRT email
+  request for" the member, then "Personal" or "Special", the address and who asked. Mark created
+  starts from the address asked for, or from the member's name when none was stored, and shows
+  the Forwards to row for both.
+
 ### Email aliases
 
 These rules come from the Owner decisions of 2026-10-22 on epic #538 and issue #563 (boards 94 to
-94e, `lib/dashboard/alias-request.ts`).
+94e, `lib/dashboard/alias-request.ts`). Since issue #798 the dashboard names this kind the
+personal PRT email, and the PRT emails section above sets how it reads.
 
 - A member's team address lives in one field, their PRT email (`members.prt_email`), and their
   email alias is that address. A member may be asked for an alias, by hand or by the site, when
   their PRT email is empty and no request is open. Clearing a wrong PRT email makes them
   requestable again.
-- A division lead, a department head or the team leader asks for a team email alias for a member
-  they may manage, with Request alias on the PRT email row of the member drawer (board 94): a
-  lead for their division, a head for their department, the team leader for anyone. While the
-  PRT email is empty the row shows None and Request alias to a viewer who may ask. Nobody asks
-  for themselves, and a grant makes nobody a requester. The row then shows Requested, who sent
-  it and when, and Cancel request (board 94b).
+- A division lead, a department head or the team leader asks for a member's personal PRT email
+  with the Personal choice of Request PRT email, in the PRT emails row of the member drawer
+  (board 94; the PRT emails section above): a lead for their division, a head for their
+  department, the team leader for anyone. Personal is offered only while the PRT email is empty
+  and no request is open. Nobody asks for themselves, and a grant makes nobody a requester. The
+  row then shows Requested, who sent it and when, and Cancel request (board 94b).
 - A member has at most one open request, kept by the server and by the database
   (`alias_requests_one_open`).
 - The site asks by itself (issue #543, `owedAliasRequests`) whenever someone becomes a division
@@ -814,21 +845,22 @@ These rules come from the Owner decisions of 2026-10-22 on epic #538 and issue #
   New department and Change head, the team leader hand-over, and a confirmed hand-over request.
   The request is written with the role change, so a change refused or failed asks for nothing,
   and only when the person's PRT email is empty and no request is open. Close division and Close department make
-  nobody a lead or a head, so they never ask. Request alias stays for everyone else.
-- Only the team leader, the operations lead and the IT lead answer. Each open request is one row
-  on their Overview (board 94c), with Decline and Mark created. The Project Manager and the Chief
-  Engineer get none, and neither does full access from an access row alone. A request the site
-  made by itself has no requester and reads as the automatic row.
-- Mark created asks for the address (board 94d), prefilled as firstname.lastname on the team
-  domain. The server accepts firstname.lastname, or one word for a special-purpose address, and
-  only on the team domain. The address is saved as the member's PRT email and shown on the
-  drawer's PRT email row (board 94e). Mark created and Decline each tell the requester with a
-  notice.
-- The member gets no notice. Their own Overview shows the "Your email alias is ready" card
+  nobody a lead or a head, so they never ask. Request PRT email stays for everyone else.
+- Only the team leader, the operations lead and the IT lead answer. Each open request is one
+  "PRT email request" item on their Overview (board 94c; the PRT emails section above), with
+  Decline and Mark created. The Project Manager and the Chief Engineer get none, and neither does
+  full access from an access row alone. A request the site made by itself has no requester and
+  reads "Personal · automatic".
+- Mark created asks for the address (board 94d), prefilled with the address asked for, or as
+  firstname.lastname on the team domain when the request stored none. The server accepts
+  firstname.lastname, or one word for a special-purpose address, and only on the team domain.
+  The address is saved as the member's PRT email and shown as the personal line of the drawer's
+  PRT emails row (board 94e). Mark created and Decline each tell the requester with a notice.
+- The member gets no notice. Their own Overview shows the "Your PRT email is ready" card
   (board 94f, issue #542, `lib/dashboard/alias-setup.ts`, owner ruling on #550) until they set
-  the alias up. The card reads the address from their PRT email, so it shows for any member with
-  a PRT email who has not set it up yet. Open setup steps opens "Set up your email alias" (board
-  94g). Close only closes it; the card stays until the member presses "I've set it up", which is
+  the address up. The card reads the address from their PRT email, so it shows for any member
+  with a PRT email who has not set it up yet. Open setup steps opens "Set up your PRT email"
+  (board 94g). Close only closes it; the card stays until the member presses "I've set it up", which is
   stored on their own record (`email_alias_set_up_at`) only while they have a PRT email and have
   not set it up. The card shows on every Overview shape, a lead's as a member's, and never off
   the team.
@@ -842,28 +874,27 @@ These rules come from the Owner decisions of 2026-10-22 on epic #538 and issue #
 ### Team addresses
 
 These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 and 102b,
-`lib/dashboard/team-address.ts`).
+`lib/dashboard/team-address.ts`). Since issue #798 the dashboard names this kind the special PRT
+email, and the PRT emails section above sets how it reads.
 
 - A team address is a shared address on the team domain, such as a recruitment or logistics
   address. It is held by one member, says what it is for, and may move with a role: the team
   leader, a full-access seat, a department's head or a division's lead (grill #785). It is
-  separate from the PRT email and the email alias, whose rules do not change.
+  separate from the personal PRT email (the email alias), whose rules do not change.
 - One address has one holder, in any letter case (`team_addresses_address`). A tie stores
   exactly the reference its kind needs (`team_addresses_tie`).
-- The member side view shows a "Team addresses" row in the Contact section, directly under the
-  PRT email row (board 102). Each address the member holds is on its own line with a copy button,
-  sorted by address. Under it are what it is for and, when tied, "moves with" the role as the org
-  chart names it, for example "Logistics Lead".
-- The row shows to the same viewers who see the PRT email row: every viewer who reaches the
-  Members page and opens the member. It is hidden when the member holds no team address and the
-  viewer may not request one for them.
+- The member side view lists each team address the member holds as a "special" line of the PRT
+  emails row in the Contact section (board 102; the PRT emails section above), after the
+  personal line, sorted by address, each with a copy button. Each line also names what it is for
+  and, when tied, "moves with" the role as the org chart names it, for example "Logistics Lead".
+- The row shows to every viewer who reaches the Members page and opens the member, and hides as
+  the PRT emails section above says.
 - Who may request a team address follows the alias rule of issue #721: a division lead for a
   member of a division they lead, a department head for a member of their department, and anyone
-  with full access for any member on the team, themselves included. For them, "Request team
-  address" ends the row, so for a member holding none the row is the button alone (board 102b).
-  The server runs the same check (`mayAskFor`), so the button shows exactly when a request would
-  be accepted.
-- The request dialog asks for the address (the part before the team domain, which the box shows
+  with full access for any member on the team, themselves included. For them, Request PRT email
+  ends the row, and its Special choice is the request form below (board 102b). The server runs
+  the same check (`mayAskFor`), so the button shows exactly when a request would be accepted.
+- The Special form asks for the address (the part before the team domain, which the box shows
   as a fixed ending), what it is for (required, up to 120 characters) and, optionally, the role it
   moves with: the team leader, a full-access seat, or a department head or division lead on the
   current org chart. The address check is the alias one: one word or a dotted name, on the team
@@ -875,10 +906,10 @@ These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 
 - The alias approvers answer team address requests (issue #788): the team leader, the operations
   lead and the IT lead (`ALIAS_APPROVER_SEATS`). The Project Manager, the Chief Engineer, a lead,
   a head and full access from an access row alone do not, and the server refuses them.
-- Each approver sees one Needs your attention row per open request, oldest first, drawn like the
-  alias row (board 94c) with its at-sign: who asked for which address for which member, then what
-  it is for, the role it moves with, if any, and when it was sent. A request for someone no longer
-  on the team is not shown.
+- Each approver sees one Needs your attention row per open request, oldest first, as the same
+  "PRT email request for" the member item as a personal request (board 94c) with its at-sign,
+  then "Special", the address, what it is for, the role it moves with, if any, who asked and when
+  it was sent. A request for someone no longer on the team is not shown.
 - **Decline** closes the request and stores nothing under the member. **Mark created** opens a
   dialog like the alias one (board 94d): what it is for, read-only; a "Forwards to" row with the
   member's sign-in email and a copy button, as in the alias dialog (issue #586), for Google
@@ -887,7 +918,7 @@ These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 
   moves-with role, and the request closes. It is refused, and the request stays open, when the address is a
   team address already (also when it became one meanwhile: `team_addresses_address` refuses the
   second holder) or another open request asks for it.
-- The request is closed first, so a second answer is refused with "This team address request was
+- The request is closed first, so a second answer is refused with "This PRT email request was
   already answered." If saving the address or the notice then fails, the request opens again; when
   a newer request for the address came in meanwhile, that one is kept and the answer is refused.
 - Either answer leaves the requester a notice, themselves included when they asked for their own
@@ -914,19 +945,19 @@ These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 
   sign-in email as the "Forwards to" row with a copy button, then Cancel and Mark done. An item for
   someone no longer on the team is not shown.
 - **Mark done** in that dialog claims the item and, in the same batch, makes the new holder the
-  address's holder and clears its set-up, so it leaves the previous holder's Team addresses row and
-  shows on the new holder's. A second Mark done is refused with "This team address was already
+  address's holder and clears its set-up, so it leaves the previous holder's PRT emails row and
+  shows on the new holder's. A second Mark done is refused with "This PRT email was already
   moved." Nobody else may mark it done, and the server refuses them.
 - The holder of a team address gets the alias's ready card (board 94f) on their own Overview, under
   the person, after Mark created and after a routing item's Mark done (owner findings of
-  2026-10-26 on PR #794): "Your team address is ready:" and the address, with Open setup steps. The steps are the alias's (board 94g), titled "Set up your
-  team address". The card stays until the holder presses **I've set it up** in the steps; Close
+  2026-10-26 on PR #794): "Your special PRT email is ready:" and the address, with Open setup
+  steps. The steps are the alias's (board 94g), titled "Set up your special PRT email". The card stays until the holder presses **I've set it up** in the steps; Close
   only closes them. The press is stored on the address (`team_addresses.set_up_at`), only by its
   holder and only once, so each address not set up has its own card, by address, under the alias
   card. The steps for a team address have no way back from My profile.
 - A team address can be removed from its holder (Owner decision of 2026-10-27, issue #797). Who
   may remove it is who may request a team address for its holder (`mayAskFor`): for them each
-  line of the Team addresses row ends with **Remove**, which asks first ("Keep address" or
+  special line of the PRT emails row ends with **Remove**, which asks first ("Keep address" or
   "Remove"). The server runs the same check and refuses anyone else, writing nothing. It stores
   the removal only while the address still has the holder that check read: if a routing item's
   Mark done moved it to another member meanwhile, or is moving it at that moment, Remove waits
@@ -943,10 +974,10 @@ These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 
   the routing in Google Workspace first. Nobody else sees the row or may mark it done. The row
   stays, with Mark done, when the holder leaves the team after Remove.
 - **Mark done** deletes the address in the same batch that closes the removal: it leaves the
-  holder's Team addresses row and their Overview card, and Request team address takes it again,
-  in any letter case, for any member. The removal row keeps the address, whose it was, who
-  removed it and when, and who marked it done. A second Mark done is refused with "This team
-  address was already removed."
+  holder's PRT emails row and their Overview card, and Request PRT email takes it again, in any
+  letter case, for any member. The removal row keeps the address, whose it was, who removed it
+  and when, and who marked it done. A second Mark done is refused with "This PRT email was
+  already removed."
 - A removal and a routing item never both move one address. While a removal waits, the
   address's routing item is not shown and its Mark done is refused; the removal's Mark done
   deletes the routing item with the address. Removing an address does not change how routing

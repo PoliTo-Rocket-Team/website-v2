@@ -335,10 +335,13 @@ export async function answerHandOver(requestId: number, answer: unknown): Promis
   return result;
 }
 
-/** Request alias in the member drawer (board 94, epic #538): the drawer reads again with the request waiting. */
-export async function requestAlias(memberId: number): Promise<WriteResult<null>> {
-  if (!Number.isSafeInteger(memberId)) return refused("Unknown member.");
-  const result = await write("members", (data) => data.requestAlias(memberId));
+/**
+ * Request PRT email's Personal choice in the member drawer (board 94, epic
+ * #538, issue #798): the member and the address confirmed; the drawer reads
+ * again with the request waiting.
+ */
+export async function requestAlias(input: unknown): Promise<WriteResult<null>> {
+  const result = await write("members", (data) => data.requestAlias(input));
   if (result.ok) revalidatePath("/dashboard", "layout");
   return result;
 }
@@ -352,7 +355,7 @@ export async function requestTeamAddress(input: unknown): Promise<WriteResult<nu
 
 /** Decline or Mark created on the Overview (epic #578, issue #788): the row leaves, and Mark created shows the address in the member drawer. */
 export async function answerTeamAddress(requestId: number, answer: unknown): Promise<WriteResult<null>> {
-  if (!Number.isSafeInteger(requestId)) return refused("Unknown team address request.");
+  if (!Number.isSafeInteger(requestId)) return refused("Unknown PRT email request.");
   const result = await write("overview", (data) => data.answerTeamAddress(requestId, answer));
   if (result.ok) revalidatePath("/dashboard", "layout");
   return result;
@@ -360,7 +363,7 @@ export async function answerTeamAddress(requestId: number, answer: unknown): Pro
 
 /** Mark done on a team address routing item (epic #578, issue #789): the row leaves, and the address shows under its new holder. */
 export async function markTeamAddressRerouteDone(rerouteId: number): Promise<WriteResult<null>> {
-  if (!Number.isSafeInteger(rerouteId)) return refused("Unknown team address routing item.");
+  if (!Number.isSafeInteger(rerouteId)) return refused("Unknown PRT email routing item.");
   const result = await write("overview", (data) => data.markTeamAddressRerouteDone(rerouteId));
   if (result.ok) revalidatePath("/dashboard", "layout");
   return result;
@@ -368,7 +371,7 @@ export async function markTeamAddressRerouteDone(rerouteId: number): Promise<Wri
 
 /** Remove on a team address in the member drawer (issue #797): the drawer reads again with the removal waiting for an approver. */
 export async function removeTeamAddress(addressId: number): Promise<WriteResult<null>> {
-  if (!Number.isSafeInteger(addressId)) return refused("Unknown team address.");
+  if (!Number.isSafeInteger(addressId)) return refused("Unknown PRT email.");
   const result = await write("members", (data) => data.removeTeamAddress(addressId));
   if (result.ok) revalidatePath("/dashboard", "layout");
   return result;
@@ -376,7 +379,7 @@ export async function removeTeamAddress(addressId: number): Promise<WriteResult<
 
 /** Mark done on a team address removal (issue #797): the row leaves, and the address leaves its holder and can be requested again. */
 export async function markTeamAddressRemovalDone(removalId: number): Promise<WriteResult<null>> {
-  if (!Number.isSafeInteger(removalId)) return refused("Unknown team address removal.");
+  if (!Number.isSafeInteger(removalId)) return refused("Unknown PRT email removal.");
   const result = await write("overview", (data) => data.markTeamAddressRemovalDone(removalId));
   if (result.ok) revalidatePath("/dashboard", "layout");
   return result;
@@ -384,7 +387,7 @@ export async function markTeamAddressRemovalDone(removalId: number): Promise<Wri
 
 /** Cancel request in the member drawer (board 94b). */
 export async function cancelAliasRequest(requestId: number): Promise<WriteResult<null>> {
-  if (!Number.isSafeInteger(requestId)) return refused("Unknown alias request.");
+  if (!Number.isSafeInteger(requestId)) return refused("Unknown PRT email request.");
   const result = await write("members", (data) => data.cancelAliasRequest(requestId));
   if (result.ok) revalidatePath("/dashboard", "layout");
   return result;
@@ -392,7 +395,7 @@ export async function cancelAliasRequest(requestId: number): Promise<WriteResult
 
 /** Decline or Mark created on the Overview (boards 94c, 94d): the row leaves, and the member drawer shows the alias. */
 export async function answerAlias(requestId: number, answer: unknown): Promise<WriteResult<null>> {
-  if (!Number.isSafeInteger(requestId)) return refused("Unknown alias request.");
+  if (!Number.isSafeInteger(requestId)) return refused("Unknown PRT email request.");
   const result = await write("overview", (data) => data.answerAlias(requestId, answer));
   if (result.ok) revalidatePath("/dashboard", "layout");
   return result;
@@ -415,7 +418,7 @@ export async function confirmAliasSetUp(): Promise<WriteResult<null>> {
  * reads again without its card.
  */
 export async function confirmTeamAddressSetUp(addressId: number): Promise<WriteResult<null>> {
-  if (!Number.isSafeInteger(addressId)) return refused("Unknown team address.");
+  if (!Number.isSafeInteger(addressId)) return refused("Unknown PRT email.");
   const result = await write("overview", (data) => data.confirmTeamAddressSetUp(addressId));
   if (result.ok) revalidatePath("/dashboard", "layout");
   return result;

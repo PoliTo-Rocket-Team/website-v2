@@ -139,7 +139,7 @@ test("the alias notices draw the alias request's at-sign tile; other notices kee
     assert.ok(notice);
     return attentionOf(notice, now);
   };
-  assert.equal(read("alias-created", { address: "davide.russo@politorocketteam.it" }).iconKind, "alias-request");
-  assert.equal(read("alias-declined", { by: "Andrea Pantano" }).iconKind, "alias-request");
+  assert.equal(read("alias-created", { address: "davide.russo@politorocketteam.it" }).iconKind, "prt-email-request");
+  assert.equal(read("alias-declined", { by: "Andrea Pantano" }).iconKind, "prt-email-request");
   assert.equal(read("member-left", { divisions: ["Hardware Division"], reason: null }).iconKind, undefined);
 });

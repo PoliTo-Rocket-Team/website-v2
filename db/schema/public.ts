@@ -606,6 +606,12 @@ export const aliasRequests = pgTable("alias_requests", {
     .notNull(),
   requestedBy: integer("requested_by").references(() => members.memberId, { onDelete: "set null" }),
   requestedByActingAccount: actingAccount("requested_by_acting_account"),
+  /**
+   * The address the requester confirmed on Request PRT email's Personal
+   * choice (issue #798); null for a request the site made by itself, whose
+   * Mark created starts from the member's name.
+   */
+  address: text("address"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
     .defaultNow()
     .notNull(),

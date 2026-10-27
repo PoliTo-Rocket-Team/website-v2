@@ -65,7 +65,7 @@ function MarkDoneDialog({ open, onOpenChange, action }: { open: boolean; onOpenC
           </DialogTitle>
           <p className="mt-2 text-[14px] leading-relaxed text-prt-muted">
             Point it at {first}&apos;s sign-in email in Google Workspace first (recipient address map), then mark it done here.{" "}
-            {`It moves to ${first}'s team addresses and ${first} gets the setup steps.`}
+            {`It moves to ${first}'s PRT emails and ${first} gets the setup steps.`}
           </p>
           <ForwardsTo signInEmail={action.signInEmail} className="mt-6" />
           <div className="mt-6 flex flex-col-reverse gap-3 sm:mt-5 sm:flex-row sm:justify-end sm:gap-2.5">

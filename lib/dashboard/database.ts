@@ -1114,7 +1114,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     markTeamAddressRemovalDone: (removalId) => markTeamAddressRemovalDone(identity, removalId),
     myTeamAddresses: () => readOwnTeamAddresses(identity),
     confirmTeamAddressSetUp: (addressId) => confirmTeamAddressSetUp(identity, addressId),
-    requestAlias: (memberId) => requestAlias(identity, memberId),
+    requestAlias: (input) => requestAlias(identity, input),
     cancelAliasRequest: (requestId) => cancelAliasRequest(identity, requestId),
     answerAlias: (requestId, answer) => answerAlias(identity, requestId, answer),
     myAlias: () => readOwnAlias(identity),

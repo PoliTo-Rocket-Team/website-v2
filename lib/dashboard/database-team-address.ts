@@ -238,7 +238,7 @@ async function readSameAddressElsewhere(address: string, requestId: number): Pro
 }
 
 /** What a second answer, or one on a request gone meanwhile, reads. */
-const ALREADY_ANSWERED = "This team address request was already answered.";
+const ALREADY_ANSWERED = "This PRT email request was already answered.";
 
 /**
  * Decline or Mark created on the Overview, checked by `planTeamAddressAnswer`.
@@ -810,7 +810,7 @@ export async function readOwnTeamAddresses(identity: DashboardIdentity): Promise
  */
 export async function confirmTeamAddressSetUp(identity: DashboardIdentity, addressId: number): Promise<WriteResult<null>> {
   const planned = planTeamAddressSetUp(await readOwnTeamAddresses(identity), addressId);
-  if (!planned.ok || identity.memberId === null) return refused(planned.ok ? "You hold no such team address to set up." : planned.error);
+  if (!planned.ok || identity.memberId === null) return refused(planned.ok ? "You hold no such PRT email to set up." : planned.error);
   const holderId = identity.memberId;
   const stored = await runAuditQuery((db) =>
     db
@@ -819,5 +819,5 @@ export async function confirmTeamAddressSetUp(identity: DashboardIdentity, addre
       .where(and(eq(teamAddresses.id, addressId), eq(teamAddresses.holderId, holderId), isNull(teamAddresses.setUpAt)))
       .returning({ id: teamAddresses.id }),
   );
-  return stored.length === 0 ? refused("You already set up this team address.") : written(null);
+  return stored.length === 0 ? refused("You already set up this PRT email.") : written(null);
 }

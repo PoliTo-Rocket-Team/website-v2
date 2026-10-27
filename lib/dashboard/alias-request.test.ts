@@ -6,11 +6,13 @@ import {
   aliasPrefill,
   checkAliasAddress,
   checkAliasAnswer,
+  checkAliasRequest,
   memberAliasesFor,
   owedAliasRequests,
   planAliasAnswer,
   planAliasCancel,
   planAliasRequest,
+  personalRequestChoice,
   type AliasRequest,
   type AliasTeamPerson,
 } from "./alias-request";
@@ -80,9 +82,25 @@ function standingOf(id: number | null): ViewerStanding {
   return plainSeatStanding(id === null ? "non-member" : "member");
 }
 
-const request = (id: number, memberId: number, requesterId: number | null, sentAt = "2026-10-22T09:00:00+02:00"): AliasRequest => ({ id, memberId, requesterId, sentAt });
-const ask = (requesterId: number | null, memberId: number, extra: { prtEmail?: string | null; open?: AliasRequest[] } = {}) =>
-  planAliasRequest({ requesterId, standing: standingOf(requesterId), memberId, team, org, prtEmail: extra.prtEmail ?? null, open: extra.open ?? [] });
+const request = (id: number, memberId: number, requesterId: number | null, sentAt = "2026-10-22T09:00:00+02:00"): AliasRequest => ({ id, memberId, requesterId, address: null, sentAt });
+/** The address a personal request sends unless a test names another: firstname.lastname, as the dialog pre-fills it. */
+const NEW_ADDRESS = "new.person@politorocketteam.it";
+const ask = (
+  requesterId: number | null,
+  memberId: number,
+  extra: { prtEmail?: string | null; open?: AliasRequest[]; address?: string; taken?: string[] } = {},
+) =>
+  planAliasRequest({
+    requesterId,
+    standing: standingOf(requesterId),
+    memberId,
+    team,
+    org,
+    prtEmail: extra.prtEmail ?? null,
+    open: extra.open ?? [],
+    address: extra.address ?? NEW_ADDRESS,
+    taken: extra.taken ?? [],
+  });
 
 test("a lead asks for their division, a head for their department, the team leader for anyone", () => {
   assert.ok(ask(MARCO, DAVIDE).ok);
@@ -94,7 +112,7 @@ test("a lead asks for their division, a head for their department, the team lead
 });
 
 test("nobody else asks: a member, a lead or head for themselves, nobody for someone off the team", () => {
-  const refused = { ok: false, error: "You can request an alias only for someone you lead or head." };
+  const refused = { ok: false, error: "You can request a PRT email only for someone you lead or head." };
   assert.deepEqual(ask(DAVIDE, LENA), refused);
   assert.deepEqual(ask(MARCO, MARCO), refused, "a lead for themselves");
   assert.deepEqual(ask(CHIARA, CHIARA), refused, "a head for themselves");
@@ -110,29 +128,29 @@ test("anyone with full access asks for any member, themselves included (Owner de
   assert.ok(ask(ALESSANDRO, ALESSANDRO).ok, "the team leader, for themselves");
   for (const seat of ["project-manager", "chief-engineer", null] as const) {
     const standing: ViewerStanding = { kind: "operations-lead", seat, siteContent: false, approveOrders: false };
-    assert.ok(planAliasRequest({ requesterId: LENA, standing, memberId: RICCARDO, team, org, prtEmail: null, open: [] }).ok, `seat ${seat}`);
+    assert.ok(planAliasRequest({ requesterId: LENA, standing, memberId: RICCARDO, team, org, prtEmail: null, open: [], address: NEW_ADDRESS, taken: [] }).ok, `seat ${seat}`);
   }
 });
 
 test("full access asks for nobody who already has a PRT email or an open request", () => {
-  assert.deepEqual(ask(SARA, DAVIDE, { open: [request(1, DAVIDE, null)] }), { ok: false, error: "An alias for Davide Russo is already requested." });
+  assert.deepEqual(ask(SARA, DAVIDE, { open: [request(1, DAVIDE, null)] }), { ok: false, error: "A personal PRT email for Davide Russo is already requested." });
   assert.deepEqual(
     ask(SARA, DAVIDE, { prtEmail: "", open: [request(1, DAVIDE, MARCO)] }),
-    { ok: false, error: "An alias for Davide Russo is already requested." },
+    { ok: false, error: "A personal PRT email for Davide Russo is already requested." },
     "an empty PRT email with an open request",
   );
-  assert.deepEqual(ask(SARA, DAVIDE, { prtEmail: "davide.russo@politorocketteam.it" }), { ok: false, error: "Davide Russo already has a PRT email." });
+  assert.deepEqual(ask(SARA, DAVIDE, { prtEmail: "davide.russo@politorocketteam.it" }), { ok: false, error: "Davide Russo already has a personal PRT email." });
   assert.equal(ask(ALESSANDRO, ALESSANDRO, { prtEmail: "alessandro.greco@politorocketteam.it" }).ok, false, "themselves, once set");
 });
 
 test("a plain division lead is still refused for a member outside their division", () => {
-  assert.deepEqual(ask(MARCO, LENA), { ok: false, error: "You can request an alias only for someone you lead or head." });
-  assert.deepEqual(ask(MARCO, RICCARDO), { ok: false, error: "You can request an alias only for someone you lead or head." });
+  assert.deepEqual(ask(MARCO, LENA), { ok: false, error: "You can request a PRT email only for someone you lead or head." });
+  assert.deepEqual(ask(MARCO, RICCARDO), { ok: false, error: "You can request a PRT email only for someone you lead or head." });
 });
 
 test("a member with a PRT email or an open request gets no second one", () => {
-  assert.deepEqual(ask(MARCO, DAVIDE, { prtEmail: "davide.russo@politorocketteam.it" }), { ok: false, error: "Davide Russo already has a PRT email." });
-  assert.deepEqual(ask(MARCO, DAVIDE, { open: [request(1, DAVIDE, null)] }), { ok: false, error: "An alias for Davide Russo is already requested." });
+  assert.deepEqual(ask(MARCO, DAVIDE, { prtEmail: "davide.russo@politorocketteam.it" }), { ok: false, error: "Davide Russo already has a personal PRT email." });
+  assert.deepEqual(ask(MARCO, DAVIDE, { open: [request(1, DAVIDE, null)] }), { ok: false, error: "A personal PRT email for Davide Russo is already requested." });
   assert.ok(ask(MARCO, DAVIDE, { open: [request(1, LENA, CHIARA)] }).ok, "another member's request blocks nothing");
 });
 
@@ -173,8 +191,8 @@ test("the prefill is firstname.lastname on the team domain", () => {
 test("the address check: the team domain, firstname.lastname, or one word for a special-purpose address", () => {
   assert.deepEqual(checkAliasAddress(" Davide.Russo@PoliToRocketTeam.it "), { ok: true, value: { address: "davide.russo@politorocketteam.it", form: "personal" } });
   assert.deepEqual(checkAliasAddress("sponsoring@politorocketteam.it"), { ok: true, value: { address: "sponsoring@politorocketteam.it", form: "special" } });
-  assert.deepEqual(checkAliasAddress("davide.russo@gmail.com"), { ok: false, error: "The alias must end with @politorocketteam.it." });
-  assert.deepEqual(checkAliasAddress("davide.russo@politorocketteam.it.evil"), { ok: false, error: "The alias must end with @politorocketteam.it." });
+  assert.deepEqual(checkAliasAddress("davide.russo@gmail.com"), { ok: false, error: "The PRT email must end with @politorocketteam.it." });
+  assert.deepEqual(checkAliasAddress("davide.russo@politorocketteam.it.evil"), { ok: false, error: "The PRT email must end with @politorocketteam.it." });
   for (const bad of ["davide_russo", "davide..russo", "a.b.c", ".russo", "", "davide russo"]) {
     assert.equal(checkAliasAddress(`${bad}@politorocketteam.it`).ok, false, bad);
   }
@@ -219,8 +237,8 @@ test("Mark created and Decline tell the requester; the member gets no notice; an
 test("the notices read as attention rows", () => {
   const now = new Date("2026-10-22T12:00:00Z");
   const read = (kind: string, data: unknown) => attentionOf(noticeOf({ id: 1, kind, subject: "Davide Russo", createdAt: "2026-10-22T10:00:00Z", data })!, now);
-  assert.equal(read("alias-created", { address: "davide.russo@politorocketteam.it" }).title, "Davide Russo's email alias is ready");
-  assert.equal(read("alias-declined", { by: "Alessandro Greco" }).title, "Alessandro Greco declined the email alias for Davide Russo");
+  assert.equal(read("alias-created", { address: "davide.russo@politorocketteam.it" }).title, "Davide Russo's PRT email is ready");
+  assert.equal(read("alias-declined", { by: "Alessandro Greco" }).title, "Alessandro Greco declined the PRT email for Davide Russo");
   assert.equal(noticeOf({ id: 1, kind: "alias-created", subject: "x", createdAt: "2026-10-22T10:00:00Z", data: {} }), null);
   assert.equal(noticeOf({ id: 1, kind: "alias-ready", subject: "x", createdAt: "2026-10-22T10:00:00Z", data: { address: "x@politorocketteam.it" } }), null, "an older alias-ready row is not shown");
 });
@@ -232,12 +250,12 @@ test("a Decline made while viewing as the approver names the acting account too;
   const read = (actingTitle: string | null) =>
     attentionOf(noticeOf({ id: 1, kind: declined.notice.kind, subject: "Davide Russo", createdAt: "2026-10-22T10:00:00Z", actingTitle, data: declined.notice.data })!, now)
       .title;
-  assert.equal(read(actingTitleOf(["it-lead"], "live")), "IT lead as Sara Conti declined the email alias for Davide Russo");
-  assert.equal(read(actingTitleOf([null], "test")), "Admin tester as Sara Conti declined the email alias for Davide Russo");
-  assert.equal(read(null), "Sara Conti declined the email alias for Davide Russo");
+  assert.equal(read(actingTitleOf(["it-lead"], "live")), "IT lead as Sara Conti declined the PRT email for Davide Russo");
+  assert.equal(read(actingTitleOf([null], "test")), "Admin tester as Sara Conti declined the PRT email for Davide Russo");
+  assert.equal(read(null), "Sara Conti declined the PRT email for Davide Russo");
   const created = aliasAnswerNotices({ kind: "created", request: request(1, DAVIDE, MARCO), address: "davide.russo@politorocketteam.it" }, "Sara Conti");
   const ready = noticeOf({ id: 2, kind: "alias-created", subject: "Davide Russo", createdAt: "2026-10-22T10:00:00Z", actingTitle: "IT lead", data: created[0]!.notice.data });
-  assert.equal(attentionOf(ready!, now).title, "Davide Russo's email alias is ready", "Mark created names no one who acted");
+  assert.equal(attentionOf(ready!, now).title, "Davide Russo's PRT email is ready", "Mark created names no one who acted");
 });
 
 test("the approver's rows (board 94c): one per open request, oldest first, the automatic one as its own row", () => {
@@ -247,8 +265,8 @@ test("the approver's rows (board 94c): one per open request, oldest first, the a
   assert.deepEqual(
     rows.map((r) => [r.kind, r.title, r.detail]),
     [
-      ["alias-request", "Marco Bianchi asks for an email alias for Davide Russo", "Sent yesterday · create it in Google Workspace, then press Mark created. Davide Russo and Marco Bianchi then see that it's ready."],
-      ["alias-request", "Marco Bianchi needs an email alias", "Automatic · became Mission Analysis lead today and has no alias"],
+      ["prt-email-request", "PRT email request for Davide Russo", "Personal · from Marco Bianchi · sent yesterday"],
+      ["prt-email-request", "PRT email request for Marco Bianchi", "Personal · automatic · became Mission Analysis lead today and has no PRT email"],
     ],
   );
   assert.deepEqual(rows[0].action, {
@@ -292,7 +310,17 @@ test("the drawer's Request alias shows exactly when Request alias would be accep
   for (const viewerId of [...everyone, null]) {
     const aliases = memberAliasesFor({ viewerId, standing: standingOf(viewerId), memberIds: everyone, team, org, addresses, open, now });
     for (const memberId of everyone) {
-      const accepted = planAliasRequest({ requesterId: viewerId, standing: standingOf(viewerId), memberId, team, org, prtEmail: addresses.get(memberId) ?? null, open }).ok;
+      const accepted = planAliasRequest({
+        requesterId: viewerId,
+        standing: standingOf(viewerId),
+        memberId,
+        team,
+        org,
+        prtEmail: addresses.get(memberId) ?? null,
+        open,
+        address: NEW_ADDRESS,
+        taken: [...addresses.values()],
+      }).ok;
       const alias = aliases[memberId]!;
       assert.equal(alias.kind === "none" && alias.requestable, accepted, `viewer ${viewerId} for ${memberId}`);
     }
@@ -312,5 +340,51 @@ test("a request sent while viewing as the requester names the acting seat, to th
     assert.equal((aliases[LENA] as { line: string }).line, "by IT lead as Chiara Rinaldi · 22 Oct", `as ${viewerId}`);
   }
   const [row] = aliasAttentionFor(plainSeatStanding("team-leader"), [viewedAs], team, org, now);
-  assert.equal(row.title, "IT lead as Chiara Rinaldi asks for an email alias for Lena Fischer");
+  assert.equal(row.detail, "Personal · from IT lead as Chiara Rinaldi · sent today");
+});
+
+// Request PRT email's Personal choice (issue #798) ---------------------------
+
+test("a personal request carries the address the requester confirmed, checked and saved in lower case (issue #798)", () => {
+  assert.deepEqual(checkAliasRequest({ memberId: DAVIDE, address: " Davide.Russo@PoliToRocketTeam.it " }), {
+    ok: true,
+    value: { memberId: DAVIDE, address: "davide.russo@politorocketteam.it" },
+  });
+  assert.deepEqual(checkAliasRequest({ memberId: DAVIDE, address: "davide.russo@gmail.com" }), { ok: false, error: "The PRT email must end with @politorocketteam.it." });
+  assert.equal(checkAliasRequest({ memberId: DAVIDE, address: "davide_russo@politorocketteam.it" }).ok, false, "neither firstname.lastname nor one word");
+  assert.equal(checkAliasRequest({ memberId: DAVIDE }).ok, false, "no address");
+  assert.equal(checkAliasRequest(DAVIDE).ok, false, "a bare member id, as Request alias sent it");
+  assert.deepEqual(ask(MARCO, DAVIDE, { address: "d.russo@politorocketteam.it" }), {
+    ok: true,
+    value: { memberId: DAVIDE, requesterId: MARCO, address: "d.russo@politorocketteam.it" },
+  });
+});
+
+test("a personal request refuses an address someone already holds, as a PRT email or a special one", () => {
+  const address = "davide.russo@politorocketteam.it";
+  assert.deepEqual(ask(MARCO, DAVIDE, { address, taken: ["Davide.Russo@politorocketteam.it"] }), { ok: false, error: `${address} is already a PRT email.` });
+  assert.equal(ask(MARCO, DAVIDE, { address: "recruitment@politorocketteam.it", taken: ["recruitment@politorocketteam.it"] }).ok, false, "a special one");
+  assert.ok(ask(MARCO, DAVIDE, { address, taken: ["lena.fischer@politorocketteam.it"] }).ok, "another address blocks nothing");
+});
+
+test("Mark created starts from the address asked for, or from the name when the request stored none (issue #798)", () => {
+  const now = new Date("2026-10-22T12:00:00+02:00");
+  const asked: AliasRequest = { ...request(1, DAVIDE, MARCO, "2026-10-22T10:00:00+02:00"), address: "d.russo@politorocketteam.it" };
+  const [byHand, automatic] = aliasAttentionFor(IT_LEAD, [asked, request(2, LENA, null, "2026-10-22T11:00:00+02:00")], team, org, now);
+  assert.equal(byHand.detail, "Personal · d.russo@politorocketteam.it · from Marco Bianchi · sent today");
+  assert.equal((byHand.action as { prefill: string }).prefill, "d.russo@politorocketteam.it");
+  assert.equal((automatic.action as { prefill: string }).prefill, "lena.fischer@politorocketteam.it", "a request the site made stores no address");
+});
+
+test("Request PRT email offers Personal only while there is no personal PRT email and no open personal request (issue #798)", () => {
+  assert.deepEqual(personalRequestChoice({ kind: "none", requestable: true }, "Davide Russo"), { allowed: true });
+  assert.deepEqual(personalRequestChoice({ kind: "set", address: "davide.russo@politorocketteam.it" }, "Davide Russo"), {
+    allowed: false,
+    reason: "Davide already has a personal PRT email.",
+  });
+  assert.deepEqual(personalRequestChoice({ kind: "requested", requestId: 1, line: "by you · 22 Oct", cancellable: true }, "Davide Russo"), {
+    allowed: false,
+    reason: "A personal PRT email for Davide is already requested.",
+  });
+  assert.equal(personalRequestChoice(null, "Davide Russo").allowed, false, "an alias that was not read offers nothing");
 });

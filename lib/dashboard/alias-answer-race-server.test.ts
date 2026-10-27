@@ -32,6 +32,7 @@ const NEWER_ROW = {
   memberId: MEMBER,
   requestedBy: NEWER.requestedBy,
   requestedByActingAccount: null,
+  address: null,
   createdAt: NEWER.createdAt,
   outcome: null,
   answeredBy: null,
@@ -103,7 +104,7 @@ describe("an answer whose save fails while a newer request for the member lands 
       assert.equal(result.ok, false, JSON.stringify(result));
       const error = (result as { error: string }).error;
       assert.match(error, /not saved/i, "says the answer was not saved");
-      assert.match(error, /newer alias request for this member is open/i, "says a newer request is open");
+      assert.match(error, /newer PRT email request for this member is open/i, "says a newer request is open");
 
       const rows = await memberRequests();
       const newer = rows.find((r) => r.id === NEWER.id);

@@ -66,7 +66,7 @@ test("Request team address stores one open request; the same address again in an
   const again = await ask("EVENTS@PoliToRocketTeam.it");
   assert.ok(!again.ok && /already requested/.test(again.error), JSON.stringify(again));
   const held = await ask("logistics@politorocketteam.it");
-  assert.ok(!held.ok && /already a team address/.test(held.error), JSON.stringify(held));
+  assert.ok(!held.ok && /already a PRT email/.test(held.error), JSON.stringify(held));
   const stored = await tableRows(teamAddressRequests);
   assert.deepEqual(
     stored.map((r) => [r.address, r.memberId, r.movesWith, r.outcome]),
@@ -93,7 +93,7 @@ async function requestRowsSeenBy(viewer: string) {
   const opening = await openDashboard();
   assert.equal(opening.kind, "open", "the dashboard opens");
   const overview = (await (opening as { data: DashboardData }).data.overview()) as TeamSideOverview;
-  return overview.attention.filter((a) => a.kind === "team-address-request");
+  return overview.attention.filter((a) => a.kind === "prt-email-request" && "answerTeamAddress" in a.action);
 }
 
 test("the team leader, the operations lead and the IT lead each see the open request; the Project Manager, the Chief Engineer and a lead do not", async () => {
@@ -101,8 +101,8 @@ test("the team leader, the operations lead and the IT lead each see the open req
   for (const viewer of ["team leader", "operations lead", "IT lead"]) {
     const rows = await requestRowsSeenBy(viewer);
     assert.equal(rows.length, 1, viewer);
-    assert.match(rows[0]!.title, /asks for design@politorocketteam\.it for /, viewer);
-    assert.match(rows[0]!.detail, /^Design · moves with IT Lead · sent /, viewer);
+    assert.match(rows[0]!.title, /^PRT email request for /, viewer);
+    assert.match(rows[0]!.detail, /^Special · design@politorocketteam\.it · Design · moves with IT Lead · from .* · sent /, viewer);
   }
   for (const viewer of ["Project Manager", "Chief Engineer", "division lead"]) assert.deepEqual(await requestRowsSeenBy(viewer), [], viewer);
 });
@@ -185,7 +185,7 @@ test("Mark created on an address that became a team address meanwhile is refused
   await addRows(teamAddresses, [{ address: "DESIGN@politorocketteam.it", purpose: "Design", holderId: HOLDER }]);
   signInAs(accountOf("team leader").userId);
   const answer = await actions.answerTeamAddress(REQUEST, { kind: "created", address: "design@politorocketteam.it" });
-  assert.ok(!answer.ok && /already a team address/.test(answer.error), JSON.stringify(answer));
+  assert.ok(!answer.ok && /already a PRT email/.test(answer.error), JSON.stringify(answer));
   assert.deepEqual((await tableRows(teamAddressRequests)).map((r) => r.outcome), [null]);
   assert.deepEqual((await tableRows(teamAddresses)).filter((r) => r.holderId === ASKED_FOR), []);
 });
@@ -441,7 +441,7 @@ test("Remove stores one open removal the approver seats alone see; Mark done fre
   );
   const ask = () => actions.requestTeamAddress({ memberId: DM_MEMBER, address: "Logistics@PoliToRocketTeam.it", purpose: "Logistics", movesWith: null });
   const held = await ask();
-  assert.ok(!held.ok && /already a team address/.test(held.error), JSON.stringify(held));
+  assert.ok(!held.ok && /already a PRT email/.test(held.error), JSON.stringify(held));
 
   for (const viewer of ["team leader", "operations lead", "IT lead"]) {
     assert.deepEqual(

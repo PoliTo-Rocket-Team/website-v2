@@ -541,14 +541,13 @@ const ATTENTION_ICONS: Readonly<Record<AttentionKind, LucideIcon>> = {
   "orders-to-decide": ShoppingCart,
   "approved-orders": Package,
   "hand-over": ArrowRightLeft,
-  "alias-request": AtSign,
-  "team-address-request": AtSign,
+  "prt-email-request": AtSign,
   "team-address-reroute": AtSign,
   "team-address-removal": AtSign,
 };
 
 /** The rows the viewer answers on the row itself, drawn on the accent tint. */
-const ANSWERED_HERE = ["hand-over", "alias-request", "team-address-request", "team-address-reroute", "team-address-removal"] as const satisfies readonly AttentionKind[];
+const ANSWERED_HERE = ["hand-over", "prt-email-request", "team-address-reroute", "team-address-removal"] as const satisfies readonly AttentionKind[];
 
 function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boolean; hiddenOnPhone: boolean }) {
   return (

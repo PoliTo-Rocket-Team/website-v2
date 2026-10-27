@@ -8,7 +8,8 @@ import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@
 import { cn } from "@/lib/utils";
 import { addMember, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
 import { cancelAliasRequest, removeTeamAddress, requestAlias, requestTeamAddress } from "@/app/dashboard/actions";
-import { TEAM_DOMAIN, type MemberAlias } from "@/lib/dashboard/alias-request";
+import { ALIAS_FORM_HINT, aliasPrefill, checkAliasAddress, personalRequestChoice, TEAM_DOMAIN, type MemberAlias } from "@/lib/dashboard/alias-request";
+import type { Permission } from "@/lib/dashboard/team";
 import { checkPurpose, checkTeamAddress, PURPOSE_MAX, type MovesWithOption, type TeamAddressLine, type TeamAddressRow } from "@/lib/dashboard/team-address";
 import { DEGREE_PROGRAMMES, GENDERS, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
 import {
@@ -40,6 +41,7 @@ import { Avatar } from "./avatar";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CopyButton, IconButton } from "./copy-button";
+import { RadioChoice } from "./hand-over-choice";
 import { Chips } from "./division-chips";
 import { MemberDialogs, type Asking } from "./division-members";
 import {
@@ -176,7 +178,7 @@ function PlaceRow({ place }: { place: PersonPlace }) {
 /**
  * The member panel (boards 61f and 98): placement, contact, studies, personal
  * and the NDA. Close, and Edit details. It is the wide panel, as boards 94 to
- * 94e draw it, so the PRT email row keeps its whole address and request line.
+ * 94e draw it, so the PRT emails row keeps its whole addresses and request line.
  */
 export function PersonDrawer<P extends PanelPerson>({
   person,
@@ -191,9 +193,9 @@ export function PersonDrawer<P extends PanelPerson>({
   /** Their email alias, their PRT email, as the viewer sees it (epic #538, issue #563); null when it was not read. */
   alias: MemberAlias | null;
   /**
-   * Their Team addresses row (epic #578, boards 102 and 102b): the shared
-   * addresses they hold and whether the viewer may request one; null when
-   * the row is hidden.
+   * The special PRT emails they hold (epic #578, boards 102 and 102b) and
+   * whether the viewer may request a PRT email for them (issue #798); null
+   * when they hold none and the viewer may not ask.
    */
   teamAddresses: TeamAddressRow | null;
   /** The roles the request dialog's Moves with offers. */
@@ -240,8 +242,14 @@ export function PersonDrawer<P extends PanelPerson>({
 
         <Section title="Contact">
           <dl className="flex flex-col gap-1.5">
-            <PrtEmailFact memberId={p.id} name={p.name} address={memberDetailText(d, "prtEmail")} alias={alias} />
-            {teamAddresses !== null && <TeamAddressesFact memberId={p.id} name={p.name} row={teamAddresses} movesWith={movesWith} />}
+            <PrtEmailsFact
+              memberId={p.id}
+              name={p.name}
+              address={memberDetailText(d, "prtEmail")}
+              alias={alias}
+              special={teamAddresses}
+              movesWith={movesWith}
+            />
             <Fact label="Personal email" value={p.signInEmail} copy="Email" wrap stack />
             <Fact label="Phone" value={memberDetailText(d, "phone")} hidden />
             <Fact label="Discord" value={memberDetailText(d, "discord")} copy="Discord" />
@@ -280,112 +288,89 @@ export function PersonDrawer<P extends PanelPerson>({
 }
 
 /**
- * The member's PRT email, which is also their email alias (epic #538, issue
- * #563): the address with a copy button once it is set (board 94e). While it
- * is empty, Requested, who sent it and when, and Cancel request while a
- * request is open (board 94b); or None, with Request alias for a lead, head
- * or the team leader who may manage them (board 94). The server decides
- * which; the row only shows it.
+ * An address on a PRT emails line, as it wraps: the part before the "@" may
+ * break where the line is short, and the "@" with the team domain stays
+ * whole after it, so a narrow line never cuts the domain in two (owner
+ * finding on PR #803).
  */
-function PrtEmailFact({ memberId, name, address, alias }: { memberId: number; name: string; address: string | null; alias: MemberAlias | null }) {
-  const [pending, startTransition] = useTransition();
-  // The address sits under its label on a phone and wraps rather than being
-  // cut (issue #546).
-  if (address !== null || alias === null || alias.kind === "set" || (alias.kind === "none" && !alias.requestable)) {
-    return <Fact label="PRT email" value={address ?? (alias?.kind === "set" ? alias.address : null)} copy="PRT email" wrap stack />;
-  }
-  const run = (write: () => Promise<{ ok: boolean; error?: string }>, done: string, failed: string) =>
-    startTransition(async () => {
-      const result = await write();
-      if (!result.ok) {
-        toast.error(failed, { description: result.error });
-        return;
-      }
-      toast.success(done);
-    });
+function AddressText({ address }: { address: string }) {
+  const at = address.lastIndexOf("@");
+  if (at === -1) return <span className="block break-words text-[14px] text-prt-text">{address}</span>;
   return (
-    <div className={factRow(true)} aria-busy={pending}>
-      <dt className={factLabel(true)}>PRT email</dt>
-      {alias.kind === "requested" ? (
-        <>
-          <dd className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 text-[14px]">
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-0.5 text-[13px] font-medium text-warning">
-              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warning" />
-              Requested
-            </span>
-            {/* Wraps under the pill where the row is short, never cut (issue #546). */}
-            <span className="min-w-0 break-words text-[13px] text-prt-muted">{alias.line}</span>
-          </dd>
-          {alias.cancellable && (
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => run(() => cancelAliasRequest(alias.requestId), "Alias request cancelled", "Could not cancel the alias request")}
-              className={`shrink-0 rounded-md text-[13px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text disabled:opacity-60 ${FOCUS}`}
-            >
-              Cancel request
-            </button>
-          )}
-        </>
-      ) : (
-        <>
-          <dd className="min-w-0 flex-1 truncate text-[14px] text-prt-muted">None</dd>
-          {alias.requestable && (
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => run(() => requestAlias(memberId), `Alias requested for ${name}`, "Could not request the alias")}
-              className={GHOST_PILL}
-            >
-              <AtSign aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Request alias
-            </button>
-          )}
-        </>
-      )}
-    </div>
+    <span className="block break-words text-[14px] text-prt-text">
+      {address.slice(0, at)}
+      <wbr />
+      <span className="whitespace-nowrap">{address.slice(at)}</span>
+    </span>
   );
 }
 
+/** A line's kind under its address (issue #798): "personal", or "special" with what it is for and the role it moves with. */
+function LineNote({ children }: { children: ReactNode }) {
+  return <span className="block break-words text-[12px] text-prt-muted">{children}</span>;
+}
+
 /**
- * The shared team addresses the member holds (epic #578, issues #786 and
- * #787, boards 102 and 102b), under the PRT email row: each address on its
- * own line with a copy button, and under it what it is for and the role it
- * moves with, if any, and Remove or the waiting removal (issue #797,
- * `TeamAddressItem`). Request team address ends the row for a viewer who may
- * ask, so for a member holding none the row is the button alone. The server
- * decides both; the drawer leaves the row out when it has neither.
+ * The member's PRT emails (issue #798, in place of the PRT email row of
+ * boards 94 to 94e and the Team addresses row of boards 102 and 102b): their
+ * personal address, or the open personal request, then each special address
+ * they hold, one per line with a copy button. Request PRT email ends the row
+ * for a viewer who may ask (`mayAskFor`), whatever the member holds. The
+ * server decides all of it; the row is left out when the member holds
+ * nothing, has no open request and the viewer may not ask.
  */
-function TeamAddressesFact({
+function PrtEmailsFact({
   memberId,
   name,
-  row,
+  address,
+  alias,
+  special,
   movesWith,
 }: {
   memberId: number;
   name: string;
-  row: TeamAddressRow;
+  /** The PRT email as the member's details store it. */
+  address: string | null;
+  alias: MemberAlias | null;
+  special: TeamAddressRow | null;
   movesWith: readonly MovesWithOption[];
 }) {
   const [asking, setAsking] = useState(false);
+  const personal = address ?? (alias?.kind === "set" ? alias.address : null);
+  const requested = alias?.kind === "requested" ? alias : null;
+  const lines = special?.lines ?? [];
+  const requestable = special?.requestable === true || (alias?.kind === "none" && alias.requestable);
+  if (personal === null && requested === null && lines.length === 0 && !requestable) return null;
+  const empty = personal === null && requested === null && lines.length === 0;
   return (
     <div className="flex flex-wrap items-start gap-x-3 md:flex-nowrap">
-      <dt className={`${factLabel(true)} md:py-1`}>Team addresses</dt>
+      <dt className={`${factLabel(true)} md:py-1`}>PRT emails</dt>
       <dd className="flex min-w-0 flex-1 flex-col items-start gap-2">
-        {row.lines.length > 0 && (
+        {empty ? (
+          <span className="py-1 text-[14px] text-prt-muted">None</span>
+        ) : (
           <ul className="flex w-full flex-col gap-1">
-            {row.lines.map((line) => (
-              <TeamAddressItem key={line.id} line={line} holder={name} />
+            {personal !== null && <PersonalLine address={personal} />}
+            {personal === null && requested !== null && <RequestedLine request={requested} />}
+            {lines.map((line) => (
+              <SpecialLine key={line.id} line={line} holder={name} />
             ))}
           </ul>
         )}
-        {row.requestable && (
+        {requestable && (
           <>
             <button type="button" onClick={() => setAsking(true)} className={GHOST_PILL}>
-              <Mail aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Request team address
+              <AtSign aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
+              Request PRT email
             </button>
-            <RequestTeamAddressDialog open={asking} onOpenChange={setAsking} memberId={memberId} name={name} movesWith={movesWith} />
+            <RequestPrtEmailDialog
+              open={asking}
+              onOpenChange={setAsking}
+              memberId={memberId}
+              name={name}
+              personal={personalRequestChoice(personal === null ? alias : null, name)}
+              movesWith={movesWith}
+            />
           </>
         )}
       </dd>
@@ -393,15 +378,72 @@ function TeamAddressesFact({
   );
 }
 
+/** The personal PRT email (board 94e): the address over "personal", and its copy button. It has no Remove. */
+function PersonalLine({ address }: { address: string }) {
+  return (
+    <li className="flex items-start gap-x-3">
+      <span className="min-w-0 flex-1 py-1">
+        <AddressText address={address} />
+        <LineNote>personal</LineNote>
+      </span>
+      <CopyButton value={address} what="PRT email" />
+    </li>
+  );
+}
+
 /**
- * One team address on the Team addresses row: the address over what it is
- * for and the role it moves with, and its copy button. Remove ends the line
- * for a viewer who may request one for the holder (issue #797) and asks
- * first, as every removal does; once a removal waits, the line shows the
- * PRT email row's warning pill, "Removal waiting", for every viewer, and no
- * Remove. The server decides which.
+ * The open personal request (board 94b): Requested, who sent it and when,
+ * over "personal", and Cancel request where the sender or a lead or head may
+ * cancel it. The server decides which.
  */
-function TeamAddressItem({ line, holder }: { line: TeamAddressLine; holder: string }) {
+function RequestedLine({ request }: { request: Extract<MemberAlias, { kind: "requested" }> }) {
+  const [pending, startTransition] = useTransition();
+  const cancel = () =>
+    startTransition(async () => {
+      const result = await cancelAliasRequest(request.requestId);
+      if (!result.ok) {
+        toast.error("Could not cancel the PRT email request", { description: result.error });
+        return;
+      }
+      toast.success("PRT email request cancelled");
+    });
+  return (
+    <li className="flex items-start gap-x-3" aria-busy={pending}>
+      <span className="min-w-0 flex-1 py-1">
+        <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-0.5 text-[13px] font-medium text-warning">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warning" />
+            Requested
+          </span>
+          {/* Wraps under the pill where the row is short, never cut (issue #546). */}
+          <span className="min-w-0 break-words text-[13px] text-prt-muted">{request.line}</span>
+        </span>
+        <LineNote>personal</LineNote>
+      </span>
+      {request.cancellable && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={cancel}
+          className={`flex h-7 shrink-0 items-center rounded-md text-[13px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text disabled:opacity-60 ${FOCUS}`}
+        >
+          Cancel request
+        </button>
+      )}
+    </li>
+  );
+}
+
+/**
+ * One special PRT email: the address over "special", what it is for and the
+ * role it moves with, if any. Remove sits before the copy button for a
+ * viewer who may request one for the holder (issue #797), so the copy button
+ * keeps the same place on every line; it asks first, as every removal does.
+ * Once a removal waits, the line shows the warning pill "Removal waiting"
+ * under the address, for every viewer, and no Remove. The server decides
+ * which.
+ */
+function SpecialLine({ line, holder }: { line: TeamAddressLine; holder: string }) {
   const [confirming, setConfirming] = useState(false);
   const [pending, startTransition] = useTransition();
   const first = holder.split(" ")[0] || holder;
@@ -418,18 +460,15 @@ function TeamAddressItem({ line, holder }: { line: TeamAddressLine; holder: stri
   return (
     <li className="flex items-start gap-x-3" aria-busy={pending}>
       <span className="min-w-0 flex-1 py-1">
-        <span className="block break-words text-[14px] text-prt-text">{line.address}</span>
-        <span className="block break-words text-[12px] text-prt-muted">
-          {line.movesWith === null ? line.purpose : `${line.purpose} · moves with ${line.movesWith}`}
-        </span>
+        <AddressText address={line.address} />
+        <LineNote>{["special", line.purpose, line.movesWith === null ? null : `moves with ${line.movesWith}`].filter(Boolean).join(" · ")}</LineNote>
+        {line.removal === "waiting" && (
+          <span className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-0.5 text-[13px] font-medium text-warning">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warning" />
+            Removal waiting
+          </span>
+        )}
       </span>
-      {line.removal === "waiting" && (
-        <span className="my-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-0.5 text-[13px] font-medium text-warning">
-          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warning" />
-          Removal waiting
-        </span>
-      )}
-      <CopyButton value={line.address} what="Team address" />
       {line.removal === "removable" && (
         <>
           <button
@@ -444,7 +483,7 @@ function TeamAddressItem({ line, holder }: { line: TeamAddressLine; holder: stri
             onOpenChange={setConfirming}
             icon={<MailX className="h-5 w-5" strokeWidth={1.75} />}
             title={`Remove ${line.address} from ${holder}?`}
-            description={`The approvers turn off its routing in Google Workspace and mark it done. Then it leaves ${first}'s team addresses and can be requested for someone else.`}
+            description={`The approvers turn off its routing in Google Workspace and mark it done. Then it leaves ${first}'s PRT emails and can be requested for someone else.`}
             cancelLabel="Keep address"
             confirmLabel="Remove"
             danger
@@ -453,6 +492,7 @@ function TeamAddressItem({ line, holder }: { line: TeamAddressLine; holder: stri
           />
         </>
       )}
+      <CopyButton value={line.address} what="PRT email" />
     </li>
   );
 }
@@ -470,31 +510,35 @@ function addressOf(local: string): string {
   return typed.includes("@") ? typed : `${typed}${DOMAIN_SUFFIX}`;
 }
 
-/** A pasted whole team address loses its domain, which the box shows already. */
+/** A pasted whole address loses its domain, which the box shows already. */
 function localOf(typed: string): string {
   return typed.toLowerCase().endsWith(DOMAIN_SUFFIX) ? typed.slice(0, -DOMAIN_SUFFIX.length) : typed;
 }
 
+/** Request PRT email's two choices (issue #798). */
+type PrtEmailKind = "personal" | "special";
+
 /**
- * Request team address (board 102b, issue #787): the address, with the team
- * domain as the box's fixed ending; what it is for; and an optional Moves
- * with role from the current org chart. Address and purpose are checked
- * before sending, under their fields; a refusal from the server (taken,
- * already requested, not allowed) shows above the buttons and keeps the
- * dialog open. 480px wide with a 24px pad and 40px fields and buttons, as
- * the board draws it. Closing it drops what was typed.
+ * Request PRT email (issue #798): one dialog for both kinds. The requester
+ * picks Personal, offered only while the member has no personal PRT email
+ * and no open personal request (`personalRequestChoice`), or Special, the
+ * Request team address form of board 102b as it was. 480px wide with a 24px
+ * pad and 40px fields and buttons, as board 102b draws it. Closing it drops
+ * what was typed.
  */
-function RequestTeamAddressDialog({
+function RequestPrtEmailDialog({
   open,
   onOpenChange,
   memberId,
   name,
+  personal,
   movesWith,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   memberId: number;
   name: string;
+  personal: Permission;
   movesWith: readonly MovesWithOption[];
 }) {
   return (
@@ -503,17 +547,141 @@ function RequestTeamAddressDialog({
         <DialogOverlay className={SHEET_OVERLAY} />
         <DialogPrimitive.Content aria-describedby={undefined} className={cn(SHEET_CONTENT, "sm:w-[480px] sm:p-6")}>
           <SheetGrabber />
-          <RequestTeamAddressForm memberId={memberId} name={name} movesWith={movesWith} onDone={() => onOpenChange(false)} />
+          <RequestPrtEmailBody memberId={memberId} name={name} personal={personal} movesWith={movesWith} onDone={() => onOpenChange(false)} />
         </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>
   );
 }
 
+function RequestPrtEmailBody({
+  memberId,
+  name,
+  personal,
+  movesWith,
+  onDone,
+}: {
+  memberId: number;
+  name: string;
+  personal: Permission;
+  movesWith: readonly MovesWithOption[];
+  onDone: () => void;
+}) {
+  const [kind, setKind] = useState<PrtEmailKind>(personal.allowed ? "personal" : "special");
+  return (
+    <>
+      <DialogTitle className="text-[17px] font-bold leading-snug">Request PRT email</DialogTitle>
+      <p className="mt-1.5 text-[14px] leading-relaxed text-prt-muted">For {name}</p>
+      <div className="mt-6">
+        <RadioChoice<PrtEmailKind>
+          name="prt-email-kind"
+          legend="Kind"
+          value={kind}
+          onChange={setKind}
+          options={[
+            { value: "personal", title: "Personal", detail: "Their own address, from their name", permission: personal },
+            { value: "special", title: "Special", detail: "A shared address, such as recruitment, with what it's for" },
+          ]}
+        />
+      </div>
+      {kind === "personal" ? (
+        <PersonalRequestForm memberId={memberId} name={name} onDone={onDone} />
+      ) : (
+        <SpecialRequestForm memberId={memberId} name={name} movesWith={movesWith} onDone={onDone} />
+      )}
+    </>
+  );
+}
+
+/**
+ * Personal (issue #798): the address, pre-filled as firstname.lastname on
+ * the team domain from the member's name (`aliasPrefill`) and editable, then
+ * Cancel and Confirm. It is checked before sending (`checkAliasAddress`),
+ * under the field; the server checks it again, and a refusal shows above the
+ * buttons and keeps the dialog open.
+ */
+function PersonalRequestForm({ memberId, name, onDone }: { memberId: number; name: string; onDone: () => void }) {
+  const [address, setAddress] = useState(() => aliasPrefill(name));
+  const [error, setError] = useState<string>();
+  const [refusal, setRefusal] = useState<string>();
+  const [pending, startTransition] = useTransition();
+
+  const send = () => {
+    const checked = checkAliasAddress(address);
+    setRefusal(undefined);
+    if (!checked.ok) return setError(checked.error);
+    setError(undefined);
+    startTransition(async () => {
+      const result = await requestAlias({ memberId, address: checked.value.address });
+      if (!result.ok) {
+        setRefusal(result.error);
+        return;
+      }
+      toast.success(`PRT email requested for ${name}`);
+      onDone();
+    });
+  };
+
+  return (
+    <form
+      noValidate
+      aria-busy={pending}
+      onSubmit={(event) => {
+        event.preventDefault();
+        send();
+      }}
+    >
+      <Field label="Address" error={error} className="mt-5">
+        {(id, describedBy) => (
+          <>
+            <input
+              id={id}
+              type="email"
+              value={address}
+              onChange={(event) => {
+                setAddress(event.target.value);
+                setError(undefined);
+              }}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              aria-invalid={error !== undefined}
+              aria-describedby={[describedBy, `${id}-hint`].filter(Boolean).join(" ")}
+              className={cn(inputClass(error), BOX)}
+            />
+            <p id={`${id}-hint`} className="mt-2 text-[12px] text-prt-muted">
+              {ALIAS_FORM_HINT}
+            </p>
+          </>
+        )}
+      </Field>
+      {refusal !== undefined && (
+        <p role="alert" className="mt-5 text-[13px] text-danger">
+          {refusal}
+        </p>
+      )}
+      <div className={SHEET_BUTTONS}>
+        <DialogClose className={cn(SHEET_CANCEL, "sm:h-10")}>Cancel</DialogClose>
+        <button type="submit" disabled={pending} className={cn(sheetConfirm(false), "sm:h-10")}>
+          Confirm
+        </button>
+      </div>
+    </form>
+  );
+}
+
 /** The 40px box of board 102b. */
 const BOX = "h-10";
 
-function RequestTeamAddressForm({
+/**
+ * Special (board 102b, issues #787 and #798): the address, with the team
+ * domain as the box's fixed ending; what it is for; and an optional Moves
+ * with role from the current org chart, then Cancel and Request. Address and
+ * purpose are checked before sending, under their fields; a refusal from the
+ * server (taken, already requested, not allowed) shows above the buttons and
+ * keeps the dialog open.
+ */
+function SpecialRequestForm({
   memberId,
   name,
   movesWith,
@@ -548,7 +716,7 @@ function RequestTeamAddressForm({
         setRefusal(result.error);
         return;
       }
-      toast.success(`Team address requested for ${name}`);
+      toast.success(`PRT email requested for ${name}`);
       onDone();
     });
   };
@@ -562,9 +730,7 @@ function RequestTeamAddressForm({
         send();
       }}
     >
-      <DialogTitle className="text-[17px] font-bold leading-snug">Request team address</DialogTitle>
-      <p className="mt-1.5 text-[14px] leading-relaxed text-prt-muted">For {name}</p>
-      <Field label="Address" error={errors.address} className="mt-6">
+      <Field label="Address" error={errors.address} className="mt-5">
         {(id, describedBy) => (
           <div
             className={cn(
