@@ -20,8 +20,8 @@ test("0051_alias_requests.sql drops, renames and rewrites nothing", () => {
 });
 
 // The one-address migration (issue #563) is data only: it copies each alias
-// into an empty PRT email and is not allowed any other statement. The column
-// it reads stays; #569 drops it later.
+// into an empty PRT email and is not allowed any other statement. It left the
+// column it reads in place; 0075_drop_members_email_alias dropped it (#569).
 test("0053_prt_email_from_email_alias.sql only copies the alias into an empty PRT email", () => {
   const sql = readFileSync(resolve(process.cwd(), "drizzle/0053_prt_email_from_email_alias.sql"), "utf8");
   assert.deepEqual(nonAdditiveStatements(sql), [
@@ -681,4 +681,39 @@ test("0073_drop_project_content.sql drops the content column and its check, and 
     'ALTER TABLE "project_versions" DROP CONSTRAINT IF EXISTS "project_versions_content_is_record"',
     'ALTER TABLE "project_versions" DROP COLUMN IF EXISTS "content"',
   ]);
+});
+
+// The drop of the old `members.email_alias` column (issue #569). Not additive,
+// by design: no code reads or writes the column since #563, so it runs 0053's
+// guarded copy into an empty `prt_email` once more and then drops the column.
+// It is pinned to exactly those two statements, so any further drop or
+// rewrite fails here.
+const DROP_EMAIL_ALIAS_TAG = "0075_drop_members_email_alias";
+
+test("0075_drop_members_email_alias.sql copies the alias into an empty PRT email, then drops the column, and nothing else", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${DROP_EMAIL_ALIAS_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), [
+    `UPDATE "members" SET "prt_email" = "email_alias" WHERE "email_alias" IS NOT NULL AND ("prt_email" IS NULL OR "prt_email" = '')`,
+    'ALTER TABLE "members" DROP COLUMN "email_alias"',
+  ]);
+});
+
+test("0075 moves an alias into an empty PRT email, keeps a PRT email already set, and leaves no email_alias column", async () => {
+  const { db, apply } = await databaseBefore(DROP_EMAIL_ALIAS_TAG);
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id, prt_email, email_alias) values
+      (1, '', 'giulia.rossi@politorocketteam.it'),
+      (2, 'marco.bianchi@politorocketteam.it', 'other.alias@politorocketteam.it');
+    set session_replication_role = origin;
+  `);
+  await apply();
+  assert.deepEqual((await db.query(`select member_id, prt_email from members order by member_id`)).rows, [
+    { member_id: 1, prt_email: "giulia.rossi@politorocketteam.it" },
+    { member_id: 2, prt_email: "marco.bianchi@politorocketteam.it" },
+  ]);
+  const columns = await db.query(
+    `select column_name from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'email_alias'`,
+  );
+  assert.deepEqual(columns.rows, [], "members has no email_alias column");
 });
