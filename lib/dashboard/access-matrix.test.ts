@@ -211,7 +211,7 @@ const ALIAS_TEAM: readonly AliasTeamPerson[] = ALL.map((u) => ({
 }));
 
 describe("email alias requests: who asks, who manages, who answers, and the approver rows (planAliasRequest, managesMember, answersAliasRequests, aliasAttentionFor)", () => {
-  const open: AliasRequest[] = ALL.map((u, i) => ({ id: i + 1, memberId: personIn(u), requesterId: null, sentAt: "2026-10-22T09:00:00Z" }));
+  const open: AliasRequest[] = ALL.map((u, i) => ({ id: i + 1, memberId: personIn(u), requesterId: null, address: null, sentAt: "2026-10-22T09:00:00Z" }));
   for (const { name, viewer, expect } of VIEWERS) {
     test(name, () => {
       // The break-glass admin has no member row (`readIdentity`): no requester id, and not on the team.

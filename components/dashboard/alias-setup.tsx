@@ -151,7 +151,7 @@ function SetupSteps({ ready, open, onOpenChange }: { ready: ReadyAddress; open: 
           <ol className="flex flex-col gap-2">
             <Step n={3}>Settings → See all settings → Accounts and Import → Send mail as → Add another email address.</Step>
             <Step n={4}>
-              Name: how you sign. Email: <span className="break-all">{address}</span>. Keep “Treat as an alias” ticked.
+              Name: how you sign. Email: <span className="break-all">{address}</span>. Keep the checkbox under Email ticked.
             </Step>
             <Step n={5}>SMTP server smtp.gmail.com, port 587, TLS. Username: your Gmail name without @gmail.com.</Step>
             <Step n={6}>Password: the app password (no spaces). Authenticate, then follow the verification email.</Step>

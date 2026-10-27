@@ -82,7 +82,7 @@ function standingOf(id: number | null): ViewerStanding {
   return plainSeatStanding(id === null ? "non-member" : "member");
 }
 
-const request = (id: number, memberId: number, requesterId: number | null, sentAt = "2026-10-22T09:00:00+02:00"): AliasRequest => ({ id, memberId, requesterId, sentAt });
+const request = (id: number, memberId: number, requesterId: number | null, sentAt = "2026-10-22T09:00:00+02:00"): AliasRequest => ({ id, memberId, requesterId, address: null, sentAt });
 /** The address a personal request sends unless a test names another: firstname.lastname, as the dialog pre-fills it. */
 const NEW_ADDRESS = "new.person@politorocketteam.it";
 const ask = (

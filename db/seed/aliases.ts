@@ -25,10 +25,11 @@
 // after them.
 //
 // The member seat also holds two shared team addresses (epic #578, issue
-// #786), so their side view shows the Team addresses row of board 102: one
-// that moves with the Logistics lead, one tied to no role. The addresses are
-// invented, on the seed's team domain. The Logistics one is set up and the
-// recruitment one is not, so their Overview shows one team address ready card.
+// #786), so their side view lists them as special lines of the PRT emails row
+// (issue #798): one that moves with the Logistics lead, one tied to no role.
+// The addresses are invented, on the seed's team domain. The Logistics one is
+// set up and the recruitment one is not, so their Overview shows one PRT email
+// ready card.
 
 import { aliasRequests, dashboardNotices, teamAddresses } from "@/db/schema";
 import { MEMBER_SEAT, MEMBER_SEAT_ALIAS, OPERATIONS_HEAD, OWED_ALIAS, SEED_TEAM_EMAIL_DOMAIN, TEAM_LEADER, TEST_BENCH_LEAD } from "./people";

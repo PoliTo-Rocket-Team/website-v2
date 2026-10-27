@@ -41,10 +41,9 @@ export type AliasRequest = {
   /**
    * The address the requester confirmed on Request PRT email's Personal
    * choice (issue #798), checked by `checkAliasAddress`; null for a request
-   * the site made by itself, or one stored before requests carried it. Absent
-   * reads as null.
+   * the site made by itself, or one stored before requests carried it.
    */
-  readonly address?: string | null;
+  readonly address: string | null;
   /** When it was sent, an ISO timestamp. */
   readonly sentAt: string;
 };
