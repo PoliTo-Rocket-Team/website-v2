@@ -57,12 +57,16 @@ export function codeKey(text: string): string {
 /** What a name finds among units: the one unit, none, or more than one (the import does not pick). */
 export type Lookup<U> = { readonly kind: "found"; readonly unit: U } | { readonly kind: "absent" } | { readonly kind: "ambiguous" };
 
-/** The units a text finds: by name, or as a unit's code. */
-function find<U extends Department>(units: readonly U[], text: string): Lookup<U> {
+/** Every unit a text names: by name, or as a unit's code. */
+export function unitsNamed<U extends Department>(units: readonly U[], text: string): U[] {
   const key = unitKey(text);
   const asCode = codeKey(text);
-  if (key === "") return { kind: "absent" };
-  const hits = units.filter((u) => unitKey(u.name) === key || (u.code !== null && codeKey(u.code) === asCode));
+  return key === "" ? [] : units.filter((u) => unitKey(u.name) === key || (u.code !== null && codeKey(u.code) === asCode));
+}
+
+/** The units a text finds: by name, or as a unit's code. */
+function find<U extends Department>(units: readonly U[], text: string): Lookup<U> {
+  const hits = unitsNamed(units, text);
   return hits.length === 1 ? { kind: "found", unit: hits[0] } : hits.length === 0 ? { kind: "absent" } : { kind: "ambiguous" };
 }
 

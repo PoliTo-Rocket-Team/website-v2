@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { PEOPLE_CSV, QUITTERS_SHEET, yearSheetOf } from "./columns";
+import { OVERRIDES_CSV, PEOPLE_CSV, QUITTERS_SHEET, yearSheetOf } from "./columns";
+import { withTitleOverrides } from "./overrides";
 import { matchPeople } from "./people";
 import type { PhotoFolder } from "./photos";
 import { planImport, type Plan } from "./plan";
@@ -10,21 +11,28 @@ import type { Sources } from "./sources";
 import type { UnitRef } from "./unit-book";
 import { DepartmentIndex, rowUnitNames, unitKey, unitNames, type Units } from "./units";
 
-// The roster shapes of issues #818 and #820, planned over an in-memory fake
-// roster (no file, no database): Quitters date cells stored month/day, a
+// The roster shapes of issues #818, #820 and #822, planned over an in-memory
+// fake roster (no file, no database): Quitters date cells stored month/day, a
 // people_rows.csv first name shorter than the workbook's given names, one unit
 // spelt several ways, a separator inside parentheses, a note naming a parent
 // department, one division name under two departments, a job title in the
 // Division cell, a plural spelling, two codes that differ by an "s", a
-// database department spelt by name and by code, and an account with no member
-// row. Every name here is invented.
+// database department spelt by name and by code, an account with no member
+// row, a Chief Operating Officer with no unit, a lead seat whose title names
+// its division, a bare "Lead", and a title given by the override input. Every
+// name here is invented.
 
 type Cells = Readonly<Record<string, string>>;
 
 const blank = (spec: object): Cells => Object.fromEntries(Object.keys(spec).map((k) => [k, ""]));
 
-/** A fake source set: year sheets by academic year (rows from 2), Quitters rows (from 2) and people_rows.csv rows (from line 2). */
-function sourcesOf(parts: { readonly years?: Readonly<Record<number, readonly Cells[]>>; readonly quitters?: readonly Cells[]; readonly people?: readonly Cells[] }): Sources {
+/** A fake source set: year sheets by academic year (rows from 2), Quitters rows (from 2), people_rows.csv rows and overrides.csv lines (from line 2). */
+function sourcesOf(parts: {
+  readonly years?: Readonly<Record<number, readonly Cells[]>>;
+  readonly quitters?: readonly Cells[];
+  readonly people?: readonly Cells[];
+  readonly overrides?: readonly Cells[];
+}): Sources {
   const years = Object.entries(parts.years ?? {})
     .map(([y, rows]) => {
       const year = Number(y);
@@ -34,6 +42,7 @@ function sourcesOf(parts: { readonly years?: Readonly<Record<number, readonly Ce
     .sort((a, b) => b.year - a.year);
   const quitters = (parts.quitters ?? []).map((value, i) => ({ at: { file: "roster.xlsx", sheet: "Quitters", row: i + 2 }, value: { ...blank(QUITTERS_SHEET), ...value } }));
   const people = (parts.people ?? []).map((value, i) => ({ at: { file: "people_rows.csv", row: i + 2 }, value: { ...blank(PEOPLE_CSV), ...value } }));
+  const overrides = (parts.overrides ?? []).map((value, i) => ({ at: { file: "overrides.csv", row: i + 2 }, value: { ...blank(OVERRIDES_CSV), ...value } }));
   return {
     read: [],
     skipped: [],
@@ -42,7 +51,8 @@ function sourcesOf(parts: { readonly years?: Readonly<Record<number, readonly Ce
     quitters,
     rolesSheets: [],
     namelessRows: 0,
-    csv: { people, teamMembers: [], subteams: [], divisions: [], advisors: [], orders: [], faqs: [], overrides: [] },
+    csv: { people, teamMembers: [], subteams: [], divisions: [], advisors: [], orders: [], faqs: [], overrides },
+    titleOverrides: 0,
     conflicts: [],
   } as never;
 }
@@ -685,4 +695,207 @@ test("issue #820: a person whose sign-in email is an account with no member row 
     [4],
   );
   assert.match(renderReport({ mode: "dry-run", database: true, sources, plan }), /^Existing accounts with no member row to link to a new member row: 1$/m);
+});
+
+/** A plan's roles as text: title, type, full access, division and department (by name, or `#id` for an existing unit), and whether active. */
+const rolesOf = (plan: Plan) =>
+  plan.roles.map(
+    (r) => `${r.title} | ${r.type} ${r.fullAccess ?? "-"} | ${nameOf(plan, "divisions", r.division)} / ${nameOf(plan, "departments", r.dept)}${r.leavedAt === null ? " | active" : ""}`,
+  );
+
+/** The `unknown-unit` conflicts of a plan, as sheet, row and field. */
+const unknownUnits = (plan: Plan) => plan.conflicts.filter((c) => c.kind === "unknown-unit").map((c) => [c.at.sheet, c.at.row, c.field]);
+
+test("issue #822: a Chief Operating Officer whose row names no department heads Operations, by name or the code OPS, existing or created; with none, it stays unknown-unit", () => {
+  const coo = (first: string, last: string, title = "Chief Operating Officer") => person(first, last, { subteam: "N/A", division: "N/A", title });
+
+  // Created by this run: another row names Operations.
+  const created = planImport(
+    sourcesOf({ years: { 2025: [coo("Ada", "Bini"), person("Ben", "Cori", { subteam: "Operations" })], 2024: [coo("Cia", "Dani", "Head of Operations")] } }),
+    EMPTY_DATABASE,
+    null,
+    TODAY,
+  );
+  assert.deepEqual(rolesOf(created), [
+    "Chief Operating Officer | head operations_lead | null / Operations | active",
+    "Engineer | core - | null / Operations | active",
+    "Head of Operations | head operations_lead | null / Operations",
+  ]);
+  assert.deepEqual(created.departments.map((d) => [d.name, d.closedAt]), [["Operations", null]]);
+
+  // Held by the database, found by its code; a COO who hands the seat over this year still shares it with the new one.
+  const byCode = databaseWith({ departments: [{ id: 3, name: "Business Operations", code: "OPS" }], divisions: [] });
+  const handedOver = planImport(
+    sourcesOf({ years: { 2025: [coo("Ada", "Bini"), coo("Ben", "Cori")] }, overrides: [{ kind: "handover", sheet: "2025-2026", row: "2", value: "3" }] }),
+    byCode,
+    null,
+    TODAY,
+  );
+  assert.deepEqual(rolesOf(handedOver).sort(), [
+    "Chief Operating Officer | head operations_lead | null / #3",
+    "Chief Operating Officer | head operations_lead | null / #3 | active",
+    "Member | core - | null / null | active",
+  ]);
+  assert.equal(handedOver.handovers, 1);
+  assert.deepEqual([handedOver.departments, handedOver.counts.departments.present], [[], 1]);
+  assert.equal(handedOver.conflicts.filter((c) => c.kind === "seat-taken").length, 0);
+
+  // Held by the database, found by its name.
+  const byName = planImport(sourcesOf({ years: { 2025: [coo("Ada", "Bini")] } }), databaseWith({ departments: [{ id: 4, name: "Operations", code: null }], divisions: [] }), null, TODAY);
+  assert.deepEqual(rolesOf(byName), ["Chief Operating Officer | head operations_lead | null / #4 | active"]);
+
+  // No Operations anywhere: none is made for the seat, which stays unknown-unit.
+  const none = planImport(sourcesOf({ years: { 2025: [coo("Ada", "Bini")] } }), EMPTY_DATABASE, null, TODAY);
+  assert.deepEqual([none.roles, none.departments, none.counts.roles.refused], [[], [], 1]);
+  assert.deepEqual(unknownUnits(none), [["2025-2026", 2, "subteam"]]);
+});
+
+test("issue #822: a lead seat on a row with no division sits in the one division its title names, under the row's department or any; zero or several matches stay unknown-unit", () => {
+  const sources = sourcesOf({
+    years: {
+      2025: [
+        person("Ada", "Bini", { subteam: "Electronics", division: "Firmware (FRM)" }),
+        person("Ben", "Cori", { subteam: "Electronics", division: "Hardware" }),
+        person("Cia", "Dani", { subteam: "Operations", division: "Ground Systems" }),
+        person("Dea", "Elmi", { subteam: "Structures", division: "Avionics" }),
+        person("Eva", "Fano", { subteam: "Propulsion", division: "Avionics" }),
+      ],
+      2024: [
+        // The Division cell names only a department: the division is looked for under it.
+        person("Fil", "Gaia", { division: "Electronics (ELT) Department", title: "Firmware Lead Engineer" }),
+        person("Gea", "Holm", { division: "Electronics (ELT) Department", title: "Electronics Head of Department - Hardware Lead Engineer" }),
+        // Ground Systems is under Operations only.
+        person("Ivo", "Lupi", { division: "Electronics (ELT) Department", title: "Ground Systems Lead Engineer" }),
+        // No unit: any department.
+        person("Lia", "Mori", { subteam: "N/A", division: "N/A", title: "Firmware Lead" }),
+        // Two departments have an Avionics.
+        person("Max", "Neri", { subteam: "N/A", title: "Avionics Lead" }),
+        // No row names Telemetry: no division is made from the title.
+        person("Noa", "Orsi", { subteam: "Electronics", title: "Telemetry Lead" }),
+      ],
+    },
+  });
+  const plan = planImport(sources, EMPTY_DATABASE, null, TODAY);
+  assert.deepEqual(
+    rolesOf(plan).filter((r) => !r.endsWith("active")),
+    [
+      "Firmware Lead Engineer | lead - | Firmware / Electronics",
+      "Electronics Head of Department | head - | null / Electronics",
+      "Hardware Lead Engineer | lead - | Hardware / Electronics",
+      "Firmware Lead | lead - | Firmware / Electronics",
+    ],
+  );
+  assert.deepEqual(unknownUnits(plan), [
+    ["2024-2025", 4, "division"],
+    ["2024-2025", 6, "division"],
+    ["2024-2025", 7, "division"],
+  ]);
+  assert.ok(!plan.divisions.some((d) => d.name === "Telemetry"));
+  // The title adds no spelling to the division it finds.
+  assert.deepEqual(plan.divisions.find((d) => d.name === "Firmware")?.spellings, ["Firmware (FRM)"]);
+
+  // A division only the database holds is found by its name or its code, under the row's department or any.
+  const database = databaseWith({
+    departments: [
+      { id: 1, name: "Electronics", code: "ELT" },
+      { id: 2, name: "Propulsion", code: null },
+    ],
+    divisions: [
+      { id: 20, name: "Recovery", code: "REC", deptId: 1 },
+      { id: 21, name: "Valves", code: null, deptId: 2 },
+    ],
+  });
+  const stored = planImport(
+    sourcesOf({
+      years: {
+        2025: [
+          person("Ada", "Bini", { division: "Electronics (ELT) Department", title: "REC Lead" }),
+          person("Ben", "Cori", { subteam: "N/A", title: "Recovery Lead Engineer" }),
+          // Valves is under Propulsion, not Electronics.
+          person("Cia", "Dani", { subteam: "Electronics", title: "Valves Lead" }),
+        ],
+      },
+    }),
+    database,
+    null,
+    TODAY,
+  );
+  assert.deepEqual(rolesOf(stored), ["REC Lead | lead - | #20 / #1 | active", "Recovery Lead Engineer | lead - | #20 / #1 | active"]);
+  assert.deepEqual(unknownUnits(stored), [["2025-2026", 4, "division"]]);
+  assert.deepEqual([stored.departments, stored.divisions], [[], []]);
+});
+
+test("issue #822: a seat titled only 'Lead' or 'Lead Engineer' on a row with a department and no division is a core member there, keeping its title", () => {
+  const sources = sourcesOf({
+    years: {
+      2025: [person("Ada", "Bini", { subteam: "Propulsion" })],
+      2021: [
+        person("Ben", "Cori", { subteam: "Liquid Propulsion", title: "Lead" }),
+        person("Cia", "Dani", { subteam: "Liquid Propulsion", title: "Lead Engineer" }),
+        // With a division, it is that division's lead seat.
+        person("Dea", "Elmi", { subteam: "Liquid Propulsion", division: "Injectors", title: "Lead" }),
+        // With no unit at all, it has no place.
+        person("Eva", "Fano", { subteam: "N/A", title: "Lead" }),
+      ],
+    },
+  });
+  const plan = planImport(sources, EMPTY_DATABASE, null, TODAY);
+  assert.deepEqual(
+    rolesOf(plan).filter((r) => !r.endsWith("active")),
+    ["Lead | core - | null / Liquid Propulsion", "Lead Engineer | core - | null / Liquid Propulsion", "Lead | lead - | Injectors / Liquid Propulsion"],
+  );
+  assert.deepEqual(unknownUnits(plan), [["2021-2022", 5, "division"]]);
+});
+
+test("issue #822: a title line of the override input replaces the row's title cell before the title rules run; an advisor with N/A units has no unit", () => {
+  const roster = {
+    years: {
+      2025: [person("Ada", "Bini", { subteam: "N/A", division: "N/A", title: "???" }), person("Ben", "Cori", { subteam: "Propulsion" })],
+      2024: [person("Cia", "Dani", { subteam: "N/A", division: "N/A", title: "???" })],
+    },
+    quitters: [person("Dea", "Elmi", { subteam: "N/A", title: "???", leftOn: "15/03/2025" })],
+  };
+  // Without the lines, the unreadable title is a core member's seat with no unit.
+  const before = planImport(sourcesOf(roster), EMPTY_DATABASE, null, TODAY);
+  assert.deepEqual(unknownUnits(before), [
+    ["2024-2025", 2, "subteam"],
+    ["2025-2026", 2, "subteam"],
+    ["Quitters", 2, "subteam"],
+  ]);
+
+  const sources = withTitleOverrides(
+    sourcesOf({
+      ...roster,
+      overrides: [
+        { kind: "title", sheet: "2025-2026", row: "2", value: "Advisor" },
+        { kind: "Title", sheet: "2024-2025", row: "2", value: "  Senior   Advisor " },
+        { kind: "title", sheet: "Quitters", row: "2", value: "Advisor" },
+        // A second line for one row.
+        { kind: "title", sheet: "2025-2026", row: "2", value: "Chief Engineer" },
+        // A sheet the run did not read, a row with no person, and no title.
+        { kind: "title", sheet: "2019-2020", row: "2", value: "Advisor" },
+        { kind: "title", sheet: "2025-2026", row: "9", value: "Advisor" },
+        { kind: "title", sheet: "2025-2026", row: "3", value: " " },
+      ],
+    }),
+  );
+  assert.equal(sources.titleOverrides, 3);
+  const plan = planImport(sources, EMPTY_DATABASE, null, TODAY);
+  assert.deepEqual(rolesOf(plan), [
+    "Advisor | advisor - | null / null | active",
+    "Engineer | core - | null / Propulsion | active",
+    "Senior Advisor | advisor - | null / null",
+    "Advisor | advisor - | null / null",
+  ]);
+  assert.deepEqual(unknownUnits(plan), []);
+  assert.deepEqual(
+    plan.conflicts.filter((c) => c.kind === "override-unmatched").map((c) => [c.at.row, c.field]),
+    [
+      [5, "row"],
+      [6, "sheet"],
+      [7, "row"],
+      [8, "value"],
+    ],
+  );
+  assert.match(renderReport({ mode: "dry-run", database: true, sources, plan }), /^Overridden titles applied \(overrides\.csv\): 3$/m);
 });

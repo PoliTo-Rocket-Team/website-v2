@@ -1,5 +1,5 @@
 import { yearEnd, yearStart } from "./academic-year";
-import { codeKey, lookupDepartment, lookupDivision, storedUnitName, unitKey, type Lookup, type UnitName, type Units } from "./units";
+import { codeKey, lookupDepartment, lookupDivision, storedUnitName, unitKey, unitsNamed, type Lookup, type UnitName, type Units } from "./units";
 
 // The units a plan places roles in (issues #816, #818): the departments and
 // divisions the database holds, and the ones the import creates. A roster name
@@ -169,6 +169,18 @@ export class UnitFold {
     }
   }
 
+  /**
+   * Every group a row gives that a text names, under any parent (issue #822):
+   * the groups of its name, and of the code it spells. A group no row gives
+   * (a database unit's name alone) is not one.
+   */
+  groupsNamed(text: string): string[] {
+    const key = unitKey(text);
+    if (key === "") return [];
+    const nodes = [...(this.namesOf.get(key) ?? []), `c:${codeKey(text)}`].filter((node) => this.parent.has(node));
+    return [...new Set(nodes.map((node) => this.find(node)))].filter((group) => this.of(group).length > 0);
+  }
+
   /** Whether the current year's sheet gives any value of the group. */
   isCurrent(group: string): boolean {
     return this.of(group).some((s) => s.current);
@@ -248,6 +260,12 @@ type Draft = { group: string; name: string; code: string | null; first: number; 
 /** The department a row pairs a division with: its value, and the unit it resolved to (null when it resolved to none). */
 export type PairedDepartment = { readonly value: UnitName; readonly ref: UnitRef | null };
 
+/** Which divisions a division value's name may find in the database, as `lookupDivision` takes it: under one department (`deptId` null: one the database lacks), or under any. */
+type Under = { readonly deptId: number | null } | undefined;
+
+/** The divisions a value paired with a department finds by name: under that department; under any when its row pairs it with none, or with one that resolved to none. */
+const underOf = (paired: PairedDepartment | null): Under => (paired?.ref == null ? undefined : { deptId: paired.ref.kind === "existing" ? paired.ref.id : null });
+
 /** A row that pairs a division with a department: the row's academic year, and the department fold's group of that department. */
 type Pairing = { readonly year: number; readonly parent: string };
 
@@ -313,7 +331,13 @@ export class UnitBook {
   division(value: UnitName, year: number, paired: PairedDepartment | null): PlacedDivision | null {
     const parent = paired === null ? null : this.folds.departments.group(paired.value);
     const group = this.folds.divisions.group(value, parent);
-    const under = paired?.ref == null ? undefined : { deptId: paired.ref.kind === "existing" ? paired.ref.id : null };
+    const placed = this.placeDivision(value, group, underOf(paired), year);
+    if (placed === null) this.unresolved.add(unitKey(value.name));
+    return placed;
+  }
+
+  /** The division a value of `group` is, placed on a row of `year`: the database's it finds (`under` as in `lookupDivision`), else the group, created. Null when ambiguous. */
+  private placeDivision(value: UnitName, group: string | null, under: Under, year: number): PlacedDivision | null {
     const lookup = this.lookup(this.folds.divisions, value, group, (v) => lookupDivision(this.units, v, under));
     if (lookup.kind === "found") {
       this.presentDivisions.add(lookup.unit.id);
@@ -323,8 +347,65 @@ export class UnitBook {
       const index = this.draft(this.divisions, group, value, year, (base) => base);
       return { ref: { kind: "new", index }, dept: this.parentOf(group, null) };
     }
-    this.unresolved.add(unitKey(value.name));
     return null;
+  }
+
+  /**
+   * The department a seat's rule names for a row that names none (issue
+   * #822), by any of `names` (a name or a code): one the database holds, else
+   * one the rows name, which the run creates. Never one made for the asking.
+   * Null when none matches, or more than one.
+   */
+  namedDepartment(names: readonly string[], year: number): UnitRef | null {
+    const stored = new Set(names.flatMap((n) => unitsNamed(this.units.departments, n)));
+    if (stored.size === 1) {
+      const [unit] = stored;
+      this.presentDepartments.add(unit.id);
+      return { kind: "existing", id: unit.id };
+    }
+    const groups = new Set(names.flatMap((n) => this.folds.departments.groupsNamed(n)));
+    if (stored.size > 1 || groups.size !== 1) return null;
+    const [group] = groups;
+    return this.department(this.folds.departments.values(group)[0], year);
+  }
+
+  /**
+   * The division a lead seat's title names (issue #822), on a row of `year`
+   * that names no division: one the database holds or the rows name, matched
+   * by name or code as any value is, under one of the row's departments
+   * (`departments`), or under any department when the row names none. Never
+   * one made from the title alone. Null when none matches, or more than one.
+   */
+  titledDivision(name: string, year: number, departments: readonly PairedDepartment[]): PlacedDivision | null {
+    const anywhere = departments.length === 0;
+    const deptIds = new Set(departments.flatMap((d) => (d.ref?.kind === "existing" ? [d.ref.id] : [])));
+    const stored = unitsNamed(this.units.divisions, name).filter((d) => anywhere || (d.deptId !== null && deptIds.has(d.deptId)));
+    /** Each group the name finds, and the department of the row's that the group's rows pair it with (null: any). */
+    const groups = this.folds.divisions.groupsNamed(name).flatMap((group): { group: string; paired: PairedDepartment | null }[] => {
+      if (anywhere) return [{ group, paired: null }];
+      const parents = new Set(this.folds.divisions.sightings(group).map((s) => s.parent));
+      const paired = departments.find((d) => {
+        const parent = this.folds.departments.group(d.value);
+        return parent !== null && parents.has(parent);
+      });
+      return paired === undefined ? [] : [{ group, paired }];
+    });
+    // What each match is, read without placing anything: a database unit by its id, a group the run creates by the group.
+    const matches = new Map<string, () => PlacedDivision | null>();
+    for (const unit of stored) {
+      matches.set(`existing:${unit.id}`, () => {
+        this.presentDivisions.add(unit.id);
+        return { ref: { kind: "existing", id: unit.id }, dept: unit.deptId === null ? null : { kind: "existing", id: unit.deptId } };
+      });
+    }
+    for (const { group, paired } of groups) {
+      const value = this.folds.divisions.values(group)[0];
+      const under = underOf(paired);
+      const lookup = this.lookup(this.folds.divisions, value, group, (v) => lookupDivision(this.units, v, under));
+      if (lookup.kind === "ambiguous") return null;
+      matches.set(lookup.kind === "found" ? `existing:${lookup.unit.id}` : `group:${group}`, () => this.placeDivision(value, group, under, year));
+    }
+    return matches.size === 1 ? [...matches.values()][0]() : null;
   }
 
   /** The departments the plan creates, open or closed. Read once every row is placed. */

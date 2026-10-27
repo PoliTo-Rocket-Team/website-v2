@@ -16,6 +16,11 @@
 // import refuses to guess a seat, since a wrong one gives or withholds
 // dashboard access. Any other seat is a core member's. A few titles name two
 // seats in one word ("President-Advisor"); COMPOUND_TITLES lists them.
+//
+// A seat whose row names no unit of its level may still have a place (issue
+// #822): the Chief Operating Officer heads Operations, a lead seat sits in the
+// division its title names, and a bare "Lead" is a member of the row's
+// department. A rule says so in its seat's `fallback`; the plan finds the unit.
 
 export type PositionType = "president" | "head" | "lead" | "core" | "advisor";
 export type FullAccessSeat = "operations_lead" | "it_lead" | "project_manager" | "chief_engineer";
@@ -27,8 +32,17 @@ export type FullAccessSeat = "operations_lead" | "it_lead" | "project_manager" |
  */
 export type SeatUnit = "board" | "department" | "division" | "member-unit" | "noted-department";
 
+/**
+ * Where a seat sits when its row names no unit of the seat's level (issue
+ * #822). `department`: a department seat goes to the department the rule
+ * names, found by its name or its code (the Chief Operating Officer's
+ * Operations). `member`: a division seat on a row that names a department and
+ * no division is a core member's seat in that department (a bare "Lead").
+ */
+export type Fallback = { readonly kind: "department"; readonly name: string; readonly code: string } | { readonly kind: "member" };
+
 /** What a seat reads as. `member-unit` is a core member's or an advisor's place: their division, else their subteam's department. */
-export type Seat = { readonly type: PositionType; readonly fullAccess: FullAccessSeat | null; readonly unit: SeatUnit };
+export type Seat = { readonly type: PositionType; readonly fullAccess: FullAccessSeat | null; readonly unit: SeatUnit; readonly fallback?: Fallback };
 
 type Rule = { readonly form: string; readonly pattern: RegExp; readonly seat: Seat };
 
@@ -42,7 +56,8 @@ export const TITLE_RULES: readonly Rule[] = [
   {
     form: "Chief Operating Officer, Head of Operations",
     pattern: /^(chief operating officer|head of operations|operations head|operations department head)$/,
-    seat: { type: "head", fullAccess: "operations_lead", unit: "department" },
+    // Owner decision (issue #822): the Chief Operating Officer heads the Operations department, whatever the row's unit cells say.
+    seat: { type: "head", fullAccess: "operations_lead", unit: "department", fallback: { kind: "department", name: "Operations", code: "OPS" } },
   },
   {
     form: "IT Lead, IT Lead Engineer, IT Division Lead",
@@ -54,6 +69,11 @@ export const TITLE_RULES: readonly Rule[] = [
     form: "Head of <unit>, <unit> Head, Head of Department, <unit> Head of Department",
     pattern: /^(head of .+|.+ head|head|department head|.+ head of department)$/,
     seat: { type: "head", fullAccess: null, unit: "department" },
+  },
+  {
+    form: "Lead, Lead Engineer",
+    pattern: /^lead( engineer)?$/,
+    seat: { type: "lead", fullAccess: null, unit: "division", fallback: { kind: "member" } },
   },
   {
     form: "<unit> Lead, <unit> Lead Engineer, <unit> Division Lead Engineer",
@@ -92,6 +112,8 @@ export type SeatReading =
       readonly acting: boolean;
       /** The project a parenthesized note names; the schema has no project on `roles`, so it lives in the title only. */
       readonly project: string | null;
+      /** The division a division seat's title names (issue #822): "Firmware" for "Firmware Lead Engineer". Null for a bare "Lead" and for any other seat. */
+      readonly division: string | null;
     }
   | { readonly kind: "unknown"; readonly title: string };
 
@@ -133,15 +155,21 @@ function ruleOf(text: string): Rule | undefined {
   return key === "" ? undefined : TITLE_RULES.find((r) => r.pattern.test(key));
 }
 
+/** The division a division seat's title names: its text before "Lead" or "Lead Engineer"; null when nothing comes before. */
+function divisionNamed(bare: string): string | null {
+  const name = spaced(bare.replace(/\blead(\s+engineer)?$/i, ""));
+  return name === "" ? null : name;
+}
+
 /** The seat one seat text gives. */
 export function readSeat(text: string): SeatReading {
   const title = withoutAmv(text);
   const { bare, acting, project } = notesOf(title);
   const key = titleKey(bare);
   const rule = key === "" ? undefined : TITLE_RULES.find((r) => r.pattern.test(key));
-  if (rule !== undefined) return { kind: "seat", seat: rule.seat, title, acting, project };
+  if (rule !== undefined) return { kind: "seat", seat: rule.seat, title, acting, project, division: rule.seat.unit === "division" ? divisionNamed(bare) : null };
   if (SEAT_WORDS.test(key)) return { kind: "unknown", title };
-  return { kind: "seat", seat: CORE, title: title || "Member", acting, project };
+  return { kind: "seat", seat: CORE, title: title || "Member", acting, project, division: null };
 }
 
 /** The seats one " - " part gives: a compound title's parts, the " & " parts when the table reads each, else the part itself. */

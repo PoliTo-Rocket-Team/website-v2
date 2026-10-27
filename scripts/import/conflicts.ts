@@ -30,7 +30,7 @@ export const CONFLICT_TEXT = {
   "unresolved-requester": "The order's requester resolves to no imported member; the order was not imported.",
   "project-only-unit": "The subteam cell names only a project, and the schema has no project on roles; the role was not imported.",
   "override-unmatched":
-    "The overrides.csv line does not read (unknown kind, or a row or value that is no number or year), or names what it cannot apply to: a handover off the current year's sheet, a row that is no person's row there, two rows with no seat in common, or a quitter-year row that is no Quitters row of a person on no year sheet; it was not applied.",
+    "The overrides.csv line does not read (unknown kind, or a row or value that is no number, year or title), or names what it cannot apply to: a handover off the current year's sheet, a row that is no person's row there, two rows with no seat in common, a quitter-year row that is no Quitters row of a person on no year sheet, or a title on a sheet not read, a row with no name, or a row already given a title; it was not applied.",
   "photo-surname-differs": "Photo held: its id is a people_rows.csv id, but the surname in its name differs; not imported.",
   "photo-no-id-match": "Photo not imported: the id in its name is on no row of people_rows.csv.",
   "photo-no-surname-match": "Photo not imported: its name is a surname only, and no advisor (advisors_rows.csv or an advisor row of the workbook) has that surname.",
