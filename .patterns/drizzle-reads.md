@@ -96,11 +96,6 @@ Better Auth's own tables are read by Better Auth, not by these helpers. Writes f
 - **`"use server"` on a read module.** [get-user-scope.ts](../app/actions/get-user-scope.ts)
   carries `"use server"`, which also exposes its exports as callable Server Action endpoints. The other read modules use only
   `"server-only"`. A read helper does not need `"use server"`.
-- **Member directory is not cached.** ADR 0003 names the member directory as the read to cache
-  (and names `unstable_cache` + `revalidateTag`). [get-members.ts](../app/actions/get-members.ts)
-  queries every member row on each call with no cache, and the code that does cache uses
-  `"use cache"` + `updateTag` instead. [members-list.tsx](../components/members-list.tsx) imports
-  it into a client component, with the call commented out.
 - **Missing-table fallback for the recruitment switch.** `queryRecruitment` in
   [get-apply-positions.ts](../app/actions/get-apply-positions.ts) catches Postgres error `42P01`
   (undefined table) and returns the default, recruitment on. Every other error still throws. It

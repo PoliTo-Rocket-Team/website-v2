@@ -130,7 +130,7 @@ const user: InferSelectModel<typeof users> = {
   anonymizedAt: null,
 };
 
-// The deprecated `email_alias` column is left out: no code reads or writes it (issue #563).
+// The old `email_alias` column is gone: drizzle/0075 dropped it (issue #569).
 const member = {
   memberId: 7,
   prtEmail: "giulia.rossi@politorocketteam.it",
