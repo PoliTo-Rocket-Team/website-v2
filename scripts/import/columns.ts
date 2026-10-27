@@ -169,15 +169,6 @@ export const ADVISORS_CSV = {
   hasPhoto: { aliases: ["has_pp"] },
 } as const satisfies SourceSpec<string>;
 
-export const POSITIONS_CSV = {
-  division: { aliases: ["division"], required: true },
-  name: { aliases: ["name"], required: true },
-  description: { aliases: ["description"] },
-  desirable: { aliases: ["desirable"] },
-  required: { aliases: ["required"] },
-  open: { aliases: ["open"] },
-} as const satisfies SourceSpec<string>;
-
 export const ORDERS_CSV = {
   requester: { aliases: ["requester"], required: true },
   description: { aliases: ["description"] },

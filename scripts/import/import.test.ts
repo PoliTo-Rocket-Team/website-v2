@@ -103,7 +103,6 @@ test("a dry run reports every planted conflict and unclear quitter, and writes n
     "ambiguous-match",
     "missing-email",
     "account-without-member",
-    "unknown-unit",
     "unknown-title",
     "seat-taken",
     "csv-disagrees",
@@ -133,8 +132,9 @@ test("a dry run reports every planted conflict and unclear quitter, and writes n
   // "Underwater Basket Weaving" and "Avionics Legacy" are on the current sheet: units to create, open (issue #816), so none is unresolved.
   assert.equal(plan.unresolvedUnits, 0);
   assert.match(report, /^Distinct unresolved unit names \(subteam and division cells\): 0$/m);
-  // The position in the old "Avionics Legacy" division still resolves to no division the database holds.
-  assert.ok(plan.conflicts.some((c) => c.kind === "unknown-unit" && c.at.file === "positions_rows.csv"));
+  // The old open positions are not imported at all (issue #820): the file is listed as left out, and raises no conflict.
+  assert.ok(!plan.conflicts.some((c) => c.at.file === "positions_rows.csv"));
+  assert.match(report, /^Skipped:\n(?: {2}.*\n)* {2}positions_rows\.csv: not imported \(owner decision\); recruitment creates new positions$/m);
 });
 
 test("a dry run given no database says the units were not checked", async () => {
@@ -313,7 +313,7 @@ test("a seat conflict this year refuses that role only; the run goes on", async 
   }
 });
 
-test("CSV rows fill gaps only, and advisors, positions, FAQs and orders land where they resolve", async () => {
+test("CSV rows fill gaps only, advisors, FAQs and orders land where they resolve, and no position is imported", async () => {
   await world();
   await importOnce();
   const marta = await userNamed("Marta", "Villa");
@@ -326,14 +326,7 @@ test("CSV rows fill gaps only, and advisors, positions, FAQs and orders land whe
   assert.ok(advisorNames.includes("Prof. Ada Example") && advisorNames.includes("Sam Specialist"));
   assert.equal(advisorNames.filter((n) => n === "Sam Specialist").length, 1);
 
-  const positions = await tableRows(applyPositions);
-  assert.deepEqual(
-    positions.map((p) => [p.title, p.divisionId, p.status, p.requiredSkills, p.desirableSkills]),
-    [
-      ["Feed Systems Engineer", 1, true, ["Fluid dynamics", "Teamwork"], ["CAD", "Python"]],
-      ["Web Developer", INFORMATION_TECHNOLOGY, true, ["TypeScript", "SQL"], []],
-    ],
-  );
+  assert.deepEqual(await tableRows(applyPositions), [], "positions_rows.csv is not imported (issue #820)");
 
   const faq = (await tableRows(faqVersions)).find((v) => v.question === "Can I join while on exchange?");
   assert.deepEqual(faq?.answer, ["Yes, if you can work remotely.", "Tell us in your application."]);

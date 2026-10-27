@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { cell, locate, QUITTERS_SHEET, ROLES_SHEET, TEAM_MEMBERS_CSV, YEAR_SHEET, yearSheetOf } from "./columns";
 import { parseCsv } from "./csv";
 import { readOverrides } from "./overrides";
-import { listOf, linkedinLink } from "./plan";
+import { linkedinLink } from "./plan";
 import { quitterStint } from "./quitters";
 import { dateCellOf, dayMonthSwapped, dayOf, readSources, yearOfSheet } from "./sources";
 import sharp from "sharp";
@@ -397,10 +397,7 @@ test("the CSV parser keeps quoted commas, doubled quotes and line breaks in one 
   );
 });
 
-test("list cells, LinkedIn handles and unit names read the old export's shapes", () => {
-  assert.deepEqual(listOf('["CAD", "Python"]'), ["CAD", "Python"]);
-  assert.deepEqual(listOf('{"Fluid dynamics",Teamwork}'), ["Fluid dynamics", "Teamwork"]);
-  assert.deepEqual(listOf("- TypeScript\n- SQL\n"), ["TypeScript", "SQL"]);
+test("LinkedIn handles and unit names read the old export's shapes", () => {
   assert.equal(linkedinLink("someone-example"), "https://www.linkedin.com/in/someone-example");
   assert.equal(linkedinLink("https://it.linkedin.com/in/someone-example/"), "https://www.linkedin.com/in/someone-example");
   assert.equal(linkedinLink("not a handle"), null);

@@ -3,16 +3,19 @@ import { test } from "node:test";
 import { PEOPLE_CSV, QUITTERS_SHEET, yearSheetOf } from "./columns";
 import { matchPeople } from "./people";
 import type { PhotoFolder } from "./photos";
-import { planImport } from "./plan";
+import { planImport, type Plan } from "./plan";
 import { renderReport } from "./report";
 import { NO_DATABASE, type Snapshot } from "./snapshot";
 import type { Sources } from "./sources";
-import type { Units } from "./units";
+import type { UnitRef } from "./unit-book";
+import { DepartmentIndex, rowUnitNames, unitNames, type Units } from "./units";
 
-// The roster shapes of issue #818, planned over an in-memory fake roster (no
-// file, no database): Quitters date cells stored month/day, a people_rows.csv
-// first name shorter than the workbook's given names, and one unit spelt
-// several ways. Every name here is invented.
+// The roster shapes of issues #818 and #820, planned over an in-memory fake
+// roster (no file, no database): Quitters date cells stored month/day, a
+// people_rows.csv first name shorter than the workbook's given names, one unit
+// spelt several ways, a separator inside parentheses, a note naming a parent
+// department, one division name under two departments, a job title in the
+// Division cell, and a plural spelling. Every name here is invented.
 
 type Cells = Readonly<Record<string, string>>;
 
@@ -37,7 +40,7 @@ function sourcesOf(parts: { readonly years?: Readonly<Record<number, readonly Ce
     quitters,
     rolesSheets: [],
     namelessRows: 0,
-    csv: { people, teamMembers: [], subteams: [], divisions: [], advisors: [], positions: [], orders: [], faqs: [], overrides: [] },
+    csv: { people, teamMembers: [], subteams: [], divisions: [], advisors: [], orders: [], faqs: [], overrides: [] },
     conflicts: [],
   } as never;
 }
@@ -311,6 +314,193 @@ test("a spelling that finds no unit in the database is the unit another spelling
       [null, 9],
       [7, null],
       [7, null],
+    ],
+  );
+});
+
+/** A unit a plan names: a created one by its name, an existing one by its id. */
+const nameOf = (plan: Plan, level: "departments" | "divisions", ref: UnitRef | null): string | null =>
+  ref === null ? null : ref.kind === "new" ? plan[level][ref.index].name : `#${ref.id}`;
+
+/** Each division a plan creates: its name, code, department and open state, sorted. */
+const createdDivisions = (plan: Plan) =>
+  plan.divisions.map((d) => [d.name, d.code, nameOf(plan, "departments", d.dept), d.closedAt === null ? "open" : "closed"]).sort((a, b) => String(a).localeCompare(String(b)));
+
+test("issue #820: a comma, slash or ' - ' inside parentheses never splits a unit cell; 'ADVISOR (VES, AMV)' is one advisor marker and no unit", () => {
+  assert.deepEqual(unitNames("ADVISOR (VES, AMV)"), ["ADVISOR (VES, AMV)"]);
+  assert.deepEqual(unitNames("Propulsion (PRO / LPR) - Recovery (REC - X); Avionics, N/A"), ["Propulsion (PRO / LPR)", "Recovery (REC - X)", "Avionics", "N/A"]);
+  // An open parenthesis never closed does not hold the rest of the cell together.
+  assert.deepEqual(unitNames("Propulsion (PRO, Avionics"), ["Propulsion (PRO", "Avionics"]);
+
+  const sources = sourcesOf({
+    years: {
+      2025: [person("Ada", "Bini", { subteam: "ADVISOR (VES, AMV)", title: "" })],
+      2023: [person("Ben", "Cori", { subteam: "SENIOR ADVISOR (VES, AMV)", title: "" })],
+    },
+  });
+  const plan = planImport(sources, EMPTY_DATABASE, null, TODAY);
+  assert.deepEqual([plan.departments, plan.divisions], [[], []]);
+  assert.deepEqual(
+    plan.roles.map((r) => [r.title, r.type, r.dept, r.division]),
+    [
+      ["Advisor", "advisor", null, null],
+      ["Senior Advisor", "advisor", null, null],
+    ],
+  );
+  assert.deepEqual(plan.conflicts.filter((c) => c.kind === "unknown-unit"), []);
+});
+
+test("issue #820: a division's note that names a department is its department, not its code, and never joins a code group", () => {
+  const index = new DepartmentIndex([
+    { name: "Propulsion", code: "PRO" },
+    { name: "Operations", code: null },
+  ]);
+  const unit = (name: string, code: string | null) => ({ kind: "unit" as const, name, code });
+  assert.equal(index.parentOf(unit("Propulsion", "PRO")), null, "a department's own code is a code");
+  assert.equal(index.parentOf(unit("Hybrid Motors", "HYB")), null, "a note no department has is a code");
+  assert.deepEqual(index.parentOf(unit("IT&Media", "Operations")), unit("Operations", null), "by name");
+  assert.deepEqual(index.parentOf(unit("Valves", "PRO")), unit("PRO", null), "by code");
+  assert.deepEqual(
+    rowUnitNames("", "IT&Media (Operations)", new Set(), "past", index).divisions.map((d) => [d.value.name, d.value.code, d.department?.name]),
+    [["IT&Media", null, "Operations"]],
+  );
+
+  const sources = sourcesOf({
+    years: {
+      2025: [person("Ada", "Bini", { subteam: "Operations", division: "Logistics (LGS)" })],
+      2021: [
+        person("Ben", "Cori", { subteam: "Cavour", division: "Avionics (Cavour)" }),
+        person("Cia", "Dani", { division: "IT&Media (Operations)" }),
+        person("Dea", "Elmi", { division: "Logistics (Operations)" }),
+        person("Eva", "Fano", { subteam: "Vittorio Emanuele II (VES)", division: "Avionics" }),
+      ],
+    },
+  });
+  const plan = planImport(sources, EMPTY_DATABASE, null, TODAY);
+  assert.deepEqual(
+    plan.departments.map((d) => [d.name, d.closedAt === null ? "open" : "closed"]),
+    [
+      ["Operations", "open"],
+      ["Cavour", "closed"],
+      ["Vittorio Emanuele II", "closed"],
+    ],
+  );
+  // "IT&Media (Operations)" is IT&Media under Operations, not folded into Logistics; "Avionics (Cavour)" is not the Avionics of VES.
+  assert.deepEqual(createdDivisions(plan), [
+    ["Avionics", null, "Cavour", "closed"],
+    ["Avionics", null, "Vittorio Emanuele II", "closed"],
+    ["IT&Media", null, "Operations", "closed"],
+    ["Logistics", "LGS", "Operations", "open"],
+  ]);
+  assert.deepEqual(plan.divisions.find((d) => d.name === "Logistics")?.spellings, ["Logistics (LGS)", "Logistics"]);
+
+  // A note naming a database department by its code places the division under that department.
+  const database = databaseWith({ departments: [{ id: 3, name: "Operations", code: "OPS" }], divisions: [] });
+  const byCode = planImport(sourcesOf({ years: { 2025: [person("Fil", "Gaia", { division: "IT&Media (OPS)" })] } }), database, null, TODAY);
+  assert.deepEqual(createdDivisions(byCode), [["IT&Media", null, "#3", "open"]]);
+});
+
+test("issue #820: a division's department is the newest sheet's; one name under a past department is its own closed division unless the code is the same", () => {
+  const sources = sourcesOf({
+    years: {
+      2025: [
+        person("Ada", "Bini", { subteam: "Aeromechanics", division: "Mission Analysis (MSA)" }),
+        person("Fil", "Gaia", { subteam: "Systems Engineering", division: "Hardware (HDW)" }),
+      ],
+      // No department on the row: the name's group under the newest sheet's department.
+      2024: [person("Gea", "Holm", { division: "Mission Analysis" })],
+      2023: [
+        person("Ben", "Cori", { subteam: "Vittorio Emanuele II (VES)", division: "Mission Analysis" }),
+        person("Cia", "Dani", { subteam: "Vittorio Emanuele II (VES)", division: "Avionics" }),
+        // Fil's older row is placed first: the division still goes under the newest sheet's department.
+        person("Fil", "Gaia", { subteam: "Electronics", division: "Hardware (HDW)" }),
+      ],
+      2022: [person("Dea", "Elmi", { subteam: "Cavour", division: "Avionics" })],
+    },
+  });
+  const plan = planImport(sources, EMPTY_DATABASE, null, TODAY);
+  assert.deepEqual(createdDivisions(plan), [
+    ["Avionics", null, "Cavour", "closed"],
+    ["Avionics", null, "Vittorio Emanuele II", "closed"],
+    ["Hardware", "HDW", "Systems Engineering", "open"],
+    ["Mission Analysis", null, "Vittorio Emanuele II", "closed"],
+    ["Mission Analysis", "MSA", "Aeromechanics", "open"],
+  ]);
+  const placed = (p: Plan) =>
+    p.roles.map((r) => `${nameOf(p, "divisions", r.division)} ${nameOf(p, "departments", r.dept)} ${r.startedAt.slice(0, 4)}`).sort();
+  assert.deepEqual(placed(plan), [
+    "Avionics Cavour 2022",
+    "Avionics Vittorio Emanuele II 2023",
+    "Hardware Systems Engineering 2023",
+    "Hardware Systems Engineering 2025",
+    "Mission Analysis Aeromechanics 2024",
+    "Mission Analysis Aeromechanics 2025",
+    "Mission Analysis Vittorio Emanuele II 2023",
+  ]);
+
+  // A second run finds each division under its own department, and creates none.
+  const database = databaseWith({
+    departments: [
+      { id: 1, name: "Cavour", code: null },
+      { id: 2, name: "Vittorio Emanuele II", code: "VES" },
+      { id: 3, name: "Aeromechanics", code: null },
+      { id: 4, name: "Electronics", code: null },
+      { id: 5, name: "Systems Engineering", code: null },
+    ],
+    divisions: [
+      { id: 10, name: "Avionics", code: null, deptId: 1 },
+      { id: 11, name: "Avionics", code: null, deptId: 2 },
+      { id: 12, name: "Mission Analysis", code: "MSA", deptId: 3 },
+      { id: 13, name: "Mission Analysis", code: null, deptId: 2 },
+      { id: 14, name: "Hardware", code: "HDW", deptId: 5 },
+    ],
+  });
+  const second = planImport(sources, database, null, TODAY);
+  assert.deepEqual([second.departments, second.divisions, second.unresolvedUnits], [[], [], 0]);
+  assert.deepEqual(placed(second), ["#10 #1 2022", "#11 #2 2023", "#12 #3 2024", "#12 #3 2025", "#13 #2 2023", "#14 #5 2023", "#14 #5 2025"]);
+});
+
+test("issue #820: a Division value ending in 'Lead' or 'Lead Engineer' is that division, and no unit takes the job title's name", () => {
+  const sources = sourcesOf({
+    years: {
+      2025: [
+        person("Ada", "Bini", { subteam: "Propulsion", division: "Safety Lead" }),
+        person("Ben", "Cori", { subteam: "Propulsion", division: "Liquid System Architecture  lead   ENGINEER" }),
+        person("Cia", "Dani", { subteam: "Propulsion", division: "Safety" }),
+        person("Dea", "Elmi", { subteam: "Propulsion", division: "Liquid System Architecture" }),
+      ],
+    },
+  });
+  const plan = planImport(sources, EMPTY_DATABASE, null, TODAY);
+  assert.deepEqual(createdDivisions(plan), [
+    ["Liquid System Architecture", null, "Propulsion", "open"],
+    ["Safety", null, "Propulsion", "open"],
+  ]);
+  assert.deepEqual(new Set(plan.roles.map((r) => nameOf(plan, "divisions", r.division))), new Set(["Safety", "Liquid System Architecture"]));
+});
+
+test("issue #820: names that differ only by a word's plural 's' fold together, open when the current sheet gives one", () => {
+  const sources = sourcesOf({
+    years: {
+      2025: [person("Ada", "Bini", { subteam: "Operations", division: "Ground Systems (GNS)" })],
+      2023: [person("Ben", "Cori", { subteam: "Operation", division: "Ground System" })],
+      2022: [person("Cia", "Dani", { subteam: "Recovery Systems", division: "Parachute" })],
+      2021: [person("Dea", "Elmi", { subteam: "Recovery System" })],
+    },
+  });
+  const plan = planImport(sources, EMPTY_DATABASE, null, TODAY);
+  assert.deepEqual(
+    plan.departments.map((d) => [d.name, d.closedAt === null ? "open" : "closed", d.spellings]),
+    [
+      ["Operations", "open", ["Operations", "Operation"]],
+      ["Recovery Systems", "closed", ["Recovery Systems", "Recovery System"]],
+    ],
+  );
+  assert.deepEqual(
+    plan.divisions.map((d) => [d.name, d.code, d.closedAt === null ? "open" : "closed", d.spellings]),
+    [
+      ["Ground Systems", "GNS", "open", ["Ground Systems (GNS)", "Ground System"]],
+      ["Parachute", null, "closed", ["Parachute"]],
     ],
   );
 });

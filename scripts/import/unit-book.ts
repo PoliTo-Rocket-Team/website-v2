@@ -8,8 +8,8 @@ import { lookupDepartment, lookupDivision, storedUnitName, unitKey, type Lookup,
 // When the current year's sheet names it, it is a unit the team has now: it is
 // created open, with no `closed_at` (owner decision). Otherwise it is a unit
 // the team had and no longer has: it is created closed, `closed_at` the last
-// day of the last academic year a row names it. A division the row pairs with
-// a department is created under it. A name two units share, or one that is
+// day of the last academic year a row names it. A division the rows pair with
+// a department is created under one (see below). A name two units share, or one that is
 // only a level word ("Department"), is unresolved, and the plan reports it. A
 // second run finds the created units in the database, so it creates none.
 //
@@ -23,6 +23,13 @@ import { lookupDepartment, lookupDivision, storedUnitName, unitKey, type Lookup,
 // often on the newest sheet that gives it. A group whose spellings find one
 // unit in the database is that unit; one whose spellings find two or more is
 // unresolved, and the plan reports it rather than create a third.
+//
+// A division is also told apart by the department its row pairs it with
+// (issue #820): two values with one name under different departments are two
+// divisions ("Avionics" under Cavour, "Avionics" under Vittorio Emanuele II),
+// unless they carry the same code. A value its row pairs with no department
+// joins the group of its name the newest sheet pairs. A created division goes
+// under the department the newest sheet that pairs it names.
 
 /** A unit a role is placed in: one the database holds, or the `index`th one this plan creates. */
 export type UnitRef = { readonly kind: "existing"; readonly id: number } | { readonly kind: "new"; readonly index: number };
@@ -53,55 +60,94 @@ export type PlacedDivision = { readonly ref: UnitRef; readonly dept: UnitRef | n
 /** A roster value as the report prints it: its name, and its code in parentheses. */
 export const spellingOf = (value: UnitName): string => (value.code === null ? value.name : `${value.name} (${value.code})`);
 
-/** One value a row gives: the academic year of its sheet (a `Quitters` row counts as older than any), and whether the current year's sheet gives it. */
-export type Sighting = { readonly value: UnitName; readonly year: number; readonly current: boolean };
+/**
+ * One value a row gives: the academic year of its sheet (a `Quitters` row
+ * counts as older than any), whether the current year's sheet gives it, and,
+ * for a division, the department fold's group of the department its row pairs
+ * it with (null for a department, or a division paired with none).
+ */
+export type Sighting = { readonly value: UnitName; readonly year: number; readonly current: boolean; readonly parent: string | null };
 
 /** The name and code a created unit takes. */
 type Naming = { readonly name: string; readonly code: string | null };
 
 /**
  * The roster's values of one level, grouped into the units they spell. Nodes
- * are a value's name key (`n:`) and its code key (`c:`); a coded value joins
- * its two, and a name key joins the code key with the same text, so a bare
- * "VES" joins the "(VES)" code. The groups are fixed once built: a value no
- * row gave is placed by what it shares with them, and never joins two.
+ * are a value's name key (`n:`, with `@` and its parent when its row pairs it
+ * with a department) and its code key (`c:`); a coded value joins its two, and
+ * a name key joins the code key with the same text, so a bare "VES" joins the
+ * "(VES)" code. A name under one parent never joins the same name under
+ * another, except through a code. A name with no parent joins the group its
+ * name has under the parent of the newest sheet, unless its code already
+ * joins it to a parent. The groups are fixed once built: a value no row gave
+ * is placed by what it shares with them, and never joins two.
  */
 export class UnitFold {
   private readonly parent = new Map<string, string>();
+  /** The name nodes of each name key, in the order they were given. */
+  private readonly namesOf = new Map<string, string[]>();
   /** The sightings of each group, in the order they were given. */
   private readonly byGroup = new Map<string, Sighting[]>();
 
   constructor(sightings: readonly Sighting[]) {
     for (const s of sightings) {
-      const [name, code] = UnitFold.nodesOf(s.value).map((node) => this.add(node));
+      const [name, code] = UnitFold.nodesOf(s.value, s.parent).map((node) => this.add(node));
       if (name !== undefined && code !== undefined) this.union(name, code);
     }
+    this.joinUnpaired(sightings);
     for (const s of sightings) {
-      const group = this.group(s.value);
+      const group = this.group(s.value, s.parent);
       if (group !== null) this.byGroup.set(group, [...(this.byGroup.get(group) ?? []), s]);
     }
   }
 
   /**
-   * The group a value is in: its name's, else its code's, else the code its
-   * name spells; a value that shares none of them is a group of its own. Null
-   * for a value with no name and no code to group by (only a level word).
+   * The group a value is in, under `parent`: its name's, else its code's, else
+   * the code its name spells; a value that shares none of them is a group of
+   * its own. Null for a value with no name and no code to group by (only a
+   * level word).
    */
-  group(value: UnitName): string | null {
-    const [name, code] = UnitFold.nodesOf(value);
+  group(value: UnitName, parent: string | null = null): string | null {
+    const [name, code] = UnitFold.nodesOf(value, parent);
     if (name === undefined) return null;
-    for (const node of [name, ...(code === undefined ? [] : [code]), `c:${name.slice(2)}`]) {
+    for (const node of [name, ...(code === undefined ? [] : [code]), `c:${UnitFold.textOf(name)}`]) {
       if (this.parent.has(node)) return this.find(node);
     }
     return name;
   }
 
   /** A value's name node, then its code node: none for a key that is empty. A value with no name key is grouped by nothing. */
-  private static nodesOf(value: UnitName): [] | [string] | [string, string] {
+  private static nodesOf(value: UnitName, parent: string | null): [] | [string] | [string, string] {
     const name = unitKey(value.name);
     const code = value.code === null ? "" : unitKey(value.code);
     if (name === "") return [];
-    return code === "" ? [`n:${name}`] : [`n:${name}`, `c:${code}`];
+    const nameNode = parent === null ? `n:${name}` : `n:${name}@${parent}`;
+    return code === "" ? [nameNode] : [nameNode, `c:${code}`];
+  }
+
+  /** The key text of a node: a name node's name key without its parent, or a code node's code key. */
+  private static textOf(node: string): string {
+    const text = node.slice(2);
+    return node.startsWith("n:") ? text.split("@")[0] : text;
+  }
+
+  /** Joins each name with no parent to its name's group under the parent of the newest sheet (the first read on a tie), unless its group already has a parent. */
+  private joinUnpaired(sightings: readonly Sighting[]): void {
+    const newest = new Map<string, number>();
+    for (const s of sightings) {
+      const group = s.parent === null ? null : this.group(s.value, s.parent);
+      if (group !== null) newest.set(group, Math.max(newest.get(group) ?? Number.NEGATIVE_INFINITY, s.year));
+    }
+    for (const s of sightings) {
+      const [name] = UnitFold.nodesOf(s.value, null);
+      if (s.parent !== null || name === undefined || newest.has(this.find(name))) continue;
+      let best: { group: string; year: number } | null = null;
+      for (const node of this.namesOf.get(UnitFold.textOf(name)) ?? []) {
+        const year = newest.get(this.find(node));
+        if (node !== name && year !== undefined && (best === null || year > best.year)) best = { group: this.find(node), year };
+      }
+      if (best !== null) this.union(best.group, name);
+    }
   }
 
   /** Whether the current year's sheet gives any value of the group. */
@@ -142,12 +188,16 @@ export class UnitFold {
     return this.byGroup.get(group) ?? [];
   }
 
-  /** Adds a node, joined to its twin (the code key with a name key's text, or the name key with a code key's). */
+  /** Adds a node, joined to its twins: the code key with a name key's text, or every name key (under any parent) with a code key's. */
   private add(node: string): string {
-    if (!this.parent.has(node)) {
-      this.parent.set(node, node);
-      const twin = `${node.startsWith("n:") ? "c:" : "n:"}${node.slice(2)}`;
-      if (this.parent.has(twin)) this.union(node, twin);
+    if (this.parent.has(node)) return node;
+    this.parent.set(node, node);
+    const text = UnitFold.textOf(node);
+    if (node.startsWith("c:")) {
+      for (const name of this.namesOf.get(text) ?? []) this.union(node, name);
+    } else {
+      if (this.parent.has(`c:${text}`)) this.union(node, `c:${text}`);
+      this.namesOf.set(text, [...(this.namesOf.get(text) ?? []), node]);
     }
     return node;
   }
@@ -168,9 +218,31 @@ export class UnitFold {
 /** A unit being created: its group, the name and code of its first value, the years placed rows name it, and the values those rows give. */
 type Draft = { group: string; name: string; code: string | null; first: number; last: number; values: UnitName[] };
 
+/** A department a placed row pairs a division with, and the row's academic year. */
+type Pairing = { readonly year: number; readonly dept: UnitRef };
+
+/** A division being created, and every department placed rows pair it with. */
+type DivisionDraft = Draft & { pairings: Pairing[] };
+
+/** The department a row pairs a division with: its value, and the unit it resolved to (null when it resolved to none). */
+export type PairedDepartment = { readonly value: UnitName; readonly ref: UnitRef | null };
+
+/** The department of the newest sheet that pairs a division: the one its rows of that year pair it with most often (the first read on a tie); null when no row pairs it. */
+function newestPairing(pairings: readonly Pairing[]): UnitRef | null {
+  if (pairings.length === 0) return null;
+  const newest = Math.max(...pairings.map((p) => p.year));
+  const tally = new Map<string, { dept: UnitRef; count: number }>();
+  for (const p of pairings) {
+    if (p.year !== newest) continue;
+    const entry = tally.get(refKey(p.dept)) ?? { dept: p.dept, count: 0 };
+    tally.set(refKey(p.dept), { ...entry, count: entry.count + 1 });
+  }
+  return [...tally.values()].reduce((a, b) => (b.count > a.count ? b : a)).dept;
+}
+
 export class UnitBook {
   private readonly departments: Draft[] = [];
-  private readonly divisions: (Draft & { dept: UnitRef | null })[] = [];
+  private readonly divisions: DivisionDraft[] = [];
   private readonly presentDepartments = new Set<number>();
   private readonly presentDivisions = new Set<number>();
   /** The unit keys of every name that resolved to nothing. */
@@ -193,22 +265,33 @@ export class UnitBook {
       this.presentDepartments.add(lookup.unit.id);
       return { kind: "existing", id: lookup.unit.id };
     }
-    if (lookup.kind === "absent" && group !== null) return { kind: "new", index: this.draft(this.departments, group, value, year) };
+    if (lookup.kind === "absent" && group !== null) return { kind: "new", index: this.draft(this.departments, group, value, year, (base) => base) };
     this.unresolved.add(unitKey(value.name));
     return null;
   }
 
-  /** The division a value names on a row of `year`, with its department; a created one goes under `pairedWith`. Null when two units share the name. */
-  division(value: UnitName, year: number, pairedWith: UnitRef | null): PlacedDivision | null {
-    const group = this.folds.divisions.group(value);
-    const lookup = this.lookup(this.folds.divisions, value, group, (v) => lookupDivision(this.units, v));
+  /**
+   * The division a value names on a row of `year` that pairs it with
+   * `paired`, with its department. Its name finds a database division only
+   * under that department, or under none. A created one goes under the
+   * department of the newest sheet that pairs it: the department returned here
+   * is the one so far, and the plan's last step gives its roles the final one.
+   * Null when two units share the name.
+   */
+  division(value: UnitName, year: number, paired: PairedDepartment | null): PlacedDivision | null {
+    const parent = paired === null ? null : this.folds.departments.group(paired.value);
+    const group = this.folds.divisions.group(value, parent);
+    const under = paired?.ref == null ? undefined : { deptId: paired.ref.kind === "existing" ? paired.ref.id : null };
+    const lookup = this.lookup(this.folds.divisions, value, group, (v) => lookupDivision(this.units, v, under));
     if (lookup.kind === "found") {
       this.presentDivisions.add(lookup.unit.id);
       return { ref: { kind: "existing", id: lookup.unit.id }, dept: lookup.unit.deptId === null ? null : { kind: "existing", id: lookup.unit.deptId } };
     }
     if (lookup.kind === "absent" && group !== null) {
-      const index = this.draft(this.divisions, group, value, year, pairedWith);
-      return { ref: { kind: "new", index }, dept: this.divisions[index].dept };
+      const index = this.draft(this.divisions, group, value, year, (base) => ({ ...base, pairings: [] }));
+      const d = this.divisions[index];
+      if (paired?.ref != null) d.pairings.push({ year, dept: paired.ref });
+      return { ref: { kind: "new", index }, dept: newestPairing(d.pairings) };
     }
     this.unresolved.add(unitKey(value.name));
     return null;
@@ -221,7 +304,7 @@ export class UnitBook {
 
   /** The divisions the plan creates, open or closed. */
   newDivisions(): NewDivision[] {
-    return this.divisions.map((d) => ({ ...this.span(d, this.folds.divisions), dept: d.dept }));
+    return this.divisions.map((d) => ({ ...this.span(d, this.folds.divisions), dept: newestPairing(d.pairings) }));
   }
 
   /** How many distinct departments and divisions the database already holds that the roster names. */
@@ -230,23 +313,26 @@ export class UnitBook {
   }
 
   /**
-   * What a value finds in the database: by itself, else, when it finds
-   * nothing, what the other values of its group find. One unit: that unit.
-   * None: absent, so the group is created. More than one, or a value two units
-   * share: ambiguous, so the value is unresolved and never created as a unit
-   * of its own beside them.
+   * What a value finds in the database: by itself, else, when it finds no one
+   * unit, what the other values of its group find. One unit: that unit (so a
+   * name two units share, as "Mission Analysis" on a row with no department,
+   * is the one its group's code finds). None: absent, so the group is created,
+   * unless a value of the group is a name two units share. More than one, or
+   * a name two units share with nothing to tell them apart: ambiguous, so the
+   * value is unresolved and never created as a unit of its own beside them.
    */
   private lookup<U extends { readonly id: number }>(fold: UnitFold, value: UnitName, group: string | null, find: (v: UnitName) => Lookup<U>): Lookup<U> {
     const own = find(value);
-    if (own.kind !== "absent" || group === null) return own;
+    if (own.kind === "found" || group === null) return own;
     const found = new Map<number, U>();
+    let shared = own.kind === "ambiguous";
     for (const other of fold.values(group)) {
       const hit = find(other);
-      if (hit.kind === "ambiguous") return hit;
+      if (hit.kind === "ambiguous") shared = true;
       if (hit.kind === "found") found.set(hit.unit.id, hit.unit);
     }
-    if (found.size > 1) return { kind: "ambiguous" };
-    return found.size === 1 ? { kind: "found", unit: [...found.values()][0] } : own;
+    if (found.size === 1) return { kind: "found", unit: [...found.values()][0] };
+    return found.size > 1 || shared ? { kind: "ambiguous" } : own;
   }
 
   /**
@@ -263,11 +349,11 @@ export class UnitBook {
     return { name, code, startedAt: yearStart(d.first), closedAt: fold.isCurrent(d.group) ? null : yearEnd(d.last), spellings };
   }
 
-  /** The draft a value's group is, made on first sight: later sights widen its years, give it a code it lacked, add their value, and pair it if it was not. */
-  private draft<D extends Draft & { dept?: UnitRef | null }>(list: D[], group: string, value: UnitName, year: number, dept?: UnitRef | null): number {
+  /** The draft a value's group is, made on first sight by `make`: later sights widen its years, give it a code it lacked, and add their value. */
+  private draft<D extends Draft>(list: D[], group: string, value: UnitName, year: number, make: (base: Draft) => D): number {
     let index = list.findIndex((d) => d.group === group);
     if (index === -1) {
-      list.push({ group, name: storedUnitName(value), code: value.code, first: year, last: year, values: [] as UnitName[], ...(dept !== undefined && { dept }) } as D);
+      list.push(make({ group, name: storedUnitName(value), code: value.code, first: year, last: year, values: [] }));
       index = list.length - 1;
     }
     const d = list[index];
@@ -275,7 +361,6 @@ export class UnitBook {
     d.last = Math.max(d.last, year);
     if (d.code === null) d.code = value.code;
     d.values.push(value);
-    if (dept != null && d.dept === null) d.dept = dept;
     return index;
   }
 }

@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import {
-  applyPositions,
   departments,
   divisions,
   faqs,
@@ -63,7 +62,6 @@ export async function writePlan(tx: Tx, plan: Plan, uploads: PhotoUploads | null
     team_leaves: 0,
     team_page_advisors: 0,
     team_page_advisor_versions: 0,
-    apply_positions: 0,
     faqs: 0,
     faq_versions: 0,
     orders: 0,
@@ -143,13 +141,6 @@ export async function writePlan(tx: Tx, plan: Plan, uploads: PhotoUploads | null
     await tx.insert(teamPageAdvisorVersions).values({ advisorId: row.id, version: "published", advisor });
     written.team_page_advisors++;
     written.team_page_advisor_versions++;
-  }
-  if (plan.positions.length > 0) {
-    const rows = await tx
-      .insert(applyPositions)
-      .values(plan.positions.map((p) => ({ ...p, requiredSkills: [...p.requiredSkills], desirableSkills: [...p.desirableSkills] })))
-      .returning({ id: applyPositions.id });
-    written.apply_positions = rows.length;
   }
   for (const f of plan.faqs) {
     const [row] = await tx.insert(faqs).values({ siteOrder: f.siteOrder }).returning({ id: faqs.id });
