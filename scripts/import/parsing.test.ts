@@ -6,7 +6,7 @@ import { parseCsv } from "./csv";
 import { readOverrides } from "./overrides";
 import { listOf, linkedinLink } from "./plan";
 import { quitterStint } from "./quitters";
-import { dayOf, readSources, yearOfSheet } from "./sources";
+import { dateCellOf, dayMonthSwapped, dayOf, readSources, yearOfSheet } from "./sources";
 import sharp from "sharp";
 import { checkMemberPhoto } from "@/lib/dashboard/division-members";
 import { matchPhotos, shapeMemberPhoto, surnameKey, type PhotoFile } from "./photos";
@@ -293,14 +293,66 @@ test("a roster day reads from a date cell's serial and from dd/mm/yyyy, d/m/yyyy
 
 test("a quitter-only row's stint: its leave year, its join day or the year's start; an override year wins; no date or an unreadable one is unclear", () => {
   const row = (leftOn: string, joinedOn: string) => ({ at: { file: "r.xlsx", sheet: "Quitters", row: 2 }, value: { leftOn, joinedOn } }) as never;
-  assert.deepEqual(quitterStint(row("15/02/2023", "10/11/2021"), null), { kind: "stint", year: 2022, startedAt: "2021-11-10", leftAt: "2023-02-15" });
-  assert.deepEqual(quitterStint(row("15/10/2023", ""), null), { kind: "stint", year: 2023, startedAt: "2023-10-01", leftAt: "2023-10-15" });
-  assert.deepEqual(quitterStint(row("", ""), 2022), { kind: "stint", year: 2022, startedAt: "2022-10-01", leftAt: "2023-09-30" });
-  assert.deepEqual(quitterStint(row("15/02/2023", ""), 2020), { kind: "stint", year: 2020, startedAt: "2020-10-01", leftAt: "2021-09-30" });
+  assert.deepEqual(quitterStint(row("15/02/2023", "10/11/2021"), null), { kind: "stint", year: 2022, startedAt: "2021-11-10", leftAt: "2023-02-15", swapped: null });
+  assert.deepEqual(quitterStint(row("15/10/2023", ""), null), { kind: "stint", year: 2023, startedAt: "2023-10-01", leftAt: "2023-10-15", swapped: null });
+  assert.deepEqual(quitterStint(row("", ""), 2022), { kind: "stint", year: 2022, startedAt: "2022-10-01", leftAt: "2023-09-30", swapped: null });
+  assert.deepEqual(quitterStint(row("15/02/2023", ""), 2020), { kind: "stint", year: 2020, startedAt: "2020-10-01", leftAt: "2021-09-30", swapped: null });
   assert.deepEqual(quitterStint(row("", "10/11/2021"), null), { kind: "unclear", conflict: "quitter-no-date", field: "leftOn" });
   assert.deepEqual(quitterStint(row("not a day", ""), null), { kind: "unclear", conflict: "quitter-date-unreadable", field: "leftOn" });
   assert.deepEqual(quitterStint(row("15/02/2023", "1/1/2024"), null), { kind: "unclear", conflict: "quitter-date-unreadable", field: "joinedOn" });
   assert.deepEqual(quitterStint(row("999999999", ""), null), { kind: "unclear", conflict: "quitter-date-unreadable", field: "leftOn" });
+});
+
+/** The Excel day serial a date cell stores for a day. */
+const serialOf = (day: string) => String((Date.parse(day) - Date.UTC(1899, 11, 30)) / 86_400_000);
+
+test("a date cell says whether it is a serial; a day of 12 or less swaps with its month, and a day that would not change does not", () => {
+  assert.deepEqual(dateCellOf(serialOf("2023-01-05")), { day: "2023-01-05", serial: true });
+  assert.deepEqual(dateCellOf("5/1/2023"), { day: "2023-01-05", serial: false });
+  assert.deepEqual(dateCellOf("2023-01-05"), { day: "2023-01-05", serial: false });
+  assert.equal(dateCellOf("31/02/2024"), null);
+  assert.equal(dayMonthSwapped("2023-01-05"), "2023-05-01");
+  assert.equal(dayMonthSwapped("2022-01-12"), "2022-12-01");
+  assert.equal(dayMonthSwapped("2023-07-12"), "2023-12-07");
+  assert.equal(dayMonthSwapped("2023-01-13"), null, "no 13th month");
+  assert.equal(dayMonthSwapped("2023-04-04"), null, "the swap changes nothing");
+});
+
+test("a quitter row whose join is after its leave swaps one date cell's day and month: the leave first, then the join; typed text never", () => {
+  const row = (leftOn: string, joinedOn: string) => ({ at: { file: "r.xlsx", sheet: "Quitters", row: 2 }, value: { leftOn, joinedOn } }) as never;
+  // A join of 1 April with a leave read as 5 January: the leave is 1 May.
+  assert.deepEqual(quitterStint(row(serialOf("2023-01-05"), serialOf("2023-04-01")), null), {
+    kind: "stint",
+    year: 2022,
+    startedAt: "2023-04-01",
+    leftAt: "2023-05-01",
+    swapped: "leftOn",
+  });
+  // A leave read as 12 January is 1 December; the swapped leave gives the academic year.
+  assert.deepEqual(quitterStint(row(serialOf("2022-01-12"), serialOf("2022-03-01")), null), {
+    kind: "stint",
+    year: 2022,
+    startedAt: "2022-03-01",
+    leftAt: "2022-12-01",
+    swapped: "leftOn",
+  });
+  // The leave's day is over 12, so the join is swapped: 4 January, before the leave.
+  assert.deepEqual(quitterStint(row(serialOf("2023-01-20"), serialOf("2023-04-01")), null), {
+    kind: "stint",
+    year: 2022,
+    startedAt: "2023-01-04",
+    leftAt: "2023-01-20",
+    swapped: "joinedOn",
+  });
+  // The leave swap is tried first and wins even when the join swap would also fix the row.
+  assert.equal((quitterStint(row(serialOf("2023-01-05"), serialOf("2023-03-01")), null) as { swapped: unknown }).swapped, "leftOn");
+  const unclear = { kind: "unclear", conflict: "quitter-date-unreadable", field: "joinedOn" };
+  // Neither day is 12 or less.
+  assert.deepEqual(quitterStint(row(serialOf("2023-01-25"), serialOf("2023-04-20")), null), unclear);
+  // Typed text is already day/month: never swapped.
+  assert.deepEqual(quitterStint(row("5/1/2023", "1/4/2023"), null), unclear);
+  // The swapped leave is still before the join, and the join is typed text.
+  assert.deepEqual(quitterStint(row(serialOf("2023-03-02"), "15/11/2023"), null), unclear);
 });
 
 test("an override line reads as a handover or a quitter year; an unknown kind or an unreadable row or value is reported on its field", () => {

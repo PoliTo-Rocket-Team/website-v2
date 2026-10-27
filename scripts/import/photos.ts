@@ -9,7 +9,7 @@ import { centredCrop, sourceSquare } from "@/lib/dashboard/photo-crop";
 import { checkPhotoUpload, type CheckedPhoto, type PublicFileWrites } from "@/lib/outreach-photos";
 import { publicPathname, publicPathnameOfUrl, publicStoreHost, type PublicStoreHost } from "@/lib/storage/pathname";
 import type { At } from "./conflicts";
-import { nameKey } from "./people";
+import { nameKey, surnameKey } from "./people";
 import type { Sources } from "./sources";
 import { seatsOf } from "./titles";
 import { unitValues } from "./units";
@@ -59,14 +59,7 @@ export function readPhotoFolder(directory: string): PhotoFile[] | null {
 /** Where a photo file is, for a conflict. */
 export const photoAt = (file: Pick<PhotoFile, "row">): At => ({ file: PHOTO_FOLDER, row: file.row });
 
-/** How a surname is compared: accents, case, spaces and punctuation do not count. */
-export function surnameKey(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-}
+export { surnameKey };
 
 /** Why a file matched nothing. */
 export type PhotoMiss = "surname-differs" | "no-id-match" | "no-surname-match" | "surname-ambiguous";

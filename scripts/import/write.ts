@@ -71,7 +71,8 @@ export async function writePlan(tx: Tx, plan: Plan, uploads: PhotoUploads | null
   const uploaded = { members: 0, advisors: 0, skipped: 0 };
 
   const departmentIds: number[] = [];
-  for (const d of plan.departments) {
+  // A unit's roster spellings are for the report only: no column holds them.
+  for (const { spellings: _, ...d } of plan.departments) {
     const [row] = await tx.insert(departments).values(d).returning({ id: departments.id });
     departmentIds.push(row.id);
     written.departments++;
@@ -85,7 +86,7 @@ export async function writePlan(tx: Tx, plan: Plan, uploads: PhotoUploads | null
   };
   const departmentId = idIn(departmentIds);
   const divisionIds: number[] = [];
-  for (const { dept, ...d } of plan.divisions) {
+  for (const { dept, spellings: _, ...d } of plan.divisions) {
     const [row] = await tx
       .insert(divisions)
       .values({ ...d, deptId: departmentId(dept) })
