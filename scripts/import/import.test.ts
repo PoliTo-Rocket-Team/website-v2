@@ -29,11 +29,12 @@ import { checkMemberPhoto } from "@/lib/dashboard/division-members";
 import type { PublicFileWrites } from "@/lib/outreach-photos";
 import { publicStoreHost } from "@/lib/storage/pathname";
 import { myAlumniOf } from "@/lib/dashboard/my-alumni";
-import { addRows, databaseWrites, restore, tableRows, testDb } from "@/lib/dashboard/access-matrix/test-database";
+import { addRows, changeRows, databaseWrites, restore, tableRows, testDb } from "@/lib/dashboard/access-matrix/test-database";
 import type { ConflictKind } from "./conflicts";
 import { TABLES } from "./plan";
 import { runImport } from "./run";
 import type { ImportDb } from "./snapshot";
+import { writePlan } from "./write";
 
 // The team data import (issue #677) over the fake files in ./fixtures/files,
 // on the in-memory Postgres every migration in drizzle/ built
@@ -199,6 +200,23 @@ test("an account with no member row whose email is a person's sign-in email gets
   // The members already there keep their accounts and roles.
   assert.equal((await tableRows(users)).find((u) => u.id === "olga-account")?.member, OLGA);
   assert.equal((await tableRows(users)).find((u) => u.id === "seated-account")?.member, SEATED);
+});
+
+test("a plan whose linked account gained a member row since it was read fails the run, and the run writes nothing", async () => {
+  await world();
+  const { plan } = await runImport({ mode: "dry-run", directory: FILES, db });
+  assert.ok(plan.people.some((p) => p.account.kind === "linked" && p.account.userId === "applicant-account"));
+  // Between the plan and the write, the account gets a member row of its own.
+  await addRows(members, [{ memberId: 902 }]);
+  await changeRows(users, { id: "applicant-account" }, { member: 902 });
+  const tables = [users, members, roles, teamLeaves, departments, divisions, orders];
+  const before = await Promise.all(tables.map((t) => tableRows(t)));
+  await assert.rejects(
+    db.transaction((tx) => writePlan(tx, plan, null)),
+    /no longer holds no member row/,
+  );
+  assert.deepEqual(await databaseWrites(), []);
+  assert.deepEqual(await Promise.all(tables.map((t) => tableRows(t))), before);
 });
 
 test("the import creates only the current sheet's units the database lacks, open, and changes no existing row but an account's link", async () => {

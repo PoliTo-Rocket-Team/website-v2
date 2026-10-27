@@ -29,7 +29,11 @@ import { codeKey, lookupDepartment, lookupDivision, storedUnitName, unitKey, typ
 // divisions ("Avionics" under Cavour, "Avionics" under Vittorio Emanuele II),
 // unless they carry the same code. A value its row pairs with no department
 // joins the group of its name the newest sheet pairs. A created division goes
-// under the department the newest sheet that pairs it names.
+// under the department the newest sheet that pairs it names, counting the rows
+// of people the plan refuses too (a Quitters row counts as older than any year
+// sheet). When only refused rows name that department and the database lacks
+// it, the plan creates it as well, so a later run never finds the division
+// under an older department.
 
 /** A unit a role is placed in: one the database holds, or the `index`th one this plan creates. */
 export type UnitRef = { readonly kind: "existing"; readonly id: number } | { readonly kind: "new"; readonly index: number };
@@ -175,6 +179,11 @@ export class UnitFold {
     return this.of(group).map((s) => s.value);
   }
 
+  /** Every sighting of the group, refused rows included, in the order they were given. */
+  sightings(group: string): readonly Sighting[] {
+    return this.of(group);
+  }
+
   /**
    * The name and code a group's unit takes: of the values carrying a code, the
    * name spelt most often on the newest sheet that gives one (the first read
@@ -236,33 +245,31 @@ export class UnitFold {
 /** A unit being created: its group, the name and code of its first value, the years placed rows name it, and the values those rows give. */
 type Draft = { group: string; name: string; code: string | null; first: number; last: number; values: UnitName[] };
 
-/** A department a placed row pairs a division with, and the row's academic year. */
-type Pairing = { readonly year: number; readonly dept: UnitRef };
-
-/** A division being created, and every department placed rows pair it with. */
-type DivisionDraft = Draft & { pairings: Pairing[] };
-
 /** The department a row pairs a division with: its value, and the unit it resolved to (null when it resolved to none). */
 export type PairedDepartment = { readonly value: UnitName; readonly ref: UnitRef | null };
 
-/** The department of the newest sheet that pairs a division: the one its rows of that year pair it with most often (the first read on a tie); null when no row pairs it. */
-function newestPairing(pairings: readonly Pairing[]): UnitRef | null {
+/** A row that pairs a division with a department: the row's academic year, and the department fold's group of that department. */
+type Pairing = { readonly year: number; readonly parent: string };
+
+/** The department group the newest sheet pairs a division with most often (the first read on a tie); null for no pairing. */
+function newestPairing(pairings: readonly Pairing[]): string | null {
   if (pairings.length === 0) return null;
   const newest = Math.max(...pairings.map((p) => p.year));
-  const tally = new Map<string, { dept: UnitRef; count: number }>();
-  for (const p of pairings) {
-    if (p.year !== newest) continue;
-    const entry = tally.get(refKey(p.dept)) ?? { dept: p.dept, count: 0 };
-    tally.set(refKey(p.dept), { ...entry, count: entry.count + 1 });
-  }
-  return [...tally.values()].reduce((a, b) => (b.count > a.count ? b : a)).dept;
+  const tally = new Map<string, number>();
+  for (const p of pairings) if (p.year === newest) tally.set(p.parent, (tally.get(p.parent) ?? 0) + 1);
+  // A Map keeps the order groups were first read in, so the first of the most frequent wins a tie.
+  return [...tally].reduce((a, b) => (b[1] > a[1] ? b : a))[0];
 }
 
 export class UnitBook {
   private readonly departments: Draft[] = [];
-  private readonly divisions: DivisionDraft[] = [];
+  private readonly divisions: Draft[] = [];
   private readonly presentDepartments = new Set<number>();
   private readonly presentDivisions = new Set<number>();
+  /** The unit each department group a placed row names resolved to, by the department fold's group. */
+  private readonly departmentRefs = new Map<string, UnitRef>();
+  /** Each created division's final department, read once every row is placed (`settle`). */
+  private settled: readonly (UnitRef | null)[] | null = null;
   /** The unit keys of every name that resolved to nothing. */
   readonly unresolved = new Set<string>();
 
@@ -281,20 +288,27 @@ export class UnitBook {
     const lookup = this.lookup(this.folds.departments, value, group, (v) => lookupDepartment(this.units, v));
     if (lookup.kind === "found") {
       this.presentDepartments.add(lookup.unit.id);
-      return { kind: "existing", id: lookup.unit.id };
+      return this.resolved(group, { kind: "existing", id: lookup.unit.id });
     }
-    if (lookup.kind === "absent" && group !== null) return { kind: "new", index: this.draft(this.departments, group, value, year, (base) => base) };
+    if (lookup.kind === "absent" && group !== null) return this.resolved(group, { kind: "new", index: this.draft(this.departments, group, value, year, (base) => base) });
     this.unresolved.add(unitKey(value.name));
     return null;
+  }
+
+  /** Notes the unit a department group resolved to, the first time it does, and returns it. */
+  private resolved(group: string | null, ref: UnitRef): UnitRef {
+    if (group !== null && !this.departmentRefs.has(group)) this.departmentRefs.set(group, ref);
+    return ref;
   }
 
   /**
    * The division a value names on a row of `year` that pairs it with
    * `paired`, with its department. Its name finds a database division only
    * under that department, or under none. A created one goes under the
-   * department of the newest sheet that pairs it: the department returned here
-   * is the one so far, and the plan's last step gives its roles the final one.
-   * Null when two units share the name.
+   * department of the newest sheet that pairs it (`parentOf`): the department
+   * returned here is the one the departments resolved so far give, and the
+   * plan's last step gives its roles the final one. Null when two units share
+   * the name.
    */
   division(value: UnitName, year: number, paired: PairedDepartment | null): PlacedDivision | null {
     const parent = paired === null ? null : this.folds.departments.group(paired.value);
@@ -306,23 +320,70 @@ export class UnitBook {
       return { ref: { kind: "existing", id: lookup.unit.id }, dept: lookup.unit.deptId === null ? null : { kind: "existing", id: lookup.unit.deptId } };
     }
     if (lookup.kind === "absent" && group !== null) {
-      const index = this.draft(this.divisions, group, value, year, (base) => ({ ...base, pairings: [] }));
-      const d = this.divisions[index];
-      if (paired?.ref != null) d.pairings.push({ year, dept: paired.ref });
-      return { ref: { kind: "new", index }, dept: newestPairing(d.pairings) };
+      const index = this.draft(this.divisions, group, value, year, (base) => base);
+      return { ref: { kind: "new", index }, dept: this.parentOf(group, null) };
     }
     this.unresolved.add(unitKey(value.name));
     return null;
   }
 
-  /** The departments the plan creates, open or closed. */
+  /** The departments the plan creates, open or closed. Read once every row is placed. */
   newDepartments(): NewDepartment[] {
+    this.settle();
     return this.departments.map((d) => this.span(d, this.folds.departments));
   }
 
-  /** The divisions the plan creates, open or closed. */
+  /** The divisions the plan creates, open or closed, each under its final department. Read once every row is placed. */
   newDivisions(): NewDivision[] {
-    return this.divisions.map((d) => ({ ...this.span(d, this.folds.divisions), dept: newestPairing(d.pairings) }));
+    const parents = this.settle();
+    return this.divisions.map((d, i) => ({ ...this.span(d, this.folds.divisions), dept: parents[i] }));
+  }
+
+  /** Each created division's department, read once: it can create a department only refused rows name, so it runs before the departments are read. */
+  private settle(): readonly (UnitRef | null)[] {
+    this.settled ??= this.divisions.map((d) => this.parentOf(d.group, [d.first, d.last]));
+    return this.settled;
+  }
+
+  /**
+   * The department of the newest sheet that pairs a division group: of every
+   * row that pairs it, refused rows included (issue #820), the newest sheet's
+   * department, the one its rows pair it with most often (the first read on a
+   * tie). A department no unit stands for is passed over for the next: one two
+   * units share, or one only refused rows name when `create` is null. With
+   * `create` (the division's years), such a department the database lacks is
+   * created. Null when no row pairs the group with a department a unit stands for.
+   */
+  private parentOf(group: string, create: readonly number[] | null): UnitRef | null {
+    let pairings: Pairing[] = this.folds.divisions.sightings(group).flatMap((s) => (s.parent === null ? [] : [{ year: s.year, parent: s.parent }]));
+    for (let best = newestPairing(pairings); best !== null; best = newestPairing(pairings)) {
+      const ref = this.departmentOf(best, create);
+      if (ref !== null) return ref;
+      pairings = pairings.filter((p) => p.parent !== best);
+    }
+    return null;
+  }
+
+  /**
+   * The unit a department group stands for: the one a placed row resolved it
+   * to, else the one the database holds. With `create`, a group the database
+   * lacks that no placed row names (only refused rows do) is created, over the
+   * years its rows name it (the division's, `create`, when only a Quitters row
+   * does). Null when two units share it, or it is still to be created.
+   */
+  private departmentOf(group: string, create: readonly number[] | null): UnitRef | null {
+    const known = this.departmentRefs.get(group);
+    if (known !== undefined) return known;
+    const seen = this.folds.departments.sightings(group);
+    if (seen.length === 0) return null;
+    const lookup = this.lookup(this.folds.departments, seen[0].value, group, (v) => lookupDepartment(this.units, v));
+    if (lookup.kind === "found") return this.resolved(group, { kind: "existing", id: lookup.unit.id });
+    if (lookup.kind === "ambiguous" || create === null) return null;
+    const dated = seen.map((s) => s.year).filter(Number.isFinite);
+    const years = dated.length > 0 ? dated : create;
+    const index = this.draft(this.departments, group, seen[0].value, Math.min(...years), (base) => base);
+    this.departments[index].last = Math.max(this.departments[index].last, ...years);
+    return this.resolved(group, { kind: "new", index });
   }
 
   /** How many distinct departments and divisions the database already holds that the roster names. */
@@ -358,8 +419,9 @@ export class UnitBook {
    * spellings: the name, the open state and the spellings all come from every
    * value the rows give in the group (refused rows included), so the report
    * never names a unit after a spelling it does not list. A unit opens on the
-   * first year a placed row names it; one the current sheet does not give
-   * closes at the end of the last such year.
+   * first year a placed row names it (for a department only refused rows name,
+   * see `departmentOf`); one the current sheet does not give closes at the end
+   * of the last such year.
    */
   private span(d: Draft, fold: UnitFold): NewDepartment {
     const { name, code } = fold.naming(d.group) ?? d;

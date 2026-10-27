@@ -4,7 +4,8 @@
 // "department", "division" or "subteam" and a word's trailing plural "s" do
 // not count, so "Propulsion Dept." and "PROPULSION" both find "Propulsion",
 // and "Ground System" finds "Ground Systems" (issue #820). A code keeps its
-// plural "s": "OPS" never finds "OP". A name two units
+// plural "s": "OPS" never finds "OP", and neither does a bare "Ops", a value
+// of one short word, which reads as a code. A name two units
 // share is ambiguous: the import does not pick one. A name no unit has is
 // absent; the plan creates it closed when only past sheets name it
 // (./unit-book.ts).
@@ -26,10 +27,19 @@ export type Units = { readonly departments: readonly Department[]; readonly divi
 
 /** A word written as a code: two to four capitals or digits ("OPS", "GNS"). Its "s" is no plural. */
 const CODE_WORD = /^[A-Z0-9]{2,4}$/;
+/** A word that names a unit's level, not the unit. */
+const LEVEL_WORD = /^(the|department|dept|division|div|subteam|team)$/i;
+
+/** Whether a text is one short word once its level words go ("Ops", "Ops Dept."): it reads as a code in any case, so a bare "Ops" stays apart from a bare "OP". */
+function isCodeLike(text: string): boolean {
+  const words = text.split(/[^A-Za-z0-9]+/).filter((w) => w !== "" && !LEVEL_WORD.test(w));
+  return words.length === 1 && /^[A-Za-z0-9]{2,4}$/.test(words[0]);
+}
 
 function keyOf(text: string, plural: "kept" | "dropped"): string {
   const plain = text.normalize("NFD").replace(/\p{Diacritic}/gu, "");
-  const words = plural === "dropped" ? plain.replace(/\b([a-z0-9]{2,})s\b/gi, (word: string, base: string) => (CODE_WORD.test(word) ? word : base)) : plain;
+  const codeLike = isCodeLike(plain);
+  const words = plural === "dropped" ? plain.replace(/\b([a-z0-9]{2,})s\b/gi, (word: string, base: string) => (codeLike || CODE_WORD.test(word) ? word : base)) : plain;
   return words
     .toLowerCase()
     .replace(/&/g, " and ")
@@ -43,7 +53,9 @@ function keyOf(text: string, plural: "kept" | "dropped"): string {
  * How the import compares unit names. A word's trailing plural "s" does not
  * count (issue #820): "systems" is "system". Both sides of a comparison lose
  * it, so "analysis" still equals "analysis". A word written as a code keeps
- * it: a bare "OPS" is not "OP".
+ * it: a bare "OPS" is not "OP". So does a value that is one word of two to
+ * four letters or digits in any case, which reads as a code: a bare "Ops" is
+ * not "OP" either.
  */
 export function unitKey(text: string): string {
   return keyOf(text, "dropped");

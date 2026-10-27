@@ -8,7 +8,7 @@ import { renderReport } from "./report";
 import { NO_DATABASE, type Snapshot } from "./snapshot";
 import type { Sources } from "./sources";
 import type { UnitRef } from "./unit-book";
-import { DepartmentIndex, rowUnitNames, unitNames, type Units } from "./units";
+import { DepartmentIndex, rowUnitNames, unitKey, unitNames, type Units } from "./units";
 
 // The roster shapes of issues #818 and #820, planned over an in-memory fake
 // roster (no file, no database): Quitters date cells stored month/day, a
@@ -465,6 +465,55 @@ test("issue #820: a division's department is the newest sheet's; one name under 
   assert.deepEqual(placed(second), ["#10 #1 2022", "#11 #2 2023", "#12 #3 2024", "#12 #3 2025", "#13 #2 2023", "#14 #5 2023", "#14 #5 2025"]);
 });
 
+test("issue #820: the newest sheet picks a division's department even when its row is refused; a department only refused rows name is created for it", () => {
+  const sources = sourcesOf({
+    years: {
+      2025: [
+        // Refused (no sign-in email), and still the newest sheet that pairs Telemetry and Payload.
+        person("Ada", "Bini", { subteam: "Avionics", division: "Telemetry (TLM)", personalEmail: "" }),
+        person("Ben", "Cori", { subteam: "Payload Systems", division: "Payload (PLD)", personalEmail: "" }),
+        person("Cia", "Dani", { subteam: "Avionics" }),
+      ],
+      // The only admitted rows that pair the two divisions name an older department.
+      2023: [person("Dea", "Elmi", { subteam: "Electronics", division: "Telemetry (TLM)" }), person("Eva", "Fano", { subteam: "Electronics", division: "Payload (PLD)" })],
+    },
+  });
+  const plan = planImport(sources, EMPTY_DATABASE, null, TODAY);
+  assert.equal(plan.counts.users.refused, 2);
+  assert.deepEqual(createdDivisions(plan), [
+    ["Payload", "PLD", "Payload Systems", "open"],
+    ["Telemetry", "TLM", "Avionics", "open"],
+  ]);
+  // "Payload Systems" is created though no imported row names it: it is the department the newest sheet pairs Payload with.
+  assert.deepEqual(
+    plan.departments.map((d) => [d.name, d.startedAt, d.closedAt]).sort(),
+    [
+      ["Avionics", "2025-10-01", null],
+      ["Electronics", "2023-10-01", "2024-09-30"],
+      ["Payload Systems", "2025-10-01", null],
+    ],
+  );
+  const placed = (p: Plan) =>
+    p.roles.map((r) => `${nameOf(p, "divisions", r.division)} ${nameOf(p, "departments", r.dept)} ${r.startedAt.slice(0, 4)}`).sort();
+  assert.deepEqual(placed(plan), ["Payload Payload Systems 2023", "Telemetry Avionics 2023", "null Avionics 2025"]);
+
+  // Once the refused rows are fixed, a second run finds each division under that department, and creates none.
+  const database = databaseWith({
+    departments: [
+      { id: 1, name: "Avionics", code: null },
+      { id: 2, name: "Electronics", code: null },
+      { id: 3, name: "Payload Systems", code: null },
+    ],
+    divisions: [
+      { id: 10, name: "Telemetry", code: "TLM", deptId: 1 },
+      { id: 11, name: "Payload", code: "PLD", deptId: 3 },
+    ],
+  });
+  const second = planImport(sources, database, null, TODAY);
+  assert.deepEqual([second.departments, second.divisions, second.unresolvedUnits], [[], [], 0]);
+  assert.deepEqual(placed(second), ["#10 #1 2023", "#11 #3 2023", "null #1 2025"]);
+});
+
 test("issue #820: a Division value ending in 'Lead' or 'Lead Engineer' is that division, and no unit takes the job title's name", () => {
   const sources = sourcesOf({
     years: {
@@ -543,6 +592,30 @@ test("issue #820: a code keeps its plural 's': two codes that differ by it are t
   assert.deepEqual(
     against.roles.filter((r) => r.division?.kind === "existing").map((r) => [nameOf(against, "departments", r.dept), nameOf(against, "divisions", r.division)]),
     [["#3", "#8"]],
+  );
+});
+
+test("issue #820: a value of one short word reads as a code in any case: a bare 'Ops' keeps its 's', so the OPS and OP units stay apart", () => {
+  assert.notEqual(unitKey("Ops"), unitKey("OP"));
+  assert.equal(unitKey("Ops Dept."), unitKey("OPS"));
+  assert.equal(unitKey("Ground Systems"), unitKey("Ground System"));
+  const sources = sourcesOf({
+    years: {
+      2025: [
+        person("Ada", "Bini", { subteam: "Operations (OPS)" }),
+        person("Ben", "Cori", { subteam: "Ops" }),
+        person("Cia", "Dani", { subteam: "Order Processing (OP)" }),
+        person("Dea", "Elmi", { subteam: "OP" }),
+      ],
+    },
+  });
+  const plan = planImport(sources, EMPTY_DATABASE, null, TODAY);
+  assert.deepEqual(
+    plan.departments.map((d) => [d.name, d.code, [...d.spellings].sort()]).sort(),
+    [
+      ["Operations", "OPS", ["Operations (OPS)", "Ops"]],
+      ["Order Processing", "OP", ["OP", "Order Processing (OP)"]],
+    ],
   );
 });
 

@@ -141,7 +141,9 @@ the person running the import writes. See **The override input** below.
   without case, accents, punctuation, a trailing level word ("Department", "Division") or a
   word's trailing plural "s" (issue #820): "Ground System" and "Ground Systems" are one name. A
   code keeps its "s", and so does a word written as a code (two to four capitals or digits): "OPS"
-  and "OP" are two codes, and "Alpha (OPS)" and "Beta (OP)" are two units. "N/A", "AMV" and
+  and "OP" are two codes, and "Alpha (OPS)" and "Beta (OP)" are two units. A value that is one
+  word of two to four letters or digits, in any case, reads as a code and keeps its "s" too, so a
+  bare "Ops" is the OPS unit and never the OP one. "N/A", "AMV" and
   "Amerigo Vespucci (AMV)" are no unit. An "ADVISOR" or "SENIOR ADVISOR" marker, with or without a
   project in parentheses, makes the row's plain member seat an `advisor` role. A project's name
   (any version of a `projects` row on the database) is not a unit: the schema has no project on
@@ -181,8 +183,12 @@ the person running the import writes. See **The override input** below.
     Division cell names before it, else the one its note names, else the row's one department.
     A created division goes under the department the newest sheet that pairs it pairs it with
     (owner decision, issue #820), the one its rows of that year name most often (the first read
-    on a tie), whichever row is read first. With no pairing on any row (several departments, or
-    none) it has no department.
+    on a tie), whichever row is read first. Every row that pairs it counts, rows of people the
+    plan refuses included, and a `Quitters` row counts as older than every year sheet. When only
+    refused rows name that department and the database lacks it, the department is created too,
+    over the years those rows name it, so a later run finds the division under it. A department
+    two units share is passed over for the next newest pairing. With no pairing on any row
+    (several departments, or none) it has no department.
     - **Past units are created closed.** A unit the current year's sheet does not name is one the
       team no longer has. Its `closed_at` is the last day of the last academic year a row names it
       (`(YYYY+1)-09-30`). A quitter-only alumnus's row counts as a row of the year they left in.
@@ -349,8 +355,10 @@ readers: the date forms, the override lines, a quitter's stint (a swapped date c
 the photo matching. `roster-shapes.test.ts` plans the shapes of issues #818 and #820 over a fake
 roster built in memory: swapped Quitters dates, a shorter first name in `people_rows.csv`, one unit
 spelt several ways, a separator inside parentheses, a note naming a department, one division name
-under two departments, a database department spelt by name and by code, a job title in the
-Division cell, a plural spelling, two codes that differ by an "s", and the accounts a person's
-emails may already have (no member row, a member row, another email's). `import.test.ts` checks
-that `positions_rows.csv` is left out, and that an account with no member row is linked to its
-person's new member row with no other field written.
+under two departments, a newest-sheet pairing on a refused row, a database department spelt by
+name and by code, a job title in the Division cell, a plural spelling, two codes that differ by an
+"s", a bare one-word "Ops" beside a bare "OP", and the accounts a person's emails may already have
+(no member row, a member row, another email's). `import.test.ts` checks that `positions_rows.csv`
+is left out, that an account with no member row is linked to its person's new member row with no
+other field written, and that a run whose linked account gained a member row after the plan was
+read fails and writes nothing.
