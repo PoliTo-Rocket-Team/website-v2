@@ -175,6 +175,42 @@ test("on the whole team the selects narrow everyone, and a division from another
   assert.deepEqual(names({ query: "lena" }), ["Lena Fischer"]);
 });
 
+// Issue #800: the search also finds a person by every PRT email they hold,
+// the personal one and each shared team address, on top of the name, the
+// sign-in email and the phone.
+test("the search matches a held team address and the personal PRT email, not an address someone else holds (#800)", () => {
+  const withDetails = records.map((r) =>
+    r.id === 3 ? { ...r, details: { ...NO_MEMBER_DETAILS, prtEmail: "davide.russo@team.example", phone: "+39 333 123 4567" } } : r,
+  );
+  const positions = positionsOf(withDetails, org, { kind: "team" }, 7);
+  const leader = membersModelOf({ scope: "whole-team", positions, queues, correctsSignInEmail: [], ...wholeTeamMembers({ records: withDetails, org, selfId: 7 }) })!;
+  const line = (address: string) => ({ address, purpose: "", movesWith: null });
+  const teamAddresses = {
+    rows: {
+      2: { lines: [line("logistics@team.example")], requestable: false },
+      4: { lines: [line("sponsors@team.example"), line("press@team.example")], requestable: true },
+    },
+  };
+  const names = (query: string) => shownMembers(leader, { ...NO_MEMBERS_FILTER, query }, teamAddresses).people.map((p) => p.name);
+
+  // A shared team address, in full or in part.
+  assert.deepEqual(names("logistics@team.example"), ["Lena Fischer"]);
+  assert.deepEqual(names("logistics"), ["Lena Fischer"]);
+  assert.deepEqual(names("press@"), ["Laura Greco"]);
+  // The personal PRT email, in full or in part.
+  assert.deepEqual(names("davide.russo@team.example"), ["Davide Russo"]);
+  assert.deepEqual(names("davide.russo"), ["Davide Russo"]);
+  // An address nobody holds lists no one; a holder of a different address is not listed.
+  assert.deepEqual(names("treasury@"), []);
+  assert.ok(!names("sponsors").includes("Lena Fischer"));
+  // The name, the sign-in email and the phone still match as before.
+  assert.deepEqual(names("fischer"), ["Lena Fischer"]);
+  assert.deepEqual(names("federica@gmail.com"), ["Federica Leone"]);
+  assert.deepEqual(names("3331234"), ["Davide Russo"]);
+  // Without the address rows, a team address finds no one: only the page's rows carry them.
+  assert.deepEqual(shownMembers(leader, { ...NO_MEMBERS_FILTER, query: "logistics" }).people, []);
+});
+
 // Issue #584: one Edit details panel for every viewer who may edit someone.
 // Its position part is the data's own, worked out by the rules the server
 // checks: lead or member only where the viewer may change a division's leads,

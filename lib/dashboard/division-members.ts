@@ -429,12 +429,21 @@ export function headcountLine(page: Pick<DivisionMembers, "people" | "waiting">)
   return `${leads} ${leads === 1 ? "lead" : "leads"}, ${all} ${all === 1 ? "member" : "members"}`;
 }
 
-/** The page's search (board 61e: "Search name, email, phone"): every word in the name, an email or the phone. */
-export function matchesPerson(person: Pick<DivisionPerson, "name" | "signInEmail" | "details">, query: string): boolean {
+/**
+ * The page's search (board 61e: "Search name, email, phone"): every word in
+ * the name, an email or the phone. `teamAddresses` are the shared team
+ * addresses the person holds (issue #800), so a lead who knows only a team
+ * address finds who holds it; a search with no address data passes none.
+ */
+export function matchesPerson(
+  person: Pick<DivisionPerson, "name" | "signInEmail" | "details">,
+  query: string,
+  teamAddresses: readonly string[] = [],
+): boolean {
   const digits = person.details.phone.replace(/\D/g, "");
   const typed = query.replace(/\D/g, "");
   if (typed.length >= 3 && digits.includes(typed)) return true;
-  return matchesQuery([person.name, person.signInEmail, person.details.prtEmail], query);
+  return matchesQuery([person.name, person.signInEmail, person.details.prtEmail, ...teamAddresses], query);
 }
 
 // Add member (boards 61h and 61h2)

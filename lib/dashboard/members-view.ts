@@ -10,6 +10,7 @@ import {
   type WaitingPerson,
 } from "./division-members";
 import type { DivisionQueue, Joining, MemberDirectory } from "./team";
+import type { MemberTeamAddresses } from "./team-address";
 import { wholeTeamLine, type TeamMember, type WholeTeamMembers } from "./team-members";
 import type { ViewerStanding } from "./viewer";
 
@@ -291,9 +292,16 @@ export type ShownMembers = {
  * What the selects and the search leave. A division held as its own data
  * lists its people as that division does (their role and title there, Remove
  * from it); otherwise the selects narrow everyone. A division left chosen
- * from another department reads as all divisions.
+ * from another department reads as all divisions. The search also matches
+ * every shared team address a person holds (issue #800), read from the
+ * Team addresses rows the page already carries for the side view.
  */
-export function shownMembers(page: MembersModel, filter: MembersFilter): ShownMembers {
+export function shownMembers(
+  page: MembersModel,
+  filter: MembersFilter,
+  teamAddresses: Pick<MemberTeamAddresses, "rows"> = { rows: {} },
+): ShownMembers {
+  const heldBy = (id: number) => (teamAddresses.rows[id]?.lines ?? []).map((line) => line.address);
   const options = divisionOptions(page.units, filter.department);
   const divisionId = options.some((d) => d.id === filter.divisionId) ? filter.divisionId : null;
   const inDepartment = (id: number) => options.some((d) => d.id === id);
@@ -303,7 +311,7 @@ export function shownMembers(page: MembersModel, filter: MembersFilter): ShownMe
     (p) =>
       (filter.department === null || p.divisionIds.some(inDepartment)) &&
       (divisionId === null || slice !== null || p.divisionIds.includes(divisionId)) &&
-      matchesPerson(p, filter.query),
+      matchesPerson(p, filter.query, heldBy(p.id)),
   );
   const queues = page.queues.filter((q) => (divisionId === null ? inDepartment(q.header.id) : q.header.id === divisionId));
   return {

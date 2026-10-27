@@ -102,7 +102,10 @@ export function ScopedMembersView({
   const has = (tool: MembersTool) => page.tools.includes(tool);
   const divisions = divisionOptions(page.units, department);
   const shownDivision = divisions.some((d) => d.id === divisionId) ? divisionId : null;
-  const shown = useMemo(() => shownMembers(page, { department, divisionId, query }), [page, department, divisionId, query]);
+  const shown = useMemo(
+    () => shownMembers(page, { department, divisionId, query }, teamAddresses),
+    [page, department, divisionId, query, teamAddresses],
+  );
   const last = pageCount(shown.people.length);
   const current = Math.min(listPage, last);
   const paged = pageOf(shown.people, current);
