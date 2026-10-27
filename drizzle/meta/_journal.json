@@ -505,6 +505,13 @@
       "when": 1795281600000,
       "tag": "0073_drop_project_content",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1795368000000,
+      "tag": "0074_drop_members_email_alias",
+      "breakpoints": true
     }
   ]
 }
