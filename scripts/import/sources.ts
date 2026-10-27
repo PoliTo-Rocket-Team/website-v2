@@ -5,6 +5,7 @@ import {
   cell,
   DIVISIONS_CSV,
   FAQS_CSV,
+  HANDOVERS_CSV,
   locate,
   ORDERS_CSV,
   PEOPLE_CSV,
@@ -36,6 +37,7 @@ export const CSV_FILES = {
   positions: "positions_rows.csv",
   orders: "orders_rows.csv",
   faqs: "faqs_rows.csv",
+  handovers: "handovers.csv",
 } as const;
 
 type CsvName = keyof typeof CSV_FILES;
@@ -72,6 +74,8 @@ export type Sources = {
     readonly positions: readonly Row<keyof typeof POSITIONS_CSV>[];
     readonly orders: readonly Row<keyof typeof ORDERS_CSV>[];
     readonly faqs: readonly Row<keyof typeof FAQS_CSV>[];
+    /** The import's override input, not an export: the seats handed over within the current year. */
+    readonly handovers: readonly Row<keyof typeof HANDOVERS_CSV>[];
   };
   /** Sheets and files whose header could not be found. */
   readonly conflicts: readonly Conflict[];
@@ -216,6 +220,7 @@ export function readSources(directory: string, year?: number): Sources {
       positions: csv("positions", POSITIONS_CSV),
       orders: csv("orders", ORDERS_CSV),
       faqs: csv("faqs", FAQS_CSV),
+      handovers: csv("handovers", HANDOVERS_CSV),
     },
     conflicts,
   };

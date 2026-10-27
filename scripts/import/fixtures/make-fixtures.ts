@@ -41,8 +41,32 @@ import writeXlsxFile from "write-excel-file/node";
 //   settled by the surname, 6 a shared id the surname does not settle, 7 an id
 //   no row has, 8 a file with no id part. Carla Ferri and the "No Title"
 //   advisor are flagged has_pp with no file.
+//
+// It also writes ./rules: a second, smaller roster for the reading rules of
+// issue #816, which ../rules.test.ts reads, and the handovers.csv override
+// beside it. What is planted there:
+// - 2025-2026 (current): Anna Bello "AMV Chief Engineer" with an "AMV"
+//   subteam; Bianca Corsi a "Safety Officer"; Carlo Dini (row 4) and Davide
+//   Elia (row 5) both "Project Manager", row 4 handing the seat to row 5;
+//   Emma Fermi with three subteams (one "Amerigo Vespucci (AMV)") and three
+//   divisions split by "/" and ","; Franco Gatti with two subteams and one
+//   division, under the second subteam's department only by its subteam.
+// - 2024-2025: Gina Hale "Electronics Head of Department - Hardware Lead
+//   Engineer" with a "<Dept> Department - <Division>" Division cell; Franco
+//   under "Cavour" (from 2024-2025 on a project, not a department); Ivo Jori
+//   in a division the database lacks; Quinto Rossi whose subteam only the
+//   "Roles 24-25" sheet gives ("Efesto").
+// - 2022-2023: Lia Kent "President-Advisor (Project Cavour)" under "Cavour";
+//   Mario Lodi whose units only "Roles 22-23" gives (a past subteam and a
+//   division paired with it); Nora Monti under "Vittorio Emanuele II (VES) -
+//   Management"; Ivo again.
+// - 2021-2022: Oscar Neri "President & Chief Engineer"; Mario under "Liquid
+//   Propulsion"; Pia Orsi under "Efesto", and on Quitters.
+// - handovers.csv: row 2 hands the 2025-2026 row 4 seat to row 5; row 3
+//   names a past sheet, so it is not applied.
 
 const OUT = join(__dirname, "files");
+const RULES_OUT = join(__dirname, "rules");
 
 type Cell = string | number | Date | null;
 const text = (rows: readonly (readonly Cell[])[]) =>
@@ -253,7 +277,82 @@ const FILES: Record<string, string[][]> = {
   ],
 };
 
+// The reading rules of issue #816 -------------------------------------------------
+
+const RULES_CURRENT: NewRow[] = [
+  { first: "Anna", last: "Bello", personal: "anna.bello@example.com", subteam: "AMV", title: "AMV Chief Engineer" },
+  { first: "Bianca", last: "Corsi", personal: "bianca.corsi@example.com", subteam: "Operations (OPS)", division: "Logistics (LGS)", title: "Safety Officer" },
+  { first: "Carlo", last: "Dini", personal: "carlo.dini@example.com", title: "Project Manager" },
+  { first: "Davide", last: "Elia", personal: "davide.elia@example.com", title: "Project Manager" },
+  {
+    first: "Emma",
+    last: "Fermi",
+    personal: "emma.fermi@example.com",
+    subteam: "Amerigo Vespucci (AMV) - Propulsion (PRP) - Operations (OPS)",
+    division: "Hybrid Motors (HYB) / Information Technology (IT), Logistics (LGS)",
+    title: "Engineer",
+  },
+  { first: "Franco", last: "Gatti", personal: "franco.gatti@example.com", subteam: "Propulsion - Electronics", division: "Hybrid Motors", title: "Engineer" },
+];
+
+const RULES_2024: OldRow[] = [
+  {
+    first: "Gina",
+    last: "Hale",
+    gmail: "gina.hale@example.com",
+    division: "Electronics (ELT) Department - Hardware (HDW)",
+    title: "Electronics Head of Department - Hardware Lead Engineer",
+  },
+  { first: "Franco", last: "Gatti", gmail: "franco.gatti@example.com", subteam: "Cavour", title: "Engineer" },
+  { first: "Ivo", last: "Jori", gmail: "ivo.jori@example.com", subteam: "Propulsion", division: "Solid Motors (SLM)", title: "Engineer" },
+  { first: "Quinto", last: "Rossi", gmail: "quinto.rossi@example.com", title: "Engineer" },
+];
+
+const RULES_2022: OldRow[] = [
+  { first: "Lia", last: "Kent", gmail: "lia.kent@example.com", subteam: "Cavour", title: "President-Advisor (Project Cavour)" },
+  { first: "Mario", last: "Lodi", gmail: "mario.lodi@example.com", title: "Engineer" },
+  { first: "Nora", last: "Monti", gmail: "nora.monti@example.com", subteam: "Vittorio Emanuele II (VES) - Management", title: "Engineer" },
+  { first: "Ivo", last: "Jori", gmail: "ivo.jori@example.com", subteam: "Propulsion", division: "Solid Motors", title: "Engineer" },
+];
+
+const RULES_2021: OldRow[] = [
+  { first: "Oscar", last: "Neri", gmail: "oscar.neri@example.com", subteam: "Efesto", title: "President & Chief Engineer" },
+  { first: "Mario", last: "Lodi", gmail: "mario.lodi@example.com", subteam: "Liquid Propulsion", title: "Engineer" },
+  { first: "Pia", last: "Orsi", gmail: "pia.orsi@example.com", subteam: "Efesto", title: "Engineer" },
+];
+
+const ROLES_HEADER = ["First Name", "Last Name", "Subteam", "Division", "Group", "Team Role"];
+
+const RULES_QUITTERS: Cell[][] = [
+  ["Left the Team on:", "First Name", "Last Name", "Gmail", "Subteam", "Division", "Team Role"],
+  [new Date(Date.UTC(2022, 5, 30)), "Pia", "Orsi", "pia.orsi@example.com", "Efesto", null, "Engineer"],
+];
+
+const RULES_FILES: Record<string, string[][]> = {
+  "handovers.csv": [
+    ["sheet", "from_row", "to_row"],
+    ["2025-2026", "4", "5"],
+    ["2024-2025", "2", "3"],
+  ],
+};
+
+async function writeRules() {
+  mkdirSync(RULES_OUT, { recursive: true });
+  const sheets = [
+    { sheet: "2025-2026", data: text([NEW_HEADER, ...RULES_CURRENT.map((r, i) => newRow(i + 1, r))]) },
+    { sheet: "2024-2025", data: text([OLD_HEADER, ...RULES_2024.map((r, i) => oldRow(i + 1, r))]) },
+    { sheet: "2022-2023", data: text([OLD_HEADER, ...RULES_2022.map((r, i) => oldRow(i + 1, r))]) },
+    { sheet: "2021-2022", data: text([OLD_HEADER, ...RULES_2021.map((r, i) => oldRow(i + 1, r))]) },
+    { sheet: "Quitters", data: text(RULES_QUITTERS) },
+    { sheet: "Roles 22-23", data: text([ROLES_HEADER, ["Mario", "Lodi", "Liquid Propulsion", "Injectors (INJ)", null, "Engineer"]]) },
+    { sheet: "Roles 24-25", data: text([ROLES_HEADER, ["Quinto", "Rossi", "Efesto", null, null, "Engineer"]]) },
+  ];
+  writeFileSync(join(RULES_OUT, "roster.xlsx"), await writeXlsxFile(sheets as never).toBuffer());
+  for (const [name, rows] of Object.entries(RULES_FILES)) writeFileSync(join(RULES_OUT, name), csv(rows));
+}
+
 async function main() {
+  await writeRules();
   mkdirSync(OUT, { recursive: true });
   const sheets = [
     { sheet: "2025-2026", data: text([NEW_HEADER, ...CURRENT.map((r, i) => newRow(i + 1, r))]) },

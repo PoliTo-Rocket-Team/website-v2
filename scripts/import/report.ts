@@ -47,11 +47,15 @@ export function renderReport({ mode, database, sources, plan, written, uploaded 
   const line = (cells: readonly string[]) => cells.map((c, i) => (i === 0 ? c.padEnd(widths[i]) : c.padStart(widths[i]))).join("  ");
   lines.push(line(head));
   for (const r of rows) lines.push(line(r));
+  lines.push(
+    `Past units ${written === undefined ? "to create" : "created"} closed: ${written?.departments ?? plan.departments.length} departments, ${written?.divisions ?? plan.divisions.length} divisions`,
+  );
   lines.push(`FAQs skipped as not visible: ${plan.hiddenFaqs}`);
   lines.push("");
   lines.push(`Alumni: ${plan.alumni}`);
   lines.push(`People found in more than one year sheet: ${plan.multiYear}`);
   lines.push(`Unclear quitters: ${plan.unclearQuitters}`);
+  lines.push(`Seat handovers applied (handovers.csv): ${plan.handovers}`);
   lines.push(
     `Distinct unresolved unit names (subteam and division cells): ${plan.unresolvedUnits === null ? "not checked (no database given)" : plan.unresolvedUnits}`,
   );

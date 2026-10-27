@@ -5,15 +5,16 @@ import { UNCLEAR_QUITTER_KINDS, type At, type Conflict, type ConflictKind } from
 import { matchPeople, nameKey, normalEmail, signInEmail, type Person } from "./people";
 import { photoAt, type MemberPhoto, type PhotoFolder } from "./photos";
 import type { ExistingRole, Snapshot } from "./snapshot";
-import { dayOf, type Sources } from "./sources";
-import { seatsOf, type FullAccessSeat, type PositionType, type Seat } from "./titles";
-import { departmentOf, divisionNamed, divisionOf, unitKey, unitValues, type UnitValue } from "./units";
+import { dayOf, type PersonRow, type Sources } from "./sources";
+import { seatsOf, type FullAccessSeat, type PositionType, type Seat, type SeatReading } from "./titles";
+import { holds, refKey, UnitBook, type NewDepartment, type NewDivision, type PlacedDivision, type UnitRef } from "./unit-book";
+import { divisionNamed, notedDepartment, rowUnitNames, subteamReadingOf, unitKey, type UnitValue } from "./units";
 
-// What an import would write (issue #677), worked out from the sources and a
-// snapshot of the database before anything is written. The plan is the whole
-// decision: a dry run prints it, an import writes exactly its rows and nothing
-// else. Every row is an insert; a row the database already holds is counted as
-// present and left alone, so a second run plans no insert at all.
+// What an import would write (issues #677, #816), worked out from the sources
+// and a snapshot of the database before anything is written. The plan is the
+// whole decision: a dry run prints it, an import writes exactly its rows and
+// nothing else. Every row is an insert; a row the database already holds is
+// counted as present and left alone, so a second run plans no insert at all.
 
 /** A person the plan writes for: one it inserts (by their match id), or a member the database already has. */
 export type PersonRef = { readonly kind: "new"; readonly person: number } | { readonly kind: "existing"; readonly memberId: number };
@@ -44,8 +45,8 @@ export type NewPerson = {
 
 export type NewRole = {
   readonly who: PersonRef;
-  readonly deptId: number | null;
-  readonly divisionId: number | null;
+  readonly dept: UnitRef | null;
+  readonly division: UnitRef | null;
   readonly title: string;
   readonly type: PositionType;
   readonly fullAccess: FullAccessSeat | null;
@@ -69,7 +70,7 @@ export type OrderStatus = "pending" | "accepted" | "rejected" | "changes_request
 export type NewOrder = {
   readonly requester: PersonRef;
   readonly status: OrderStatus;
-  readonly divisionId: number | null;
+  readonly division: UnitRef | null;
   readonly description: string | null;
   readonly reason: string | null;
   readonly quantity: number | null;
@@ -81,6 +82,8 @@ export type NewOrder = {
 
 /** The tables the import writes, in the order the report lists them. */
 export const TABLES = [
+  "departments",
+  "divisions",
   "users",
   "members",
   "roles",
@@ -98,6 +101,9 @@ export type Count = { insert: number; present: number; refused: number };
 
 export type Plan = {
   readonly currentYear: number | null;
+  /** The past departments and divisions no longer in the database: created closed, before any role is placed in them. */
+  readonly departments: readonly NewDepartment[];
+  readonly divisions: readonly NewDivision[];
   readonly people: readonly NewPerson[];
   readonly roles: readonly NewRole[];
   readonly leaves: readonly NewLeave[];
@@ -111,6 +117,8 @@ export type Plan = {
   readonly alumni: number;
   readonly multiYear: number;
   readonly unclearQuitters: number;
+  /** How many rows of `handovers.csv` were applied. */
+  readonly handovers: number;
   /** How many distinct subteam and division names resolved to no unit; null when no database was given to check them. */
   readonly unresolvedUnits: number | null;
   /** The photo counts; null when the source directory has no `photos/` folder. */
@@ -189,81 +197,181 @@ class Counter {
   }
 }
 
-/** A role's place: the unit columns it is stored with. */
-type Placement = { readonly deptId: number | null; readonly divisionId: number | null };
+/** A role's place: the units it is stored with. */
+type Placement = { readonly dept: UnitRef | null; readonly division: UnitRef | null };
 
-/** A unit value of a roster cell, and the unit it resolved to (null when none does; always null with no database). */
-type Resolved<U> = { readonly value: Extract<UnitValue, { kind: "unit" }>; readonly unit: U | null };
+/** A department of a row: the cell that names it, and the unit it is (null when it resolved to none). */
+type RowDepartment = { readonly cell: "subteam" | "division"; readonly ref: UnitRef | null };
 
-/** What a row's subteam and division cells give its seats. */
+/** What a row's subteam and division cells give its seats; with no database to resolve against, both unit lists are empty and nothing is placed. */
 type RowUnits = {
-  readonly departments: readonly Resolved<{ id: number }>[];
-  readonly divisions: readonly Resolved<{ id: number; deptId: number | null }>[];
+  readonly year: number;
+  readonly reading: "past" | "present";
+  readonly departments: readonly RowDepartment[];
+  /** Each division the row names, and its department; null when it resolved to none. */
+  readonly divisions: readonly (PlacedDivision | null)[];
   /** The advisor marker the cells carry, if any. */
   readonly advisor: Extract<UnitValue, { kind: "advisor" }> | null;
   /** The subteam cell names a project and no unit. */
   readonly projectOnly: boolean;
 };
 
-const ADVISOR_SEAT: Seat = { type: "advisor", fullAccess: null, unit: "member-unit" };
-const NO_PLACE: Placement = { deptId: null, divisionId: null };
+/** Why a seat has no place: the conflict, its field, and whether it was already reported when a value did not resolve. */
+type Unplaced = { readonly kind: ConflictKind; readonly field: string; readonly reported: boolean };
 
-export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: PhotoFolder | null = null): Plan {
+/** A person's cells for one year: the year sheet's, each empty one filled from that year's Roles sheet. */
+type YearCells = { readonly row: PersonRow; readonly title: string; readonly subteam: string; readonly division: string; readonly reading: "past" | "present" };
+
+function cellsOf(person: Person, year: number): YearCells {
+  const row = person.years.get(year)!;
+  const extra = person.rolesRows.get(year)?.value;
+  // The Subteam cell is read as its own sheet reads it: a Roles sheet's as a past one.
+  const fromRoles = row.value.subteam === "" && (extra?.subteam ?? "") !== "";
+  return {
+    row,
+    title: row.value.title || extra?.title || "",
+    subteam: row.value.subteam || extra?.subteam || "",
+    division: row.value.division || extra?.division || "",
+    reading: subteamReadingOf(fromRoles ? { kind: "roles" } : { kind: "year", year }),
+  };
+}
+
+/** The key of the seat a role holds while active, or null for a seat any number may hold: a second active holder of one is refused, as the unique indexes of migration 0062 would. */
+const seatKeyOf = (type: PositionType | null, fullAccess: FullAccessSeat | null, dept: string | null): string | null =>
+  type === "president" ? "president" : fullAccess !== null ? `full:${fullAccess}` : type === "head" && dept !== null ? `head:${dept}` : null;
+
+const ADVISOR_SEAT: Seat = { type: "advisor", fullAccess: null, unit: "member-unit" };
+const NO_PLACE: Placement = { dept: null, division: null };
+
+/** Each place once. */
+const unique = (list: readonly Placement[]): Placement[] => [
+  ...new Map(list.map((p) => [`${p.dept === null ? "" : refKey(p.dept)}|${p.division === null ? "" : refKey(p.division)}`, p])).values(),
+];
+
+/** The day a run plans on, `YYYY-MM-DD`: a seat handed over this year ends on it. */
+export const importDay = () => new Date().toISOString().slice(0, 10);
+
+export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: PhotoFolder | null = null, today: string = importDay()): Plan {
   const { people, byPeopleId, conflicts: matchConflicts } = matchPeople(sources);
   const conflicts: Conflict[] = [...sources.conflicts, ...matchConflicts];
   const counter = new Counter();
   const currentYear = sources.currentYear;
   const units = snapshot.units;
-  /** The unit keys of every roster value that resolved to no unit. */
-  const unresolved = new Set<string>();
+
+  // Units --------------------------------------------------------------------
+
+  const onCurrent = currentYear === null ? [] : people.filter((p) => p.years.has(currentYear));
+  const currentNames = { departments: new Set<string>(), divisions: new Set<string>() };
+  for (const person of onCurrent) {
+    const c = cellsOf(person, currentYear!);
+    const names = rowUnitNames(c.subteam, c.division, snapshot.projects, c.reading);
+    for (const d of names.departments) currentNames.departments.add(unitKey(d.value.name));
+    for (const d of names.divisions) currentNames.divisions.add(unitKey(d.value.name));
+  }
+  const book = units === null ? null : new UnitBook(units, currentNames, currentYear);
 
   // Seats --------------------------------------------------------------------
 
-  /** Reads a row's unit cells, reporting each value that resolves to no unit, once per cell. */
-  const rowUnits = (subteam: string, division: string, at: At): RowUnits => {
-    const subteamValues = unitValues(subteam, snapshot.projects);
-    const divisionValues = unitValues(division, snapshot.projects);
-    const unitsOf = (values: readonly UnitValue[]) => values.filter((v): v is Extract<UnitValue, { kind: "unit" }> => v.kind === "unit");
-    const resolveAll = <U>(values: readonly UnitValue[], field: string, by: (v: Extract<UnitValue, { kind: "unit" }>) => U | null): Resolved<U>[] => {
-      const resolved = unitsOf(values).map((value) => ({ value, unit: units === null ? null : by(value) }));
-      const missing = units === null ? [] : resolved.filter((r) => r.unit === null);
-      for (const r of missing) unresolved.add(unitKey(r.value.name));
-      if (missing.length > 0) conflicts.push({ kind: "unknown-unit", at, field });
-      return resolved;
-    };
-    const departments = resolveAll(subteamValues, "subteam", (v) => departmentOf(units!, v));
-    const divisions = resolveAll(divisionValues, "division", (v) => divisionOf(units!, v));
-    const advisor = [...subteamValues, ...divisionValues].find((v): v is Extract<UnitValue, { kind: "advisor" }> => v.kind === "advisor") ?? null;
-    const projectOnly = subteamValues.some((v) => v.kind === "project") && departments.length === 0 && divisions.length === 0;
-    return { departments, divisions, advisor, projectOnly };
+  /** Reads a row's unit cells, reporting each cell with a value that resolves to no unit, once. */
+  const rowUnits = (c: YearCells, year: number): RowUnits => {
+    const names = rowUnitNames(c.subteam, c.division, snapshot.projects, c.reading);
+    const base = { year, reading: c.reading, advisor: names.advisor, projectOnly: names.projectOnly };
+    if (book === null) return { ...base, departments: [], divisions: [] };
+    const departments = names.departments.map((d) => ({ cell: d.cell, ref: book.department(d.value, year) }));
+    const departmentNamed = (name: string) => departments[names.departments.findIndex((d) => unitKey(d.value.name) === unitKey(name))]?.ref ?? null;
+    // A division is paired with the department its Division cell names before it, else with the row's one department.
+    const only = departments.length === 1 ? departments[0].ref : null;
+    const divisions = names.divisions.map((d) => book.division(d.value, year, d.department !== null ? departmentNamed(d.department.name) : only));
+    for (const field of ["subteam", "division"] as const) {
+      const missing = departments.some((d) => d.cell === field && d.ref === null) || (field === "division" && divisions.some((d) => d === null));
+      if (missing) conflicts.push({ kind: "unknown-unit", at: c.row.at, field });
+    }
+    return { ...base, departments, divisions };
   };
 
-  /** The placements a seat takes from its row's units, or why it has none (the conflict is already reported when a value did not resolve). */
-  const placements = (seat: Seat, row: RowUnits): Placement[] | { kind: ConflictKind; field: string; reported: boolean } => {
-    if (seat.unit === "board" || units === null) return [NO_PLACE];
-    const all = <U>(list: readonly Resolved<U>[], field: string, place: (u: U) => Placement) =>
-      list.length === 0
-        ? { kind: row.projectOnly ? ("project-only-unit" as const) : ("unknown-unit" as const), field, reported: false }
-        : list.some((r) => r.unit === null)
-          ? { kind: "unknown-unit" as const, field, reported: true }
-          : list.map((r) => place(r.unit!));
-    const byDivision = () => all(row.divisions, "division", (d) => ({ deptId: d.deptId, divisionId: d.id }));
-    const byDepartment = () => all(row.departments, "subteam", (d) => ({ deptId: d.id, divisionId: null }));
-    if (seat.unit === "division") return byDivision();
-    if (seat.unit === "department") return byDepartment();
-    if (row.divisions.length > 0) return byDivision();
-    if (row.departments.length > 0) return byDepartment();
-    if (seat.type === "advisor") return [NO_PLACE];
-    return { kind: row.projectOnly ? "project-only-unit" : "unknown-unit", field: "subteam", reported: false };
+  /**
+   * The places a seat takes from its row's units, or why it has none. A
+   * division seat sits in each division, a department seat in each
+   * department. A member's seat sits in each division, and in each department
+   * no division of the row belongs to.
+   */
+  const placements = (reading: Extract<SeatReading, { kind: "seat" }>, seat: Seat, row: RowUnits): Placement[] | Unplaced => {
+    if (seat.unit === "board" || book === null) return [NO_PLACE];
+    if (seat.unit === "noted-department") {
+      const named = reading.project === null ? null : notedDepartment(reading.project, snapshot.projects, row.reading);
+      if (named === null) return [NO_PLACE];
+      const dept = book.department(named, row.year);
+      return dept === null ? { kind: "unknown-unit", field: "title", reported: false } : [{ dept, division: null }];
+    }
+    const none = (field: string): Unplaced => ({ kind: row.projectOnly ? "project-only-unit" : "unknown-unit", field, reported: false });
+    const unresolved = (field: string): Unplaced => ({ kind: "unknown-unit", field, reported: true });
+    const inDivisions = row.divisions.flatMap((d) => (d === null ? [] : [{ dept: d.dept, division: d.ref }]));
+    const inDepartments = (list: readonly RowDepartment[]) => list.flatMap((d) => (d.ref === null ? [] : [{ dept: d.ref, division: null }]));
+    const divisionMissing = row.divisions.some((d) => d === null);
+    const departmentMissing = row.departments.find((d) => d.ref === null);
+    if (seat.unit === "division") return row.divisions.length === 0 ? none("division") : divisionMissing ? unresolved("division") : unique(inDivisions);
+    if (seat.unit === "department") {
+      return row.departments.length === 0 ? none("subteam") : departmentMissing !== undefined ? unresolved(departmentMissing.cell) : unique(inDepartments(row.departments));
+    }
+    if (row.divisions.length === 0 && row.departments.length === 0) return seat.type === "advisor" ? [NO_PLACE] : none("subteam");
+    if (divisionMissing) return unresolved("division");
+    if (departmentMissing !== undefined) return unresolved(departmentMissing.cell);
+    const covered = new Set(inDivisions.flatMap((p) => (p.dept === null ? [] : [refKey(p.dept)])));
+    return unique([...inDivisions, ...inDepartments(row.departments.filter((d) => !covered.has(refKey(d.ref!))))]);
   };
 
-  /** The active seats held now: a second holder of one is refused, as the unique indexes of migration 0062 would. */
-  const seatKey = (r: Pick<ExistingRole, "type" | "fullAccess" | "deptId">): string | null =>
-    r.type === "president" ? "president" : r.fullAccess !== null ? `full:${r.fullAccess}` : r.type === "head" && r.deptId !== null ? `head:${r.deptId}` : null;
-  const heldSeats = new Set(snapshot.roles.filter((r) => r.leavedAt === null).flatMap((r) => seatKey(r) ?? []));
+  const heldSeats = new Set(
+    snapshot.roles.filter((r) => r.leavedAt === null).flatMap((r) => seatKeyOf(r.type, r.fullAccess, r.deptId === null ? null : String(r.deptId)) ?? []),
+  );
+  const roleSeatKey = (role: Pick<NewRole, "type" | "fullAccess" | "dept">) => seatKeyOf(role.type, role.fullAccess, role.dept === null ? null : refKey(role.dept));
 
-  const sameRole = (a: ExistingRole, b: Omit<NewRole, "who">) =>
-    a.deptId === b.deptId && a.divisionId === b.divisionId && a.title === b.title && a.startedAt === b.startedAt && a.leavedAt === b.leavedAt;
+  /** Whether a stored role is this one. A handed-over role ends on the day a run plans, so any end day matches it. */
+  const sameRole = (a: ExistingRole, b: Omit<NewRole, "who">, handedOver: boolean) =>
+    holds(a.deptId, b.dept) &&
+    holds(a.divisionId, b.division) &&
+    a.title === b.title &&
+    a.startedAt === b.startedAt &&
+    (handedOver ? a.leavedAt !== null : a.leavedAt === b.leavedAt);
+
+  // Handovers ----------------------------------------------------------------
+
+  /** The seat keys a current-year row's title gives, resolved against the units the database holds. */
+  const seatKeysOf = (person: Person): Set<string> => {
+    const c = cellsOf(person, currentYear!);
+    const names = rowUnitNames(c.subteam, c.division, snapshot.projects, c.reading);
+    const depts = names.departments.flatMap((d) => book?.peekDepartment(d.value) ?? []);
+    const keys = new Set<string>();
+    for (const reading of seatsOf(c.title)) {
+      if (reading.kind !== "seat") continue;
+      const { type, fullAccess, unit } = reading.seat;
+      if (type === "head" && unit === "department") for (const d of depts) keys.add(seatKeyOf(type, fullAccess, refKey(d))!);
+      else {
+        const key = seatKeyOf(type, fullAccess, null);
+        if (key !== null) keys.add(key);
+      }
+    }
+    return keys;
+  };
+
+  /** The seats each current-year row (by its row number) handed over this year: they end on the import day, and their holder keeps the membership. */
+  const handedOver = new Map<number, Set<string>>();
+  let handovers = 0;
+  const currentSheet = sources.years.find((y) => y.year === currentYear);
+  const personAt = new Map(onCurrent.map((p) => [p.years.get(currentYear!)!.at.row, p]));
+  for (const h of sources.csv.handovers) {
+    const from = Number(h.value.fromRow.trim());
+    const to = Number(h.value.toRow.trim());
+    const onSheet = currentSheet !== undefined && h.value.sheet.trim() === currentSheet.sheet;
+    const giver = onSheet ? personAt.get(from) : undefined;
+    const taker = onSheet ? personAt.get(to) : undefined;
+    const shared = giver === undefined || taker === undefined || giver === taker ? [] : [...seatKeysOf(giver)].filter((k) => seatKeysOf(taker).has(k));
+    if (shared.length === 0) {
+      conflicts.push({ kind: "handover-unmatched", at: h.at });
+      continue;
+    }
+    handedOver.set(from, new Set([...(handedOver.get(from) ?? []), ...shared]));
+    handovers++;
+  }
 
   // People -------------------------------------------------------------------
 
@@ -273,8 +381,8 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
   const refOf = new Map<number, PersonRef>();
   /** Whether the plan inserts each person or finds them present; a person missing here is not imported. */
   const personFate = new Map<number, "new" | "existing">();
-  /** Each person's division ids by academic year, for an order's division. */
-  const divisionsByYear = new Map<number, Map<number, Set<number>>>();
+  /** Each person's divisions by academic year, by unit key, for an order's division. */
+  const divisionsByYear = new Map<number, Map<number, Map<string, UnitRef>>>();
   let alumni = 0;
 
   const importedNames = new Map<string, number[]>();
@@ -347,13 +455,11 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
 
     for (const year of years) {
       if (importedYears.has(year)) continue;
-      const row = person.years.get(year)!;
-      const extra = person.rolesRows.get(year)?.value;
-      const title = row.value.title || extra?.title || "";
-      const subteam = row.value.subteam || extra?.subteam || "";
-      const division = row.value.division || extra?.division || "";
-      const cells = rowUnits(subteam, division, row.at);
+      const c = cellsOf(person, year);
+      const { row, title } = c;
+      const cells = rowUnits(c, year);
       const active = year === currentYear;
+      const handed = active ? handedOver.get(row.at.row) : undefined;
       for (const reading of seatsOf(title)) {
         if (reading.kind === "unknown") {
           conflicts.push({ kind: "unknown-title", at: row.at, field: "title" });
@@ -364,31 +470,34 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
         const marked = cells.advisor !== null && reading.seat.type === "core" && reading.seat.fullAccess === null;
         const seat = marked ? ADVISOR_SEAT : reading.seat;
         const storedTitle = marked && title.trim() === "" ? (cells.advisor!.senior ? "Senior Advisor" : "Advisor") : reading.title;
-        const placed = placements(seat, cells);
+        const placed = placements(reading, seat, cells);
         if (!Array.isArray(placed)) {
           if (!placed.reported) conflicts.push({ kind: placed.kind, at: row.at, field: placed.field });
           counter.add("roles", "refused");
           continue;
         }
         for (const place of placed) {
+          const seatKey = roleSeatKey({ type: seat.type, fullAccess: seat.fullAccess, dept: place.dept });
+          // A seat this row handed over this year ends on the import day: the row keeps its membership, the seat goes to its new holder.
+          const handedOverSeat = handed !== undefined && seatKey !== null && handed.has(seatKey);
           const role: Omit<NewRole, "who"> = {
             ...place,
             title: storedTitle,
             type: seat.type,
             fullAccess: seat.fullAccess,
             startedAt: yearStart(year),
-            leavedAt: active ? null : yearEnd(year),
+            leavedAt: handedOverSeat ? today : active ? null : yearEnd(year),
           };
-          if (place.divisionId !== null) {
-            const byYear = divisionsByYear.get(person.id) ?? new Map<number, Set<number>>();
-            byYear.set(year, (byYear.get(year) ?? new Set()).add(place.divisionId));
+          if (place.division !== null) {
+            const byYear = divisionsByYear.get(person.id) ?? new Map<number, Map<string, UnitRef>>();
+            byYear.set(year, (byYear.get(year) ?? new Map()).set(refKey(place.division), place.division));
             divisionsByYear.set(person.id, byYear);
           }
-          if (existingRoles.some((r) => sameRole(r, role))) {
+          if (existingRoles.some((r) => sameRole(r, role, handedOverSeat))) {
             counter.add("roles", "present");
             continue;
           }
-          const key = active ? seatKey(role) : null;
+          const key = active && !handedOverSeat ? seatKey : null;
           if (key !== null && heldSeats.has(key)) {
             conflicts.push({ kind: "seat-taken", at: row.at, field: "title" });
             counter.add("roles", "refused");
@@ -645,7 +754,7 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     newOrders.push({
       requester: ref,
       status,
-      divisionId: held !== undefined && held.size === 1 ? [...held][0] : null,
+      division: held !== undefined && held.size === 1 ? [...held.values()][0] : null,
       description: orNull(row.value.description),
       reason: orNull(row.value.reason),
       quantity: quantity === "" ? null : Number(quantity),
@@ -657,10 +766,24 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     counter.add("orders", "insert");
   }
 
+  // Closed units ---------------------------------------------------------------
+
+  const departments = book?.newDepartments(yearStart, yearEnd) ?? [];
+  const divisions = book?.newDivisions(yearStart, yearEnd) ?? [];
+  const present = book?.present() ?? { departments: 0, divisions: 0 };
+  counter.add("departments", "insert", departments.length);
+  counter.add("departments", "present", present.departments);
+  counter.add("divisions", "insert", divisions.length);
+  counter.add("divisions", "present", present.divisions);
+  // A created division is paired with a department on the row that first pairs it, maybe after a role was placed in it: its roles take that department.
+  const roles = newRoles.map((r) => (r.division?.kind === "new" ? { ...r, dept: divisions[r.division.index].dept } : r));
+
   return {
     currentYear,
+    departments,
+    divisions,
     people: newPeople.map((p) => ({ ...p, photo: memberPhotos.get(p.person) ?? null })),
-    roles: newRoles,
+    roles,
     leaves,
     advisors,
     positions,
@@ -671,7 +794,8 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     alumni,
     multiYear: people.filter((p) => p.years.size > 1).length,
     unclearQuitters: conflicts.filter((c) => UNCLEAR_QUITTER_KINDS.includes(c.kind)).length,
-    unresolvedUnits: units === null ? null : unresolved.size,
+    handovers,
+    unresolvedUnits: book === null ? null : book.unresolved.size,
     photos,
     conflicts: sortConflicts(conflicts),
   };

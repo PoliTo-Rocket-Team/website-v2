@@ -9,7 +9,7 @@ import sharp from "sharp";
 import { checkMemberPhoto } from "@/lib/dashboard/division-members";
 import { matchPhotos, shapeMemberPhoto, surnameKey, type PhotoFile } from "./photos";
 import { seatOf, seatsOf, TITLE_RULES } from "./titles";
-import { departmentOf, divisionOf, readUnitValue, unitKey, unitNames, unitValues, type Units } from "./units";
+import { departmentOf, divisionOf, readUnitValue, rowUnitNames, subteamReadingOf, unitKey, unitNames, unitValues, type Units } from "./units";
 
 // The import's readers and tables (issue #677): the header alias table, the
 // title mapping table, the CSV parser and the small value readers.
@@ -72,8 +72,65 @@ test("the title table gives each seat its type, full-access flag and unit", () =
   assert.deepEqual(read("Valve Engineer"), ["core", null, "member-unit"]);
   assert.deepEqual(read(""), ["core", null, "member-unit"]);
   assert.equal(read("Vice Team Leader"), null);
-  assert.equal(read("Safety Officer"), null);
+  // "Safety Officer" is a core member's seat (#816); any other officer is still not guessed.
+  assert.deepEqual(read("Safety Officer"), ["core", null, "member-unit"]);
+  assert.equal(read("Press Officer"), null);
   assert.ok(TITLE_RULES.length > 0);
+});
+
+test("the #816 title readings: AMV prefix, Safety Officer, '<Dept> Head of Department', '&' between seats and President-Advisor", () => {
+  const seats = (cell: string) =>
+    seatsOf(cell).map((s) => (s.kind === "seat" ? [s.title, s.seat.type, s.seat.fullAccess, s.seat.unit, s.project] : ["unknown", s.title]));
+  assert.deepEqual(seats("AMV Chief Engineer"), [["Chief Engineer", "core", "chief_engineer", "board", null]]);
+  assert.deepEqual(seats("Safety Officer"), [["Safety Officer", "core", null, "member-unit", null]]);
+  assert.deepEqual(seats("Electronics Head of Department - Hardware Lead Engineer"), [
+    ["Electronics Head of Department", "head", null, "department", null],
+    ["Hardware Lead Engineer", "lead", null, "division", null],
+  ]);
+  assert.deepEqual(seats("President & Chief Engineer"), [
+    ["President", "president", null, "board", null],
+    ["Chief Engineer", "core", "chief_engineer", "board", null],
+  ]);
+  // "&" parts seats only where the table reads every part: a unit name with "&" in it stays one seat.
+  assert.deepEqual(seats("Design & Manufacturing Lead"), [["Design & Manufacturing Lead", "lead", null, "division", null]]);
+  assert.deepEqual(seats("President-Advisor (Project Cavour)"), [
+    ["President", "president", null, "board", null],
+    ["Advisor (Project Cavour)", "advisor", null, "noted-department", "Project Cavour"],
+  ]);
+  assert.deepEqual(seats("Co-Lead"), [["unknown", "Co-Lead"]]);
+});
+
+test("the #816 unit readings: past subteams are departments, AMV is no unit, '/' splits, and '<Dept> Department - <Division>' is both", () => {
+  const projects = new Set([unitKey("Cavour"), unitKey("Efesto"), unitKey("VES")]);
+  // Before 2024-2025, and on the Quitters and Roles sheets, a subteam that names a project is a department.
+  assert.equal(subteamReadingOf({ kind: "year", year: 2023 }), "past");
+  assert.equal(subteamReadingOf({ kind: "year", year: 2024 }), "present");
+  assert.equal(subteamReadingOf({ kind: "quitters" }), "past");
+  assert.equal(subteamReadingOf({ kind: "roles" }), "past");
+  const past = rowUnitNames("Cavour - Liquid Propulsion", "", projects, "past");
+  assert.deepEqual(past.departments.map((d) => d.value.name), ["Cavour", "Liquid Propulsion"]);
+  assert.equal(past.projectOnly, false);
+  const present = rowUnitNames("Cavour", "", projects, "present");
+  assert.deepEqual([present.departments.length, present.projectOnly], [0, true]);
+
+  assert.deepEqual(unitValues("AMV - Amerigo Vespucci (AMV) - Propulsion", projects), [{ kind: "none" }, { kind: "none" }, { kind: "unit", name: "Propulsion", code: null }]);
+
+  assert.deepEqual(unitNames("Hybrid Motors (HYB) / Information Technology (IT), Logistics (LGS)"), ["Hybrid Motors (HYB)", "Information Technology (IT)", "Logistics (LGS)"]);
+  assert.deepEqual(unitNames("IT/Logistics"), ["IT", "Logistics"]);
+  assert.deepEqual(unitNames("N/A"), ["N/A"]);
+  assert.deepEqual(unitNames("n/a - Propulsion"), ["n/a", "Propulsion"]);
+
+  const both = rowUnitNames("", "Electronics (ELT) Department - Hardware (HDW)", projects, "present");
+  assert.deepEqual(
+    both.departments.map((d) => [d.value.name, d.value.code, d.cell]),
+    [["Electronics Department", "ELT", "division"]],
+  );
+  assert.deepEqual(
+    both.divisions.map((d) => [d.value.name, d.value.code, d.department?.name ?? null]),
+    [["Hardware", "HDW", "Electronics Department"]],
+  );
+  // A department named in both cells is one department.
+  assert.equal(rowUnitNames("Electronics (ELT)", "Electronics Department - Hardware", projects, "present").departments.length, 1);
 });
 
 test("the title table reads each named form by an explicit rule", () => {

@@ -17,7 +17,8 @@ import type { ImportDb } from "./snapshot";
 
 const USAGE = `Usage: pnpm db:import <source-dir> [--mode dry-run|import] [--year YYYY-YYYY] [--report <file>] [--database-url <url>] [--blob-token <token>]
 
-  <source-dir>      The directory holding the roster workbook (.xlsx), the CSV exports and, if any, the photos/ folder.
+  <source-dir>      The directory holding the roster workbook (.xlsx), the CSV exports and, if any, the photos/ folder
+                    and the handovers.csv override (README.md, "Seat handovers").
   --mode            dry-run (the default) prints the report and writes and uploads nothing; import writes.
   --year            The current academic year's sheet, e.g. 2026-2027; by default the newest one.
   --report          Also write the report to this file.

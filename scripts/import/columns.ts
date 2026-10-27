@@ -169,6 +169,15 @@ export const ORDERS_CSV = {
   quoteName: { aliases: ["quoteName", "quote_name"] },
 } as const satisfies SourceSpec<string>;
 
+// The import's own override input (issue #816) ---------------------------------
+
+/** `handovers.csv`: a seat the `from_row` holder handed over to the `to_row` holder within the current year, both rows of `sheet`. */
+export const HANDOVERS_CSV = {
+  sheet: { aliases: ["sheet"], required: true },
+  fromRow: { aliases: ["from_row"], required: true },
+  toRow: { aliases: ["to_row"], required: true },
+} as const satisfies SourceSpec<string>;
+
 export const FAQS_CSV = {
   question: { aliases: ["question"], required: true },
   answer: { aliases: ["answer"], required: true },

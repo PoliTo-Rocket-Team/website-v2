@@ -23,6 +23,8 @@ export const CONFLICT_TEXT = {
   "schema-misfit": "The value does not fit the schema; the row was not imported.",
   "unresolved-requester": "The order's requester resolves to no imported member; the order was not imported.",
   "project-only-unit": "The subteam cell names only a project, and the schema has no project on roles; the role was not imported.",
+  "handover-unmatched":
+    "The seat handover names a sheet other than the current year's, a row that is no person's row on it, or two rows that hold no seat in common; it was not applied.",
   "photo-surname-differs": "Photo held: its id is found, but the surname in its name differs; not imported.",
   "photo-no-id-match": "Photo not imported: its name has no id, or the id is on no row of people_rows.csv or advisors_rows.csv.",
   "photo-shared-id": "Photo not imported: a person and an advisor share its id, and the surname does not settle which one it is.",
