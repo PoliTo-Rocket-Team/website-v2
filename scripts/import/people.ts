@@ -7,9 +7,12 @@ import type { PersonRow, QuitterRow, Row, Sources } from "./sources";
 // a CSV's `poli_email`, compared in lower case); failing that, the person with
 // its normalized full name (accents, case, punctuation and spacing do not
 // count). Year sheets are read newest first, so where sheets disagree on a
-// personal field the newest one wins; only a year sheet starts a new person.
-// `Roles YY-YY` rows, `Quitters` rows and CSV rows attach to a person the year
-// sheets found, and a CSV value only fills a field the workbook left empty.
+// personal field the newest one wins. A year sheet starts a new person, and so
+// does a `Quitters` row that matches nobody on any year sheet (a quitter-only
+// alumnus, issue #816). `Roles YY-YY` rows and CSV rows attach to a person the
+// sheets found, and a CSV value only fills a field the workbook left empty. A
+// sheet row with no name never reaches here (./sources.ts leaves it out), so
+// it is never matched by its emails.
 
 const EMAIL_FIELDS = ["personalEmail", "studentEmail", "phdEmail", "prtEmail"] as const satisfies readonly PersonField[];
 
@@ -39,7 +42,7 @@ export type Person = {
   readonly emails: Set<string>;
   readonly names: Set<string>;
   readonly fields: Partial<Record<PersonalField, string>>;
-  /** Their row on each year sheet, by academic year. */
+  /** Their row on each year sheet, by academic year; empty for a quitter-only person. */
   readonly years: Map<number, PersonRow>;
   /** Their `Roles YY-YY` row, by academic year. */
   readonly rolesRows: Map<number, Row<"firstName" | "lastName" | "subteam" | "division" | "title">>;
@@ -171,25 +174,30 @@ export function matchPeople(sources: Sources): People {
     }
   }
 
+  // A Quitters row on no year sheet starts a person of its own, after every year
+  // sheet row has been matched: a quitter-only alumnus (issue #816).
   const quitters = new Set<Person>();
-  const lonelyQuitters: QuitterRow[] = [];
+  const lonely: QuitterRow[] = [];
+  const attach = (person: Person, row: QuitterRow, emails: readonly string[], name: string) => {
+    quitters.add(person);
+    person.quitter = row;
+    m.learn(person, emails, name);
+    fill(person, row.value);
+  };
   for (const row of sources.quitters) {
     const emails = emailsOf(row.value);
     const person = m.match(emails, nameKey(row.value.firstName, row.value.lastName), row.at);
-    if (person === null) {
-      lonelyQuitters.push(row);
-      continue;
-    }
-    if (quitters.has(person)) {
-      m.conflicts.push({ kind: "duplicate", at: row.at });
-      continue;
-    }
-    quitters.add(person);
-    person.quitter = row;
-    m.learn(person, emails, "");
-    fill(person, row.value);
+    if (person === null) lonely.push(row);
+    else if (quitters.has(person)) m.conflicts.push({ kind: "duplicate", at: row.at });
+    else attach(person, row, emails, "");
   }
-  for (const row of lonelyQuitters) m.conflicts.push({ kind: "quitter-in-no-year", at: row.at });
+  for (const row of lonely) {
+    const emails = emailsOf(row.value);
+    const name = nameKey(row.value.firstName, row.value.lastName);
+    const found = m.match(emails, name, row.at);
+    if (found !== null) m.conflicts.push({ kind: "duplicate", at: row.at });
+    else attach(m.start(), row, emails, name);
+  }
 
   const fromCsv = (rows: readonly Row<string>[], fields: readonly PersonalField[], emailFields: readonly string[], byId?: Map<string, Person>) => {
     const seen = new Set<Person>();

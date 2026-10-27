@@ -14,9 +14,10 @@ import { writePlan } from "./write";
 // only when the run gives a photo store; without one the photos are counted
 // as skipped and everything else is imported.
 
+/** `today`: the day the run plans on (`YYYY-MM-DD`), the end of a seat handed over this year; by default the day it runs. */
 export type RunOptions =
-  | { readonly mode: "dry-run"; readonly directory: string; readonly year?: number; readonly db?: ImportDb }
-  | { readonly mode: "import"; readonly directory: string; readonly year?: number; readonly db: ImportDb; readonly photoStore?: PhotoStore };
+  | { readonly mode: "dry-run"; readonly directory: string; readonly year?: number; readonly db?: ImportDb; readonly today?: string }
+  | { readonly mode: "import"; readonly directory: string; readonly year?: number; readonly db: ImportDb; readonly photoStore?: PhotoStore; readonly today?: string };
 
 export type RunResult = {
   readonly sources: Sources;
@@ -31,12 +32,12 @@ export async function runImport(options: RunOptions): Promise<RunResult> {
   const folder = await preparePhotos(options.directory, sources);
   if (options.mode === "dry-run") {
     const snapshot = options.db === undefined ? NO_DATABASE : await readSnapshot(options.db);
-    const plan = planImport(sources, snapshot, folder);
+    const plan = planImport(sources, snapshot, folder, options.today);
     return { sources, plan, report: renderReport({ mode: "dry-run", database: options.db !== undefined, sources, plan }) };
   }
   const uploads = options.photoStore === undefined ? null : photoUploads(options.photoStore);
   const { plan, written, uploaded } = await options.db.transaction(async (tx) => {
-    const plan = planImport(sources, await readSnapshot(tx as unknown as ImportDb), folder);
+    const plan = planImport(sources, await readSnapshot(tx as unknown as ImportDb), folder, options.today);
     return { plan, ...(await writePlan(tx, plan, uploads)) };
   });
   return { sources, plan, written, uploaded, report: renderReport({ mode: "import", database: true, sources, plan, written, uploaded }) };

@@ -19,16 +19,24 @@ export const CONFLICT_TEXT = {
   "imported-alumni-match": "The person matches an imported Alumni entry (migration 0021); no role was imported for a year that entry lists.",
   "roles-sheet-unmatched": "The row matches nobody on that year's sheet; it was not used.",
   "quitter-on-current-sheet": "Unclear quitter: on Quitters and on the current year's sheet; imported as an active member.",
-  "quitter-in-no-year": "Unclear quitter: on Quitters and on no year sheet, so no academic year can be given; not imported.",
+  "quitter-no-date":
+    "Unclear quitter: on Quitters and on no year sheet, with no leave day and no quitter-year line in overrides.csv, so no academic year can be given; not imported.",
+  "quitter-date-unreadable":
+    "Unclear quitter: on Quitters and on no year sheet, and a date cell does not read as a day (or the join day is after the leave day); not imported.",
+  "joined-date-unreadable":
+    "The year sheet's \"Date of joining\" cell does not read as a day, or falls after that academic year; the row's roles start on the year's first day.",
   "schema-misfit": "The value does not fit the schema; the row was not imported.",
   "unresolved-requester": "The order's requester resolves to no imported member; the order was not imported.",
   "project-only-unit": "The subteam cell names only a project, and the schema has no project on roles; the role was not imported.",
-  "photo-surname-differs": "Photo held: its id is found, but the surname in its name differs; not imported.",
-  "photo-no-id-match": "Photo not imported: its name has no id, or the id is on no row of people_rows.csv or advisors_rows.csv.",
-  "photo-shared-id": "Photo not imported: a person and an advisor share its id, and the surname does not settle which one it is.",
-  "photo-not-imported": "Photo not imported: the person or advisor its id names is not imported by this run (refused, or on no year sheet).",
+  "override-unmatched":
+    "The overrides.csv line does not read (unknown kind, or a row or value that is no number or year), or names what it cannot apply to: a handover off the current year's sheet, a row that is no person's row there, two rows with no seat in common, or a quitter-year row that is no Quitters row of a person on no year sheet; it was not applied.",
+  "photo-surname-differs": "Photo held: its id is a people_rows.csv id, but the surname in its name differs; not imported.",
+  "photo-no-id-match": "Photo not imported: the id in its name is on no row of people_rows.csv.",
+  "photo-no-surname-match": "Photo not imported: its name is a surname only, and no advisor (advisors_rows.csv or an advisor row of the workbook) has that surname.",
+  "photo-surname-ambiguous": "Photo not imported: its name is a surname only, and more than one advisor has that surname.",
+  "photo-not-imported": "Photo not imported: the person or advisor it names is not imported by this run (refused or unclear), or already has a photo from an earlier file.",
   "photo-unfit": "Photo not imported: it cannot be read, or it still fails the dashboard's photo check once shaped.",
-  "photo-missing": "The row is flagged has_pp, but the photos folder holds no file with its id.",
+  "photo-missing": "The row is flagged has_pp, but no file of the photos folder matched it (a person's by id, an advisor's by surname).",
 } as const;
 
 export type ConflictKind = keyof typeof CONFLICT_TEXT;
@@ -39,14 +47,15 @@ export type Conflict = { readonly kind: ConflictKind; readonly at: At; readonly 
 export const PHOTO_KINDS: readonly ConflictKind[] = [
   "photo-surname-differs",
   "photo-no-id-match",
-  "photo-shared-id",
+  "photo-no-surname-match",
+  "photo-surname-ambiguous",
   "photo-not-imported",
   "photo-unfit",
   "photo-missing",
 ];
 
 /** The kinds that mark an unclear quitter. */
-export const UNCLEAR_QUITTER_KINDS: readonly ConflictKind[] = ["quitter-on-current-sheet", "quitter-in-no-year"];
+export const UNCLEAR_QUITTER_KINDS: readonly ConflictKind[] = ["quitter-on-current-sheet", "quitter-no-date", "quitter-date-unreadable"];
 
 export function placeOf(at: At): string {
   return [at.file, ...(at.sheet === undefined ? [] : [`sheet ${at.sheet}`]), `row ${at.row}`].join(" › ");
