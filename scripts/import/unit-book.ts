@@ -377,7 +377,10 @@ export class UnitBook {
     const seen = this.folds.departments.sightings(group);
     if (seen.length === 0) return null;
     const lookup = this.lookup(this.folds.departments, seen[0].value, group, (v) => lookupDepartment(this.units, v));
-    if (lookup.kind === "found") return this.resolved(group, { kind: "existing", id: lookup.unit.id });
+    if (lookup.kind === "found") {
+      this.presentDepartments.add(lookup.unit.id);
+      return this.resolved(group, { kind: "existing", id: lookup.unit.id });
+    }
     if (lookup.kind === "ambiguous" || create === null) return null;
     const dated = seen.map((s) => s.year).filter(Number.isFinite);
     const years = dated.length > 0 ? dated : create;

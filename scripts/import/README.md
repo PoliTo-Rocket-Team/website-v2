@@ -141,9 +141,8 @@ the person running the import writes. See **The override input** below.
   without case, accents, punctuation, a trailing level word ("Department", "Division") or a
   word's trailing plural "s" (issue #820): "Ground System" and "Ground Systems" are one name. A
   code keeps its "s", and so does a word written as a code (two to four capitals or digits): "OPS"
-  and "OP" are two codes, and "Alpha (OPS)" and "Beta (OP)" are two units. A value that is one
-  word of two to four letters or digits, in any case, reads as a code and keeps its "s" too, so a
-  bare "Ops" is the OPS unit and never the OP one. "N/A", "AMV" and
+  and "OP" are two codes, and "Alpha (OPS)" and "Beta (OP)" are two units. A one-word name not
+  written in capitals folds like any other: "Lab" and "Labs" are one name. "N/A", "AMV" and
   "Amerigo Vespucci (AMV)" are no unit. An "ADVISOR" or "SENIOR ADVISOR" marker, with or without a
   project in parentheses, makes the row's plain member seat an `advisor` role. A project's name
   (any version of a `projects` row on the database) is not a unit: the schema has no project on
@@ -356,8 +355,8 @@ the photo matching. `roster-shapes.test.ts` plans the shapes of issues #818 and 
 roster built in memory: swapped Quitters dates, a shorter first name in `people_rows.csv`, one unit
 spelt several ways, a separator inside parentheses, a note naming a department, one division name
 under two departments, a newest-sheet pairing on a refused row, a database department spelt by
-name and by code, a job title in the Division cell, a plural spelling, two codes that differ by an
-"s", a bare one-word "Ops" beside a bare "OP", and the accounts a person's emails may already have
+name and by code, a job title in the Division cell, a plural spelling (one-word names included),
+two codes that differ by an "s", and the accounts a person's emails may already have
 (no member row, a member row, another email's). `import.test.ts` checks that `positions_rows.csv`
 is left out, that an account with no member row is linked to its person's new member row with no
 other field written, and that a run whose linked account gained a member row after the plan was

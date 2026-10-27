@@ -498,12 +498,13 @@ test("issue #820: the newest sheet picks a division's department even when its r
   assert.deepEqual(placed(plan), ["Payload Payload Systems 2023", "Telemetry Avionics 2023", "null Avionics 2025"]);
 
   // Once the refused rows are fixed, a second run finds each division under that department, and creates none.
+  const departments = [
+    { id: 1, name: "Avionics", code: null },
+    { id: 2, name: "Electronics", code: null },
+    { id: 3, name: "Payload Systems", code: null },
+  ];
   const database = databaseWith({
-    departments: [
-      { id: 1, name: "Avionics", code: null },
-      { id: 2, name: "Electronics", code: null },
-      { id: 3, name: "Payload Systems", code: null },
-    ],
+    departments,
     divisions: [
       { id: 10, name: "Telemetry", code: "TLM", deptId: 1 },
       { id: 11, name: "Payload", code: "PLD", deptId: 3 },
@@ -512,6 +513,15 @@ test("issue #820: the newest sheet picks a division's department even when its r
   const second = planImport(sources, database, null, TODAY);
   assert.deepEqual([second.departments, second.divisions, second.unresolvedUnits], [[], [], 0]);
   assert.deepEqual(placed(second), ["#10 #1 2023", "#11 #3 2023", "null #1 2025"]);
+
+  // A database department reached only through a refused row's pairing counts as already present.
+  const departmentsOnly = databaseWith({ departments, divisions: [] });
+  const third = planImport(sources, departmentsOnly, null, TODAY);
+  assert.deepEqual(createdDivisions(third), [
+    ["Payload", "PLD", "#3", "open"],
+    ["Telemetry", "TLM", "#1", "open"],
+  ]);
+  assert.equal(third.counts.departments.present, 3);
 });
 
 test("issue #820: a Division value ending in 'Lead' or 'Lead Engineer' is that division, and no unit takes the job title's name", () => {
@@ -595,27 +605,26 @@ test("issue #820: a code keeps its plural 's': two codes that differ by it are t
   );
 });
 
-test("issue #820: a value of one short word reads as a code in any case: a bare 'Ops' keeps its 's', so the OPS and OP units stay apart", () => {
-  assert.notEqual(unitKey("Ops"), unitKey("OP"));
-  assert.equal(unitKey("Ops Dept."), unitKey("OPS"));
+test("issue #820: a one-word name folds on its plural 's' too; only a word written in capitals as a code keeps it", () => {
+  assert.equal(unitKey("Labs"), unitKey("Lab"));
+  assert.equal(unitKey("Fins"), unitKey("fin"));
+  assert.equal(unitKey("Ops"), unitKey("Op"));
+  assert.notEqual(unitKey("OPS"), unitKey("OP"));
   assert.equal(unitKey("Ground Systems"), unitKey("Ground System"));
   const sources = sourcesOf({
     years: {
-      2025: [
-        person("Ada", "Bini", { subteam: "Operations (OPS)" }),
-        person("Ben", "Cori", { subteam: "Ops" }),
-        person("Cia", "Dani", { subteam: "Order Processing (OP)" }),
-        person("Dea", "Elmi", { subteam: "OP" }),
-      ],
+      2025: [person("Ada", "Bini", { subteam: "Labs", division: "Fins" })],
+      2023: [person("Ben", "Cori", { subteam: "Lab", division: "Fin" })],
     },
   });
   const plan = planImport(sources, EMPTY_DATABASE, null, TODAY);
   assert.deepEqual(
-    plan.departments.map((d) => [d.name, d.code, [...d.spellings].sort()]).sort(),
-    [
-      ["Operations", "OPS", ["Operations (OPS)", "Ops"]],
-      ["Order Processing", "OP", ["OP", "Order Processing (OP)"]],
-    ],
+    plan.departments.map((d) => [d.name, d.closedAt === null ? "open" : "closed", d.spellings]),
+    [["Labs", "open", ["Labs", "Lab"]]],
+  );
+  assert.deepEqual(
+    plan.divisions.map((d) => [d.name, d.closedAt === null ? "open" : "closed", d.spellings]),
+    [["Fins", "open", ["Fins", "Fin"]]],
   );
 });
 
