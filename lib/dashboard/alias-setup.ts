@@ -41,7 +41,7 @@ export function showsAliasCard(own: OwnAlias | null): own is OwnAlias {
  * to name: the write is always the viewer's own record.
  */
 export function planAliasSetUp(own: OwnAlias | null): Checked<OwnAlias> {
-  if (own === null) return { ok: false, error: "You have no email alias to set up." };
-  if (own.setUp) return { ok: false, error: "You already set up your email alias." };
+  if (own === null) return { ok: false, error: "You have no PRT email to set up." };
+  if (own.setUp) return { ok: false, error: "You already set up your PRT email." };
   return { ok: true, value: { ...own, setUp: true } };
 }

@@ -1,17 +1,19 @@
 import "server-only";
 
-import { and, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
-import { aliasRequests, dashboardNotices, members } from "@/db/schema";
+import { aliasRequests, dashboardNotices, members, teamAddresses } from "@/db/schema";
 import { refreshAfter } from "@/lib/cache-tags";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import {
+  aliasAlreadyRequested,
   aliasAnswerNotices,
   aliasAttentionFor,
   answersAliasRequests,
   checkAliasAnswer,
+  checkAliasRequest,
   memberAliasesFor,
   owedAliasRequests,
   planAliasAnswer,
@@ -55,6 +57,7 @@ export async function readOpenAliasRequests(filter: { readonly id?: number } = {
       member_id: aliasRequests.memberId,
       requested_by: aliasRequests.requestedBy,
       requested_by_acting_account: aliasRequests.requestedByActingAccount,
+      address: aliasRequests.address,
       created_at: aliasRequests.createdAt,
     })
     .from(aliasRequests)
@@ -65,6 +68,7 @@ export async function readOpenAliasRequests(filter: { readonly id?: number } = {
     memberId: r.member_id,
     requesterId: r.requested_by,
     requesterActingTitle: actingTitleIn(titles, r.requested_by_acting_account),
+    address: r.address,
     sentAt: r.created_at,
   }));
 }
@@ -108,25 +112,51 @@ export async function readAliasAttention(identity: DashboardIdentity, now: Date)
   return aliasAttentionFor(identity, open, aliasTeamOf(snapshot), snapshot.org, now);
 }
 
-/** Request alias (board 94): the request is stored as open; the index refuses a second one. */
-export async function requestAlias(identity: DashboardIdentity, memberId: number): Promise<WriteResult<null>> {
-  const [snapshot, addresses, open] = await Promise.all([readTeamSnapshot(), readAliasAddresses(), readOpenAliasRequests()]);
+/** The special PRT emails held equal to `address`, in any letter case: a personal request may not ask for one (issue #798). */
+async function readSpecialSameAs(address: string): Promise<string[]> {
+  const rows = await getDb().select({ address: teamAddresses.address }).from(teamAddresses).where(eq(sql`lower(${teamAddresses.address})`, address));
+  return rows.map((r) => r.address);
+}
+
+/**
+ * Request PRT email's Personal choice (board 94, issue #798), checked by
+ * `checkAliasRequest` and `planAliasRequest`: the request is stored as open
+ * with the address the requester confirmed; the index refuses a second one.
+ */
+export async function requestAlias(identity: DashboardIdentity, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkAliasRequest(input);
+  if (!checked.ok) return refused(checked.error);
+  const { memberId, address } = checked.value;
+  const [snapshot, addresses, open, special] = await Promise.all([
+    readTeamSnapshot(),
+    readAliasAddresses(),
+    readOpenAliasRequests(),
+    readSpecialSameAs(address),
+  ]);
+  const team = teamPeopleOf(snapshot);
   const planned = planAliasRequest({
     requesterId: identity.memberId,
     standing: identity,
     memberId,
-    team: teamPeopleOf(snapshot),
+    team,
     org: snapshot.org,
     prtEmail: addresses.get(memberId) ?? null,
     open,
+    address,
+    taken: [...addresses.values(), ...special],
   });
   if (!planned.ok) return refused(planned.error);
   try {
     await runAuditQuery((db) =>
-      db.insert(aliasRequests).values({ memberId, requestedBy: planned.value.requesterId, requestedByActingAccount: identity.actingAccountId }),
+      db.insert(aliasRequests).values({
+        memberId,
+        requestedBy: planned.value.requesterId,
+        requestedByActingAccount: identity.actingAccountId,
+        address: planned.value.address,
+      }),
     );
   } catch (error) {
-    if (isUniqueViolation(error)) return refused("An alias for this member is already requested.");
+    if (isUniqueViolation(error)) return refused(aliasAlreadyRequested(team.find((p) => p.id === memberId)?.name ?? "this member"));
     throw error;
   }
   return written(null);
@@ -167,7 +197,7 @@ export async function automaticAliasRequests(becoming: readonly number[]): Promi
 /** Cancel request (board 94b): the request closes as cancelled; nobody is told. */
 export async function cancelAliasRequest(identity: DashboardIdentity, requestId: number): Promise<WriteResult<null>> {
   const [[request], snapshot] = await Promise.all([readOpenAliasRequests({ id: requestId }), readTeamSnapshot()]);
-  if (!request) return refused("This alias request was already answered.");
+  if (!request) return refused("This PRT email request was already answered.");
   const planned = planAliasCancel({ viewerId: identity.memberId, request, team: teamPeopleOf(snapshot), org: snapshot.org });
   if (!planned.ok) return refused(planned.error);
   const closed = await runAuditQuery((db) =>
@@ -177,7 +207,7 @@ export async function cancelAliasRequest(identity: DashboardIdentity, requestId:
       .where(and(eq(aliasRequests.id, requestId), isNull(aliasRequests.outcome)))
       .returning({ id: aliasRequests.id }),
   );
-  return closed.length === 0 ? refused("This alias request was already answered.") : written(null);
+  return closed.length === 0 ? refused("This PRT email request was already answered.") : written(null);
 }
 
 /**
@@ -192,7 +222,7 @@ export async function answerAlias(identity: DashboardIdentity, requestId: number
   const checked = checkAliasAnswer(input);
   if (!checked.ok) return refused(checked.error);
   const [request] = await readOpenAliasRequests({ id: requestId });
-  if (!request) return refused("This alias request was already answered.");
+  if (!request) return refused("This PRT email request was already answered.");
   const planned = planAliasAnswer({ viewer: identity, request, answer: checked.value });
   if (!planned.ok) return refused(planned.error);
   const plan = planned.value;
@@ -204,7 +234,7 @@ export async function answerAlias(identity: DashboardIdentity, requestId: number
       .where(and(eq(aliasRequests.id, requestId), isNull(aliasRequests.outcome)))
       .returning({ id: aliasRequests.id }),
   );
-  if (claimed.length === 0) return refused("This alias request was already answered.");
+  if (claimed.length === 0) return refused("This PRT email request was already answered.");
   // A declined request the site made tells nobody, so nothing else is written.
   if (plan.kind === "decline" && notices.length === 0) return written(null);
   try {
@@ -232,7 +262,7 @@ export async function answerAlias(identity: DashboardIdentity, requestId: number
 }
 
 /** What the approver reads when their answer failed and a newer request for the member came in meanwhile (issue #547). */
-const SUPERSEDED_ANSWER = "Your answer was not saved: a newer alias request for this member is open. Answer that one instead.";
+const SUPERSEDED_ANSWER = "Your answer was not saved: a newer PRT email request for this member is open. Answer that one instead.";
 
 /**
  * Takes back a claim whose follow-up batch failed: the request is open
@@ -277,7 +307,7 @@ export async function readOwnAlias(identity: DashboardIdentity): Promise<OwnAlia
  */
 export async function confirmAliasSetUp(identity: DashboardIdentity): Promise<WriteResult<null>> {
   const planned = planAliasSetUp(await readOwnAlias(identity));
-  if (!planned.ok || identity.memberId === null) return refused(planned.ok ? "You have no email alias to set up." : planned.error);
+  if (!planned.ok || identity.memberId === null) return refused(planned.ok ? "You have no PRT email to set up." : planned.error);
   const memberId = identity.memberId;
   const stored = await runAuditQuery((db) =>
     db
@@ -286,5 +316,5 @@ export async function confirmAliasSetUp(identity: DashboardIdentity): Promise<Wr
       .where(and(eq(members.memberId, memberId), hasPrtEmail(), isNull(members.emailAliasSetUpAt)))
       .returning({ id: members.memberId }),
   );
-  return stored.length === 0 ? refused("You already set up your email alias.") : written(null);
+  return stored.length === 0 ? refused("You already set up your PRT email.") : written(null);
 }

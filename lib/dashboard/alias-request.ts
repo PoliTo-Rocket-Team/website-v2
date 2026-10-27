@@ -5,7 +5,7 @@ import type { TeamPerson } from "./division-edit";
 import { sentWhen } from "./hand-over-request";
 import type { AddressedNotice } from "./notices";
 import { divisionShortName, type AttentionItem } from "./overview";
-import type { OrgChart } from "./team";
+import type { OrgChart, Permission } from "./team";
 import { seatOf, type FullAccessSeat, type ViewerStanding } from "./viewer";
 import { shortDate } from "./write";
 
@@ -38,6 +38,13 @@ export type AliasRequest = {
   readonly requesterId: number | null;
   /** The acting seat's title when it was sent while viewing as the requester (issue #605); absent or null otherwise. */
   readonly requesterActingTitle?: string | null;
+  /**
+   * The address the requester confirmed on Request PRT email's Personal
+   * choice (issue #798), checked by `checkAliasAddress`; null for a request
+   * the site made by itself, or one stored before requests carried it. Absent
+   * reads as null.
+   */
+  readonly address?: string | null;
   /** When it was sent, an ISO timestamp. */
   readonly sentAt: string;
 };
@@ -176,18 +183,40 @@ export function domainAddressOf(input: string): AliasAddress | "off-domain" | "s
  */
 export function checkAliasAddress(input: string): Checked<AliasAddress> {
   const checked = domainAddressOf(input);
-  if (checked === "off-domain") return { ok: false, error: `The alias must end with @${TEAM_DOMAIN}.` };
+  if (checked === "off-domain") return { ok: false, error: `The PRT email must end with @${TEAM_DOMAIN}.` };
   if (checked === "shape") return { ok: false, error: `Use ${ALIAS_FORM_HINT}, or one word for a special-purpose address.` };
   return { ok: true, value: checked };
 }
 
-// Request alias (boards 94, 94b) -----------------------------------------------------
+// Request PRT email, Personal (boards 94, 94b; issue #798) ---------------------------
+
+/** Request PRT email's Personal choice as sent: the member, and the address the requester confirmed. */
+export type AliasRequestInput = { readonly memberId: number; readonly address: string };
+
+const requestSchema = z.object({ memberId: z.number().int().positive(), address: z.string().max(200) });
 
 /**
- * Request alias as the rules allow it, or the first reason it is refused: the
- * requester may ask for the member (`mayAskFor`), whose PRT email is empty
- * and who has no open request. The database refuses a second open request too
- * (`alias_requests_one_open`).
+ * A personal request as sent, in its shape, with its address checked by
+ * `checkAliasAddress` and saved in lower case. Who may ask and the open
+ * request are `planAliasRequest`'s.
+ */
+export function checkAliasRequest(input: unknown): Checked<AliasRequestInput> {
+  const parsed = requestSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Type the PRT email to request." };
+  const checked = checkAliasAddress(parsed.data.address);
+  if (!checked.ok) return checked;
+  return { ok: true, value: { memberId: parsed.data.memberId, address: checked.value.address } };
+}
+
+/** A personal request the rules allow, as it is stored open. */
+export type PlannedAliasRequest = { readonly memberId: number; readonly requesterId: number; readonly address: string };
+
+/**
+ * Request PRT email's Personal choice as the rules allow it, or the first
+ * reason it is refused: the requester may ask for the member (`mayAskFor`),
+ * whose PRT email is empty and who has no open request, and the address is
+ * nobody's PRT email and no special PRT email yet, in any letter case. The
+ * database refuses a second open request too (`alias_requests_one_open`).
  */
 export function planAliasRequest(input: {
   readonly requesterId: number | null;
@@ -200,15 +229,25 @@ export function planAliasRequest(input: {
   readonly prtEmail: string | null;
   /** The open requests; only the member's is read. */
   readonly open: readonly AliasRequest[];
-}): Checked<{ readonly memberId: number; readonly requesterId: number }> {
-  const { requesterId, standing, memberId, team, org } = input;
+  /** The checked address the requester confirmed (`checkAliasRequest`). */
+  readonly address: string;
+  /** The addresses already held: every PRT email and every special PRT email; only one equal to `address` is read. */
+  readonly taken: readonly string[];
+}): Checked<PlannedAliasRequest> {
+  const { requesterId, standing, memberId, team, org, address } = input;
   const member = team.find((p) => p.id === memberId);
   if (requesterId === null || member === undefined || !mayAskFor(requesterId, standing, memberId, team, org)) {
-    return { ok: false, error: "You can request an alias only for someone you lead or head." };
+    return { ok: false, error: "You can request a PRT email only for someone you lead or head." };
   }
-  if (teamAddressOf(input.prtEmail) !== null) return { ok: false, error: `${member.name} already has a PRT email.` };
-  if (input.open.some((r) => r.memberId === memberId)) return { ok: false, error: `An alias for ${member.name} is already requested.` };
-  return { ok: true, value: { memberId, requesterId } };
+  if (teamAddressOf(input.prtEmail) !== null) return { ok: false, error: `${member.name} already has a personal PRT email.` };
+  if (input.open.some((r) => r.memberId === memberId)) return { ok: false, error: aliasAlreadyRequested(member.name) };
+  if (input.taken.some((t) => t.toLowerCase() === address)) return { ok: false, error: `${address} is already a PRT email.` };
+  return { ok: true, value: { memberId, requesterId, address } };
+}
+
+/** The refusal of a second open personal request for a member, from the check or from the database index. */
+export function aliasAlreadyRequested(name: string): string {
+  return `A personal PRT email for ${name} is already requested.`;
 }
 
 // Automatic requests (issue #543) -------------------------------------------------
@@ -290,7 +329,7 @@ export function planAliasAnswer(input: {
   readonly answer: AliasAnswer;
 }): Checked<AliasAnswerPlan> {
   const { viewer, request, answer } = input;
-  if (!answersAliasRequests(viewer)) return { ok: false, error: "Only the team leader, the operations lead or the IT lead can answer alias requests." };
+  if (!answersAliasRequests(viewer)) return { ok: false, error: "Only the team leader, the operations lead or the IT lead can answer PRT email requests." };
   if (answer.kind === "decline") return { ok: true, value: { kind: "decline", request } };
   const checked = checkAliasAddress(answer.address);
   if (!checked.ok) return checked;
@@ -324,6 +363,20 @@ export type MemberAlias =
   | { readonly kind: "set"; readonly address: string }
   | { readonly kind: "requested"; readonly requestId: number; readonly line: string; readonly cancellable: boolean }
   | { readonly kind: "none"; readonly requestable: boolean };
+
+/**
+ * Whether Request PRT email offers Personal for a member (issue #798): only
+ * while they have no personal PRT email and no open personal request, the
+ * same rule `planAliasRequest` refuses by; otherwise the reason the dialog
+ * shows on the locked choice. `alias` is null when it was not read, which
+ * offers nothing.
+ */
+export function personalRequestChoice(alias: MemberAlias | null, name: string): Permission {
+  const first = name.split(" ")[0] || name;
+  if (alias?.kind === "none") return { allowed: true };
+  if (alias?.kind === "requested") return { allowed: false, reason: `A personal PRT email for ${first} is already requested.` };
+  return { allowed: false, reason: `${first} already has a personal PRT email.` };
+}
 
 /** Every member's alias the Members page shows, by member id. */
 export type MemberAliases = Readonly<Record<number, MemberAlias>>;
@@ -406,30 +459,44 @@ function roleBecome(person: TeamPerson | undefined, org: OrgChart): string | nul
 export type AliasTeamPerson = TeamPerson & { readonly signInEmail: string };
 
 /**
- * An open request for `member` as the approver's row under "Needs your
- * attention" (board 94c): "Marco Bianchi asks for an email alias for Davide
- * Russo", or, for one the site made, "Pietro Ricci needs an email alias", with
- * Decline and Mark created. Mark created's dialog shows the member's sign-in
- * email to copy (issue #586).
+ * The title every PRT email request reads under Needs your attention (issue
+ * #798): a personal one and a special one are the same kind of item to the
+ * approver, so both read "PRT email request for Davide Russo"; the detail
+ * says which.
+ */
+export function prtEmailRequestTitle(member: string): string {
+  return `PRT email request for ${member}`;
+}
+
+/**
+ * An open personal request for `member` as the approver's row under "Needs
+ * your attention" (board 94c, issue #798): "PRT email request for Davide
+ * Russo", then "Personal", the address asked for, who asked and when, or, for
+ * one the site made, "automatic" and the role it was made for, with Decline
+ * and Mark created. Mark created's dialog starts from the address asked for,
+ * or from the member's name when none was stored (`aliasPrefill`), and shows
+ * the member's sign-in email to copy (issue #586).
  */
 export function aliasAttention(request: AliasRequest, member: AliasTeamPerson, team: readonly TeamPerson[], org: OrgChart, now: Date): AttentionItem {
   const name = member.name;
   const when = sentWhen(request.sentAt, now);
-  const action = { answerAlias: request.id, member: name, prefill: aliasPrefill(name), signInEmail: member.signInEmail };
+  const address = request.address ?? null;
+  const action = { answerAlias: request.id, member: name, prefill: address ?? aliasPrefill(name), signInEmail: member.signInEmail };
+  const title = prtEmailRequestTitle(name);
   if (request.requesterId === null) {
     const role = roleBecome(member, org);
     return {
-      kind: "alias-request",
-      title: `${name} needs an email alias`,
-      detail: role === null ? `Automatic · sent ${when}` : `Automatic · became ${role} ${when} and has no alias`,
+      kind: "prt-email-request",
+      title,
+      detail: ["Personal", role === null ? `automatic · sent ${when}` : `automatic · became ${role} ${when} and has no PRT email`].join(" · "),
       action,
     };
   }
-  const requester = requesterName(request, team, "Someone");
+  const requester = requesterName(request, team, "someone");
   return {
-    kind: "alias-request",
-    title: `${requester} asks for an email alias for ${name}`,
-    detail: `Sent ${when} · create it in Google Workspace, then press Mark created. ${name} and ${requester} then see that it's ready.`,
+    kind: "prt-email-request",
+    title,
+    detail: ["Personal", address, `from ${requester}`, `sent ${when}`].filter(Boolean).join(" · "),
     action,
   };
 }

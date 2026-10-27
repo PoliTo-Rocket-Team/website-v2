@@ -28,10 +28,10 @@ export function AnswerTeamAddress({ action, chip = false }: { action: AnswerTeam
     startTransition(async () => {
       const result = await answerTeamAddress(action.answerTeamAddress, { kind: "decline" });
       if (!result.ok) {
-        toast.error("Could not decline the team address request", { description: result.error });
+        toast.error("Could not decline the PRT email request", { description: result.error });
         return;
       }
-      toast.success("Team address request declined");
+      toast.success("PRT email request declined");
     });
   return (
     <span className="flex shrink-0 items-center gap-2" aria-busy={pending}>
@@ -77,7 +77,7 @@ function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOp
         setError(result.error);
         return;
       }
-      toast.success(`Team address saved for ${action.member}`);
+      toast.success(`PRT email saved for ${action.member}`);
       onOpenChange(false);
     });
   };
@@ -95,9 +95,9 @@ function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOp
               save();
             }}
           >
-            <DialogTitle className="text-[20px] font-bold leading-snug">Team address for {action.member}</DialogTitle>
+            <DialogTitle className="text-[20px] font-bold leading-snug">PRT email for {action.member}</DialogTitle>
             <p className="mt-2 text-[14px] leading-relaxed text-prt-muted">
-              Create it in Google Workspace first (recipient address map), then confirm it here. It is saved under {first}&apos;s team addresses,{" "}
+              Create it in Google Workspace first (recipient address map), then confirm it here. It is saved under {first}&apos;s PRT emails,{" "}
               {first} gets the setup steps and the person who asked is told.
             </p>
             <Field label="What it's for" className="mt-6">

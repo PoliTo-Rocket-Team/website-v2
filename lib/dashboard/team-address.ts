@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { attributedName } from "./acting-account";
-import { answersAliasRequests, domainAddressOf, mayAskFor, TEAM_DOMAIN, type AliasTeamPerson } from "./alias-request";
+import { answersAliasRequests, domainAddressOf, mayAskFor, prtEmailRequestTitle, TEAM_DOMAIN, type AliasTeamPerson } from "./alias-request";
 import type { Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
 import type { SeatMove } from "./hand-over";
@@ -199,7 +199,7 @@ export function checkTeamAddress(input: string): Checked<string> {
   const at = typed.lastIndexOf("@");
   if ((at === -1 ? typed : typed.slice(0, at)) === "") return { ok: false, error: "Type the address." };
   const checked = domainAddressOf(typed);
-  if (checked === "off-domain") return { ok: false, error: `A team address must end with @${TEAM_DOMAIN}.` };
+  if (checked === "off-domain") return { ok: false, error: `A special PRT email must end with @${TEAM_DOMAIN}.` };
   if (checked === "shape") return { ok: false, error: "Use one word, such as recruitment, or a dotted name, such as team.events." };
   return { ok: true, value: checked.address };
 }
@@ -283,10 +283,10 @@ export function planTeamAddressRequest(input: {
 }): Checked<PlannedTeamAddressRequest> {
   const { requesterId, standing, request, team, org } = input;
   if (requesterId === null || !mayAskFor(requesterId, standing, request.memberId, team, org)) {
-    return { ok: false, error: "You can request a team address only for someone you lead or head." };
+    return { ok: false, error: "You can request a PRT email only for someone you lead or head." };
   }
   const same = (address: string) => address.toLowerCase() === request.address;
-  if (input.held.some(same)) return { ok: false, error: `${request.address} is already a team address.` };
+  if (input.held.some(same)) return { ok: false, error: alreadyHeld(request.address) };
   if (input.open.some(same)) return { ok: false, error: alreadyRequested(request.address) };
   return { ok: true, value: { ...request, requesterId } };
 }
@@ -400,7 +400,7 @@ export type TeamAddressAnswerPlan =
 
 /** The refusal of an address someone already holds, from the check or from the database index. */
 export function alreadyHeld(address: string): string {
-  return `${address} is already a team address.`;
+  return `${address} is already a PRT email.`;
 }
 
 /**
@@ -423,7 +423,7 @@ export function planTeamAddressAnswer(input: {
 }): Checked<TeamAddressAnswerPlan> {
   const { viewer, request, answer } = input;
   if (!answersAliasRequests(viewer)) {
-    return { ok: false, error: "Only the team leader, the operations lead or the IT lead can answer team address requests." };
+    return { ok: false, error: "Only the team leader, the operations lead or the IT lead can answer PRT email requests." };
   }
   if (answer.kind === "decline") return { ok: true, value: { kind: "decline", request } };
   const checked = checkTeamAddress(answer.address);
@@ -467,13 +467,12 @@ export function teamAddressAttention(
   org: OrgChart,
   now: Date,
 ): AttentionItem {
-  const requester = attributedName(team.find((p) => p.id === request.requesterId)?.name ?? "Someone", request.requesterActingTitle ?? null);
+  const requester = attributedName(team.find((p) => p.id === request.requesterId)?.name ?? "someone", request.requesterActingTitle ?? null);
   const movesWith = request.movesWith === null ? null : `moves with ${movesWithLabel(request.movesWith, org)}`;
   return {
-    kind: "team-address-request",
-    title: `${requester} asks for ${request.address} for ${member.name}`,
-    phoneTitle: `${request.address} for ${member.name}`,
-    detail: [request.purpose, movesWith, `sent ${sentWhen(request.sentAt, now)}`].filter(Boolean).join(" · "),
+    kind: "prt-email-request",
+    title: prtEmailRequestTitle(member.name),
+    detail: ["Special", request.address, request.purpose, movesWith, `from ${requester}`, `sent ${sentWhen(request.sentAt, now)}`].filter(Boolean).join(" · "),
     action: { answerTeamAddress: request.id, member: member.name, address: request.address, purpose: request.purpose, signInEmail: member.signInEmail },
   };
 }
@@ -672,15 +671,15 @@ export function reroutesNow(stored: readonly StoredTeamAddressReroute[], active:
 }
 
 /** What a second Mark done, or one on an item gone meanwhile, reads. */
-export const REROUTE_ALREADY_DONE = "This team address was already moved.";
+export const REROUTE_ALREADY_DONE = "This PRT email was already moved.";
 
 /** What Mark done reads when nobody but the address's holder, or nobody at all, holds the role now. */
 export const REROUTE_NOWHERE =
-  "Nobody else holds this role now, so the team address stays with its holder. There is nothing to move; a new item shows when the role changes hands.";
+  "Nobody else holds this role now, so the PRT email stays with its holder. There is nothing to move; a new item shows when the role changes hands.";
 
 /** What Mark done reads when the role changed hands while it was moving the address (issue #795). */
 export const REROUTE_ROLE_MOVED =
-  "The role changed hands while you were moving this team address, so nothing was moved. The item now names who holds the role; check it and press Mark done again.";
+  "The role changed hands while you were moving this PRT email, so nothing was moved. The item now names who holds the role; check it and press Mark done again.";
 
 /**
  * What one Mark done moves (issue #795): the item and its address, the role
@@ -713,7 +712,7 @@ export function rerouteMoveOf(reroute: StoredTeamAddressReroute, active: readonl
 export function planRerouteDone(viewer: ViewerStanding): Checked<null> {
   return answersAliasRequests(viewer)
     ? { ok: true, value: null }
-    : { ok: false, error: "Only the team leader, the operations lead or the IT lead can move a team address." };
+    : { ok: false, error: "Only the team leader, the operations lead or the IT lead can move a PRT email." };
 }
 
 /**
@@ -769,11 +768,11 @@ export function teamAddressRerouteAttentionFor(
 // Remove (issue #797) ---------------------------------------------------------------
 
 /** What Remove refuses when the address was removed meanwhile. */
-export const REMOVAL_GONE = "This team address is no longer held, so there is nothing to remove.";
+export const REMOVAL_GONE = "This PRT email is no longer held, so there is nothing to remove.";
 
 /** What Remove refuses when the address moved to another member between the check and the write. */
 export const REMOVAL_HOLDER_CHANGED =
-  "This team address moved to another member meanwhile, so it was not removed. Open the member who holds it now to remove it.";
+  "This PRT email moved to another member meanwhile, so it was not removed. Open the member who holds it now to remove it.";
 
 /** What a second Remove on an address reads while its removal waits, from the check or from the database index. */
 export function removalWaiting(address: string): string {
@@ -809,7 +808,7 @@ export function planTeamAddressRemoval(input: {
   const { removerId, standing, address, team, org } = input;
   if (address === undefined) return { ok: false, error: REMOVAL_GONE };
   if (removerId === null || !mayAskFor(removerId, standing, address.holderId, team, org)) {
-    return { ok: false, error: "You can remove a team address only from someone you lead or head." };
+    return { ok: false, error: "You can remove a PRT email only from someone you lead or head." };
   }
   if (input.removing) return { ok: false, error: removalWaiting(address.address) };
   return { ok: true, value: { addressId: address.id, address: address.address, holderId: address.holderId, removerId } };
@@ -837,14 +836,14 @@ export type OpenTeamAddressRemoval = {
 export function planRemovalDone(viewer: ViewerStanding): Checked<null> {
   return answersAliasRequests(viewer)
     ? { ok: true, value: null }
-    : { ok: false, error: "Only the team leader, the operations lead or the IT lead can remove a team address." };
+    : { ok: false, error: "Only the team leader, the operations lead or the IT lead can remove a PRT email." };
 }
 
 /** What a second Mark done on a removal, or one on a removal gone meanwhile, reads. */
-export const REMOVAL_ALREADY_DONE = "This team address was already removed.";
+export const REMOVAL_ALREADY_DONE = "This PRT email was already removed.";
 
 /** What Mark done on a routing item reads while a removal of its address waits. */
-export const REROUTE_BEING_REMOVED = "This team address is being removed, so it does not move. Mark the removal done instead.";
+export const REROUTE_BEING_REMOVED = "This PRT email is being removed, so it does not move. Mark the removal done instead.";
 
 /** How a removal's row names a holder whose member record holds no name. */
 const UNNAMED_MEMBER = "a former member";
@@ -923,7 +922,7 @@ export function teamAddressCardsOf(own: readonly OwnTeamAddress[]): OwnTeamAddre
  */
 export function planTeamAddressSetUp(own: readonly OwnTeamAddress[], addressId: number): Checked<OwnTeamAddress> {
   const address = own.find((a) => a.id === addressId);
-  if (address === undefined) return { ok: false, error: "You hold no such team address to set up." };
-  if (address.setUp) return { ok: false, error: "You already set up this team address." };
+  if (address === undefined) return { ok: false, error: "You hold no such PRT email to set up." };
+  if (address.setUp) return { ok: false, error: "You already set up this PRT email." };
   return { ok: true, value: { ...address, setUp: true } };
 }

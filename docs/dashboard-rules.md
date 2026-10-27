@@ -792,10 +792,41 @@ These rules come from the Owner decisions of 2026-10-11 on #232 (boards 68b to 6
 - The site sends no emails here either: the drawer shows the amber note for anyone added by
   email.
 
+### PRT emails
+
+These rules come from the Owner decisions of 2026-10-27 on issue #798. They set how the two
+stored kinds below, the email alias and the team address, read in the dashboard. Who may ask,
+who may answer and hand-over routing do not change.
+
+- The dashboard calls both kinds a "PRT email". The member's own address is the **personal**
+  one; a shared address such as recruitment@ is a **special** one. Neither "alias" nor "team
+  address" shows in the dashboard.
+- The member side view's Contact section has one "PRT emails" row, in place of the PRT email and
+  Team addresses rows. It lists the personal address, labelled "personal", or the open personal
+  request (Requested, who sent it and when, and Cancel request where allowed), then each special
+  address, labelled "special" with what it is for and "moves with" its role when tied. Each
+  address has a copy button; each special line keeps Remove (issue #797), and the personal line
+  has none. "Removal waiting" sits under its address, and the copy button keeps the same place on
+  every line. The row is hidden when the member holds nothing, has no open request and the
+  viewer may not ask.
+- **Request PRT email** ends the row whenever `mayAskFor` lets the viewer ask for the member,
+  whatever they hold. It opens one dialog with two choices. **Personal** is offered only while
+  the member has no personal address and no open personal request: its address is pre-filled as
+  firstname.lastname on the team domain, may be edited, and is checked on both sides with the
+  alias address check, then Cancel or Confirm. It is refused when the address is already a PRT
+  email of either kind. The request stores the address (`alias_requests.address`); a request the
+  site makes by itself stores none. **Special** is the request form of the Team addresses
+  section below, unchanged.
+- Each approver sees every open personal or special request as one kind of item, "PRT email
+  request for" the member, then "Personal" or "Special", the address and who asked. Mark created
+  starts from the address asked for, or from the member's name when none was stored, and shows
+  the Forwards to row for both.
+
 ### Email aliases
 
 These rules come from the Owner decisions of 2026-10-22 on epic #538 and issue #563 (boards 94 to
-94e, `lib/dashboard/alias-request.ts`).
+94e, `lib/dashboard/alias-request.ts`). Since issue #798 the dashboard names this kind the
+personal PRT email, and the PRT emails section above sets how it reads.
 
 - A member's team address lives in one field, their PRT email (`members.prt_email`), and their
   email alias is that address. A member may be asked for an alias, by hand or by the site, when
@@ -842,7 +873,8 @@ These rules come from the Owner decisions of 2026-10-22 on epic #538 and issue #
 ### Team addresses
 
 These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 and 102b,
-`lib/dashboard/team-address.ts`).
+`lib/dashboard/team-address.ts`). Since issue #798 the dashboard names this kind the special PRT
+email, and the PRT emails section above sets how it reads.
 
 - A team address is a shared address on the team domain, such as a recruitment or logistics
   address. It is held by one member, says what it is for, and may move with a role: the team

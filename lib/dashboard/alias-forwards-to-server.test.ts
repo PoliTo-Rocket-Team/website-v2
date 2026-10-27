@@ -52,7 +52,7 @@ describe("Mark created carries the member's sign-in email for the approvers only
       await seeded();
       signInAs(accountOf(name).userId);
       const expected = await signInEmails();
-      const actions = (await overviewOf()).attention.flatMap((a) => (a.kind === "alias-request" && isAnswerAlias(a.action) ? [a.action] : []));
+      const actions = (await overviewOf()).attention.flatMap((a) => (a.kind === "prt-email-request" && isAnswerAlias(a.action) ? [a.action] : []));
       assert.equal(actions.length, ALL.length, `${name}: one alias row per open request`);
       for (const action of actions) {
         assert.equal(action.signInEmail, expected.get(action.answerAlias), `${name}: request ${action.answerAlias}`);
@@ -72,7 +72,7 @@ describe("Mark created carries the member's sign-in email for the approvers only
       const emails = [...(await signInEmails()).values()];
       const overview = await overviewOf();
       assert.deepEqual(
-        overview.attention.filter((a) => a.kind === "alias-request"),
+        overview.attention.filter((a) => a.kind === "prt-email-request" && isAnswerAlias(a.action)),
         [],
         `${name}: no alias row`,
       );

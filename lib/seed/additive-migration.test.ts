@@ -637,3 +637,23 @@ test("after 0070 the database keeps one open removal per address, and the remova
     { address_id: null, address: "events@politorocketteam.it", from_member: 1, removed_by: 2, done_by: 2 },
   ]);
 });
+
+// A personal PRT email request carries its address (issue #798): one nullable
+// column on `alias_requests`; a request already stored reads as carrying none,
+// so its Mark created starts from the member's name as before.
+const ALIAS_REQUEST_ADDRESS_TAG = "0071_alias_request_address";
+
+test("0071_alias_request_address.sql drops, renames and rewrites nothing, applies again and leaves stored requests with no address", async () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${ALIAS_REQUEST_ADDRESS_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  const { db, apply } = await databaseBefore(ALIAS_REQUEST_ADDRESS_TAG);
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id) values (1);
+    set session_replication_role = origin;
+    insert into alias_requests (member_id) values (1);
+  `);
+  await apply();
+  await apply();
+  assert.deepEqual((await db.query(`select address from alias_requests`)).rows, [{ address: null }]);
+});

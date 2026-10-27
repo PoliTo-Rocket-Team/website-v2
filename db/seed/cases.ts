@@ -1417,7 +1417,7 @@ export const SEED_CASES: readonly SeedCase[] = [
         drawer.cancellable &&
         drawer.line.startsWith("by you") &&
         approvers.length === 3 &&
-        approvers.every((a) => aliasRowsOf(data, a).some((r) => r.kind === "alias-request" && "answerAlias" in r.action && r.action.answerAlias === OPEN_REQUEST.id))
+        approvers.every((a) => aliasRowsOf(data, a).some((r) => r.kind === "prt-email-request" && "answerAlias" in r.action && r.action.answerAlias === OPEN_REQUEST.id))
       );
     },
   },
@@ -1430,7 +1430,7 @@ export const SEED_CASES: readonly SeedCase[] = [
     holds: (data) => {
       const request = openAliasRequestsOf(data).find((r) => r.id === AUTOMATIC_REQUEST.id);
       const [leader] = aliasApproversOf(data);
-      const row = leader === undefined ? undefined : aliasRowsOf(data, leader).find((r) => r.kind === "alias-request" && "answerAlias" in r.action && r.action.answerAlias === AUTOMATIC_REQUEST.id);
+      const row = leader === undefined ? undefined : aliasRowsOf(data, leader).find((r) => r.kind === "prt-email-request" && "answerAlias" in r.action && r.action.answerAlias === AUTOMATIC_REQUEST.id);
       return (
         request?.requesterId === null &&
         teamOf(data).some((p) => p.id === AUTOMATIC_REQUEST.member && p.memberships.some((m) => m.role === "lead")) &&

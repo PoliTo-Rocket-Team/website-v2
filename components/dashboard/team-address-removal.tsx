@@ -64,7 +64,7 @@ function MarkRemovedDialog({ open, onOpenChange, action }: { open: boolean; onOp
           </DialogTitle>
           <p className="mt-2 text-[14px] leading-relaxed text-prt-muted">
             Turn off its routing in Google Workspace first (recipient address map), then mark it done here.{" "}
-            {`It leaves ${first}'s team addresses and can be requested again for someone else.`}
+            {`It leaves ${first}'s PRT emails and can be requested again for someone else.`}
           </p>
           <div className="mt-6 flex flex-col-reverse gap-3 sm:mt-5 sm:flex-row sm:justify-end sm:gap-2.5">
             <DialogClose className="inline-flex h-10 items-center justify-center rounded-full border border-white-10 px-5 text-[14px] font-medium transition-colors duration-300 ease-out hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:h-8 sm:px-3.5">

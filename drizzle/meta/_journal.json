@@ -484,6 +484,13 @@
       "when": 1795022400000,
       "tag": "0070_team_address_removals",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1795108800000,
+      "tag": "0071_alias_request_address",
+      "breakpoints": true
     }
   ]
 }

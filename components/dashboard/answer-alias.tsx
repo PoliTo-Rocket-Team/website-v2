@@ -30,10 +30,10 @@ export function AnswerAlias({ action, chip = false }: { action: AnswerAliasActio
     startTransition(async () => {
       const result = await answerAlias(action.answerAlias, { kind: "decline" });
       if (!result.ok) {
-        toast.error("Could not decline the alias request", { description: result.error });
+        toast.error("Could not decline the PRT email request", { description: result.error });
         return;
       }
-      toast.success("Alias request declined");
+      toast.success("PRT email request declined");
     });
   return (
     <span className="flex shrink-0 items-center gap-2" aria-busy={pending}>
@@ -98,7 +98,7 @@ function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOp
         setError(result.error);
         return;
       }
-      toast.success(`Alias saved for ${action.member}`);
+      toast.success(`PRT email saved for ${action.member}`);
       onOpenChange(false);
     });
   };
@@ -116,13 +116,13 @@ function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOp
               save();
             }}
           >
-            <DialogTitle className="text-[20px] font-bold leading-snug">Email alias for {action.member}</DialogTitle>
+            <DialogTitle className="text-[20px] font-bold leading-snug">PRT email for {action.member}</DialogTitle>
             <p className="mt-2 text-[14px] leading-relaxed text-prt-muted">
               Create it in Google Workspace first (recipient address map), then type it here. It is saved to {first}&apos;s details and {first} gets the
               setup steps.
             </p>
             <ForwardsTo signInEmail={action.signInEmail} className="mt-6" />
-            <Field label="Alias address" error={error} className="mt-5">
+            <Field label="Address" error={error} className="mt-5">
               {(id, describedBy) => (
                 <>
                   <input

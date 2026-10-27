@@ -722,7 +722,7 @@ const ACTION_CASES: readonly ActionCase[] = [
   { action: "actions.answerHandOver", run: () => actions.answerHandOver(IDS.handOver(DM), "decline"), may: nobody, control: by("head-str") },
   // Email aliases (epic #538), for someone in DM: full access (issue #721), or a lead or a head of them, asks;
   // a lead or a head of them (the team leader included) cancels; only the team leader, the operations lead and the IT lead answer.
-  { action: "actions.requestAlias", run: () => actions.requestAlias(IDS.person(DM)), may: (r) => r.expect.aliases.requests.includes(DM), control: by("team leader") },
+  { action: "actions.requestAlias", run: () => actions.requestAlias({ memberId: IDS.person(DM), address: "person.dm@politorocketteam.it" }), may: (r) => r.expect.aliases.requests.includes(DM), control: by("team leader") },
   {
     action: "actions.cancelAliasRequest",
     run: () => actions.cancelAliasRequest(IDS.aliasRequest(DM)),
@@ -952,7 +952,7 @@ describe("email alias requests: the approver rows, Request alias in the drawer, 
     test(name, async () => {
       const data = await open(name);
       const overview = await answerOf(() => data.overview());
-      const rows = overview === "refused" ? [] : (overview as TeamSideOverview).attention.filter((a) => a.kind === "alias-request");
+      const rows = overview === "refused" ? [] : (overview as TeamSideOverview).attention.filter((a) => a.kind === "prt-email-request" && "answerAlias" in a.action);
       assert.equal(rows.length, expect.aliases.answers ? ALL.length : 0, `${name}: one Overview row per open request`);
       const aliases = (await data.memberAliases(ALL.map((u) => IDS.person(u)))) as Record<number, { kind: string; requestable?: boolean }>;
       const requestable = ALL.filter((u) => aliases[IDS.person(u)]?.requestable === true);
@@ -962,7 +962,7 @@ describe("email alias requests: the approver rows, Request alias in the drawer, 
   }
 
   test("a second request for a member with one open is refused by the server, and writes nothing", async () => {
-    const { answer, writes } = await attempt(accountOf("team leader").userId, () => actions.requestAlias(IDS.lead(DM)));
+    const { answer, writes } = await attempt(accountOf("team leader").userId, () => actions.requestAlias({ memberId: IDS.lead(DM), address: "lead.dm@politorocketteam.it" }));
     assert.ok(isRefusal(answer), JSON.stringify(answer));
     assert.deepEqual(writes, []);
   });

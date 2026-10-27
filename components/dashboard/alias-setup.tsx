@@ -24,8 +24,8 @@ export type ReadyAddress = { readonly kind: "alias"; readonly own: OwnAlias } | 
 
 /** What the card and the steps call each kind. Only the alias has a way back to the steps, on My profile. */
 const KINDS = {
-  alias: { noun: "email alias", short: "alias", name: "Email alias", reopen: "You can open these steps again any time from My profile → Setup steps." },
-  "team-address": { noun: "team address", short: "team address", name: "Team address", reopen: null },
+  alias: { noun: "PRT email", short: "PRT email", name: "PRT email", reopen: "You can open these steps again any time from My profile → Setup steps." },
+  "team-address": { noun: "special PRT email", short: "PRT email", name: "Special PRT email", reopen: null },
 } as const satisfies Record<ReadyAddress["kind"], { noun: string; short: string; name: string; reopen: string | null }>;
 
 /** "I've set it up": on the member's own record for the alias, on the address itself for a team address. */

@@ -199,18 +199,18 @@ export function attentionOf(notice: Notice, now: Date): AttentionItem {
     case "alias-created":
       return {
         kind: "notice",
-        title: `${notice.subject}'s email alias is ready`,
+        title: `${notice.subject}'s PRT email is ready`,
         detail: [notice.data.address, shortDate(notice.createdAt, now.getUTCFullYear())].join(" · "),
         action,
-        iconKind: "alias-request",
+        iconKind: "prt-email-request",
       };
     case "alias-declined":
       return {
         kind: "notice",
-        title: `${attributedName(notice.data.by, notice.actingTitle)} declined the email alias for ${notice.subject}`,
-        detail: [shortDate(notice.createdAt, now.getUTCFullYear()), "to ask again, use Request alias on their panel in Members"].join(" · "),
+        title: `${attributedName(notice.data.by, notice.actingTitle)} declined the PRT email for ${notice.subject}`,
+        detail: [shortDate(notice.createdAt, now.getUTCFullYear()), "to ask again, use Request PRT email on their panel in Members"].join(" · "),
         action,
-        iconKind: "alias-request",
+        iconKind: "prt-email-request",
       };
     case "team-address-created":
       return {
@@ -218,7 +218,7 @@ export function attentionOf(notice: Notice, now: Date): AttentionItem {
         title: `${notice.data.address} is ready for ${notice.subject}`,
         detail: shortDate(notice.createdAt, now.getUTCFullYear()),
         action,
-        iconKind: "team-address-request",
+        iconKind: "prt-email-request",
       };
     case "team-address-declined":
       return {
@@ -226,7 +226,7 @@ export function attentionOf(notice: Notice, now: Date): AttentionItem {
         title: `${attributedName(notice.data.by, notice.actingTitle)} declined ${notice.data.address} for ${notice.subject}`,
         detail: [shortDate(notice.createdAt, now.getUTCFullYear()), "you can ask again"].join(" · "),
         action,
-        iconKind: "team-address-request",
+        iconKind: "prt-email-request",
       };
   }
 }

@@ -173,7 +173,7 @@ test("a request is refused for someone the requester may not ask for, and for an
   assert.ok(plan(LEAD, plainSeatStanding("division-lead")).ok);
   assert.equal(plan(IN_MARKETING, plainSeatStanding("member")).ok, false);
   const taken = plan(LEAD, plainSeatStanding("division-lead"), { held: ["Logistics@PoliToRocketTeam.it"] });
-  assert.ok(!taken.ok && /already a team address/.test(taken.error));
+  assert.ok(!taken.ok && /already a PRT email/.test(taken.error));
   const asked = plan(FULL_ACCESS, IT_LEAD, { open: ["LOGISTICS@politorocketteam.it"] });
   assert.ok(!asked.ok && /already requested/.test(asked.error));
 });
@@ -212,7 +212,7 @@ test("Mark created checks the confirmed address again on the team domain, and re
   });
   assert.equal(answerPlan(viewer, { kind: "created", address: "logistics@gmail.com" }).ok, false, "off the team domain");
   const held = answerPlan(viewer, { kind: "created", address: "logistics@politorocketteam.it" }, { held: ["LOGISTICS@politorocketteam.it"] });
-  assert.ok(!held.ok && /already a team address/.test(held.error));
+  assert.ok(!held.ok && /already a PRT email/.test(held.error));
   const asked = answerPlan(viewer, { kind: "created", address: "logistics@politorocketteam.it" }, { openElsewhere: ["logistics@politorocketteam.it"] });
   assert.ok(!asked.ok && /already requested/.test(asked.error));
   assert.equal(checkTeamAddressAnswer({ kind: "created" }).ok, false);
@@ -251,8 +251,8 @@ test("the approver's rows: one per open request, oldest first, with the address,
   assert.deepEqual(
     rows.map((r) => [r.kind, r.title, r.detail]),
     [
-      ["team-address-request", "Person 4 asks for logistics@politorocketteam.it for Person 5", "Logistics · moves with Logistics Lead · sent yesterday"],
-      ["team-address-request", "Person 7 asks for events@politorocketteam.it for Person 5", "Events · sent today"],
+      ["prt-email-request", "PRT email request for Person 5", "Special · logistics@politorocketteam.it · Logistics · moves with Logistics Lead · from Person 4 · sent yesterday"],
+      ["prt-email-request", "PRT email request for Person 5", "Special · events@politorocketteam.it · Events · from Person 7 · sent today"],
     ],
   );
   assert.deepEqual(rows[0]?.action, {

@@ -387,11 +387,14 @@ export interface DashboardData {
    */
   confirmTeamAddressSetUp(addressId: number): Promise<WriteResult<null>>;
   /**
-   * Request alias (board 94): checked by `planAliasRequest`; refused for
-   * anyone but a full-access holder (any member, themselves included) or a
-   * lead or head who manages the member (issue #721), and while the member's PRT email is set or a request is open.
+   * Request PRT email's Personal choice (board 94, issue #798): the member
+   * and the address the requester confirmed, checked by `checkAliasRequest`
+   * and `planAliasRequest`; refused for anyone but a full-access holder (any
+   * member, themselves included) or a lead or head who manages the member
+   * (issue #721), while the member's PRT email is set or a request is open,
+   * and for an address someone already holds.
    */
-  requestAlias(memberId: number): Promise<WriteResult<null>>;
+  requestAlias(input: unknown): Promise<WriteResult<null>>;
   /** Cancel request (board 94b): checked by `planAliasCancel`. */
   cancelAliasRequest(requestId: number): Promise<WriteResult<null>>;
   /**

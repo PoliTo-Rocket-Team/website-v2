@@ -39,8 +39,9 @@ export type Stat = {
  * their decision, approved orders not ordered yet, and positions closing soon.
  * "acceptance-emails": the team leader's count of acceptance emails to send,
  * linking to the box on Applications (board 100, ./acceptance-emails.ts).
- * "alias-request" and "team-address-request": an open request waiting for
- * an approver's answer (./alias-request.ts, ./team-address.ts).
+ * "prt-email-request": an open PRT email request waiting for an approver's
+ * answer, personal (./alias-request.ts) or special (./team-address.ts): one
+ * kind of item to the approver (issue #798), over the two stored kinds.
  * "team-address-reroute": a team address whose role changed hands, waiting
  * for an approver to move it (./team-address.ts).
  * "team-address-removal": a team address someone removed, waiting for an
@@ -56,8 +57,7 @@ export type AttentionKind =
   | "orders-to-decide"
   | "approved-orders"
   | "hand-over"
-  | "alias-request"
-  | "team-address-request"
+  | "prt-email-request"
   | "team-address-reroute"
   | "team-address-removal";
 
