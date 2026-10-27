@@ -884,7 +884,7 @@ export type GrantRow = {
  * The `scopes` row one area in one place is stored as. Content is a `website`
  * row on `content` in no unit (issue #504), read by `holdsContentGrant`
  * (./viewer.ts). The old Alumni `website` rows on `all` are no area here and
- * nothing reads them (issue #589). A whole-team
+ * were deleted (issues #589, #637: drizzle/0074). A whole-team
  * area is a `team` row in no unit; a department's has only `dept_id`; a
  * division's only `division_id`.
  */
