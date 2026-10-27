@@ -49,7 +49,7 @@ const records = [
 ];
 
 const build = (actor: TeamActor | null, selfId: number | null = null) =>
-  teamStructure({ records, org, actor, selfId, seat: null, waiting: { 1: [{ joinId: 9, email: "new@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS, addedOn: "2026-10-20", signedIn: false }] }, joining: {}, openPositions: { 1: 2 } });
+  teamStructure({ records, org, actor, selfId, seat: null, waiting: { 1: [{ joinId: 9, email: "new@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS, addedOn: "2026-10-20", signedIn: false, addedBy: { kind: "viewer" } }] }, joining: {}, openPositions: { 1: 2 } });
 
 test("the team leader and full access edit every department and division, and add departments (board 77b)", () => {
   const structure = build({ kind: "team" })!;

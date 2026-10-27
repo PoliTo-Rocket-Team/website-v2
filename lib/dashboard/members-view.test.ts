@@ -6,6 +6,7 @@ import { NO_MEMBER_DETAILS } from "./details";
 import { divisionMembers, positionsOf, type PersonRecord, type WaitingPerson } from "./division-members";
 import { MEMBERS_TOOLS, membersModelOf, NO_MEMBERS_FILTER, opensWholeTeam, shownMembers, type MemberEntry, type MembersModel } from "./members-view";
 import { membershipsOf, type DivisionQueue, type DivisionRole, type Joining, type OrgChart, type RoleBeyondDivisions, type TeamActor } from "./team";
+import type { TeamAddressLine } from "./team-address";
 import { wholeTeamMembers } from "./team-members";
 import type { ViewerStanding } from "./viewer";
 
@@ -52,7 +53,7 @@ const records = [
   record(7, "Alessandro Greco", [], [{ kind: "team-leader", title: "" }]),
 ];
 
-const elena: WaitingPerson = { joinId: 9, email: "elena@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS, addedOn: "2026-10-20", signedIn: false };
+const elena: WaitingPerson = { joinId: 9, email: "elena@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS, addedOn: "2026-10-20", signedIn: false, addedBy: { kind: "viewer" } };
 const giulia: Joining = { applicationId: 41, name: "Giulia Rossi", photoUrl: null, position: "Mission Analyst", ndaArrived: true, canConfirm: true };
 const paolo: Joining = { applicationId: 42, name: "Paolo Neri", photoUrl: null, position: "CAD Engineer", ndaArrived: true, canConfirm: false };
 
@@ -173,6 +174,43 @@ test("on the whole team the selects narrow everyone, and a division from another
   assert.equal(names({ department: "Structures", divisionId: 2 }).length, 2);
   assert.equal(shownMembers(leader, { ...NO_MEMBERS_FILTER, department: "Structures", divisionId: 2 }).division, null);
   assert.deepEqual(names({ query: "lena" }), ["Lena Fischer"]);
+});
+
+// Issue #800: the search also finds a person by every PRT email they hold,
+// the personal one and each shared team address, on top of the name, the
+// sign-in email and the phone.
+test("the search matches a held team address and the personal PRT email, not an address someone else holds (#800)", () => {
+  const withDetails = records.map((r) =>
+    r.id === 3 ? { ...r, details: { ...NO_MEMBER_DETAILS, prtEmail: "davide.russo@team.example", phone: "+39 333 123 4567" } } : r,
+  );
+  const positions = positionsOf(withDetails, org, { kind: "team" }, 7);
+  const leader = membersModelOf({ scope: "whole-team", positions, queues, correctsSignInEmail: [], ...wholeTeamMembers({ records: withDetails, org, selfId: 7 }) })!;
+  let nextId = 0;
+  const line = (address: string): TeamAddressLine => ({ id: ++nextId, address, purpose: "", movesWith: null, removal: "none" });
+  const teamAddresses = {
+    rows: {
+      2: { lines: [line("logistics@team.example")], requestable: false },
+      4: { lines: [line("sponsors@team.example"), line("press@team.example")], requestable: true },
+    },
+  };
+  const names = (query: string) => shownMembers(leader, { ...NO_MEMBERS_FILTER, query }, teamAddresses).people.map((p) => p.name);
+
+  // A shared team address, in full or in part.
+  assert.deepEqual(names("logistics@team.example"), ["Lena Fischer"]);
+  assert.deepEqual(names("logistics"), ["Lena Fischer"]);
+  assert.deepEqual(names("press@"), ["Laura Greco"]);
+  // The personal PRT email, in full or in part.
+  assert.deepEqual(names("davide.russo@team.example"), ["Davide Russo"]);
+  assert.deepEqual(names("davide.russo"), ["Davide Russo"]);
+  // An address nobody holds lists no one; a holder of a different address is not listed.
+  assert.deepEqual(names("treasury@"), []);
+  assert.ok(!names("sponsors").includes("Lena Fischer"));
+  // The name, the sign-in email and the phone still match as before.
+  assert.deepEqual(names("fischer"), ["Lena Fischer"]);
+  assert.deepEqual(names("federica@gmail.com"), ["Federica Leone"]);
+  assert.deepEqual(names("3331234"), ["Davide Russo"]);
+  // Without the address rows, a team address finds no one: only the page's rows carry them.
+  assert.deepEqual(shownMembers(leader, { ...NO_MEMBERS_FILTER, query: "logistics" }).people, []);
 });
 
 // Issue #584: one Edit details panel for every viewer who may edit someone.
