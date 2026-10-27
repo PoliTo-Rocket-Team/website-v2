@@ -26,7 +26,7 @@ Who may take each step, and what each viewer sees, is in the dashboard rules doc
 4. **Decision.** The lead accepts or rejects.
 5. **Accept is not join.**
    - The team leader emails the accepted person the NDA.
-   - The applicant sees only: "The team will contact you about joining. Watch your inbox."
+   - The applicant sees only the joining sentence. Its current text is set by the 2026-10-27 amendment below.
    - The lead or the recruitment manager confirms join once the signed NDA is back. Only that makes the person a member.
 6. **Accept does not touch the person's other applications.**
 7. **One person, one division.** Superseded by [0014](./0014-several-divisions-one-nda.md): a person may hold several divisions at once. 0014 also amends rule 5 for someone already on the team, who joins a new division with no NDA wait; rule 5 still holds for everyone else.
@@ -99,6 +99,10 @@ Owner decisions of 2026-10-25 on epic #588 and the owner's rulings on its grilli
 9. **A person already on the team** follows the same statuses as any applicant ([ruling R1.3](https://github.com/PoliTo-Rocket-Team/website-v2/issues/745#issuecomment-6399754015)); see the 2026-10-25 amendment of [0014](./0014-several-divisions-one-nda.md).
 
 Existing applications are test data, so no stored row is mapped to the new list; the seed uses it, and schema changes stay additive ([ruling R1.4](https://github.com/PoliTo-Rocket-Team/website-v2/issues/745#issuecomment-6399754905)). The children of epic #588 built the code that follows these rules, in `lib/dashboard/application-flow.ts`. The rest of this record is unchanged.
+
+## Amendment, 2026-10-27: the joining sentence
+
+The accepted applicant's Next steps text, the joining sentence of rule 5, is now "Check your email." It replaces the earlier text, which is no longer shown. This follows the decision recorded on issue #790, row N39 of https://github.com/PoliTo-Rocket-Team/website-v2/issues/790#issuecomment-6425142072. The binding constraint on the joining sentence still holds: between Accept and joining, the applicant sees only this one sentence. The text is `NEXT_STEPS_TEXT` in [lib/dashboard/my-applications.ts](../lib/dashboard/my-applications.ts). The rest of this record is unchanged.
 
 ## Records
 
