@@ -927,7 +927,9 @@ These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 
 - A team address can be removed from its holder (Owner decision of 2026-10-27, issue #797). Who
   may remove it is who may request a team address for its holder (`mayAskFor`): for them each
   line of the Team addresses row ends with **Remove**, which asks first ("Keep address" or
-  "Remove"). The server runs the same check and refuses anyone else, writing nothing.
+  "Remove"). The server runs the same check and refuses anyone else, writing nothing. It stores
+  the removal only while the address still has the holder that check read: if a routing item's
+  Mark done moved it to another member meanwhile, Remove is refused and stores nothing.
 - Remove stores one open removal for the address (`team_address_removals`). While it waits, the
   line shows "Removal waiting" to every viewer of the row, with no Remove, and a second Remove is
   refused, also when two are sent at once (`team_address_removals_one_open`). The address still
@@ -935,7 +937,8 @@ These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 
 - Each approver (the team leader, the operations lead and the IT lead) sees one Needs your
   attention row per open removal, oldest first, with the at-sign: "Remove" the address "from" its
   holder, then what it is for, who asked and when, with **Mark done**. Its dialog asks to turn off
-  the routing in Google Workspace first. Nobody else sees the row or may mark it done.
+  the routing in Google Workspace first. Nobody else sees the row or may mark it done. The row
+  stays, with Mark done, when the holder leaves the team after Remove.
 - **Mark done** deletes the address in the same batch that closes the removal: it leaves the
   holder's Team addresses row and their Overview card, and Request team address takes it again,
   in any letter case, for any member. The removal row keeps the address, whose it was, who

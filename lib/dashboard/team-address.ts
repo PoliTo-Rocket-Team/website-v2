@@ -757,8 +757,12 @@ export function teamAddressRerouteAttentionFor(
 
 // Remove (issue #797) ---------------------------------------------------------------
 
-/** What Remove refuses when the address left its holder, or was removed, meanwhile. */
+/** What Remove refuses when the address was removed meanwhile. */
 export const REMOVAL_GONE = "This team address is no longer held, so there is nothing to remove.";
+
+/** What Remove refuses when the address moved to another member between the check and the write. */
+export const REMOVAL_HOLDER_CHANGED =
+  "This team address moved to another member meanwhile, so it was not removed. Open the member who holds it now to remove it.";
 
 /** What a second Remove on an address reads while its removal waits, from the check or from the database index. */
 export function removalWaiting(address: string): string {
@@ -831,41 +835,47 @@ export const REMOVAL_ALREADY_DONE = "This team address was already removed.";
 /** What Mark done on a routing item reads while a removal of its address waits. */
 export const REROUTE_BEING_REMOVED = "This team address is being removed, so it does not move. Mark the removal done instead.";
 
+/** How a removal's row names a holder whose member record holds no name. */
+const UNNAMED_MEMBER = "a former member";
+
 /**
  * An open removal as the approver's row under Needs your attention:
  * "Remove logistics@politorocketteam.it from Davide Russo", then what it is
  * for, who asked and when, with Mark done, whose dialog asks to turn the
- * routing off in Google Workspace first.
+ * routing off in Google Workspace first. `names` holds everyone with a
+ * member record, on the team or not, so a holder or remover who has left
+ * the team since is still named.
  */
-export function teamAddressRemovalAttention(removal: OpenTeamAddressRemoval, holder: TeamPerson, team: readonly TeamPerson[], now: Date): AttentionItem {
-  const remover = attributedName(team.find((p) => p.id === removal.removerId)?.name ?? "Someone", removal.removerActingTitle);
+export function teamAddressRemovalAttention(removal: OpenTeamAddressRemoval, names: ReadonlyMap<number, string>, now: Date): AttentionItem {
+  const holder = names.get(removal.holderId) ?? UNNAMED_MEMBER;
+  const removerName = removal.removerId === null ? undefined : names.get(removal.removerId);
+  const remover = attributedName(removerName ?? "Someone", removal.removerActingTitle);
   return {
     kind: "team-address-removal",
-    title: `Remove ${removal.address} from ${holder.name}`,
+    title: `Remove ${removal.address} from ${holder}`,
     phoneTitle: `Remove ${removal.address}`,
     detail: [removal.purpose, `asked by ${remover}`, `sent ${sentWhen(removal.removedAt, now)}`].join(" · "),
-    action: { markRemovalDone: removal.id, address: removal.address, member: holder.name },
+    action: { markRemovalDone: removal.id, address: removal.address, member: holder },
   };
 }
 
 /**
  * The open removals as the viewer's rows, oldest first: one per removal for
  * each approver seat (`answersAliasRequests`), none for anyone else. A
- * removal from someone no longer on the team is not shown.
+ * removal stays shown when its holder has left the team since: the address
+ * counts as held until Mark done, so hiding the row would keep it held for
+ * good.
  */
 export function teamAddressRemovalAttentionFor(
   viewer: ViewerStanding,
   open: readonly OpenTeamAddressRemoval[],
-  team: readonly TeamPerson[],
+  names: ReadonlyMap<number, string>,
   now: Date,
 ): AttentionItem[] {
   if (!answersAliasRequests(viewer)) return [];
   return [...open]
     .sort((a, b) => Date.parse(a.removedAt) - Date.parse(b.removedAt) || a.id - b.id)
-    .flatMap((r) => {
-      const holder = team.find((p) => p.id === r.holderId);
-      return holder === undefined ? [] : [teamAddressRemovalAttention(r, holder, team, now)];
-    });
+    .map((r) => teamAddressRemovalAttention(r, names, now));
 }
 
 // The holder's own team addresses (owner finding on PR #794; board 94f) -----------

@@ -28,6 +28,7 @@ import {
   planTeamAddressSetUp,
   REMOVAL_ALREADY_DONE,
   REMOVAL_GONE,
+  REMOVAL_HOLDER_CHANGED,
   removalWaiting,
   REROUTE_ALREADY_DONE,
   REROUTE_BEING_REMOVED,
@@ -45,6 +46,7 @@ import {
   type OpenTeamAddressRequest,
   type OpenTeamAddressReroute,
   type OwnTeamAddress,
+  type PlannedTeamAddressRemoval,
   type RerouteMove,
   type StoredTeamAddress,
   type StoredTeamAddressReroute,
@@ -52,7 +54,7 @@ import {
   type TiedRoleChange,
 } from "./team-address";
 import type { OrgChart } from "./team";
-import { aliasTeamOf, readTeamSnapshot, teamPeopleOf } from "./team-database";
+import { aliasTeamOf, memberNamesOf, readTeamSnapshot, teamPeopleOf } from "./team-database";
 import { FLAG_OF_SEAT, isOffTeam, SEAT_OF_FLAG } from "./viewer";
 import { refused, written, type WriteResult } from "./write";
 
@@ -637,25 +639,14 @@ async function readStoredAddress(addressId: number): Promise<StoredTeamAddress |
   return row && { id: row.id, address: row.address, purpose: row.purpose, holderId: row.holder_id, movesWith: movesWithOf(row) };
 }
 
-/** Postgres' foreign_key_violation: the address a removal names was deleted between the check and the insert. */
-const FOREIGN_KEY_VIOLATION = "23503";
-
-function isForeignKeyViolation(error: unknown): boolean {
-  for (let e = error; e instanceof Error; e = e.cause) {
-    if ((e as { code?: unknown }).code === FOREIGN_KEY_VIOLATION) return true;
-  }
-  return false;
-}
-
 /**
- * Remove in the member side view, checked by `planTeamAddressRemoval`: the
- * removal is stored open, naming the address and its holder, and waits for
- * the approvers. A second Remove sent between the check and the insert is
- * refused by `team_address_removals_one_open`, with the check's own message.
+ * What Remove's check allows on `addressId` now (`planTeamAddressRemoval`):
+ * the address with the holder the check read, or the first reason it is
+ * refused.
  */
-export async function removeTeamAddress(identity: DashboardIdentity, addressId: number): Promise<WriteResult<null>> {
+async function readTeamAddressRemoval(identity: DashboardIdentity, addressId: number): Promise<Checked<PlannedTeamAddressRemoval>> {
   const [snapshot, address, removing] = await Promise.all([readTeamSnapshot(), readStoredAddress(addressId), readRemovingIds([addressId])]);
-  const planned = planTeamAddressRemoval({
+  return planTeamAddressRemoval({
     removerId: identity.memberId,
     standing: identity,
     address,
@@ -663,24 +654,45 @@ export async function removeTeamAddress(identity: DashboardIdentity, addressId: 
     org: snapshot.org,
     removing: removing.length > 0,
   });
-  if (!planned.ok) return refused(planned.error);
-  const removal = planned.value;
+}
+
+/**
+ * Stores the removal `readTeamAddressRemoval` allowed, open, for the
+ * approvers. One statement checks and inserts: it copies the address row
+ * only while it still has the holder the check read, locking it, so a
+ * routing item's Mark done that moved the address meanwhile, or one that
+ * waits on the lock and moves it first, leaves nothing to insert, and Remove
+ * is refused rather than open a removal against the new holder. A second
+ * Remove sent between the check and the insert is refused by
+ * `team_address_removals_one_open`, with the check's own message.
+ */
+export async function storeTeamAddressRemoval(
+  remover: Pick<DashboardIdentity, "actingAccountId">,
+  removal: PlannedTeamAddressRemoval,
+): Promise<WriteResult<null>> {
   try {
-    await runAuditQuery((db) =>
-      db.insert(teamAddressRemovals).values({
-        addressId: removal.addressId,
-        address: removal.address,
-        fromMember: removal.holderId,
-        removedBy: removal.removerId,
-        removedByActingAccount: identity.actingAccountId,
-      }),
+    const stored = await runAuditQuery((db) =>
+      db.execute<{ id: number }>(sql`
+        INSERT INTO ${teamAddressRemovals} ("address_id", "address", "from_member", "removed_by", "removed_by_acting_account")
+        SELECT "id", "address", "holder_id", ${removal.removerId}, ${remover.actingAccountId}
+        FROM ${teamAddresses}
+        WHERE "id" = ${removal.addressId} AND "holder_id" = ${removal.holderId}
+        FOR UPDATE
+        RETURNING "id"`),
     );
+    if (stored.rows.length === 1) return written(null);
   } catch (error) {
     if (isUniqueViolation(error)) return refused(removalWaiting(removal.address));
-    if (isForeignKeyViolation(error)) return refused(REMOVAL_GONE);
     throw error;
   }
-  return written(null);
+  // Nothing was inserted: the address is gone, or has another holder now.
+  return refused((await readStoredAddress(removal.addressId)) === undefined ? REMOVAL_GONE : REMOVAL_HOLDER_CHANGED);
+}
+
+/** Remove in the member side view: checked by `readTeamAddressRemoval`, stored by `storeTeamAddressRemoval`. */
+export async function removeTeamAddress(identity: DashboardIdentity, addressId: number): Promise<WriteResult<null>> {
+  const planned = await readTeamAddressRemoval(identity, addressId);
+  return planned.ok ? storeTeamAddressRemoval(identity, planned.value) : refused(planned.error);
 }
 
 /** The removals still open, beside their address's holder and purpose now: all of them, or one by id. */
@@ -717,7 +729,8 @@ export async function readTeamAddressRemovalAttention(identity: DashboardIdentit
   // By the seat alone, so the break-glass admin with no member row removes addresses too (issue #646).
   if (!answersAliasRequests(identity)) return [];
   const [open, snapshot] = await Promise.all([readOpenTeamAddressRemovals(), readTeamSnapshot()]);
-  return teamAddressRemovalAttentionFor(identity, open, teamPeopleOf(snapshot), now);
+  // Named off every member record, so a holder who has left the team since keeps the row.
+  return teamAddressRemovalAttentionFor(identity, open, memberNamesOf(snapshot), now);
 }
 
 /**

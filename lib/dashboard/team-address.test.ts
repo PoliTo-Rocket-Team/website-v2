@@ -454,10 +454,11 @@ test("only the approver seats see a removal and mark it done; once done the addr
     removedAt: "2026-10-27T09:00:00Z",
   };
   const now = new Date("2026-10-27T10:00:00Z");
+  const names = new Map(team.map((p) => [p.id, p.name]));
   for (const viewer of [plainSeatStanding("team-leader"), plainSeatStanding("operations-lead"), IT_LEAD]) {
     assert.ok(planRemovalDone(viewer).ok);
     assert.deepEqual(
-      teamAddressRemovalAttentionFor(viewer, [removal], team, now).map((r) => [r.title, r.detail, r.action]),
+      teamAddressRemovalAttentionFor(viewer, [removal], names, now).map((r) => [r.title, r.detail, r.action]),
       [
         [
           "Remove logistics@politorocketteam.it from Person 5",
@@ -469,8 +470,14 @@ test("only the approver seats see a removal and mark it done; once done the addr
   }
   for (const viewer of [{ ...IT_LEAD, seat: "project-manager" as const }, plainSeatStanding("division-lead"), plainSeatStanding("member")]) {
     assert.equal(planRemovalDone(viewer).ok, false);
-    assert.deepEqual(teamAddressRemovalAttentionFor(viewer, [removal], team, now), []);
+    assert.deepEqual(teamAddressRemovalAttentionFor(viewer, [removal], names, now), []);
   }
+  // A holder who has left the team since keeps the row, named off their member record.
+  const left = { ...removal, holderId: 999 };
+  assert.deepEqual(
+    teamAddressRemovalAttentionFor(IT_LEAD, [left], new Map([...names, [999, "Former Holder"]]), now).map((r) => r.title),
+    ["Remove logistics@politorocketteam.it from Former Holder"],
+  );
   // Mark done deletes the address, so the held addresses no longer name it, in any letter case.
   const request: TeamAddressRequest = { memberId: IN_MARKETING, address: "logistics@politorocketteam.it", purpose: "Logistics", movesWith: null };
   const ask = (heldNow: string[]) => planTeamAddressRequest({ requesterId: FULL_ACCESS, standing: IT_LEAD, request, team, org, held: heldNow, open: [] });

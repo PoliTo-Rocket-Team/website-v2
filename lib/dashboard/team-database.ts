@@ -236,6 +236,18 @@ function nameOf(person: PersonRow | undefined): { name: string; email: string } 
   return { name, email: person.email };
 }
 
+/**
+ * The name of everyone with a member row, on the team or not, as the roster
+ * shows it: for a row about someone who may have left since, such as a team
+ * address removal (issue #797).
+ */
+export function memberNamesOf(snapshot: TeamSnapshot): ReadonlyMap<number, string> {
+  return new Map(snapshot.people.flatMap((p) => {
+    const named = nameOf(p);
+    return named === null ? [] : [[p.member_id, named.name] as const];
+  }));
+}
+
 function yearOf(date: string): number {
   return Number(date.slice(0, 4));
 }

@@ -12,8 +12,8 @@ import { signInAs } from "./access-matrix/session";
 import type { DashboardData } from "./data";
 import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
-import { moveTeamAddress, readRerouteMove } from "./database-team-address";
-import { NO_TEAM_ADDRESSES, REMOVAL_ALREADY_DONE, REROUTE_BEING_REMOVED, REROUTE_ROLE_MOVED } from "./team-address";
+import { moveTeamAddress, readRerouteMove, storeTeamAddressRemoval } from "./database-team-address";
+import { NO_TEAM_ADDRESSES, REMOVAL_ALREADY_DONE, REMOVAL_HOLDER_CHANGED, REROUTE_BEING_REMOVED, REROUTE_ROLE_MOVED } from "./team-address";
 
 // Shared team addresses on the migrated in-memory Postgres (epic #578): the
 // member side view's Team addresses row (issue #786, board 102), read with
@@ -496,4 +496,46 @@ test("while a removal waits, the address's routing item is hidden and its Mark d
   assert.deepEqual(await actions.markTeamAddressRemovalDone(1), { ok: true, value: null });
   assert.deepEqual(await tableRows(teamAddressReroutes), []);
   assert.deepEqual((await tableRows(teamAddresses)).filter((r) => r.address === STRUCTURES), []);
+});
+
+test("a removal whose holder then leaves the team stays with the approver seats, and its Mark done frees the address", async () => {
+  await seeded();
+  const id = await idOf(LOGISTICS);
+  signInAs("lead-ma");
+  assert.deepEqual(await actions.removeTeamAddress(id), { ok: true, value: null });
+  // The holder leaves the team: every role they hold ends.
+  signInAs("person-ma");
+  assert.equal((await actions.leaveTeam("Moving on", false)).ok, true, "the holder leaves");
+  assert.ok((await tableRows(roles)).filter((r) => r.memberId === HOLDER).every((r) => r.leavedAt !== null), "no active role is left");
+  for (const viewer of ["team leader", "operations lead", "IT lead"]) {
+    assert.deepEqual(
+      (await removalRowsSeenBy(viewer)).map((r) => [r.title, r.action]),
+      [[`Remove ${LOGISTICS} from Person MA`, { markRemovalDone: 1, address: LOGISTICS, member: "Person MA" }]],
+      viewer,
+    );
+  }
+  signInAs(accountOf("IT lead").userId);
+  assert.deepEqual(await actions.markTeamAddressRemovalDone(1), { ok: true, value: null });
+  assert.deepEqual((await tableRows(teamAddresses)).filter((r) => r.address === LOGISTICS), [], "the address is free");
+  signInAs(accountOf("team leader").userId);
+  assert.deepEqual(
+    await actions.requestTeamAddress({ memberId: DM_MEMBER, address: LOGISTICS, purpose: "Logistics", movesWith: null }),
+    { ok: true, value: null },
+    "and can be requested again",
+  );
+});
+
+test("an address that moves to another member between Remove's check and its write is refused, and no removal is stored", async () => {
+  await seeded();
+  const id = await idOf(LOGISTICS);
+  signInAs(accountOf("team leader").userId);
+  // What Remove's check read: the address, held by MA's member.
+  const checked = { addressId: id, address: LOGISTICS, holderId: HOLDER, removerId: accountOf("team leader").memberId! };
+  // A routing item's Mark done moves it before the write.
+  await changeRows(teamAddresses, { id }, { holderId: DM_MEMBER });
+  assert.deepEqual(await storeTeamAddressRemoval({ actingAccountId: null }, checked), { ok: false, error: REMOVAL_HOLDER_CHANGED });
+  assert.deepEqual(await tableRows(teamAddressRemovals), [], "nothing is stored");
+  // Read again, the check names the new holder, and Remove goes through against them.
+  assert.deepEqual(await actions.removeTeamAddress(id), { ok: true, value: null });
+  assert.deepEqual((await tableRows(teamAddressRemovals)).map((r) => r.fromMember), [DM_MEMBER]);
 });
