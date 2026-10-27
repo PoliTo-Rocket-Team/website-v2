@@ -12,9 +12,12 @@ import {
   movesWithOptions,
   owedTeamAddressReroutes,
   ownTeamAddressesOf,
+  planRemovalDone,
   planTeamAddressAnswer,
+  planTeamAddressRemoval,
   planTeamAddressRequest,
   planTeamAddressSetUp,
+  REMOVAL_GONE,
   REROUTE_NOWHERE,
   rerouteMoveOf,
   rerouteTargetNow,
@@ -22,11 +25,13 @@ import {
   teamAddressAnswerNotices,
   teamAddressAttentionFor,
   teamAddressCardsOf,
+  teamAddressRemovalAttentionFor,
   teamAddressRerouteAttentionFor,
   type MovesWith,
+  type OpenTeamAddressRemoval,
   type OpenTeamAddressRequest,
+  type StoredTeamAddress,
   type StoredTeamAddressReroute,
-  type TeamAddress,
   type TeamAddressAnswer,
   type TeamAddressRequest,
   type TiedRoleChange,
@@ -74,9 +79,10 @@ const team = [
 ];
 
 const IT_LEAD: ViewerStanding = { kind: "operations-lead", seat: "it-lead", siteContent: false, approveOrders: false };
-const NOBODY = { viewerId: null, standing: plainSeatStanding("non-member") } as const;
+const NOBODY = { viewerId: null, standing: plainSeatStanding("non-member"), removing: [] } as const;
 
-const held = (address: string, movesWith: MovesWith | null, holderId = HOLDER): TeamAddress => ({ address, purpose: `${address} purpose`, holderId, movesWith });
+let lastId = 0;
+const held = (address: string, movesWith: MovesWith | null, holderId = HOLDER): StoredTeamAddress => ({ id: ++lastId, address, purpose: `${address} purpose`, holderId, movesWith });
 
 test("each of the four tie kinds reads as the org chart names the role", () => {
   const cases: readonly [MovesWith, string][] = [
@@ -123,7 +129,7 @@ test("a member holding none whom the viewer may not ask for, or off the team, ha
 
 test("Request team address shows for a lead's own division and not outside it, for full access on anyone themselves included, and never for a plain member", () => {
   const requestable = (viewerId: number, standing: ViewerStanding) => {
-    const { rows } = memberTeamAddressesFor({ viewerId, standing, memberIds: [IN_LOGISTICS, IN_MARKETING, FULL_ACCESS], team, org, held: [] });
+    const { rows } = memberTeamAddressesFor({ viewerId, standing, memberIds: [IN_LOGISTICS, IN_MARKETING, FULL_ACCESS], team, org, held: [], removing: [] });
     return Object.entries(rows)
       .filter(([, row]) => row.requestable)
       .map(([id]) => Number(id));
@@ -264,7 +270,7 @@ test("the approver's rows: one per open request, oldest first, with the address,
 
 test("a role change owes one routing item for each tied address whose holder no longer holds the role, naming the first new holder by id", () => {
   const LOGISTICS_LEAD: MovesWith = { kind: "division-lead", divisionId: 9 };
-  const tied = (id: number, movesWith: MovesWith | null, holderId = LEAD) => ({ id, ...held(`a${id}@politorocketteam.it`, movesWith, holderId) });
+  const tied = (id: number, movesWith: MovesWith | null, holderId = LEAD) => ({ ...held(`a${id}@politorocketteam.it`, movesWith, holderId), id });
   const owed = (address: ReturnType<typeof tied>, change: TiedRoleChange, open: { addressId: number; toId: number }[] = []) =>
     owedTeamAddressReroutes({ addresses: [address], changes: [change], open });
   const cases: [string, ReturnType<typeof owed>, ReturnType<typeof owed>][] = [
@@ -359,9 +365,10 @@ test("an open routing item moves its address to whoever holds the tied role now,
   const [open] = reroutesNow([item(B)], [lead(C)], org);
   assert.equal(open?.toId, C, "the approver's row names C");
   const now = new Date("2026-10-27T10:00:00Z");
-  const rows = teamAddressRerouteAttentionFor(IT_LEAD, [open!], team, org, now);
+  const rows = teamAddressRerouteAttentionFor(IT_LEAD, [open!], team, org, now, []);
   assert.deepEqual(rows.map((r) => r.title), ["logistics@politorocketteam.it goes to Person 6"]);
-  assert.deepEqual(teamAddressRerouteAttentionFor(IT_LEAD, reroutesNow([item(B)], [lead(A)], org), team, org, now), [], "nothing to move: no row");
+  assert.deepEqual(teamAddressRerouteAttentionFor(IT_LEAD, reroutesNow([item(B)], [lead(A)], org), team, org, now, []), [], "nothing to move: no row");
+  assert.deepEqual(teamAddressRerouteAttentionFor(IT_LEAD, [open!], team, org, now, [open!.addressId]), [], "its removal waits: no row (issue #797)");
 
   // What Mark done moves, with what it read beside it, so its write can check those still stand (issue #795).
   assert.deepEqual(rerouteMoveOf(item(B), [lead(C)], org), {
@@ -392,4 +399,81 @@ test("the holder reads a ready card per own team address not set up, and sets up
   assert.equal(planTeamAddressSetUp(own, 1).ok, false, "a second press");
   assert.equal(planTeamAddressSetUp(own, 3).ok, false, "an address they do not hold");
   assert.deepEqual(ownTeamAddressesOf({ kind: "alumni", held: stored }), [], "off the team");
+});
+
+// Remove (issue #797) ------------------------------------------------------------------
+
+test("Remove shows on each address for whoever may request one for its holder, and the waiting removal for everyone once it is open", () => {
+  const logistics = held("logistics@politorocketteam.it", null, IN_LOGISTICS);
+  const marketing = held("marketing@politorocketteam.it", null, IN_MARKETING);
+  const removals = (viewerId: number, standing: ViewerStanding, removing: number[] = []) => {
+    const { rows } = memberTeamAddressesFor({ viewerId, standing, memberIds: [IN_LOGISTICS, IN_MARKETING], team, org, held: [logistics, marketing], removing });
+    return Object.values(rows).flatMap((row) => row.lines.map((l) => [l.address, l.removal]));
+  };
+  assert.deepEqual(removals(LEAD, plainSeatStanding("division-lead")), [
+    ["logistics@politorocketteam.it", "removable"],
+    ["marketing@politorocketteam.it", "none"],
+  ]);
+  assert.deepEqual(removals(FULL_ACCESS, IT_LEAD), [
+    ["logistics@politorocketteam.it", "removable"],
+    ["marketing@politorocketteam.it", "removable"],
+  ]);
+  assert.deepEqual(
+    removals(IN_MARKETING, plainSeatStanding("member"), [logistics.id]).map(([, removal]) => removal),
+    ["waiting", "none"],
+  );
+  assert.deepEqual(
+    removals(FULL_ACCESS, IT_LEAD, [logistics.id]).map(([, removal]) => removal),
+    ["waiting", "removable"],
+  );
+});
+
+test("Remove is refused for someone the remover may not ask for, a second time while one waits, and once the address is gone", () => {
+  const address = held("logistics@politorocketteam.it", null, IN_LOGISTICS);
+  const plan = (removerId: number, standing: ViewerStanding, extra: { removing?: boolean; gone?: boolean } = {}) =>
+    planTeamAddressRemoval({ removerId, standing, address: extra.gone ? undefined : address, team, org, removing: extra.removing ?? false });
+  assert.deepEqual(plan(LEAD, plainSeatStanding("division-lead")), {
+    ok: true,
+    value: { addressId: address.id, address: address.address, holderId: IN_LOGISTICS, removerId: LEAD },
+  });
+  assert.ok(plan(FULL_ACCESS, IT_LEAD).ok, "full access, for anyone on the team");
+  assert.equal(plan(IN_MARKETING, plainSeatStanding("member")).ok, false, "a plain member");
+  assert.equal(plan(LEAD, plainSeatStanding("division-lead"), { removing: true }).ok, false, "a second removal while one waits");
+  assert.deepEqual(plan(LEAD, plainSeatStanding("division-lead"), { gone: true }), { ok: false, error: REMOVAL_GONE });
+});
+
+test("only the approver seats see a removal and mark it done; once done the address is no longer held, so it can be requested again", () => {
+  const removal: OpenTeamAddressRemoval = {
+    id: 1,
+    addressId: 3,
+    address: "logistics@politorocketteam.it",
+    purpose: "Logistics",
+    holderId: IN_LOGISTICS,
+    removerId: LEAD,
+    removerActingTitle: null,
+    removedAt: "2026-10-27T09:00:00Z",
+  };
+  const now = new Date("2026-10-27T10:00:00Z");
+  for (const viewer of [plainSeatStanding("team-leader"), plainSeatStanding("operations-lead"), IT_LEAD]) {
+    assert.ok(planRemovalDone(viewer).ok);
+    assert.deepEqual(
+      teamAddressRemovalAttentionFor(viewer, [removal], team, now).map((r) => [r.title, r.detail, r.action]),
+      [
+        [
+          "Remove logistics@politorocketteam.it from Person 5",
+          "Logistics · asked by Person 4 · sent today",
+          { markRemovalDone: 1, address: "logistics@politorocketteam.it", member: "Person 5" },
+        ],
+      ],
+    );
+  }
+  for (const viewer of [{ ...IT_LEAD, seat: "project-manager" as const }, plainSeatStanding("division-lead"), plainSeatStanding("member")]) {
+    assert.equal(planRemovalDone(viewer).ok, false);
+    assert.deepEqual(teamAddressRemovalAttentionFor(viewer, [removal], team, now), []);
+  }
+  // Mark done deletes the address, so the held addresses no longer name it, in any letter case.
+  const request: TeamAddressRequest = { memberId: IN_MARKETING, address: "logistics@politorocketteam.it", purpose: "Logistics", movesWith: null };
+  const ask = (heldNow: string[]) => planTeamAddressRequest({ requesterId: FULL_ACCESS, standing: IT_LEAD, request, team, org, held: heldNow, open: [] });
+  assert.equal(ask(["Logistics@PoliToRocketTeam.it"]).ok, false, "before Mark done it is still held");
+  assert.ok(ask([]).ok, "after Mark done another member may get it");
 });

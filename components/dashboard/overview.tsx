@@ -31,6 +31,7 @@ import {
   isAnswerHandOver,
   isAnswerTeamAddress,
   isDismissNotice,
+  isMarkRemovalDone,
   isMarkRerouteDone,
   type AttentionAction,
   type AttentionItem,
@@ -53,6 +54,7 @@ import { AnswerHandOver } from "./answer-hand-over";
 import { AnswerTeamAddress } from "./answer-team-address";
 import { DismissNotice } from "./dismiss-notice";
 import { MarkTeamAddressMoved } from "./team-address-reroute";
+import { MarkTeamAddressRemoved } from "./team-address-removal";
 import { departmentLabel } from "@/lib/dashboard/recruitment";
 import { PANEL, Panel, RowAction } from "./panel";
 
@@ -312,7 +314,8 @@ function ActivityPanel({ activity, compact, className = "" }: { activity: readon
 // 94c, epic #538) follows it the same way, with Decline and Mark created,
 // and so does an open team address request (epic #578, issue #788), with the
 // alias row's at-sign, and a team address routing item (issue #789), with a
-// copy button for the new holder's sign-in email and Mark done.
+// copy button for the new holder's sign-in email and Mark done, and a team
+// address removal (issue #797), with Mark done.
 // Below md, outside board 56m's cards, every row's buttons move under the
 // text, Dismiss on a notice included, so the title and detail keep the row's
 // width (issue #546); a detail with a long address wraps inside its column
@@ -510,6 +513,7 @@ function AttentionButton({ action, chip = false }: { action: AttentionAction; ch
   if (isAnswerAlias(action)) return <AnswerAlias action={action} chip={chip} />;
   if (isAnswerTeamAddress(action)) return <AnswerTeamAddress action={action} chip={chip} />;
   if (isMarkRerouteDone(action)) return <MarkTeamAddressMoved action={action} chip={chip} />;
+  if (isMarkRemovalDone(action)) return <MarkTeamAddressRemoved action={action} chip={chip} />;
   return isDismissNotice(action) ? (
     <DismissNotice noticeId={action.dismissNotice} label={action.label} chip={chip} />
   ) : (
@@ -523,6 +527,7 @@ function attentionKey(item: AttentionItem): string {
   if (isAnswerAlias(item.action)) return `alias-${item.action.answerAlias}`;
   if (isAnswerTeamAddress(item.action)) return `team-address-${item.action.answerTeamAddress}`;
   if (isMarkRerouteDone(item.action)) return `team-address-reroute-${item.action.markRerouteDone}`;
+  if (isMarkRemovalDone(item.action)) return `team-address-removal-${item.action.markRemovalDone}`;
   return isDismissNotice(item.action) ? `notice-${item.action.dismissNotice}` : item.title;
 }
 
@@ -539,10 +544,11 @@ const ATTENTION_ICONS: Readonly<Record<AttentionKind, LucideIcon>> = {
   "alias-request": AtSign,
   "team-address-request": AtSign,
   "team-address-reroute": AtSign,
+  "team-address-removal": AtSign,
 };
 
 /** The rows the viewer answers on the row itself, drawn on the accent tint. */
-const ANSWERED_HERE = ["hand-over", "alias-request", "team-address-request", "team-address-reroute"] as const satisfies readonly AttentionKind[];
+const ANSWERED_HERE = ["hand-over", "alias-request", "team-address-request", "team-address-reroute", "team-address-removal"] as const satisfies readonly AttentionKind[];
 
 function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boolean; hiddenOnPhone: boolean }) {
   return (

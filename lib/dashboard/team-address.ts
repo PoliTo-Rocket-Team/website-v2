@@ -24,6 +24,9 @@ import { FLAG_OF_SEAT, isOffTeam, SEAT_OF_FLAG, type FlaggedSeat, type SeatFlag,
 // and the notices to the requester. Last, the routing item a role change
 // raises when the role an address moves with changes hands (issue #789): the
 // approvers move the address with Mark done; `team_address_reroutes` stores it.
+// And Remove (issue #797): whoever may request an address for its holder
+// removes it, and the approvers turn its routing off and press Mark done,
+// which frees the address; `team_address_removals` stores it.
 
 /**
  * The role a team address moves with (grill #785, R1.1): one the org model
@@ -119,12 +122,25 @@ export function movesWithLabel(tie: MovesWith, org: OrgChart): string {
   }
 }
 
-/** One line of the side view's Team addresses row (board 102): the address, what it is for, and the role it moves with, if any. */
+/**
+ * What a Team addresses line offers for taking the address away (issue
+ * #797): Remove for a viewer who may request one for its holder, the
+ * waiting removal for every viewer once one is open, or nothing.
+ */
+export type LineRemoval = "removable" | "waiting" | "none";
+
+/**
+ * One line of the side view's Team addresses row (board 102): the address's
+ * row id, the address, what it is for, the role it moves with, if any, and
+ * its removal (issue #797).
+ */
 export type TeamAddressLine = {
+  readonly id: number;
   readonly address: string;
   readonly purpose: string;
   /** "Logistics Lead"; null for an address tied to no role. */
   readonly movesWith: string | null;
+  readonly removal: LineRemoval;
 };
 
 // Moves with (board 102b, grill #785 R1.1) ------------------------------------------
@@ -309,8 +325,10 @@ function byAddress(a: TeamAddressLine, b: TeamAddressLine): number {
  * The Team addresses row of each of `memberIds` on the team (boards 102 and
  * 102b): every address they hold, sorted by address, and Request team
  * address when `mayAskFor` lets the viewer ask for them, the check the
- * server runs too. A member off the team, or one who holds none and whom
- * the viewer may not ask for, is left out, so the row is hidden for them.
+ * server runs too. The same check puts Remove on each address (issue #797),
+ * unless its removal is waiting already. A member off the team, or one who
+ * holds none and whom the viewer may not ask for, is left out, so the row is
+ * hidden for them.
  */
 export function memberTeamAddressesFor(input: {
   readonly viewerId: number | null;
@@ -319,21 +337,25 @@ export function memberTeamAddressesFor(input: {
   readonly memberIds: readonly number[];
   readonly team: readonly TeamPerson[];
   readonly org: OrgChart;
-  readonly held: readonly TeamAddress[];
+  readonly held: readonly StoredTeamAddress[];
+  /** The ids of the addresses whose removal is open. */
+  readonly removing: readonly number[];
 }): MemberTeamAddresses {
   const { viewerId, standing, team, org, held } = input;
   const rows: Record<number, TeamAddressRow> = {};
   for (const memberId of input.memberIds) {
     if (!team.some((p) => p.id === memberId)) continue;
+    const requestable = viewerId !== null && mayAskFor(viewerId, standing, memberId, team, org);
     const lines = held
       .filter((a) => a.holderId === memberId)
       .map((a): TeamAddressLine => ({
+        id: a.id,
         address: a.address,
         purpose: a.purpose,
         movesWith: a.movesWith === null ? null : movesWithLabel(a.movesWith, org),
+        removal: input.removing.includes(a.id) ? "waiting" : requestable ? "removable" : "none",
       }))
       .sort(byAddress);
-    const requestable = viewerId !== null && mayAskFor(viewerId, standing, memberId, team, org);
     if (lines.length > 0 || requestable) rows[memberId] = { lines, requestable };
   }
   const asks = Object.values(rows).some((row) => row.requestable);
@@ -710,8 +732,9 @@ export function teamAddressRerouteAttention(
 /**
  * The open routing items as the viewer's rows, oldest first: one per item for
  * each approver seat (`answersAliasRequests`), none for anyone else. An item
- * with nobody to move the address to (`rerouteTargetNow`), or for someone no
- * longer on the team, is not shown.
+ * with nobody to move the address to (`rerouteTargetNow`), for someone no
+ * longer on the team, or for an address whose removal is open (issue #797),
+ * is not shown: Mark done on a removal deletes the address and its item.
  */
 export function teamAddressRerouteAttentionFor(
   viewer: ViewerStanding,
@@ -719,6 +742,8 @@ export function teamAddressRerouteAttentionFor(
   team: readonly AliasTeamPerson[],
   org: OrgChart,
   now: Date,
+  /** The ids of the addresses whose removal is open. */
+  removing: readonly number[],
 ): AttentionItem[] {
   if (!answersAliasRequests(viewer)) return [];
   return [...open]
@@ -726,7 +751,120 @@ export function teamAddressRerouteAttentionFor(
     .flatMap((r) => {
       const { toId } = r;
       const to = toId === null ? undefined : team.find((p) => p.id === toId);
-      return toId === null || to === undefined ? [] : [teamAddressRerouteAttention({ ...r, toId }, to, team, org, now)];
+      return toId === null || to === undefined || removing.includes(r.addressId) ? [] : [teamAddressRerouteAttention({ ...r, toId }, to, team, org, now)];
+    });
+}
+
+// Remove (issue #797) ---------------------------------------------------------------
+
+/** What Remove refuses when the address left its holder, or was removed, meanwhile. */
+export const REMOVAL_GONE = "This team address is no longer held, so there is nothing to remove.";
+
+/** What a second Remove on an address reads while its removal waits, from the check or from the database index. */
+export function removalWaiting(address: string): string {
+  return `The removal of ${address} is already waiting for the approvers.`;
+}
+
+/** A removal the rules allow, as it is stored open: the address, its holder, and who removed it. */
+export type PlannedTeamAddressRemoval = {
+  readonly addressId: number;
+  readonly address: string;
+  readonly holderId: number;
+  readonly removerId: number;
+};
+
+/**
+ * Remove as the rules allow it, or the first reason it is refused (Owner
+ * decision, 2026-10-27, issue #797): the address is still held; the remover
+ * may request a team address for its holder (`mayAskFor`, the rule of
+ * Request team address); and no removal of it is open yet. The database
+ * refuses a second open removal too (`team_address_removals_one_open`).
+ */
+export function planTeamAddressRemoval(input: {
+  readonly removerId: number | null;
+  /** The remover's standing: full access removes from anyone on the team. */
+  readonly standing: ViewerStanding;
+  /** The address as stored now; undefined when it is gone. */
+  readonly address: StoredTeamAddress | undefined;
+  readonly team: readonly TeamPerson[];
+  readonly org: OrgChart;
+  /** Whether a removal of the address is open. */
+  readonly removing: boolean;
+}): Checked<PlannedTeamAddressRemoval> {
+  const { removerId, standing, address, team, org } = input;
+  if (address === undefined) return { ok: false, error: REMOVAL_GONE };
+  if (removerId === null || !mayAskFor(removerId, standing, address.holderId, team, org)) {
+    return { ok: false, error: "You can remove a team address only from someone you lead or head." };
+  }
+  if (input.removing) return { ok: false, error: removalWaiting(address.address) };
+  return { ok: true, value: { addressId: address.id, address: address.address, holderId: address.holderId, removerId } };
+}
+
+/**
+ * An open removal, as the approvers' rows and Mark done read it: the
+ * address and its holder now, who removed it and when. `removerId` is null
+ * once the remover's record is gone.
+ */
+export type OpenTeamAddressRemoval = {
+  readonly id: number;
+  readonly addressId: number;
+  readonly address: string;
+  readonly purpose: string;
+  readonly holderId: number;
+  readonly removerId: number | null;
+  /** The acting seat's title when it was sent while viewing as the remover (issue #605); null otherwise. */
+  readonly removerActingTitle: string | null;
+  /** When Remove was pressed, an ISO timestamp. */
+  readonly removedAt: string;
+};
+
+/** Mark done on a removal as the rules allow it: only the alias approver seats (`answersAliasRequests`), who answer team address requests too. */
+export function planRemovalDone(viewer: ViewerStanding): Checked<null> {
+  return answersAliasRequests(viewer)
+    ? { ok: true, value: null }
+    : { ok: false, error: "Only the team leader, the operations lead or the IT lead can remove a team address." };
+}
+
+/** What a second Mark done on a removal, or one on a removal gone meanwhile, reads. */
+export const REMOVAL_ALREADY_DONE = "This team address was already removed.";
+
+/** What Mark done on a routing item reads while a removal of its address waits. */
+export const REROUTE_BEING_REMOVED = "This team address is being removed, so it does not move. Mark the removal done instead.";
+
+/**
+ * An open removal as the approver's row under Needs your attention:
+ * "Remove logistics@politorocketteam.it from Davide Russo", then what it is
+ * for, who asked and when, with Mark done, whose dialog asks to turn the
+ * routing off in Google Workspace first.
+ */
+export function teamAddressRemovalAttention(removal: OpenTeamAddressRemoval, holder: TeamPerson, team: readonly TeamPerson[], now: Date): AttentionItem {
+  const remover = attributedName(team.find((p) => p.id === removal.removerId)?.name ?? "Someone", removal.removerActingTitle);
+  return {
+    kind: "team-address-removal",
+    title: `Remove ${removal.address} from ${holder.name}`,
+    phoneTitle: `Remove ${removal.address}`,
+    detail: [removal.purpose, `asked by ${remover}`, `sent ${sentWhen(removal.removedAt, now)}`].join(" · "),
+    action: { markRemovalDone: removal.id, address: removal.address, member: holder.name },
+  };
+}
+
+/**
+ * The open removals as the viewer's rows, oldest first: one per removal for
+ * each approver seat (`answersAliasRequests`), none for anyone else. A
+ * removal from someone no longer on the team is not shown.
+ */
+export function teamAddressRemovalAttentionFor(
+  viewer: ViewerStanding,
+  open: readonly OpenTeamAddressRemoval[],
+  team: readonly TeamPerson[],
+  now: Date,
+): AttentionItem[] {
+  if (!answersAliasRequests(viewer)) return [];
+  return [...open]
+    .sort((a, b) => Date.parse(a.removedAt) - Date.parse(b.removedAt) || a.id - b.id)
+    .flatMap((r) => {
+      const holder = team.find((p) => p.id === r.holderId);
+      return holder === undefined ? [] : [teamAddressRemovalAttention(r, holder, team, now)];
     });
 }
 

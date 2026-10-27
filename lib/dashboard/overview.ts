@@ -43,6 +43,8 @@ export type Stat = {
  * an approver's answer (./alias-request.ts, ./team-address.ts).
  * "team-address-reroute": a team address whose role changed hands, waiting
  * for an approver to move it (./team-address.ts).
+ * "team-address-removal": a team address someone removed, waiting for an
+ * approver to turn its routing off (./team-address.ts, issue #797).
  */
 export type AttentionKind =
   | "acceptance-emails"
@@ -56,7 +58,8 @@ export type AttentionKind =
   | "hand-over"
   | "alias-request"
   | "team-address-request"
-  | "team-address-reroute";
+  | "team-address-reroute"
+  | "team-address-removal";
 
 /** A row's button that dismisses the stored notice it shows (./notices.ts). */
 export type DismissNotice = { readonly label: string; readonly dismissNotice: number };
@@ -98,8 +101,15 @@ export type AnswerTeamAddress = {
  */
 export type MarkRerouteDone = { readonly markRerouteDone: number; readonly address: string; readonly member: string; readonly signInEmail: string };
 
+/**
+ * A row's Mark done on an open team address removal (issue #797,
+ * ./team-address.ts): the address and the member it is removed from. Only
+ * the approver seats get these rows (`teamAddressRemovalAttentionFor`).
+ */
+export type MarkRemovalDone = { readonly markRemovalDone: number; readonly address: string; readonly member: string };
+
 /** Where a row's button goes, the notice it dismisses, or the request it answers. */
-export type AttentionAction = Link | DismissNotice | AnswerHandOver | AnswerAlias | AnswerTeamAddress | MarkRerouteDone;
+export type AttentionAction = Link | DismissNotice | AnswerHandOver | AnswerAlias | AnswerTeamAddress | MarkRerouteDone | MarkRemovalDone;
 
 export function isDismissNotice(action: AttentionAction): action is DismissNotice {
   return "dismissNotice" in action;
@@ -119,6 +129,10 @@ export function isAnswerTeamAddress(action: AttentionAction): action is AnswerTe
 
 export function isMarkRerouteDone(action: AttentionAction): action is MarkRerouteDone {
   return "markRerouteDone" in action;
+}
+
+export function isMarkRemovalDone(action: AttentionAction): action is MarkRemovalDone {
+  return "markRemovalDone" in action;
 }
 
 export type AttentionItem = {

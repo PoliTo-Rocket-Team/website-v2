@@ -385,6 +385,8 @@ for (const [shape, lastRecordedTag] of [
         "members_nda_confirmed_by_acting_account_users_id_fk",
         "orders_reviewed_by_acting_account_users_id_fk",
         "scopes_given_by_acting_account_users_id_fk",
+        "team_address_removals_done_by_acting_account_users_id_fk",
+        "team_address_removals_removed_by_acting_account_users_id_fk",
         "team_address_requests_answered_by_acting_account_users_id_fk",
         "team_address_requests_requested_by_acting_account_users_id_fk",
         "team_address_reroutes_done_by_acting_account_users_id_fk",
@@ -599,4 +601,39 @@ test("0069_team_address_set_up.sql drops, renames and rewrites nothing, applies 
   await apply();
   await apply();
   assert.deepEqual((await db.query(`select set_up_at from team_addresses`)).rows, [{ set_up_at: null }]);
+});
+
+// Team address removals (issue #797) add one table with its foreign keys,
+// its one-open index, its checks and its audit trigger. The table keeps one
+// open removal per address; deleting the address at Mark done keeps the
+// removal row, with its address text, as history.
+const TEAM_ADDRESS_REMOVAL_TAG = "0070_team_address_removals";
+
+test("0070_team_address_removals.sql drops, renames and rewrites nothing, applies again and carries the audit trigger", async () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${TEAM_ADDRESS_REMOVAL_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  const { db, apply } = await databaseBefore(TEAM_ADDRESS_REMOVAL_TAG);
+  await apply();
+  await apply();
+  const triggers = await db.query(`select 1 from pg_trigger where tgname = 'audit_row_changes' and tgrelid = 'public.team_address_removals'::regclass`);
+  assert.equal(triggers.rows.length, 1);
+});
+
+test("after 0070 the database keeps one open removal per address, and the removal outlives the address it removed", async () => {
+  const { db, apply } = await databaseBefore(TEAM_ADDRESS_REMOVAL_TAG);
+  await apply();
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id) values (1), (2);
+    set session_replication_role = origin;
+    insert into team_addresses (id, address, purpose, holder_id) values (1, 'events@politorocketteam.it', 'Events', 1);
+  `);
+  const remove = () => db.exec(`insert into team_address_removals (address_id, address, from_member, removed_by) values (1, 'events@politorocketteam.it', 1, 2)`);
+  await remove();
+  await assert.rejects(remove(), Error, "a second open removal for the address");
+  await assert.rejects(db.exec(`update team_address_removals set address_id = null`), Error, "an open removal with no address");
+  await db.exec(`update team_address_removals set done_by = 2, done_at = now(); delete from team_addresses where id = 1`);
+  assert.deepEqual((await db.query(`select address_id, address, from_member, removed_by, done_by from team_address_removals`)).rows, [
+    { address_id: null, address: "events@politorocketteam.it", from_member: 1, removed_by: 2, done_by: 2 },
+  ]);
 });

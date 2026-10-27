@@ -366,6 +366,22 @@ export async function markTeamAddressRerouteDone(rerouteId: number): Promise<Wri
   return result;
 }
 
+/** Remove on a team address in the member drawer (issue #797): the drawer reads again with the removal waiting for an approver. */
+export async function removeTeamAddress(addressId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(addressId)) return refused("Unknown team address.");
+  const result = await write("members", (data) => data.removeTeamAddress(addressId));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+/** Mark done on a team address removal (issue #797): the row leaves, and the address leaves its holder and can be requested again. */
+export async function markTeamAddressRemovalDone(removalId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(removalId)) return refused("Unknown team address removal.");
+  const result = await write("overview", (data) => data.markTeamAddressRemovalDone(removalId));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
 /** Cancel request in the member drawer (board 94b). */
 export async function cancelAliasRequest(requestId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(requestId)) return refused("Unknown alias request.");

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as actions from "@/app/dashboard/actions";
 import * as teamActions from "@/app/dashboard/team-actions";
-import { dashboardNotices, divisions, roles, teamAddresses, teamAddressReroutes, teamAddressRequests } from "@/db/schema";
+import { dashboardNotices, divisions, roles, teamAddresses, teamAddressRemovals, teamAddressReroutes, teamAddressRequests } from "@/db/schema";
 import { addRows, changeRows, tableRows } from "./access-matrix/test-database";
 import { accountOf, EXTRA, IDS, seedFixture } from "./access-matrix/fixture";
 import { ALL, UNITS } from "./access-matrix/matrix";
@@ -13,7 +13,7 @@ import type { DashboardData } from "./data";
 import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
 import { moveTeamAddress, readRerouteMove } from "./database-team-address";
-import { NO_TEAM_ADDRESSES, REROUTE_ROLE_MOVED } from "./team-address";
+import { NO_TEAM_ADDRESSES, REMOVAL_ALREADY_DONE, REROUTE_BEING_REMOVED, REROUTE_ROLE_MOVED } from "./team-address";
 
 // Shared team addresses on the migrated in-memory Postgres (epic #578): the
 // member side view's Team addresses row (issue #786, board 102), read with
@@ -21,7 +21,7 @@ import { NO_TEAM_ADDRESSES, REROUTE_ROLE_MOVED } from "./team-address";
 // for nobody else; and Request team address (issue #787, board 102b), stored
 // as one open request per address; and the approvers' Decline and Mark
 // created (issue #788); and the routing item a role change raises, with Mark
-// done (issue #789).
+// done (issue #789); and Remove, with its Mark done (issue #797).
 
 const HOLDER = IDS.person("MA");
 
@@ -43,10 +43,13 @@ async function addressesSeenBy(viewer: string) {
 test("the team leader reads both addresses the member holds, by address, each with its role", async () => {
   await seeded();
   const { rows } = await addressesSeenBy("team leader");
-  assert.deepEqual(rows[HOLDER]?.lines, [
-    { address: "logistics@politorocketteam.it", purpose: "Logistics", movesWith: "Mission Analysis Lead" },
-    { address: "recruitment@politorocketteam.it", purpose: "Recruitment", movesWith: "IT Lead" },
-  ]);
+  assert.deepEqual(
+    rows[HOLDER]?.lines.map(({ address, purpose, movesWith }) => ({ address, purpose, movesWith })),
+    [
+      { address: "logistics@politorocketteam.it", purpose: "Logistics", movesWith: "Mission Analysis Lead" },
+      { address: "recruitment@politorocketteam.it", purpose: "Recruitment", movesWith: "IT Lead" },
+    ],
+  );
 });
 
 test("a viewer who does not reach the Members page reads no team address", async () => {
@@ -119,7 +122,10 @@ test("Mark created stores the address under the member with its purpose and role
     [[REQUESTER, ASKED_FOR, { address: "design@politorocketteam.it" }]],
   );
   const { rows } = await addressesSeenBy("team leader");
-  assert.deepEqual(rows[ASKED_FOR]?.lines, [{ address: "design@politorocketteam.it", purpose: "Design", movesWith: "IT Lead" }]);
+  assert.deepEqual(
+    rows[ASKED_FOR]?.lines.map(({ address, purpose, movesWith }) => ({ address, purpose, movesWith })),
+    [{ address: "design@politorocketteam.it", purpose: "Design", movesWith: "IT Lead" }],
+  );
   signInAs(accountOf("team leader").userId);
   const again = await actions.answerTeamAddress(REQUEST, { kind: "decline" });
   assert.ok(!again.ok && /already answered/.test(again.error), JSON.stringify(again));
@@ -391,4 +397,103 @@ test("a lead handing a division over to someone who already co-leads raises one 
     (await rerouteRowsSeenBy("team leader")).map((r) => r.title),
     [`${STRUCTURES} goes to Person DM`],
   );
+});
+
+// Remove (issue #797) ------------------------------------------------------------------
+
+const LOGISTICS = "logistics@politorocketteam.it";
+
+/** The id `address` is stored under. */
+async function idOf(address: string): Promise<number> {
+  return Number((await tableRows(teamAddresses)).find((r) => r.address === address)!.id);
+}
+
+async function removalRowsSeenBy(viewer: string) {
+  signInAs(accountOf(viewer).userId);
+  const opening = await openDashboard();
+  assert.equal(opening.kind, "open", "the dashboard opens");
+  const overview = (await (opening as { data: DashboardData }).data.overview()) as TeamSideOverview;
+  return overview.attention.filter((a) => a.kind === "team-address-removal");
+}
+
+test("Remove stores one open removal the approver seats alone see; Mark done frees the address, keeps the removal, and the address is requested and created for someone else", async () => {
+  await seeded();
+  const id = await idOf(LOGISTICS);
+  // A plain member may not remove it, and nothing is written.
+  signInAs(accountOf("member").userId);
+  assert.equal((await actions.removeTeamAddress(id)).ok, false);
+  assert.deepEqual(await tableRows(teamAddressRemovals), []);
+  // MA's lead may, as they may request one for MA's member; a second Remove while it waits is refused.
+  signInAs("lead-ma");
+  assert.deepEqual(await actions.removeTeamAddress(id), { ok: true, value: null });
+  const again = await actions.removeTeamAddress(id);
+  assert.ok(!again.ok && /already waiting/.test(again.error), JSON.stringify(again));
+  assert.equal((await tableRows(teamAddressRemovals)).length, 1);
+  // The line shows the waiting removal, and the address still counts as held.
+  const { rows } = await addressesSeenBy("team leader");
+  assert.deepEqual(
+    rows[HOLDER]?.lines.map((l) => [l.address, l.removal]),
+    [
+      [LOGISTICS, "waiting"],
+      ["recruitment@politorocketteam.it", "removable"],
+    ],
+  );
+  const ask = () => actions.requestTeamAddress({ memberId: DM_MEMBER, address: "Logistics@PoliToRocketTeam.it", purpose: "Logistics", movesWith: null });
+  const held = await ask();
+  assert.ok(!held.ok && /already a team address/.test(held.error), JSON.stringify(held));
+
+  for (const viewer of ["team leader", "operations lead", "IT lead"]) {
+    assert.deepEqual(
+      (await removalRowsSeenBy(viewer)).map((r) => [r.title, r.action]),
+      [[`Remove ${LOGISTICS} from Person MA`, { markRemovalDone: 1, address: LOGISTICS, member: "Person MA" }]],
+      viewer,
+    );
+  }
+  for (const viewer of ["Project Manager", "Chief Engineer", "division lead"]) assert.deepEqual(await removalRowsSeenBy(viewer), [], viewer);
+  signInAs(accountOf("Project Manager").userId);
+  assert.equal((await actions.markTeamAddressRemovalDone(1)).ok, false, "the Project Manager may not mark it done");
+
+  signInAs(accountOf("IT lead").userId);
+  assert.deepEqual(await actions.markTeamAddressRemovalDone(1), { ok: true, value: null });
+  assert.deepEqual(await actions.markTeamAddressRemovalDone(1), { ok: false, error: REMOVAL_ALREADY_DONE }, "a second Mark done");
+  assert.deepEqual(
+    (await addressesSeenBy("team leader")).rows[HOLDER]?.lines.map((l) => l.address),
+    ["recruitment@politorocketteam.it"],
+  );
+  assert.deepEqual(
+    (await ownAddressesOf(`person-ma`)).map((a) => a.address),
+    ["recruitment@politorocketteam.it"],
+    "and from the holder's Overview",
+  );
+  assert.deepEqual(
+    (await tableRows(teamAddressRemovals)).map((r) => [r.addressId, r.address, r.fromMember, r.removedBy, r.doneBy, r.doneAt !== null]),
+    [[null, LOGISTICS, HOLDER, MA_LEAD, accountOf("IT lead").memberId, true]],
+  );
+
+  signInAs(accountOf("team leader").userId);
+  assert.deepEqual(await ask(), { ok: true, value: null });
+  signInAs(accountOf("IT lead").userId);
+  assert.deepEqual(await actions.answerTeamAddress(1, { kind: "created", address: LOGISTICS }), { ok: true, value: null });
+  assert.deepEqual(
+    (await tableRows(teamAddresses)).filter((r) => r.address === LOGISTICS).map((r) => r.holderId),
+    [DM_MEMBER],
+  );
+});
+
+test("while a removal waits, the address's routing item is hidden and its Mark done refused; the removal's Mark done takes the item with the address", async () => {
+  await seededTied();
+  signInAs("head-str");
+  assert.deepEqual(await actions.answerHandOver(IDS.handOver("DM"), "confirm"), { ok: true, value: null });
+  signInAs(accountOf("team leader").userId);
+  assert.deepEqual(await actions.removeTeamAddress(1), { ok: true, value: null });
+  assert.deepEqual(await rerouteRowsSeenBy("IT lead"), []);
+  assert.deepEqual(await actions.markTeamAddressRerouteDone(1), { ok: false, error: REROUTE_BEING_REMOVED });
+  assert.deepEqual(
+    (await tableRows(teamAddresses)).filter((r) => r.id === 1).map((r) => r.holderId),
+    [DM_LEAD],
+    "the address did not move",
+  );
+  assert.deepEqual(await actions.markTeamAddressRemovalDone(1), { ok: true, value: null });
+  assert.deepEqual(await tableRows(teamAddressReroutes), []);
+  assert.deepEqual((await tableRows(teamAddresses)).filter((r) => r.address === STRUCTURES), []);
 });
