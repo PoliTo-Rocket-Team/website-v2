@@ -97,11 +97,14 @@ import { answerAlias, cancelAliasRequest, confirmAliasSetUp, readAliasAttention,
 import {
   answerTeamAddress,
   confirmTeamAddressSetUp,
+  markTeamAddressRemovalDone,
   markTeamAddressRerouteDone,
   readMemberTeamAddresses,
   readOwnTeamAddresses,
   readTeamAddressAttention,
+  readTeamAddressRemovalAttention,
   readTeamAddressRerouteAttention,
+  removeTeamAddress,
   requestTeamAddress,
 } from "./database-team-address";
 import { NO_TEAM_ADDRESSES } from "./team-address";
@@ -947,7 +950,7 @@ async function readMemberAccess(identity: Identity): Promise<NonNullable<AccessF
  * department or the team leader, whatever their Overview's shape. The open
  * alias requests follow them for the three approver seats (board 94c, epic
  * #538), then the open team address requests (epic #578, issue #788) and
- * the open team address routing items (issue #789). Whoever decides orders (`decideRightOfStanding`), whatever the
+ * the open team address routing items (issue #789) and removals (issue #797). Whoever decides orders (`decideRightOfStanding`), whatever the
  * shape, then gets what waits for their decision across the team
  * (`leaderAttention`, issue #592); nobody else's Overview reads the team's
  * orders for it. The team leader alone also gets the count of acceptance
@@ -966,15 +969,17 @@ function overviewSectionsOf(identity: Identity): OverviewSections {
     readAliasAttention(identity, now),
     readTeamAddressAttention(identity, now),
     readTeamAddressRerouteAttention(identity, now),
+    readTeamAddressRemovalAttention(identity, now),
     isTeamLeader(identity) ? readAcceptanceEmailCount().then(acceptanceEmailsAttention) : null,
     teamOrders?.then((orders) => leaderAttention({ orders, now })) ?? [],
-  ]).then(([scope, handOvers, aliases, teamAddressRequests, reroutes, acceptance, decisions]) => ({
+  ]).then(([scope, handOvers, aliases, teamAddressRequests, reroutes, removals, acceptance, decisions]) => ({
     ...scope,
     attention: [
       ...handOvers,
       ...aliases,
       ...teamAddressRequests,
       ...reroutes,
+      ...removals,
       ...(acceptance === null ? [] : [acceptance]),
       ...decisions,
       ...scope.attention,
@@ -1105,6 +1110,8 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     requestTeamAddress: (input) => requestTeamAddress(identity, input),
     answerTeamAddress: (requestId, answer) => answerTeamAddress(identity, requestId, answer),
     markTeamAddressRerouteDone: (rerouteId) => markTeamAddressRerouteDone(identity, rerouteId),
+    removeTeamAddress: (addressId) => removeTeamAddress(identity, addressId),
+    markTeamAddressRemovalDone: (removalId) => markTeamAddressRemovalDone(identity, removalId),
     myTeamAddresses: () => readOwnTeamAddresses(identity),
     confirmTeamAddressSetUp: (addressId) => confirmTeamAddressSetUp(identity, addressId),
     requestAlias: (memberId) => requestAlias(identity, memberId),

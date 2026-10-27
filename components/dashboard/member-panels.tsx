@@ -1,15 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, Lock, Mail, Upload, UserMinus, UserPlus, X } from "lucide-react";
+import { AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, Lock, Mail, MailX, Upload, UserMinus, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { addMember, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
-import { cancelAliasRequest, requestAlias, requestTeamAddress } from "@/app/dashboard/actions";
+import { cancelAliasRequest, removeTeamAddress, requestAlias, requestTeamAddress } from "@/app/dashboard/actions";
 import { TEAM_DOMAIN, type MemberAlias } from "@/lib/dashboard/alias-request";
-import { checkPurpose, checkTeamAddress, PURPOSE_MAX, type MovesWithOption, type TeamAddressRow } from "@/lib/dashboard/team-address";
+import { checkPurpose, checkTeamAddress, PURPOSE_MAX, type MovesWithOption, type TeamAddressLine, type TeamAddressRow } from "@/lib/dashboard/team-address";
 import { DEGREE_PROGRAMMES, GENDERS, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
 import {
   levelLabel,
@@ -56,7 +56,7 @@ import {
   type MoveChoice,
 } from "./member-move";
 import { titleOnMove, type MovablePlace } from "@/lib/dashboard/member-move";
-import { SHEET_BUTTONS, SHEET_CANCEL, SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber, sheetConfirm } from "./confirm-dialog";
+import { ConfirmDialog, SHEET_BUTTONS, SHEET_CANCEL, SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber, sheetConfirm } from "./confirm-dialog";
 import { Drawer, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
 import { PersonCombobox } from "./person-combobox";
@@ -351,7 +351,8 @@ function PrtEmailFact({ memberId, name, address, alias }: { memberId: number; na
  * The shared team addresses the member holds (epic #578, issues #786 and
  * #787, boards 102 and 102b), under the PRT email row: each address on its
  * own line with a copy button, and under it what it is for and the role it
- * moves with, if any. Request team address ends the row for a viewer who may
+ * moves with, if any, and Remove or the waiting removal (issue #797,
+ * `TeamAddressItem`). Request team address ends the row for a viewer who may
  * ask, so for a member holding none the row is the button alone. The server
  * decides both; the drawer leaves the row out when it has neither.
  */
@@ -374,15 +375,7 @@ function TeamAddressesFact({
         {row.lines.length > 0 && (
           <ul className="flex w-full flex-col gap-1">
             {row.lines.map((line) => (
-              <li key={line.address} className="flex items-start gap-x-3">
-                <span className="min-w-0 flex-1 py-1">
-                  <span className="block break-words text-[14px] text-prt-text">{line.address}</span>
-                  <span className="block break-words text-[12px] text-prt-muted">
-                    {line.movesWith === null ? line.purpose : `${line.purpose} · moves with ${line.movesWith}`}
-                  </span>
-                </span>
-                <CopyButton value={line.address} what="Team address" />
-              </li>
+              <TeamAddressItem key={line.id} line={line} holder={name} />
             ))}
           </ul>
         )}
@@ -397,6 +390,70 @@ function TeamAddressesFact({
         )}
       </dd>
     </div>
+  );
+}
+
+/**
+ * One team address on the Team addresses row: the address over what it is
+ * for and the role it moves with, and its copy button. Remove ends the line
+ * for a viewer who may request one for the holder (issue #797) and asks
+ * first, as every removal does; once a removal waits, the line shows the
+ * PRT email row's warning pill, "Removal waiting", for every viewer, and no
+ * Remove. The server decides which.
+ */
+function TeamAddressItem({ line, holder }: { line: TeamAddressLine; holder: string }) {
+  const [confirming, setConfirming] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const first = holder.split(" ")[0] || holder;
+  const remove = () =>
+    startTransition(async () => {
+      const result = await removeTeamAddress(line.id);
+      if (!result.ok) {
+        toast.error(`Could not remove ${line.address}`, { description: result.error });
+        return;
+      }
+      toast.success(`Removal of ${line.address} sent to the approvers`);
+      setConfirming(false);
+    });
+  return (
+    <li className="flex items-start gap-x-3" aria-busy={pending}>
+      <span className="min-w-0 flex-1 py-1">
+        <span className="block break-words text-[14px] text-prt-text">{line.address}</span>
+        <span className="block break-words text-[12px] text-prt-muted">
+          {line.movesWith === null ? line.purpose : `${line.purpose} · moves with ${line.movesWith}`}
+        </span>
+      </span>
+      {line.removal === "waiting" && (
+        <span className="my-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-0.5 text-[13px] font-medium text-warning">
+          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warning" />
+          Removal waiting
+        </span>
+      )}
+      <CopyButton value={line.address} what="Team address" />
+      {line.removal === "removable" && (
+        <>
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            className={`flex h-7 shrink-0 items-center rounded-md text-[13px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}
+          >
+            Remove
+          </button>
+          <ConfirmDialog
+            open={confirming}
+            onOpenChange={setConfirming}
+            icon={<MailX className="h-5 w-5" strokeWidth={1.75} />}
+            title={`Remove ${line.address} from ${holder}?`}
+            description={`The approvers turn off its routing in Google Workspace and mark it done. Then it leaves ${first}'s team addresses and can be requested for someone else.`}
+            cancelLabel="Keep address"
+            confirmLabel="Remove"
+            danger
+            pending={pending}
+            onConfirm={remove}
+          />
+        </>
+      )}
+    </li>
   );
 }
 

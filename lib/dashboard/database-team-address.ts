@@ -3,7 +3,7 @@ import "server-only";
 import { and, eq, exists, inArray, isNotNull, isNull, ne, not, or, sql, type SQL } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { getDb } from "@/db/client";
-import { dashboardNotices, divisions, roles, teamAddresses, teamAddressReroutes, teamAddressRequests } from "@/db/schema";
+import { dashboardNotices, divisions, roles, teamAddresses, teamAddressRemovals, teamAddressReroutes, teamAddressRequests } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { answersAliasRequests } from "./alias-request";
 import { actingTitleIn, readActingTitles } from "./database-acting-account";
@@ -20,32 +20,41 @@ import {
   NO_TEAM_ADDRESSES,
   owedTeamAddressReroutes,
   ownTeamAddressesOf,
+  planRemovalDone,
   planRerouteDone,
   planTeamAddressAnswer,
+  planTeamAddressRemoval,
   planTeamAddressRequest,
   planTeamAddressSetUp,
+  REMOVAL_ALREADY_DONE,
+  REMOVAL_GONE,
+  REMOVAL_HOLDER_CHANGED,
+  removalWaiting,
   REROUTE_ALREADY_DONE,
+  REROUTE_BEING_REMOVED,
   REROUTE_ROLE_MOVED,
   rerouteMoveOf,
   reroutesNow,
   storedTieOf,
   teamAddressAnswerNotices,
   teamAddressAttentionFor,
+  teamAddressRemovalAttentionFor,
   teamAddressRerouteAttentionFor,
   type MemberTeamAddresses,
   type MovesWith,
+  type OpenTeamAddressRemoval,
   type OpenTeamAddressRequest,
   type OpenTeamAddressReroute,
   type OwnTeamAddress,
+  type PlannedTeamAddressRemoval,
   type RerouteMove,
   type StoredTeamAddress,
   type StoredTeamAddressReroute,
-  type TeamAddress,
   type TieRoleRow,
   type TiedRoleChange,
 } from "./team-address";
 import type { OrgChart } from "./team";
-import { aliasTeamOf, readTeamSnapshot, teamPeopleOf } from "./team-database";
+import { aliasTeamOf, memberNamesOf, readTeamSnapshot, teamPeopleOf } from "./team-database";
 import { FLAG_OF_SEAT, isOffTeam, SEAT_OF_FLAG } from "./viewer";
 import { refused, written, type WriteResult } from "./write";
 
@@ -53,7 +62,8 @@ import { refused, written, type WriteResult } from "./write";
 // the rows `team_addresses` holds for the members the side view opens,
 // Request team address, stored in `team_address_requests`, the approvers'
 // Decline and Mark created, and the routing items a role change raises,
-// stored in `team_address_reroutes`, with Mark done. What a row means, how the side view
+// stored in `team_address_reroutes`, with Mark done, and Remove with its Mark
+// done (issue #797), stored in `team_address_removals`. What a row means, how the side view
 // lists it, who may ask and who answers are ./team-address.ts's; this module
 // reads and writes the rows. The reads go to the tables, not the cached team
 // snapshot, so a write shows at once.
@@ -73,9 +83,10 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 /** The team addresses `holderIds` hold, as stored. */
-async function readHeldAddresses(holderIds: readonly number[]): Promise<TeamAddress[]> {
+async function readHeldAddresses(holderIds: readonly number[]): Promise<StoredTeamAddress[]> {
   const rows = await getDb()
     .select({
+      id: teamAddresses.id,
       address: teamAddresses.address,
       purpose: teamAddresses.purpose,
       holder_id: teamAddresses.holderId,
@@ -86,7 +97,17 @@ async function readHeldAddresses(holderIds: readonly number[]): Promise<TeamAddr
     })
     .from(teamAddresses)
     .where(inArray(teamAddresses.holderId, [...holderIds]));
-  return rows.map((r) => ({ address: r.address, purpose: r.purpose, holderId: r.holder_id, movesWith: movesWithOf(r) }));
+  return rows.map((r) => ({ id: r.id, address: r.address, purpose: r.purpose, holderId: r.holder_id, movesWith: movesWithOf(r) }));
+}
+
+/** The ids of the addresses whose removal is open (issue #797): of `addressIds`, or of every address. */
+async function readRemovingIds(addressIds?: readonly number[]): Promise<number[]> {
+  if (addressIds !== undefined && addressIds.length === 0) return [];
+  const rows = await getDb()
+    .select({ address_id: teamAddressRemovals.addressId })
+    .from(teamAddressRemovals)
+    .where(and(isNull(teamAddressRemovals.doneAt), addressIds === undefined ? undefined : inArray(teamAddressRemovals.addressId, [...addressIds])));
+  return rows.flatMap((r) => (r.address_id === null ? [] : [r.address_id]));
 }
 
 /**
@@ -98,7 +119,8 @@ async function readHeldAddresses(holderIds: readonly number[]): Promise<TeamAddr
 export async function readMemberTeamAddresses(identity: DashboardIdentity, memberIds: readonly number[]): Promise<MemberTeamAddresses> {
   if (memberIds.length === 0) return NO_TEAM_ADDRESSES;
   const [snapshot, held] = await Promise.all([readTeamSnapshot(), readHeldAddresses(memberIds)]);
-  return memberTeamAddressesFor({ viewerId: identity.memberId, standing: identity, memberIds, team: teamPeopleOf(snapshot), org: snapshot.org, held });
+  const removing = await readRemovingIds(held.map((a) => a.id));
+  return memberTeamAddressesFor({ viewerId: identity.memberId, standing: identity, memberIds, team: teamPeopleOf(snapshot), org: snapshot.org, held, removing });
 }
 
 /** The stored team addresses and open requests equal to `address` in any letter case. */
@@ -448,9 +470,9 @@ async function reroutesNowOf(stored: readonly StoredTeamAddressReroute[], org: O
 export async function readTeamAddressRerouteAttention(identity: DashboardIdentity, now: Date): Promise<AttentionItem[]> {
   // By the seat alone, so the break-glass admin with no member row moves addresses too (issue #646).
   if (!answersAliasRequests(identity)) return [];
-  const [stored, snapshot] = await Promise.all([readStoredTeamAddressReroutes(), readTeamSnapshot()]);
+  const [stored, snapshot, removing] = await Promise.all([readStoredTeamAddressReroutes(), readTeamSnapshot(), readRemovingIds()]);
   const open = await reroutesNowOf(stored, snapshot.org);
-  return teamAddressRerouteAttentionFor(identity, open, aliasTeamOf(snapshot), snapshot.org, now);
+  return teamAddressRerouteAttentionFor(identity, open, aliasTeamOf(snapshot), snapshot.org, now, removing);
 }
 
 /** Postgres' division_by_zero: how `claimReroute` fails its batch when the move no longer stands. */
@@ -527,6 +549,7 @@ function claimReroute(db: ReturnType<typeof getDb>, mover: RerouteMover, move: R
           ),
           holdsTieNow(db, move.toId, move.movesWith),
           not(holdsTieNow(db, move.holderId, move.movesWith)),
+          not(removalOpen(db, move.addressId)),
         ),
       )
       .returning({ id: teamAddressReroutes.id }),
@@ -535,41 +558,72 @@ function claimReroute(db: ReturnType<typeof getDb>, mover: RerouteMover, move: R
   return db.with(claimed).select({ claimed: sql<number>`1 / (count(*) = 1)::int` }).from(claimed);
 }
 
+/** Whether a removal of the address is open (issue #797), as the statement reads the table. */
+function removalOpen(db: ReturnType<typeof getDb>, addressId: number): SQL {
+  return exists(
+    db
+      .select({ id: teamAddressRemovals.id })
+      .from(teamAddressRemovals)
+      .where(and(eq(teamAddressRemovals.addressId, addressId), isNull(teamAddressRemovals.doneAt))),
+  );
+}
+
 /**
  * What Mark done moves on the open item `rerouteId` now (`rerouteMoveOf`):
  * the address goes to the member who holds the tied role at this moment
  * (`rerouteTargetNow`, issue #795), never one the item named earlier. The
- * roles are read from the table, so a role change shows at once.
+ * roles are read from the table, so a role change shows at once. An address
+ * whose removal is open does not move (issue #797): the removal's Mark done
+ * deletes it, and this item with it.
  */
 export async function readRerouteMove(rerouteId: number): Promise<Checked<RerouteMove>> {
   const [reroute] = await readStoredTeamAddressReroutes({ id: rerouteId });
   if (!reroute) return { ok: false, error: REROUTE_ALREADY_DONE };
+  if ((await readRemovingIds([reroute.addressId])).length > 0) return { ok: false, error: REROUTE_BEING_REMOVED };
   const [active, { org }] = await Promise.all([readActiveTieRoles(), readTeamSnapshot()]);
   return rerouteMoveOf(reroute, active, org);
 }
 
 /**
- * Mark done's write: in one batch the item is claimed (`claimReroute`), then
- * the address's holder becomes the member `move` names, so it leaves the
- * previous holder's Team addresses row and shows on the new holder's. Its
- * set-up is cleared, so the new holder's Overview shows the ready card. When
- * the move no longer stands, nothing is written: a second Mark done is
- * refused as already moved, and one the role changed hands under is refused
- * with the item left open, naming who holds the role now.
+ * Mark done's batch, in order: the address row is locked, the item is
+ * claimed (`claimReroute`), then the address's holder becomes the member
+ * `move` names. The lock is its own statement, before the claim, because a
+ * statement reads the table as it stood when the statement began: a claim
+ * that waited on the lock inside its own statement would still miss a
+ * removal stored while it waited. So with the lock first, a Remove (issue
+ * #797) either stored its removal before the lock was taken, and the claim,
+ * which starts after it, finds the removal open and fails the batch; or its
+ * insert waits on the lock until the batch ends, and then finds the address
+ * moved, or the batch rolled back and nothing moved.
+ */
+export function rerouteMoveBatch(db: ReturnType<typeof getDb>, mover: RerouteMover, move: RerouteMove) {
+  return [
+    db.select({ id: teamAddresses.id }).from(teamAddresses).where(eq(teamAddresses.id, move.addressId)).for("update"),
+    claimReroute(db, mover, move),
+    db
+      .update(teamAddresses)
+      .set({ holderId: move.toId, setUpAt: null, updatedAt: new Date().toISOString() })
+      .where(eq(teamAddresses.id, move.addressId)),
+  ] as const;
+}
+
+/**
+ * Mark done's write (`rerouteMoveBatch`): the address leaves the previous
+ * holder's Team addresses row and shows on the new holder's. Its set-up is
+ * cleared, so the new holder's Overview shows the ready card. When the move
+ * no longer stands, nothing is written: a second Mark done is refused as
+ * already moved, one on an address whose removal is open is refused as being
+ * removed, and one the role changed hands under is refused with the item
+ * left open, naming who holds the role now.
  */
 export async function moveTeamAddress(mover: RerouteMover, move: RerouteMove): Promise<WriteResult<null>> {
   try {
-    await runAuditBatch((db) => [
-      claimReroute(db, mover, move),
-      db
-        .update(teamAddresses)
-        .set({ holderId: move.toId, setUpAt: null, updatedAt: new Date().toISOString() })
-        .where(eq(teamAddresses.id, move.addressId)),
-    ]);
+    await runAuditBatch((db) => [...rerouteMoveBatch(db, mover, move)]);
   } catch (error) {
     if (!isClaimGuardFailure(error)) throw error;
     const stillOpen = await readStoredTeamAddressReroutes({ id: move.rerouteId });
-    return refused(stillOpen.length === 0 ? REROUTE_ALREADY_DONE : REROUTE_ROLE_MOVED);
+    if (stillOpen.length === 0) return refused(REROUTE_ALREADY_DONE);
+    return refused((await readRemovingIds([move.addressId])).length > 0 ? REROUTE_BEING_REMOVED : REROUTE_ROLE_MOVED);
   }
   return written(null);
 }
@@ -580,6 +634,160 @@ export async function markTeamAddressRerouteDone(identity: DashboardIdentity, re
   if (!planned.ok) return refused(planned.error);
   const move = await readRerouteMove(rerouteId);
   return move.ok ? moveTeamAddress(identity, move.value) : refused(move.error);
+}
+
+// Remove (issue #797) -------------------------------------------------------------
+
+/** The address `addressId` as stored now, or undefined when it is gone. */
+async function readStoredAddress(addressId: number): Promise<StoredTeamAddress | undefined> {
+  const [row] = await getDb()
+    .select({
+      id: teamAddresses.id,
+      address: teamAddresses.address,
+      purpose: teamAddresses.purpose,
+      holder_id: teamAddresses.holderId,
+      moves_with: teamAddresses.movesWith,
+      moves_with_seat: teamAddresses.movesWithSeat,
+      moves_with_dept_id: teamAddresses.movesWithDeptId,
+      moves_with_division_id: teamAddresses.movesWithDivisionId,
+    })
+    .from(teamAddresses)
+    .where(eq(teamAddresses.id, addressId));
+  return row && { id: row.id, address: row.address, purpose: row.purpose, holderId: row.holder_id, movesWith: movesWithOf(row) };
+}
+
+/**
+ * What Remove's check allows on `addressId` now (`planTeamAddressRemoval`):
+ * the address with the holder the check read, or the first reason it is
+ * refused.
+ */
+async function readTeamAddressRemoval(identity: DashboardIdentity, addressId: number): Promise<Checked<PlannedTeamAddressRemoval>> {
+  const [snapshot, address, removing] = await Promise.all([readTeamSnapshot(), readStoredAddress(addressId), readRemovingIds([addressId])]);
+  return planTeamAddressRemoval({
+    removerId: identity.memberId,
+    standing: identity,
+    address,
+    team: teamPeopleOf(snapshot),
+    org: snapshot.org,
+    removing: removing.length > 0,
+  });
+}
+
+/**
+ * Stores the removal `readTeamAddressRemoval` allowed, open, for the
+ * approvers. One statement checks and inserts: it copies the address row
+ * only while it still has the holder the check read, locking it. A routing
+ * item's Mark done locks the same row before its claim (`rerouteMoveBatch`),
+ * so one that moved the address meanwhile, or one holding the lock when this
+ * insert runs, leaves nothing to insert once it moves the address, and
+ * Remove is refused rather than open a removal against the new holder; one
+ * that starts after this insert finds the removal open and moves nothing. A
+ * second
+ * Remove sent between the check and the insert is refused by
+ * `team_address_removals_one_open`, with the check's own message.
+ */
+export async function storeTeamAddressRemoval(
+  remover: Pick<DashboardIdentity, "actingAccountId">,
+  removal: PlannedTeamAddressRemoval,
+): Promise<WriteResult<null>> {
+  try {
+    const stored = await runAuditQuery((db) =>
+      db.execute<{ id: number }>(sql`
+        INSERT INTO ${teamAddressRemovals} ("address_id", "address", "from_member", "removed_by", "removed_by_acting_account")
+        SELECT "id", "address", "holder_id", ${removal.removerId}, ${remover.actingAccountId}
+        FROM ${teamAddresses}
+        WHERE "id" = ${removal.addressId} AND "holder_id" = ${removal.holderId}
+        FOR UPDATE
+        RETURNING "id"`),
+    );
+    if (stored.rows.length === 1) return written(null);
+  } catch (error) {
+    if (isUniqueViolation(error)) return refused(removalWaiting(removal.address));
+    throw error;
+  }
+  // Nothing was inserted: the address is gone, or has another holder now.
+  return refused((await readStoredAddress(removal.addressId)) === undefined ? REMOVAL_GONE : REMOVAL_HOLDER_CHANGED);
+}
+
+/** Remove in the member side view: checked by `readTeamAddressRemoval`, stored by `storeTeamAddressRemoval`. */
+export async function removeTeamAddress(identity: DashboardIdentity, addressId: number): Promise<WriteResult<null>> {
+  const planned = await readTeamAddressRemoval(identity, addressId);
+  return planned.ok ? storeTeamAddressRemoval(identity, planned.value) : refused(planned.error);
+}
+
+/** The removals still open, beside their address's holder and purpose now: all of them, or one by id. */
+async function readOpenTeamAddressRemovals(filter: { readonly id?: number } = {}): Promise<OpenTeamAddressRemoval[]> {
+  const rows = await getDb()
+    .select({
+      id: teamAddressRemovals.id,
+      address_id: teamAddresses.id,
+      address: teamAddresses.address,
+      purpose: teamAddresses.purpose,
+      holder_id: teamAddresses.holderId,
+      removed_by: teamAddressRemovals.removedBy,
+      removed_by_acting_account: teamAddressRemovals.removedByActingAccount,
+      created_at: teamAddressRemovals.createdAt,
+    })
+    .from(teamAddressRemovals)
+    .innerJoin(teamAddresses, eq(teamAddresses.id, teamAddressRemovals.addressId))
+    .where(and(isNull(teamAddressRemovals.doneAt), filter.id === undefined ? undefined : eq(teamAddressRemovals.id, filter.id)));
+  const titles = await readActingTitles(rows.map((r) => r.removed_by_acting_account));
+  return rows.map((r) => ({
+    id: r.id,
+    addressId: r.address_id,
+    address: r.address,
+    purpose: r.purpose,
+    holderId: r.holder_id,
+    removerId: r.removed_by,
+    removerActingTitle: actingTitleIn(titles, r.removed_by_acting_account),
+    removedAt: r.created_at,
+  }));
+}
+
+/** The open removals as the viewer's rows under Needs your attention: the alias approver seats only. */
+export async function readTeamAddressRemovalAttention(identity: DashboardIdentity, now: Date): Promise<AttentionItem[]> {
+  // By the seat alone, so the break-glass admin with no member row removes addresses too (issue #646).
+  if (!answersAliasRequests(identity)) return [];
+  const [open, snapshot] = await Promise.all([readOpenTeamAddressRemovals(), readTeamSnapshot()]);
+  // Named off every member record, so a holder who has left the team since keeps the row.
+  return teamAddressRemovalAttentionFor(identity, open, memberNamesOf(snapshot), now);
+}
+
+/**
+ * Mark done on a removal, checked by `planRemovalDone`. In one batch the
+ * removal is claimed, recording who marked it done, and the address is
+ * deleted: it leaves its holder's Team addresses row and their Overview
+ * card, an open routing item for it goes with it, and Request team address
+ * takes it again. The removal row keeps the address and its history
+ * (`address_id` is set null). Of two Mark dones, the second waits for the
+ * first's row lock, claims nothing, and its batch rolls back, so it is
+ * refused as already removed.
+ */
+export async function markTeamAddressRemovalDone(identity: DashboardIdentity, removalId: number): Promise<WriteResult<null>> {
+  const planned = planRemovalDone(identity);
+  if (!planned.ok) return refused(planned.error);
+  const [removal] = await readOpenTeamAddressRemovals({ id: removalId });
+  if (!removal) return refused(REMOVAL_ALREADY_DONE);
+  try {
+    await runAuditBatch((db) => {
+      const claimed = db.$with("claimed").as(
+        db
+          .update(teamAddressRemovals)
+          .set({ doneBy: identity.memberId, doneByActingAccount: identity.actingAccountId, doneAt: new Date().toISOString() })
+          .where(and(eq(teamAddressRemovals.id, removalId), isNull(teamAddressRemovals.doneAt)))
+          .returning({ id: teamAddressRemovals.id }),
+      );
+      return [
+        // Division by zero is how one plain statement fails its transaction.
+        db.with(claimed).select({ claimed: sql<number>`1 / (count(*) = 1)::int` }).from(claimed),
+        db.delete(teamAddresses).where(eq(teamAddresses.id, removal.addressId)),
+      ];
+    });
+  } catch (error) {
+    if (isClaimGuardFailure(error)) return refused(REMOVAL_ALREADY_DONE);
+    throw error;
+  }
+  return written(null);
 }
 
 // The holder's own team addresses (owner finding on PR #794; board 94f) -----------

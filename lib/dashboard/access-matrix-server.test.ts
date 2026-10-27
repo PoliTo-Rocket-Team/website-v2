@@ -24,6 +24,7 @@ import {
   roles,
   scopes,
   teamAddresses,
+  teamAddressRemovals,
   teamAddressReroutes,
   teamAddressRequests,
   teamLeaves,
@@ -497,6 +498,17 @@ const addTeamAddressReroute = async () => {
   ]);
   await addRows(teamAddressReroutes, [{ id: TEAM_ADDRESS_REROUTE, addressId: TEAM_ADDRESS, toMember: IDS.lead(DM), fromMember: IDS.person(DM) }]);
 };
+/** A team address held by the member of DM, with nothing waiting on it. */
+const addMembersTeamAddress = () =>
+  addRows(teamAddresses, [{ id: TEAM_ADDRESS, address: "structures@politorocketteam.it", purpose: "Structures", holderId: IDS.person(DM) }]);
+/** An open removal of that address, sent by DM's lead (issue #797). */
+const TEAM_ADDRESS_REMOVAL = 1;
+const addTeamAddressRemoval = async () => {
+  await addMembersTeamAddress();
+  await addRows(teamAddressRemovals, [
+    { id: TEAM_ADDRESS_REMOVAL, addressId: TEAM_ADDRESS, address: "structures@politorocketteam.it", fromMember: IDS.person(DM), removedBy: IDS.lead(DM) },
+  ]);
+};
 const changesDM = (area: "positions" | "applications" | "members") => (r: MatrixRow) => r.expect.changes[area].includes(DM);
 const reaches = (page: Expect["pages"][number]) => (r: MatrixRow) => r.expect.pages.includes(page);
 const fullAccess = (r: MatrixRow) => r.expect.wholeTeamMembers;
@@ -736,6 +748,19 @@ const ACTION_CASES: readonly ActionCase[] = [
   {
     action: "actions.markTeamAddressRerouteDone",
     run: async () => (await addTeamAddressReroute(), actions.markTeamAddressRerouteDone(TEAM_ADDRESS_REROUTE)),
+    may: (r) => r.expect.aliases.answers,
+    control: by("IT lead"),
+  },
+  // Who removes a team address is who may request one for its holder (issue #797); who marks the removal done is the alias rule.
+  {
+    action: "actions.removeTeamAddress",
+    run: async () => (await addMembersTeamAddress(), actions.removeTeamAddress(TEAM_ADDRESS)),
+    may: (r) => r.expect.aliases.requests.includes(DM),
+    control: by("team leader"),
+  },
+  {
+    action: "actions.markTeamAddressRemovalDone",
+    run: async () => (await addTeamAddressRemoval(), actions.markTeamAddressRemovalDone(TEAM_ADDRESS_REMOVAL)),
     may: (r) => r.expect.aliases.answers,
     control: by("IT lead"),
   },

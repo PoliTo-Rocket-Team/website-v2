@@ -542,7 +542,8 @@ export function drawerAliasOf(data: SeedData, viewer: number | null, memberId: n
 
 /** The Team addresses row of `memberId`'s side view (board 102), as `readMemberTeamAddresses` reads it. */
 export function drawerTeamAddressesOf(data: SeedData, memberId: number) {
-  const held = data.teamAddresses.map((r) => ({
+  const held = data.teamAddresses.map((r, i) => ({
+    id: r.id ?? i + 1,
     address: r.address,
     purpose: r.purpose,
     holderId: r.holderId,
@@ -555,7 +556,7 @@ export function drawerTeamAddressesOf(data: SeedData, memberId: number) {
   }));
   // The lines alone, which every viewer of the row reads the same; who may request is the viewer's.
   return (
-    memberTeamAddressesFor({ viewerId: null, standing: viewerStandingOf(null), memberIds: [memberId], team: teamOf(data), org: orgOf(data), held }).rows[memberId]
+    memberTeamAddressesFor({ viewerId: null, standing: viewerStandingOf(null), memberIds: [memberId], team: teamOf(data), org: orgOf(data), held, removing: [] }).rows[memberId]
       ?.lines ?? []
   );
 }

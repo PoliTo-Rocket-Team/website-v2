@@ -6,6 +6,7 @@ import { NO_MEMBER_DETAILS } from "./details";
 import { divisionMembers, positionsOf, type PersonRecord, type WaitingPerson } from "./division-members";
 import { MEMBERS_TOOLS, membersModelOf, NO_MEMBERS_FILTER, opensWholeTeam, shownMembers, type MemberEntry, type MembersModel } from "./members-view";
 import { membershipsOf, type DivisionQueue, type DivisionRole, type Joining, type OrgChart, type RoleBeyondDivisions, type TeamActor } from "./team";
+import type { TeamAddressLine } from "./team-address";
 import { wholeTeamMembers } from "./team-members";
 import type { ViewerStanding } from "./viewer";
 
@@ -184,7 +185,8 @@ test("the search matches a held team address and the personal PRT email, not an 
   );
   const positions = positionsOf(withDetails, org, { kind: "team" }, 7);
   const leader = membersModelOf({ scope: "whole-team", positions, queues, correctsSignInEmail: [], ...wholeTeamMembers({ records: withDetails, org, selfId: 7 }) })!;
-  const line = (address: string) => ({ address, purpose: "", movesWith: null });
+  let nextId = 0;
+  const line = (address: string): TeamAddressLine => ({ id: ++nextId, address, purpose: "", movesWith: null, removal: "none" });
   const teamAddresses = {
     rows: {
       2: { lines: [line("logistics@team.example")], requestable: false },

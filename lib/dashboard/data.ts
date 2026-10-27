@@ -360,6 +360,20 @@ export interface DashboardData {
    */
   markTeamAddressRerouteDone(rerouteId: number): Promise<WriteResult<null>>;
   /**
+   * Remove on a team address in the member side view (issue #797), checked
+   * by `planTeamAddressRemoval`: refused for anyone who may not request a
+   * team address for its holder, and while its removal waits. It stores one
+   * open removal for the approvers.
+   */
+  removeTeamAddress(addressId: number): Promise<WriteResult<null>>;
+  /**
+   * Mark done on an open team address removal (issue #797), checked by
+   * `planRemovalDone`: only the team leader, the operations lead and the IT
+   * lead. It deletes the address, so it can be requested again, and keeps
+   * the removal as history; a second Mark done is refused.
+   */
+  markTeamAddressRemovalDone(removalId: number): Promise<WriteResult<null>>;
+  /**
    * The team addresses the viewer holds and whether they set each up
    * (`ownTeamAddressesOf`, ./team-address.ts), for the Overview's ready
    * cards (board 94f's, for a team address); none off the team. It reads the

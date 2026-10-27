@@ -748,6 +748,36 @@ export const teamAddressReroutes = pgTable("team_address_reroutes", {
   done: check("team_address_reroutes_done", sql`${table.doneBy} is null or ${table.doneAt} is not null`),
 }));
 
+/**
+ * A removal (issue #797, drizzle/0070): someone who may request a team
+ * address for its holder asked to take it away, so the approvers turn its
+ * routing off in Google Workspace and press Mark done. Mark done deletes the
+ * `team_addresses` row, which frees the address for a new request; this row
+ * keeps the address, whose it was, who removed it and who marked it done, so
+ * `address_id` is set null then. One address has at most one open removal
+ * (`team_address_removals_one_open`), and an open one names its address
+ * (`team_address_removals_open_address`). lib/dashboard/team-address.ts owns
+ * the rules.
+ */
+export const teamAddressRemovals = pgTable("team_address_removals", {
+  id: serial("id").primaryKey(),
+  addressId: integer("address_id").references(() => teamAddresses.id, { onDelete: "set null" }),
+  address: text("address").notNull(),
+  fromMember: integer("from_member").references(() => members.memberId, { onDelete: "set null" }),
+  removedBy: integer("removed_by").references(() => members.memberId, { onDelete: "set null" }),
+  removedByActingAccount: actingAccount("removed_by_acting_account"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  doneBy: integer("done_by").references(() => members.memberId, { onDelete: "set null" }),
+  doneByActingAccount: actingAccount("done_by_acting_account"),
+  doneAt: timestamp("done_at", { withTimezone: true, mode: "string" }),
+}, (table) => ({
+  oneOpen: uniqueIndex("team_address_removals_one_open").on(table.addressId).where(sql`${table.doneAt} is null`),
+  done: check("team_address_removals_done", sql`${table.doneBy} is null or ${table.doneAt} is not null`),
+  openAddress: check("team_address_removals_open_address", sql`${table.doneAt} is not null or ${table.addressId} is not null`),
+}));
+
 // The Alumni page (issue #257). The page is built from the roles; an entry
 // holds only how one person shows on it, so a fix never writes a role, a
 // division or access. A member's entry is keyed by their member row and made
