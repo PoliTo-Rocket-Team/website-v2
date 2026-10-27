@@ -10,7 +10,7 @@ import { publicItems, versionedFromRows, versionRows, type ContentItem, type Ver
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import type { EditStamp } from "@/lib/project-content/edited";
 import type { ProjectRecord } from "@/lib/project-content/record";
-import { newRowContent, rowContentOf, rowRecordOf, type KeptRow } from "@/lib/project-content/row";
+import { rowRecordOf } from "@/lib/project-content/row";
 import { publicStorePanelPhotos, type PhotoFiles } from "@/lib/outreach-photos";
 import { deletePublicFile, ownPublicStoreHost, uploadPublicFile } from "@/lib/storage/public-store";
 import { attributedName } from "./acting-account";
@@ -36,10 +36,8 @@ function isUndefinedTable(error: unknown): boolean {
 }
 
 /**
- * A `project_versions` row's record (`rowRecordOf`): its page blocks record,
- * or the record from before page blocks a row without one holds. Only this
- * code and the code built before page blocks write the row, so one that holds
- * no record is a fault.
+ * A `project_versions` row's record (`rowRecordOf`): its page blocks record.
+ * Only this code writes the row, so one that holds no record is a fault.
  */
 function recordOf(row: typeof projectVersions.$inferSelect): ProjectRecord {
   const record = rowRecordOf(row);
@@ -120,9 +118,9 @@ export async function readProjectStamps(): Promise<ReadonlyMap<number, EditStamp
   );
 }
 
-/** The rows a project's versions are written as: each record in `page`, beside the `content` the project's rows kept (`rowContentOf`). */
-function versionValues(projectId: number, version: Versioned<ProjectRecord>, kept: readonly KeptRow[]) {
-  return versionRows(version).map(({ kind, content }) => ({ projectId, version: kind, content: rowContentOf(kind, kept, content), page: content }));
+/** The rows a project's versions are written as: each record in `page`. */
+function versionValues(projectId: number, version: Versioned<ProjectRecord>) {
+  return versionRows(version).map(({ kind, content }) => ({ projectId, version: kind, page: content }));
 }
 
 export const databaseProjectStore: ContentStore<ProjectRecord> = {
@@ -135,8 +133,8 @@ export const databaseProjectStore: ContentStore<ProjectRecord> = {
     const created = await runAuditQuery((db) =>
       db.execute<{ project_id: number }>(sql`
         WITH "project" AS (INSERT INTO ${projects} ("site_order") VALUES (${siteOrder}) RETURNING "id")
-        INSERT INTO ${projectVersions} ("project_id", "version", "content", "page")
-        SELECT "id", ${only.kind}::content_version, ${JSON.stringify(newRowContent(only.content))}::jsonb, ${JSON.stringify(only.content)}::jsonb
+        INSERT INTO ${projectVersions} ("project_id", "version", "page")
+        SELECT "id", ${only.kind}::content_version, ${JSON.stringify(only.content)}::jsonb
         FROM "project"
         RETURNING "project_id"`),
     );
@@ -146,13 +144,9 @@ export const databaseProjectStore: ContentStore<ProjectRecord> = {
 
   async update(id, version) {
     const before = (await readProjectItems()).find((item) => item.id === id) ?? null;
-    const kept = await getDb()
-      .select({ version: projectVersions.version, content: projectVersions.content })
-      .from(projectVersions)
-      .where(eq(projectVersions.projectId, id));
     await runAuditBatch((db) => [
       db.delete(projectVersions).where(eq(projectVersions.projectId, id)),
-      db.insert(projectVersions).values(versionValues(id, version, kept)),
+      db.insert(projectVersions).values(versionValues(id, version)),
     ]);
     updateTag(PROJECTS_CACHE_TAG);
     return written({ id, siteOrder: before?.siteOrder ?? 0, version });
