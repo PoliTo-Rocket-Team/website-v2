@@ -11,7 +11,8 @@ export const CONFLICT_TEXT = {
   duplicate: "The same person is on an earlier row of this sheet or file (by email or name); this row was not used.",
   "ambiguous-match": "The row matches two different people (one by email, another by email or name); it was given to the first email match.",
   "missing-email": "The person has no usable email in any source; they were not imported.",
-  "account-without-member": "An account with this person's email already exists but holds no member row; the person was not imported (the import never changes an existing row).",
+  "account-without-member":
+    "An account with another of this person's emails, not their sign-in email, already exists but holds no member row; the person was not imported (a new member row is linked only to the account of the sign-in email).",
   "unknown-unit": "A subteam or division value resolves to no existing department or division, or the cell a seat needs is empty; a role or position placed by it was not imported.",
   "unknown-title": "The title reads as a seat that no rule in the title table gives; the role was not imported.",
   "seat-taken": "This seat already has an active holder this year (team leader, department head or full-access seat), in the database or on an earlier row; the role was not imported.",

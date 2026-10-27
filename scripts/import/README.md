@@ -5,7 +5,8 @@ roster workbook, the old Supabase CSV exports and the old photos. It reports eve
 inserts members, their roles by academic year, alumni, advisors, FAQs, orders and member and
 advisor photos. It also creates the departments and divisions the roster names and the
 database lacks: closed ones for past units, open ones for units on the current sheet (issue #816).
-It never updates or deletes a row.
+It never deletes a row. It updates one column only: an existing account that holds no member row
+gets its person's new member row in `users.member` (see **Sign-in**).
 
 Running it on a real database (preview or production) is an owner step. The tests run it only on
 the fake files in `fixtures/files/` and `fixtures/rules/`, an in-memory database and a fake photo
@@ -39,7 +40,8 @@ prints the rows to insert (or inserted), already present and refused. Under the 
 each department and division to create by name and code, marked `open, from <day>` or
 `closed, <day> to <day>`, a division with the department it goes under. Under each unit a
 `spellings:` line lists the distinct roster values folded into it (see **Units**). Then it prints
-the number of alumni, of people in more than one year sheet, of unclear quitters, of Quitters dates
+the number of existing accounts with no member row linked to a new member row (see **Sign-in**),
+of alumni, of people in more than one year sheet, of unclear quitters, of Quitters dates
 read with day and month swapped, of sheet rows skipped for having no name, of override lines
 applied (handovers and quitter years) and of distinct unresolved unit names; the photo counts; then
 each conflict with its file, sheet, row and field. Unclear quitters are listed by their Quitters
@@ -101,6 +103,15 @@ the person running the import writes. See **The override input** below.
   the users row by that email. It gives the row the account's id, so the person lands on their
   imported row and member, and an alumnus opens My alumni. If they sign in with another address,
   full access can correct the sign-in email first (Edit details, issue #741).
+  - **An account with no member row** (owner decision, issue #820). When the sign-in email is an
+    existing `users` row that holds no member row (an applicant's account, for example), no
+    `users` row is inserted. The person's new `members` row and roles are linked to that account:
+    its `member` column is set to the new member row, and no other field of it is written. The
+    table counts it under `users` as present and under `members` as inserted, and the report
+    counts these links on a line of their own. When only another of the person's emails is an
+    account with no member row, the person is not imported and is reported as
+    `account-without-member`.
+  - An account that already holds a member row is that member: present, and never changed.
 - **Titles** (`titles.ts`): a title cell is split on " - " into seats, and each seat gives its
   own role. The title table gives each seat's `type`, `full_access` and unit. A seat may end in
   parenthesized notes: "(acting)" marks an acting holder, any other note names a project. Neither
@@ -128,7 +139,9 @@ the person running the import writes. See **The override input** below.
   code in its parentheses ("Propulsion (PRO)", "Electronics (ELT) Department"), against the
   `departments` and `divisions` the database holds, closed ones included. Names are compared
   without case, accents, punctuation, a trailing level word ("Department", "Division") or a
-  word's trailing plural "s" (issue #820): "Ground System" and "Ground Systems" are one name. "N/A", "AMV" and
+  word's trailing plural "s" (issue #820): "Ground System" and "Ground Systems" are one name. A
+  code keeps its "s", and so does a word written as a code (two to four capitals or digits): "OPS"
+  and "OP" are two codes, and "Alpha (OPS)" and "Beta (OP)" are two units. "N/A", "AMV" and
   "Amerigo Vespucci (AMV)" are no unit. An "ADVISOR" or "SENIOR ADVISOR" marker, with or without a
   project in parentheses, makes the row's plain member seat an `advisor` role. A project's name
   (any version of a `projects` row on the database) is not a unit: the schema has no project on
@@ -206,7 +219,10 @@ the person running the import writes. See **The override input** below.
     that past department, closed when only past sheets name it. So a bare "Mission Analysis"
     under Vittorio Emanuele II stays apart from "Mission Analysis (MSA)" under Aeromechanics, and
     "Avionics" under Cavour apart from "Avionics" under Vittorio Emanuele II. Values with the same
-    code still fold, whatever their departments. A value its row pairs with no department joins
+    code still fold, whatever their departments. A database department is one department to its
+    divisions however a row spells it: "IT&Media" beside "Operations" on one row and "IT&Media
+    (OPS)" on another are one division when the database's Operations is coded OPS. A value its
+    row pairs with no department joins
     the division of its name that the newest sheet pairs. A division value finds a database
     division by name only under the department its row pairs it with, or under none, and by
     code under any department, so a second run finds each one where the first created it.
@@ -262,8 +278,8 @@ the person running the import writes. See **The override input** below.
     matches nobody, it is the one imported person with the same surname (accents, case and
     spacing do not count) whose given names, on a workbook row of theirs, contain each word of the
     CSV row's first name (owner decision, issue #818): "Maria Rossi" is "Anna Maria Rossi". Only
-    people the plan imports count, so a refused person (no sign-in email, an account with no
-    member, or an unclear quitter) never makes the row ambiguous. When no imported person fits, or more than one does, the row
+    people the plan imports count, so a refused person (no sign-in email, an
+    `account-without-member`, or an unclear quitter) never makes the row ambiguous. When no imported person fits, or more than one does, the row
     matches nobody, and a photo with its id is reported as `photo-not-imported`, as before.
   - A file named `<surname>` (no id) is an advisor's or a professor's. It matches the one advisor
     with that surname: a row of `advisors_rows.csv`, or a person whose workbook row is an advisor's
@@ -333,5 +349,8 @@ readers: the date forms, the override lines, a quitter's stint (a swapped date c
 the photo matching. `roster-shapes.test.ts` plans the shapes of issues #818 and #820 over a fake
 roster built in memory: swapped Quitters dates, a shorter first name in `people_rows.csv`, one unit
 spelt several ways, a separator inside parentheses, a note naming a department, one division name
-under two departments, a job title in the Division cell and a plural spelling. `import.test.ts`
-checks that `positions_rows.csv` is left out.
+under two departments, a database department spelt by name and by code, a job title in the
+Division cell, a plural spelling, two codes that differ by an "s", and the accounts a person's
+emails may already have (no member row, a member row, another email's). `import.test.ts` checks
+that `positions_rows.csv` is left out, and that an account with no member row is linked to its
+person's new member row with no other field written.

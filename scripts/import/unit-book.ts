@@ -1,5 +1,5 @@
 import { yearEnd, yearStart } from "./academic-year";
-import { lookupDepartment, lookupDivision, storedUnitName, unitKey, type Lookup, type UnitName, type Units } from "./units";
+import { codeKey, lookupDepartment, lookupDivision, storedUnitName, unitKey, type Lookup, type UnitName, type Units } from "./units";
 
 // The units a plan places roles in (issues #816, #818): the departments and
 // divisions the database holds, and the ones the import creates. A roster name
@@ -71,12 +71,15 @@ export type Sighting = { readonly value: UnitName; readonly year: number; readon
 /** The name and code a created unit takes. */
 type Naming = { readonly name: string; readonly code: string | null };
 
+/** A value's fold nodes: its name key, its name node, its code node (null when it has no code) and the code node its name spells. */
+type Nodes = { readonly key: string; readonly name: string; readonly code: string | null; readonly asCode: string };
+
 /**
  * The roster's values of one level, grouped into the units they spell. Nodes
  * are a value's name key (`n:`, with `@` and its parent when its row pairs it
- * with a department) and its code key (`c:`); a coded value joins its two, and
- * a name key joins the code key with the same text, so a bare "VES" joins the
- * "(VES)" code. A name under one parent never joins the same name under
+ * with a department) and its code key (`c:`, which keeps a plural "s"); a coded
+ * value joins its two, and a name joins the code its text spells, so a bare
+ * "VES" joins the "(VES)" code. A name under one parent never joins the same name under
  * another, except through a code. A name with no parent joins the group its
  * name has under the parent of the newest sheet, unless its code already
  * joins it to a parent. The groups are fixed once built: a value no row gave
@@ -86,13 +89,27 @@ export class UnitFold {
   private readonly parent = new Map<string, string>();
   /** The name nodes of each name key, in the order they were given. */
   private readonly namesOf = new Map<string, string[]>();
+  /** The name nodes whose name, read as a code, is each code node: a bare "VES" for "c:ves". */
+  private readonly twinsOf = new Map<string, string[]>();
   /** The sightings of each group, in the order they were given. */
   private readonly byGroup = new Map<string, Sighting[]>();
 
-  constructor(sightings: readonly Sighting[]) {
+  /**
+   * @param sightings every value the rows give
+   * @param known the database's units of this level: each joins its name to its code, so values that spell one by name and by code are one group. They are no sighting: they give a group no value, name or open state.
+   */
+  constructor(sightings: readonly Sighting[], known: readonly Naming[] = []) {
+    for (const k of known) {
+      const nodes = UnitFold.nodesOf({ kind: "unit", ...k }, null);
+      if (nodes === null) continue;
+      this.addName(nodes);
+      if (nodes.code !== null) this.union(nodes.name, this.addCode(nodes.code));
+    }
     for (const s of sightings) {
-      const [name, code] = UnitFold.nodesOf(s.value, s.parent).map((node) => this.add(node));
-      if (name !== undefined && code !== undefined) this.union(name, code);
+      const nodes = UnitFold.nodesOf(s.value, s.parent);
+      if (nodes === null) continue;
+      this.addName(nodes);
+      if (nodes.code !== null) this.union(nodes.name, this.addCode(nodes.code));
     }
     this.joinUnpaired(sightings);
     for (const s of sightings) {
@@ -108,27 +125,25 @@ export class UnitFold {
    * level word).
    */
   group(value: UnitName, parent: string | null = null): string | null {
-    const [name, code] = UnitFold.nodesOf(value, parent);
-    if (name === undefined) return null;
-    for (const node of [name, ...(code === undefined ? [] : [code]), `c:${UnitFold.textOf(name)}`]) {
+    const nodes = UnitFold.nodesOf(value, parent);
+    if (nodes === null) return null;
+    for (const node of [nodes.name, ...(nodes.code === null ? [] : [nodes.code]), nodes.asCode]) {
       if (this.parent.has(node)) return this.find(node);
     }
-    return name;
+    return nodes.name;
   }
 
-  /** A value's name node, then its code node: none for a key that is empty. A value with no name key is grouped by nothing. */
-  private static nodesOf(value: UnitName, parent: string | null): [] | [string] | [string, string] {
+  /**
+   * A value's nodes: its name node (its name key, with `@` and its parent when
+   * it has one), its code node, and the code node its name spells. A name is
+   * keyed without a word's plural "s", a code with it (issue #820), so "OPS"
+   * and "OP" stay two codes. Null for a value whose name key is empty.
+   */
+  private static nodesOf(value: UnitName, parent: string | null): Nodes | null {
     const name = unitKey(value.name);
-    const code = value.code === null ? "" : unitKey(value.code);
-    if (name === "") return [];
-    const nameNode = parent === null ? `n:${name}` : `n:${name}@${parent}`;
-    return code === "" ? [nameNode] : [nameNode, `c:${code}`];
-  }
-
-  /** The key text of a node: a name node's name key without its parent, or a code node's code key. */
-  private static textOf(node: string): string {
-    const text = node.slice(2);
-    return node.startsWith("n:") ? text.split("@")[0] : text;
+    if (name === "") return null;
+    const code = value.code === null ? "" : codeKey(value.code);
+    return { key: name, name: parent === null ? `n:${name}` : `n:${name}@${parent}`, code: code === "" ? null : `c:${code}`, asCode: `c:${codeKey(value.name)}` };
   }
 
   /** Joins each name with no parent to its name's group under the parent of the newest sheet (the first read on a tie), unless its group already has a parent. */
@@ -139,14 +154,14 @@ export class UnitFold {
       if (group !== null) newest.set(group, Math.max(newest.get(group) ?? Number.NEGATIVE_INFINITY, s.year));
     }
     for (const s of sightings) {
-      const [name] = UnitFold.nodesOf(s.value, null);
-      if (s.parent !== null || name === undefined || newest.has(this.find(name))) continue;
+      const nodes = s.parent === null ? UnitFold.nodesOf(s.value, null) : null;
+      if (nodes === null || newest.has(this.find(nodes.name))) continue;
       let best: { group: string; year: number } | null = null;
-      for (const node of this.namesOf.get(UnitFold.textOf(name)) ?? []) {
+      for (const node of this.namesOf.get(nodes.key) ?? []) {
         const year = newest.get(this.find(node));
-        if (node !== name && year !== undefined && (best === null || year > best.year)) best = { group: this.find(node), year };
+        if (node !== nodes.name && year !== undefined && (best === null || year > best.year)) best = { group: this.find(node), year };
       }
-      if (best !== null) this.union(best.group, name);
+      if (best !== null) this.union(best.group, nodes.name);
     }
   }
 
@@ -188,17 +203,20 @@ export class UnitFold {
     return this.byGroup.get(group) ?? [];
   }
 
-  /** Adds a node, joined to its twins: the code key with a name key's text, or every name key (under any parent) with a code key's. */
-  private add(node: string): string {
+  /** Adds a value's name node, joined to the code node its name spells. */
+  private addName(nodes: Nodes): void {
+    if (this.parent.has(nodes.name)) return;
+    this.parent.set(nodes.name, nodes.name);
+    if (this.parent.has(nodes.asCode)) this.union(nodes.name, nodes.asCode);
+    this.namesOf.set(nodes.key, [...(this.namesOf.get(nodes.key) ?? []), nodes.name]);
+    this.twinsOf.set(nodes.asCode, [...(this.twinsOf.get(nodes.asCode) ?? []), nodes.name]);
+  }
+
+  /** Adds a code node, joined to every name node (under any parent) whose name spells it. */
+  private addCode(node: string): string {
     if (this.parent.has(node)) return node;
     this.parent.set(node, node);
-    const text = UnitFold.textOf(node);
-    if (node.startsWith("c:")) {
-      for (const name of this.namesOf.get(text) ?? []) this.union(node, name);
-    } else {
-      if (this.parent.has(`c:${text}`)) this.union(node, `c:${text}`);
-      this.namesOf.set(text, [...(this.namesOf.get(text) ?? []), node]);
-    }
+    for (const name of this.twinsOf.get(node) ?? []) this.union(node, name);
     return node;
   }
 

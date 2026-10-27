@@ -28,9 +28,10 @@ import writeXlsxFile from "write-excel-file/node";
 //   Zeno Fabbri a second team leader; Fabio Ricci the chief engineer the test
 //   database already seats; Marta Villa whose CSV program disagrees; Paolo
 //   Lombardi who matches an imported Alumni entry the test lays; Nicola
-//   Fontana's 2024 row carrying Carla Ferri's email (two people); Wanda Riva,
-//   whose email an existing account without a member row holds; and CSV rows
-//   that do not fit the schema.
+//   Fontana's 2024 row carrying Carla Ferri's email (two people); and CSV rows
+//   that do not fit the schema. Wanda Riva's sign-in email is an existing
+//   account without a member row: no conflict since issue #820, the account is
+//   linked to her new member row.
 // - The title and unit forms: Rita Longo holds two seats in one cell, an
 //   acting one among them, with a unit code in parentheses, a project and an
 //   "N/A" beside her units; Ettore Bassi's subteam is only a project; Sofia

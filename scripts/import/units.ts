@@ -3,7 +3,8 @@
 // database, by its name or its code. Case, accents, punctuation, a trailing
 // "department", "division" or "subteam" and a word's trailing plural "s" do
 // not count, so "Propulsion Dept." and "PROPULSION" both find "Propulsion",
-// and "Ground System" finds "Ground Systems" (issue #820). A name two units
+// and "Ground System" finds "Ground Systems" (issue #820). A code keeps its
+// plural "s": "OPS" never finds "OP". A name two units
 // share is ambiguous: the import does not pick one. A name no unit has is
 // absent; the plan creates it closed when only past sheets name it
 // (./unit-book.ts).
@@ -23,28 +24,45 @@ export type Department = { readonly id: number; readonly name: string; readonly 
 export type Division = Department & { readonly deptId: number | null };
 export type Units = { readonly departments: readonly Department[]; readonly divisions: readonly Division[] };
 
-/** How the import compares unit names. */
-export function unitKey(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
+/** A word written as a code: two to four capitals or digits ("OPS", "GNS"). Its "s" is no plural. */
+const CODE_WORD = /^[A-Z0-9]{2,4}$/;
+
+function keyOf(text: string, plural: "kept" | "dropped"): string {
+  const plain = text.normalize("NFD").replace(/\p{Diacritic}/gu, "");
+  const words = plural === "dropped" ? plain.replace(/\b([a-z0-9]{2,})s\b/gi, (word: string, base: string) => (CODE_WORD.test(word) ? word : base)) : plain;
+  return words
     .toLowerCase()
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, " ")
-    // A word's trailing plural "s" (issue #820): "systems" is "system". Both sides of a comparison lose it, so "analysis" still equals "analysis".
-    .replace(/\b([a-z0-9]{2,})s\b/g, "$1")
     .replace(/\b(the|department|dept|division|div|subteam|team)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
+/**
+ * How the import compares unit names. A word's trailing plural "s" does not
+ * count (issue #820): "systems" is "system". Both sides of a comparison lose
+ * it, so "analysis" still equals "analysis". A word written as a code keeps
+ * it: a bare "OPS" is not "OP".
+ */
+export function unitKey(text: string): string {
+  return keyOf(text, "dropped");
+}
+
+/** How the import compares unit codes, and a bare value with a code: as names, but a code keeps its "s", so "OPS" and "OP" are two codes. */
+export function codeKey(text: string): string {
+  return keyOf(text, "kept");
+}
+
 /** What a name finds among units: the one unit, none, or more than one (the import does not pick). */
 export type Lookup<U> = { readonly kind: "found"; readonly unit: U } | { readonly kind: "absent" } | { readonly kind: "ambiguous" };
 
-function find<U extends Department>(units: readonly U[], name: string): Lookup<U> {
-  const key = unitKey(name);
+/** The units a text finds: by name, or as a unit's code. */
+function find<U extends Department>(units: readonly U[], text: string): Lookup<U> {
+  const key = unitKey(text);
+  const asCode = codeKey(text);
   if (key === "") return { kind: "absent" };
-  const hits = units.filter((u) => unitKey(u.name) === key || (u.code !== null && unitKey(u.code) === key));
+  const hits = units.filter((u) => unitKey(u.name) === key || (u.code !== null && codeKey(u.code) === asCode));
   return hits.length === 1 ? { kind: "found", unit: hits[0] } : hits.length === 0 ? { kind: "absent" } : { kind: "ambiguous" };
 }
 
@@ -148,11 +166,17 @@ export type DivisionName = { readonly value: UnitName; readonly department: Unit
  * database's and the ones a run creates, each by its name and its code.
  */
 export class DepartmentIndex {
-  /** Each department's name key and code key. */
-  private readonly keys: readonly (readonly string[])[];
+  /** Each department's name key and code key (empty when it has none). */
+  private readonly keys: readonly { readonly name: string; readonly code: string }[];
 
   constructor(departments: readonly { readonly name: string; readonly code: string | null }[]) {
-    this.keys = departments.map((d) => [d.name, d.code].flatMap((text) => (text === null || unitKey(text) === "" ? [] : [unitKey(text)])));
+    this.keys = departments.map((d) => ({ name: unitKey(d.name), code: d.code === null ? "" : codeKey(d.code) }));
+  }
+
+  /** The departments a text names, by name or as a code. */
+  private named(text: string): readonly { readonly name: string; readonly code: string }[] {
+    const [name, code] = [unitKey(text), codeKey(text)];
+    return name === "" ? [] : this.keys.filter((k) => k.name === name || (k.code !== "" && k.code === code));
   }
 
   /**
@@ -163,10 +187,9 @@ export class DepartmentIndex {
    */
   parentOf(value: UnitName): UnitName | null {
     if (value.code === null) return null;
-    const note = unitKey(value.code);
-    const own = unitKey(value.name);
-    const named = this.keys.filter((k) => k.includes(note));
-    return named.length === 0 || named.some((k) => k.includes(own)) ? null : { kind: "unit", name: value.code, code: null };
+    const named = this.named(value.code);
+    const own = this.named(value.name);
+    return named.length === 0 || named.some((k) => own.includes(k)) ? null : { kind: "unit", name: value.code, code: null };
   }
 }
 

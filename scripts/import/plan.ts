@@ -18,23 +18,34 @@ import { DepartmentIndex, notedDepartment, rowUnitNames, subteamReadingOf, unitK
 // whole decision: a dry run prints it, an import writes exactly its rows and
 // nothing else. Every row is an insert; a row the database already holds is
 // counted as present and left alone, so a second run plans no insert at all.
+// The one write that is no insert links an account that holds no member row
+// to the member row the plan inserts for its person (issue #820).
 
 /** A person the plan writes for: one it inserts (by their match id), or a member the database already has. */
 export type PersonRef = { readonly kind: "new"; readonly person: number } | { readonly kind: "existing"; readonly memberId: number };
 
+/**
+ * The account a new member row belongs to: a `users` row the plan inserts, or
+ * one the database holds with no member row (issue #820). That one is linked
+ * to the new member and left as it is otherwise: none of its fields is written.
+ */
+export type PersonAccount = { readonly kind: "new"; readonly user: NewUser } | { readonly kind: "linked"; readonly userId: string };
+
+export type NewUser = {
+  readonly email: string;
+  readonly firstName: string | null;
+  readonly lastName: string | null;
+  readonly origin: string | null;
+  readonly levelOfStudy: string | null;
+  readonly linkedin: string | null;
+  readonly politoId: string | null;
+  readonly program: string | null;
+  readonly country: string | null;
+};
+
 export type NewPerson = {
   readonly person: number;
-  readonly user: {
-    readonly email: string;
-    readonly firstName: string | null;
-    readonly lastName: string | null;
-    readonly origin: string | null;
-    readonly levelOfStudy: string | null;
-    readonly linkedin: string | null;
-    readonly politoId: string | null;
-    readonly program: string | null;
-    readonly country: string | null;
-  };
+  readonly account: PersonAccount;
   readonly member: {
     readonly prtEmail: string | null;
     readonly mobileNumber: string | null;
@@ -288,6 +299,8 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     unitRows.flatMap(({ cells: c, year, current }) =>
       [...unitNamesOf(c).departments.map((d) => d.value), ...notedDepartmentsOf(c)].map((value): Sighting => ({ value, year, current, parent: null })),
     ),
+    // A database department spelt by name on one row and by its code on another is one parent to its divisions.
+    units?.departments ?? [],
   );
   // A division is told apart by the department its row pairs it with.
   const divisionFold = new UnitFold(
@@ -476,8 +489,18 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     return { stints, at: person.years.get(years[years.length - 1])!.at };
   };
 
-  /** A person the plan imports: their stints, the row the report names for them, their sign-in address, and whom they are written as. */
-  type Admitted = { readonly stints: readonly Stint[]; readonly anchor: At; readonly email: string; readonly ref: PersonRef };
+  /**
+   * A person the plan imports: their stints, the row the report names for
+   * them, their sign-in address, and whom they are written as: a member the
+   * database has, or a new member, linked to the account of their sign-in
+   * address when the database has one that holds no member row.
+   */
+  type Admitted = {
+    readonly stints: readonly Stint[];
+    readonly anchor: At;
+    readonly email: string;
+    readonly who: { readonly kind: "existing"; readonly memberId: number } | { readonly kind: "new"; readonly linkTo: string | null };
+  };
 
   /** Whether the plan imports a person; a refused one is reported and counted here, once. */
   const admit = (person: Person): Admitted | null => {
@@ -496,10 +519,13 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     const email = signInEmail(person);
     if (email === null) return refuse("missing-email");
     const accounts = snapshot.users.filter((u) => person.emails.has(u.email) || u.email === email);
-    const account = accounts.find((u) => u.member !== null) ?? accounts[0];
-    if (account !== undefined && account.member === null) return refuse("account-without-member");
-    const ref: PersonRef = account?.member != null ? { kind: "existing", memberId: account.member } : { kind: "new", person: person.id };
-    return { stints, anchor, email, ref };
+    // An account that holds a member row is that member: present, never touched.
+    const member = accounts.find((u) => u.member !== null)?.member;
+    if (member != null) return { stints, anchor, email, who: { kind: "existing", memberId: member } };
+    // The account of the sign-in address, holding no member row, gets the new member (owner decision, issue #820); one of another address alone does not.
+    const signIn = accounts.find((u) => u.email === email);
+    if (signIn === undefined && accounts.length > 0) return refuse("account-without-member");
+    return { stints, anchor, email, who: { kind: "new", linkTo: signIn?.id ?? null } };
   };
   const admitted = new Map<number, Admitted>();
   for (const person of people) {
@@ -517,7 +543,8 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
   for (const person of people) {
     const entry = admitted.get(person.id);
     if (entry === undefined) continue;
-    const { stints, anchor, email, ref } = entry;
+    const { stints, anchor, email, who } = entry;
+    const ref: PersonRef = who.kind === "existing" ? who : { kind: "new", person: person.id };
     const onCurrent = currentYear !== null && person.years.has(currentYear);
     refOf.set(person.id, ref);
     personFate.set(person.id, ref.kind);
@@ -525,26 +552,33 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     const alumnus = !onCurrent;
     if (alumnus) alumni++;
 
-    if (ref.kind === "existing") {
+    if (who.kind === "existing") {
       counter.add("users", "present");
       counter.add("members", "present");
     } else {
-      counter.add("users", "insert");
+      counter.add("users", who.linkTo === null ? "insert" : "present");
       counter.add("members", "insert");
       const f = person.fields;
+      const account: PersonAccount =
+        who.linkTo !== null
+          ? { kind: "linked", userId: who.linkTo }
+          : {
+              kind: "new",
+              user: {
+                email,
+                firstName: orNull(f.firstName),
+                lastName: orNull(f.lastName),
+                origin: orNull(f.origin),
+                levelOfStudy: orNull(f.level),
+                linkedin: f.linkedin === undefined ? null : linkedinLink(f.linkedin),
+                politoId: orNull(f.studentId),
+                program: orNull(f.program),
+                country: orNull(f.country),
+              },
+            };
       newPeople.push({
         person: person.id,
-        user: {
-          email,
-          firstName: orNull(f.firstName),
-          lastName: orNull(f.lastName),
-          origin: orNull(f.origin),
-          levelOfStudy: orNull(f.level),
-          linkedin: f.linkedin === undefined ? null : linkedinLink(f.linkedin),
-          politoId: orNull(f.studentId),
-          program: orNull(f.program),
-          country: orNull(f.country),
-        },
+        account,
         member: {
           prtEmail: normalEmail(f.prtEmail ?? ""),
           mobileNumber: orNull(f.mobile),

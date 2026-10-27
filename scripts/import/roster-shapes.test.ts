@@ -15,7 +15,9 @@ import { DepartmentIndex, rowUnitNames, unitNames, type Units } from "./units";
 // people_rows.csv first name shorter than the workbook's given names, one unit
 // spelt several ways, a separator inside parentheses, a note naming a parent
 // department, one division name under two departments, a job title in the
-// Division cell, and a plural spelling. Every name here is invented.
+// Division cell, a plural spelling, two codes that differ by an "s", a
+// database department spelt by name and by code, and an account with no member
+// row. Every name here is invented.
 
 type Cells = Readonly<Record<string, string>>;
 
@@ -51,6 +53,9 @@ const TODAY = "2026-03-15";
 
 /** The Excel day serial a date cell stores for a day. */
 const serialOf = (day: string) => String((Date.parse(day) - Date.UTC(1899, 11, 30)) / 86_400_000);
+
+/** The first name a planned person's new account is inserted with; null for one linked to an existing account. */
+const firstNameOf = (p: Plan["people"][number]) => (p.account.kind === "new" ? p.account.user.firstName : null);
 
 const person = (first: string, last: string, cells: Cells = {}): Cells => ({
   firstName: first,
@@ -154,7 +159,7 @@ test("a people_rows.csv row no full name matches is the one person with its surn
   const plan = planImport(sources, EMPTY_DATABASE, folder, TODAY);
   assert.equal(plan.photos?.toUpload, 1);
   assert.deepEqual(
-    plan.people.filter((p) => p.photo !== null).map((p) => p.user.firstName),
+    plan.people.filter((p) => p.photo !== null).map(firstNameOf),
     ["Anna Maria"],
   );
   assert.deepEqual(
@@ -183,7 +188,7 @@ test("the given-names fallback counts only imported people: a refused person wit
   assert.equal(plan.counts.users.refused, 1);
   assert.equal(plan.photos?.toUpload, 1);
   assert.deepEqual(
-    plan.people.filter((p) => p.photo !== null).map((p) => p.user.firstName),
+    plan.people.filter((p) => p.photo !== null).map(firstNameOf),
     ["Anna Maria"],
   );
   assert.equal(plan.conflicts.filter((c) => c.kind === "photo-not-imported").length, 0);
@@ -503,4 +508,99 @@ test("issue #820: names that differ only by a word's plural 's' fold together, o
       ["Parachute", null, "closed", ["Parachute"]],
     ],
   );
+});
+
+test("issue #820: a code keeps its plural 's': two codes that differ by it are two units, and neither finds the other's database unit", () => {
+  const sources = sourcesOf({
+    years: {
+      2025: [
+        person("Ada", "Bini", { subteam: "Alpha (OPS)" }),
+        person("Ben", "Cori", { subteam: "Beta (OP)" }),
+        person("Cia", "Dani", { subteam: "Gamma (GN)" }),
+        person("Dea", "Elmi", { subteam: "GN" }),
+      ],
+    },
+  });
+  const plan = planImport(sources, EMPTY_DATABASE, null, TODAY);
+  assert.deepEqual(
+    plan.departments.map((d) => [d.name, d.code, d.spellings]),
+    [
+      ["Alpha", "OPS", ["Alpha (OPS)"]],
+      ["Beta", "OP", ["Beta (OP)"]],
+      ["Gamma", "GN", ["Gamma (GN)", "GN"]],
+    ],
+  );
+
+  const database = databaseWith({ departments: [{ id: 3, name: "Operations", code: "OPS" }], divisions: [{ id: 8, name: "Ground Systems", code: "GNS", deptId: 3 }] });
+  const against = planImport(
+    sourcesOf({ years: { 2025: [person("Eva", "Fano", { subteam: "OP", division: "Navigation (GN)" }), person("Fil", "Gaia", { subteam: "OPS", division: "GNS" })] } }),
+    database,
+    null,
+    TODAY,
+  );
+  assert.deepEqual(against.departments.map((d) => d.name), ["OP"]);
+  assert.deepEqual(createdDivisions(against), [["Navigation", "GN", "OP", "open"]]);
+  assert.deepEqual(
+    against.roles.filter((r) => r.division?.kind === "existing").map((r) => [nameOf(against, "departments", r.dept), nameOf(against, "divisions", r.division)]),
+    [["#3", "#8"]],
+  );
+});
+
+test("issue #820: a database department spelt by name on one row and by its code on another is one parent: its division is created once", () => {
+  const database = databaseWith({ departments: [{ id: 3, name: "Operations", code: "OPS" }], divisions: [] });
+  const sources = sourcesOf({
+    years: {
+      2025: [person("Ada", "Bini", { subteam: "Operations", division: "IT&Media" }), person("Ben", "Cori", { subteam: "OPS", division: "IT&Media" })],
+      2021: [person("Cia", "Dani", { division: "IT&Media (OPS)" }), person("Dea", "Elmi", { division: "IT&Media (Operations)" })],
+    },
+  });
+  const plan = planImport(sources, database, null, TODAY);
+  assert.deepEqual(createdDivisions(plan), [["IT&Media", null, "#3", "open"]]);
+  assert.deepEqual(plan.divisions[0].spellings, ["IT&Media"]);
+  assert.ok(plan.roles.every((r) => r.division?.kind === "new" && r.division.index === 0 && nameOf(plan, "departments", r.dept) === "#3"));
+});
+
+test("issue #820: a person whose sign-in email is an account with no member row gets a member row linked to it; the account is otherwise unchanged and counted", () => {
+  const sources = sourcesOf({
+    years: {
+      2025: [
+        // The sign-in email's account holds no member row: linked.
+        person("Ada", "Bini", { subteam: "Propulsion" }),
+        // The account holds a member row: that member, present and untouched.
+        person("Ben", "Cori", { subteam: "Propulsion" }),
+        // Only another of the person's emails has an account, with no member row: refused.
+        person("Cia", "Dani", { subteam: "Propulsion", studentEmail: "s100003@studenti.example.com" }),
+        // No account: a new one.
+        person("Dea", "Elmi", { subteam: "Propulsion" }),
+      ],
+    },
+  });
+  const database: Snapshot = {
+    ...databaseWith({ departments: [{ id: 1, name: "Propulsion", code: "PRP" }], divisions: [] }),
+    users: [
+      { id: "account-ada", email: "ada.bini@example.com", member: null },
+      { id: "account-ben", email: "ben.cori@example.com", member: 50 },
+      { id: "account-cia", email: "s100003@studenti.example.com", member: null },
+    ],
+  };
+  const plan = planImport(sources, database, null, TODAY);
+  assert.deepEqual(
+    plan.people.map((p) => [p.person, p.account.kind === "linked" ? p.account.userId : firstNameOf(p)]),
+    [
+      [1, "account-ada"],
+      [4, "Dea"],
+    ],
+  );
+  assert.deepEqual(plan.roles.map((r) => r.who), [
+    { kind: "new", person: 1 },
+    { kind: "existing", memberId: 50 },
+    { kind: "new", person: 4 },
+  ]);
+  assert.deepEqual(plan.counts.users, { insert: 1, present: 2, refused: 1 });
+  assert.deepEqual(plan.counts.members, { insert: 2, present: 1, refused: 1 });
+  assert.deepEqual(
+    plan.conflicts.filter((c) => c.kind === "account-without-member").map((c) => c.at.row),
+    [4],
+  );
+  assert.match(renderReport({ mode: "dry-run", database: true, sources, plan }), /^Existing accounts with no member row to link to a new member row: 1$/m);
 });
