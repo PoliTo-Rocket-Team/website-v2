@@ -130,7 +130,8 @@ test("a people_rows.csv row no full name matches is the one person with its surn
       { id: "27", firstName: "Anna", lastName: "Bassi" },
     ],
   });
-  const { people, byPeopleId } = matchPeople(sources);
+  const { people, matchPeopleRows } = matchPeople(sources);
+  const { byPeopleId } = matchPeopleRows(() => true);
   const named = (first: string) => people.find((p) => p.fields.firstName === first);
   assert.equal(byPeopleId.get("23"), named("Anna Maria"));
   assert.equal(byPeopleId.get("25"), named("Paola"));
@@ -157,6 +158,81 @@ test("a people_rows.csv row no full name matches is the one person with its surn
     plan.conflicts.filter((c) => c.kind === "photo-not-imported").map((c) => c.at.row),
     [2],
   );
+});
+
+test("the given-names fallback counts only imported people: a refused person with the same surname does not make the row ambiguous", () => {
+  const sources = sourcesOf({
+    years: {
+      2025: [
+        person("Anna Maria", "Neri"),
+        // Refused: no sign-in email.
+        person("Anna Elena", "Neri", { personalEmail: "" }),
+      ],
+    },
+    people: [{ id: "30", firstName: "Anna", lastName: "Neri" }],
+  });
+  // Counting every matched person, two fit and the row matches no one.
+  assert.equal(matchPeople(sources).matchPeopleRows(() => true).byPeopleId.has("30"), false);
+
+  const photo = { bytes: new Uint8Array([1]), contentType: "image/jpeg" } as const;
+  const folder: PhotoFolder = { files: 1, photos: [{ kind: "member", row: 1, id: "30", photo }], ids: new Set(["30"]), advisorLines: new Set() };
+  const plan = planImport(sources, EMPTY_DATABASE, folder, TODAY);
+  assert.equal(plan.counts.users.refused, 1);
+  assert.equal(plan.photos?.toUpload, 1);
+  assert.deepEqual(
+    plan.people.filter((p) => p.photo !== null).map((p) => p.user.firstName),
+    ["Anna Maria"],
+  );
+  assert.equal(plan.conflicts.filter((c) => c.kind === "photo-not-imported").length, 0);
+});
+
+test("a group whose spellings find two database units is unresolved and reported, never created as a third unit", () => {
+  const sources = sourcesOf({
+    years: {
+      2025: [
+        person("Ada", "Bini", { subteam: "Alpha (X)" }),
+        person("Ben", "Cori", { subteam: "Beta (X)" }),
+        person("Cia", "Dani", { subteam: "Gamma (X)" }),
+      ],
+    },
+  });
+  const database = databaseWith({
+    departments: [
+      { id: 1, name: "Alpha", code: null },
+      { id: 2, name: "Beta", code: null },
+    ],
+    divisions: [],
+  });
+  const plan = planImport(sources, database, null, TODAY);
+  assert.deepEqual(plan.departments, []);
+  assert.equal(plan.unresolvedUnits, 1);
+  assert.deepEqual(
+    plan.conflicts.filter((c) => c.kind === "unknown-unit").map((c) => [c.at.row, c.field]),
+    [[4, "subteam"]],
+  );
+  assert.deepEqual(
+    plan.roles.map((r) => (r.dept?.kind === "existing" ? r.dept.id : null)),
+    [1, 2],
+  );
+});
+
+test("a created unit's name, open state and spellings come from one set of values: a refused row's spelling is listed when it names the unit", () => {
+  const sources = sourcesOf({
+    years: {
+      // Current: only refused rows (no sign-in email), with the misspelling.
+      2025: [person("Ada", "Bini", { division: "Logistcs (LGS)", personalEmail: "" }), person("Ben", "Cori", { division: "Logistcs (LGS)", personalEmail: "" })],
+      2024: [person("Cia", "Dani", { division: "Logistics (LGS)" })],
+    },
+  });
+  const plan = planImport(sources, EMPTY_DATABASE, null, TODAY);
+  assert.equal(plan.counts.users.refused, 2);
+  assert.deepEqual(
+    plan.divisions.map((d) => [d.name, d.closedAt, [...d.spellings].sort()]),
+    [["Logistcs", null, ["Logistcs (LGS)", "Logistics (LGS)"]]],
+  );
+  const report = renderReport({ mode: "dry-run", database: true, sources, plan });
+  const listed = report.split("\n").find((l) => l.trim().startsWith("spellings:")) ?? "";
+  assert.ok(listed.includes("Logistcs (LGS)") && listed.includes("Logistics (LGS)"), "the spellings line names the spelling the unit is named after");
 });
 
 test("units the run creates fold by code: one unit per code, a bare code is that unit, named as the newest sheet spells it most, open once", () => {

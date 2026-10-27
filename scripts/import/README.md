@@ -168,7 +168,12 @@ the person running the import writes. See **The override input** below.
       sheets also name it. It is never also created closed.
     - A value that finds no unit in the database is the unit another value of its group finds,
       when they find exactly one: with "Logistics" in the database, "Logistcs (LGS)" is placed
-      there too.
+      there too. When they find two or more, the value is not resolved and nothing is created:
+      with "Alpha" and "Beta" in the database, "Gamma (X)" beside "Alpha (X)" and "Beta (X)" is
+      reported as `unknown-unit` and counted as an unresolved unit.
+    - The group's name, its open state and its `spellings:` line all come from every value the
+      rows give, rows the plan refuses included. So a unit named after a spelling always lists
+      that spelling. Its `started_at` and `closed_at` years come from the rows placed in it.
 - **Dates**: current-year roles are active. Earlier years' roles run `YYYY-10-01` to
   `(YYYY+1)-09-30`. On the `2022-2023` sheet, a row whose "Date of joining" cell is filled starts
   its roles that year on that day instead of `2022-10-01` (the date forms of **Quitters** all
@@ -218,11 +223,12 @@ the person running the import writes. See **The override input** below.
     share is the person's. The surname only cross-checks it: a different surname holds the file,
     and an id on no `people_rows.csv` row is not imported.
   - A `people_rows.csv` row reaches its person by the **Person match** rule. When its full name
-    matches nobody, it is the one person with the same surname (accents, case and spacing do not
-    count) whose given names, on a workbook row of theirs, contain each word of the CSV row's
-    first name (owner decision, issue #818): "Maria Rossi" is "Anna Maria Rossi". When no person
-    fits, or more than one does, the row matches nobody, and a photo with its id is reported as
-    `photo-not-imported`, as before.
+    matches nobody, it is the one imported person with the same surname (accents, case and
+    spacing do not count) whose given names, on a workbook row of theirs, contain each word of the
+    CSV row's first name (owner decision, issue #818): "Maria Rossi" is "Anna Maria Rossi". Only
+    people the plan imports count, so a refused person (no sign-in email, an account with no
+    member, or an unclear quitter) never makes the row ambiguous. When no imported person fits, or more than one does, the row
+    matches nobody, and a photo with its id is reported as `photo-not-imported`, as before.
   - A file named `<surname>` (no id) is an advisor's or a professor's. It matches the one advisor
     with that surname: a row of `advisors_rows.csv`, or a person whose workbook row is an advisor's
     (an "ADVISOR" or "SENIOR ADVISOR" marker in a unit cell, or an advisor seat in the title). One

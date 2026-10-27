@@ -87,10 +87,11 @@ export function surnameKey(text: string): string {
 const givenNamesOf = (first: string): string[] => nameKey(first, "").split(" ").filter((w) => w !== "");
 
 /**
- * The one person a `people_rows.csv` row is when its full name matches nobody
- * (issue #818): a workbook row of theirs has the same surname and given names
- * that hold every word of the CSV row's first name ("Anna" in "Anna Maria").
- * Null when no person fits, or more than one does.
+ * The one imported person a `people_rows.csv` row is when its full name
+ * matches nobody (issue #818): a workbook row of theirs has the same surname
+ * and given names that hold every word of the CSV row's first name ("Anna" in
+ * "Anna Maria"). A person the plan does not import is never counted. Null
+ * when no imported person fits, or more than one does.
  */
 function byGivenNames(people: readonly Person[], first: string, last: string): Person | null {
   const surname = surnameKey(last);
@@ -116,6 +117,17 @@ export function signInEmail(person: Person): string | null {
 
 export type People = {
   readonly people: readonly Person[];
+  readonly conflicts: readonly Conflict[];
+  /**
+   * Matches the `people_rows.csv` rows, once the plan knows whom it imports:
+   * the given-names fallback counts only the people `imported` holds. Run it
+   * once, before a person's fields are read for insert: a row fills their
+   * LinkedIn.
+   */
+  readonly matchPeopleRows: (imported: (person: Person) => boolean) => PeopleRows;
+};
+
+export type PeopleRows = {
   /** The person each `people_rows.csv` id is, where the row matched one: a photo file's id reaches its person through this. */
   readonly byPeopleId: ReadonlyMap<string, Person>;
   readonly conflicts: readonly Conflict[];
@@ -233,14 +245,23 @@ export function matchPeople(sources: Sources): People {
     else attach(m.start(), row, emails, name);
   }
 
-  /** Matches CSV rows to people; with `byId` (the `people_rows.csv` pass), a row no full name matches falls back to `byGivenNames`. */
-  const fromCsv = (rows: readonly Row<string>[], fields: readonly PersonalField[], emailFields: readonly string[], byId?: Map<string, Person>) => {
+  /**
+   * Matches CSV rows to people. With `byId` (the `people_rows.csv` pass), a
+   * row's own id is kept, and a row no full name matches falls back to
+   * `byGivenNames` over `candidates`.
+   */
+  const fromCsv = (
+    rows: readonly Row<string>[],
+    fields: readonly PersonalField[],
+    emailFields: readonly string[],
+    byId?: { readonly ids: Map<string, Person>; readonly candidates: readonly Person[] },
+  ) => {
     const seen = new Set<Person>();
     for (const row of rows) {
       const emails = emailsOf(row.value, emailFields);
       const first = row.value.firstName ?? "";
       const last = row.value.lastName ?? "";
-      const person = m.match(emails, nameKey(first, last), row.at) ?? (byId === undefined ? null : byGivenNames(m.people, first, last));
+      const person = m.match(emails, nameKey(first, last), row.at) ?? (byId === undefined ? null : byGivenNames(byId.candidates, first, last));
       if (person === null) continue;
       if (seen.has(person)) {
         m.conflicts.push({ kind: "duplicate", at: row.at });
@@ -248,7 +269,7 @@ export function matchPeople(sources: Sources): People {
       }
       seen.add(person);
       const own = row.value.id?.trim() ?? "";
-      if (byId !== undefined && own !== "") byId.set(own, person);
+      if (byId !== undefined && own !== "") byId.ids.set(own, person);
       for (const id of [row.value.id, row.value.user]) if (id !== undefined && id.trim() !== "") person.csvIds.add(id.trim());
       for (const f of fields) {
         const v = row.value[f]?.trim() ?? "";
@@ -261,8 +282,21 @@ export function matchPeople(sources: Sources): People {
     }
   };
   fromCsv(sources.csv.teamMembers, ["studentEmail", "linkedin", "program", "level", "origin"], ["studentEmail"]);
-  const byPeopleId = new Map<string, Person>();
-  fromCsv(sources.csv.people, ["linkedin"], [], byPeopleId);
+  const conflicts = [...m.conflicts];
 
-  return { people: m.people, byPeopleId, conflicts: m.conflicts };
+  // The `people_rows.csv` pass reads no email column, so it changes no one's
+  // emails or sign-in address: whom the plan imports is the same before it and
+  // after it. It waits for that answer, so the given-names fallback counts only
+  // imported people.
+  let ran = false;
+  const matchPeopleRows = (imported: (person: Person) => boolean): PeopleRows => {
+    if (ran) throw new Error("people_rows.csv is matched once per run");
+    ran = true;
+    const before = m.conflicts.length;
+    const ids = new Map<string, Person>();
+    fromCsv(sources.csv.people, ["linkedin"], [], { ids, candidates: m.people.filter(imported) });
+    return { byPeopleId: ids, conflicts: m.conflicts.slice(before) };
+  };
+
+  return { people: m.people, conflicts, matchPeopleRows };
 }

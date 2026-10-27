@@ -20,8 +20,9 @@ import { lookupDepartment, lookupDivision, storedUnitName, unitKey, type Lookup,
 // them: values that share a name or a code in parentheses are one unit, and so
 // is a bare value equal to a code. A group is created once, open when any of
 // its spellings is on the current sheet, and named as its code is spelt most
-// often on the newest sheet that gives it. A group one of whose spellings
-// finds one unit in the database is that unit.
+// often on the newest sheet that gives it. A group whose spellings find one
+// unit in the database is that unit; one whose spellings find two or more is
+// unresolved, and the plan reports it rather than create a third.
 
 /** A unit a role is placed in: one the database holds, or the `index`th one this plan creates. */
 export type UnitRef = { readonly kind: "existing"; readonly id: number } | { readonly kind: "new"; readonly index: number };
@@ -164,7 +165,8 @@ export class UnitFold {
   }
 }
 
-type Draft = { group: string; name: string; code: string | null; first: number; last: number; spellings: Set<string> };
+/** A unit being created: its group, the name and code of its first value, the years placed rows name it, and the values those rows give. */
+type Draft = { group: string; name: string; code: string | null; first: number; last: number; values: UnitName[] };
 
 export class UnitBook {
   private readonly departments: Draft[] = [];
@@ -227,36 +229,52 @@ export class UnitBook {
     return { departments: this.presentDepartments.size, divisions: this.presentDivisions.size };
   }
 
-  /** What a value finds in the database: by itself, else, when it finds nothing, the one unit the other values of its group find. */
+  /**
+   * What a value finds in the database: by itself, else, when it finds
+   * nothing, what the other values of its group find. One unit: that unit.
+   * None: absent, so the group is created. More than one, or a value two units
+   * share: ambiguous, so the value is unresolved and never created as a unit
+   * of its own beside them.
+   */
   private lookup<U extends { readonly id: number }>(fold: UnitFold, value: UnitName, group: string | null, find: (v: UnitName) => Lookup<U>): Lookup<U> {
     const own = find(value);
     if (own.kind !== "absent" || group === null) return own;
     const found = new Map<number, U>();
     for (const other of fold.values(group)) {
       const hit = find(other);
+      if (hit.kind === "ambiguous") return hit;
       if (hit.kind === "found") found.set(hit.unit.id, hit.unit);
     }
+    if (found.size > 1) return { kind: "ambiguous" };
     return found.size === 1 ? { kind: "found", unit: [...found.values()][0] } : own;
   }
 
-  /** When a created unit opened, its name, and whether it is open: one whose group the current sheet gives is; any other closed at the end of the last year a row names it. */
+  /**
+   * When a created unit opened, its name, whether it is open, and its
+   * spellings: the name, the open state and the spellings all come from every
+   * value the rows give in the group (refused rows included), so the report
+   * never names a unit after a spelling it does not list. A unit opens on the
+   * first year a placed row names it; one the current sheet does not give
+   * closes at the end of the last such year.
+   */
   private span(d: Draft, fold: UnitFold): NewDepartment {
     const { name, code } = fold.naming(d.group) ?? d;
-    return { name, code, startedAt: yearStart(d.first), closedAt: fold.isCurrent(d.group) ? null : yearEnd(d.last), spellings: [...d.spellings] };
+    const spellings = [...new Set([...fold.values(d.group), ...d.values].map(spellingOf))];
+    return { name, code, startedAt: yearStart(d.first), closedAt: fold.isCurrent(d.group) ? null : yearEnd(d.last), spellings };
   }
 
-  /** The draft a value's group is, made on first sight: later sights widen its years, give it a code it lacked, add their spelling, and pair it if it was not. */
+  /** The draft a value's group is, made on first sight: later sights widen its years, give it a code it lacked, add their value, and pair it if it was not. */
   private draft<D extends Draft & { dept?: UnitRef | null }>(list: D[], group: string, value: UnitName, year: number, dept?: UnitRef | null): number {
     let index = list.findIndex((d) => d.group === group);
     if (index === -1) {
-      list.push({ group, name: storedUnitName(value), code: value.code, first: year, last: year, spellings: new Set(), ...(dept !== undefined && { dept }) } as D);
+      list.push({ group, name: storedUnitName(value), code: value.code, first: year, last: year, values: [] as UnitName[], ...(dept !== undefined && { dept }) } as D);
       index = list.length - 1;
     }
     const d = list[index];
     d.first = Math.min(d.first, year);
     d.last = Math.max(d.last, year);
     if (d.code === null) d.code = value.code;
-    d.spellings.add(spellingOf(value));
+    d.values.push(value);
     if (dept != null && d.dept === null) d.dept = dept;
     return index;
   }

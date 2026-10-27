@@ -287,7 +287,7 @@ const unique = (list: readonly Placement[]): Placement[] => [
 export const importDay = () => new Date().toISOString().slice(0, 10);
 
 export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: PhotoFolder | null = null, today: string = importDay()): Plan {
-  const { people, byPeopleId, conflicts: matchConflicts } = matchPeople(sources);
+  const { people, conflicts: matchConflicts, matchPeopleRows } = matchPeople(sources);
   const conflicts: Conflict[] = [...sources.conflicts, ...matchConflicts];
   const counter = new Counter();
   const currentYear = sources.currentYear;
@@ -491,29 +491,49 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     return { stints, at: person.years.get(years[years.length - 1])!.at };
   };
 
-  for (const person of people) {
-    const found = stintsOf(person);
-    if (found === null) continue;
-    const { stints, at: anchor } = found;
-    const onCurrent = currentYear !== null && person.years.has(currentYear);
-    if (person.quitter !== null && onCurrent) conflicts.push({ kind: "quitter-on-current-sheet", at: person.quitter.at });
+  /** A person the plan imports: their stints, the row the report names for them, their sign-in address, and whom they are written as. */
+  type Admitted = { readonly stints: readonly Stint[]; readonly anchor: At; readonly email: string; readonly ref: PersonRef };
 
-    const email = signInEmail(person);
-    if (email === null) {
-      conflicts.push({ kind: "missing-email", at: anchor });
+  /** Whether the plan imports a person; a refused one is reported and counted here, once. */
+  const admit = (person: Person): Admitted | null => {
+    const found = stintsOf(person);
+    if (found === null) return null;
+    const { stints, at: anchor } = found;
+    if (person.quitter !== null && currentYear !== null && person.years.has(currentYear)) {
+      conflicts.push({ kind: "quitter-on-current-sheet", at: person.quitter.at });
+    }
+    const refuse = (kind: ConflictKind): null => {
+      conflicts.push({ kind, at: anchor });
       counter.add("users", "refused");
       counter.add("members", "refused");
-      continue;
-    }
+      return null;
+    };
+    const email = signInEmail(person);
+    if (email === null) return refuse("missing-email");
     const accounts = snapshot.users.filter((u) => person.emails.has(u.email) || u.email === email);
     const account = accounts.find((u) => u.member !== null) ?? accounts[0];
-    if (account !== undefined && account.member === null) {
-      conflicts.push({ kind: "account-without-member", at: anchor });
-      counter.add("users", "refused");
-      counter.add("members", "refused");
-      continue;
-    }
+    if (account !== undefined && account.member === null) return refuse("account-without-member");
     const ref: PersonRef = account?.member != null ? { kind: "existing", memberId: account.member } : { kind: "new", person: person.id };
+    return { stints, anchor, email, ref };
+  };
+  const admitted = new Map<number, Admitted>();
+  for (const person of people) {
+    const entry = admit(person);
+    if (entry !== null) admitted.set(person.id, entry);
+  }
+
+  // Whom the plan imports is known now, so a `people_rows.csv` row's given-names
+  // fallback counts only imported people (issue #818). The rows fill LinkedIn,
+  // so they are matched before any person's fields are read below.
+  const peopleRows = matchPeopleRows((p) => admitted.has(p.id));
+  const byPeopleId = peopleRows.byPeopleId;
+  conflicts.push(...peopleRows.conflicts);
+
+  for (const person of people) {
+    const entry = admitted.get(person.id);
+    if (entry === undefined) continue;
+    const { stints, anchor, email, ref } = entry;
+    const onCurrent = currentYear !== null && person.years.has(currentYear);
     refOf.set(person.id, ref);
     personFate.set(person.id, ref.kind);
     const existingRoles = ref.kind === "existing" ? snapshot.roles.filter((r) => r.memberId === ref.memberId) : [];
