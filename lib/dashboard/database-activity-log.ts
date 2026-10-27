@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { applications, applyPositions, betterAuthSessions, departments, divisions, logs, roles, users } from "@/db/schema";
+import { applications, applicationStatuses, applyPositions, betterAuthSessions, departments, divisions, logs, roles, users } from "@/db/schema";
 import { VIEW_AS_SESSION_SECONDS } from "@/lib/view-as-plugin";
 import {
   ACTIVITY_WINDOW_DAYS,
@@ -112,7 +112,7 @@ async function readNames(rows: readonly LogRow[]): Promise<ActivityNames> {
   ]);
   const memberIds = unique(data.flatMap((d) => MEMBER_KEYS.map((key) => idIn(d, key))));
 
-  const [accountRows, memberRows, divisionRows, departmentRows, positionRows, actingTitles] = await Promise.all([
+  const [accountRows, memberRows, divisionRows, departmentRows, positionRows, statusRows, actingTitles] = await Promise.all([
     accountIds.length === 0
       ? []
       : db
@@ -128,6 +128,7 @@ async function readNames(rows: readonly LogRow[]): Promise<ActivityNames> {
     db.select({ id: divisions.id, name: divisions.name }).from(divisions),
     db.select({ id: departments.id, name: departments.name }).from(departments),
     db.select({ id: applyPositions.id, title: applyPositions.title }).from(applyPositions),
+    db.select({ key: applicationStatuses.key, name: applicationStatuses.name }).from(applicationStatuses),
     readActingTitles(rows.map((r) => r.acting)),
   ]);
 
@@ -159,5 +160,6 @@ async function readNames(rows: readonly LogRow[]): Promise<ActivityNames> {
     positions: new Map(positionRows.flatMap((p) => (p.title === null ? [] : [[p.id, p.title] as const]))),
     applications: new Map(appRows.map((a) => [a.id, { accountId: a.accountId, positionId: a.positionId }])),
     actingTitles,
+    statuses: new Map(statusRows.map((s) => [s.key, s.name])),
   };
 }

@@ -91,6 +91,8 @@ export type ActivityNames = {
   readonly applications: ReadonlyMap<number, { readonly accountId: string | null; readonly positionId: number | null }>;
   /** The title each acting account's writes show under (`actingTitleOf`, ./acting-account.ts). */
   readonly actingTitles: ReadonlyMap<string, string>;
+  /** Application status key to its stored name: the built-in and added statuses of `application_statuses` (./application-status.ts). */
+  readonly statuses: ReadonlyMap<string, string>;
 };
 
 /**
@@ -339,17 +341,6 @@ function listed(words: readonly string[]): string {
 
 type Described = { readonly sentence: string; readonly area: WriteArea };
 
-/** The stored application states, as the Applications page names them. */
-const APPLICATION_STATUS_WORDS: Readonly<Record<string, string>> = {
-  received: "New",
-  pending: "In review",
-  interview: "Interview",
-  accepted: "Accepted",
-  rejected: "Rejected",
-  accepted_by_another_team: "Taken by another team",
-  joined: "Joined",
-};
-
 /** What a grant's target reads as. */
 const TARGET_WORDS: Readonly<Record<string, string>> = {
   all: "full",
@@ -391,6 +382,11 @@ class Describer {
 
   position(id: number | null): string {
     return (id === null ? undefined : this.names.positions.get(id)) ?? "a position";
+  }
+
+  /** A status by its stored name; a key the list no longer holds (an added status deleted since) reads as the key. */
+  status(key: string): string {
+    return this.names.statuses.get(key) ?? key;
   }
 
   /** The writer's own member id: a change to their own record is their account's. */
@@ -469,14 +465,11 @@ const SENTENCES: Readonly<Record<string, Sentence>> = {
     if (row.operation === "DELETE") return { sentence: `Deleted the application of ${applicant} for ${position}`, area };
     if (became(row, "withdrawn_at")) return { sentence: `Withdrew the application for ${position}`, area };
     if (became(row, "joined_at")) return { sentence: `Confirmed ${applicant} joined as ${position}`, area };
+    // A status move names the status it set, and covers what the move wrote beside it (NDA received records the NDA's day).
+    const status = changed(row, "status_key") ? text(row.after, "status_key") : null;
+    if (status !== null) return { sentence: `Moved the application of ${applicant} for ${position} to ${d.status(status)}`, area };
     if (changed(row, "nda_arrived_at"))
       return { sentence: `${became(row, "nda_arrived_at") ? "Marked" : "Unmarked"} the signed NDA of ${applicant} as arrived`, area };
-    if (changed(row, "status")) {
-      const status = text(data, "status") ?? "";
-      if (status === "rejected") return { sentence: `Rejected ${applicant} for ${position}`, area };
-      if (status === "accepted") return { sentence: `Accepted ${applicant} for ${position}`, area };
-      return { sentence: `Moved ${applicant} to ${APPLICATION_STATUS_WORDS[status] ?? status}`, area };
-    }
     return { sentence: `Updated the application of ${applicant} for ${position}`, area };
   },
 
