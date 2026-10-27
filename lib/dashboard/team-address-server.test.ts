@@ -392,3 +392,71 @@ test("a lead handing a division over to someone who already co-leads raises one 
     [`${STRUCTURES} goes to Person DM`],
   );
 });
+
+// A co-lead who holds the address steps down beside one who stays (issue #804).
+
+const MISSION = "mission@politorocketteam.it";
+const stepDown = (personId: number) => ({ personId, via: "removed", outcome: "member" });
+
+test("the division save stepping down the co-lead who holds the address raises one routing item naming the co-lead who stays", async () => {
+  await seededTied();
+  signInAs(accountOf("team leader").userId);
+  assert.deepEqual(await saveMA({ newLeads: [MA_MEMBER] }), { ok: true });
+  assert.deepEqual(await tableRows(teamAddressReroutes), [], "a co-lead added beside the holder raises nothing");
+  assert.deepEqual(await saveMA({ oldLeads: [stepDown(MA_LEAD)] }), { ok: true });
+  assert.deepEqual(
+    (await tableRows(teamAddressReroutes)).map((r) => [r.addressId, r.toMember, r.fromMember, r.doneAt]),
+    [[2, MA_MEMBER, MA_LEAD, null]],
+  );
+  assert.deepEqual((await rerouteRowsSeenBy("team leader")).map((r) => r.title), [`${MISSION} goes to Person MA`]);
+});
+
+/** Move MA's lead, who holds the mission address, to OA as a member. */
+const moveMALeadOut = () =>
+  teamActions.moveMember({
+    personId: MA_LEAD,
+    from: { kind: "division", divisionId: UNITS.MA.divisionId },
+    to: { kind: "division", divisionId: UNITS.OA.divisionId, as: "member" },
+    title: "",
+    replaced: null,
+    successor: null,
+  });
+
+test("moving the only lead, who holds the address, out of their division raises no routing item: nobody leads after it", async () => {
+  await seededTied();
+  // The other leads the fixture gives MA have left it, so MA's lead is its only one.
+  const others = (await tableRows(roles)).filter(
+    (r) => r.divisionId === UNITS.MA.divisionId && r.type === "lead" && r.leavedAt === null && r.memberId !== MA_LEAD,
+  );
+  for (const r of others) await changeRows(roles, { id: r.id }, { leavedAt: "2026-01-01" });
+  signInAs(accountOf("team leader").userId);
+  assert.deepEqual(await moveMALeadOut(), { ok: true });
+  assert.deepEqual(await tableRows(teamAddressReroutes), []);
+});
+
+test("moving the co-lead who holds the address out of their division raises one routing item naming the co-lead who stays", async () => {
+  await seededTied();
+  signInAs(accountOf("team leader").userId);
+  assert.deepEqual(await saveMA({ newLeads: [MA_MEMBER] }), { ok: true });
+  assert.deepEqual(await moveMALeadOut(), { ok: true });
+  assert.deepEqual(
+    (await tableRows(teamAddressReroutes)).map((r) => [r.addressId, r.toMember, r.fromMember, r.doneAt]),
+    [[2, MA_MEMBER, MA_LEAD, null]],
+  );
+});
+
+test("an open item whose named co-lead steps down beside one who stays is updated to name them, never duplicated", async () => {
+  const OA = IDS.person("OA");
+  await seededTied();
+  signInAs(accountOf("team leader").userId);
+  // MA's lead hands MA to its member, then OA joins as a co-lead beside them: one item, naming MA's member.
+  assert.deepEqual(await saveMA({ newLeads: [MA_MEMBER], oldLeads: [{ personId: MA_LEAD, via: "replaced", outcome: "advisor" }] }), { ok: true });
+  assert.deepEqual(await saveMA({ newLeads: [OA] }), { ok: true });
+  assert.deepEqual((await tableRows(teamAddressReroutes)).map((r) => [r.addressId, r.toMember]), [[2, MA_MEMBER]]);
+  // MA's member steps down beside OA, who stays.
+  assert.deepEqual(await saveMA({ oldLeads: [stepDown(MA_MEMBER)] }), { ok: true });
+  assert.deepEqual(
+    (await tableRows(teamAddressReroutes)).map((r) => [r.addressId, r.toMember, r.fromMember, r.doneAt]),
+    [[2, OA, MA_LEAD, null]],
+  );
+});

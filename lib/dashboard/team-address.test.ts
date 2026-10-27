@@ -270,43 +270,69 @@ test("a role change owes one routing item for each tied address whose holder no 
   const cases: [string, ReturnType<typeof owed>, ReturnType<typeof owed>][] = [
     [
       "hand-over: the lead is replaced",
-      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [] }),
+      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [], leaving: [] }),
       [{ addressId: 1, toId: IN_LOGISTICS, fromId: LEAD }],
     ],
-    ["co-lead added: the holder still leads", owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [LEAD] }), []],
+    ["co-lead added: the holder still leads", owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [LEAD], leaving: [] }), []],
     [
       "vacant role filled: the holder held it no more",
-      owed(tied(1, { kind: "team-leader" }, HOLDER), { tie: { kind: "team-leader" }, becoming: [FULL_ACCESS], staying: [] }),
+      owed(tied(1, { kind: "team-leader" }, HOLDER), { tie: { kind: "team-leader" }, becoming: [FULL_ACCESS], staying: [], leaving: [] }),
       [{ addressId: 1, toId: FULL_ACCESS, fromId: HOLDER }],
     ],
-    ["untied address", owed(tied(1, null), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [] }), []],
-    ["another role's change", owed(tied(1, { kind: "division-lead", divisionId: 10 }), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [] }), []],
+    ["untied address", owed(tied(1, null), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [], leaving: [] }), []],
+    ["another role's change", owed(tied(1, { kind: "division-lead", divisionId: 10 }), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [], leaving: [] }), []],
     [
       "two new holders in one change",
-      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_MARKETING, IN_LOGISTICS], staying: [] }),
+      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_MARKETING, IN_LOGISTICS], staying: [], leaving: [] }),
       [{ addressId: 1, toId: IN_LOGISTICS, fromId: LEAD }],
     ],
-    ["the holder is the one made a holder", owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [LEAD], staying: [] }), []],
+    ["the holder is the one made a holder", owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [LEAD], staying: [], leaving: [] }), []],
     [
       "hand-over to someone who already co-leads: the holder left",
-      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [IN_MARKETING, IN_LOGISTICS] }),
+      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [IN_MARKETING, IN_LOGISTICS], leaving: [] }),
       [{ addressId: 1, toId: IN_LOGISTICS, fromId: LEAD }],
     ],
     [
       "hand-over between two co-leads beside the holder, who still leads",
-      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [LEAD, IN_LOGISTICS] }),
+      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_LOGISTICS], staying: [LEAD, IN_LOGISTICS], leaving: [] }),
       [],
     ],
     [
       "second change: the member the open item names left the role, so it names the new holder",
-      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_MARKETING], staying: [] }, [{ addressId: 1, toId: IN_LOGISTICS }]),
+      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_MARKETING], staying: [], leaving: [] }, [{ addressId: 1, toId: IN_LOGISTICS }]),
       [{ addressId: 1, toId: IN_MARKETING, fromId: LEAD }],
     ],
     [
       "second change: a co-lead added beside the member the open item names leaves it as it is",
-      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_MARKETING], staying: [IN_LOGISTICS] }, [{ addressId: 1, toId: IN_LOGISTICS }]),
+      owed(tied(1, LOGISTICS_LEAD), { tie: LOGISTICS_LEAD, becoming: [IN_MARKETING], staying: [IN_LOGISTICS], leaving: [] }, [{ addressId: 1, toId: IN_LOGISTICS }]),
       [],
     ],
+  ];
+  for (const [name, actual, expected] of cases) assert.deepEqual(actual, expected, name);
+});
+
+test("a lead stepping down with nobody new owes a routing item naming the newest lead who stays, and none when nobody stays (issue #804)", () => {
+  const LOGISTICS_LEAD: MovesWith = { kind: "division-lead", divisionId: 9 };
+  const address = { id: 1, ...held("logistics@politorocketteam.it", LOGISTICS_LEAD, LEAD) };
+  const owed = (staying: number[], leaving: number[], open: { addressId: number; toId: number }[] = [], holder = address) =>
+    owedTeamAddressReroutes({ addresses: [holder], changes: [{ tie: LOGISTICS_LEAD, becoming: [], staying, leaving }], open });
+  const cases: [string, ReturnType<typeof owed>, ReturnType<typeof owed>][] = [
+    ["the holder steps down beside a co-lead who stays", owed([IN_LOGISTICS], [LEAD]), [{ addressId: 1, toId: IN_LOGISTICS, fromId: LEAD }]],
+    ["several co-leads stay: the newest, listed first, is named", owed([IN_MARKETING, IN_LOGISTICS], [LEAD]), [{ addressId: 1, toId: IN_MARKETING, fromId: LEAD }]],
+    ["the only lead, who holds the address, leaves and nobody holds the role after", owed([], [LEAD]), []],
+    ["a co-lead who does not hold the address steps down beside the holder", owed([LEAD], [IN_LOGISTICS]), []],
+    ["a change that takes the role from nobody the address follows", owed([IN_LOGISTICS], []), []],
+    [
+      "the address's holder already left the role, and a lead it does not follow steps down",
+      owed([IN_LOGISTICS], [IN_MARKETING], [], { ...address, holderId: HOLDER }),
+      [],
+    ],
+    [
+      "the member the open item names steps down beside a co-lead who stays: the item names that co-lead",
+      owed([IN_MARKETING], [IN_LOGISTICS], [{ addressId: 1, toId: IN_LOGISTICS }]),
+      [{ addressId: 1, toId: IN_MARKETING, fromId: LEAD }],
+    ],
+    ["the member the open item names steps down and nobody stays", owed([], [IN_LOGISTICS], [{ addressId: 1, toId: IN_LOGISTICS }]), []],
   ];
   for (const [name, actual, expected] of cases) assert.deepEqual(actual, expected, name);
 });

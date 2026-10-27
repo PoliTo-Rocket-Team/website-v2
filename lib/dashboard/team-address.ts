@@ -485,20 +485,21 @@ export type StoredTeamAddress = TeamAddress & { readonly id: number };
 /**
  * What one role change does to one tied role: the people it hands the role
  * to, one who held it already included (a lead handing a division over to a
- * co-lead, issue #795), and the holders it keeps. A role one person holds
- * (the team leader, a full-access seat, a department's head) keeps nobody
- * when it changes hands; a division keeps the leads the change does not
- * replace.
+ * co-lead, issue #795), the holders it keeps, newest holder first, and the
+ * holders it takes the role from (issue #804). A role one person holds (the
+ * team leader, a full-access seat, a department's head) keeps nobody when it
+ * changes hands; a division keeps the leads the change does not replace.
  */
 export type TiedRoleChange = {
   readonly tie: MovesWith;
   readonly becoming: readonly number[];
   readonly staying: readonly number[];
+  readonly leaving: readonly number[];
 };
 
 /** A role one person holds, handed to `memberId`: they are its only holder after the change. */
 export function handedTo(tie: MovesWith, memberId: number): TiedRoleChange {
-  return { tie, becoming: [memberId], staying: [] };
+  return { tie, becoming: [memberId], staying: [], leaving: [] };
 }
 
 /** The full-access seat a hand-over moves (`seatHandOver`, ./hand-over.ts), as a change of its tie; none when no seat moves. */
@@ -511,13 +512,19 @@ export type TeamAddressReroute = { readonly addressId: number; readonly toId: nu
 
 /**
  * The routing items a role change owes (Owner decision on epic #578,
- * 2026-10-26; grill #785, R1.2; issue #795): one for an address when the
- * change hands the role it moves with to someone and the address's holder
- * does not hold that role after the change. A hand-over to someone who
- * already co-leads owes one too. Adding a co-lead beside a holder who still
- * leads owes nothing, and neither does an address tied to no role. When the
- * change hands the role to two people, the first by member id is named.
- * Several changes of one role in one write read as one.
+ * 2026-10-26; grill #785, R1.2; issues #795, #804): one for an address when
+ * the address's holder does not hold the role it moves with after the change
+ * and someone does. The change names that someone: it hands the role to
+ * them, or, when it hands the role to nobody, it takes the role from the
+ * holder (or from the member an open item names) and they are a holder it
+ * keeps. A hand-over to someone who already co-leads owes one too, and so
+ * does a co-lead stepping down beside one who stays. Adding a co-lead beside
+ * a holder who still leads owes nothing, and neither does the only holder
+ * leaving with nobody after them, a change that takes the role from nobody
+ * the address follows, or an address tied to no role. When the change hands
+ * the role to two people, the first by member id is named; when it keeps
+ * several, the newest holder is, as `rerouteTargetNow` picks. Several
+ * changes of one role in one write read as one.
  *
  * An address with an open item keeps that one item: it is owed again, so
  * the item names the new holder, only when the member it names no longer
@@ -536,10 +543,14 @@ export function owedTeamAddressReroutes(input: {
     if (movesWith === null) return [];
     const changes = input.changes.filter((c) => movesWithKey(c.tie) === movesWithKey(movesWith));
     const becoming = [...new Set(changes.flatMap((c) => c.becoming))].sort((a, b) => a - b);
-    const holdersAfter = new Set([...becoming, ...changes.flatMap((c) => c.staying)]);
+    const staying = [...new Set(changes.flatMap((c) => c.staying))];
+    const leaving = new Set(changes.flatMap((c) => c.leaving));
+    const holdersAfter = new Set([...becoming, ...staying]);
     const named = input.open.find((r) => r.addressId === address.id)?.toId;
-    const [to] = becoming;
-    if (to === undefined || holdersAfter.has(address.holderId) || (named !== undefined && holdersAfter.has(named))) return [];
+    if (holdersAfter.has(address.holderId) || (named !== undefined && holdersAfter.has(named))) return [];
+    const followed = leaving.has(address.holderId) || (named !== undefined && leaving.has(named));
+    const to = becoming[0] ?? (followed ? staying[0] : undefined);
+    if (to === undefined) return [];
     return [{ addressId: address.id, toId: to, fromId: address.holderId }];
   });
 }

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNotNull, isNull, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql, type SQL } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
@@ -1024,8 +1024,11 @@ async function moveMember(identity: DashboardIdentity, input: unknown): Promise<
   const on = today();
   const replacedRoles = plan.replaced === null ? [] : await activeRoles(plan.replaced.memberId);
   const aliasAsked = await automaticAliasRequests(plan.newLeads);
-  const leadsThere = plan.start.kind === "division" && plan.start.type === "lead" ? leadsIn(await heldRows(plan.start.divisionId)) : [];
-  const reroutesAsked = await automaticTeamAddressReroutes(moveRoleChanges(plan, leadsThere));
+  const [leadsThere, leadsLeft] = await Promise.all([
+    plan.start.kind === "division" && plan.start.type === "lead" ? heldRows(plan.start.divisionId).then(leadsIn) : [],
+    plan.leaves.kind === "division" ? heldRows(plan.leaves.divisionId).then(leadsIn) : [],
+  ]);
+  const reroutesAsked = await automaticTeamAddressReroutes(moveRoleChanges(plan, leadsThere, leadsLeft));
   // Every row the move ends, the head it replaces' included, ends in one guarded statement (issue #666), so an overlapping move ends nothing twice.
   const ending: readonly [number, ...number[]] = [...plan.end, ...(plan.replaced?.rows ?? [])];
   try {
@@ -1051,21 +1054,28 @@ const MOVED_SINCE = "Someone changed this placement since you opened it. Reload 
  * The tied roles a move hands over, for the team address routing items
  * (`automaticTeamAddressReroutes`, issue #789): the division they join as a
  * lead beside `leadsThere`, its leads now, or the department they head with
- * its seat, and the department the picked head takes over with its seat.
+ * its seat, and the department the picked head takes over with its seat; and
+ * the division they leave while leading it, beside the rest of `leadsLeft`,
+ * its leads now (issue #804).
  */
-function moveRoleChanges(plan: MovePlan, leadsThere: readonly number[]): TiedRoleChange[] {
-  const { personId, start, successor } = plan;
+function moveRoleChanges(plan: MovePlan, leadsThere: readonly number[], leadsLeft: readonly number[]): TiedRoleChange[] {
+  const { personId, start, leaves, successor } = plan;
   const starts: TiedRoleChange[] =
     start.kind === "division"
       ? start.type === "lead"
-        ? [{ tie: { kind: "division-lead", divisionId: start.divisionId }, becoming: [personId], staying: leadsThere }]
+        ? [{ tie: { kind: "division-lead", divisionId: start.divisionId }, becoming: [personId], staying: leadsThere, leaving: [] }]
         : []
       : [handedTo({ kind: "department-head", departmentId: start.departmentId }, personId), ...seatHandedTo(start.seat)];
-  if (successor === null) return starts;
-  return [...starts, handedTo({ kind: "department-head", departmentId: successor.departmentId }, successor.memberId), ...seatHandedTo(successor.seat)];
+  const left: TiedRoleChange[] =
+    leaves.kind === "division" && leadsLeft.includes(personId)
+      ? [{ tie: { kind: "division-lead", divisionId: leaves.divisionId }, becoming: [], staying: leadsLeft.filter((id) => id !== personId), leaving: [personId] }]
+      : [];
+  const changes = [...starts, ...left];
+  if (successor === null) return changes;
+  return [...changes, handedTo({ kind: "department-head", departmentId: successor.departmentId }, successor.memberId), ...seatHandedTo(successor.seat)];
 }
 
-/** The people who lead a division, from its active rows (`heldRows`). */
+/** The people who lead a division, newest lead first, from its active rows (`heldRows`). */
 function leadsIn(held: readonly HeldRow[]): number[] {
   return held.filter((r) => r.type === "lead").map((r) => r.memberId);
 }
@@ -1242,12 +1252,17 @@ function savedSubject(divisionId: number, org: OrgChart): Exclude<DivisionSubjec
 /** An active row kept on a division, with the full-access seat it is flagged as. */
 type HeldRow = DivisionRow & SeatRow;
 
-/** Every active row kept on the division, seats included: `divisionRowWrites` picks the ones a plan touches. */
+/**
+ * Every active row kept on the division, seats included, newest first as
+ * `holdersOf` orders a role's holders: `divisionRowWrites` picks the ones a
+ * plan touches.
+ */
 async function heldRows(divisionId: number): Promise<HeldRow[]> {
   const rows = await getDb()
     .select({ id: roles.id, member_id: roles.memberId, type: roles.type, full_access: roles.fullAccess })
     .from(roles)
-    .where(and(eq(roles.divisionId, divisionId), isNull(roles.leavedAt)));
+    .where(and(eq(roles.divisionId, divisionId), isNull(roles.leavedAt)))
+    .orderBy(desc(roles.startedAt), desc(roles.id));
   return rows.flatMap((r) => (r.member_id === null ? [] : [{ id: r.id, memberId: r.member_id, type: r.type, fullAccess: seatOfFlag(r.full_access) }]));
 }
 
@@ -1352,13 +1367,14 @@ async function writeDivisionPlan(
   const seatRow = held.find((r) => seat !== null && r.memberId === seat.to && rows.toLead.includes(r.id))?.id;
   // Each new lead is owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests([...plan.promote, ...plan.joinAsLead]);
-  // A team address tied to this division's lead, held by a lead the save replaces, is owed a routing item (issue #789).
+  // A team address tied to this division's lead, held by a lead the save replaces or steps down, is owed a routing item (issues #789, #804).
   const leaving = new Set([...plan.demote, ...plan.advise, ...plan.replaced, ...plan.leaveDivision, ...plan.leaveTeam]);
   const reroutesAsked = await automaticTeamAddressReroutes([
     {
       tie: { kind: "division-lead", divisionId },
       becoming: [...plan.promote, ...plan.joinAsLead],
       staying: leadsIn(held).filter((id) => !leaving.has(id)),
+      leaving: leadsIn(held).filter((id) => leaving.has(id)),
     },
     ...seatHandedTo(seat),
   ]);
@@ -1874,6 +1890,7 @@ async function confirmedHandOverWrites(
         tie: { kind: "division-lead", divisionId: role.divisionId },
         becoming: promote.length > 0 || theirs.some((r) => r.type === "lead") ? [toId] : [],
         staying: leadsIn(held).filter((id) => id !== fromId),
+        leaving: [fromId],
       },
       ...seatHandedTo(seat),
     ]);
