@@ -9,7 +9,6 @@ import {
   ORDERS_CSV,
   OVERRIDES_CSV,
   PEOPLE_CSV,
-  POSITIONS_CSV,
   QUITTERS_SHEET,
   ROLES_SHEET,
   SUBTEAMS_CSV,
@@ -35,13 +34,21 @@ export const CSV_FILES = {
   subteams: "subteams_rows.csv",
   divisions: "divisions_rows.csv",
   advisors: "advisors_rows.csv",
-  positions: "positions_rows.csv",
   orders: "orders_rows.csv",
   faqs: "faqs_rows.csv",
   overrides: "overrides.csv",
 } as const;
 
 type CsvName = keyof typeof CSV_FILES;
+
+/**
+ * The exports a run leaves out whatever they hold (owner decision, issue
+ * #820): the old open positions, since recruitment creates new ones. A file
+ * here is listed as left out when the directory has it, and never read.
+ */
+const UNREAD_CSV_FILES: Readonly<Record<string, string>> = {
+  "positions_rows.csv": "not imported (owner decision); recruitment creates new positions",
+};
 
 /** One located row: where it sits and each field's value ("" when the source has none). */
 export type Row<F extends string> = { readonly at: At; readonly value: Readonly<Record<F, string>> };
@@ -75,7 +82,6 @@ export type Sources = {
     readonly subteams: readonly Row<keyof typeof SUBTEAMS_CSV>[];
     readonly divisions: readonly Row<keyof typeof DIVISIONS_CSV>[];
     readonly advisors: readonly Row<keyof typeof ADVISORS_CSV>[];
-    readonly positions: readonly Row<keyof typeof POSITIONS_CSV>[];
     readonly orders: readonly Row<keyof typeof ORDERS_CSV>[];
     readonly faqs: readonly Row<keyof typeof FAQS_CSV>[];
     /** The import's override input, not an export: seats handed over this year, and Quitters rows given an academic year. */
@@ -257,6 +263,17 @@ export function readSources(directory: string, year?: number): Sources {
     read.push(fileName);
     return rows;
   };
+  const csvRows = {
+    people: csv("people", PEOPLE_CSV),
+    teamMembers: csv("teamMembers", TEAM_MEMBERS_CSV),
+    subteams: csv("subteams", SUBTEAMS_CSV),
+    divisions: csv("divisions", DIVISIONS_CSV),
+    advisors: csv("advisors", ADVISORS_CSV),
+    orders: csv("orders", ORDERS_CSV),
+    faqs: csv("faqs", FAQS_CSV),
+    overrides: csv("overrides", OVERRIDES_CSV),
+  };
+  for (const [fileName, why] of Object.entries(UNREAD_CSV_FILES)) if (names.includes(fileName)) skipped.push(`${fileName}: ${why}`);
 
   return {
     read,
@@ -266,17 +283,7 @@ export function readSources(directory: string, year?: number): Sources {
     quitters,
     rolesSheets,
     namelessRows: nameless.count,
-    csv: {
-      people: csv("people", PEOPLE_CSV),
-      teamMembers: csv("teamMembers", TEAM_MEMBERS_CSV),
-      subteams: csv("subteams", SUBTEAMS_CSV),
-      divisions: csv("divisions", DIVISIONS_CSV),
-      advisors: csv("advisors", ADVISORS_CSV),
-      positions: csv("positions", POSITIONS_CSV),
-      orders: csv("orders", ORDERS_CSV),
-      faqs: csv("faqs", FAQS_CSV),
-      overrides: csv("overrides", OVERRIDES_CSV),
-    },
+    csv: csvRows,
     conflicts,
   };
 }

@@ -11,30 +11,41 @@ import type { ExistingRole, Snapshot } from "./snapshot";
 import { dayOf, type PersonRow, type QuitterRow, type Sources } from "./sources";
 import { seatsOf, type FullAccessSeat, type PositionType, type Seat, type SeatReading } from "./titles";
 import { holds, refKey, UnitBook, UnitFold, type NewDepartment, type NewDivision, type PlacedDivision, type Sighting, type UnitRef } from "./unit-book";
-import { divisionNamed, notedDepartment, rowUnitNames, subteamReadingOf, unitKey, type UnitValue } from "./units";
+import { DepartmentIndex, notedDepartment, rowUnitNames, subteamReadingOf, unitKey, type UnitValue } from "./units";
 
 // What an import would write (issues #677, #816), worked out from the sources
 // and a snapshot of the database before anything is written. The plan is the
 // whole decision: a dry run prints it, an import writes exactly its rows and
 // nothing else. Every row is an insert; a row the database already holds is
 // counted as present and left alone, so a second run plans no insert at all.
+// The one write that is no insert links an account that holds no member row
+// to the member row the plan inserts for its person (issue #820).
 
 /** A person the plan writes for: one it inserts (by their match id), or a member the database already has. */
 export type PersonRef = { readonly kind: "new"; readonly person: number } | { readonly kind: "existing"; readonly memberId: number };
 
+/**
+ * The account a new member row belongs to: a `users` row the plan inserts, or
+ * one the database holds with no member row (issue #820). That one is linked
+ * to the new member and left as it is otherwise: none of its fields is written.
+ */
+export type PersonAccount = { readonly kind: "new"; readonly user: NewUser } | { readonly kind: "linked"; readonly userId: string };
+
+export type NewUser = {
+  readonly email: string;
+  readonly firstName: string | null;
+  readonly lastName: string | null;
+  readonly origin: string | null;
+  readonly levelOfStudy: string | null;
+  readonly linkedin: string | null;
+  readonly politoId: string | null;
+  readonly program: string | null;
+  readonly country: string | null;
+};
+
 export type NewPerson = {
   readonly person: number;
-  readonly user: {
-    readonly email: string;
-    readonly firstName: string | null;
-    readonly lastName: string | null;
-    readonly origin: string | null;
-    readonly levelOfStudy: string | null;
-    readonly linkedin: string | null;
-    readonly politoId: string | null;
-    readonly program: string | null;
-    readonly country: string | null;
-  };
+  readonly account: PersonAccount;
   readonly member: {
     readonly prtEmail: string | null;
     readonly mobileNumber: string | null;
@@ -60,14 +71,6 @@ export type NewRole = {
 export type NewLeave = { readonly who: PersonRef; readonly leftAt: string };
 /** An advisor to insert, and their checked photo: uploaded as the version is written, its URL the version's `photo`. */
 export type NewAdvisor = { readonly siteOrder: number; readonly advisor: AdvisorVersion; readonly photo: CheckedPhoto | null };
-export type NewPosition = {
-  readonly divisionId: number | null;
-  readonly title: string;
-  readonly description: string | null;
-  readonly status: boolean;
-  readonly requiredSkills: readonly string[];
-  readonly desirableSkills: readonly string[];
-};
 export type NewFaq = { readonly siteOrder: number; readonly question: string; readonly answer: readonly string[] };
 export type OrderStatus = "pending" | "accepted" | "rejected" | "changes_requested" | "cancelled" | "ordered";
 export type NewOrder = {
@@ -93,7 +96,6 @@ export const TABLES = [
   "team_leaves",
   "team_page_advisors",
   "team_page_advisor_versions",
-  "apply_positions",
   "faqs",
   "faq_versions",
   "orders",
@@ -111,7 +113,6 @@ export type Plan = {
   readonly roles: readonly NewRole[];
   readonly leaves: readonly NewLeave[];
   readonly advisors: readonly NewAdvisor[];
-  readonly positions: readonly NewPosition[];
   readonly faqs: readonly NewFaq[];
   readonly orders: readonly NewOrder[];
   readonly counts: Readonly<Record<Table, Count>>;
@@ -174,27 +175,6 @@ function linkedinHandleOf(text: string): string | null {
 
 const orNull = (text: string | undefined) => (text === undefined || text.trim() === "" ? null : text.trim());
 
-/** A list cell from the old export: a JSON array, a Postgres array literal, or one item per line. */
-export function listOf(text: string): string[] {
-  const t = text.trim();
-  if (t === "") return [];
-  if (t.startsWith("[")) {
-    try {
-      const parsed: unknown = JSON.parse(t);
-      if (Array.isArray(parsed)) return parsed.map(String).map((s) => s.trim()).filter((s) => s !== "");
-    } catch {
-      // read as lines below
-    }
-  }
-  if (t.startsWith("{") && t.endsWith("}")) {
-    return [...t.slice(1, -1).matchAll(/"((?:[^"\\]|\\.)*)"|([^,]+)/g)].map((m) => (m[1] ?? m[2]).replace(/\\(.)/g, "$1").trim()).filter((s) => s !== "");
-  }
-  return t
-    .split(/\r?\n/)
-    .map((s) => s.replace(/^[-*•]\s*/, "").trim())
-    .filter((s) => s !== "");
-}
-
 const truthy = (text: string) => /^(true|t|1|yes|y)$/i.test(text.trim());
 const falsy = (text: string) => /^(false|f|0|no|n)$/i.test(text.trim());
 
@@ -216,8 +196,8 @@ type RowUnits = {
   readonly year: number;
   readonly reading: "past" | "present";
   readonly departments: readonly RowDepartment[];
-  /** Each division the row names, and its department; null when it resolved to none. */
-  readonly divisions: readonly (PlacedDivision | null)[];
+  /** Each division the row names, its department, and the department the row pairs it with; null when it resolved to none. */
+  readonly divisions: readonly ((PlacedDivision & { readonly pairedWith: UnitRef | null }) | null)[];
   /** The advisor marker the cells carry, if any. */
   readonly advisor: Extract<UnitValue, { kind: "advisor" }> | null;
   /** The subteam cell names a project and no unit. */
@@ -296,37 +276,54 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
   // Units --------------------------------------------------------------------
 
   const onCurrent = currentYear === null ? [] : people.filter((p) => p.years.has(currentYear));
-  // Every unit value the rows below resolve, read first, so the values that spell one unit are one unit whichever row comes first.
-  const sightings = { departments: [] as Sighting[], divisions: [] as Sighting[] };
-  const sight = (c: YearCells, year: number, current: boolean) => {
-    const names = rowUnitNames(c.subteam, c.division, snapshot.projects, c.reading);
-    for (const d of names.departments) sightings.departments.push({ value: d.value, year, current });
-    for (const d of names.divisions) sightings.divisions.push({ value: d.value, year, current });
-    for (const reading of seatsOf(c.title)) {
-      if (reading.kind !== "seat" || reading.seat.unit !== "noted-department" || reading.project === null) continue;
-      const named = notedDepartment(reading.project, snapshot.projects, c.reading);
-      if (named !== null) sightings.departments.push({ value: named, year, current });
-    }
-  };
+  // Every row the units below are read from, read first, so the values that spell one unit are one unit whichever row comes first.
+  const unitRows: { readonly cells: YearCells; readonly year: number; readonly current: boolean }[] = [];
   for (const person of people) {
-    for (const year of person.years.keys()) sight(cellsOf(person, year), year, year === currentYear);
+    for (const year of person.years.keys()) unitRows.push({ cells: cellsOf(person, year), year, current: year === currentYear });
     // A quitter-only row's sheet has no year: it counts as older than every year sheet.
-    if (person.years.size === 0 && person.quitter !== null) sight(quitterCells(person.quitter), Number.NEGATIVE_INFINITY, false);
+    if (person.years.size === 0 && person.quitter !== null) unitRows.push({ cells: quitterCells(person.quitter), year: Number.NEGATIVE_INFINITY, current: false });
   }
-  const book = units === null ? null : new UnitBook(units, { departments: new UnitFold(sightings.departments), divisions: new UnitFold(sightings.divisions) });
+  /** The departments a row's title notes ("President-Advisor (Project Cavour)" notes Cavour). */
+  const notedDepartmentsOf = (c: YearCells) =>
+    seatsOf(c.title).flatMap((reading) => {
+      if (reading.kind !== "seat" || reading.seat.unit !== "noted-department" || reading.project === null) return [];
+      return notedDepartment(reading.project, snapshot.projects, c.reading) ?? [];
+    });
+  // A division's note that names a department is its department (issue #820): the database's departments, and the ones the rows name.
+  const departmentIndex = new DepartmentIndex([
+    ...(units?.departments ?? []),
+    ...unitRows.flatMap(({ cells: c }) => [...rowUnitNames(c.subteam, c.division, snapshot.projects, c.reading).departments.map((d) => d.value), ...notedDepartmentsOf(c)]),
+  ]);
+  const unitNamesOf = (c: YearCells) => rowUnitNames(c.subteam, c.division, snapshot.projects, c.reading, departmentIndex);
+  const departmentFold = new UnitFold(
+    unitRows.flatMap(({ cells: c, year, current }) =>
+      [...unitNamesOf(c).departments.map((d) => d.value), ...notedDepartmentsOf(c)].map((value): Sighting => ({ value, year, current, parent: null })),
+    ),
+    // A database department spelt by name on one row and by its code on another is one parent to its divisions.
+    units?.departments ?? [],
+  );
+  // A division is told apart by the department its row pairs it with.
+  const divisionFold = new UnitFold(
+    unitRows.flatMap(({ cells: c, year, current }) =>
+      unitNamesOf(c).divisions.map((d): Sighting => ({ value: d.value, year, current, parent: d.department === null ? null : departmentFold.group(d.department) })),
+    ),
+  );
+  const book = units === null ? null : new UnitBook(units, { departments: departmentFold, divisions: divisionFold });
 
   // Seats --------------------------------------------------------------------
 
   /** Reads a row's unit cells, reporting each cell with a value that resolves to no unit, once. */
   const rowUnits = (c: YearCells, year: number): RowUnits => {
-    const names = rowUnitNames(c.subteam, c.division, snapshot.projects, c.reading);
+    const names = unitNamesOf(c);
     const base = { year, reading: c.reading, advisor: names.advisor, projectOnly: names.projectOnly };
     if (book === null) return { ...base, departments: [], divisions: [] };
     const departments = names.departments.map((d) => ({ cell: d.cell, ref: book.department(d.value, year) }));
     const departmentNamed = (name: string) => departments[names.departments.findIndex((d) => unitKey(d.value.name) === unitKey(name))]?.ref ?? null;
-    // A division is paired with the department its Division cell names before it, else with the row's one department.
-    const only = departments.length === 1 ? departments[0].ref : null;
-    const divisions = names.divisions.map((d) => book.division(d.value, year, d.department !== null ? departmentNamed(d.department.name) : only));
+    const divisions = names.divisions.map((d) => {
+      const paired = d.department === null ? null : { value: d.department, ref: departmentNamed(d.department.name) };
+      const placed = book.division(d.value, year, paired);
+      return placed === null ? null : { ...placed, pairedWith: paired?.ref ?? null };
+    });
     for (const field of ["subteam", "division"] as const) {
       const missing = departments.some((d) => d.cell === field && d.ref === null) || (field === "division" && divisions.some((d) => d === null));
       if (missing) conflicts.push({ kind: "unknown-unit", at: c.row.at, field });
@@ -361,7 +358,8 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     if (row.divisions.length === 0 && row.departments.length === 0) return seat.type === "advisor" ? [NO_PLACE] : none("subteam");
     if (divisionMissing) return unresolved("division");
     if (departmentMissing !== undefined) return unresolved(departmentMissing.cell);
-    const covered = new Set(inDivisions.flatMap((p) => (p.dept === null ? [] : [refKey(p.dept)])));
+    // A department is covered by a division under it, or one the row pairs with it: a created division's final department is known only once every row is placed.
+    const covered = new Set(row.divisions.flatMap((d) => (d === null ? [] : [d.dept, d.pairedWith].flatMap((ref) => (ref === null ? [] : [refKey(ref)])))));
     return unique([...inDivisions, ...inDepartments(row.departments.filter((d) => !covered.has(refKey(d.ref!))))]);
   };
 
@@ -401,7 +399,7 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
   /** The seat keys a current-year row's title gives, its departments resolved as its roles will be (a unit the run creates included). */
   const seatKeysOf = (person: Person): Set<string> => {
     const c = cellsOf(person, currentYear!);
-    const names = rowUnitNames(c.subteam, c.division, snapshot.projects, c.reading);
+    const names = unitNamesOf(c);
     const depts = names.departments.flatMap((d) => book?.department(d.value, currentYear!) ?? []);
     const keys = new Set<string>();
     for (const reading of seatsOf(c.title)) {
@@ -491,8 +489,18 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     return { stints, at: person.years.get(years[years.length - 1])!.at };
   };
 
-  /** A person the plan imports: their stints, the row the report names for them, their sign-in address, and whom they are written as. */
-  type Admitted = { readonly stints: readonly Stint[]; readonly anchor: At; readonly email: string; readonly ref: PersonRef };
+  /**
+   * A person the plan imports: their stints, the row the report names for
+   * them, their sign-in address, and whom they are written as: a member the
+   * database has, or a new member, linked to the account of their sign-in
+   * address when the database has one that holds no member row.
+   */
+  type Admitted = {
+    readonly stints: readonly Stint[];
+    readonly anchor: At;
+    readonly email: string;
+    readonly who: { readonly kind: "existing"; readonly memberId: number } | { readonly kind: "new"; readonly linkTo: string | null };
+  };
 
   /** Whether the plan imports a person; a refused one is reported and counted here, once. */
   const admit = (person: Person): Admitted | null => {
@@ -511,10 +519,13 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     const email = signInEmail(person);
     if (email === null) return refuse("missing-email");
     const accounts = snapshot.users.filter((u) => person.emails.has(u.email) || u.email === email);
-    const account = accounts.find((u) => u.member !== null) ?? accounts[0];
-    if (account !== undefined && account.member === null) return refuse("account-without-member");
-    const ref: PersonRef = account?.member != null ? { kind: "existing", memberId: account.member } : { kind: "new", person: person.id };
-    return { stints, anchor, email, ref };
+    // An account that holds a member row is that member: present, never touched.
+    const member = accounts.find((u) => u.member !== null)?.member;
+    if (member != null) return { stints, anchor, email, who: { kind: "existing", memberId: member } };
+    // The account of the sign-in address, holding no member row, gets the new member (owner decision, issue #820); one of another address alone does not.
+    const signIn = accounts.find((u) => u.email === email);
+    if (signIn === undefined && accounts.length > 0) return refuse("account-without-member");
+    return { stints, anchor, email, who: { kind: "new", linkTo: signIn?.id ?? null } };
   };
   const admitted = new Map<number, Admitted>();
   for (const person of people) {
@@ -532,7 +543,8 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
   for (const person of people) {
     const entry = admitted.get(person.id);
     if (entry === undefined) continue;
-    const { stints, anchor, email, ref } = entry;
+    const { stints, anchor, email, who } = entry;
+    const ref: PersonRef = who.kind === "existing" ? who : { kind: "new", person: person.id };
     const onCurrent = currentYear !== null && person.years.has(currentYear);
     refOf.set(person.id, ref);
     personFate.set(person.id, ref.kind);
@@ -540,26 +552,33 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     const alumnus = !onCurrent;
     if (alumnus) alumni++;
 
-    if (ref.kind === "existing") {
+    if (who.kind === "existing") {
       counter.add("users", "present");
       counter.add("members", "present");
     } else {
-      counter.add("users", "insert");
+      counter.add("users", who.linkTo === null ? "insert" : "present");
       counter.add("members", "insert");
       const f = person.fields;
+      const account: PersonAccount =
+        who.linkTo !== null
+          ? { kind: "linked", userId: who.linkTo }
+          : {
+              kind: "new",
+              user: {
+                email,
+                firstName: orNull(f.firstName),
+                lastName: orNull(f.lastName),
+                origin: orNull(f.origin),
+                levelOfStudy: orNull(f.level),
+                linkedin: f.linkedin === undefined ? null : linkedinLink(f.linkedin),
+                politoId: orNull(f.studentId),
+                program: orNull(f.program),
+                country: orNull(f.country),
+              },
+            };
       newPeople.push({
         person: person.id,
-        user: {
-          email,
-          firstName: orNull(f.firstName),
-          lastName: orNull(f.lastName),
-          origin: orNull(f.origin),
-          levelOfStudy: orNull(f.level),
-          linkedin: f.linkedin === undefined ? null : linkedinLink(f.linkedin),
-          politoId: orNull(f.studentId),
-          program: orNull(f.program),
-          country: orNull(f.country),
-        },
+        account,
         member: {
           prtEmail: normalEmail(f.prtEmail ?? ""),
           mobileNumber: orNull(f.mobile),
@@ -772,54 +791,6 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     return c;
   }
 
-  // Open positions -------------------------------------------------------------
-
-  const oldDivisions = new Map(sources.csv.divisions.map((d) => [d.value.id.trim(), d.value]));
-  const positions: NewPosition[] = [];
-  const positionKey = (title: string, divisionId: number | null) => `${unitKey(title)}\u0000${divisionId ?? ""}`;
-  const positionKeys = new Set(snapshot.positions.map((p) => positionKey(p.title ?? "", p.divisionId)));
-  /** The keys earlier rows of the CSV gave: a second row for one is a duplicate. */
-  const positionRows = new Set<string>();
-  for (const row of sources.csv.positions) {
-    const title = row.value.name.trim();
-    if (title === "") {
-      conflicts.push({ kind: "schema-misfit", at: row.at, field: "name" });
-      counter.add("apply_positions", "refused");
-      continue;
-    }
-    let divisionId: number | null = null;
-    if (units !== null) {
-      const old = oldDivisions.get(row.value.division.trim());
-      const division = [old?.name, old?.code, row.value.division].flatMap((n) => (n ? [divisionNamed(units, n)] : [])).find((d) => d !== null) ?? null;
-      if (division === null) {
-        conflicts.push({ kind: "unknown-unit", at: row.at, field: "division" });
-        counter.add("apply_positions", "refused");
-        continue;
-      }
-      divisionId = division.id;
-    }
-    const key = positionKey(title, divisionId);
-    if (positionRows.has(key)) {
-      conflicts.push({ kind: "duplicate", at: row.at });
-      counter.add("apply_positions", "refused");
-      continue;
-    }
-    positionRows.add(key);
-    if (positionKeys.has(key)) {
-      counter.add("apply_positions", "present");
-      continue;
-    }
-    positions.push({
-      divisionId,
-      title,
-      description: orNull(row.value.description),
-      status: truthy(row.value.open),
-      requiredSkills: listOf(row.value.required),
-      desirableSkills: listOf(row.value.desirable),
-    });
-    counter.add("apply_positions", "insert");
-  }
-
   // FAQs ---------------------------------------------------------------------
 
   const faqList: NewFaq[] = [];
@@ -932,7 +903,7 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
   counter.add("departments", "present", present.departments);
   counter.add("divisions", "insert", divisions.length);
   counter.add("divisions", "present", present.divisions);
-  // A created division is paired with a department on the row that first pairs it, maybe after a role was placed in it: its roles take that department.
+  // A created division goes under the department of the newest sheet that pairs it, known only once every row is placed: its roles take that department.
   const roles = newRoles.map((r) => (r.division?.kind === "new" ? { ...r, dept: divisions[r.division.index].dept } : r));
 
   return {
@@ -943,7 +914,6 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     roles,
     leaves,
     advisors,
-    positions,
     faqs: faqList,
     orders: newOrders,
     counts: counter.counts,

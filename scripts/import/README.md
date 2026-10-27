@@ -2,10 +2,11 @@
 
 Loads the real team into a database that has the schema but no people (issue #677). It reads the
 roster workbook, the old Supabase CSV exports and the old photos. It reports every conflict. It
-inserts members, their roles by academic year, alumni, advisors, open positions, FAQs, orders and
-member and advisor photos. It also creates the departments and divisions the roster names and the
+inserts members, their roles by academic year, alumni, advisors, FAQs, orders and member and
+advisor photos. It also creates the departments and divisions the roster names and the
 database lacks: closed ones for past units, open ones for units on the current sheet (issue #816).
-It never updates or deletes a row.
+It never deletes a row. It updates one column only: an existing account that holds no member row
+gets its person's new member row in `users.member` (see **Sign-in**).
 
 Running it on a real database (preview or production) is an owner step. The tests run it only on
 the fake files in `fixtures/files/` and `fixtures/rules/`, an in-memory database and a fake photo
@@ -39,7 +40,8 @@ prints the rows to insert (or inserted), already present and refused. Under the 
 each department and division to create by name and code, marked `open, from <day>` or
 `closed, <day> to <day>`, a division with the department it goes under. Under each unit a
 `spellings:` line lists the distinct roster values folded into it (see **Units**). Then it prints
-the number of alumni, of people in more than one year sheet, of unclear quitters, of Quitters dates
+the number of existing accounts with no member row linked to a new member row (see **Sign-in**),
+of alumni, of people in more than one year sheet, of unclear quitters, of Quitters dates
 read with day and month swapped, of sheet rows skipped for having no name, of override lines
 applied (handovers and quitter years) and of distinct unresolved unit names; the photo counts; then
 each conflict with its file, sheet, row and field. Unclear quitters are listed by their Quitters
@@ -73,9 +75,13 @@ name is left out too (issue #816): it is a template row, often holding only plac
 raises no conflict, it is never matched to a person by its emails, and the report counts it.
 
 From the CSVs (any may be missing): `people_rows.csv`, `team_members_rows.csv`,
-`subteams_rows.csv`, `divisions_rows.csv`, `advisors_rows.csv`, `positions_rows.csv`,
-`orders_rows.csv`, `faqs_rows.csv`. The workbook wins on any field both carry. A CSV fills only a
-field the workbook left empty, and reports a field where it disagrees.
+`subteams_rows.csv`, `divisions_rows.csv`, `advisors_rows.csv`, `orders_rows.csv`,
+`faqs_rows.csv`. The workbook wins on any field both carry. A CSV fills only a field the workbook
+left empty, and reports a field where it disagrees.
+
+`positions_rows.csv`, the old open positions, is not imported at all (owner decision, issue #820):
+recruitment creates new positions. When the directory has it, the report lists it under the files
+left out, and none of its rows raises a conflict.
 
 From `photos/` (it may be missing): JPEG files named `<id>-<surname>.jpeg` (a member's) or
 `<surname>.jpeg` (an advisor's or a professor's). See **Photos** below.
@@ -97,6 +103,15 @@ the person running the import writes. See **The override input** below.
   the users row by that email. It gives the row the account's id, so the person lands on their
   imported row and member, and an alumnus opens My alumni. If they sign in with another address,
   full access can correct the sign-in email first (Edit details, issue #741).
+  - **An account with no member row** (owner decision, issue #820). When the sign-in email is an
+    existing `users` row that holds no member row (an applicant's account, for example), no
+    `users` row is inserted. The person's new `members` row and roles are linked to that account:
+    its `member` column is set to the new member row, and no other field of it is written. The
+    table counts it under `users` as present and under `members` as inserted, and the report
+    counts these links on a line of their own. When only another of the person's emails is an
+    account with no member row, the person is not imported and is reported as
+    `account-without-member`.
+  - An account that already holds a member row is that member: present, and never changed.
 - **Titles** (`titles.ts`): a title cell is split on " - " into seats, and each seat gives its
   own role. The title table gives each seat's `type`, `full_access` and unit. A seat may end in
   parenthesized notes: "(acting)" marks an acting holder, any other note names a project. Neither
@@ -118,9 +133,16 @@ the person running the import writes. See **The override input** below.
     note is read as a Subteam value of that row (see **Units**): on a sheet from 2024-2025 on,
     Cavour is a project, so the advisor has no unit.
 - **Units** (`units.ts`, `unit-book.ts`): a subteam or division cell is split on " - ", ",", ";",
-  "/" and line breaks; the slash of "N/A" does not split. Each value resolves by name, else by the
+  "/" and line breaks; the slash of "N/A" does not split, and neither does a separator inside
+  parentheses (issue #820): "ADVISOR (VES, AMV)" is one advisor marker, and no unit is made from
+  it. Each value resolves by name, else by the
   code in its parentheses ("Propulsion (PRO)", "Electronics (ELT) Department"), against the
-  `departments` and `divisions` the database holds, closed ones included. "N/A", "AMV" and
+  `departments` and `divisions` the database holds, closed ones included. Names are compared
+  without case, accents, punctuation, a trailing level word ("Department", "Division") or a
+  word's trailing plural "s" (issue #820): "Ground System" and "Ground Systems" are one name. A
+  code keeps its "s", and so does a word written as a code (two to four capitals or digits): "OPS"
+  and "OP" are two codes, and "Alpha (OPS)" and "Beta (OP)" are two units. A one-word name not
+  written in capitals folds like any other: "Lab" and "Labs" are one name. "N/A", "AMV" and
   "Amerigo Vespucci (AMV)" are no unit. An "ADVISOR" or "SENIOR ADVISOR" marker, with or without a
   project in parentheses, makes the row's plain member seat an `advisor` role. A project's name
   (any version of a `projects` row on the database) is not a unit: the schema has no project on
@@ -133,20 +155,39 @@ the person running the import writes. See **The override input** below.
     gives, and on the `Quitters` sheet, every Subteam value is a department, even one that names a
     project (`subteamReadingOf`).
   - **Several units in one row.** A member's seat gives one role in each division the row names,
-    and one in each department that no division of the row belongs to. A head seat gives one role
-    in each department, a lead seat one in each division. A unit named twice gives one role.
+    and one in each department that no division of the row belongs to or is paired with. A head
+    seat gives one role in each department, a lead seat one in each division. A unit named twice
+    gives one role.
   - **"<Dept> Department - <Division>".** A Division cell value that names a department
     ("Electronics (ELT) Department", "Electronics Dept.") is that department, not a division. The
     divisions after it in the cell are its divisions. So "Electronics (ELT) Department - Hardware
     (HDW)" is the Electronics department plus the Hardware division.
+  - **A note naming a department** (owner decision, issue #820). A Division cell value whose
+    parenthesized note names a department, by name or code, is a division under that department,
+    and the note is not its code. The departments counted are the database's and the ones the
+    run's rows name. "IT&Media (Operations)" is a division "IT&Media" under Operations, and
+    "Avionics (Cavour)" a division "Avionics" under Cavour. Such a note never joins a code group
+    (see **One unit, several spellings**). A note that names the value's own department
+    ("Propulsion (PRO)" where Propulsion's code is PRO) is still its code.
+  - **A job title after a division** (owner decision, issue #820). A Division cell value ending
+    in "Lead" or "Lead Engineer" (case and spacing do not count) is the division before it:
+    "Safety Lead" is the Safety division, and "Liquid System Architecture Lead Engineer" the
+    Liquid System Architecture division. No unit is made with the job title in its name.
   - **Units the database lacks are created.** A department or division a row names that no unit
     in the database has is created once, whichever row names it first. Its `started_at` is the
     first day of the first academic year a row names it (`YYYY-10-01`). Its name and code come
     from the values that spell it (see **One unit, several spellings** below). Its name drops a
     trailing "Department" or "Division". A created
-    department has the default kind, `technical`. A created division goes under the department
-    its row pairs it with: the department its Division cell names before it, else the row's one
-    department. With no pairing (several departments, or none) it has no department.
+    department has the default kind, `technical`. A row pairs a division with the department its
+    Division cell names before it, else the one its note names, else the row's one department.
+    A created division goes under the department the newest sheet that pairs it pairs it with
+    (owner decision, issue #820), the one its rows of that year name most often (the first read
+    on a tie), whichever row is read first. Every row that pairs it counts, rows of people the
+    plan refuses included, and a `Quitters` row counts as older than every year sheet. When only
+    refused rows name that department and the database lacks it, the department is created too,
+    over the years those rows name it, so a later run finds the division under it. A department
+    two units share is passed over for the next newest pairing. With no pairing on any row
+    (several departments, or none) it has no department.
     - **Past units are created closed.** A unit the current year's sheet does not name is one the
       team no longer has. Its `closed_at` is the last day of the last academic year a row names it
       (`(YYYY+1)-09-30`). A quitter-only alumnus's row counts as a row of the year they left in.
@@ -174,6 +215,22 @@ the person running the import writes. See **The override input** below.
     - The group's name, its open state and its `spellings:` line all come from every value the
       rows give, rows the plan refuses included. So a unit named after a spelling always lists
       that spelling. Its `started_at` and `closed_at` years come from the rows placed in it.
+    - Names that differ only by a word's plural "s" are the same name (issue #820), so they fold
+      as above: "Ground System" (only on past sheets) and "Ground Systems (GNS)" (on the current
+      sheet) are one division, created open.
+  - **One division name under two departments** (owner decision, issue #820). Divisions fold by
+    name only under one department: the department their rows pair them with. A division named
+    on a past sheet under a department other than the current sheet's is its own division under
+    that past department, closed when only past sheets name it. So a bare "Mission Analysis"
+    under Vittorio Emanuele II stays apart from "Mission Analysis (MSA)" under Aeromechanics, and
+    "Avionics" under Cavour apart from "Avionics" under Vittorio Emanuele II. Values with the same
+    code still fold, whatever their departments. A database department is one department to its
+    divisions however a row spells it: "IT&Media" beside "Operations" on one row and "IT&Media
+    (OPS)" on another are one division when the database's Operations is coded OPS. A value its
+    row pairs with no department joins
+    the division of its name that the newest sheet pairs. A division value finds a database
+    division by name only under the department its row pairs it with, or under none, and by
+    code under any department, so a second run finds each one where the first created it.
 - **Dates**: current-year roles are active. Earlier years' roles run `YYYY-10-01` to
   `(YYYY+1)-09-30`. On the `2022-2023` sheet, a row whose "Date of joining" cell is filled starts
   its roles that year on that day instead of `2022-10-01` (the date forms of **Quitters** all
@@ -226,8 +283,8 @@ the person running the import writes. See **The override input** below.
     matches nobody, it is the one imported person with the same surname (accents, case and
     spacing do not count) whose given names, on a workbook row of theirs, contain each word of the
     CSV row's first name (owner decision, issue #818): "Maria Rossi" is "Anna Maria Rossi". Only
-    people the plan imports count, so a refused person (no sign-in email, an account with no
-    member, or an unclear quitter) never makes the row ambiguous. When no imported person fits, or more than one does, the row
+    people the plan imports count, so a refused person (no sign-in email, an
+    `account-without-member`, or an unclear quitter) never makes the row ambiguous. When no imported person fits, or more than one does, the row
     matches nobody, and a photo with its id is reported as `photo-not-imported`, as before.
   - A file named `<surname>` (no id) is an advisor's or a professor's. It matches the one advisor
     with that surname: a row of `advisors_rows.csv`, or a person whose workbook row is an advisor's
@@ -246,8 +303,7 @@ the person running the import writes. See **The override input** below.
 - **Present rows**: a unit the roster names that the database holds (a unit a run created
   included), a person whose email an account already holds, a role with the same member, unit,
   title and dates (a handed-over role: with any end day), an advisor or FAQ with the same name or
-  question, a position with the same title and division, an order with the same requester, name
-  and time. A second run creates no unit, inserts nothing and uploads nothing.
+  question, an order with the same requester, name and time. A second run creates no unit, inserts nothing and uploads nothing.
 
 ## The override input
 
@@ -295,6 +351,13 @@ invented, every email is on `example.com`, and the photos are tiny generated JPE
 `import.test.ts` runs the tool over `files/`; `rules.test.ts` runs it over `rules/`, a roster that
 plants each reading rule of issue #816, with an `overrides.csv`. `parsing.test.ts` covers the
 readers: the date forms, the override lines, a quitter's stint (a swapped date cell included) and
-the photo matching. `roster-shapes.test.ts` plans the shapes of issue #818 over a fake roster built
-in memory: swapped Quitters dates, a shorter first name in `people_rows.csv`, and one unit spelt
-several ways.
+the photo matching. `roster-shapes.test.ts` plans the shapes of issues #818 and #820 over a fake
+roster built in memory: swapped Quitters dates, a shorter first name in `people_rows.csv`, one unit
+spelt several ways, a separator inside parentheses, a note naming a department, one division name
+under two departments, a newest-sheet pairing on a refused row, a database department spelt by
+name and by code, a job title in the Division cell, a plural spelling (one-word names included),
+two codes that differ by an "s", and the accounts a person's emails may already have
+(no member row, a member row, another email's). `import.test.ts` checks that `positions_rows.csv`
+is left out, that an account with no member row is linked to its person's new member row with no
+other field written, and that a run whose linked account gained a member row after the plan was
+read fails and writes nothing.

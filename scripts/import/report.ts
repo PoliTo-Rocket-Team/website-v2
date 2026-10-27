@@ -5,7 +5,8 @@ import type { Sources } from "./sources";
 import type { Uploaded, Written } from "./write";
 
 // The report a run prints (issue #677): what was read, then per table the
-// rows to insert, already present and refused, then the people counts, then
+// rows to insert, already present and refused, then the people counts (the
+// accounts linked to a new member row among them, issue #820), then
 // every conflict and unclear quitter with its file, sheet, row and field. It
 // prints counts and places, and the names of the units it would create (issue
 // #816); never a personal value from a source: no person's name, email, phone
@@ -63,6 +64,9 @@ export function renderReport({ mode, database, sources, plan, written, uploaded 
   }
   lines.push(`FAQs skipped as not visible: ${plan.hiddenFaqs}`);
   lines.push("");
+  // An account with no member row gets its person's new member row (issue #820): counted under users as present, under members as inserted.
+  const links = plan.people.filter((p) => p.account.kind === "linked").length;
+  lines.push(`Existing accounts with no member row ${written === undefined ? "to link" : "linked"} to a new member row: ${links}`);
   lines.push(`Alumni: ${plan.alumni}`);
   lines.push(`People found in more than one year sheet: ${plan.multiYear}`);
   lines.push(`Unclear quitters: ${plan.unclearQuitters}`);

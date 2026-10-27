@@ -3,7 +3,6 @@ import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import {
   alumniEntries,
   alumniImportedRoles,
-  applyPositions,
   departments,
   divisions,
   faqs,
@@ -57,7 +56,6 @@ export type Snapshot = {
   readonly advisorOrder: number;
   readonly faqQuestions: readonly string[];
   readonly faqOrder: number;
-  readonly positions: readonly { readonly title: string | null; readonly divisionId: number | null }[];
   readonly orders: readonly { readonly requester: number | null; readonly name: string | null; readonly createdAt: string }[];
   /** The unit keys of every project's name, in any version: a subteam value that names one is a project, not a unit. */
   readonly projects: ReadonlySet<string>;
@@ -75,7 +73,6 @@ export const NO_DATABASE: Snapshot = {
   advisorOrder: 0,
   faqQuestions: [],
   faqOrder: 0,
-  positions: [],
   orders: [],
   projects: new Set(),
 };
@@ -110,7 +107,6 @@ export async function readSnapshot(db: ImportDb): Promise<Snapshot> {
     .from(teamPageAdvisors)
     .leftJoin(teamPageAdvisorVersions, eq(teamPageAdvisorVersions.advisorId, teamPageAdvisors.id));
   const faqRows = await db.select({ question: faqVersions.question, order: faqs.siteOrder }).from(faqs).leftJoin(faqVersions, eq(faqVersions.faqId, faqs.id));
-  const positionRows = await db.select({ title: applyPositions.title, divisionId: applyPositions.divisionId }).from(applyPositions);
   const orderRows = await db.select({ requester: orders.requester, name: orders.name, createdAt: orders.createdAt }).from(orders);
   const projectRows = await db.select({ page: projectVersions.page }).from(projectVersions);
 
@@ -139,7 +135,6 @@ export async function readSnapshot(db: ImportDb): Promise<Snapshot> {
     advisorOrder: Math.max(0, ...advisorRows.map((r) => r.order)),
     faqQuestions: faqRows.flatMap((r) => (r.question === null ? [] : [r.question])),
     faqOrder: Math.max(0, ...faqRows.map((r) => r.order)),
-    positions: positionRows,
     orders: orderRows,
     projects: new Set(projectRows.flatMap((r) => {
       const name = rowRecordOf(r)?.name;

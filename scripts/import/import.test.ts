@@ -29,18 +29,21 @@ import { checkMemberPhoto } from "@/lib/dashboard/division-members";
 import type { PublicFileWrites } from "@/lib/outreach-photos";
 import { publicStoreHost } from "@/lib/storage/pathname";
 import { myAlumniOf } from "@/lib/dashboard/my-alumni";
-import { addRows, databaseWrites, restore, tableRows, testDb } from "@/lib/dashboard/access-matrix/test-database";
+import { addRows, changeRows, databaseWrites, restore, tableRows, testDb } from "@/lib/dashboard/access-matrix/test-database";
 import type { ConflictKind } from "./conflicts";
 import { TABLES } from "./plan";
 import { runImport } from "./run";
 import type { ImportDb } from "./snapshot";
+import { writePlan } from "./write";
 
 // The team data import (issue #677) over the fake files in ./fixtures/files,
 // on the in-memory Postgres every migration in drizzle/ built
 // (lib/dashboard/access-matrix/test-database.ts). Migrations create no
 // department or division, so the test lays the units a production database
-// already holds, plus the rows a conflict needs: a seated chief engineer, an
-// account with no member row, and an imported Alumni entry.
+// already holds, plus the rows a conflict needs: a seated chief engineer and
+// an imported Alumni entry. It also lays an account with no member row, whose
+// email is a roster person's sign-in email: the import links it to that
+// person's new member row (issue #820).
 
 const FILES = join(__dirname, "fixtures", "files");
 const db = testDb as unknown as ImportDb;
@@ -91,6 +94,10 @@ async function rolesOf(memberId: number) {
 
 const kinds = (list: readonly { kind: ConflictKind }[]) => new Set(list.map((c) => c.kind));
 
+/** The writes that are no insert: an import makes one only to link an account with no member row (issue #820). */
+const nonInserts = async () => (await databaseWrites()).filter((w) => w.kind !== "insert");
+const ONE_LINK = [{ kind: "update", table: "users" }];
+
 test("a dry run reports every planted conflict and unclear quitter, and writes nothing", async () => {
   await world();
   const before = await Promise.all([users, members, roles, teamLeaves, departments, divisions, orders].map((t) => tableRows(t)));
@@ -102,8 +109,6 @@ test("a dry run reports every planted conflict and unclear quitter, and writes n
     "duplicate",
     "ambiguous-match",
     "missing-email",
-    "account-without-member",
-    "unknown-unit",
     "unknown-title",
     "seat-taken",
     "csv-disagrees",
@@ -129,12 +134,16 @@ test("a dry run reports every planted conflict and unclear quitter, and writes n
   assert.match(report, /^Alumni: 4$/m);
   assert.match(report, /^People found in more than one year sheet: 4$/m);
   assert.match(report, /^Unclear quitters: 1$/m);
+  // The applicant's account holds no member row: it is linked, not refused (issue #820).
+  assert.ok(!kinds(plan.conflicts).has("account-without-member"));
+  assert.match(report, /^Existing accounts with no member row to link to a new member row: 1$/m);
   assert.match(report, /roster\.xlsx › sheet 2025-2026 › row 9 › field title/);
   // "Underwater Basket Weaving" and "Avionics Legacy" are on the current sheet: units to create, open (issue #816), so none is unresolved.
   assert.equal(plan.unresolvedUnits, 0);
   assert.match(report, /^Distinct unresolved unit names \(subteam and division cells\): 0$/m);
-  // The position in the old "Avionics Legacy" division still resolves to no division the database holds.
-  assert.ok(plan.conflicts.some((c) => c.kind === "unknown-unit" && c.at.file === "positions_rows.csv"));
+  // The old open positions are not imported at all (issue #820): the file is listed as left out, and raises no conflict.
+  assert.ok(!plan.conflicts.some((c) => c.at.file === "positions_rows.csv"));
+  assert.match(report, /^Skipped:\n(?: {2}.*\n)* {2}positions_rows\.csv: not imported \(owner decision\); recruitment creates new positions$/m);
 });
 
 test("a dry run given no database says the units were not checked", async () => {
@@ -160,20 +169,57 @@ test("an import inserts the planned rows once, and a second run inserts none and
   assert.ok(first.written !== undefined);
   for (const table of TABLES) assert.equal(first.written[table], first.plan.counts[table].insert, `${table} inserted as planned`);
   assert.deepEqual(
-    { users: first.written.users, roles: first.written.roles, team_leaves: first.written.team_leaves },
-    { users: 21, roles: 25, team_leaves: 4 },
+    { users: first.written.users, members: first.written.members, roles: first.written.roles, team_leaves: first.written.team_leaves },
+    { users: 21, members: 22, roles: 26, team_leaves: 4 },
   );
-  assert.ok((await databaseWrites()).every((w) => w.kind === "insert"), "every write is an insert");
+  assert.deepEqual(await nonInserts(), ONE_LINK, "every write is an insert but the one account link");
 
   const second = await importOnce();
   for (const table of TABLES) {
     assert.equal(second.written?.[table], 0, `${table}: nothing inserted the second time`);
     assert.equal(second.plan.counts[table].present, first.plan.counts[table].present + first.plan.counts[table].insert, `${table}: all present`);
   }
-  assert.match(second.report, /^users +0 +22 +2$/m);
+  assert.match(second.report, /^users +0 +23 +1$/m);
+  assert.match(second.report, /^Existing accounts with no member row linked to a new member row: 0$/m);
 });
 
-test("the import creates only the current sheet's units the database lacks, open, and changes no existing row", async () => {
+test("an account with no member row whose email is a person's sign-in email gets their member row and roles, and no other field of it changes", async () => {
+  await world();
+  const before = (await tableRows(users)).find((u) => u.id === "applicant-account");
+  const { plan, report } = await importOnce();
+  assert.equal(plan.counts.users.refused, 1, "only the person with no email is refused");
+  assert.match(report, /^Existing accounts with no member row linked to a new member row: 1$/m);
+  assert.equal((await tableRows(users)).filter((u) => u.email === "wanda.riva@example.com").length, 1, "no second users row");
+  const after = await userNamed("Wanda", "Riva");
+  assert.ok(after?.member != null && after.id === "applicant-account");
+  assert.deepEqual({ ...after, member: null }, before, "only the link is written");
+  assert.deepEqual(
+    (await rolesOf(after.member)).map((r) => [r.title, r.type, r.divisionId, r.leavedAt]),
+    [["Writer", "core", 5, null]],
+  );
+  // The members already there keep their accounts and roles.
+  assert.equal((await tableRows(users)).find((u) => u.id === "olga-account")?.member, OLGA);
+  assert.equal((await tableRows(users)).find((u) => u.id === "seated-account")?.member, SEATED);
+});
+
+test("a plan whose linked account gained a member row since it was read fails the run, and the run writes nothing", async () => {
+  await world();
+  const { plan } = await runImport({ mode: "dry-run", directory: FILES, db });
+  assert.ok(plan.people.some((p) => p.account.kind === "linked" && p.account.userId === "applicant-account"));
+  // Between the plan and the write, the account gets a member row of its own.
+  await addRows(members, [{ memberId: 902 }]);
+  await changeRows(users, { id: "applicant-account" }, { member: 902 });
+  const tables = [users, members, roles, teamLeaves, departments, divisions, orders];
+  const before = await Promise.all(tables.map((t) => tableRows(t)));
+  await assert.rejects(
+    db.transaction((tx) => writePlan(tx, plan, null)),
+    /no longer holds no member row/,
+  );
+  assert.deepEqual(await databaseWrites(), []);
+  assert.deepEqual(await Promise.all(tables.map((t) => tableRows(t))), before);
+});
+
+test("the import creates only the current sheet's units the database lacks, open, and changes no existing row but an account's link", async () => {
   await world();
   const before = {
     departments: await tableRows(departments),
@@ -196,9 +242,10 @@ test("the import creates only the current sheet's units the database lacks, open
     [["Underwater Basket Weaving", PROPULSION, "2025-10-01", null]],
   );
   assert.deepEqual(await rolesOf(SEATED), before.seated);
-  assert.deepEqual((await tableRows(users)).find((u) => u.id === "applicant-account"), before.applicant);
+  const applicant = (await tableRows(users)).find((u) => u.id === "applicant-account");
+  assert.deepEqual({ ...applicant, member: null }, before.applicant, "the account with no member row gets its link only");
   assert.deepEqual([await tableRows(alumniEntries), await tableRows(alumniImportedRoles)], before.imported);
-  assert.ok((await databaseWrites()).every((w) => w.kind === "insert"));
+  assert.deepEqual(await nonInserts(), ONE_LINK);
 });
 
 test("a person in two years under different email columns is one user and member, with a role per year", async () => {
@@ -313,7 +360,7 @@ test("a seat conflict this year refuses that role only; the run goes on", async 
   }
 });
 
-test("CSV rows fill gaps only, and advisors, positions, FAQs and orders land where they resolve", async () => {
+test("CSV rows fill gaps only, advisors, FAQs and orders land where they resolve, and no position is imported", async () => {
   await world();
   await importOnce();
   const marta = await userNamed("Marta", "Villa");
@@ -326,14 +373,7 @@ test("CSV rows fill gaps only, and advisors, positions, FAQs and orders land whe
   assert.ok(advisorNames.includes("Prof. Ada Example") && advisorNames.includes("Sam Specialist"));
   assert.equal(advisorNames.filter((n) => n === "Sam Specialist").length, 1);
 
-  const positions = await tableRows(applyPositions);
-  assert.deepEqual(
-    positions.map((p) => [p.title, p.divisionId, p.status, p.requiredSkills, p.desirableSkills]),
-    [
-      ["Feed Systems Engineer", 1, true, ["Fluid dynamics", "Teamwork"], ["CAD", "Python"]],
-      ["Web Developer", INFORMATION_TECHNOLOGY, true, ["TypeScript", "SQL"], []],
-    ],
-  );
+  assert.deepEqual(await tableRows(applyPositions), [], "positions_rows.csv is not imported (issue #820)");
 
   const faq = (await tableRows(faqVersions)).find((v) => v.question === "Can I join while on exchange?");
   assert.deepEqual(faq?.answer, ["Yes, if you can work remotely.", "Tell us in your application."]);
@@ -475,7 +515,7 @@ test("an import stores member photos as the dashboard does and advisor photos as
   assert.deepEqual(uploaded, { members: 3, advisors: 1, skipped: 0 });
   assert.equal(uploads.length, 4);
   assert.match(report, /^ {2}uploaded: 4$/m);
-  assert.ok((await databaseWrites()).every((w) => w.kind === "insert"), "a photo goes in with its row; no row is updated");
+  assert.deepEqual(await nonInserts(), ONE_LINK, "a photo goes in with its row; no row is updated but the one account link");
 
   // Dario's id (30) is also an advisor row's id: an id is always a people_rows.csv id (issue #816).
   // Sofia's file is a surname only: the one advisor with it is her advisor row in the workbook.
@@ -522,5 +562,5 @@ test("a second import uploads nothing, and an import without a storage credentia
   assert.deepEqual(bare.uploaded, { members: 0, advisors: 0, skipped: 4 });
   assert.match(bare.report, /^ {2}skipped, no storage credential given: 4$/m);
   assert.equal((await memberOf("Marta", "Villa")).picture, null);
-  assert.equal(bare.written?.members, 21, "everything else is imported");
+  assert.equal(bare.written?.members, 22, "everything else is imported");
 });
