@@ -37,7 +37,7 @@ import { refused, written, type WriteResult } from "./write";
 // this module reads and writes the rows. Both reads go to the tables, not the
 // cached team snapshot, so an answer shows at once. A member's alias is their
 // `prt_email` (issue #563); the old `members.email_alias` column was dropped
-// by drizzle/0074 (issue #569).
+// by drizzle/0075 (issue #569).
 
 /** Postgres' unique_violation: the second open request `alias_requests_one_open` refuses. */
 const UNIQUE_VIOLATION = "23505";

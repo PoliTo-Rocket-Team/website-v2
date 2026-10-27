@@ -202,8 +202,9 @@ An admin column comes later. **Planned**, no issue yet.
   - Owner decision (2026-10-22, #589), in place of the 2026-10-21 rule of #504 that kept Alumni
     a separate grant: there is no Alumni grant and no Alumni area on the Access page. A Content
     grant opens the Alumni page and its actions with the other content editors. The old Alumni
-    rows (a `website` scope row on `all`, at either level) open nothing and nothing reads them;
-    each holder of one was given a Content grant, so nobody lost access (`drizzle/0058`).
+    rows (a `website` scope row on `all`, at either level) opened nothing; each holder of one was
+    given a Content grant, so nobody lost access (`drizzle/0058`), and the old rows were then
+    deleted (#637, `drizzle/0074`).
 - **Content** is the team leader's sidebar group of the pages that change the public site:
   Projects, Outreach, Partners, Alumni, FAQ, then Team page (boards 72, 74, 75, 76, 79 and 80).
   All six follow the site-content rule: the full admins, and anyone with a **Content** grant.

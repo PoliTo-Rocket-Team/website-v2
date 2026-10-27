@@ -130,7 +130,7 @@ const user: InferSelectModel<typeof users> = {
   anonymizedAt: null,
 };
 
-// The old `email_alias` column is gone: drizzle/0074 dropped it (issue #569).
+// The old `email_alias` column is gone: drizzle/0075 dropped it (issue #569).
 const member = {
   memberId: 7,
   prtEmail: "giulia.rossi@politorocketteam.it",

@@ -510,7 +510,14 @@
       "idx": 74,
       "version": "7",
       "when": 1795368000000,
-      "tag": "0074_drop_members_email_alias",
+      "tag": "0074_delete_old_alumni_grant_rows",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1795454400000,
+      "tag": "0075_drop_members_email_alias",
       "breakpoints": true
     }
   ]

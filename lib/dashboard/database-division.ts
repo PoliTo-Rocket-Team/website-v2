@@ -230,7 +230,7 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
   const inUnitDivisions = and(eq(scopes.scope, "division"), inArray(scopes.divisionId, divisionIds.length ? divisionIds : [-1]), unitTarget);
   const inUnitDepartments = and(eq(scopes.scope, "department"), inArray(scopes.deptId, departmentIds.length ? departmentIds : [-1]), unitTarget);
   // A lead's or head's page holds the Content grants of the people in the unit when the viewer gives Content (issue #504).
-  // The old Alumni `website` rows on `all` are no grant and are never read (issue #589).
+  // The old Alumni `website` rows on `all` were deleted (issues #589, #637: drizzle/0074).
   const contentRows = and(eq(scopes.scope, "website"), eq(scopes.target, "content"));
   // A team page also holds the grants across the whole team, Content and "Approve orders" (issue #247).
   const acrossTeam = or(and(eq(scopes.scope, "team"), or(unitTarget, eq(scopes.target, "approve_orders"))), contentRows);
@@ -419,8 +419,8 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
 
 /**
  * The stored grant one area in one place is (`grantRowOf`): a Content grant
- * is the person's `website` row on `content` (issue #504), never their old
- * Alumni `website` row on `all`, which stays unread (issue #589); any other
+ * is the person's `website` row on `content` (issue #504); the old Alumni
+ * `website` rows on `all` were deleted (issues #589, #637: drizzle/0074); any other
  * is the row of that scope, place and area.
  */
 function grantWhere(personId: number, place: AccessPlace, target: AccessTarget) {
