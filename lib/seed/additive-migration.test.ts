@@ -657,3 +657,28 @@ test("0071_alias_request_address.sql drops, renames and rewrites nothing, applie
   await apply();
   assert.deepEqual((await db.query(`select address from alias_requests`)).rows, [{ address: null }]);
 });
+
+// The two steps that make `page` the only stored record of a project version
+// (issue #535). These are not additive, by design: the backfill rewrites the
+// rows still without a `page`, and the drop removes `content` once no code
+// reads or writes it. Each is pinned to exactly its own statements, so any
+// further drop or rewrite fails here. The PGlite run of both over stored
+// versions is lib/project-content/page-only-migration.test.ts.
+test("0072_project_page_backfill.sql rewrites only the versions with no page, by 0050's own statement", () => {
+  const read = (tag: string) => readFileSync(resolve(process.cwd(), `drizzle/${tag}.sql`), "utf8");
+  const fill = nonAdditiveStatements(read("0050_project_page_blocks"));
+  assert.equal(fill.length, 1, "0050 holds one statement that changes rows: its fill");
+  assert.match(fill[0], /^UPDATE "project_versions" SET "page" = .* WHERE "page" IS NULL$/);
+  const sql = read("0072_project_page_backfill");
+  assert.deepEqual(nonAdditiveStatements(sql), fill);
+  assert.match(sql, /ALTER TABLE "project_versions" ALTER COLUMN "page" SET NOT NULL;/);
+  assert.match(sql, /ADD CONSTRAINT "project_versions_page_is_record" CHECK \(jsonb_typeof\("page"\) = 'object'\)/);
+});
+
+test("0073_drop_project_content.sql drops the content column and its check, and nothing else", () => {
+  const sql = readFileSync(resolve(process.cwd(), "drizzle/0073_drop_project_content.sql"), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), [
+    'ALTER TABLE "project_versions" DROP CONSTRAINT IF EXISTS "project_versions_content_is_record"',
+    'ALTER TABLE "project_versions" DROP COLUMN IF EXISTS "content"',
+  ]);
+});

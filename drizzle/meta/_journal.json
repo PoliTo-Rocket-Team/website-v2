@@ -491,6 +491,20 @@
       "when": 1795108800000,
       "tag": "0071_alias_request_address",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1795195200000,
+      "tag": "0072_project_page_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1795281600000,
+      "tag": "0073_drop_project_content",
+      "breakpoints": true
     }
   ]
 }
