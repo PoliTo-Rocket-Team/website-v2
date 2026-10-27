@@ -94,8 +94,6 @@ scopes have no tests of their own.
 
 ## Known inconsistencies (not the pattern)
 
-- **Two access models.** [get-members.ts](../app/actions/get-members.ts) decides visibility from
-  `roles.type` (`president`, `head`, `lead`), not from `scopes`. Everything else uses `ScopeInfo`.
 - **Unused rank table.** [lib/permission.config.ts](../lib/permission.config.ts) defines
   `SCOPE_RANK` and `TARGET_MIN_REQUIREMENTS`, but nothing imports them.
 - **Two entry points to the same check.** Callers use `getScopeInfoForCurrentUser(target)` (one

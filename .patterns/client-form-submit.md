@@ -7,8 +7,7 @@ client method or a server action, and reports the result with a `sonner` toast.
 ## The shape
 
 1. **Compose from `components/ui/`.** Forms build from the shadcn primitives (`Button`, `Input`,
-   `Card`, `Dialog`/`AlertDialog`, `Select`, `Switch`, the `Field*` set in
-   [components/ui/field.tsx](../components/ui/field.tsx)) and merge classes with `cn` from
+   `Label`, `Textarea`, `Card`, `Dialog`) and merge classes with `cn` from
    [lib/utils.ts](../lib/utils.ts). The visual rules are in
    [design-system-manifest.md](../design-system-manifest.md); this doc covers only the code flow.
    `components.json` records the shadcn setup (`style: "default"`, `rsc: true`, alias `@/components`).
