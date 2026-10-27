@@ -134,20 +134,39 @@ function realDay(year: number, month: number, day: number): string | null {
   return real && year >= FIRST_ROSTER_YEAR && year <= LAST_ROSTER_YEAR ? d.toISOString().slice(0, 10) : null;
 }
 
+/** A date cell as read: its day, and whether the sheet stored it as a date cell (an Excel day serial) rather than as typed text. */
+export type DateCell = { readonly day: string; readonly serial: boolean };
+
 /**
  * A day the sheet gives as a date cell (an Excel day serial) or as text:
  * "2024-06-30", "30/06/2024", "3/6/2024" or "30.06.2024", day first. Null
  * when it is none of these, or no real day in the roster's years.
  */
-export function dayOf(text: string): string | null {
+export function dateCellOf(text: string): DateCell | null {
   const t = text.trim();
   const serial = excelDay(t);
-  if (serial !== null) return realDay(Number(serial.slice(0, 4)), Number(serial.slice(5, 7)), Number(serial.slice(8, 10)));
+  const read = (day: string | null, isSerial: boolean) => (day === null ? null : { day, serial: isSerial });
+  if (serial !== null) return read(realDay(Number(serial.slice(0, 4)), Number(serial.slice(5, 7)), Number(serial.slice(8, 10))), true);
   const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T ][\d:.]+Z?)?$/.exec(t);
-  if (iso !== null) return realDay(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+  if (iso !== null) return read(realDay(Number(iso[1]), Number(iso[2]), Number(iso[3])), false);
   const eu = /^(\d{1,2})([/.])(\d{1,2})\2(\d{4})$/.exec(t);
-  if (eu !== null) return realDay(Number(eu[4]), Number(eu[3]), Number(eu[1]));
+  if (eu !== null) return read(realDay(Number(eu[4]), Number(eu[3]), Number(eu[1])), false);
   return null;
+}
+
+/** The day a cell gives, whatever its form (see `dateCellOf`). */
+export function dayOf(text: string): string | null {
+  return dateCellOf(text)?.day ?? null;
+}
+
+/**
+ * A day with its day and month swapped: the day a date cell meant when the
+ * spreadsheet stored a day/month date as month/day (issue #818). Null when the
+ * day is over 12 (no month), or equals the month (the swap changes nothing).
+ */
+export function dayMonthSwapped(day: string): string | null {
+  const [year, month, date] = day.split("-").map(Number);
+  return date > 12 || date === month ? null : realDay(year, date, month);
 }
 
 /** Leaves out the rows of a person sheet that carry neither a first nor a last name, and counts them. */

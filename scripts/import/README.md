@@ -37,11 +37,13 @@ pnpm db:import <source-dir> [--mode dry-run|import] [--year YYYY-YYYY] [--report
 The report prints counts and places only, plus the names of the units it creates. Per table it
 prints the rows to insert (or inserted), already present and refused. Under the table it lists
 each department and division to create by name and code, marked `open, from <day>` or
-`closed, <day> to <day>`, a division with the department it goes under. Then it prints the number
-of alumni, of people in more than one year sheet, of unclear quitters, of sheet rows skipped for
-having no name, of override lines applied (handovers and quitter years) and of distinct unresolved
-unit names; the photo counts; then each conflict with its file, sheet, row and field. Unclear
-quitters are listed by their Quitters row. It prints no person's name, email, phone, ID or photo
+`closed, <day> to <day>`, a division with the department it goes under. Under each unit a
+`spellings:` line lists the distinct roster values folded into it (see **Units**). Then it prints
+the number of alumni, of people in more than one year sheet, of unclear quitters, of Quitters dates
+read with day and month swapped, of sheet rows skipped for having no name, of override lines
+applied (handovers and quitter years) and of distinct unresolved unit names; the photo counts; then
+each conflict with its file, sheet, row and field. Unclear quitters are listed by their Quitters
+row, and so are the swapped Quitters dates, each with the cell swapped (`leftOn` or `joinedOn`). It prints no person's name, email, phone, ID or photo
 file name. A photo is named by its row: its place in the sorted file list of `photos/`.
 
 ## What it reads
@@ -139,8 +141,9 @@ the person running the import writes. See **The override input** below.
     (HDW)" is the Electronics department plus the Hardware division.
   - **Units the database lacks are created.** A department or division a row names that no unit
     in the database has is created once, whichever row names it first. Its `started_at` is the
-    first day of the first academic year a row names it (`YYYY-10-01`). Its code is the first one
-    a row gives in parentheses. Its name drops a trailing "Department" or "Division". A created
+    first day of the first academic year a row names it (`YYYY-10-01`). Its name and code come
+    from the values that spell it (see **One unit, several spellings** below). Its name drops a
+    trailing "Department" or "Division". A created
     department has the default kind, `technical`. A created division goes under the department
     its row pairs it with: the department its Division cell names before it, else the row's one
     department. With no pairing (several departments, or none) it has no department.
@@ -150,6 +153,22 @@ the person running the import writes. See **The override input** below.
     - **Current units are created open** (owner decision). A unit the current year's sheet names
       is one the team has now: it is created with no `closed_at`. A past row naming it is placed
       in that same unit.
+  - **One unit, several spellings** (`UnitFold` in `unit-book.ts`, issue #818). Before any row is
+    placed, the run reads every unit value its rows give, by level (departments, divisions), and
+    groups them. Values with the same name (as **Units** compares names) or the same code in
+    parentheses are one unit: "Optimization and Analysis (AOA)", "Optimization & Analysis (AOA)"
+    and "Aerodynamic Optimization and Analysis (AOA)" are one, and so are "Logistics (LGS)" and
+    "Logistcs (LGS)". A bare value equal to a code is that code's unit: "VES" is "Vittorio
+    Emanuele II (VES)". The order the rows come in does not matter.
+    - A group the run creates is created once. Its name is the name its code appears with most
+      often on the newest sheet that gives the code (the first one read on a tie); a group with
+      no code is named the same way from all its values. A `Quitters` row counts as older than
+      every year sheet.
+    - A group that any value on the current year's sheet gives is created open, even when past
+      sheets also name it. It is never also created closed.
+    - A value that finds no unit in the database is the unit another value of its group finds,
+      when they find exactly one: with "Logistics" in the database, "Logistcs (LGS)" is placed
+      there too.
 - **Dates**: current-year roles are active. Earlier years' roles run `YYYY-10-01` to
   `(YYYY+1)-09-30`. On the `2022-2023` sheet, a row whose "Date of joining" cell is filled starts
   its roles that year on that day instead of `2022-10-01` (the date forms of **Quitters** all
@@ -176,6 +195,14 @@ the person running the import writes. See **The override input** below.
     `d/m/yyyy`, `dd.mm.yyyy`, or `yyyy-mm-dd`. The day comes first. A cell that is none of these,
     or no real day between 1990 and 2100 ("31/02/2024", a bare "2024", a serial too large for any
     day), does not read.
+  - **Swapped day and month** (owner decision, issue #818). Quitters dates are day/month, but the
+    spreadsheet stored some date cells as month/day. So when a quitter-only row's join day falls
+    after its leave day, the run tries to swap one date cell's day and month: first the leave day,
+    then the join day. A cell is swapped only when it is a date cell (a day serial; typed text is
+    already day/month), its day is 12 or less, and the swap puts the join on or before the leave.
+    The row then imports normally, from the swapped day; a swapped leave day also gives the
+    academic year. When neither swap does it, the row stays `quitter-date-unreadable`. The report
+    counts the swapped dates and lists each by row and cell.
   - A `quitter-year` line of the override input gives a Quitters row an academic year. That row
     then imports as an alumnus of that year, its roles running from the year's first day to its
     last, and its leave day the year's last day, whatever its date cells hold.
@@ -190,6 +217,12 @@ the person running the import writes. See **The override input** below.
     `people_rows.csv`, matched exactly, and never an advisor's id: an id a person and an advisor
     share is the person's. The surname only cross-checks it: a different surname holds the file,
     and an id on no `people_rows.csv` row is not imported.
+  - A `people_rows.csv` row reaches its person by the **Person match** rule. When its full name
+    matches nobody, it is the one person with the same surname (accents, case and spacing do not
+    count) whose given names, on a workbook row of theirs, contain each word of the CSV row's
+    first name (owner decision, issue #818): "Maria Rossi" is "Anna Maria Rossi". When no person
+    fits, or more than one does, the row matches nobody, and a photo with its id is reported as
+    `photo-not-imported`, as before.
   - A file named `<surname>` (no id) is an advisor's or a professor's. It matches the one advisor
     with that surname: a row of `advisors_rows.csv`, or a person whose workbook row is an advisor's
     (an "ADVISOR" or "SENIOR ADVISOR" marker in a unit cell, or an advisor seat in the title). One
@@ -255,4 +288,7 @@ person on no year sheet.
 invented, every email is on `example.com`, and the photos are tiny generated JPEGs.
 `import.test.ts` runs the tool over `files/`; `rules.test.ts` runs it over `rules/`, a roster that
 plants each reading rule of issue #816, with an `overrides.csv`. `parsing.test.ts` covers the
-readers: the date forms, the override lines, a quitter's stint and the photo matching.
+readers: the date forms, the override lines, a quitter's stint (a swapped date cell included) and
+the photo matching. `roster-shapes.test.ts` plans the shapes of issue #818 over a fake roster built
+in memory: swapped Quitters dates, a shorter first name in `people_rows.csv`, and one unit spelt
+several ways.

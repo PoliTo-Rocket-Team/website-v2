@@ -12,7 +12,10 @@ import type { PersonRow, QuitterRow, Row, Sources } from "./sources";
 // alumnus, issue #816). `Roles YY-YY` rows and CSV rows attach to a person the
 // sheets found, and a CSV value only fills a field the workbook left empty. A
 // sheet row with no name never reaches here (./sources.ts leaves it out), so
-// it is never matched by its emails.
+// it is never matched by its emails. A `people_rows.csv` row whose full name
+// matches nobody may still be the one person with its surname whose given
+// names hold its first name (issue #818, owner decision): the export kept one
+// given name where the workbook keeps them all.
 
 const EMAIL_FIELDS = ["personalEmail", "studentEmail", "phdEmail", "prtEmail"] as const satisfies readonly PersonField[];
 
@@ -69,6 +72,37 @@ export function nameKey(first: string, last: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+/** How a surname is compared: accents, case, spaces and punctuation do not count. */
+export function surnameKey(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/** The words of a first-name cell, as the match rule compares names. */
+const givenNamesOf = (first: string): string[] => nameKey(first, "").split(" ").filter((w) => w !== "");
+
+/**
+ * The one person a `people_rows.csv` row is when its full name matches nobody
+ * (issue #818): a workbook row of theirs has the same surname and given names
+ * that hold every word of the CSV row's first name ("Anna" in "Anna Maria").
+ * Null when no person fits, or more than one does.
+ */
+function byGivenNames(people: readonly Person[], first: string, last: string): Person | null {
+  const surname = surnameKey(last);
+  const words = givenNamesOf(first);
+  if (surname === "" || words.length === 0) return null;
+  const fits = people.filter((p) =>
+    [...p.years.values(), ...(p.quitter === null ? [] : [p.quitter])].some((row) => {
+      const given = givenNamesOf(row.value.firstName);
+      return surnameKey(row.value.lastName) === surname && words.every((w) => given.includes(w));
+    }),
+  );
+  return fits.length === 1 ? fits[0] : null;
 }
 
 /** The address a person signs in with: their personal (Google) mail, else the first other email the workbook gives. */
@@ -199,11 +233,14 @@ export function matchPeople(sources: Sources): People {
     else attach(m.start(), row, emails, name);
   }
 
+  /** Matches CSV rows to people; with `byId` (the `people_rows.csv` pass), a row no full name matches falls back to `byGivenNames`. */
   const fromCsv = (rows: readonly Row<string>[], fields: readonly PersonalField[], emailFields: readonly string[], byId?: Map<string, Person>) => {
     const seen = new Set<Person>();
     for (const row of rows) {
       const emails = emailsOf(row.value, emailFields);
-      const person = m.match(emails, nameKey(row.value.firstName ?? "", row.value.lastName ?? ""), row.at);
+      const first = row.value.firstName ?? "";
+      const last = row.value.lastName ?? "";
+      const person = m.match(emails, nameKey(first, last), row.at) ?? (byId === undefined ? null : byGivenNames(m.people, first, last));
       if (person === null) continue;
       if (seen.has(person)) {
         m.conflicts.push({ kind: "duplicate", at: row.at });
