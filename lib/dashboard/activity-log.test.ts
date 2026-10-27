@@ -69,7 +69,7 @@ test("a stored row reads as one plain sentence in its area", () => {
   const cases: [LogRow, string, string][] = [
     [
       row({ table: "applications", operation: "UPDATE", before: { user_id: "acct-d", apply_position_id: 30, status_key: "new" }, after: { user_id: "acct-d", apply_position_id: 30, status_key: "interview" } }),
-      "Moved the application of Applicant D for Role Z to Interview",
+      "Moved Applicant D to Interview for Role Z",
       "applications",
     ],
     [
@@ -105,7 +105,7 @@ test("the rows one write stored at once read as one change, said by the row that
     row({ table: "applications", operation: "UPDATE", at, before: { user_id: "acct-d", apply_position_id: 30, status_key: "new" }, after: { user_id: "acct-d", apply_position_id: 30, status_key: "interview" } }),
     row({ table: "interview_slots", operation: "INSERT", at, after: { application_id: 40 } }),
   ]);
-  assert.deepEqual(sentences(entries), ["Moved the application of Applicant D for Role Z to Interview"]);
+  assert.deepEqual(sentences(entries), ["Moved Applicant D to Interview for Role Z"]);
 });
 
 test("a status move names the status it set by its stored name, built-in or added, and an unlisted key by the key", () => {
@@ -118,11 +118,11 @@ test("a status move names the status it set by its stored name, built-in or adde
     });
   const cases: [LogRow, string][] = [
     // Mark email sent writes only the status reference.
-    [move("accepted_email_to_be_sent", "accepted_email_sent"), "Moved the application of Applicant D for Role Z to Accepted · email sent"],
-    [move("interview", "second_call"), "Moved the application of Applicant D for Role Z to Second call"],
-    [move("second_call", "deleted_since"), "Moved the application of Applicant D for Role Z to deleted_since"],
+    [move("accepted_email_to_be_sent", "accepted_email_sent"), "Moved Applicant D to Accepted · email sent for Role Z"],
+    [move("interview", "second_call"), "Moved Applicant D to Second call for Role Z"],
+    [move("second_call", "deleted_since"), "Moved Applicant D to deleted_since for Role Z"],
     // NDA received also records the NDA's day: the status move says the write.
-    [move("accepted_email_sent", "nda_received", { nda_arrived_at: "2026-10-25T10:00:00.000Z" }), "Moved the application of Applicant D for Role Z to NDA received"],
+    [move("accepted_email_sent", "nda_received", { nda_arrived_at: "2026-10-25T10:00:00.000Z" }), "Moved Applicant D to NDA received for Role Z"],
   ];
   for (const [stored, sentence] of cases) {
     const [entry] = read([stored]);

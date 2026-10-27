@@ -466,8 +466,9 @@ const SENTENCES: Readonly<Record<string, Sentence>> = {
     if (became(row, "withdrawn_at")) return { sentence: `Withdrew the application for ${position}`, area };
     if (became(row, "joined_at")) return { sentence: `Confirmed ${applicant} joined as ${position}`, area };
     // A status move names the status it set, and covers what the move wrote beside it (NDA received records the NDA's day).
+    // The status comes before the position, so a narrow Change column still shows it.
     const status = changed(row, "status_key") ? text(row.after, "status_key") : null;
-    if (status !== null) return { sentence: `Moved the application of ${applicant} for ${position} to ${d.status(status)}`, area };
+    if (status !== null) return { sentence: `Moved ${applicant} to ${d.status(status)} for ${position}`, area };
     if (changed(row, "nda_arrived_at"))
       return { sentence: `${became(row, "nda_arrived_at") ? "Marked" : "Unmarked"} the signed NDA of ${applicant} as arrived`, area };
     return { sentence: `Updated the application of ${applicant} for ${position}`, area };
