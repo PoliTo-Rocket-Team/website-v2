@@ -354,7 +354,7 @@ async function undoTeamAddressClaim(requestId: number): Promise<"reopened" | "su
  * write never fails on it.
  */
 export async function automaticTeamAddressReroutes(changes: readonly TiedRoleChange[]): Promise<(db: ReturnType<typeof getDb>) => BatchItem<"pg">[]> {
-  if (!changes.some((c) => c.becoming.length > 0)) return () => [];
+  if (!changes.some((c) => c.becoming.length > 0 || c.leaving.length > 0)) return () => [];
   const db = getDb();
   const [tied, open] = await Promise.all([
     db
