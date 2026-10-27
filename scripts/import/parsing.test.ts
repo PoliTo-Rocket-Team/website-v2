@@ -5,8 +5,11 @@ import { cell, locate, QUITTERS_SHEET, ROLES_SHEET, TEAM_MEMBERS_CSV, YEAR_SHEET
 import { parseCsv } from "./csv";
 import { listOf, linkedinLink } from "./plan";
 import { readSources, yearOfSheet } from "./sources";
-import { seatOf, TITLE_RULES } from "./titles";
-import { unitKey } from "./units";
+import sharp from "sharp";
+import { checkMemberPhoto } from "@/lib/dashboard/division-members";
+import { matchPhotos, shapeMemberPhoto, surnameKey, type PhotoFile } from "./photos";
+import { seatOf, seatsOf, TITLE_RULES } from "./titles";
+import { departmentOf, divisionOf, readUnitValue, unitKey, unitNames, unitValues, type Units } from "./units";
 
 // The import's readers and tables (issue #677): the header alias table, the
 // title mapping table, the CSV parser and the small value readers.
@@ -69,8 +72,99 @@ test("the title table gives each seat its type, full-access flag and unit", () =
   assert.deepEqual(read("Valve Engineer"), ["core", null, "member-unit"]);
   assert.deepEqual(read(""), ["core", null, "member-unit"]);
   assert.equal(read("Vice Team Leader"), null);
-  assert.equal(read("Group Coordinator"), null);
+  assert.equal(read("Safety Officer"), null);
   assert.ok(TITLE_RULES.length > 0);
+});
+
+test("the title table reads each named form by an explicit rule", () => {
+  const read = (title: string) => {
+    const seat = seatOf(title);
+    return seat === null ? null : [seat.type, seat.fullAccess, seat.unit];
+  };
+  // "<unit> Lead Engineer" and "<unit> Division Lead Engineer": a lead of the row's division.
+  assert.deepEqual(read("Avionics Lead Engineer"), ["lead", null, "division"]);
+  assert.deepEqual(read("Avionics Division Lead Engineer"), ["lead", null, "division"]);
+  assert.deepEqual(read("IT Lead Engineer"), ["lead", "it_lead", "division"]);
+  // "<area> Coordinator" and "<area> Manager": a core member; Project Manager keeps its full-access seat.
+  for (const t of ["Recruitment Coordinator", "Coordinator", "Social Media Manager", "Sponsoring Manager", "Facility Manager", "IT Manager", "Program Manager", "Safety Manager", "Launch Manager"]) {
+    assert.deepEqual(read(t), ["core", null, "member-unit"], t);
+  }
+  assert.deepEqual(read("Project Manager"), ["core", "project_manager", "board"]);
+  // Chief Operating Officer: the operations department's head and its full-access seat. Chief Technologist: a board member, no access.
+  assert.deepEqual(read("Chief Operating Officer"), ["head", "operations_lead", "department"]);
+  assert.deepEqual(read("Chief Technologist"), ["core", null, "board"]);
+  // Head of Department: the head of the subteam's department.
+  assert.deepEqual(read("Head of Department"), ["head", null, "department"]);
+});
+
+test("a title cell splits on ' - ' into one seat each; '(acting)' and a project in parentheses keep the seat and stay in the title", () => {
+  const seats = seatsOf("Head of Department - Avionics Lead (acting)");
+  assert.deepEqual(
+    seats.map((s) => (s.kind === "seat" ? [s.title, s.seat.type, s.seat.unit, s.acting, s.project] : null)),
+    [
+      ["Head of Department", "head", "department", false, null],
+      ["Avionics Lead (acting)", "lead", "division", true, null],
+    ],
+  );
+  const [chief] = seatsOf("Chief Engineer (Cavour)");
+  assert.ok(chief.kind === "seat");
+  assert.deepEqual([chief.title, chief.seat.fullAccess, chief.acting, chief.project], ["Chief Engineer (Cavour)", "chief_engineer", false, "Cavour"]);
+  const [both] = seatsOf("Team Leader (Cavour) (acting)");
+  assert.ok(both.kind === "seat");
+  assert.deepEqual([both.seat.type, both.acting, both.project], ["president", true, "Cavour"]);
+  // A hyphen inside a word does not split; an unknown seat is reported beside the known ones.
+  assert.deepEqual(seatsOf("Co-Lead").map((s) => s.kind), ["unknown"]);
+  assert.deepEqual(seatsOf("Valve Engineer - Vice Team Leader").map((s) => s.kind), ["seat", "unknown"]);
+  assert.deepEqual(seatsOf("").map((s) => (s.kind === "seat" ? [s.title, s.seat.type] : null)), [["Member", "core"]]);
+});
+
+test("unit cells split on ' - ', ',' and ';', read a code in parentheses, N/A, advisor markers and project names", () => {
+  const projects = new Set([unitKey("Cavour"), unitKey("Liquid Propulsion")]);
+  assert.deepEqual(unitNames("Propulsion (PRO) - Structures, Avionics; Recovery"), ["Propulsion (PRO)", "Structures", "Avionics", "Recovery"]);
+  assert.deepEqual(unitValues("N/A", projects), [{ kind: "none" }]);
+  assert.deepEqual(unitValues("Propulsion (PRO) - Cavour", projects), [
+    { kind: "unit", name: "Propulsion", code: "PRO" },
+    { kind: "project", name: "Cavour" },
+  ]);
+  assert.deepEqual(readUnitValue("Liquid Propulsion", projects), { kind: "project", name: "Liquid Propulsion" });
+  assert.deepEqual(readUnitValue("ADVISOR", projects), { kind: "advisor", senior: false, project: null });
+  assert.deepEqual(readUnitValue("SENIOR ADVISOR (Cavour)", projects), { kind: "advisor", senior: true, project: "Cavour" });
+  assert.deepEqual(readUnitValue("Avionics Department", projects), { kind: "unit", name: "Avionics Department", code: null });
+
+  const units: Units = {
+    departments: [{ id: 1, name: "Propulsion", code: "PRP" }],
+    divisions: [{ id: 7, name: "Hybrid Motors", code: "HYB", deptId: 1 }],
+  };
+  const unit = (name: string, code: string | null = null) => ({ kind: "unit" as const, name, code });
+  assert.equal(departmentOf(units, unit("Propulsion", "PRO"))?.id, 1, "by name");
+  assert.equal(departmentOf(units, unit("Propulsione", "PRP"))?.id, 1, "by the code in parentheses");
+  assert.equal(departmentOf(units, unit("Propulsion Department"))?.id, 1, "a <name> Department form");
+  assert.equal(divisionOf(units, unit("Hybrid Motors Division"))?.id, 7);
+  assert.equal(departmentOf(units, unit("Underwater Basket Weaving", "UBW")), null, "reported as unresolved");
+});
+
+test("a photo file matches on its id first, exactly; the surname only cross-checks", () => {
+  const file = (row: number, id: string | null, surname: string): PhotoFile => ({ row, id, surname, bytes: Buffer.alloc(0) });
+  const row = (id: string, lastName: string) => ({ at: { file: "x.csv", row: 2 }, value: { id, firstName: "A", lastName, linkedin: "", user: "", title: "T", hasPhoto: "" } });
+  const sources = { csv: { people: [row("1", "Rossi"), row("3", "De Luca"), row("4", "Verdi")], advisors: [row("3", "Neri"), row("4", "Bianchi")] } } as never;
+  const kinds = matchPhotos(
+    [file(1, "1", "rossi"), file(2, "1", "bianchi"), file(3, "2", "rossi"), file(4, null, "rossi"), file(5, "3", "deluca"), file(6, "3", "neri"), file(7, "4", "gialli"), file(8, "01", "rossi")],
+    sources,
+  ).map((m) => m.kind);
+  assert.deepEqual(kinds, ["member", "surname-differs", "no-id-match", "no-id-match", "member", "advisor", "shared-id", "no-id-match"]);
+  assert.equal(surnameKey("De Luca"), surnameKey("de-luca"));
+});
+
+test("a member photo is shaped as the crop dialog makes one: a centred square of at most 800 px, a JPEG that passes checkMemberPhoto", async () => {
+  const wide = await sharp({ create: { width: 1600, height: 1000, channels: 3, background: { r: 10, g: 20, b: 30 } } }).png().toBuffer();
+  const shaped = await shapeMemberPhoto(wide);
+  assert.ok(shaped !== null);
+  const meta = await sharp(shaped.bytes).metadata();
+  assert.deepEqual([meta.format, meta.width, meta.height], ["jpeg", 800, 800]);
+  assert.equal(checkMemberPhoto({ type: shaped.contentType, size: shaped.bytes.byteLength }), null);
+  const small = await shapeMemberPhoto(await sharp({ create: { width: 30, height: 50, channels: 3, background: { r: 1, g: 2, b: 3 } } }).jpeg().toBuffer());
+  assert.deepEqual([(await sharp(small!.bytes).metadata()).width, (await sharp(small!.bytes).metadata()).height], [30, 30]);
+  assert.equal(await shapeMemberPhoto(Buffer.from("not an image")), null);
 });
 
 test("the CSV parser keeps quoted commas, doubled quotes and line breaks in one field, and names each record's first line", () => {

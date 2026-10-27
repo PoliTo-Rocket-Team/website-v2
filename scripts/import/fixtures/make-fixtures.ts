@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import sharp from "sharp";
 import writeXlsxFile from "write-excel-file/node";
 
 // Writes the import's fake source files (issue #677) into ./files: a roster
@@ -27,6 +28,19 @@ import writeXlsxFile from "write-excel-file/node";
 //   Fontana's 2024 row carrying Carla Ferri's email (two people); Wanda Riva,
 //   whose email an existing account without a member row holds; and CSV rows
 //   that do not fit the schema.
+// - The title and unit forms: Rita Longo holds two seats in one cell, an
+//   acting one among them, with a unit code in parentheses, a project and an
+//   "N/A" beside her units; Ettore Bassi's subteam is only a project; Sofia
+//   Marchi carries a "SENIOR ADVISOR (<project>)" marker; Pietro Rinaldi's
+//   "<area> Manager - <area> Coordinator" cell sits on a subteam cell that
+//   lists a unit the database lacks. Olga Serra is a member the test
+//   database already holds.
+// - photos/: tiny generated JPEGs. In sorted order: 1 Marta's (a member
+//   match, not square), 2 an id whose surname differs, 3 Olga's (already in
+//   the database), 4 an advisor match, 5 an id a person and an advisor share,
+//   settled by the surname, 6 a shared id the surname does not settle, 7 an id
+//   no row has, 8 a file with no id part. Carla Ferri and the "No Title"
+//   advisor are flagged has_pp with no file.
 
 const OUT = join(__dirname, "files");
 
@@ -122,6 +136,25 @@ const CURRENT: NewRow[] = [
   { first: "Paolo", last: "Lombardi", personal: "paolo.lombardi@example.com", subteam: "Propulsion", division: "Hybrid Motors", title: "Test Engineer" },
   { first: "Zeno", last: "Fabbri", personal: "zeno.fabbri@example.com", title: "President" },
   { first: "Wanda", last: "Riva", personal: "wanda.riva@example.com", subteam: "Operations", division: "Communications", title: "Writer" },
+  { first: "Olga", last: "Serra", personal: "olga.serra@example.com", subteam: "Operations", division: "Communications", title: "Writer" },
+  {
+    first: "Rita",
+    last: "Longo",
+    personal: "rita.longo@example.com",
+    subteam: "Structures (STR) - Cavour",
+    division: "Design & Manufacturing - N/A",
+    title: "Head of Department - Design and Manufacturing Division Lead Engineer (acting)",
+  },
+  { first: "Ettore", last: "Bassi", personal: "ettore.bassi@example.com", subteam: "Cavour", title: "Engineer" },
+  { first: "Sofia", last: "Marchi", personal: "sofia.marchi@example.com", subteam: "SENIOR ADVISOR (Cavour)" },
+  {
+    first: "Pietro",
+    last: "Rinaldi",
+    personal: "pietro.rinaldi@example.com",
+    subteam: "Operations (OPS), Avionics Legacy",
+    division: "N/A",
+    title: "Social Media Manager - Recruitment Coordinator",
+  },
 ];
 
 // 2024-2025: the 2023-2024 headers ("Subteam", "Team Role", "Gmail", "poli email", "linkedin").
@@ -170,8 +203,12 @@ const csv = (rows: readonly (readonly string[])[]) =>
 const FILES: Record<string, string[][]> = {
   "people_rows.csv": [
     ["id", "first_name", "last_name", "linkedin", "user", "has_pp"],
-    ["p-1", "Marta", "Villa", "", "u-marta", "false"],
-    ["p-2", "Bruno", "Conti", "https://www.linkedin.com/in/bruno-conti-example", "u-bruno", "true"],
+    ["11", "Marta", "Villa", "", "u-marta", "true"],
+    ["12", "Bruno", "Conti", "https://www.linkedin.com/in/bruno-conti-example", "u-bruno", "true"],
+    ["13", "Olga", "Serra", "", "", "true"],
+    ["14", "Carla", "Ferri", "", "", "true"],
+    ["30", "Dario", "Gallo", "", "", "true"],
+    ["31", "Paolo", "Lombardi", "", "", "false"],
   ],
   "team_members_rows.csv": [
     ["first_name", "last_name", "team_role", "poli_email", "status", "start_date", "end_date", "subteam", "linkedin", "program", "level", "origin", "division", "id"],
@@ -191,10 +228,10 @@ const FILES: Record<string, string[][]> = {
   ],
   "advisors_rows.csv": [
     ["id", "first_name", "last_name", "title_name", "linkedin", "has_pp"],
-    ["a-1", "Prof. Ada", "Example", "Faculty Advisor", "ada-example", "false"],
-    ["a-2", "Sam", "Specialist", "Safety Specialist", "", "false"],
-    ["a-3", "Sam", "Specialist", "Safety Specialist", "", "false"],
-    ["a-4", "No", "Title", "", "", "false"],
+    ["21", "Prof. Ada", "Example", "Faculty Advisor", "ada-example", "true"],
+    ["30", "Sam", "Specialist", "Safety Specialist", "", "false"],
+    ["31", "Sam", "Specialist", "Safety Specialist", "", "false"],
+    ["32", "No", "Title", "", "", "true"],
   ],
   "positions_rows.csv": [
     ["id", "division", "number", "name", "description", "desirable", "required", "form", "open"],
@@ -229,7 +266,24 @@ async function main() {
   const buffer = await writeXlsxFile(sheets as never).toBuffer();
   writeFileSync(join(OUT, "roster.xlsx"), buffer);
   for (const [name, rows] of Object.entries(FILES)) writeFileSync(join(OUT, name), csv(rows));
+  mkdirSync(join(OUT, "photos"), { recursive: true });
+  for (const [name, [width, height, r]] of Object.entries(PHOTOS)) {
+    const jpeg = await sharp({ create: { width, height, channels: 3, background: { r, g: 120, b: 90 } } }).jpeg({ quality: 80 }).toBuffer();
+    writeFileSync(join(OUT, "photos", name), jpeg);
+  }
 }
+
+// photos/: name → [width, height, a red level], so each file differs.
+const PHOTOS: Record<string, [number, number, number]> = {
+  "11-villa.jpeg": [40, 24, 200],
+  "12-rossi.jpeg": [16, 16, 180],
+  "13-serra.jpeg": [16, 16, 160],
+  "21-example.jpeg": [20, 20, 140],
+  "30-gallo.jpeg": [24, 32, 120],
+  "31-neri.jpeg": [16, 16, 100],
+  "99-mancini.jpeg": [16, 16, 80],
+  "villa.jpeg": [16, 16, 60],
+};
 
 main().catch((error: unknown) => {
   console.error(error);

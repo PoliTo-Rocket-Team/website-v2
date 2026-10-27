@@ -1,7 +1,8 @@
-import { CONFLICT_TEXT, placeOf, UNCLEAR_QUITTER_KINDS } from "./conflicts";
+import { CONFLICT_TEXT, PHOTO_KINDS, placeOf, UNCLEAR_QUITTER_KINDS } from "./conflicts";
+import { PHOTO_FOLDER } from "./photos";
 import { TABLES, type Plan } from "./plan";
 import type { Sources } from "./sources";
-import type { Written } from "./write";
+import type { Uploaded, Written } from "./write";
 
 // The report a run prints (issue #677): what was read, then per table the
 // rows to insert, already present and refused, then the people counts, then
@@ -16,9 +17,11 @@ export type ReportInput = {
   readonly plan: Plan;
   /** What an import wrote; absent on a dry run. */
   readonly written?: Written;
+  /** The photos an import uploaded; absent on a dry run. */
+  readonly uploaded?: Uploaded;
 };
 
-export function renderReport({ mode, database, sources, plan, written }: ReportInput): string {
+export function renderReport({ mode, database, sources, plan, written, uploaded }: ReportInput): string {
   const lines: string[] = [];
   lines.push(`Team data import: ${mode === "dry-run" ? "dry run, nothing written" : "import"}`);
   lines.push(
@@ -49,12 +52,41 @@ export function renderReport({ mode, database, sources, plan, written }: ReportI
   lines.push(`Alumni: ${plan.alumni}`);
   lines.push(`People found in more than one year sheet: ${plan.multiYear}`);
   lines.push(`Unclear quitters: ${plan.unclearQuitters}`);
+  lines.push(
+    `Distinct unresolved unit names (subteam and division cells): ${plan.unresolvedUnits === null ? "not checked (no database given)" : plan.unresolvedUnits}`,
+  );
+  lines.push("");
+  const p = plan.photos;
+  if (p === null) {
+    lines.push(`Photos: no ${PHOTO_FOLDER} folder; no photo read.`);
+  } else {
+    lines.push(`Photos (${PHOTO_FOLDER}; a photo's row is its place in the sorted file list):`);
+    const counts: [string, number][] = [
+      ["found", p.found],
+      ["matched to members", p.matchedMembers],
+      ["matched to advisors", p.matchedAdvisors],
+      ["id found, surname differs (held)", p.surnameDiffers],
+      ["no id match (including no id part)", p.noIdMatch],
+      ["id shared by a person and an advisor, not settled by the surname", p.sharedId],
+      ["skipped, person or advisor already in the database", p.alreadyPresent],
+      ["matched person or advisor not imported by this run", p.notImported],
+      ["failed the photo check", p.unfit],
+      ["has_pp with no file", p.missing],
+      [written === undefined ? "to upload" : "uploaded", uploaded === undefined ? p.toUpload : uploaded.members + uploaded.advisors],
+    ];
+    if (uploaded !== undefined) counts.push(["skipped, no storage credential given", uploaded.skipped]);
+    for (const [label, n] of counts) lines.push(`  ${label}: ${n}`);
+  }
   lines.push("");
   const quitters = plan.conflicts.filter((c) => UNCLEAR_QUITTER_KINDS.includes(c.kind));
-  const others = plan.conflicts.filter((c) => !UNCLEAR_QUITTER_KINDS.includes(c.kind));
+  const photos = plan.conflicts.filter((c) => PHOTO_KINDS.includes(c.kind));
+  const others = plan.conflicts.filter((c) => !UNCLEAR_QUITTER_KINDS.includes(c.kind) && !PHOTO_KINDS.includes(c.kind));
+  const place = (c: (typeof plan.conflicts)[number]) => `${placeOf(c.at)}${c.field === undefined ? "" : ` › field ${c.field}`}`;
   lines.push(`Conflicts, by row: ${others.length}`);
-  for (const c of others) lines.push(`  [${c.kind}] ${placeOf(c.at)}${c.field === undefined ? "" : ` › field ${c.field}`}: ${CONFLICT_TEXT[c.kind]}`);
+  for (const c of others) lines.push(`  [${c.kind}] ${place(c)}: ${CONFLICT_TEXT[c.kind]}`);
   lines.push(`Unclear quitters, by row: ${quitters.length}`);
   for (const c of quitters) lines.push(`  [${c.kind}] ${placeOf(c.at)}: ${CONFLICT_TEXT[c.kind]}`);
+  lines.push(`Photo problems, by row: ${photos.length}`);
+  for (const c of photos) lines.push(`  [${c.kind}] ${place(c)}: ${CONFLICT_TEXT[c.kind]}`);
   return `${lines.join("\n")}\n`;
 }

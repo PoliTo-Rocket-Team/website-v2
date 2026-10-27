@@ -1,3 +1,7 @@
 id,first_name,last_name,linkedin,user,has_pp
-p-1,Marta,Villa,,u-marta,false
-p-2,Bruno,Conti,https://www.linkedin.com/in/bruno-conti-example,u-bruno,true
+11,Marta,Villa,,u-marta,true
+12,Bruno,Conti,https://www.linkedin.com/in/bruno-conti-example,u-bruno,true
+13,Olga,Serra,,,true
+14,Carla,Ferri,,,true
+30,Dario,Gallo,,,true
+31,Paolo,Lombardi,,,false

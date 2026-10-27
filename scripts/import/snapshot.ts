@@ -9,6 +9,7 @@ import {
   faqs,
   faqVersions,
   orders,
+  projectVersions,
   roles,
   teamLeaves,
   teamPageAdvisors,
@@ -16,8 +17,9 @@ import {
   users,
 } from "@/db/schema";
 import type * as schema from "@/db/schema";
+import { rowRecordOf } from "@/lib/project-content/row";
 import type { FullAccessSeat, PositionType } from "./titles";
-import type { Units } from "./units";
+import { unitKey, type Units } from "./units";
 
 // What the database holds that the import reads before it plans (issue
 // #677): the units roles resolve against, the accounts and roles already
@@ -57,6 +59,8 @@ export type Snapshot = {
   readonly faqOrder: number;
   readonly positions: readonly { readonly title: string | null; readonly divisionId: number | null }[];
   readonly orders: readonly { readonly requester: number | null; readonly name: string | null; readonly createdAt: string }[];
+  /** The unit keys of every project's name, in any version: a subteam value that names one is a project, not a unit. */
+  readonly projects: ReadonlySet<string>;
 };
 
 /** The snapshot of a database that holds nothing: a dry run given no database plans against it. */
@@ -73,6 +77,7 @@ export const NO_DATABASE: Snapshot = {
   faqOrder: 0,
   positions: [],
   orders: [],
+  projects: new Set(),
 };
 
 export async function readSnapshot(db: ImportDb): Promise<Snapshot> {
@@ -107,6 +112,7 @@ export async function readSnapshot(db: ImportDb): Promise<Snapshot> {
   const faqRows = await db.select({ question: faqVersions.question, order: faqs.siteOrder }).from(faqs).leftJoin(faqVersions, eq(faqVersions.faqId, faqs.id));
   const positionRows = await db.select({ title: applyPositions.title, divisionId: applyPositions.divisionId }).from(applyPositions);
   const orderRows = await db.select({ requester: orders.requester, name: orders.name, createdAt: orders.createdAt }).from(orders);
+  const projectRows = await db.select({ page: projectVersions.page }).from(projectVersions);
 
   const imported = new Map<number, { name: string; years: number[] }>();
   for (const r of importedRows) {
@@ -135,5 +141,9 @@ export async function readSnapshot(db: ImportDb): Promise<Snapshot> {
     faqOrder: Math.max(0, ...faqRows.map((r) => r.order)),
     positions: positionRows,
     orders: orderRows,
+    projects: new Set(projectRows.flatMap((r) => {
+      const name = rowRecordOf(r)?.name;
+      return typeof name === "string" && unitKey(name) !== "" ? [unitKey(name)] : [];
+    })),
   };
 }

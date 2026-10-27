@@ -112,6 +112,7 @@ export const PEOPLE_CSV = {
   lastName: { aliases: ["last_name"], required: true },
   linkedin: { aliases: ["linkedin"] },
   user: { aliases: ["user"] },
+  hasPhoto: { aliases: ["has_pp"] },
 } as const satisfies SourceSpec<string>;
 
 export const TEAM_MEMBERS_CSV = {
@@ -139,10 +140,12 @@ export const DIVISIONS_CSV = {
 } as const satisfies SourceSpec<string>;
 
 export const ADVISORS_CSV = {
+  id: { aliases: ["id"] },
   firstName: { aliases: ["first_name"], required: true },
   lastName: { aliases: ["last_name"], required: true },
   title: { aliases: ["title_name"], required: true },
   linkedin: { aliases: ["linkedin"] },
+  hasPhoto: { aliases: ["has_pp"] },
 } as const satisfies SourceSpec<string>;
 
 export const POSITIONS_CSV = {

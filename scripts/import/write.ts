@@ -11,7 +11,9 @@ import {
   teamPageAdvisorVersions,
   users,
 } from "@/db/schema";
+import { sql } from "drizzle-orm";
 import type { Plan, PersonRef, Table } from "./plan";
+import type { PhotoUploads } from "./photos";
 import type { ImportDb } from "./snapshot";
 
 // Writes a plan (issue #677): inserts only, never an update or a delete, in the
@@ -19,20 +21,47 @@ import type { ImportDb } from "./snapshot";
 // `imported:<uuid>` that holds their sign-in email: the `sync_auth_users`
 // trigger (drizzle/0001) finds a users row by id or by email when a Better
 // Auth account is created, and gives the row the account's id, so their first
-// Google sign-in with that email lands on this row and its member.
+// Google sign-in with that email lands on this row and its member. A photo
+// file uploaded here and then left by a run that fails afterwards stays in the
+// store unlinked; it costs storage only, and the rolled-back run wrote no row.
 
 /** The prefix of an imported person's `users.id` until their first sign-in replaces it. */
 export const IMPORTED_USER_PREFIX = "imported:";
 
 export type Written = Readonly<Record<Table, number>>;
 
+/** The photos an import uploaded, and those it did not because the run gave no storage credential. */
+export type Uploaded = { readonly members: number; readonly advisors: number; readonly skipped: number };
+
 type Tx = Parameters<Parameters<ImportDb["transaction"]>[0]>[0];
 
-export async function writePlan(tx: Tx, plan: Plan): Promise<Written> {
+/** The next `members.member_id`, taken from its sequence before the row is written, so the photo's pathname can name it and the row is inserted with its picture. */
+async function reserveMemberId(tx: Tx): Promise<number> {
+  const result: unknown = await tx.execute(sql`select nextval(pg_get_serial_sequence('members', 'member_id'))::int as id`);
+  const rows = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { id: number }[];
+  return Number(rows[0].id);
+}
+
+/**
+ * Writes the plan. With `uploads`, each photo the plan links is uploaded as
+ * its row is inserted: a member's URL goes into the new `members` row's
+ * `picture`, an advisor's into the new version's `photo`. No row is written
+ * twice, so nothing is ever updated. Without `uploads` no photo is uploaded,
+ * and the rows go in without one.
+ */
+export async function writePlan(tx: Tx, plan: Plan, uploads: PhotoUploads | null): Promise<{ written: Written; uploaded: Uploaded }> {
   const written = { users: 0, members: 0, roles: 0, team_leaves: 0, team_page_advisors: 0, team_page_advisor_versions: 0, apply_positions: 0, faqs: 0, faq_versions: 0, orders: 0 };
+  const uploaded = { members: 0, advisors: 0, skipped: 0 };
   const memberOf = new Map<number, number>();
   for (const person of plan.people) {
-    const [member] = await tx.insert(members).values(person.member).returning({ id: members.memberId });
+    let values: typeof members.$inferInsert = person.member;
+    if (person.photo !== null && uploads === null) uploaded.skipped++;
+    if (person.photo !== null && uploads !== null) {
+      const memberId = await reserveMemberId(tx);
+      values = { ...person.member, memberId, picture: await uploads.member(memberId, person.photo) };
+      uploaded.members++;
+    }
+    const [member] = await tx.insert(members).values(values).returning({ id: members.memberId });
     await tx.insert(users).values({ id: `${IMPORTED_USER_PREFIX}${randomUUID()}`, ...person.user, member: member.id });
     memberOf.set(person.person, member.id);
     written.members++;
@@ -60,8 +89,14 @@ export async function writePlan(tx: Tx, plan: Plan): Promise<Written> {
     written.team_leaves = rows.length;
   }
   for (const a of plan.advisors) {
+    let advisor = a.advisor;
+    if (a.photo !== null && uploads === null) uploaded.skipped++;
+    if (a.photo !== null && uploads !== null) {
+      advisor = { ...advisor, photo: await uploads.advisor(a.photo) };
+      uploaded.advisors++;
+    }
     const [row] = await tx.insert(teamPageAdvisors).values({ siteOrder: a.siteOrder }).returning({ id: teamPageAdvisors.id });
-    await tx.insert(teamPageAdvisorVersions).values({ advisorId: row.id, version: "published", advisor: a.advisor });
+    await tx.insert(teamPageAdvisorVersions).values({ advisorId: row.id, version: "published", advisor });
     written.team_page_advisors++;
     written.team_page_advisor_versions++;
   }
@@ -85,5 +120,5 @@ export async function writePlan(tx: Tx, plan: Plan): Promise<Written> {
       .returning({ id: orders.id });
     written.orders = rows.length;
   }
-  return written;
+  return { written, uploaded };
 }

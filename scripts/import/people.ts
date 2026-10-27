@@ -79,6 +79,8 @@ export function signInEmail(person: Person): string | null {
 
 export type People = {
   readonly people: readonly Person[];
+  /** The person each `people_rows.csv` id is, where the row matched one: a photo file's id reaches its person through this. */
+  readonly byPeopleId: ReadonlyMap<string, Person>;
   readonly conflicts: readonly Conflict[];
 };
 
@@ -189,7 +191,7 @@ export function matchPeople(sources: Sources): People {
   }
   for (const row of lonelyQuitters) m.conflicts.push({ kind: "quitter-in-no-year", at: row.at });
 
-  const fromCsv = (rows: readonly Row<string>[], fields: readonly PersonalField[], emailFields: readonly string[]) => {
+  const fromCsv = (rows: readonly Row<string>[], fields: readonly PersonalField[], emailFields: readonly string[], byId?: Map<string, Person>) => {
     const seen = new Set<Person>();
     for (const row of rows) {
       const emails = emailsOf(row.value, emailFields);
@@ -200,6 +202,8 @@ export function matchPeople(sources: Sources): People {
         continue;
       }
       seen.add(person);
+      const own = row.value.id?.trim() ?? "";
+      if (byId !== undefined && own !== "") byId.set(own, person);
       for (const id of [row.value.id, row.value.user]) if (id !== undefined && id.trim() !== "") person.csvIds.add(id.trim());
       for (const f of fields) {
         const v = row.value[f]?.trim() ?? "";
@@ -212,7 +216,8 @@ export function matchPeople(sources: Sources): People {
     }
   };
   fromCsv(sources.csv.teamMembers, ["studentEmail", "linkedin", "program", "level", "origin"], ["studentEmail"]);
-  fromCsv(sources.csv.people, ["linkedin"], []);
+  const byPeopleId = new Map<string, Person>();
+  fromCsv(sources.csv.people, ["linkedin"], [], byPeopleId);
 
-  return { people: m.people, conflicts: m.conflicts };
+  return { people: m.people, byPeopleId, conflicts: m.conflicts };
 }

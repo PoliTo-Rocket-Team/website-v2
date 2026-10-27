@@ -19,8 +19,15 @@ import {
   teamPageAdvisorVersions,
   users,
 } from "@/db/schema";
+import sharp from "sharp";
+import type { AdvisorVersion } from "@/lib/about/advisors";
 import { alumniOf } from "@/lib/about/alumni-record";
+import { ownsTeamPageUpload } from "@/lib/about/team-page-photos";
 import { readAlumniRecord } from "@/lib/dashboard/database-alumni";
+import { storedPhotoPathname } from "@/lib/dashboard/database-self";
+import { checkMemberPhoto } from "@/lib/dashboard/division-members";
+import type { PublicFileWrites } from "@/lib/outreach-photos";
+import { publicStoreHost } from "@/lib/storage/pathname";
 import { myAlumniOf } from "@/lib/dashboard/my-alumni";
 import { addRows, databaseWrites, restore, tableRows, testDb } from "@/lib/dashboard/access-matrix/test-database";
 import type { ConflictKind } from "./conflicts";
@@ -43,6 +50,7 @@ const OPERATIONS = 3;
 const HYBRID_MOTORS = 2;
 const INFORMATION_TECHNOLOGY = 4;
 const SEATED = 900;
+const OLGA = 901;
 
 async function world(): Promise<void> {
   await restore("team-import-world", async () => {
@@ -58,9 +66,10 @@ async function world(): Promise<void> {
       { id: INFORMATION_TECHNOLOGY, deptId: OPERATIONS, name: "Information Technology", code: "IT" },
       { id: 5, deptId: OPERATIONS, name: "Communications", code: "COM" },
     ]);
-    await addRows(members, [{ memberId: SEATED }]);
+    await addRows(members, [{ memberId: SEATED }, { memberId: OLGA }]);
     await addRows(users, [
       { id: "seated-account", email: "seated.chief@example.com", firstName: "Seated", lastName: "Chief", member: SEATED },
+      { id: "olga-account", email: "olga.serra@example.com", firstName: "Olga", lastName: "Serra", member: OLGA },
       { id: "applicant-account", email: "wanda.riva@example.com", firstName: "Wanda", lastName: "Riva" },
     ]);
     await addRows(roles, [{ memberId: SEATED, title: "Chief Engineer", type: "core", fullAccess: "chief_engineer", startedAt: "2025-10-01" }]);
@@ -101,6 +110,7 @@ test("a dry run reports every planted conflict and unclear quitter, and writes n
     "imported-alumni-match",
     "schema-misfit",
     "unresolved-requester",
+    "project-only-unit",
     "quitter-on-current-sheet",
     "quitter-in-no-year",
   ] as const) {
@@ -120,6 +130,15 @@ test("a dry run reports every planted conflict and unclear quitter, and writes n
   assert.match(report, /^People found in more than one year sheet: 4$/m);
   assert.match(report, /^Unclear quitters: 2$/m);
   assert.match(report, /roster\.xlsx › sheet 2025-2026 › row 9 › field title/);
+  // "Underwater Basket Weaving" and "Avionics Legacy" name no unit; a project and "N/A" are not counted.
+  assert.equal(plan.unresolvedUnits, 2);
+  assert.match(report, /^Distinct unresolved unit names \(subteam and division cells\): 2$/m);
+});
+
+test("a dry run given no database says the units were not checked", async () => {
+  const { plan, report } = await runImport({ mode: "dry-run", directory: FILES });
+  assert.equal(plan.unresolvedUnits, null);
+  assert.match(report, /^Distinct unresolved unit names \(subteam and division cells\): not checked \(no database given\)$/m);
 });
 
 test("the report prints no personal value from the sources", async () => {
@@ -140,7 +159,7 @@ test("an import inserts the planned rows once, and a second run inserts none and
   for (const table of TABLES) assert.equal(first.written[table], first.plan.counts[table].insert, `${table} inserted as planned`);
   assert.deepEqual(
     { users: first.written.users, roles: first.written.roles, team_leaves: first.written.team_leaves },
-    { users: 16, roles: 15, team_leaves: 3 },
+    { users: 20, roles: 19, team_leaves: 3 },
   );
   assert.ok((await databaseWrites()).every((w) => w.kind === "insert"), "every write is an insert");
 
@@ -149,7 +168,7 @@ test("an import inserts the planned rows once, and a second run inserts none and
     assert.equal(second.written?.[table], 0, `${table}: nothing inserted the second time`);
     assert.equal(second.plan.counts[table].present, first.plan.counts[table].present + first.plan.counts[table].insert, `${table}: all present`);
   }
-  assert.match(second.report, /^users +0 +16 +2$/m);
+  assert.match(second.report, /^users +0 +21 +2$/m);
 });
 
 test("the import creates no unit and changes no existing row", async () => {
@@ -318,4 +337,154 @@ test("an imported person's first Google sign-in lands on their imported user row
   assert.equal(after.length, 1, "no second users row");
   assert.equal(after[0].id, "google-account-sara");
   assert.equal(after[0].member, before.member);
+});
+
+test("a multi-seat title cell gives one role per seat, read through codes, projects, N/A and advisor markers", async () => {
+  await world();
+  const { plan } = await importOnce();
+  assert.ok(plan.conflicts.some((c) => c.kind === "project-only-unit" && c.at.sheet === "2025-2026"));
+
+  const rita = await userNamed("Rita", "Longo");
+  assert.ok(rita?.member != null);
+  assert.deepEqual(
+    (await rolesOf(rita.member)).map((r) => [r.title, r.type, r.fullAccess, r.deptId, r.divisionId, r.leavedAt]).sort(),
+    [
+      ["Design and Manufacturing Division Lead Engineer (acting)", "lead", null, STRUCTURES, 3, null],
+      ["Head of Department", "head", null, STRUCTURES, null, null],
+    ],
+  );
+
+  const sofia = await userNamed("Sofia", "Marchi");
+  assert.ok(sofia?.member != null);
+  assert.deepEqual(
+    (await rolesOf(sofia.member)).map((r) => [r.title, r.type, r.deptId, r.divisionId]),
+    [["Senior Advisor", "advisor", null, null]],
+  );
+
+  for (const [first, last] of [["Ettore", "Bassi"], ["Pietro", "Rinaldi"]]) {
+    const person = await userNamed(first, last);
+    assert.ok(person?.member != null, `${first} is imported`);
+    assert.deepEqual(await rolesOf(person.member), [], `${first}'s role does not resolve to a unit`);
+  }
+});
+
+// Photos -----------------------------------------------------------------------
+
+const HOST = publicStoreHost("store_FakeImportStore1");
+
+/** A public store that keeps nothing and answers the URL the Blob SDK would. */
+function fakeStore() {
+  const uploads: { pathname: string; bytes: Uint8Array; contentType: string }[] = [];
+  const writes: PublicFileWrites = {
+    async upload(pathname, bytes, contentType) {
+      uploads.push({ pathname, bytes, contentType });
+      return { url: `https://${HOST}/${pathname}` };
+    },
+    async remove() {
+      throw new Error("the import never deletes a file");
+    },
+  };
+  return { uploads, store: { host: HOST, writes } };
+}
+
+async function memberOf(first: string, last: string) {
+  const user = await userNamed(first, last);
+  assert.ok(user?.member != null, `${first} is imported`);
+  return ((await tableRows(members)) as (typeof members.$inferSelect)[]).find((m) => m.memberId === user.member)!;
+}
+
+test("the report counts each photo outcome, by row, and a dry run uploads nothing", async () => {
+  await world();
+  // A dry run takes no photo store (RunOptions), so it has nothing to upload with.
+  const { plan, report } = await runImport({ mode: "dry-run", directory: FILES, db });
+  assert.deepEqual(await databaseWrites(), []);
+  assert.deepEqual(plan.photos, {
+    found: 8,
+    matchedMembers: 3,
+    matchedAdvisors: 1,
+    surnameDiffers: 1,
+    noIdMatch: 2,
+    sharedId: 1,
+    alreadyPresent: 1,
+    notImported: 0,
+    unfit: 0,
+    missing: 2,
+    toUpload: 3,
+  });
+  const photoRows = (kind: ConflictKind) => plan.conflicts.filter((c) => c.kind === kind).map((c) => `${c.at.file} ${c.at.row}`);
+  assert.deepEqual(photoRows("photo-surname-differs"), ["photos/ 2"]);
+  assert.deepEqual(photoRows("photo-shared-id"), ["photos/ 6"]);
+  assert.deepEqual(photoRows("photo-no-id-match"), ["photos/ 7", "photos/ 8"]);
+  assert.deepEqual(photoRows("photo-missing"), ["advisors_rows.csv 5", "people_rows.csv 5"]);
+  for (const line of [
+    "found: 8",
+    "matched to members: 3",
+    "matched to advisors: 1",
+    "id found, surname differs (held): 1",
+    "no id match (including no id part): 2",
+    "id shared by a person and an advisor, not settled by the surname: 1",
+    "skipped, person or advisor already in the database: 1",
+    "has_pp with no file: 2",
+    "to upload: 3",
+  ]) {
+    assert.ok(report.includes(`  ${line}\n`), `the report says ${line}`);
+  }
+  for (const name of readdirSync(join(FILES, "photos"))) {
+    assert.ok(!report.includes(name) && !report.includes(name.replace(/^\d+-|\.jpeg$/g, "")), "no photo file name or surname in the report");
+  }
+});
+
+test("an import stores member photos as the dashboard does and advisor photos as the Team page editor does", async () => {
+  await world();
+  const { uploads, store } = fakeStore();
+  const { uploaded, report } = await runImport({ mode: "import", directory: FILES, db, photoStore: store });
+  assert.deepEqual(uploaded, { members: 2, advisors: 1, skipped: 0 });
+  assert.equal(uploads.length, 3);
+  assert.match(report, /^ {2}uploaded: 3$/m);
+  assert.ok((await databaseWrites()).every((w) => w.kind === "insert"), "a photo goes in with its row; no row is updated");
+
+  for (const [first, last] of [["Marta", "Villa"], ["Dario", "Gallo"]]) {
+    const member = await memberOf(first, last);
+    assert.ok(member.picture !== null, `${first} has a picture`);
+    const pathname = storedPhotoPathname(member.picture);
+    assert.ok(pathname !== null && pathname.startsWith(`photos/${member.memberId}-`) && pathname.endsWith(".jpg"), "the dashboard's pathname, which it can replace or remove");
+    const upload = uploads.find((u) => u.pathname === pathname);
+    assert.ok(upload !== undefined);
+    assert.equal(upload.contentType, "image/jpeg");
+    assert.equal(checkMemberPhoto({ type: upload.contentType, size: upload.bytes.byteLength }), null);
+    const { width, height, format } = await sharp(upload.bytes).metadata();
+    assert.deepEqual([format, width === height, width! <= 800], ["jpeg", true, true], "a centred square JPEG of at most 800 px");
+  }
+  // Marta's file is 40 × 24: the square is its centred 24 × 24.
+  const marta = await memberOf("Marta", "Villa");
+  const martaUpload = uploads.find((u) => u.pathname === storedPhotoPathname(marta.picture));
+  assert.deepEqual([(await sharp(martaUpload!.bytes).metadata()).width], [24]);
+
+  const ada = (await tableRows(teamPageAdvisorVersions)).map((v) => v.advisor as AdvisorVersion).find((a) => a.name === "Prof. Ada Example");
+  assert.ok(ada?.photo !== undefined && ownsTeamPageUpload(HOST)(ada.photo), "the advisor's photo is a Team page upload");
+  const uploadedAdvisorPhotos = (await tableRows(teamPageAdvisorVersions)).flatMap((v) => (v.advisor as AdvisorVersion).photo ?? []).filter(ownsTeamPageUpload(HOST));
+  assert.equal(uploadedAdvisorPhotos.length, 1, "only the matched advisor's photo is uploaded");
+
+  for (const [first, last] of [["Bruno", "Conti"], ["Paolo", "Lombardi"], ["Carla", "Ferri"]]) {
+    assert.equal((await memberOf(first, last)).picture, null, `${first}: no photo matched`);
+  }
+  assert.equal((await tableRows(members)).find((m) => m.memberId === OLGA)?.picture, null, "a member already there is not updated");
+});
+
+test("a second import uploads nothing, and an import without a storage credential skips the photos only", async () => {
+  await world();
+  const { uploads, store } = fakeStore();
+  await runImport({ mode: "import", directory: FILES, db, photoStore: store });
+  const firstUploads = uploads.length;
+  const second = await runImport({ mode: "import", directory: FILES, db, photoStore: store });
+  assert.equal(uploads.length, firstUploads, "nothing new uploaded");
+  assert.deepEqual(second.uploaded, { members: 0, advisors: 0, skipped: 0 });
+  assert.equal(second.plan.photos?.alreadyPresent, 4, "every matched photo's person or advisor is already there");
+
+  await world();
+  const bare = await importOnce();
+  assert.deepEqual(bare.uploaded, { members: 0, advisors: 0, skipped: 3 });
+  assert.match(bare.report, /^ {2}skipped, no storage credential given: 3$/m);
+  assert.equal((await memberOf("Marta", "Villa")).picture, null);
+  assert.equal(bare.written?.members, 20, "everything else is imported");
 });
