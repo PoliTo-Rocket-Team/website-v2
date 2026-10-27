@@ -323,8 +323,8 @@ grilling session #745, recorded in the 2026-10-25 status-list amendment of
 ### After accept
 
 - The team leader emails the welcome and the NDA, then sets "Accepted · email sent".
-- From "Accepted · email sent", the applicant's page only says "The team will contact you about
-  joining. Watch your inbox."
+- From "Accepted · email sent", the applicant's page only says "Check your email."
+  ([decision on #790](https://github.com/PoliTo-Rocket-Team/website-v2/issues/790#issuecomment-6425142072)).
 - Once the signed NDA is back, "NDA received" is set, then Confirm join, which is confirmed. Only
   then does the person become a member. Confirm join sets the person's other open applications
   to "Accepted for another position".
