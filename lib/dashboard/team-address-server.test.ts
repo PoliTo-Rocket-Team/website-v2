@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as actions from "@/app/dashboard/actions";
 import * as teamActions from "@/app/dashboard/team-actions";
+import { getDb } from "@/db/client";
 import { dashboardNotices, divisions, roles, teamAddresses, teamAddressRemovals, teamAddressReroutes, teamAddressRequests } from "@/db/schema";
 import { addRows, changeRows, tableRows } from "./access-matrix/test-database";
 import { accountOf, EXTRA, IDS, seedFixture } from "./access-matrix/fixture";
@@ -12,7 +13,7 @@ import { signInAs } from "./access-matrix/session";
 import type { DashboardData } from "./data";
 import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
-import { moveTeamAddress, readRerouteMove, storeTeamAddressRemoval } from "./database-team-address";
+import { moveTeamAddress, readRerouteMove, rerouteMoveBatch, storeTeamAddressRemoval } from "./database-team-address";
 import { NO_TEAM_ADDRESSES, REMOVAL_ALREADY_DONE, REMOVAL_HOLDER_CHANGED, REROUTE_BEING_REMOVED, REROUTE_ROLE_MOVED } from "./team-address";
 
 // Shared team addresses on the migrated in-memory Postgres (epic #578): the
@@ -538,4 +539,35 @@ test("an address that moves to another member between Remove's check and its wri
   // Read again, the check names the new holder, and Remove goes through against them.
   assert.deepEqual(await actions.removeTeamAddress(id), { ok: true, value: null });
   assert.deepEqual((await tableRows(teamAddressRemovals)).map((r) => r.fromMember), [DM_MEMBER]);
+});
+
+test("a routing item's Mark done whose check ran before Remove was stored moves nothing, and the removal stays open on its holder", async () => {
+  await seededTied();
+  signInAs("head-str");
+  assert.deepEqual(await actions.answerHandOver(IDS.handOver("DM"), "confirm"), { ok: true, value: null });
+  signInAs(accountOf("team leader").userId);
+  // Mark done's check reads the move while no removal is open.
+  const move = await readRerouteMove(1);
+  assert.ok(move.ok, JSON.stringify(move));
+  // Remove is stored before Mark done's write.
+  assert.deepEqual(await actions.removeTeamAddress(1), { ok: true, value: null });
+  const mover = { memberId: accountOf("team leader").memberId!, actingAccountId: null };
+  assert.deepEqual(await moveTeamAddress(mover, move.value), { ok: false, error: REROUTE_BEING_REMOVED });
+  assert.deepEqual((await tableRows(teamAddresses)).filter((r) => r.id === 1).map((r) => r.holderId), [DM_LEAD], "the address did not move");
+  assert.deepEqual((await tableRows(teamAddressReroutes)).map((r) => r.doneAt), [null], "the routing item is not claimed");
+  assert.deepEqual((await tableRows(teamAddressRemovals)).map((r) => [r.fromMember, r.doneAt]), [[DM_LEAD, null]], "the removal names the holder the address still has");
+});
+
+test("a routing item's Mark done locks the address row before its claim reads, so a Remove stored meanwhile is seen and one sent meanwhile waits (#797)", async () => {
+  await seededTied();
+  signInAs("head-str");
+  assert.deepEqual(await actions.answerHandOver(IDS.handOver("DM"), "confirm"), { ok: true, value: null });
+  const move = await readRerouteMove(1);
+  assert.ok(move.ok, JSON.stringify(move));
+  const [lock, claim, write] = rerouteMoveBatch(getDb(), { memberId: null, actingAccountId: null }, move.value);
+  // Its own statement, so the claim's read starts after the lock is held.
+  assert.match(lock.toSQL().sql, /^select .* from "team_addresses" where "team_addresses"\."id" = \$1 for update$/);
+  assert.deepEqual(lock.toSQL().params, [1]);
+  assert.ok(claim, "the claim follows the lock");
+  assert.match(write.toSQL().sql, /^update "team_addresses" set "holder_id"/);
 });

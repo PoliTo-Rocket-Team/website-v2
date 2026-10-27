@@ -585,23 +585,40 @@ export async function readRerouteMove(rerouteId: number): Promise<Checked<Rerout
 }
 
 /**
- * Mark done's write: in one batch the item is claimed (`claimReroute`), then
- * the address's holder becomes the member `move` names, so it leaves the
- * previous holder's Team addresses row and shows on the new holder's. Its
- * set-up is cleared, so the new holder's Overview shows the ready card. When
- * the move no longer stands, nothing is written: a second Mark done is
- * refused as already moved, and one the role changed hands under is refused
- * with the item left open, naming who holds the role now.
+ * Mark done's batch, in order: the address row is locked, the item is
+ * claimed (`claimReroute`), then the address's holder becomes the member
+ * `move` names. The lock is its own statement, before the claim, because a
+ * statement reads the table as it stood when the statement began: a claim
+ * that waited on the lock inside its own statement would still miss a
+ * removal stored while it waited. So with the lock first, a Remove (issue
+ * #797) either stored its removal before the lock was taken, and the claim,
+ * which starts after it, finds the removal open and fails the batch; or its
+ * insert waits on the lock until the batch ends, and then finds the address
+ * moved, or the batch rolled back and nothing moved.
+ */
+export function rerouteMoveBatch(db: ReturnType<typeof getDb>, mover: RerouteMover, move: RerouteMove) {
+  return [
+    db.select({ id: teamAddresses.id }).from(teamAddresses).where(eq(teamAddresses.id, move.addressId)).for("update"),
+    claimReroute(db, mover, move),
+    db
+      .update(teamAddresses)
+      .set({ holderId: move.toId, setUpAt: null, updatedAt: new Date().toISOString() })
+      .where(eq(teamAddresses.id, move.addressId)),
+  ] as const;
+}
+
+/**
+ * Mark done's write (`rerouteMoveBatch`): the address leaves the previous
+ * holder's Team addresses row and shows on the new holder's. Its set-up is
+ * cleared, so the new holder's Overview shows the ready card. When the move
+ * no longer stands, nothing is written: a second Mark done is refused as
+ * already moved, one on an address whose removal is open is refused as being
+ * removed, and one the role changed hands under is refused with the item
+ * left open, naming who holds the role now.
  */
 export async function moveTeamAddress(mover: RerouteMover, move: RerouteMove): Promise<WriteResult<null>> {
   try {
-    await runAuditBatch((db) => [
-      claimReroute(db, mover, move),
-      db
-        .update(teamAddresses)
-        .set({ holderId: move.toId, setUpAt: null, updatedAt: new Date().toISOString() })
-        .where(eq(teamAddresses.id, move.addressId)),
-    ]);
+    await runAuditBatch((db) => [...rerouteMoveBatch(db, mover, move)]);
   } catch (error) {
     if (!isClaimGuardFailure(error)) throw error;
     const stillOpen = await readStoredTeamAddressReroutes({ id: move.rerouteId });
@@ -659,10 +676,13 @@ async function readTeamAddressRemoval(identity: DashboardIdentity, addressId: nu
 /**
  * Stores the removal `readTeamAddressRemoval` allowed, open, for the
  * approvers. One statement checks and inserts: it copies the address row
- * only while it still has the holder the check read, locking it, so a
- * routing item's Mark done that moved the address meanwhile, or one that
- * waits on the lock and moves it first, leaves nothing to insert, and Remove
- * is refused rather than open a removal against the new holder. A second
+ * only while it still has the holder the check read, locking it. A routing
+ * item's Mark done locks the same row before its claim (`rerouteMoveBatch`),
+ * so one that moved the address meanwhile, or one holding the lock when this
+ * insert runs, leaves nothing to insert once it moves the address, and
+ * Remove is refused rather than open a removal against the new holder; one
+ * that starts after this insert finds the removal open and moves nothing. A
+ * second
  * Remove sent between the check and the insert is refused by
  * `team_address_removals_one_open`, with the check's own message.
  */

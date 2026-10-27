@@ -929,7 +929,10 @@ These rules come from the Owner decision of 2026-10-26 on epic #578 (boards 102 
   line of the Team addresses row ends with **Remove**, which asks first ("Keep address" or
   "Remove"). The server runs the same check and refuses anyone else, writing nothing. It stores
   the removal only while the address still has the holder that check read: if a routing item's
-  Mark done moved it to another member meanwhile, Remove is refused and stores nothing.
+  Mark done moved it to another member meanwhile, or is moving it at that moment, Remove waits
+  for it, is refused and stores nothing. A routing item's Mark done that comes after Remove is
+  stored is refused and moves nothing, so a removal never stays open on an address that then
+  moves away.
 - Remove stores one open removal for the address (`team_address_removals`). While it waits, the
   line shows "Removal waiting" to every viewer of the row, with no Remove, and a second Remove is
   refused, also when two are sent at once (`team_address_removals_one_open`). The address still
