@@ -112,7 +112,6 @@ test("a dry run reports every planted conflict and unclear quitter, and writes n
     "unresolved-requester",
     "project-only-unit",
     "quitter-on-current-sheet",
-    "quitter-in-no-year",
   ] as const) {
     assert.ok(kinds(plan.conflicts).has(kind), `the plan reports ${kind}`);
     assert.match(report, new RegExp(`\\[${kind}\\] `), `the report lists ${kind}`);
@@ -122,17 +121,20 @@ test("a dry run reports every planted conflict and unclear quitter, and writes n
     plan.conflicts.filter((c) => c.kind === "seat-taken").map((c) => `${c.at.sheet} ${c.at.row}`),
     ["2025-2026 6", "2025-2026 7", "2025-2026 16"],
   );
-  assert.equal(plan.alumni, 3);
+  // Ugo Sala, on Quitters only with the day he left, is an alumnus (issue #816).
+  assert.equal(plan.alumni, 4);
   assert.equal(plan.multiYear, 4);
-  assert.equal(plan.unclearQuitters, 2);
+  assert.equal(plan.unclearQuitters, 1);
   for (const table of TABLES) assert.match(report, new RegExp(`^${table} +\\d+ +\\d+ +\\d+$`, "m"), `the report counts ${table}`);
-  assert.match(report, /^Alumni: 3$/m);
+  assert.match(report, /^Alumni: 4$/m);
   assert.match(report, /^People found in more than one year sheet: 4$/m);
-  assert.match(report, /^Unclear quitters: 2$/m);
+  assert.match(report, /^Unclear quitters: 1$/m);
   assert.match(report, /roster\.xlsx › sheet 2025-2026 › row 9 › field title/);
-  // "Underwater Basket Weaving" and "Avionics Legacy" name no unit; a project and "N/A" are not counted.
-  assert.equal(plan.unresolvedUnits, 2);
-  assert.match(report, /^Distinct unresolved unit names \(subteam and division cells\): 2$/m);
+  // "Underwater Basket Weaving" and "Avionics Legacy" are on the current sheet: units to create, open (issue #816), so none is unresolved.
+  assert.equal(plan.unresolvedUnits, 0);
+  assert.match(report, /^Distinct unresolved unit names \(subteam and division cells\): 0$/m);
+  // The position in the old "Avionics Legacy" division still resolves to no division the database holds.
+  assert.ok(plan.conflicts.some((c) => c.kind === "unknown-unit" && c.at.file === "positions_rows.csv"));
 });
 
 test("a dry run given no database says the units were not checked", async () => {
@@ -159,7 +161,7 @@ test("an import inserts the planned rows once, and a second run inserts none and
   for (const table of TABLES) assert.equal(first.written[table], first.plan.counts[table].insert, `${table} inserted as planned`);
   assert.deepEqual(
     { users: first.written.users, roles: first.written.roles, team_leaves: first.written.team_leaves },
-    { users: 20, roles: 19, team_leaves: 3 },
+    { users: 21, roles: 25, team_leaves: 4 },
   );
   assert.ok((await databaseWrites()).every((w) => w.kind === "insert"), "every write is an insert");
 
@@ -168,10 +170,10 @@ test("an import inserts the planned rows once, and a second run inserts none and
     assert.equal(second.written?.[table], 0, `${table}: nothing inserted the second time`);
     assert.equal(second.plan.counts[table].present, first.plan.counts[table].present + first.plan.counts[table].insert, `${table}: all present`);
   }
-  assert.match(second.report, /^users +0 +21 +2$/m);
+  assert.match(second.report, /^users +0 +22 +2$/m);
 });
 
-test("the import creates no unit and changes no existing row", async () => {
+test("the import creates only the current sheet's units the database lacks, open, and changes no existing row", async () => {
   await world();
   const before = {
     departments: await tableRows(departments),
@@ -181,12 +183,22 @@ test("the import creates no unit and changes no existing row", async () => {
     imported: [await tableRows(alumniEntries), await tableRows(alumniImportedRoles)],
   };
   await importOnce();
-  assert.deepEqual(await tableRows(departments), before.departments);
-  assert.deepEqual(await tableRows(divisions), before.divisions);
+  const afterDepartments = await tableRows(departments);
+  const afterDivisions = await tableRows(divisions);
+  assert.deepEqual(afterDepartments.slice(0, before.departments.length), before.departments);
+  assert.deepEqual(afterDivisions.slice(0, before.divisions.length), before.divisions);
+  assert.deepEqual(
+    afterDepartments.slice(before.departments.length).map((d) => [d.name, d.startedAt, d.closedAt]),
+    [["Avionics Legacy", "2025-10-01", null]],
+  );
+  assert.deepEqual(
+    afterDivisions.slice(before.divisions.length).map((d) => [d.name, d.deptId, d.startedAt, d.closedAt]),
+    [["Underwater Basket Weaving", PROPULSION, "2025-10-01", null]],
+  );
   assert.deepEqual(await rolesOf(SEATED), before.seated);
   assert.deepEqual((await tableRows(users)).find((u) => u.id === "applicant-account"), before.applicant);
   assert.deepEqual([await tableRows(alumniEntries), await tableRows(alumniImportedRoles)], before.imported);
-  assert.ok((await databaseWrites()).every((w) => w.kind === "insert" && !["departments", "divisions"].includes(w.table)));
+  assert.ok((await databaseWrites()).every((w) => w.kind === "insert"));
 });
 
 test("a person in two years under different email columns is one user and member, with a role per year", async () => {
@@ -253,7 +265,7 @@ test("an alumnus has their years, a team leave, ended roles only and no access, 
   assert.match(String(left.leftAt), /^2025-09-30/, "no Quitters day: the last year's end");
 });
 
-test("a quitter on the current sheet imports as an active member; one in no year sheet is not imported", async () => {
+test("a quitter on the current sheet imports as an active member; one in no year sheet is an alumnus of the year they left in", async () => {
   await world();
   await importOnce();
   const giulia = await userNamed("Giulia", "Russo");
@@ -263,7 +275,15 @@ test("a quitter on the current sheet imports as an active member; one in no year
     [["Structural Analyst", null]],
   );
   assert.equal((await tableRows(teamLeaves)).filter((l) => l.memberId === giulia.member).length, 0);
-  assert.equal(await userNamed("Ugo", "Sala"), undefined);
+  const ugo = await userNamed("Ugo", "Sala");
+  assert.ok(ugo?.member != null);
+  assert.deepEqual(
+    (await rolesOf(ugo.member)).map((r) => [r.title, r.type, r.deptId, r.startedAt, r.leavedAt]),
+    [["Engineer", "core", STRUCTURES, "2023-10-01", "2024-03-01"]],
+  );
+  const [member] = (await tableRows(members)).filter((m) => m.memberId === ugo.member);
+  assert.deepEqual([member.teamFrom, member.teamTo], [2023, 2023]);
+  assert.deepEqual((await tableRows(teamLeaves)).filter((l) => l.memberId === ugo.member).map((l) => String(l.leftAt).slice(0, 10)), ["2024-03-01"]);
 });
 
 test("a person matching an imported Alumni entry gets no role for a year that entry lists", async () => {
@@ -361,11 +381,23 @@ test("a multi-seat title cell gives one role per seat, read through codes, proje
     [["Senior Advisor", "advisor", null, null]],
   );
 
-  for (const [first, last] of [["Ettore", "Bassi"], ["Pietro", "Rinaldi"]]) {
-    const person = await userNamed(first, last);
-    assert.ok(person?.member != null, `${first} is imported`);
-    assert.deepEqual(await rolesOf(person.member), [], `${first}'s role does not resolve to a unit`);
-  }
+  const ettore = await userNamed("Ettore", "Bassi");
+  assert.ok(ettore?.member != null, "Ettore is imported");
+  assert.deepEqual(await rolesOf(ettore.member), [], "Ettore's subteam names only a project");
+
+  // Pietro's "Avionics Legacy" is on the current sheet and in no unit: it is created open, and each seat sits in both departments.
+  const pietro = await userNamed("Pietro", "Rinaldi");
+  assert.ok(pietro?.member != null, "Pietro is imported");
+  const legacy = (await tableRows(departments)).find((d) => d.name === "Avionics Legacy")?.id;
+  assert.deepEqual(
+    (await rolesOf(pietro.member)).map((r) => [r.title, r.deptId]).sort(),
+    [
+      ["Recruitment Coordinator", OPERATIONS],
+      ["Recruitment Coordinator", legacy],
+      ["Social Media Manager", OPERATIONS],
+      ["Social Media Manager", legacy],
+    ].sort(),
+  );
 });
 
 // Photos -----------------------------------------------------------------------
@@ -399,33 +431,35 @@ test("the report counts each photo outcome, by row, and a dry run uploads nothin
   const { plan, report } = await runImport({ mode: "dry-run", directory: FILES, db });
   assert.deepEqual(await databaseWrites(), []);
   assert.deepEqual(plan.photos, {
-    found: 8,
-    matchedMembers: 3,
+    found: 9,
+    matchedMembers: 4,
     matchedAdvisors: 1,
-    surnameDiffers: 1,
-    noIdMatch: 2,
-    sharedId: 1,
+    surnameDiffers: 2,
+    noIdMatch: 1,
+    noSurnameMatch: 1,
+    surnameAmbiguous: 0,
     alreadyPresent: 1,
     notImported: 0,
     unfit: 0,
     missing: 2,
-    toUpload: 3,
+    toUpload: 4,
   });
   const photoRows = (kind: ConflictKind) => plan.conflicts.filter((c) => c.kind === kind).map((c) => `${c.at.file} ${c.at.row}`);
-  assert.deepEqual(photoRows("photo-surname-differs"), ["photos/ 2"]);
-  assert.deepEqual(photoRows("photo-shared-id"), ["photos/ 6"]);
-  assert.deepEqual(photoRows("photo-no-id-match"), ["photos/ 7", "photos/ 8"]);
+  assert.deepEqual(photoRows("photo-surname-differs"), ["photos/ 2", "photos/ 5"]);
+  assert.deepEqual(photoRows("photo-no-id-match"), ["photos/ 6"]);
+  assert.deepEqual(photoRows("photo-no-surname-match"), ["photos/ 9"]);
   assert.deepEqual(photoRows("photo-missing"), ["advisors_rows.csv 5", "people_rows.csv 5"]);
   for (const line of [
-    "found: 8",
-    "matched to members: 3",
+    "found: 9",
+    "matched to members: 4",
     "matched to advisors: 1",
-    "id found, surname differs (held): 1",
-    "no id match (including no id part): 2",
-    "id shared by a person and an advisor, not settled by the surname: 1",
+    "id found, surname differs (held): 2",
+    "id on no people_rows.csv row: 1",
+    "surname only, no advisor has it: 1",
+    "surname only, more than one advisor has it: 0",
     "skipped, person or advisor already in the database: 1",
     "has_pp with no file: 2",
-    "to upload: 3",
+    "to upload: 4",
   ]) {
     assert.ok(report.includes(`  ${line}\n`), `the report says ${line}`);
   }
@@ -438,12 +472,14 @@ test("an import stores member photos as the dashboard does and advisor photos as
   await world();
   const { uploads, store } = fakeStore();
   const { uploaded, report } = await runImport({ mode: "import", directory: FILES, db, photoStore: store });
-  assert.deepEqual(uploaded, { members: 2, advisors: 1, skipped: 0 });
-  assert.equal(uploads.length, 3);
-  assert.match(report, /^ {2}uploaded: 3$/m);
+  assert.deepEqual(uploaded, { members: 3, advisors: 1, skipped: 0 });
+  assert.equal(uploads.length, 4);
+  assert.match(report, /^ {2}uploaded: 4$/m);
   assert.ok((await databaseWrites()).every((w) => w.kind === "insert"), "a photo goes in with its row; no row is updated");
 
-  for (const [first, last] of [["Marta", "Villa"], ["Dario", "Gallo"]]) {
+  // Dario's id (30) is also an advisor row's id: an id is always a people_rows.csv id (issue #816).
+  // Sofia's file is a surname only: the one advisor with it is her advisor row in the workbook.
+  for (const [first, last] of [["Marta", "Villa"], ["Dario", "Gallo"], ["Sofia", "Marchi"]]) {
     const member = await memberOf(first, last);
     assert.ok(member.picture !== null, `${first} has a picture`);
     const pathname = storedPhotoPathname(member.picture);
@@ -461,7 +497,7 @@ test("an import stores member photos as the dashboard does and advisor photos as
   assert.deepEqual([(await sharp(martaUpload!.bytes).metadata()).width], [24]);
 
   const ada = (await tableRows(teamPageAdvisorVersions)).map((v) => v.advisor as AdvisorVersion).find((a) => a.name === "Prof. Ada Example");
-  assert.ok(ada?.photo !== undefined && ownsTeamPageUpload(HOST)(ada.photo), "the advisor's photo is a Team page upload");
+  assert.ok(ada?.photo !== undefined && ownsTeamPageUpload(HOST)(ada.photo), "the advisor's photo, matched by her surname, is a Team page upload");
   const uploadedAdvisorPhotos = (await tableRows(teamPageAdvisorVersions)).flatMap((v) => (v.advisor as AdvisorVersion).photo ?? []).filter(ownsTeamPageUpload(HOST));
   assert.equal(uploadedAdvisorPhotos.length, 1, "only the matched advisor's photo is uploaded");
 
@@ -479,12 +515,12 @@ test("a second import uploads nothing, and an import without a storage credentia
   const second = await runImport({ mode: "import", directory: FILES, db, photoStore: store });
   assert.equal(uploads.length, firstUploads, "nothing new uploaded");
   assert.deepEqual(second.uploaded, { members: 0, advisors: 0, skipped: 0 });
-  assert.equal(second.plan.photos?.alreadyPresent, 4, "every matched photo's person or advisor is already there");
+  assert.equal(second.plan.photos?.alreadyPresent, 5, "every matched photo's person or advisor is already there");
 
   await world();
   const bare = await importOnce();
-  assert.deepEqual(bare.uploaded, { members: 0, advisors: 0, skipped: 3 });
-  assert.match(bare.report, /^ {2}skipped, no storage credential given: 3$/m);
+  assert.deepEqual(bare.uploaded, { members: 0, advisors: 0, skipped: 4 });
+  assert.match(bare.report, /^ {2}skipped, no storage credential given: 4$/m);
   assert.equal((await memberOf("Marta", "Villa")).picture, null);
-  assert.equal(bare.written?.members, 20, "everything else is imported");
+  assert.equal(bare.written?.members, 21, "everything else is imported");
 });

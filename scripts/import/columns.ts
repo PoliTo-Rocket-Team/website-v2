@@ -92,8 +92,12 @@ export type PersonField = keyof typeof PERSON_FIELDS;
 /** A `YYYY-YYYY` year sheet. */
 export const YEAR_SHEET: SourceSpec<PersonField> = PERSON_FIELDS;
 
-/** The `Quitters` sheet: a title above the header, and the day each person left. */
-export const QUITTERS_SHEET: SourceSpec<PersonField | "leftOn"> = { ...PERSON_FIELDS, leftOn: { aliases: ["Left the Team on"] } };
+/** The `Quitters` sheet: a title above the header, the day each person left and the day they joined. */
+export const QUITTERS_SHEET: SourceSpec<PersonField | "leftOn" | "joinedOn"> = {
+  ...PERSON_FIELDS,
+  leftOn: { aliases: ["Left the Team on"] },
+  joinedOn: { aliases: ["Joined the Team on"] },
+};
 
 /** A `Roles YY-YY` sheet: the year's seats with the division and group that year's own sheet lacks. */
 export const ROLES_SHEET: SourceSpec<"firstName" | "lastName" | "subteam" | "division" | "title"> = {
@@ -171,11 +175,16 @@ export const ORDERS_CSV = {
 
 // The import's own override input (issue #816) ---------------------------------
 
-/** `handovers.csv`: a seat the `from_row` holder handed over to the `to_row` holder within the current year, both rows of `sheet`. */
-export const HANDOVERS_CSV = {
+/**
+ * `overrides.csv`: one line per owner decision the workbook cannot carry. `kind` says which:
+ * `handover` (row `row` of `sheet` handed its seat over to row `value` within the current year) or
+ * `quitter-year` (Quitters row `row` is an alumnus of academic year `value`, "YYYY-YYYY").
+ */
+export const OVERRIDES_CSV = {
+  kind: { aliases: ["kind"], required: true },
   sheet: { aliases: ["sheet"], required: true },
-  fromRow: { aliases: ["from_row"], required: true },
-  toRow: { aliases: ["to_row"], required: true },
+  row: { aliases: ["row"], required: true },
+  value: { aliases: ["value"], required: true },
 } as const satisfies SourceSpec<string>;
 
 export const FAQS_CSV = {

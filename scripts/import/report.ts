@@ -7,8 +7,9 @@ import type { Uploaded, Written } from "./write";
 // The report a run prints (issue #677): what was read, then per table the
 // rows to insert, already present and refused, then the people counts, then
 // every conflict and unclear quitter with its file, sheet, row and field. It
-// prints counts and places only, never a value from a source: no name, email,
-// phone or ID.
+// prints counts and places, and the names of the units it would create (issue
+// #816); never a personal value from a source: no person's name, email, phone
+// or ID.
 
 export type ReportInput = {
   readonly mode: "dry-run" | "import";
@@ -48,14 +49,24 @@ export function renderReport({ mode, database, sources, plan, written, uploaded 
   lines.push(line(head));
   for (const r of rows) lines.push(line(r));
   lines.push(
-    `Past units ${written === undefined ? "to create" : "created"} closed: ${written?.departments ?? plan.departments.length} departments, ${written?.divisions ?? plan.divisions.length} divisions`,
+    `Units ${written === undefined ? "to create" : "created"}: ${written?.departments ?? plan.departments.length} departments, ${written?.divisions ?? plan.divisions.length} divisions`,
   );
+  // A unit's name is no personal value: each one to create is listed, open or closed.
+  const span = (u: (typeof plan.departments)[number]) => (u.closedAt === null ? `open, from ${u.startedAt}` : `closed, ${u.startedAt} to ${u.closedAt}`);
+  const coded = (u: (typeof plan.departments)[number]) => (u.code === null ? u.name : `${u.name} (${u.code})`);
+  for (const d of plan.departments) lines.push(`  department ${coded(d)}: ${span(d)}`);
+  for (const d of plan.divisions) {
+    const under = d.dept === null ? "" : d.dept.kind === "new" ? ` under ${plan.departments[d.dept.index].name}` : " under an existing department";
+    lines.push(`  division ${coded(d)}${under}: ${span(d)}`);
+  }
   lines.push(`FAQs skipped as not visible: ${plan.hiddenFaqs}`);
   lines.push("");
   lines.push(`Alumni: ${plan.alumni}`);
   lines.push(`People found in more than one year sheet: ${plan.multiYear}`);
   lines.push(`Unclear quitters: ${plan.unclearQuitters}`);
-  lines.push(`Seat handovers applied (handovers.csv): ${plan.handovers}`);
+  lines.push(`Sheet rows with no name, skipped: ${sources.namelessRows}`);
+  lines.push(`Seat handovers applied (overrides.csv): ${plan.handovers}`);
+  lines.push(`Quitter years applied (overrides.csv): ${plan.quitterYears}`);
   lines.push(
     `Distinct unresolved unit names (subteam and division cells): ${plan.unresolvedUnits === null ? "not checked (no database given)" : plan.unresolvedUnits}`,
   );
@@ -70,8 +81,9 @@ export function renderReport({ mode, database, sources, plan, written, uploaded 
       ["matched to members", p.matchedMembers],
       ["matched to advisors", p.matchedAdvisors],
       ["id found, surname differs (held)", p.surnameDiffers],
-      ["no id match (including no id part)", p.noIdMatch],
-      ["id shared by a person and an advisor, not settled by the surname", p.sharedId],
+      ["id on no people_rows.csv row", p.noIdMatch],
+      ["surname only, no advisor has it", p.noSurnameMatch],
+      ["surname only, more than one advisor has it", p.surnameAmbiguous],
       ["skipped, person or advisor already in the database", p.alreadyPresent],
       ["matched person or advisor not imported by this run", p.notImported],
       ["failed the photo check", p.unfit],

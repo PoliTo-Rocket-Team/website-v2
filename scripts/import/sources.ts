@@ -5,9 +5,9 @@ import {
   cell,
   DIVISIONS_CSV,
   FAQS_CSV,
-  HANDOVERS_CSV,
   locate,
   ORDERS_CSV,
+  OVERRIDES_CSV,
   PEOPLE_CSV,
   POSITIONS_CSV,
   QUITTERS_SHEET,
@@ -37,7 +37,7 @@ export const CSV_FILES = {
   positions: "positions_rows.csv",
   orders: "orders_rows.csv",
   faqs: "faqs_rows.csv",
-  handovers: "handovers.csv",
+  overrides: "overrides.csv",
 } as const;
 
 type CsvName = keyof typeof CSV_FILES;
@@ -50,7 +50,7 @@ export type PersonRow = Row<PersonField>;
 /** One `YYYY-YYYY` sheet: the academic year it starts in (2025 for "2025-2026"). */
 export type YearSheet = { readonly year: number; readonly sheet: string; readonly rows: readonly PersonRow[] };
 
-export type QuitterRow = Row<PersonField | "leftOn">;
+export type QuitterRow = Row<PersonField | "leftOn" | "joinedOn">;
 
 export type RolesSheet = { readonly year: number; readonly sheet: string; readonly rows: readonly Row<"firstName" | "lastName" | "subteam" | "division" | "title">[] };
 
@@ -65,6 +65,8 @@ export type Sources = {
   readonly years: readonly YearSheet[];
   readonly quitters: readonly QuitterRow[];
   readonly rolesSheets: readonly RolesSheet[];
+  /** Rows of the year, Quitters and Roles sheets with neither a first nor a last name (a template row of email placeholders): left out, never matched. */
+  readonly namelessRows: number;
   readonly csv: {
     readonly people: readonly Row<keyof typeof PEOPLE_CSV>[];
     readonly teamMembers: readonly Row<keyof typeof TEAM_MEMBERS_CSV>[];
@@ -74,8 +76,8 @@ export type Sources = {
     readonly positions: readonly Row<keyof typeof POSITIONS_CSV>[];
     readonly orders: readonly Row<keyof typeof ORDERS_CSV>[];
     readonly faqs: readonly Row<keyof typeof FAQS_CSV>[];
-    /** The import's override input, not an export: the seats handed over within the current year. */
-    readonly handovers: readonly Row<keyof typeof HANDOVERS_CSV>[];
+    /** The import's override input, not an export: seats handed over this year, and Quitters rows given an academic year. */
+    readonly overrides: readonly Row<keyof typeof OVERRIDES_CSV>[];
   };
   /** Sheets and files whose header could not be found. */
   readonly conflicts: readonly Conflict[];
@@ -116,15 +118,40 @@ function rowsBelow<F extends string>(
   });
 }
 
-/** A day the sheet gives as a date cell (a day serial) or as text ("2024-06-30", "30/06/2024"); null when it is neither. */
+/** The years a roster day may fall in: a cell outside them (a bare "2024" read as a day serial is in 1905) is no day. */
+const FIRST_ROSTER_YEAR = 1990;
+const LAST_ROSTER_YEAR = 2100;
+
+/** `YYYY-MM-DD` when the three parts name a real day in the roster's years; null otherwise ("31/02/2024"). */
+function realDay(year: number, month: number, day: number): string | null {
+  const d = new Date(Date.UTC(year, month - 1, day));
+  const real = d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
+  return real && year >= FIRST_ROSTER_YEAR && year <= LAST_ROSTER_YEAR ? d.toISOString().slice(0, 10) : null;
+}
+
+/**
+ * A day the sheet gives as a date cell (an Excel day serial) or as text:
+ * "2024-06-30", "30/06/2024", "3/6/2024" or "30.06.2024", day first. Null
+ * when it is none of these, or no real day in the roster's years.
+ */
 export function dayOf(text: string): string | null {
-  const serial = excelDay(text);
-  if (serial !== null) return serial;
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
-  if (iso !== null) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  const eu = /^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/.exec(text.trim());
-  if (eu !== null) return `${eu[3]}-${eu[2].padStart(2, "0")}-${eu[1].padStart(2, "0")}`;
+  const t = text.trim();
+  const serial = excelDay(t);
+  if (serial !== null) return realDay(Number(serial.slice(0, 4)), Number(serial.slice(5, 7)), Number(serial.slice(8, 10)));
+  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T ][\d:.]+Z?)?$/.exec(t);
+  if (iso !== null) return realDay(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+  const eu = /^(\d{1,2})([/.])(\d{1,2})\2(\d{4})$/.exec(t);
+  if (eu !== null) return realDay(Number(eu[4]), Number(eu[3]), Number(eu[1]));
   return null;
+}
+
+/** Leaves out the rows of a person sheet that carry neither a first nor a last name, and counts them. */
+function named<R extends Row<"firstName" | "lastName">>(rows: readonly R[], nameless: { count: number }): R[] {
+  return rows.filter((r) => {
+    const keep = r.value.firstName.trim() !== "" || r.value.lastName.trim() !== "";
+    if (!keep) nameless.count++;
+    return keep;
+  });
 }
 
 /** Reads every source in `directory`. `year` names the current academic year's sheet; by default it is the newest. */
@@ -140,6 +167,7 @@ export function readSources(directory: string, year?: number): Sources {
   let quitters: QuitterRow[] = [];
   const rolesSheets: RolesSheet[] = [];
   let currentYear: number | null = null;
+  const nameless = { count: 0 };
 
   const file = workbooks[0];
   if (file === undefined) {
@@ -166,17 +194,17 @@ export function readSources(directory: string, year?: number): Sources {
         const rows = rowsBelow(sheet.rows, YEAR_SHEET, where, conflicts);
         if (rows === null) continue;
         read.push(`${file} › ${sheet.name}`);
-        years.push({ year: y, sheet: sheet.name, rows });
+        years.push({ year: y, sheet: sheet.name, rows: named(rows, nameless) });
       } else if (QUITTERS_SHEET_NAME.test(sheet.name.trim())) {
         const rows = rowsBelow(sheet.rows, QUITTERS_SHEET, where, conflicts);
         if (rows === null) continue;
         read.push(`${file} › ${sheet.name}`);
-        quitters = rows;
+        quitters = named(rows, nameless);
       } else if (rolesYear !== null) {
         const rows = rowsBelow(sheet.rows, ROLES_SHEET, where, conflicts);
         if (rows === null) continue;
         read.push(`${file} › ${sheet.name}`);
-        rolesSheets.push({ year: rolesYear, sheet: sheet.name, rows });
+        rolesSheets.push({ year: rolesYear, sheet: sheet.name, rows: named(rows, nameless) });
       } else {
         skipped.push(`${file} › ${sheet.name}: not imported`);
       }
@@ -211,6 +239,7 @@ export function readSources(directory: string, year?: number): Sources {
     years,
     quitters,
     rolesSheets,
+    namelessRows: nameless.count,
     csv: {
       people: csv("people", PEOPLE_CSV),
       teamMembers: csv("teamMembers", TEAM_MEMBERS_CSV),
@@ -220,7 +249,7 @@ export function readSources(directory: string, year?: number): Sources {
       positions: csv("positions", POSITIONS_CSV),
       orders: csv("orders", ORDERS_CSV),
       faqs: csv("faqs", FAQS_CSV),
-      handovers: csv("handovers", HANDOVERS_CSV),
+      overrides: csv("overrides", OVERRIDES_CSV),
     },
     conflicts,
   };

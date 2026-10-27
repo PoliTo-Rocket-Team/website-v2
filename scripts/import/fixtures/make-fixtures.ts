@@ -18,10 +18,13 @@ import writeXlsxFile from "write-excel-file/node";
 // - Tommaso Neri, Valeria Pace: two heads of Structures in 2024-2025 (a past
 //   year, so both are inserted); Tommaso is an alumnus not on Quitters.
 // - Giulia Russo: on Quitters and on the current sheet (an unclear quitter
-//   who imports as an active member). Ugo Sala: on Quitters only.
+//   who imports as an active member). Ugo Sala: on Quitters only, with the
+//   day he left (a quitter-only alumnus of 2023-2024).
 // - One conflict of each kind: Bruno Conti twice in 2025-2026 (duplicate);
 //   Luca Moretti with no email; Irene Costa in an unknown division; Hugo
-//   Bianchi with an unknown title; Elena Greco a second head of Propulsion;
+//   Bianchi with an unknown title; Elena Greco a second head of Propulsion
+//   (Irene's division and Pietro's "Avionics Legacy" are on the current sheet,
+//   so they are created open, issue #816);
 //   Zeno Fabbri a second team leader; Fabio Ricci the chief engineer the test
 //   database already seats; Marta Villa whose CSV program disagrees; Paolo
 //   Lombardi who matches an imported Alumni entry the test lays; Nicola
@@ -37,20 +40,24 @@ import writeXlsxFile from "write-excel-file/node";
 //   database already holds.
 // - photos/: tiny generated JPEGs. In sorted order: 1 Marta's (a member
 //   match, not square), 2 an id whose surname differs, 3 Olga's (already in
-//   the database), 4 an advisor match, 5 an id a person and an advisor share,
-//   settled by the surname, 6 a shared id the surname does not settle, 7 an id
-//   no row has, 8 a file with no id part. Carla Ferri and the "No Title"
-//   advisor are flagged has_pp with no file.
+//   the database), 4 Dario's, by an id an advisor row also has (an id is
+//   always a people_rows.csv id), 5 an id whose person has another surname,
+//   6 an id no people_rows.csv row has, 7 a surname only, the one advisor of
+//   advisors_rows.csv with it, 8 a surname only, Sofia Marchi's, whose
+//   workbook row is an advisor's, 9 a surname only no advisor has. Carla
+//   Ferri and the "No Title" advisor are flagged has_pp with no file.
 //
 // It also writes ./rules: a second, smaller roster for the reading rules of
-// issue #816, which ../rules.test.ts reads, and the handovers.csv override
+// issue #816, which ../rules.test.ts reads, and the overrides.csv input
 // beside it. What is planted there:
 // - 2025-2026 (current): Anna Bello "AMV Chief Engineer" with an "AMV"
 //   subteam; Bianca Corsi a "Safety Officer"; Carlo Dini (row 4) and Davide
 //   Elia (row 5) both "Project Manager", row 4 handing the seat to row 5;
 //   Emma Fermi with three subteams (one "Amerigo Vespucci (AMV)") and three
 //   divisions split by "/" and ","; Franco Gatti with two subteams and one
-//   division, under the second subteam's department only by its subteam.
+//   division, under the second subteam's department only by its subteam;
+//   Rosa Sarti in a department and division the database lacks (created
+//   open); last, a template row with no name and Anna's email.
 // - 2024-2025: Gina Hale "Electronics Head of Department - Hardware Lead
 //   Engineer" with a "<Dept> Department - <Division>" Division cell; Franco
 //   under "Cavour" (from 2024-2025 on a project, not a department); Ivo Jori
@@ -62,8 +69,16 @@ import writeXlsxFile from "write-excel-file/node";
 //   Management"; Ivo again.
 // - 2021-2022: Oscar Neri "President & Chief Engineer"; Mario under "Liquid
 //   Propulsion"; Pia Orsi under "Efesto", and on Quitters.
-// - handovers.csv: row 2 hands the 2025-2026 row 4 seat to row 5; row 3
-//   names a past sheet, so it is not applied.
+// - Quitters, on no year sheet: Sergio Tosi (row 3, a date cell and a
+//   "dd/mm/yyyy" join day), Teresa Ugolini (row 4, "d/m/yyyy"), Ugo Valli
+//   (row 5, "dd.mm.yyyy" and a date cell join day), Vera Zanni (row 6, no
+//   dates, placed in 2022-2023 by overrides.csv), Walter Bassi (row 7, no
+//   dates, no override), Xenia Conti (row 8, a date that does not read); last,
+//   a row with no name and Pia's email.
+// - overrides.csv: line 2 hands the 2025-2026 row 4 seat to row 5; line 3
+//   names a past sheet; line 4 places Quitters row 6 in 2022-2023; line 5
+//   names Pia's Quitters row, who is on a year sheet; line 6 has an unknown
+//   kind. Lines 3, 5 and 6 are not applied.
 
 const OUT = join(__dirname, "files");
 const RULES_OUT = join(__dirname, "rules");
@@ -293,6 +308,9 @@ const RULES_CURRENT: NewRow[] = [
     title: "Engineer",
   },
   { first: "Franco", last: "Gatti", personal: "franco.gatti@example.com", subteam: "Propulsion - Electronics", division: "Hybrid Motors", title: "Engineer" },
+  { first: "Rosa", last: "Sarti", personal: "rosa.sarti@example.com", subteam: "Avionics (AVI)", division: "Flight Software (FSW)", title: "Engineer" },
+  // A template row: no name, only email placeholders, one of them Anna's.
+  { first: "", last: "", personal: "anna.bello@example.com", student: "name.surname@studenti.example.com" },
 ];
 
 const RULES_2024: OldRow[] = [
@@ -323,16 +341,27 @@ const RULES_2021: OldRow[] = [
 
 const ROLES_HEADER = ["First Name", "Last Name", "Subteam", "Division", "Group", "Team Role"];
 
+// Quitters, its rows 2 to 9: the header in row 1. Dates come as date cells and as text in each listed format.
 const RULES_QUITTERS: Cell[][] = [
-  ["Left the Team on:", "First Name", "Last Name", "Gmail", "Subteam", "Division", "Team Role"],
-  [new Date(Date.UTC(2022, 5, 30)), "Pia", "Orsi", "pia.orsi@example.com", "Efesto", null, "Engineer"],
+  ["Left the Team on:", "Joined the Team on:", "First Name", "Last Name", "Gmail", "Subteam", "Division", "Team Role"],
+  [new Date(Date.UTC(2022, 5, 30)), null, "Pia", "Orsi", "pia.orsi@example.com", "Efesto", null, "Engineer"],
+  [new Date(Date.UTC(2023, 1, 15)), "10/11/2021", "Sergio", "Tosi", "sergio.tosi@example.com", "Efesto", null, "Engineer"],
+  ["5/3/2024", null, "Teresa", "Ugolini", "teresa.ugolini@example.com", "Propulsion (PRP)", "Hybrid Motors", "Engineer"],
+  ["30.06.2022", new Date(Date.UTC(2020, 9, 15)), "Ugo", "Valli", "ugo.valli@example.com", "Liquid Propulsion", null, "Engineer"],
+  [null, null, "Vera", "Zanni", "vera.zanni@example.com", "Management", null, "Engineer"],
+  [null, null, "Walter", "Bassi", "walter.bassi@example.com", "Management", null, "Engineer"],
+  ["sometime in 2023", null, "Xenia", "Conti", "xenia.conti@example.com", "Management", null, "Engineer"],
+  [new Date(Date.UTC(2023, 4, 1)), null, null, null, "pia.orsi@example.com", "Efesto", null, "Engineer"],
 ];
 
 const RULES_FILES: Record<string, string[][]> = {
-  "handovers.csv": [
-    ["sheet", "from_row", "to_row"],
-    ["2025-2026", "4", "5"],
-    ["2024-2025", "2", "3"],
+  "overrides.csv": [
+    ["kind", "sheet", "row", "value"],
+    ["handover", "2025-2026", "4", "5"],
+    ["handover", "2024-2025", "2", "3"],
+    ["quitter-year", "Quitters", "6", "2022-2023"],
+    ["quitter-year", "Quitters", "2", "2022-2023"],
+    ["swap", "2025-2026", "1", "2"],
   ],
 };
 
@@ -377,10 +406,11 @@ const PHOTOS: Record<string, [number, number, number]> = {
   "11-villa.jpeg": [40, 24, 200],
   "12-rossi.jpeg": [16, 16, 180],
   "13-serra.jpeg": [16, 16, 160],
-  "21-example.jpeg": [20, 20, 140],
   "30-gallo.jpeg": [24, 32, 120],
   "31-neri.jpeg": [16, 16, 100],
   "99-mancini.jpeg": [16, 16, 80],
+  "example.jpeg": [20, 20, 140],
+  "marchi.jpeg": [18, 18, 40],
   "villa.jpeg": [16, 16, 60],
 };
 

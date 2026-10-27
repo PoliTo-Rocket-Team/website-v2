@@ -9,7 +9,7 @@ import { runImport } from "./run";
 import type { ImportDb } from "./snapshot";
 
 // The reading rules of issue #816 over the fake roster in ./fixtures/rules
-// (planted by ./fixtures/make-fixtures.ts), on the in-memory Postgres every
+// and its overrides.csv (planted by ./fixtures/make-fixtures.ts), on the in-memory Postgres every
 // migration in drizzle/ built. The migrations seed the projects Cavour, VES
 // and Efesto; the test lays the units the database already holds.
 
@@ -59,31 +59,54 @@ async function unitId(table: typeof departments | typeof divisions, name: string
 
 const shape = (r: Role) => [r.title, r.type, r.fullAccess, r.deptId, r.divisionId, r.startedAt, r.leavedAt];
 
-test("a dry run counts the closed units it would create, reports only the planted conflicts, and writes nothing", async () => {
+test("a dry run lists each unit it would create by name, open or closed, reports only the planted conflicts, and writes nothing", async () => {
   await world();
   const { plan, report } = await runImport({ mode: "dry-run", directory: FILES, db, today: FIRST_DAY });
   assert.deepEqual(await databaseWrites(), []);
-  assert.deepEqual(plan.departments.map((d) => d.name).sort(), ["Cavour", "Efesto", "Liquid Propulsion", "Management", "Vittorio Emanuele II"]);
-  assert.deepEqual(plan.divisions.map((d) => d.name).sort(), ["Injectors", "Solid Motors"]);
-  assert.match(report, /^departments +5 +\d+ +0$/m);
-  assert.match(report, /^divisions +2 +\d+ +0$/m);
-  assert.match(report, /^Past units to create closed: 5 departments, 2 divisions$/m);
-  assert.match(report, /^Seat handovers applied \(handovers\.csv\): 1$/m);
-  // From 2024-2025 on, a subteam that names a project is a project again; a handover on a past sheet is not applied.
+  assert.deepEqual(plan.departments.map((d) => d.name).sort(), ["Avionics", "Cavour", "Efesto", "Liquid Propulsion", "Management", "Vittorio Emanuele II"]);
+  assert.deepEqual(plan.divisions.map((d) => d.name).sort(), ["Flight Software", "Injectors", "Solid Motors"]);
+  assert.match(report, /^departments +6 +\d+ +0$/m);
+  assert.match(report, /^divisions +3 +\d+ +0$/m);
+  assert.match(report, /^Units to create: 6 departments, 3 divisions$/m);
+  for (const line of [
+    "department Avionics (AVI): open, from 2025-10-01",
+    "department Cavour: closed, 2022-10-01 to 2023-09-30",
+    "department Efesto: closed, 2021-10-01 to 2025-09-30",
+    "department Liquid Propulsion: closed, 2021-10-01 to 2023-09-30",
+    "department Management: closed, 2022-10-01 to 2023-09-30",
+    "department Vittorio Emanuele II (VES): closed, 2022-10-01 to 2023-09-30",
+    "division Flight Software (FSW) under Avionics: open, from 2025-10-01",
+    "division Injectors (INJ) under Liquid Propulsion: closed, 2022-10-01 to 2023-09-30",
+    "division Solid Motors (SLM) under an existing department: closed, 2022-10-01 to 2025-09-30",
+  ]) {
+    assert.ok(report.includes(`\n  ${line}\n`), `the report lists ${line}`);
+  }
+  assert.match(report, /^Seat handovers applied \(overrides\.csv\): 1$/m);
+  assert.match(report, /^Quitter years applied \(overrides\.csv\): 1$/m);
+  assert.match(report, /^Sheet rows with no name, skipped: 2$/m);
+  assert.match(report, /^Unclear quitters: 2$/m);
+  // From 2024-2025 on, a subteam that names a project is a project again. An override line on a past sheet,
+  // on a quitter who is on a year sheet, or of an unknown kind is not applied. Two quitters have no usable date.
   assert.deepEqual(
-    plan.conflicts.map((c) => [c.kind, c.at.file, c.at.sheet ?? null, c.at.row]),
+    plan.conflicts.map((c) => [c.kind, c.at.file, c.at.sheet ?? null, c.at.row, c.field ?? null]),
     [
-      ["handover-unmatched", "handovers.csv", null, 3],
-      ["project-only-unit", "roster.xlsx", "2024-2025", 3],
+      ["override-unmatched", "overrides.csv", null, 3, "sheet"],
+      ["override-unmatched", "overrides.csv", null, 5, "row"],
+      ["override-unmatched", "overrides.csv", null, 6, "kind"],
+      ["project-only-unit", "roster.xlsx", "2024-2025", 3, "subteam"],
+      ["quitter-no-date", "roster.xlsx", "Quitters", 7, "leftOn"],
+      ["quitter-date-unreadable", "roster.xlsx", "Quitters", 8, "leftOn"],
     ],
   );
+  assert.match(report, /\[quitter-no-date\] roster\.xlsx › sheet Quitters › row 7: /);
+  assert.match(report, /\[quitter-date-unreadable\] roster\.xlsx › sheet Quitters › row 8: /);
   assert.equal(plan.unresolvedUnits, 0);
 });
 
 test("past subteams are departments, created closed over the years the roster names them; existing units are matched", async () => {
   await world();
   await importOn(FIRST_DAY);
-  const created = (await tableRows(departments)).filter((d) => ![PROPULSION, OPERATIONS, ELECTRONICS].includes(d.id as number));
+  const created = (await tableRows(departments)).filter((d) => ![PROPULSION, OPERATIONS, ELECTRONICS].includes(d.id as number) && d.closedAt !== null);
   assert.deepEqual(
     created.map((d) => [d.name, d.code, d.startedAt, d.closedAt, d.kind]).sort(),
     [
@@ -95,7 +118,7 @@ test("past subteams are departments, created closed over the years the roster na
     ],
   );
   const liquid = await unitId(departments, "Liquid Propulsion");
-  const newDivisions = (await tableRows(divisions)).filter((d) => (d.id as number) > HARDWARE || (d.id as number) < HYBRID_MOTORS);
+  const newDivisions = (await tableRows(divisions)).filter((d) => ((d.id as number) > HARDWARE || (d.id as number) < HYBRID_MOTORS) && d.closedAt !== null);
   assert.deepEqual(
     newDivisions.map((d) => [d.name, d.code, d.deptId, d.startedAt, d.closedAt]).sort(),
     [
@@ -176,6 +199,63 @@ test("a seat handed over this year: the later holder holds it, the earlier one k
   const [member] = (await tableRows(members)).filter((m) => m.memberId === carlo.member);
   assert.deepEqual([member.teamFrom, member.teamTo], [null, null], "an active member");
   assert.equal((await tableRows(teamLeaves)).filter((l) => l.memberId === carlo.member).length, 0, "no team leave");
+});
+
+test("units the current sheet names and the database lacks are created open, a division under its paired department", async () => {
+  await world();
+  await importOn(FIRST_DAY);
+  const avionics = (await tableRows(departments)).find((d) => d.name === "Avionics");
+  assert.deepEqual([avionics?.code, avionics?.startedAt, avionics?.closedAt], ["AVI", "2025-10-01", null]);
+  const software = (await tableRows(divisions)).find((d) => d.name === "Flight Software");
+  assert.deepEqual([software?.code, software?.deptId, software?.startedAt, software?.closedAt], ["FSW", avionics?.id, "2025-10-01", null]);
+  assert.deepEqual((await rolesOf("Rosa", "Sarti")).map(shape), [["Engineer", "core", null, avionics?.id, software?.id, "2025-10-01", null]]);
+});
+
+/** A member's alumni years and their one team leave day. */
+async function alumnusOf(first: string, last: string): Promise<[number | null, number | null, string[]]> {
+  const user = (await tableRows(users)).find((u) => u.firstName === first && u.lastName === last);
+  const [member] = ((await tableRows(members)) as (typeof members.$inferSelect)[]).filter((m) => m.memberId === user?.member);
+  const leaves = (await tableRows(teamLeaves)).filter((l) => l.memberId === user?.member).map((l) => String(l.leftAt).slice(0, 10));
+  return [member.teamFrom, member.teamTo, leaves];
+}
+
+test("a quitter on no year sheet is an alumnus of the year they left in, from their join day (else the year's start) to their leave day", async () => {
+  await world();
+  await importOn(FIRST_DAY);
+  const efesto = await unitId(departments, "Efesto");
+  const liquid = await unitId(departments, "Liquid Propulsion");
+  // A date cell to leave, a "dd/mm/yyyy" join day.
+  assert.deepEqual((await rolesOf("Sergio", "Tosi")).map(shape), [["Engineer", "core", null, efesto, null, "2021-11-10", "2023-02-15"]]);
+  assert.deepEqual(await alumnusOf("Sergio", "Tosi"), [2021, 2022, ["2023-02-15"]]);
+  // "d/m/yyyy", no join day: the start of the academic year; units read as on a past sheet.
+  assert.deepEqual((await rolesOf("Teresa", "Ugolini")).map(shape), [["Engineer", "core", null, PROPULSION, HYBRID_MOTORS, "2023-10-01", "2024-03-05"]]);
+  assert.deepEqual(await alumnusOf("Teresa", "Ugolini"), [2023, 2023, ["2024-03-05"]]);
+  // "dd.mm.yyyy", a date cell to join.
+  assert.deepEqual((await rolesOf("Ugo", "Valli")).map(shape), [["Engineer", "core", null, liquid, null, "2020-10-15", "2022-06-30"]]);
+  assert.deepEqual(await alumnusOf("Ugo", "Valli"), [2020, 2021, ["2022-06-30"]]);
+});
+
+test("an override line places a dateless quitter in its year; a quitter with no date and no override, or a date that does not read, is not imported", async () => {
+  await world();
+  await importOn(FIRST_DAY);
+  const management = await unitId(departments, "Management");
+  assert.deepEqual((await rolesOf("Vera", "Zanni")).map(shape), [["Engineer", "core", null, management, null, "2022-10-01", "2023-09-30"]]);
+  assert.deepEqual(await alumnusOf("Vera", "Zanni"), [2022, 2022, ["2023-09-30"]]);
+  const imported = (await tableRows(users)).map((u) => u.firstName);
+  assert.ok(!imported.includes("Walter") && !imported.includes("Xenia"), "the unclear quitters are not imported");
+  // The line naming Pia's Quitters row is not applied: she keeps her year-sheet role and her Quitters day.
+  assert.deepEqual((await rolesOf("Pia", "Orsi")).map((r) => [r.startedAt, r.leavedAt]), [["2021-10-01", "2022-09-30"]]);
+  assert.deepEqual((await alumnusOf("Pia", "Orsi"))[2], ["2022-06-30"]);
+});
+
+test("a sheet row with no name is skipped without a conflict and never matched by its email", async () => {
+  await world();
+  const { plan, sources } = await importOn(FIRST_DAY);
+  assert.equal(sources.namelessRows, 2);
+  assert.ok(!plan.conflicts.some((c) => c.kind === "duplicate" || c.kind === "ambiguous-match"), "no conflict for the template rows");
+  assert.equal((await rolesOf("Anna", "Bello")).length, 1, "Anna gets nothing from the template row that carries her email");
+  assert.equal((await rolesOf("Pia", "Orsi")).length, 1, "Pia gets nothing from the nameless Quitters row");
+  assert.ok(!(await tableRows(users)).some((u) => u.email === "name.surname@studenti.example.com" || u.firstName === null), "no person starts from a nameless row");
 });
 
 test("a second run, on a later day, creates no second closed unit and no second role", async () => {

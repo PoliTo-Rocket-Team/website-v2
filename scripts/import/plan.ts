@@ -1,9 +1,12 @@
 import { isAdvisorVersion, type AdvisorVersion } from "@/lib/about/advisors";
 import { faqFieldErrors } from "@/lib/faq/faq";
 import type { CheckedPhoto } from "@/lib/outreach-photos";
+import { academicYearOf, yearEnd, yearStart } from "./academic-year";
 import { UNCLEAR_QUITTER_KINDS, type At, type Conflict, type ConflictKind } from "./conflicts";
+import { readOverrides } from "./overrides";
 import { matchPeople, nameKey, normalEmail, signInEmail, type Person } from "./people";
 import { photoAt, type MemberPhoto, type PhotoFolder } from "./photos";
+import { quitterStint } from "./quitters";
 import type { ExistingRole, Snapshot } from "./snapshot";
 import { dayOf, type PersonRow, type Sources } from "./sources";
 import { seatsOf, type FullAccessSeat, type PositionType, type Seat, type SeatReading } from "./titles";
@@ -101,7 +104,7 @@ export type Count = { insert: number; present: number; refused: number };
 
 export type Plan = {
   readonly currentYear: number | null;
-  /** The past departments and divisions no longer in the database: created closed, before any role is placed in them. */
+  /** The departments and divisions the roster names and the database lacks: created (open or closed) before any role is placed in them. */
   readonly departments: readonly NewDepartment[];
   readonly divisions: readonly NewDivision[];
   readonly people: readonly NewPerson[];
@@ -117,8 +120,10 @@ export type Plan = {
   readonly alumni: number;
   readonly multiYear: number;
   readonly unclearQuitters: number;
-  /** How many rows of `handovers.csv` were applied. */
+  /** How many handover lines of `overrides.csv` were applied. */
   readonly handovers: number;
+  /** How many quitter-year lines of `overrides.csv` were applied. */
+  readonly quitterYears: number;
   /** How many distinct subteam and division names resolved to no unit; null when no database was given to check them. */
   readonly unresolvedUnits: number | null;
   /** The photo counts; null when the source directory has no `photos/` folder. */
@@ -129,11 +134,14 @@ export type Plan = {
 /** What became of the photo files, by count. */
 export type PhotoCounts = {
   readonly found: number;
+  /** Matched to a person: by a `people_rows.csv` id, or by surname to a person whose workbook row is an advisor's. */
   readonly matchedMembers: number;
+  /** Matched by surname to an `advisors_rows.csv` row. */
   readonly matchedAdvisors: number;
   readonly surnameDiffers: number;
   readonly noIdMatch: number;
-  readonly sharedId: number;
+  readonly noSurnameMatch: number;
+  readonly surnameAmbiguous: number;
   /** Matched to a person or advisor the database already holds: skipped, nothing updated. */
   readonly alreadyPresent: number;
   /** Matched to a person or advisor this run does not insert. */
@@ -146,11 +154,6 @@ export type PhotoCounts = {
 };
 
 const ORDER_STATUSES: readonly OrderStatus[] = ["pending", "accepted", "rejected", "changes_requested", "cancelled", "ordered"];
-
-/** The first day of academic year `y` ("2024-10-01"): the team's year runs 1 October to 30 September. */
-export const yearStart = (y: number) => `${y}-10-01`;
-/** The last day of academic year `y` ("2025-09-30"). */
-export const yearEnd = (y: number) => `${y + 1}-09-30`;
 
 /** A LinkedIn link or bare handle as `users.linkedin` stores it (the full profile link); null when it is neither. */
 export function linkedinLink(text: string): string | null {
@@ -236,6 +239,16 @@ function cellsOf(person: Person, year: number): YearCells {
   };
 }
 
+/**
+ * One stretch a person held their roles in: a year sheet's row (active this
+ * year, else the whole academic year), or the Quitters row of a quitter-only
+ * alumnus (from its join day to its leave day).
+ */
+type Stint = { readonly year: number; readonly cells: YearCells; readonly startedAt: string; readonly leavedAt: string | null };
+
+/** The key a row has across the sources: file, sheet and row. */
+const atKey = (at: At) => `${at.file}\u0000${at.sheet ?? ""}\u0000${at.row}`;
+
 /** The key of the seat a role holds while active, or null for a seat any number may hold: a second active holder of one is refused, as the unique indexes of migration 0062 would. */
 const seatKeyOf = (type: PositionType | null, fullAccess: FullAccessSeat | null, dept: string | null): string | null =>
   type === "president" ? "president" : fullAccess !== null ? `full:${fullAccess}` : type === "head" && dept !== null ? `head:${dept}` : null;
@@ -268,7 +281,7 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     for (const d of names.departments) currentNames.departments.add(unitKey(d.value.name));
     for (const d of names.divisions) currentNames.divisions.add(unitKey(d.value.name));
   }
-  const book = units === null ? null : new UnitBook(units, currentNames, currentYear);
+  const book = units === null ? null : new UnitBook(units, currentNames);
 
   // Seats --------------------------------------------------------------------
 
@@ -333,6 +346,24 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     a.startedAt === b.startedAt &&
     (handedOver ? a.leavedAt !== null : a.leavedAt === b.leavedAt);
 
+  // Overrides ------------------------------------------------------------------
+
+  const overrides = readOverrides(sources.csv.overrides);
+  conflicts.push(...overrides.conflicts);
+
+  /** The academic year a quitter-year line gives each quitter-only person's Quitters row, by the row's key. */
+  const quitterYearOf = new Map<string, number>();
+  const quitterOnlyRows = new Set(people.flatMap((p) => (p.years.size === 0 && p.quitter !== null ? [atKey(p.quitter.at)] : [])));
+  const quittersSheet = sources.quitters[0]?.at;
+  for (const o of overrides.quitterYears) {
+    const key = quittersSheet === undefined ? null : atKey({ file: quittersSheet.file, sheet: o.sheet, row: o.row });
+    if (key === null || !quitterOnlyRows.has(key) || quitterYearOf.has(key)) {
+      conflicts.push({ kind: "override-unmatched", at: o.at, field: "row" });
+      continue;
+    }
+    quitterYearOf.set(key, o.year);
+  }
+
   // Handovers ----------------------------------------------------------------
 
   /** The seat keys a current-year row's title gives, resolved against the units the database holds. */
@@ -358,18 +389,16 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
   let handovers = 0;
   const currentSheet = sources.years.find((y) => y.year === currentYear);
   const personAt = new Map(onCurrent.map((p) => [p.years.get(currentYear!)!.at.row, p]));
-  for (const h of sources.csv.handovers) {
-    const from = Number(h.value.fromRow.trim());
-    const to = Number(h.value.toRow.trim());
-    const onSheet = currentSheet !== undefined && h.value.sheet.trim() === currentSheet.sheet;
-    const giver = onSheet ? personAt.get(from) : undefined;
-    const taker = onSheet ? personAt.get(to) : undefined;
+  for (const h of overrides.handovers) {
+    const onSheet = currentSheet !== undefined && h.sheet === currentSheet.sheet;
+    const giver = onSheet ? personAt.get(h.fromRow) : undefined;
+    const taker = onSheet ? personAt.get(h.toRow) : undefined;
     const shared = giver === undefined || taker === undefined || giver === taker ? [] : [...seatKeysOf(giver)].filter((k) => seatKeysOf(taker).has(k));
     if (shared.length === 0) {
-      conflicts.push({ kind: "handover-unmatched", at: h.at });
+      conflicts.push({ kind: "override-unmatched", at: h.at, field: onSheet ? "row" : "sheet" });
       continue;
     }
-    handedOver.set(from, new Set([...(handedOver.get(from) ?? []), ...shared]));
+    handedOver.set(h.fromRow, new Set([...(handedOver.get(h.fromRow) ?? []), ...shared]));
     handovers++;
   }
 
@@ -391,15 +420,34 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     importedNames.set(key, [...(importedNames.get(key) ?? []), ...entry.years]);
   }
 
-  for (const person of people) {
+  /** The stints a person's rows give, oldest first, and the row the report names for the person; null for an unclear quitter-only row, reported here. */
+  const stintsOf = (person: Person): { readonly stints: readonly Stint[]; readonly at: At } | null => {
+    if (person.years.size === 0) {
+      const row = person.quitter!;
+      const stint = quitterStint(row, quitterYearOf.get(atKey(row.at)) ?? null);
+      if (stint.kind === "unclear") {
+        conflicts.push({ kind: stint.conflict, at: row.at, field: stint.field });
+        return null;
+      }
+      const reading = subteamReadingOf({ kind: "quitters" });
+      const cells: YearCells = { row, title: row.value.title, subteam: row.value.subteam, division: row.value.division, reading };
+      return { stints: [{ year: stint.year, cells, startedAt: stint.startedAt, leavedAt: stint.leftAt }], at: row.at };
+    }
     const years = [...person.years.keys()].sort((a, b) => a - b);
-    const newest = person.years.get(years[years.length - 1])!;
+    const stints = years.map((year) => ({ year, cells: cellsOf(person, year), startedAt: yearStart(year), leavedAt: year === currentYear ? null : yearEnd(year) }));
+    return { stints, at: person.years.get(years[years.length - 1])!.at };
+  };
+
+  for (const person of people) {
+    const found = stintsOf(person);
+    if (found === null) continue;
+    const { stints, at: anchor } = found;
     const onCurrent = currentYear !== null && person.years.has(currentYear);
     if (person.quitter !== null && onCurrent) conflicts.push({ kind: "quitter-on-current-sheet", at: person.quitter.at });
 
     const email = signInEmail(person);
     if (email === null) {
-      conflicts.push({ kind: "missing-email", at: newest.at });
+      conflicts.push({ kind: "missing-email", at: anchor });
       counter.add("users", "refused");
       counter.add("members", "refused");
       continue;
@@ -407,7 +455,7 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     const accounts = snapshot.users.filter((u) => person.emails.has(u.email) || u.email === email);
     const account = accounts.find((u) => u.member !== null) ?? accounts[0];
     if (account !== undefined && account.member === null) {
-      conflicts.push({ kind: "account-without-member", at: newest.at });
+      conflicts.push({ kind: "account-without-member", at: anchor });
       counter.add("users", "refused");
       counter.add("members", "refused");
       continue;
@@ -443,22 +491,21 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
           prtEmail: normalEmail(f.prtEmail ?? ""),
           mobileNumber: orNull(f.mobile),
           discord: orNull(f.discord),
-          teamFrom: alumnus ? years[0] : null,
-          teamTo: alumnus ? years[years.length - 1] : null,
+          teamFrom: alumnus ? Math.min(...stints.map((s) => academicYearOf(s.startedAt))) : null,
+          teamTo: alumnus ? Math.max(...stints.map((s) => s.year)) : null,
         },
         photo: null,
       });
     }
 
     const importedYears = new Set([...person.names].flatMap((n) => importedNames.get(n) ?? []));
-    if ([...person.names].some((n) => importedNames.has(n))) conflicts.push({ kind: "imported-alumni-match", at: newest.at });
+    if ([...person.names].some((n) => importedNames.has(n))) conflicts.push({ kind: "imported-alumni-match", at: anchor });
 
-    for (const year of years) {
+    for (const { year, cells: c, startedAt, leavedAt } of stints) {
       if (importedYears.has(year)) continue;
-      const c = cellsOf(person, year);
       const { row, title } = c;
       const cells = rowUnits(c, year);
-      const active = year === currentYear;
+      const active = leavedAt === null;
       const handed = active ? handedOver.get(row.at.row) : undefined;
       for (const reading of seatsOf(title)) {
         if (reading.kind === "unknown") {
@@ -485,8 +532,8 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
             title: storedTitle,
             type: seat.type,
             fullAccess: seat.fullAccess,
-            startedAt: yearStart(year),
-            leavedAt: handedOverSeat ? today : active ? null : yearEnd(year),
+            startedAt,
+            leavedAt: handedOverSeat ? today : leavedAt,
           };
           if (place.division !== null) {
             const byYear = divisionsByYear.get(person.id) ?? new Map<number, Map<string, UnitRef>>();
@@ -514,7 +561,9 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
       if (ref.kind === "existing" && snapshot.leftMembers.has(ref.memberId)) {
         counter.add("team_leaves", "present");
       } else {
-        const left = (person.quitter !== null && dayOf(person.quitter.value.leftOn)) || yearEnd(years[years.length - 1]);
+        // A year-sheet alumnus left on their Quitters day, else at the end of their last year; a quitter-only one when their stint ends.
+        const last = stints[stints.length - 1];
+        const left = (person.years.size > 0 && person.quitter !== null && dayOf(person.quitter.value.leftOn)) || last.leavedAt || yearEnd(last.year);
         leaves.push({ who: ref, leftAt: left });
         counter.add("team_leaves", "insert");
       }
@@ -524,8 +573,8 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
   // Advisors -----------------------------------------------------------------
 
   const advisors: NewAdvisor[] = [];
-  /** Each advisor row's id: "existing" when the database has the advisor, else the advisor's index in `advisors`. A refused row has none. */
-  const advisorFate = new Map<string, "existing" | number>();
+  /** Each advisor row's fate, by its CSV line: "existing" when the database has the advisor, else the advisor's index in `advisors`. A refused row has none. */
+  const advisorFate = new Map<number, "existing" | number>();
   /** The photo of each person the plan inserts, by person. */
   const memberPhotos = new Map<number, MemberPhoto>();
   const advisorKeys = new Set(snapshot.advisorNames.map((n) => nameKey(n, "")));
@@ -543,9 +592,8 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
       continue;
     }
     advisorRows.add(key);
-    const id = row.value.id.trim();
     if (advisorKeys.has(key)) {
-      if (id !== "") advisorFate.set(id, "existing");
+      advisorFate.set(row.at.row, "existing");
       counter.add("team_page_advisors", "present");
       counter.add("team_page_advisor_versions", "present");
       continue;
@@ -560,7 +608,7 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
       continue;
     }
     places[standing] += 1;
-    if (id !== "") advisorFate.set(id, advisors.length);
+    advisorFate.set(row.at.row, advisors.length);
     advisors.push({ siteOrder: ++advisorOrder, advisor: version, photo: null });
     counter.add("team_page_advisors", "insert");
     counter.add("team_page_advisor_versions", "insert");
@@ -571,22 +619,42 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
   const photos = photoFolder === null ? null : planPhotos(photoFolder);
 
   function planPhotos(folder: PhotoFolder): PhotoCounts {
-    const c = { found: folder.files, matchedMembers: 0, matchedAdvisors: 0, surnameDiffers: 0, noIdMatch: 0, sharedId: 0, alreadyPresent: 0, notImported: 0, unfit: 0, missing: 0, toUpload: 0 };
+    const c = {
+      found: folder.files,
+      matchedMembers: 0,
+      matchedAdvisors: 0,
+      surnameDiffers: 0,
+      noIdMatch: 0,
+      noSurnameMatch: 0,
+      surnameAmbiguous: 0,
+      alreadyPresent: 0,
+      notImported: 0,
+      unfit: 0,
+      missing: 0,
+      toUpload: 0,
+    };
     const report = (kind: ConflictKind, row: number) => conflicts.push({ kind, at: photoAt({ row }) });
     const linked = new Set<string>();
-    const unmatched = { "surname-differs": "surnameDiffers", "no-id-match": "noIdMatch", "shared-id": "sharedId" } as const;
+    const unmatched = {
+      "surname-differs": "surnameDiffers",
+      "no-id-match": "noIdMatch",
+      "no-surname-match": "noSurnameMatch",
+      "surname-ambiguous": "surnameAmbiguous",
+    } as const;
+    /** The person each workbook row is, for a photo matched to an advisor's workbook row. */
+    const byRow = new Map(people.flatMap((p) => [...p.years.values(), ...(p.quitter === null ? [] : [p.quitter])].map((r) => [atKey(r.at), p] as const)));
     for (const p of folder.photos) {
-      if (p.kind !== "member" && p.kind !== "advisor") {
+      if (p.kind !== "member" && p.kind !== "advisor" && p.kind !== "workbook-advisor") {
         c[unmatched[p.kind]]++;
         report(`photo-${p.kind}`, p.row);
         continue;
       }
-      if (p.kind === "member") c.matchedMembers++;
-      else c.matchedAdvisors++;
+      if (p.kind === "advisor") c.matchedAdvisors++;
+      else c.matchedMembers++;
       // Which row it reaches, and whether this run inserts that row.
-      const person = p.kind === "member" ? byPeopleId.get(p.id) : undefined;
-      const fate = p.kind === "member" ? (person === undefined ? undefined : personFate.get(person.id)) : advisorFate.get(p.id);
-      const target = p.kind === "member" ? `m${person?.id}` : `a${p.id}`;
+      const person = p.kind === "member" ? byPeopleId.get(p.id) : p.kind === "workbook-advisor" ? byRow.get(atKey(p.at)) : undefined;
+      const fate = p.kind === "advisor" ? advisorFate.get(p.line) : person === undefined ? undefined : personFate.get(person.id);
+      const target = p.kind === "advisor" ? `a${p.line}` : `m${person?.id}`;
       if (fate === undefined || linked.has(target)) {
         c.notImported++;
         report("photo-not-imported", p.row);
@@ -603,15 +671,15 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
       }
       linked.add(target);
       c.toUpload++;
-      if (p.kind === "member") memberPhotos.set(person!.id, p.photo);
-      else advisors[fate as number] = { ...advisors[fate as number], photo: p.photo };
+      if (p.kind === "advisor") advisors[fate as number] = { ...advisors[fate as number], photo: p.photo };
+      else memberPhotos.set(person!.id, p.photo);
     }
-    for (const row of [...sources.csv.people, ...sources.csv.advisors]) {
-      if (truthy(row.value.hasPhoto) && !folder.ids.has(row.value.id.trim())) {
-        c.missing++;
-        conflicts.push({ kind: "photo-missing", at: row.at, field: "has_pp" });
-      }
-    }
+    const missing = (at: At) => {
+      c.missing++;
+      conflicts.push({ kind: "photo-missing", at, field: "has_pp" });
+    };
+    for (const row of sources.csv.people) if (truthy(row.value.hasPhoto) && !folder.ids.has(row.value.id.trim())) missing(row.at);
+    for (const row of sources.csv.advisors) if (truthy(row.value.hasPhoto) && !folder.advisorLines.has(row.at.row)) missing(row.at);
     return c;
   }
 
@@ -766,10 +834,10 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     counter.add("orders", "insert");
   }
 
-  // Closed units ---------------------------------------------------------------
+  // Created units --------------------------------------------------------------
 
-  const departments = book?.newDepartments(yearStart, yearEnd) ?? [];
-  const divisions = book?.newDivisions(yearStart, yearEnd) ?? [];
+  const departments = book?.newDepartments() ?? [];
+  const divisions = book?.newDivisions() ?? [];
   const present = book?.present() ?? { departments: 0, divisions: 0 };
   counter.add("departments", "insert", departments.length);
   counter.add("departments", "present", present.departments);
@@ -795,15 +863,11 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     multiYear: people.filter((p) => p.years.size > 1).length,
     unclearQuitters: conflicts.filter((c) => UNCLEAR_QUITTER_KINDS.includes(c.kind)).length,
     handovers,
+    quitterYears: quitterYearOf.size,
     unresolvedUnits: book === null ? null : book.unresolved.size,
     photos,
     conflicts: sortConflicts(conflicts),
   };
-}
-
-function academicYearOf(at: string): number {
-  const d = new Date(at);
-  return d.getUTCMonth() >= 9 ? d.getUTCFullYear() : d.getUTCFullYear() - 1;
 }
 
 /** Conflicts in source order: file, sheet, row. */
