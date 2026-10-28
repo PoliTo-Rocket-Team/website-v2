@@ -4,8 +4,13 @@ import type { Metadata } from "next";
 import { Avatar } from "@/components/dashboard/avatar";
 import { ClosedOpening, DashboardShell, TopBarAccount } from "@/components/dashboard/shell";
 import { SidebarPages, SidebarPlaceholder } from "@/components/dashboard/sidebar";
+import { ViewAsDialogSlot } from "@/components/dashboard/view-as-dialog";
+import { getCurrentUser } from "@/lib/current-user";
 import { openChrome, type DashboardChrome } from "@/lib/dashboard/chrome";
+import { readViewAsBanner } from "@/lib/dashboard/database-view-as-banner";
+import { readViewAsOpening } from "@/lib/dashboard/database-view-as-dialog";
 import { openDashboard } from "@/lib/dashboard/open";
+import { userCardRole } from "@/lib/dashboard/viewer";
 
 export const metadata: Metadata = {
   title: "Dashboard · PoliTo Rocket Team",
@@ -17,7 +22,8 @@ export const metadata: Metadata = {
 };
 
 // Every dashboard page sits in the shell: the viewer's sidebar, their user
-// menu and the page.
+// menu, the View as dialog for an account allowed it, the View as banner in a
+// View as session, and the page.
 // Who the viewer is comes from the dashboard data interface, read on request
 // only, so a build never reads a cookie or the database. The frame does not
 // wait for it (issue #397): it paints at once, and each part that needs the
@@ -28,6 +34,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const chrome = chromeOf();
   return (
     <DashboardShell
+      chrome={chrome}
       sidebarPages={
         <Suspense fallback={<SidebarPlaceholder />}>
           <SidebarPages chrome={chrome} userMenu="dropdown" />
@@ -39,7 +46,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </Suspense>
       }
       account={
-        <Suspense fallback={<Avatar accent />}>
+        <Suspense fallback={<Avatar person={null} accent />}>
           <TopBarAccount chrome={chrome} />
         </Suspense>
       }
@@ -50,6 +57,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       }
     >
       {children}
+      {/* The View as dialog (issue #610) opens over any page from its address; it mounts only for an account the View as gate allows. */}
+      <Suspense fallback={null}>
+        <ViewAsDialogSlot chrome={chrome} />
+      </Suspense>
     </DashboardShell>
   );
 }
@@ -58,6 +69,11 @@ async function chromeOf(): Promise<DashboardChrome> {
   const opening = await openDashboard();
   if (opening.kind !== "open") return { kind: opening.kind };
   const { data } = opening;
-  const [counts, hasShownApplications] = await Promise.all([data.navCounts(), data.hasShownApplications()]);
-  return openChrome(data.viewer, { counts, hasShownApplications });
+  const [counts, hasShownApplications, user] = await Promise.all([data.navCounts(), data.hasShownApplications(), getCurrentUser()]);
+  // The banner names the person as their user card does (`userCardRole`): on
+  // the team, their role label (`roleLabelOf`, lib/dashboard/role-label.ts),
+  // the one the View as dialog's row opens with.
+  const person = { name: data.viewer.name, role: userCardRole(data.viewer, hasShownApplications) };
+  const [viewAs, viewingAs] = await Promise.all([readViewAsOpening(user), readViewAsBanner(user, person)]);
+  return openChrome(data.viewer, { counts, hasShownApplications }, viewAs, viewingAs);
 }

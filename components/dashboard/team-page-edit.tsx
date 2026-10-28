@@ -45,6 +45,8 @@ import {
   leaderGaps,
   newDepartmentFields,
   newLeaderFields,
+  pickedHead,
+  pickedLeader,
   teamByName,
   withHeadPerson,
   withLeaderPerson,
@@ -105,14 +107,14 @@ import { TeamPersonPanel } from "./team-person-panel";
 
 // The Team page editor (boards 80 to 80h, issues #284 and #285): the real
 // Team page under the shared edit shell, with the "Visual changes only" tag
-// and Reset to team on the bar. Hovering a person on the org chart or a head
-// block outlines it with where it comes from and an Edit chip, which opens
-// its panel; the intro text with its four figures, and the group photo, which
+// and Reset to team on the bar. Each person on the org chart and each head
+// block shows at all times an outline with where it comes from and an Edit
+// chip, which opens its panel; the intro text with its four figures, and the group photo, which
 // may be uploaded (issue #510), are edited in place. The bar's arrow goes back
 // to the dashboard home (Owner decision). Board
 // 80e's add affordances sit on the page while no panel is open: a "+" at each
 // place on the arc (gone at eight leaders), "+ Add department" beside each
-// slide's heading, and "+ Add division lead" on a hovered head block, under a
+// slide's heading, and "+ Add division lead" on every head block, under a
 // note that added items show only on the Team page. The core members list and
 // "In numbers" have no affordance. The Advisors section is one block (board
 // 80c) whose "Edit advisors" opens the Advisors panel (board 80d, issue
@@ -144,13 +146,21 @@ const PLACE = "Org chart";
 /** The bar's arrow and the breadcrumb's first step. */
 const BACK = { label: "Dashboard", href: "/dashboard" } as const;
 
-/** The layer with the open panel's edit laid on: the page shows it as the editor types, and Cancel drops it. */
+/**
+ * The layer with the open panel's edit laid on: the page shows it as the
+ * editor types, and Cancel drops it. A leader or head with nobody picked
+ * adds nothing yet (issue #618).
+ */
 function previewOf(build: TeamBuild, layer: TeamPageLayer, panel: Panel | null): TeamPageLayer {
   if (panel === null) return layer;
   if (panel.kind === "person") return withSpotEdit(layer, panel.spot, editOfFields(build, panel.spot, panel.fields));
-  if (panel.kind === "leader") return layerWithLeader(build, layer, panel.id, panel.fields);
+  if (panel.kind === "leader") {
+    const picked = pickedLeader(panel.fields);
+    return picked === null ? layer : layerWithLeader(build, layer, panel.id, picked);
+  }
   if (panel.kind === "advisors") return layer;
-  return layerWithHead(build, layer, panel.at, panel.fields);
+  const picked = pickedHead(panel.fields);
+  return picked === null ? layer : layerWithHead(build, layer, panel.at, picked);
 }
 
 /** What the open panel refuses before it keeps its edit, as one message; null when nothing is refused. */
@@ -249,7 +259,7 @@ export function TeamPageEdit({
       const fields = headFieldsOf(build, layer, at);
       if (fields === null) return;
       setInPlace(null);
-      setPanel({ kind: "head", at, fields: addLead ? withNewLead(build, fields) : fields });
+      setPanel({ kind: "head", at, fields: addLead ? withNewLead(fields) : fields });
     },
     [build, layer],
   );
@@ -286,17 +296,13 @@ export function TeamPageEdit({
   );
 
   const addLeader = (gap: number) => {
-    const fields = newLeaderFields(build, layer, gap);
-    if (fields === null) return;
     setInPlace(null);
-    setPanel({ kind: "leader", id: null, fields });
+    setPanel({ kind: "leader", id: null, fields: newLeaderFields(gap) });
   };
 
   const addDepartment = () => {
-    const fields = newDepartmentFields(build);
-    if (fields === null) return;
     setInPlace(null);
-    setPanel({ kind: "head", at: null, fields });
+    setPanel({ kind: "head", at: null, fields: newDepartmentFields() });
   };
 
   const adding = panel === null && shown !== null;
@@ -331,9 +337,13 @@ export function TeamPageEdit({
         const at = carouselSpots[index];
         if (at === undefined || at === null) return node;
         return (
-          // The departments' swipe row clips what hangs below it, so a head
-          // keeps room under them for the outline's foot.
-          <EditableBlock id={at} className="mb-3 md:mb-[22px]">
+          // The departments' swipe row clips what hangs below it (issue
+          // #619), so a head keeps room under them for all of it: the
+          // outline's foot, the "+ Add division lead" pill centred on it and
+          // the pill's 4px focus ring (2px outline at 2px offset): 12px +
+          // 12px + 4px below md and 22px + 12px + 4px from md. What hangs
+          // above a head sits over its group's heading, inside the row.
+          <EditableBlock id={at} className="mb-7 md:mb-[38px]">
             {node}
             {adding && <AddLeadButton onClick={() => openHead(at, true)} />}
           </EditableBlock>
@@ -587,25 +597,35 @@ function AddedItemsNote() {
   );
 }
 
-const ADD_PILL = `inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-accent/70 bg-ground font-semibold text-accent transition-colors duration-300 ease-out hover:border-accent hover:bg-accent/10 ${CONTENT_FOCUS}`;
+const ADD_PILL = `inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-accent/70 bg-ground font-semibold text-accent transition-colors duration-300 ease-out hover:border-accent ${CONTENT_FOCUS}`;
 
 /** "+ Add department" beside a slide's heading (board 80e). */
 function AddDepartmentButton({ onClick }: { onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className={`${ADD_PILL} h-8 px-3.5 text-[13px]`}>
+    <button type="button" onClick={onClick} className={`${ADD_PILL} h-8 px-3.5 text-[13px] hover:bg-accent/10`}>
       <Plus aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
       Add department
     </button>
   );
 }
 
-/** "+ Add division lead" on a hovered head block (board 80e): it sits on the block's outline, at its foot. */
+/**
+ * "+ Add division lead" on every head block (board 80e), shown at all times on
+ * Desktop, Phone and touch (Owner decision on #498, issue #507): it sits on the
+ * block's outline, at its foot. Hover and focus only brighten it.
+ *
+ * The outline is drawn after the block's content at `z-10` (EditableBlock in
+ * edit-shell.tsx), so the pill stacks above it at `z-20` and its solid
+ * `bg-ground` hides the dashed line under the label (issue #697). For the
+ * same reason its hover tint is a layer between that fill and the label,
+ * never a see-through fill in place of it.
+ */
 function AddLeadButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`${ADD_PILL} absolute -bottom-3 left-1 z-10 h-6 translate-y-1/2 px-2.5 text-[12px] opacity-0 group-focus-within/block:opacity-100 group-hover/block:opacity-100 focus-visible:opacity-100 md:-bottom-[22px] md:left-0`}
+      className={`${ADD_PILL} absolute -bottom-3 left-1 z-20 h-6 translate-y-1/2 px-2.5 text-[12px] before:absolute before:inset-0 before:-z-10 before:rounded-full before:transition-colors before:duration-300 before:ease-out hover:before:bg-accent/10 md:-bottom-[22px] md:left-0`}
     >
       <Plus aria-hidden className="h-3 w-3" strokeWidth={2} />
       Add division lead
@@ -640,7 +660,9 @@ function HeadPanel({
   const { at, fields } = panel;
   const record = at === null ? null : headRecord(build, at);
   const roles = at !== null && !isAddedRef(at) ? at : null;
-  const edited = roles !== null && (isHeadEdited(build, layer, roles) || isHeadEdited(build, layerWithHead(build, layer, roles, fields), roles));
+  const picked = pickedHead(fields);
+  const edited =
+    roles !== null && (isHeadEdited(build, layer, roles) || (picked !== null && isHeadEdited(build, layerWithHead(build, layer, roles, picked), roles)));
   return (
     <TeamHeadPanel
       kind={at === null ? "new" : roles === null ? "added" : "roles"}
@@ -651,7 +673,7 @@ function HeadPanel({
       photoChoices={photoChoices}
       onChange={onChange}
       onPerson={(id) => onChange(withHeadPerson(build, fields, id))}
-      onAddLead={() => onChange(withNewLead(build, fields))}
+      onAddLead={() => onChange(withNewLead(fields))}
       onDone={onDone}
       onCancel={onCancel}
       onHide={at === null ? null : () => onHide(at)}

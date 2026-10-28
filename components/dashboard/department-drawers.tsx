@@ -267,7 +267,7 @@ function NewDepartment({ open, structure, onClose }: { open: boolean; structure:
                 <p className={`${LIST} px-4 py-3 text-center text-[13px] text-prt-muted`}>No head yet</p>
               ) : (
                 <div className={`${LIST} flex items-center gap-3 bg-accent/[0.05] px-3.5 py-2.5`}>
-                  <Avatar size="md" />
+                  <Avatar size="md" person={head} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[14px] text-prt-text">{head.name}</span>
                     <span className="block truncate text-[12px] text-prt-muted">{head.place === null ? "In no division yet" : `Keeps ${head.place}`}</span>
@@ -442,7 +442,7 @@ function EditDepartment({
             {newHead === null ? (
               head ? (
                 <div className={`${LIST} mt-2.5 flex items-center gap-3 px-3.5 py-3`}>
-                  <Avatar size="md" accent />
+                  <Avatar size="md" accent person={head} />
                   <span className="flex min-w-0 flex-1 items-baseline gap-2">
                     <span className="shrink-0 text-[15px] text-prt-text">{head.name}</span>
                     {head.divisions.length > 0 && <span className="truncate text-[12px] text-prt-muted">also in {head.divisions.join(", ")}</span>}
@@ -455,7 +455,7 @@ function EditDepartment({
               <ul className={`${LIST} mt-2.5 divide-y divide-hairline`}>
                 {head && (
                   <li className="flex items-center gap-3 px-3.5 py-2.5 opacity-60">
-                    <Avatar size="md" />
+                    <Avatar size="md" person={head} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[14px] text-prt-text">{head.name}</span>
                       <span className="block truncate text-[12px] text-prt-muted">Replaced by {newHead.name}</span>
@@ -463,7 +463,7 @@ function EditDepartment({
                   </li>
                 )}
                 <li className="flex items-center gap-3 bg-accent/[0.05] px-3.5 py-2.5">
-                  <Avatar size="md" />
+                  <Avatar size="md" person={newHead} />
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate text-[14px] text-prt-text">{newHead.name}</span>
@@ -585,7 +585,7 @@ function DivisionRow({ division, open, onToggle }: { division: StructureDivision
         <ul className="border-t border-hairline px-3.5 py-2">
           {people.map((p) => (
             <li key={p.id} className="flex items-center gap-3 py-1.5">
-              <Avatar size="sm" accent={p.role === "lead"} photoUrl={p.photoUrl} />
+              <Avatar size="sm" accent={p.role === "lead"} person={p} />
               <span className="truncate text-[14px] text-prt-text">{p.name}</span>
               {p.role === "lead" && <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Lead</span>}
             </li>
@@ -617,11 +617,11 @@ function holdsUnit(person: ClosingPerson, unit: Unit): boolean {
   return person.holds.some((u) => unitKey(u) === unitKey(unit));
 }
 
-/** What Close department names each person as, beside their name. */
-function standingLabel(person: ClosingPerson, department: string): string {
+/** What Close department names each person as, beside their name: the head by their stored title. */
+function standingLabel(person: ClosingPerson): string {
   switch (person.standing) {
     case "head":
-      return `Head of ${department}`;
+      return person.title;
     case "lead":
       return "Division Lead";
     case "advisor":
@@ -773,7 +773,6 @@ function CloseDepartment({
                 <PersonCard
                   key={person.id}
                   person={person}
-                  department={department.name}
                   pick={pickOf(person.id)}
                   departments={others}
                   destination={(unit) => destinationName(unit, org, department.id)}
@@ -876,14 +875,12 @@ function DestinationSelect({
  */
 function PersonCard({
   person,
-  department,
   pick,
   departments,
   destination,
   onChange,
 }: {
   person: ClosingPerson;
-  department: string;
   pick: Pick;
   departments: readonly StructureDepartment[];
   destination: (unit: Unit) => string | null;
@@ -894,9 +891,9 @@ function PersonCard({
   return (
     <li className="rounded-xl border border-hairline p-3.5">
       <div className="flex items-center gap-3">
-        <Avatar size="sm" accent={choosesRole} />
+        <Avatar size="sm" accent={choosesRole} person={person} />
         <span className="min-w-0 flex-1 truncate text-[14px] text-prt-text">{person.name}</span>
-        <span className="shrink-0 text-[13px] text-prt-muted">{standingLabel(person, department)}</span>
+        <span className="shrink-0 text-[13px] text-prt-muted">{standingLabel(person)}</span>
       </div>
       <DestinationSelect
         label={`Where ${person.name} goes`}

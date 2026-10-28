@@ -5,14 +5,9 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { eq } from "drizzle-orm";
 import { FullAccessMoves, HandOverChoice } from "@/components/dashboard/hand-over-choice";
-import { roles } from "@/db/schema";
-import { NO_EDITS } from "@/lib/dummy-data/edits";
-import { dummyHandOverPages, dummyTeamPages } from "@/lib/dummy-data/team-pages";
 import type { DashboardData } from "./data";
-import { fakeDb, keepWrites } from "./access-matrix/fake-db";
-import { accountOf, EXTRA, IDS, seedFixture } from "./access-matrix/fixture";
+import { accountOf, EXTRA, IDS, moveSeatOnto, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 import { seatOfHandedRole, type HandedRole } from "./hand-over";
 import { openDashboard } from "./open";
@@ -21,8 +16,8 @@ import { FLAG_OF_SEAT, type FlaggedSeat, type FullAccessSeat } from "./viewer";
 // Every hand-over and replacement screen for a role that carries a
 // full-access seat says, before its confirm, that full access moves (issue
 // #501; Owner decision, 2026-10-21), and a role with no seat says nothing of
-// it. Each screen reads the seat from its own data, on the database and on
-// the test developer's dummy data, and shows one shared sentence: lead
+// it. Each screen reads the seat from its own data, on the database, and
+// shows one shared sentence: lead
 // replace and Change head through `HandOverChoice`, the hand-over dialog on
 // My profile and the Team Leader box through `FullAccessMoves`, and the
 // approver's Overview row in its detail line.
@@ -36,9 +31,8 @@ const TEAM_LEADER = accountOf("team leader").userId;
 
 /** A freshly seeded database, with `rowId` flagged as `seat` when one is given, and `userId`'s dashboard on it. */
 async function dashboardOf(userId: string, flag: { readonly rowId: number; readonly seat: FlaggedSeat } | null): Promise<DashboardData> {
-  seedFixture();
-  keepWrites();
-  if (flag !== null) await fakeDb.update(roles).set({ fullAccess: FLAG_OF_SEAT[flag.seat] }).where(eq(roles.id, flag.rowId));
+  await seedFixture();
+  if (flag !== null) await moveSeatOnto(flag.rowId, FLAG_OF_SEAT[flag.seat]);
   signInAs(userId);
   const opening = await openDashboard();
   assert.equal(opening.kind, "open");
@@ -77,16 +71,16 @@ describe("Change head (Edit department)", () => {
     assert.ok(html.includes("Person DM becomes Chief Engineer and gets full access. Head Structures loses full access."));
   });
 
-  test("the head of Operations on the dummy data carries the operations lead's seat; another head carries none", async () => {
-    const structure = (await dummyTeamPages("team-leader", NO_EDITS, async () => {}).teamStructure())!;
-    const operations = structure.departments.find((d) => d.id === 6)!;
-    const seat = seatOfHandedRole(structure.seats, operations.head!.id, { kind: "head", departmentId: 6 });
+  test("a head whose role carries the operations lead's seat: the choice says it moves; a head with no seat: nothing about full access", async () => {
+    const flagged = (await (await dashboardOf(TEAM_LEADER, { rowId: HEAD_ROW, seat: "operations-lead" })).teamStructure())!;
+    const seat = seatOfHandedRole(flagged.seats, EXTRA.head, { kind: "head", departmentId: STRUCTURES });
     assert.equal(seat, "operations-lead");
-    assert.ok(choice(seat, { kind: "head", departmentId: 6 }, "Giulia Rossi", "Sara Conti").includes("Sara Conti becomes Operations lead and gets full access. Giulia Rossi loses full access."));
-    const other = structure.departments.find((d) => d.id !== 6 && d.head !== null)!;
-    const none = seatOfHandedRole(structure.seats, other.head!.id, { kind: "head", departmentId: other.id });
+    const html = choice(seat, { kind: "head", departmentId: STRUCTURES }, "Head Structures", "Person DM");
+    assert.ok(html.includes("Person DM becomes Operations lead and gets full access. Head Structures loses full access."));
+    const plain = (await (await dashboardOf(TEAM_LEADER, null)).teamStructure())!;
+    const none = seatOfHandedRole(plain.seats, EXTRA.head, { kind: "head", departmentId: STRUCTURES });
     assert.equal(none, null);
-    assert.ok(!choice(none, { kind: "head", departmentId: other.id }, other.head!.name, "Sara Conti").includes("full access"));
+    assert.ok(!choice(none, { kind: "head", departmentId: STRUCTURES }, "Head Structures", "Person DM").includes("full access"));
   });
 });
 
@@ -107,10 +101,11 @@ describe("Hand over your role (My profile)", () => {
     assert.equal(note(offer.seat, "Person DM"), "");
   });
 
-  test("on the dummy data the operations lead's offer carries the seat, a department head's none", () => {
-    const pages = (kind: "operations-lead" | "department-head") => dummyHandOverPages(kind, NO_EDITS, async () => {});
-    assert.equal(pages("operations-lead").offer()?.seat, "operations-lead");
-    assert.equal(pages("department-head").offer()?.seat, null);
+  test("a head whose role carries the operations lead's seat is offered it with the seat, and a head with no seat none", async () => {
+    const flagged = (await (await dashboardOf("head-str", { rowId: HEAD_ROW, seat: "operations-lead" })).myProfile())!.handOver!;
+    assert.equal(flagged.seat, "operations-lead");
+    const plain = (await (await dashboardOf("head-str", null)).myProfile())!.handOver!;
+    assert.equal(plain.seat, null);
   });
 });
 
@@ -125,16 +120,6 @@ describe("the approver's row on the Overview", () => {
     const overview = await (await dashboardOf("head-str", null)).overview();
     const row = overview.attention.find((a) => a.kind === "hand-over")!;
     assert.ok(!row.detail.includes("full access"), row.detail);
-  });
-
-  test("on the dummy data the team leader's row for the operations lead's hand-over says it too", async () => {
-    let edits = NO_EDITS;
-    const sent = await dummyHandOverPages("operations-lead", edits, async (next) => {
-      edits = next;
-    }).sendHandOver({ role: { kind: "head", departmentId: 6 }, to: 8, outcome: "leave" });
-    assert.ok(sent.ok);
-    const [row] = dummyHandOverPages("team-leader", edits, async () => {}).attention(new Date("2026-10-21T12:00:00Z"));
-    assert.ok(row.detail.endsWith("becomes Operations lead and gets full access. Giulia loses full access."), row.detail);
   });
 });
 

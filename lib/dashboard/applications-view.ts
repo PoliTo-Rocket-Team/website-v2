@@ -1,5 +1,6 @@
-import { inTab, tabCounts, type ApplicationStage, type ApplicationTab } from "./application-flow";
-import { departmentLabel, divisionsOf, type ApplicationsPage, type PositionRef } from "./recruitment";
+import { inTab, leadSteps, tabCounts, type ApplicationState, type ApplicationTab, type LeadStep } from "./application-flow";
+import { maySetStatus, type BuiltInStatusKey, type StatusSetterViewer } from "./application-status";
+import { departmentLabel, divisionsOf, placesPhrase, type ApplicationsPage, type PositionRef } from "./recruitment";
 
 // The Applications page as one view for every role that opens it (Owner
 // decision, 2026-10-19, issues #408 and #416): the team leader, the operations
@@ -54,7 +55,52 @@ function introOf(page: ApplicationsPage): string {
       return page.scope.division ? `Applications for ${page.scope.division} roles.` : "Applications for the positions you lead.";
     case "department":
       return `Applications for ${departmentLabel(page.scope.department.name)} roles. Pick a division to narrow the list.`;
+    case "granted":
+      // The grant's reach, named once, never the member's own division (issue #577).
+      return page.scope.reach.kind === "team"
+        ? "Applications for every role in the team."
+        : `Applications for roles in ${placesPhrase(page.scope.reach.places)}.`;
   }
+}
+
+/**
+ * The action buttons the detail panel offers on an application (issues #577
+ * and #749): the buttons ./application-flow.ts gives its status, only where
+ * the viewer may move it; where they may not, there are none. A button that
+ * sets a status only the team leader sets (`maySetStatus`, board 97e) is
+ * offered to the team leader alone. Change times sits on the interview card
+ * beside Add to calendar (58d), so `changeTimes` says whether the card
+ * offers it and the bottom bar carries the rest, the outlined buttons before
+ * the main one.
+ */
+export function panelStepsOf(
+  application: { readonly state: ApplicationState; readonly canChange: boolean },
+  viewer: StatusSetterViewer,
+): {
+  readonly bar: readonly LeadStep[];
+  readonly changeTimes: boolean;
+} {
+  if (!application.canChange) return { bar: [], changeTimes: false };
+  const steps = leadSteps(application.state.status).filter((s) => maySetStatus(s.sets, viewer));
+  const changeTimes = application.state.status === "interview" && steps.some((s) => s.move === "offer-interview");
+  const bar = changeTimes ? steps.filter((s) => s.move !== "offer-interview") : steps;
+  return { bar: [...bar.filter((s) => s.emphasis === "secondary"), ...bar.filter((s) => s.emphasis === "primary")], changeTimes };
+}
+
+/**
+ * The line under the Status picker while a hand pick is unsaved (board 97b):
+ * it names the action buttons the pick locks, the main one first, then the
+ * outlined ones, then Change times.
+ */
+export function unsavedPickHint(steps: ReturnType<typeof panelStepsOf>): string {
+  const names = [
+    ...steps.bar.filter((s) => s.emphasis === "primary").map((s) => s.label),
+    ...steps.bar.filter((s) => s.emphasis === "secondary").map((s) => s.label),
+    ...(steps.changeTimes ? ["Change times"] : []),
+  ];
+  if (names.length === 0) return "Not saved yet. Save or cancel the status.";
+  const listed = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `Not saved yet. Save or cancel the status to use ${listed}.`;
 }
 
 // Narrowing the list: the same selects, switch, search and sort for every role
@@ -85,7 +131,7 @@ export function divisionOptions(units: readonly ApplicationsUnit[], department: 
 
 /** The fields of a row the toolbar reads. */
 type Row = {
-  readonly state: { readonly stage: ApplicationStage };
+  readonly state: { readonly status: BuiltInStatusKey };
   readonly applicant: { readonly name: string; readonly email: string };
   readonly position: { readonly ref: PositionRef; readonly title: string; readonly division: string };
 };
@@ -97,7 +143,7 @@ export type ShownApplications<A extends Row> = {
   readonly positions: ApplicationsPage["positions"];
   /** The position the filter shows: one left chosen outside the selects reads as all positions. */
   readonly position: PositionRef | null;
-  /** How many rows each stage tab holds, after the selects, the position filter and the search. */
+  /** How many rows each status tab holds, after the selects, the position filter and the search. */
   readonly counts: Record<ApplicationTab, number>;
   readonly rows: readonly A[];
 };
@@ -126,9 +172,9 @@ export function shownApplications<A extends Row>(
     division,
     positions,
     position,
-    counts: tabCounts(narrowed.map((a) => a.state.stage)),
+    counts: tabCounts(narrowed.map((a) => a.state.status)),
     rows: sorted(
-      narrowed.filter((a) => inTab(a.state.stage, filter.tab)),
+      narrowed.filter((a) => inTab(a.state.status, filter.tab)),
       filter.sort,
     ),
   };

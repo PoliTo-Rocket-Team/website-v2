@@ -9,7 +9,6 @@ import {
   GRANT_AREAS,
   grantedAreasOf,
   headDivisionsOf,
-  holdsAlumniGrant,
   holdsContentGrant,
   isTeamLeader,
   ledDivisionIds,
@@ -17,7 +16,7 @@ import {
   readsArea,
   readsAreaIn,
   standingIn,
-  testDeveloperStanding,
+  plainSeatStanding,
   viewerKindOf,
   viewerStandingOf,
   viewerUnitsOf,
@@ -79,7 +78,7 @@ test("with no active role, an Alumni record entry makes an alumnus and none a no
 });
 
 test("the user card reads Alumni for an alumnus, and Applicant or Signed in for a non-member (boards 56, 50e, 50f)", () => {
-  const off = (kind: "alumni" | "non-member") => ({ ...testDeveloperStanding(kind), name: "Luca Moretti", role: "Applicant", photoUrl: null, session: "account" as const });
+  const off = (kind: "alumni" | "non-member") => ({ ...plainSeatStanding(kind), name: "Luca Moretti", role: "Applicant", photoUrl: null, hasOwnProfile: false });
   assert.equal(userCardRole(off("alumni"), false), "Alumni");
   assert.equal(userCardRole(off("non-member"), true), "Applicant");
   assert.equal(userCardRole(off("non-member"), false), "Signed in");
@@ -105,23 +104,21 @@ test("someone who leads division A and is a member of division B is a lead for A
   assert.deepEqual(ledDivisionIds(access), [1]);
 });
 
-test("a website row on content is a Content grant and any other website row an Alumni grant, two separate facts, and neither for someone who left the team (issues #234, #504)", () => {
+test("only a website row on content at Can edit is a Content grant; the old Alumni row is nothing, and neither counts for someone who left the team (issues #504, #589)", () => {
   const member = (...scopes: ScopeRef[]) => viewerStandingOf({ scopes, activeRoles: [role("core")] });
-  // The Alumni row as the Access page stores it never reads as Content.
-  assert.deepEqual(member(row("website", "all")), { kind: "member", grantedAreas: [], siteContent: false, alumniGrant: true, approveOrders: false });
-  assert.deepEqual(member(row("website", "content", "edit")), { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false });
-  assert.deepEqual(member(row("website", "all"), row("website", "content", "edit")), {
-    kind: "member",
-    grantedAreas: [],
-    siteContent: true,
-    alumniGrant: true,
-    approveOrders: false,
-  });
+  const plain = { kind: "member", grantedAreas: [], siteContent: false, approveOrders: false };
+  // The old Alumni row, at either level, and a Can view row on content are no grant.
+  assert.deepEqual(member(row("website", "all", "edit")), plain);
+  assert.deepEqual(member(row("website", "all", "view")), plain);
+  assert.deepEqual(member(row("website", "content", "view")), plain);
+  assert.deepEqual(member(row("website", "content", "edit")), { ...plain, siteContent: true });
+  assert.deepEqual(member(row("website", "all"), row("website", "content", "edit")), { ...plain, siteContent: true });
   assert.deepEqual(viewerStandingOf({ scopes: [row("division")], activeRoles: [role("lead")] }), { kind: "division-lead", siteContent: false, approveOrders: false });
   assert.deepEqual(viewerStandingOf({ scopes: [row("website", "content", "edit")], activeRoles: [role("lead")] }), { kind: "division-lead", siteContent: true, approveOrders: false });
   assert.deepEqual(viewerStandingOf({ scopes: [row("website"), row("website", "content", "edit")], activeRoles: [] }), { kind: "non-member", siteContent: false, approveOrders: false });
-  assert.equal(holdsContentGrant([row("website", "all")]), false);
-  assert.equal(holdsAlumniGrant([row("website", "content", "edit")]), false);
+  assert.equal(holdsContentGrant([row("website", "all", "edit")]), false);
+  assert.equal(holdsContentGrant([row("website", "content", "view")]), false);
+  assert.equal(holdsContentGrant([row("website", "content", "edit")]), true);
 });
 
 test("a head role is a department head, unless org or admin access makes them the operations lead (issue #230)", () => {
@@ -270,7 +267,7 @@ test("by default only the team leader decides orders; the operations lead and th
   assert.equal(decides(chiefEngineer, false), null);
   // Full access from a scope row alone is not the team leader either.
   assert.equal(isTeamLeader(viewerStandingOf({ scopes: [row("admin")], activeRoles: [role("core", 3)] })), false);
-  assert.equal(isTeamLeader(testDeveloperStanding("operations-lead")), false);
+  assert.equal(isTeamLeader(plainSeatStanding("operations-lead")), false);
 });
 
 // Issue #160: an area grant, at any area and level, makes nobody a division
@@ -369,14 +366,14 @@ test("a member's standing carries the areas their division and department rows g
     standing(row("department", "orders", "edit"), row("division", "applications", "view"), row("division", "orders", "view")),
     { kind: "member", grantedAreas: ["applications", "orders"], siteContent: false, approveOrders: false },
   );
-  // Content, Alumni and "Approve orders" are no grant area.
+  // Content and "Approve orders" are no grant area, and the old Alumni row is nothing.
   assert.deepEqual(standing(row("website", "content", "edit"), row("team", "approve_orders", "edit")), {
     kind: "member",
     grantedAreas: [],
     siteContent: true,
     approveOrders: true,
   });
-  assert.deepEqual(standing(row("website")), { kind: "member", grantedAreas: [], siteContent: false, alumniGrant: true, approveOrders: false });
+  assert.deepEqual(standing(row("website")), { kind: "member", grantedAreas: [], siteContent: false, approveOrders: false });
   assert.deepEqual(grantedAreasOf([row("division", "all", "edit")]), GRANT_AREAS);
 });
 

@@ -3,13 +3,13 @@
 import { useId, useState } from "react";
 import { EyeOff, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Avatar } from "@/components/about/person";
-import type { HeadFieldErrors, HeadFields, LeadRow } from "@/lib/about/team-page-add";
+import type { HeadFieldErrors, HeadFields, LeadRow, LeadRowErrors } from "@/lib/about/team-page-add";
 import type { PhotoChoice } from "@/lib/about/team-page-edit";
 import { personOf, type TeamPerson } from "@/lib/about/team-person";
 import { CONTENT_FOCUS, useDragOrder, type DragRow } from "./content-parts";
 import { PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON } from "./drawer";
 import { Field, GroupLabel, inputClass } from "./field";
-import { ContactFields, PANEL_HINT, PersonSelect, PhotoField, TeamPanel, VisualOnlyNote } from "./team-panel-parts";
+import { ContactFields, PANEL_FOOT_DANGER_LINK, PANEL_HINT, PersonSelect, PhotoField, TeamPanel, VisualOnlyNote } from "./team-panel-parts";
 
 // The Edit a head block panel (board 80g, issue #285), opened from a head
 // block's Edit chip, its "+ Add division lead", or "+ Add department": the
@@ -84,34 +84,28 @@ export function TeamHeadPanel({
       eyebrow="Departments"
       title={kind === "new" ? "Add department" : (head?.name ?? "Head")}
       onClose={onCancel}
-      footer={
+      footStart={
+        onHide !== null && (
+          <button type="button" onClick={onHide} className={PANEL_FOOT_DANGER_LINK}>
+            {added ? <Trash2 aria-hidden className="h-4 w-4" strokeWidth={1.75} /> : <EyeOff aria-hidden className="h-4 w-4" strokeWidth={1.75} />}
+            {added ? "Remove from page" : "Hide from page"}
+          </button>
+        )
+      }
+      footEnd={
         <>
-          {onHide === null ? (
-            <span />
+          {kind === "roles" ? (
+            <button type="button" disabled={onBack === null} onClick={() => onBack?.()} className={`${PANEL_GHOST_BUTTON} disabled:cursor-default disabled:text-dim`}>
+              Back to the team record
+            </button>
           ) : (
-            <button
-              type="button"
-              onClick={onHide}
-              className={`inline-flex items-center gap-2 rounded-md text-[14px] font-semibold text-danger transition-opacity duration-300 ease-out hover:opacity-80 ${CONTENT_FOCUS}`}
-            >
-              {added ? <Trash2 aria-hidden className="h-4 w-4" strokeWidth={1.75} /> : <EyeOff aria-hidden className="h-4 w-4" strokeWidth={1.75} />}
-              {added ? "Remove from page" : "Hide from page"}
+            <button type="button" onClick={onCancel} className={PANEL_GHOST_BUTTON}>
+              Cancel
             </button>
           )}
-          <span className="flex gap-3">
-            {kind === "roles" ? (
-              <button type="button" disabled={onBack === null} onClick={() => onBack?.()} className={`${PANEL_GHOST_BUTTON} disabled:cursor-default disabled:text-dim`}>
-                Back to the team record
-              </button>
-            ) : (
-              <button type="button" onClick={onCancel} className={PANEL_GHOST_BUTTON}>
-                Cancel
-              </button>
-            )}
-            <button type="button" onClick={onDone} className={PANEL_PRIMARY_BUTTON}>
-              {kind === "new" ? "Add to page" : "Done"}
-            </button>
-          </span>
+          <button type="button" onClick={onDone} className={PANEL_PRIMARY_BUTTON}>
+            {kind === "new" ? "Add to page" : "Done"}
+          </button>
         </>
       }
     >
@@ -121,10 +115,10 @@ export function TeamHeadPanel({
           : "Visual only. Changes here change the Team page, not the team. Real heads, leads and divisions are set in Team tree."}
       </VisualOnlyNote>
 
-      <Field label="Person in this spot" hint={department === "" ? "Head" : `Head, ${department}`}>
-        {(id) => (
+      <Field label="Person in this spot" hint={department === "" ? "Head" : `Head, ${department}`} error={errors.person}>
+        {(id, describedBy) => (
           <>
-            <PersonSelect id={id} people={people} value={fields.person} onChange={onPerson} />
+            <PersonSelect id={id} people={people} value={fields.person} onChange={onPerson} describedBy={describedBy} invalid={errors.person !== undefined} />
             <p className={PANEL_HINT}>
               {record === null ? "Their photo, LinkedIn and email come from their profile." : `Team record: ${record.name}.`}
             </p>
@@ -132,7 +126,7 @@ export function TeamHeadPanel({
         )}
       </Field>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2.5">
         <Field label="Role on the page" error={errors.role}>
           {(id, describedBy) => (
             <input
@@ -214,15 +208,19 @@ function LeadRowItem({
   row: LeadRow;
   people: readonly TeamPerson[];
   open: boolean;
-  error: string | undefined;
+  error: LeadRowErrors | undefined;
   drag: DragRow | null;
   onToggle: () => void;
   onChange: (change: Partial<LeadRow>) => void;
   onRemove: () => void;
 }) {
-  const member = people.find((p) => p.id === row.person);
-  const person = member === undefined ? { name: "" } : personOf(member);
+  const member = row.person === null ? undefined : people.find((p) => p.id === row.person);
+  const person = member === undefined ? null : personOf(member);
+  // A row added in the panel names nobody until the editor picks a lead (issue #618).
+  const name = person?.name ?? "Lead";
   const division = row.division.trim();
+  const errorId = useId();
+  const messages = [error?.person, error?.division].filter((m) => m !== undefined);
   return (
     <li
       draggable={drag !== null}
@@ -233,33 +231,51 @@ function LeadRowItem({
     >
       <div className="flex items-center gap-3 px-3 py-2.5">
         <GripVertical aria-hidden className={`h-4 w-4 shrink-0 ${drag === null ? "text-white-10" : "cursor-grab text-dim"}`} strokeWidth={1.75} />
-        <Avatar photo={person.photo} sizeClass="h-7 w-7" sizes="28px" />
+        {person === null ? (
+          <span aria-hidden className="h-7 w-7 shrink-0 rounded-full border border-dashed border-white-10" />
+        ) : (
+          <Avatar photo={person.photo} sizeClass="h-7 w-7" sizes="28px" />
+        )}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold leading-tight text-prt-text">{person.name}</p>
+          <p className={`truncate text-[13px] font-semibold leading-tight ${person === null ? "text-dim" : "text-prt-text"}`}>
+            {person === null ? "No one picked yet" : person.name}
+          </p>
           <p className={`mt-0.5 truncate text-[12px] leading-tight ${division === "" ? "text-dim" : "text-prt-muted"}`}>
             {division === "" ? "No division yet" : division}
           </p>
         </div>
-        <button type="button" onClick={onToggle} aria-expanded={open} aria-label={`Edit ${person.name}`} className={ICON_BUTTON}>
+        <button type="button" onClick={onToggle} aria-expanded={open} aria-label={`Edit ${name}`} className={ICON_BUTTON}>
           <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
         </button>
-        <button type="button" onClick={onRemove} aria-label={`Remove ${person.name}`} className={ICON_BUTTON}>
+        <button type="button" onClick={onRemove} aria-label={`Remove ${name}`} className={ICON_BUTTON}>
           <X aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
         </button>
       </div>
       {open && (
-        <div className="grid grid-cols-2 gap-3 border-t border-white-10 px-3 py-3">
-          <PersonSelect label="Division lead" people={people} value={row.person} onChange={(id) => onChange({ person: id })} />
+        <div className="grid grid-cols-2 gap-2.5 border-t border-white-10 px-3 py-3">
+          <PersonSelect
+            label="Division lead"
+            people={people}
+            value={row.person}
+            onChange={(id) => onChange({ person: id })}
+            autoFocus={row.at === null}
+            describedBy={error?.person === undefined ? undefined : errorId}
+            invalid={error?.person !== undefined}
+          />
           <input
             aria-label="Division"
             value={row.division}
             placeholder="Division"
-            autoFocus={row.at === null}
-            aria-invalid={error !== undefined}
+            aria-describedby={error?.division === undefined ? undefined : errorId}
+            aria-invalid={error?.division !== undefined}
             onChange={(e) => onChange({ division: e.target.value })}
-            className={inputClass(error)}
+            className={inputClass(error?.division)}
           />
-          {error !== undefined && <p className="col-span-2 text-[12px] text-danger">{error}</p>}
+          {messages.length > 0 && (
+            <p id={errorId} className="col-span-2 text-[12px] text-danger">
+              {messages.join(" ")}
+            </p>
+          )}
         </div>
       )}
     </li>

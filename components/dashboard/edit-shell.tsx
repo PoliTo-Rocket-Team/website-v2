@@ -17,9 +17,22 @@ import {
   type PublishCheck,
   type ScaledFrame,
 } from "@/lib/content/edit-shell";
+import {
+  checksAfterEdit,
+  confirmPage,
+  holdsPublish,
+  markedTargets,
+  pageToCheck,
+  publishHoldOf,
+  uncheckedFor,
+  type CardLook,
+  type PageChecks,
+  type PublishHold,
+} from "@/lib/content/publish-hold";
 import { CONTENT_STATUS_LABELS, type ContentStatus } from "@/lib/content/versioned";
 import { CONTENT_FOCUS } from "./content-parts";
 import { EditFrame } from "./edit-frame";
+import { ViewAsBanner } from "./view-as-banner";
 
 // The edit shell (boards 74b, 74e, 75b and 75d, issue #288): a content type's
 // real page under an edit bar, on top of the dashboard. Any content type
@@ -54,11 +67,13 @@ import { EditFrame } from "./edit-frame";
 // instead of reflowing the page to that narrower width. Below md the panel
 // covers the page, so there it changes nothing.
 //
-// A content type may hold Publish behind a check of other pages (board 93e,
-// issue #530): a warning strip under the bar, a cross or a tick after each
-// page of the switch the editor has to check, and, on a page still to check,
-// a bar over the page's foot asking whether it looks right. A shell given
-// none of these draws as before.
+// A content type with a page switch holds Publish behind a check of the other
+// pages its card shows on (board 93e, issues #530 and #581). It names those
+// pages and its card's look, in the editor and on the site; the shell keeps
+// the ticks (lib/content/publish-hold.ts holds the rule) and, while the hold
+// is on, draws a warning strip under the bar, a cross or a tick after each
+// page to check, and, on a page still to check, a bar over the page's foot
+// asking whether it looks right. Publish stays off until every page is ticked.
 //
 // Below md the bar keeps its one 60px row, and the page switch, marks and
 // all, moves to a row of its own under it, so a phone reaches every page and
@@ -135,7 +150,41 @@ function useScaledFrame(room: RefObject<HTMLDivElement | null>, on: boolean): Sc
 }
 
 /** The question a page still to check asks, and what confirming it does. */
-export type PageCheckPrompt = { readonly question: string; readonly onConfirm: () => void };
+type PageCheckPrompt = { readonly question: string; readonly onConfirm: () => void };
+
+/**
+ * The pages of the switch a content type's card shows on, checked before
+ * Publish while the card's look in the editor is not the one the site shows
+ * (board 93e): that look, the live one (null for an item with no live
+ * version, never saved or never published, which is always held), the
+ * warning strip's words and the question each page's "Looks right" bar asks.
+ */
+export type PagesToCheck<Page extends string> = {
+  readonly pages: readonly Page[];
+  readonly look: CardLook;
+  readonly live: CardLook | null;
+  readonly notice: string;
+  readonly question: (page: Page) => string;
+};
+
+/**
+ * The hold over the pages to check, the ticks kept as the editor confirms
+ * each page and cleared when the look changes. The ticks follow the look
+ * while drawing, as React adjusts state that follows another value, so a look
+ * changed and changed back is cleared too.
+ */
+function usePublishHold<Page extends string>(
+  check: PagesToCheck<Page> | undefined,
+): { readonly hold: PublishHold<Page>; readonly confirm: (page: Page) => void } {
+  const look = check?.look ?? null;
+  const [checks, setChecks] = useState<PageChecks<Page> | null>(() => (look === null ? null : uncheckedFor(look)));
+  const current = look === null ? null : checks === null ? uncheckedFor<Page>(look) : checksAfterEdit(checks, look);
+  if (current !== checks) setChecks(current);
+  return {
+    hold: check === undefined || current === null ? { kind: "free" } : publishHoldOf(current, check.live, check.pages),
+    confirm: (page) => setChecks((c) => (c === null ? c : confirmPage(c, page))),
+  };
+}
 
 /** The page switch: the pages this item shows on, and the one in view. */
 export type PageSwitch<Page extends string> = {
@@ -144,7 +193,7 @@ export type PageSwitch<Page extends string> = {
   readonly onSelect: (page: Page) => void;
 };
 
-export function EditShell<Id extends string, Section extends string, Page extends string = never>({
+export function EditShell<Id extends string, Section extends string, Page extends string = never, Checked extends Page = Page>({
   section,
   heading,
   status,
@@ -163,8 +212,7 @@ export function EditShell<Id extends string, Section extends string, Page extend
   children,
   panel,
   scalesDesktop = false,
-  notice,
-  pageCheck,
+  check,
 }: {
   /** The dashboard page this item belongs to, as the breadcrumb's first step and where the arrow goes back to. */
   section: { readonly label: string; readonly href: string };
@@ -207,15 +255,19 @@ export function EditShell<Id extends string, Section extends string, Page extend
   panel?: ReactNode;
   /** While the panel is open, Desktop keeps the desktop layout scaled to fit beside it (board 93) rather than reflowing. */
   scalesDesktop?: boolean;
-  /** A warning strip under the bar, as while Publish waits on a check of other pages (board 93e). */
-  notice?: string;
-  /** On a page still to check, the bar over the page's foot: the question and its "Looks right" (board 93e). */
-  pageCheck?: PageCheckPrompt;
+  /** The pages of the switch the card shows on, checked before Publish (board 93e); every editor with a page switch names them. */
+  check?: PagesToCheck<Checked>;
 }) {
   const [device, setDevice] = useState<EditDevice>("desktop");
   const roomRef = useRef<HTMLDivElement>(null);
   const scaled = useScaledFrame(roomRef, scalesDesktop && device === "desktop" && Boolean(panel));
-  const switcher = pages !== undefined && showsPageSwitch(pages.targets) ? pages : null;
+  const { hold, confirm } = usePublishHold(check);
+  const switcher = pages !== undefined && showsPageSwitch(pages.targets) ? { ...pages, targets: markedTargets(pages.targets, hold) } : null;
+  const toCheck = switcher === null ? null : pageToCheck(hold, switcher.current);
+  const notice = check !== undefined && hold.kind === "checking" ? check.notice : undefined;
+  const pageCheck: PageCheckPrompt | undefined =
+    check === undefined || toCheck === null ? undefined : { question: check.question(toCheck), onConfirm: () => confirm(toCheck) };
+  const publish = holdsPublish(hold) ? null : onPublish;
   const changeDevice = (next: EditDevice) => {
     setDevice(next);
     onDeviceChange?.(next);
@@ -227,80 +279,91 @@ export function EditShell<Id extends string, Section extends string, Page extend
   const checklistPinned = !ready && !panel;
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-ground text-prt-text">
-      {/* Three columns: the middle one is centred while the right group fits
-          its half, and moves left when that group grows (Desktop | Phone and
-          "Changes show on the page as you type" beside the page switch), so
-          the controls never overlap. */}
-      <header className="relative grid h-[60px] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-hairline bg-panel px-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(max-content,1fr)] md:px-6">
-        <div className="flex min-w-0 items-center gap-2.5 text-[13px]">
-          {/* One step back, to the dashboard page that lists the item (Owner
-              decision, 2026-10-21): "← Outreach / Editing …". */}
-          <Link
-            href={section.href}
-            aria-label={`Back to ${section.label}`}
-            className={`group inline-flex shrink-0 items-center gap-2.5 rounded-md text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text ${CONTENT_FOCUS}`}
-          >
-            <ArrowLeft aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-            <span className="hidden sm:inline">{section.label}</span>
-          </Link>
-          <span aria-hidden className="hidden text-dim sm:inline">
-            /
-          </span>
-          <h1 className="min-w-0 truncate font-semibold">{heading}</h1>
-          <StatePill status={status} folds={actions !== undefined} />
-          {tag !== undefined && <span className="hidden shrink-0 sm:contents">{tag}</span>}
-        </div>
-
-        <div className="hidden md:block">
-          {switcher === null ? devices : <PageSwitcher {...switcher} />}
-        </div>
-
-        <div className="flex items-center justify-end gap-2.5">
-          {switcher !== null && <div className="mr-0.5 hidden md:block">{devices}</div>}
-          {saved !== undefined && <p className="hidden whitespace-nowrap text-[12px] text-prt-muted lg:block">{saved}</p>}
-          {actions}
-          <BarButton onClick={onSaveDraft}>Save draft</BarButton>
-          {/* Publish stays focusable while the checklist is not done, so a
-              keyboard reaches it and hears what is missing. */}
-          <div className="group/publish">
-            <button
-              type="button"
-              disabled={onPublish === null}
-              aria-disabled={ready ? undefined : true}
-              aria-describedby={ready ? undefined : checklistId}
-              onClick={() => {
-                if (ready) onPublish?.();
-              }}
-              className={`${BAR_BUTTON} bg-prt-text text-ground transition-opacity duration-300 ease-out ${ready ? "hover:opacity-90" : "cursor-not-allowed opacity-50"}`}
+      {/* The bar and every strip under it: the phone page switch, the View as
+          banner and the notice. The publish checklist hangs from this stack's
+          foot, and the room and panel below are clipped to their own row, so
+          no overlay of the shell ever covers a strip, "Stop viewing" included
+          (issue #650). */}
+      <div className="relative shrink-0">
+        {/* Three columns: the middle one is centred while the right group fits
+            its half, and moves left when that group grows (Desktop | Phone and
+            "Changes show on the page as you type" beside the page switch), so
+            the controls never overlap. */}
+        <header className="grid h-[60px] grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-hairline bg-panel px-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(max-content,1fr)] md:px-6">
+          <div className="flex min-w-0 items-center gap-2.5 text-[13px]">
+            {/* One step back, to the dashboard page that lists the item (Owner
+                decision, 2026-10-21): "← Outreach / Editing …". */}
+            <Link
+              href={section.href}
+              aria-label={`Back to ${section.label}`}
+              className={`group inline-flex shrink-0 items-center gap-2.5 rounded-md text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text ${CONTENT_FOCUS}`}
             >
-              Publish
-            </button>
-            {!ready && <PublishChecklist id={checklistId} checks={publishChecklist} pinned={checklistPinned} />}
+              <ArrowLeft aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+              <span className="hidden sm:inline">{section.label}</span>
+            </Link>
+            <span aria-hidden className="hidden text-dim sm:inline">
+              /
+            </span>
+            <h1 className="min-w-0 truncate font-semibold">{heading}</h1>
+            <StatePill status={status} folds={actions !== undefined} />
+            {tag !== undefined && <span className="hidden shrink-0 sm:contents">{tag}</span>}
           </div>
-        </div>
-      </header>
 
-      {/* Below md the bar has no room for the page switch, so it takes a row
-          of its own under the bar: the only way to the other pages, and on a
-          held Publish to their checks (Owner decision, 2026-10-22). Desktop |
-          Phone stays off there: the window is a phone already. */}
-      {switcher !== null && (
-        <div className="flex shrink-0 overflow-x-auto border-b border-hairline bg-panel px-4 py-2 md:hidden">
-          <PageSwitcher {...switcher} />
-        </div>
-      )}
+          <div className="hidden md:block">
+            {switcher === null ? devices : <PageSwitcher {...switcher} />}
+          </div>
 
-      {notice !== undefined && (
-        <p role="status" className="flex shrink-0 items-center gap-2.5 border-b border-warning/20 bg-warning-soft px-4 py-3 text-[13px] text-warning md:px-6">
-          <TriangleAlert aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
-          {notice}
-        </p>
-      )}
+          <div className="flex items-center justify-end gap-2.5">
+            {switcher !== null && <div className="mr-0.5 hidden md:block">{devices}</div>}
+            {saved !== undefined && <p className="hidden whitespace-nowrap text-[12px] text-prt-muted lg:block">{saved}</p>}
+            {actions}
+            <BarButton onClick={onSaveDraft}>Save draft</BarButton>
+            {/* Publish stays focusable while the checklist is not done, so a
+                keyboard reaches it and hears what is missing. */}
+            <div className="group/publish">
+              <button
+                type="button"
+                disabled={ready && publish === null}
+                aria-disabled={ready ? undefined : true}
+                aria-describedby={ready ? undefined : checklistId}
+                onClick={() => {
+                  if (ready) publish?.();
+                }}
+                className={`${BAR_BUTTON} bg-prt-text text-ground transition-opacity duration-300 ease-out ${ready ? "hover:opacity-90" : "cursor-not-allowed opacity-50"}`}
+              >
+                Publish
+              </button>
+              {!ready && <PublishChecklist id={checklistId} checks={publishChecklist} pinned={checklistPinned} />}
+            </div>
+          </div>
+        </header>
+
+        {/* Below md the bar has no room for the page switch, so it takes a row
+            of its own under the bar: the only way to the other pages, and on a
+            held Publish to their checks (Owner decision, 2026-10-22). Desktop |
+            Phone stays off there: the window is a phone already. */}
+        {switcher !== null && (
+          <div className="flex overflow-x-auto border-b border-hairline bg-panel px-4 py-2 md:hidden">
+            <PageSwitcher {...switcher} />
+          </div>
+        )}
+
+        {/* The editor lies over the page's View as banner, so it draws its own (issue #611). */}
+        <ViewAsBanner placement="editor" />
+
+        {notice !== undefined && (
+          <p role="status" className="flex items-center gap-2.5 border-b border-warning/20 bg-warning-soft px-4 py-3 text-[13px] text-warning md:px-6">
+            <TriangleAlert aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+            {notice}
+          </p>
+        )}
+      </div>
 
       {/* One frame for both devices: switching only resizes it, so the page
           keeps its state and scroll. Below md there is no Phone mode: the
-          window is a phone already. */}
-      <div className="flex min-h-0 flex-1">
+          window is a phone already. The row clips what floats in it, so the
+          page check bar and the phone panel stay below the strips above. */}
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {/* The room and what floats over its foot, which stays put while the page scrolls. */}
         <div className="relative flex min-h-0 min-w-0 flex-1">
           <div
@@ -326,7 +389,9 @@ export function EditShell<Id extends string, Section extends string, Page extend
           </div>
           {pageCheck !== undefined && <PageCheckBar {...pageCheck} />}
         </div>
-        {panel}
+        {/* The panel's slot: beside the page from md; below md it covers this
+            row alone, so the bar and the strips under it stay in view. */}
+        {panel ? <div className="max-md:absolute max-md:inset-0 max-md:z-50 md:flex md:shrink-0">{panel}</div> : null}
       </div>
     </div>
   );
@@ -536,14 +601,14 @@ const BLOCK_OUTLINE = {
  *   is drawn, on the arc or in the grid below xl. The outline's foot stands
  *   further out than its other sides, so the chip on it stays clear of the
  *   person's contact icons.
- * - `bleed`: a block that fills the page's width, as a project's hero and
- *   numbered sections do. Outside it, the outline's sides would fall past the
- *   frame's edges, and the hero's chip row past its top, so both sit inside
- *   it, the row just under the outline's top. A page whose first line sits
- *   closer to the block's top than that row gives the block room there
- *   through `className`.
+ * - `column`: a block whose content runs past the page's column to the
+ *   frame's edges, as a project's gallery carousel does. The outline and its
+ *   chip row sit on the page's column as an `around` block's do (20px sides
+ *   on phones, 64px from md, the 1312px column centred), and the content
+ *   passes under the outline's sides, so no outline spans the frame and no
+ *   chip falls outside it.
  */
-export type BlockShape = "around" | "narrow" | "bleed";
+export type BlockShape = "around" | "narrow" | "column";
 
 const AROUND_OUTLINE = "-inset-3 md:-inset-[22px]";
 const ON_TOP_EDGE = "-top-3 -translate-y-1/2 md:-top-[22px]";
@@ -554,8 +619,8 @@ const ON_TOP_EDGE = "-top-3 -translate-y-1/2 md:-top-[22px]";
  * (board 74f): 244px wide, 16px in from the window's right edge, so the row
  * moves in from the block's right edge far enough to clear it. An `around`
  * block sits in the page's column, 64px in from md; from 1440px the column
- * is centred and leaves room for the board's own spot. A `bleed` block's
- * edge is the frame's.
+ * is centred and leaves room for the board's own spot. A `column` block's
+ * edge is the frame's, so its places count in from the frame to the column.
  */
 const BLOCK_SHAPE: Readonly<
   Record<
@@ -581,14 +646,14 @@ const BLOCK_SHAPE: Readonly<
     editAtFoot: true,
     room: "mb-10",
   },
-  bleed: {
-    outline: "inset-1.5 md:inset-2",
-    row: "top-3 md:top-4",
-    rowStart: "left-3 md:left-4",
-    rowEnd: "right-6 md:right-[33px]",
-    clearEnd: "right-6 md:right-[284px]",
+  column: {
+    outline: "-inset-y-3 inset-x-2 md:-inset-y-[22px] md:inset-x-[max(42px,calc((100%_-_1312px)/2_-_22px))]",
+    row: "top-0 md:-top-[22px] md:-translate-y-1/2",
+    rowStart: "left-6 md:left-[max(64px,calc((100%_-_1312px)/2))]",
+    rowEnd: "right-11 md:right-[max(97px,calc((100%_-_1312px)/2_+_33px))]",
+    clearEnd: "right-11 md:right-[284px]",
     editAtFoot: false,
-    room: "",
+    room: "max-md:pt-8",
   },
 };
 

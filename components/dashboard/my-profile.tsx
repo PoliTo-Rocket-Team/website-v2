@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { AtSign, Info, Linkedin, Lock, LogOut, Mail, Upload } from "lucide-react";
+import { Info, Linkedin, Lock, LogOut, Mail, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { DashboardLanding } from "@/lib/dashboard/access";
@@ -16,7 +16,6 @@ import {
   type MyProfile,
 } from "@/lib/dashboard/self";
 import type { HandOverOffer, HandOverSend } from "@/lib/dashboard/hand-over-request";
-import type { ViewerSession } from "@/lib/dashboard/viewer";
 import type { OwnAlias } from "@/lib/dashboard/alias-setup";
 import { AliasSetupLink } from "./alias-setup";
 import { MarkFallback } from "@/components/mark-fallback";
@@ -47,9 +46,9 @@ type Actions = {
 export function MyProfileView({
   profile,
   alias = null,
-  session,
   ...actions
-}: { profile: MyProfile; alias?: OwnAlias | null; session: ViewerSession } & Actions) {
+}: { profile: MyProfile; alias?: OwnAlias | null } & Actions) {
+  const router = useRouter();
   return (
     <>
       <PageHeader title="My profile" intro="How you appear on the site and to the team." />
@@ -62,12 +61,19 @@ export function MyProfileView({
           previews={PROFILE_PREVIEWS}
         />
         <DetailsCard profile={profile} alias={alias} saveLinkedin={actions.saveLinkedin} />
-        <YourDetailsCard details={profile.details} editor="member" saveDetails={actions.saveDetails} />
+        <YourDetailsCard
+          details={profile.details}
+          editor={profile.detailsEditor}
+          saveDetails={actions.saveDetails}
+          // A lead's new name shows in the Details card and the sidebar once the page reads again.
+          onSaved={(saved) => {
+            if (saved.firstName !== profile.details.firstName || saved.lastName !== profile.details.lastName) router.refresh();
+          }}
+        />
         <AccountCard signIn={profile.signIn} />
         <LeaveOrDelete
           leave={profile.leave}
           handOver={profile.handOver}
-          session={session}
           leaveTeam={actions.leaveTeam}
           sendHandOver={actions.sendHandOver}
           deleteAccount={actions.deleteAccount}
@@ -229,11 +235,25 @@ function PhotoPreview({ url, size, caption }: { url: string | null; size: string
   );
 }
 
+/** Where the Details card's name is set: by the member's lead, or by a lead themselves in "Your details" (issue #668). */
+const NAME_HINT: Readonly<Record<MyProfile["detailsEditor"], string>> = {
+  member: "set by your lead",
+  lead: "edit it in Your details",
+};
+
+/** The Details panel's line on phones: what this card does not change. */
+const DETAILS_PANEL_LINE: Readonly<Record<MyProfile["detailsEditor"], string>> = {
+  member: "Your lead sets your name, role and team email.",
+  lead: "You edit your name in Your details. Your role and team email are set for you.",
+};
+
 /**
- * Name, role and team email are set by the lead; LinkedIn is the person's.
+ * Name, role and team email are set by the lead, the name by a lead
+ * themselves in "Your details" (issue #668); LinkedIn is the person's.
  * From md it is board 55's form; on phones board 55m's list, whose Edit opens
- * LinkedIn on a full page. Once their email alias is marked created, it shows
- * beside the team email with a link to its setup steps (issue #542).
+ * LinkedIn on a full page. Their email alias is their team email (issue
+ * #563): once it is set, the team email carries a link to the alias setup
+ * steps (issue #542).
  */
 function DetailsCard({ profile, alias, saveLinkedin }: { profile: MyProfile; alias: OwnAlias | null; saveLinkedin: Actions["saveLinkedin"] }) {
   const [saved, setSaved] = useState(profile.linkedin ?? "");
@@ -247,21 +267,20 @@ function DetailsCard({ profile, alias, saveLinkedin }: { profile: MyProfile; ali
           label={profile.roles.length === 1 ? "Role" : "Roles"}
           value={profile.roles.length === 1 ? profile.roles[0].title : profile.roles.map(profileRoleLine).join(", ")}
         />
-        <DetailValue label="Team email" value={profile.teamEmail} />
-        <DetailValue label="LinkedIn" value={saved || null} />
-        {alias && (
-          <div className="col-span-2 min-w-0">
-            <DetailValue label="Email alias" value={alias.address} />
+        <div className="min-w-0">
+          <DetailValue label="Team email" value={profile.teamEmail} />
+          {alias && (
             <div className="mt-1.5">
               <AliasSetupLink alias={alias} />
             </div>
-          </div>
-        )}
+          )}
+        </div>
+        <DetailValue label="LinkedIn" value={saved || null} />
       </dl>
       <div className="hidden md:block">
         <LinkedinForm profile={profile} alias={alias} saved={saved} onSaved={setSaved} saveLinkedin={saveLinkedin} />
       </div>
-      <LinkedinDrawer open={editing} onOpenChange={setEditing} saved={saved} onSaved={setSaved} saveLinkedin={saveLinkedin} />
+      <LinkedinDrawer open={editing} onOpenChange={setEditing} editor={profile.detailsEditor} saved={saved} onSaved={setSaved} saveLinkedin={saveLinkedin} />
     </Card>
   );
 }
@@ -334,9 +353,24 @@ function LinkedinForm({
   return (
     <form noValidate onSubmit={submit} className="px-6 py-5">
       <div className="grid grid-cols-2 gap-x-4 gap-y-5">
-        <Locked label="Name" hint="set by your lead" value={profile.name} />
+        <Locked label="Name" hint={NAME_HINT[profile.detailsEditor]} value={profile.name} />
         <Locked label={profile.roles.length === 1 ? "Role" : "Roles"} hint="set by your lead" value={profile.roles.map(profileRoleLine)} />
-        {profile.teamEmail && <Locked label="Team email" hint="shown on the site" value={profile.teamEmail} icon={<Mail aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />} />}
+        {profile.teamEmail && (
+          <Locked
+            label="Team email"
+            hint={
+              alias ? (
+                <>
+                  shown on the site · <AliasSetupLink alias={alias} />
+                </>
+              ) : (
+                "shown on the site"
+              )
+            }
+            value={profile.teamEmail}
+            icon={<Mail aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />}
+          />
+        )}
         <Field label="LinkedIn" hint="optional" error={error} className={profile.teamEmail ? "" : "col-start-2"}>
           {(id, describedBy) => (
             <LinkedinInput
@@ -351,14 +385,6 @@ function LinkedinForm({
             />
           )}
         </Field>
-        {alias && (
-          <Locked
-            label="Email alias"
-            hint={<AliasSetupLink alias={alias} />}
-            value={alias.address}
-            icon={<AtSign aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />}
-          />
-        )}
       </div>
       <div className="mt-5 flex justify-end">
         <button type="submit" disabled={pending || linkedin.trim() === saved} className={`${GHOST_PILL} h-10 px-4 text-[14px] font-semibold`}>
@@ -372,11 +398,13 @@ function LinkedinForm({
 function LinkedinDrawer({
   open,
   onOpenChange,
+  editor,
   saved,
   onSaved,
   saveLinkedin,
 }: {
   open: boolean;
+  editor: MyProfile["detailsEditor"];
   onOpenChange: (open: boolean) => void;
   saved: string;
   onSaved: (value: string) => void;
@@ -399,7 +427,7 @@ function LinkedinDrawer({
         onOpenChange(next);
       }}
       title="Details"
-      detail="Your lead sets your name, role and team email."
+      detail={DETAILS_PANEL_LINE[editor]}
       submitLabel="Save changes"
       submitting={pending}
       onSubmit={async (e) => {
@@ -447,7 +475,8 @@ function Locked({ label, hint, value, icon }: { label: string; hint: ReactNode; 
   );
 }
 
-const LEAVE_TEXT = "Your division lead sees a notice on their dashboard, and you move to Alumni. You keep your account.";
+const LEAVE_TEXT =
+  "Your division lead and the recruitment manager (the Logistics lead) see a notice on their dashboard, and you move to Alumni. You keep your account.";
 const LEFT_TEXT = "You left the team and are on the Alumni list. You keep your account.";
 
 /**
@@ -460,14 +489,12 @@ const LEFT_TEXT = "You left the team and are on the Alumni list. You keep your a
 function LeaveOrDelete({
   leave: initial,
   handOver: initialOffer,
-  session,
   leaveTeam,
   sendHandOver,
   deleteAccount,
 }: {
   leave: LeaveState;
   handOver: HandOverOffer | null;
-  session: ViewerSession;
   leaveTeam: Actions["leaveTeam"];
   sendHandOver: Actions["sendHandOver"];
   deleteAccount: Actions["deleteAccount"];
@@ -542,7 +569,6 @@ function LeaveOrDelete({
       <DeleteAccountDialog
         open={asking === "delete"}
         onOpenChange={(open) => setAsking(open ? "delete" : null)}
-        session={session}
         openApplications={null}
         member
         deleteAccount={deleteAccount}
@@ -597,7 +623,7 @@ function LeaveDialog({
       }}
       icon={<LogOut className="h-[18px] w-[18px]" strokeWidth={1.75} />}
       title="Leave the team?"
-      description="Your division lead sees a notice on their dashboard. You move to Alumni with your years on the team."
+      description="Your division lead and the recruitment manager (the Logistics lead) see a notice on their dashboard. You move to Alumni with your years on the team."
       cancelLabel="Stay"
       confirmLabel="Leave the team"
       danger

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   check,
@@ -78,8 +79,9 @@ export const targetTypeEnum = pgEnum("target_type", [
   "logs",
   // "Approve orders", given by the team leader on scope `team` (issue #233).
   "approve_orders",
-  // The Content grant, on scope `website` (issue #504, drizzle/0049): told
-  // apart from the Alumni grant, the `website` row on `all`.
+  // The Content grant, on scope `website` (issue #504, drizzle/0049). It opens
+  // the Alumni page too; the old Alumni `website` rows on `all` were deleted
+  // (issue #589, drizzle/0058; issue #637, drizzle/0074).
   "content",
 ]);
 
@@ -117,6 +119,14 @@ export const partnerLogoKindEnum = pgEnum("partner_logo_kind", [
   "mark",
 ]);
 
+/**
+ * The acting account beside a member-id "by" column (issue #605,
+ * drizzle/0061): the account behind the View as session that made the write,
+ * while the "by" column names the person viewed as. Null for a write made
+ * outside View as.
+ */
+const actingAccount = (name: string) => text(name).references((): AnyPgColumn => users.id, { onDelete: "set null", onUpdate: "cascade" });
+
 export const members = pgTable("members", {
   memberId: serial("member_id").primaryKey(),
   prtEmail: text("prt_email"),
@@ -130,15 +140,14 @@ export const members = pgTable("members", {
     .notNull(),
   ndaName: text("nda_name"),
   ndaConfirmedBy: integer("nda_confirmed_by"),
+  ndaConfirmedByActingAccount: actingAccount("nda_confirmed_by_acting_account"),
   picture: text("picture"),
   // Set when the person is moved to alumni (issue #172): the years they were
   // on the team as their lead gave them. Why they left goes to team_leaves.
   teamFrom: integer("team_from"),
   teamTo: integer("team_to"),
-  // The member's team email alias (epic #538, drizzle/0051), saved when an
-  // alias request is marked created; shown beside `prt_email`, never in its
-  // place. `emailAliasSetUpAt` is when they said they set it up (issue #542).
-  emailAlias: text("email_alias"),
+  // When the member said they set up their alias, the address in
+  // `prt_email` (issue #542).
   emailAliasSetUpAt: timestamp("email_alias_set_up_at", { withTimezone: true, mode: "string" }),
 });
 
@@ -223,7 +232,20 @@ export const roles = pgTable("roles", {
   // Manager's and the Chief Engineer's (issue #485) seats; null on every
   // other role. The team leader is the `president` type and needs none.
   fullAccess: fullAccessSeatEnum("full_access"),
-});
+}, (table) => ({
+  // One active holder per seat (issue #667, drizzle/0062): one team leader,
+  // one holder of each full-access seat and one head per department. Only
+  // active rows count, so ended rows beside an active one are kept.
+  oneActiveTeamLeader: uniqueIndex("roles_one_active_team_leader")
+    .on(table.type)
+    .where(sql`${table.leavedAt} is null and ${table.type} = 'president'`),
+  oneActiveFullAccessSeat: uniqueIndex("roles_one_active_full_access_seat")
+    .on(table.fullAccess)
+    .where(sql`${table.leavedAt} is null and ${table.fullAccess} is not null`),
+  oneActiveDepartmentHead: uniqueIndex("roles_one_active_department_head")
+    .on(table.deptId)
+    .where(sql`${table.leavedAt} is null and ${table.type} = 'head' and ${table.deptId} is not null`),
+}));
 
 export const orders = pgTable("orders", {
   id: serial("id").primaryKey(),
@@ -244,6 +266,7 @@ export const orders = pgTable("orders", {
   // The team leader's answer when they send a request back (issue #172).
   reviewNote: text("review_note"),
   reviewedBy: integer("reviewed_by").references(() => members.memberId),
+  reviewedByActingAccount: actingAccount("reviewed_by_acting_account"),
   reviewedAt: timestamp("reviewed_at", {
     withTimezone: true,
     mode: "string",
@@ -301,6 +324,41 @@ export const recruitmentSetting = pgTable(
   }),
 );
 
+// The application status list (issue #748, drizzle/0065): the ten built-in
+// statuses, which the migration inserts, and the statuses approvers add under
+// one built-in parent. lib/dashboard/application-status.ts owns the built-in
+// keys, their order and the parent rule; the checks keep a built-in row
+// parentless and give every added row a built-in parent. An added status is
+// deleted only while no application references it (`on delete restrict`).
+const BUILT_IN_APPLICATION_STATUS_KEYS = sql.raw(
+  `'new', 'interview', 'accepted_email_to_be_sent', 'accepted_email_sent', 'nda_received', 'joined', 'rejected_email_to_be_sent', 'rejected_email_sent', 'accepted_for_another_position', 'withdrawn'`,
+);
+
+export const applicationStatuses = pgTable(
+  "application_statuses",
+  {
+    id: serial("id").primaryKey(),
+    key: text("key").notNull().unique("application_statuses_key_unique"),
+    name: text("name").notNull(),
+    colour: text("colour").notNull(),
+    /** The status's place in the list: among the built-in statuses, or among its parent's added ones. */
+    sortOrder: integer("sort_order").notNull(),
+    parentKey: text("parent_key").references((): AnyPgColumn => applicationStatuses.key, { onDelete: "restrict" }),
+  },
+  (table) => ({
+    builtInHasNoParent: check(
+      "application_statuses_built_in_has_no_parent",
+      sql`(${table.key} in (${BUILT_IN_APPLICATION_STATUS_KEYS})) = (${table.parentKey} is null)`,
+    ),
+    parentIsBuiltIn: check(
+      "application_statuses_parent_is_built_in",
+      sql`${table.parentKey} is null or ${table.parentKey} in (${BUILT_IN_APPLICATION_STATUS_KEYS})`,
+    ),
+    colourIsHex: check("application_statuses_colour_hex", sql`${table.colour} ~ '^#[0-9A-F]{6}$'`),
+    onePlace: unique("application_statuses_one_place").on(table.parentKey, table.sortOrder).nullsNotDistinct(),
+  }),
+);
+
 export const applications = pgTable("applications", {
   id: serial("id").primaryKey(),
   applyPositionId: integer("apply_position_id").references(
@@ -324,7 +382,10 @@ export const applications = pgTable("applications", {
   })
     .defaultNow()
     .notNull(),
+  /** The old fixed status. It keeps being written beside `statusKey` until a later cleanup drops it (issue #748). */
   status: applicationStatusEnum("status").default("received").notNull(),
+  /** The application's status in `application_statuses` (issue #748). Null reads as New. */
+  statusKey: text("status_key").references(() => applicationStatuses.key, { onDelete: "restrict" }),
   customAnswers: jsonb("custom_answers").array(),
   /** When the applicant withdrew it (issue #169); the lead no longer sees it. */
   withdrawnAt: timestamp("withdrawn_at", {
@@ -347,6 +408,7 @@ export const applications = pgTable("applications", {
     .on(table.userId, table.applyPositionId)
     .where(sql`${table.withdrawnAt} is null`),
   cvFileIdIdx: index("applications_cv_file_id_idx").on(table.cvFileId),
+  statusKeyIdx: index("applications_status_key_idx").on(table.statusKey),
   coverLetterFileIdIdx: index("applications_cover_letter_file_id_idx").on(
     table.coverLetterFileId,
   ),
@@ -373,7 +435,9 @@ export const applicationFiles = pgTable("application_files", {
 /**
  * The interview times a division lead offers on one application (issue #169;
  * the lead's side is issue #171). The applicant picks one: `chosen`, at
- * `chosen_at`. At most one slot per application is chosen.
+ * `chosen_at`. At most one slot per application is chosen. `offered_by` is
+ * the account that offered the times (issue #652), which the Overview's
+ * upcoming interviews name; null for times stored before it was recorded.
  */
 export const interviewSlots = pgTable("interview_slots", {
   id: serial("id").primaryKey(),
@@ -384,6 +448,7 @@ export const interviewSlots = pgTable("interview_slots", {
   endsAt: timestamp("ends_at", { withTimezone: true, mode: "string" }).notNull(),
   chosen: boolean("chosen").default(false).notNull(),
   chosenAt: timestamp("chosen_at", { withTimezone: true, mode: "string" }),
+  offeredBy: text("offered_by").references(() => users.id, { onDelete: "set null", onUpdate: "cascade" }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
     .defaultNow()
     .notNull(),
@@ -431,6 +496,7 @@ export const teamJoins = pgTable("team_joins", {
   prtEmail: text("prt_email"),
   discord: text("discord"),
   addedBy: integer("added_by").references(() => members.memberId, { onDelete: "set null" }),
+  addedByActingAccount: actingAccount("added_by_acting_account"),
   addedAt: timestamp("added_at", { withTimezone: true, mode: "string" })
     .defaultNow()
     .notNull(),
@@ -456,6 +522,11 @@ export const dashboardNotices = pgTable("dashboard_notices", {
     .references(() => members.memberId, { onDelete: "cascade" })
     .notNull(),
   data: jsonb("data").default(sql`'{}'::jsonb`).notNull(),
+  /**
+   * The acting account behind the View as session that wrote the notice
+   * (issue #628); null for one written outside View as.
+   */
+  writtenByActingAccount: actingAccount("written_by_acting_account"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
     .defaultNow()
     .notNull(),
@@ -501,6 +572,7 @@ export const handOverRequests = pgTable("hand_over_requests", {
     .notNull(),
   decision: handOverDecisionEnum("decision"),
   decidedBy: integer("decided_by").references(() => members.memberId, { onDelete: "set null" }),
+  decidedByActingAccount: actingAccount("decided_by_acting_account"),
   decidedAt: timestamp("decided_at", { withTimezone: true, mode: "string" }),
 }, (table) => ({
   oneWaiting: uniqueIndex("hand_over_requests_one_waiting").on(table.fromId).where(sql`${table.decision} is null`),
@@ -528,15 +600,183 @@ export const aliasRequests = pgTable("alias_requests", {
     .references(() => members.memberId, { onDelete: "cascade" })
     .notNull(),
   requestedBy: integer("requested_by").references(() => members.memberId, { onDelete: "set null" }),
+  requestedByActingAccount: actingAccount("requested_by_acting_account"),
+  /**
+   * The address the requester confirmed on Request PRT email's Personal
+   * choice (issue #798); null for a request the site made by itself, whose
+   * Mark created starts from the member's name.
+   */
+  address: text("address"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
     .defaultNow()
     .notNull(),
   outcome: aliasRequestOutcomeEnum("outcome"),
   answeredBy: integer("answered_by").references(() => members.memberId, { onDelete: "set null" }),
+  answeredByActingAccount: actingAccount("answered_by_acting_account"),
   answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }),
 }, (table) => ({
   oneOpen: uniqueIndex("alias_requests_one_open").on(table.memberId).where(sql`${table.outcome} is null`),
   answered: check("alias_requests_answered", sql`(${table.outcome} is null) = (${table.answeredAt} is null)`),
+}));
+
+/**
+ * The role a team address moves with (epic #578, grill #785 R1.1): the team
+ * leader, a full-access seat by its `roles.full_access` flag, a department's
+ * head or a division's lead. lib/dashboard/team-address.ts owns it.
+ */
+export const teamAddressTieEnum = pgEnum("team_address_tie", [
+  "team_leader",
+  "full_access_seat",
+  "department_head",
+  "division_lead",
+]);
+
+/**
+ * A shared address on the team domain and the one member who holds it (epic
+ * #578, issue #786, drizzle/0066): what it is for, and the role it moves with
+ * on a hand-over, if any. One holder per address in any letter case
+ * (`team_addresses_address`); the tie's reference matches its kind
+ * (`team_addresses_tie`). lib/dashboard/team-address.ts owns the rules.
+ */
+export const teamAddresses = pgTable("team_addresses", {
+  id: serial("id").primaryKey(),
+  address: text("address").notNull(),
+  purpose: text("purpose").notNull(),
+  holderId: integer("holder_id")
+    .references(() => members.memberId)
+    .notNull(),
+  movesWith: teamAddressTieEnum("moves_with"),
+  movesWithSeat: fullAccessSeatEnum("moves_with_seat"),
+  movesWithDeptId: integer("moves_with_dept_id").references(() => departments.id),
+  movesWithDivisionId: integer("moves_with_division_id").references(() => divisions.id),
+  /**
+   * When the holder pressed I've set it up (drizzle/0069); null until then.
+   * Mark done on a routing item clears it, so the new holder sets it up.
+   */
+  setUpAt: timestamp("set_up_at", { withTimezone: true, mode: "string" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+}, (table) => ({
+  oneHolder: uniqueIndex("team_addresses_address").on(sql`lower(${table.address})`),
+  holderIdx: index("team_addresses_holder_idx").on(table.holderId),
+  tie: check(
+    "team_addresses_tie",
+    sql`(${table.movesWith} is null and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'team_leader' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'full_access_seat' and ${table.movesWithSeat} is not null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'department_head' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is not null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'division_lead' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is not null)`,
+  ),
+}));
+
+/** How a team address request closed (lib/dashboard/team-address.ts); null while it is open. */
+export const teamAddressRequestOutcomeEnum = pgEnum("team_address_request_outcome", ["created", "declined", "cancelled"]);
+
+/**
+ * A request for a shared team address for one member (epic #578, issue
+ * #787, drizzle/0067), shaped like `alias_requests`: the address asked for,
+ * what it is for and the role it would move with, with the same tie columns
+ * and check as `team_addresses`. One address has at most one open request in
+ * any letter case (`team_address_requests_one_open`);
+ * lib/dashboard/team-address.ts owns the rules.
+ */
+export const teamAddressRequests = pgTable("team_address_requests", {
+  id: serial("id").primaryKey(),
+  memberId: integer("member_id")
+    .references(() => members.memberId, { onDelete: "cascade" })
+    .notNull(),
+  address: text("address").notNull(),
+  purpose: text("purpose").notNull(),
+  movesWith: teamAddressTieEnum("moves_with"),
+  movesWithSeat: fullAccessSeatEnum("moves_with_seat"),
+  movesWithDeptId: integer("moves_with_dept_id").references(() => departments.id),
+  movesWithDivisionId: integer("moves_with_division_id").references(() => divisions.id),
+  requestedBy: integer("requested_by").references(() => members.memberId, { onDelete: "set null" }),
+  requestedByActingAccount: actingAccount("requested_by_acting_account"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  outcome: teamAddressRequestOutcomeEnum("outcome"),
+  answeredBy: integer("answered_by").references(() => members.memberId, { onDelete: "set null" }),
+  answeredByActingAccount: actingAccount("answered_by_acting_account"),
+  answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }),
+}, (table) => ({
+  oneOpen: uniqueIndex("team_address_requests_one_open").on(sql`lower(${table.address})`).where(sql`${table.outcome} is null`),
+  memberIdx: index("team_address_requests_member_idx").on(table.memberId),
+  tie: check(
+    "team_address_requests_tie",
+    sql`(${table.movesWith} is null and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'team_leader' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'full_access_seat' and ${table.movesWithSeat} is not null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'department_head' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is not null and ${table.movesWithDivisionId} is null)
+      or (${table.movesWith} is not distinct from 'division_lead' and ${table.movesWithSeat} is null and ${table.movesWithDeptId} is null and ${table.movesWithDivisionId} is not null)`,
+  ),
+  answered: check("team_address_requests_answered", sql`(${table.outcome} is null) = (${table.answeredAt} is null)`),
+}));
+
+/**
+ * A routing item (epic #578, issue #789, drizzle/0068): the role a team
+ * address moves with changed hands, so the approvers move the address to its
+ * new holder with Mark done. It names the address, the member it goes to and
+ * the member it came from; done by and done at stay null while it is open.
+ * While open, a later change of the role names its new holder on the same
+ * item and dates it to that change; Mark done moves the address to whoever
+ * holds the role then and stores them as the member it went to (issue #795).
+ * One address has at most one open item (`team_address_reroutes_one_open`);
+ * lib/dashboard/team-address.ts owns the rules.
+ */
+export const teamAddressReroutes = pgTable("team_address_reroutes", {
+  id: serial("id").primaryKey(),
+  addressId: integer("address_id")
+    .references(() => teamAddresses.id, { onDelete: "cascade" })
+    .notNull(),
+  toMember: integer("to_member")
+    .references(() => members.memberId, { onDelete: "cascade" })
+    .notNull(),
+  fromMember: integer("from_member").references(() => members.memberId, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  doneBy: integer("done_by").references(() => members.memberId, { onDelete: "set null" }),
+  doneByActingAccount: actingAccount("done_by_acting_account"),
+  doneAt: timestamp("done_at", { withTimezone: true, mode: "string" }),
+}, (table) => ({
+  oneOpen: uniqueIndex("team_address_reroutes_one_open").on(table.addressId).where(sql`${table.doneAt} is null`),
+  done: check("team_address_reroutes_done", sql`${table.doneBy} is null or ${table.doneAt} is not null`),
+}));
+
+/**
+ * A removal (issue #797, drizzle/0070): someone who may request a team
+ * address for its holder asked to take it away, so the approvers turn its
+ * routing off in Google Workspace and press Mark done. Mark done deletes the
+ * `team_addresses` row, which frees the address for a new request; this row
+ * keeps the address, whose it was, who removed it and who marked it done, so
+ * `address_id` is set null then. One address has at most one open removal
+ * (`team_address_removals_one_open`), and an open one names its address
+ * (`team_address_removals_open_address`). lib/dashboard/team-address.ts owns
+ * the rules.
+ */
+export const teamAddressRemovals = pgTable("team_address_removals", {
+  id: serial("id").primaryKey(),
+  addressId: integer("address_id").references(() => teamAddresses.id, { onDelete: "set null" }),
+  address: text("address").notNull(),
+  fromMember: integer("from_member").references(() => members.memberId, { onDelete: "set null" }),
+  removedBy: integer("removed_by").references(() => members.memberId, { onDelete: "set null" }),
+  removedByActingAccount: actingAccount("removed_by_acting_account"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  doneBy: integer("done_by").references(() => members.memberId, { onDelete: "set null" }),
+  doneByActingAccount: actingAccount("done_by_acting_account"),
+  doneAt: timestamp("done_at", { withTimezone: true, mode: "string" }),
+}, (table) => ({
+  oneOpen: uniqueIndex("team_address_removals_one_open").on(table.addressId).where(sql`${table.doneAt} is null`),
+  done: check("team_address_removals_done", sql`${table.doneBy} is null or ${table.doneAt} is not null`),
+  openAddress: check("team_address_removals_open_address", sql`${table.doneAt} is not null or ${table.addressId} is not null`),
 }));
 
 // The Alumni page (issue #257). The page is built from the roles; an entry
@@ -624,6 +864,7 @@ export const scopes = pgTable(
     givenBy: integer("given_by").references(() => members.memberId, {
       onDelete: "set null",
     }),
+    givenByActingAccount: actingAccount("given_by_acting_account"),
     scope: scopeTypeEnum("scope").notNull(),
     target: targetTypeEnum("target").notNull(),
     accessLevel: accessLevelTypeEnum("access_level").default("view").notNull(),
@@ -949,8 +1190,8 @@ export const teamPageAdvisorVersions = pgTable(
 // does: a published one, a draft, or both. The record is one JSON document
 // (lib/project-content/record.ts, checked on every read), because its
 // sections nest lists of their own. Removing a project removes its versions.
-// Since page blocks (migration 0050) the record is in `page`, and `content`
-// keeps the record from before them (lib/project-content/row.ts).
+// Since page blocks (migration 0050) the record is in `page`, the only one a
+// version stores (migrations 0072 and 0073, issue #535).
 export const projects = pgTable("projects", {
   id: serial("id").primaryKey(),
   siteOrder: integer("site_order").notNull(),
@@ -967,10 +1208,8 @@ export const projectVersions = pgTable(
       .references(() => projects.id, { onDelete: "cascade" })
       .notNull(),
     version: contentVersionEnum("version").notNull(),
-    /** The record from before page blocks, kept for code built then (lib/project-content/row.ts). */
-    content: jsonb("content").notNull(),
-    /** The page blocks record (migration 0050); null on a row written by code from before page blocks. */
-    page: jsonb("page"),
+    /** The version's page blocks record (lib/project-content/record.ts, read through lib/project-content/row.ts). */
+    page: jsonb("page").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
       .defaultNow()
       .notNull(),
@@ -981,8 +1220,8 @@ export const projectVersions = pgTable(
       table.version,
     ),
     isRecord: check(
-      "project_versions_content_is_record",
-      sql`jsonb_typeof(${table.content}) = 'object'`,
+      "project_versions_page_is_record",
+      sql`jsonb_typeof(${table.page}) = 'object'`,
     ),
   }),
 );
@@ -996,7 +1235,27 @@ export const logs = pgTable("logs", {
   oldData: jsonb("old_data"),
   newData: jsonb("new_data"),
   changedBy: text("changed_by").references(() => users.id),
+  // The acting account when the write was made in a View as session (issue
+  // #605): the audit trigger stores the `request.acting_account` setting
+  // lib/db-audit.ts sets, so `changed_by` is the person viewed as and this
+  // is who was viewing. Null outside View as.
+  changedByActingAccount: actingAccount("changed_by_acting_account"),
   changedAt: timestamp("changed_at", {
+    withTimezone: true,
+    mode: "string",
+  })
+    .defaultNow()
+    .notNull(),
+});
+
+// The re-seed requests the shared `preview` branch has served (issue #595,
+// ADR 0016 amendment of 2026-10-24). A preview build re-seeds the branch only
+// for a `PREVIEW_RESEED_REQUEST` value this table does not hold yet, and
+// records it in the same transaction, so one request runs once. It is the one
+// table the re-seed keeps; no page reads or writes it.
+export const previewReseeds = pgTable("preview_reseeds", {
+  request: text("request").primaryKey(),
+  reseededAt: timestamp("reseeded_at", {
     withTimezone: true,
     mode: "string",
   })

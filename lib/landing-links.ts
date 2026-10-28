@@ -25,6 +25,9 @@ export type NavLink = NavPage | NavSection;
 export const TEAM_EMAIL = "info@politorocketteam.it";
 export const TEAM_MAIL: MailLink = `mailto:${TEAM_EMAIL}`;
 
+/** The team wiki, from the navbar account menu (issue #683). Another site, so it opens in a new tab. */
+export const WIKI: ExternalUrl = "https://wiki.politorocketteam.it";
+
 /** The pages the landing page links to by name. */
 export const PAGES = {
   home: "/",
@@ -34,7 +37,15 @@ export const PAGES = {
   apply: "/apply",
   login: "/login",
   dashboard: "/dashboard",
+  terms: "/terms",
+  privacy: "/privacy",
 } as const satisfies Record<string, SitePath>;
+
+/** The legal pages (issue #122), in the footer's bottom row. */
+export const LEGAL_LINKS: readonly NavPage[] = [
+  { href: PAGES.terms, label: "Terms of Service" },
+  { href: PAGES.privacy, label: "Privacy Policy" },
+];
 
 /** One Outreach post's page; Track record links each card to its post. */
 export function outreachPostHref(slug: string): SitePath {
@@ -112,7 +123,9 @@ export function landingHrefs(): readonly LandingHref[] {
     ...nav,
     ...INSIDE_TEAM_LINKS.map((l) => l.href),
     ...footerColumns([]).flatMap((c) => c.links.map(([, href]) => href)),
+    ...LEGAL_LINKS.map((l) => l.href),
     TEAM_MAIL,
+    WIKI,
   ];
 }
 

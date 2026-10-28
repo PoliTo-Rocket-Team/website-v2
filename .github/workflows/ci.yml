@@ -26,6 +26,12 @@ jobs:
       # Installs the fabrika version package.json pins, so CI runs the same
       # guard a local `pnpm exec fabrika` runs.
       - run: pnpm install --frozen-lockfile
+      # Every package.json dependency must read `catalog:`, with its version
+      # declared once in pnpm-workspace.yaml.
+      - name: Check the pnpm catalog
+        env:
+          FABRIKA_GLOBAL_WARNING_DISABLED: "1"
+        run: pnpm exec fabrika guard catalog-guard check
       - run: pnpm exec tsc --noEmit
       - name: Validate the ADR corpus
         env:

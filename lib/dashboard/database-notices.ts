@@ -5,7 +5,15 @@ import { getDb } from "@/db/client";
 import { dashboardNotices, divisions, roles, scopes, users } from "@/db/schema";
 import { runAuditQuery } from "@/lib/db-audit";
 import type { DashboardIdentity } from "./database";
-import { attentionOf, memberLeftNotices, noticeOf, type AddressedNotice, type DivisionLead } from "./notices";
+import { actingTitleIn, readActingTitles } from "./database-acting-account";
+import {
+  attentionOf,
+  memberLeftNotices,
+  noticeOf,
+  recruitmentManagerDivision,
+  type AddressedNotice,
+  type DivisionLead,
+} from "./notices";
 import type { AttentionItem } from "./overview";
 import { refused, written, type WriteResult } from "./write";
 
@@ -22,6 +30,7 @@ export async function readNoticeAttention(identity: DashboardIdentity, now: Date
       kind: dashboardNotices.kind,
       data: dashboardNotices.data,
       created_at: dashboardNotices.createdAt,
+      acting_account: dashboardNotices.writtenByActingAccount,
       first_name: users.firstName,
       last_name: users.lastName,
       email: users.email,
@@ -30,9 +39,12 @@ export async function readNoticeAttention(identity: DashboardIdentity, now: Date
     .innerJoin(users, eq(users.member, dashboardNotices.subjectId))
     .where(and(eq(dashboardNotices.recipientId, identity.memberId), isNull(dashboardNotices.dismissedAt)))
     .orderBy(desc(dashboardNotices.createdAt));
+  // A notice written in a View as session names its acting account by title (issue #628).
+  const titles = await readActingTitles(rows.map((r) => r.acting_account));
   return rows.flatMap((r) => {
     const subject = [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email;
-    const notice = noticeOf({ id: r.id, kind: r.kind, subject, createdAt: r.created_at, data: r.data });
+    const actingTitle = actingTitleIn(titles, r.acting_account);
+    const notice = noticeOf({ id: r.id, kind: r.kind, subject, createdAt: r.created_at, actingTitle, data: r.data });
     return notice === null ? [] : [attentionOf(notice, now)];
   });
 }
@@ -60,17 +72,23 @@ export async function dismissNotice(identity: DashboardIdentity, noticeId: numbe
 /**
  * The notices a member leaving now writes: their divisions are those of
  * their active roles, and each division's leads are its active lead roles
- * and its `division` scopes (./notices.ts decides who of them is told).
+ * and its `division` scopes. The leads read are those of the leaver's
+ * divisions and of the recruitment manager's division (#705); ./notices.ts
+ * decides who of them is told.
  */
 export async function memberLeftNoticesFor(memberId: number, reason: string | null): Promise<AddressedNotice[]> {
   const db = getDb();
-  const left = await db
-    .selectDistinct({ id: divisions.id, name: divisions.name })
-    .from(roles)
-    .innerJoin(divisions, eq(roles.divisionId, divisions.id))
-    .where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt)));
-  if (left.length === 0) return [];
-  const ids = left.map((d) => d.id);
+  const [left, team] = await Promise.all([
+    db
+      .selectDistinct({ id: divisions.id, name: divisions.name })
+      .from(roles)
+      .innerJoin(divisions, eq(roles.divisionId, divisions.id))
+      .where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt))),
+    db.select({ id: divisions.id, code: divisions.code, closedAt: divisions.closedAt }).from(divisions),
+  ]);
+  const manager = recruitmentManagerDivision(team);
+  const ids = [...new Set([...left.map((d) => d.id), ...(manager === null ? [] : [manager.id])])];
+  if (ids.length === 0) return [];
   const [leadRoles, divisionScopes] = await Promise.all([
     db
       .select({ memberId: roles.memberId, divisionId: roles.divisionId })
@@ -86,5 +104,5 @@ export async function memberLeftNoticesFor(memberId: number, reason: string | nu
   const leads = [...leadRoles, ...divisionScopes].flatMap((l): DivisionLead[] =>
     l.memberId === null || l.divisionId === null ? [] : [{ memberId: l.memberId, divisionId: l.divisionId }],
   );
-  return memberLeftNotices(memberId, left, leads, reason);
+  return memberLeftNotices(memberId, left, team, leads, reason);
 }

@@ -21,9 +21,11 @@ Tailwind breakpoint, not a second component per screen size.
 2. **Right-side panels are full pages on phones.** `SidePanel` in
    [components/dashboard/drawer.tsx](../components/dashboard/drawer.tsx) is `fixed inset-0` below
    `md`, with an `ArrowLeft` "Back" button (`md:hidden`) where the desktop panel has a close `X`
-   (`hidden md:flex`). From `md` it is a 440px panel on the right. The footer with the actions is
+   (`hidden md:flex`). From `md` it is a 440px panel on the right, or 520px with `wide` (the
+   member panel in [member-panels.tsx](../components/dashboard/member-panels.tsx), as boards 94 to
+   94e draw it, and the alias setup steps). The footer with the actions is
    pinned at the foot in both forms. Callers:
-   [member-drawer.tsx](../components/dashboard/member-drawer.tsx) and
+   [member-panels.tsx](../components/dashboard/member-panels.tsx) and
    [division-orders.tsx](../components/dashboard/division-orders.tsx). The application panel in
    [applications.tsx](../components/dashboard/applications.tsx) builds its phone page with
    `PhoneTopBar` from [shell.tsx](../components/dashboard/shell.tsx), the same bar the shell uses,

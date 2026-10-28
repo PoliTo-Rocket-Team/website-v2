@@ -17,17 +17,15 @@ session cookie; server code reads the user id from that cookie, then turns the m
    sends a signed-in user on `/login` to the `cb` path (`callbackPath` in
    [lib/auth-callback.ts](../lib/auth-callback.ts), which falls back to `/dashboard` for any `cb`
    that resolves off-site), and sends `/sign-up` and `/sign-in` to `/login`. It does not validate
-   the session or check any role. On previews and under `next dev` a test developer cookie
-   (`testDeveloperViewer` in [lib/test-developer.ts](../lib/test-developer.ts)) also counts as
-   signed in; in production the cookie is ignored.
+   the session or check any role. Only a Better Auth session cookie counts as signed in (issue
+   #612).
 
 3. **Dashboard pages read through one data interface.** `openDashboard()` in
    [lib/dashboard/open.ts](../lib/dashboard/open.ts) returns a `DashboardOpening`
    ([lib/dashboard/opening.ts](../lib/dashboard/opening.ts)). It is `open` with the viewer and
-   their data: the dummy arrays in `lib/dummy-data/` for a test developer where no database is
-   configured, else the database rows ([lib/dashboard/database.ts](../lib/dashboard/database.ts))
-   of the signed-in account, or of the viewer's seeded person for a test developer, whose writes
-   are saved as that person on a preview and refused anywhere else ([lib/db-audit.ts](../lib/db-audit.ts)). With no session
+   their data: the database rows ([lib/dashboard/database.ts](../lib/dashboard/database.ts)) of
+   the signed-in account, or of the person a View as session views as (issues #609, #613: the
+   database is the one implementation). With no session
    token it is `signed-out`, and the page sends the visitor to `/login`. With a token but no
    account it is `account-unresolved`, and the shell shows a sign-out screen: `/login` would send
    a token holder back to `/dashboard`, so a redirect there would loop. The viewer's kind and
@@ -80,7 +78,7 @@ session cookie; server code reads the user id from that cookie, then turns the m
 ## When this applies
 
 Any server read or route that shows member-only data. Pass the target that matches the
-`target_type` enum in [db/schema/public.ts](../db/schema/public.ts). Writes need the same check; the dashboard's writes have it (the recruitment switch, and the position and application writes in [lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts); see [audited-mutations.md](./audited-mutations.md)). The Access page and Orders read the viewer's division scopes per area instead, at two levels (`view`, `edit`) on four areas (`positions`, `applications`, `members`, `orders`), with `all` covering each ([lib/dashboard/database-division.ts](../lib/dashboard/database-division.ts), rules in [lib/dashboard/division-access.ts](../lib/dashboard/division-access.ts)). Unit tests cover
+`target_type` enum in [db/schema/public.ts](../db/schema/public.ts). Writes need the same check; the dashboard's position and application writes have it ([lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts); see [audited-mutations.md](./audited-mutations.md)). The recruitment switch is the exception: it checks the caller's standing, not a scope row (see "Writes check scope their own way" below). The Access page and Orders read the viewer's division scopes per area instead, at two levels (`view`, `edit`) on four areas (`positions`, `applications`, `members`, `orders`), with `all` covering each ([lib/dashboard/database-division.ts](../lib/dashboard/database-division.ts), rules in [lib/dashboard/division-access.ts](../lib/dashboard/division-access.ts)). Unit tests cover
 the rules: [lib/dashboard/division-access.test.ts](../lib/dashboard/division-access.test.ts)
 for the Access page's areas and levels, [lib/dashboard/orders.test.ts](../lib/dashboard/orders.test.ts)
 for what each Orders level may do, and [lib/apply/recruitment-switch.test.ts](../lib/apply/recruitment-switch.test.ts)
@@ -96,8 +94,6 @@ scopes have no tests of their own.
 
 ## Known inconsistencies (not the pattern)
 
-- **Two access models.** [get-members.ts](../app/actions/get-members.ts) decides visibility from
-  `roles.type` (`president`, `head`, `lead`), not from `scopes`. Everything else uses `ScopeInfo`.
 - **Unused rank table.** [lib/permission.config.ts](../lib/permission.config.ts) defines
   `SCOPE_RANK` and `TARGET_MIN_REQUIREMENTS`, but nothing imports them.
 - **Two entry points to the same check.** Callers use `getScopeInfoForCurrentUser(target)` (one
@@ -109,6 +105,6 @@ scopes have no tests of their own.
   so the cache stays lapsed and every request reads the database until a client call refreshes it.
   With no `DATABASE_URL` the fallback is skipped and the answer is null.
 - **Writes check scope their own way.** The recruitment switch's database side
-  (`setRecruitment`) reads `getScopeInfoForCurrentUser("positions")` and refuses unless
-  `hasOrgEdit || hasAdminEdit`, and the position and application writes refuse a row outside the
+  (`setRecruitment`) reads no scope row: it refuses unless the caller's standing is full access
+  (`canSwitchRecruitment`, issue #621), the same rule its display reads, and the position and application writes refuse a row outside the
   lead's scope ([lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts)).

@@ -1,7 +1,7 @@
 // Who is looking at the dashboard (issue #141). Every page and the sidebar
 // decide what to show from the viewer's standing: their kind, plus the
-// Content grant the content editors read and the Alumni grant the Alumni page
-// reads (issues #234, #504), plus the "Approve
+// Content grant the content editors and the Alumni page read (issues #234,
+// #504, #589), plus the "Approve
 // orders" grant the Orders page reads (issue #270), plus, for full access,
 // which full-access seat they hold (issue #238). Someone off the team is an
 // alumnus when the Alumni record knows them, else a non-member (issue #317).
@@ -36,19 +36,20 @@ export function isOffTeam(kind: ViewerKind): kind is OffTeamKind {
   return kind === "alumni" || kind === "non-member";
 }
 
-export function isViewerKind(value: unknown): value is ViewerKind {
-  return typeof value === "string" && (VIEWER_KINDS as readonly string[]).includes(value);
+/**
+ * Whether the account has a profile of its own (issue #725): it is on the team
+ * and a member record stands behind it. The My profile page reads this rule,
+ * and so does the user menu, so the menu never links to a page that answers
+ * not-found.
+ */
+export function hasOwnProfile<T extends { readonly kind: ViewerKind; readonly memberId: number | null }>(
+  who: T,
+): who is T & { readonly memberId: number } {
+  return !isOffTeam(who.kind) && who.memberId !== null;
 }
 
-/**
- * How the viewer signed in, which decides how they sign out. A test developer
- * holds no account and no database session (lib/test-developer.ts).
- */
-export const VIEWER_SESSIONS = ["account", "test-developer"] as const;
-export type ViewerSession = (typeof VIEWER_SESSIONS)[number];
-
-export function isViewerSession(value: unknown): value is ViewerSession {
-  return typeof value === "string" && (VIEWER_SESSIONS as readonly string[]).includes(value);
+export function isViewerKind(value: unknown): value is ViewerKind {
+  return typeof value === "string" && (VIEWER_KINDS as readonly string[]).includes(value);
 }
 
 /**
@@ -56,8 +57,8 @@ export function isViewerSession(value: unknown): value is ViewerSession {
  * (Owner decision, 2026-10-11, issue #238): the team leader, the operations
  * lead and the IT lead, and since issue #485 the Project Manager and the
  * Chief Engineer. Two things stay apart from full access: deciding orders is
- * the team leader's unless they gave "Approve orders" (./orders.ts), and only
- * the IT lead reaches the Activity log (./access.ts).
+ * the team leader's unless they gave "Approve orders" (./orders.ts), and of
+ * the seats only the IT lead reaches the Activity log (./access.ts).
  */
 export const FULL_ACCESS_SEATS = ["team-leader", "operations-lead", "it-lead", "project-manager", "chief-engineer"] as const;
 export type FullAccessSeat = (typeof FULL_ACCESS_SEATS)[number];
@@ -99,25 +100,26 @@ export type GrantArea = (typeof GRANT_AREAS)[number];
 
 /**
  * What decides the dashboard pages a viewer reaches: their kind, and whether
- * they hold a Content grant (`siteContent`, the `website` row on `content`,
- * issue #504), an Alumni grant (`alumniGrant`, any other `website` row) or
- * "Approve orders" (the `team` row on `approve_orders`, issue #270) on top of
- * it. The three are separate facts: an Alumni row never reads as Content, nor
- * the reverse. Someone off the team holds none, whatever scope rows remain
+ * they hold a Content grant (`siteContent`, the `website` row on `content`
+ * at Can edit, issues #504, #589) or "Approve orders" (the `team` row on
+ * `approve_orders`, issue #270) on top of it. The two are separate facts.
+ * Someone off the team holds neither, whatever scope rows remain
  * (issue #201). Full access is the `operations-lead` kind, and it says which
  * seat gives it: null when an `admin` or `org` scope row gives it and no seat
  * does.
  */
 export type ViewerStanding =
-  | { readonly kind: OffTeamKind; readonly siteContent: false; readonly alumniGrant?: never; readonly approveOrders: false }
+  | { readonly kind: OffTeamKind; readonly siteContent: false; readonly approveOrders: false }
   | {
       readonly kind: "operations-lead";
       readonly seat: FullAccessSeat | null;
       readonly siteContent: boolean;
-      readonly alumniGrant?: true;
       readonly approveOrders: boolean;
+      /** Never set on a standing read from roles and scope rows: only `BreakGlassStanding` carries it. */
+      readonly breakGlass?: false;
     }
-  | { readonly kind: "department-head" | "division-lead"; readonly siteContent: boolean; readonly alumniGrant?: true; readonly approveOrders: boolean }
+  | BreakGlassStanding
+  | { readonly kind: "department-head" | "division-lead"; readonly siteContent: boolean; readonly approveOrders: boolean }
   | {
       readonly kind: "member";
       /**
@@ -129,44 +131,48 @@ export type ViewerStanding =
        */
       readonly grantedAreas: readonly GrantArea[];
       readonly siteContent: boolean;
-      readonly alumniGrant?: true;
       readonly approveOrders: boolean;
     };
 
-/** Present only while the viewer holds an Alumni grant: an absent key reads as none. */
-function alumniGrantOf(holds: boolean): { readonly alumniGrant?: true } {
-  return holds ? { alumniGrant: true } : {};
-}
+/**
+ * The standing the break-glass setting gives (issue #646): the team leader's
+ * seat, read from no role and no scope row, so no Content grant and no
+ * "Approve orders" row. `breakGlass` keeps it apart from a real team
+ * leader's standing in the type, so a rule can admit it without admitting
+ * the team leader's seat (issue #727), and no rule reads the environment
+ * again to tell the two apart.
+ */
+export type BreakGlassStanding = {
+  readonly kind: "operations-lead";
+  readonly seat: "team-leader";
+  readonly siteContent: false;
+  readonly approveOrders: false;
+  readonly breakGlass: true;
+};
 
 /**
- * Who a test developer looks as (issue #141): one of the viewer kinds, the
- * alumnus included (issue #317), or the team leader (issue #247), who has
- * full access like the operations lead but sits in the team leader's seat,
- * so decides orders and gives "Approve orders".
+ * The standings a check names by kind alone (issue #141): one of the viewer
+ * kinds, the alumnus included (issue #317), or the team leader (issue #247),
+ * who has full access like the operations lead but sits in the team leader's
+ * seat, so decides orders and gives "Approve orders". Each is also the key of
+ * its plain seeded seat (lib/seeded-accounts.ts).
  */
-export const TEST_VIEWERS = ["team-leader", ...VIEWER_KINDS] as const;
-export type TestViewer = (typeof TEST_VIEWERS)[number];
+export const PLAIN_SEATS = ["team-leader", ...VIEWER_KINDS] as const;
+export type PlainSeat = (typeof PLAIN_SEATS)[number];
 
-export const TEST_VIEWER_LABELS: Readonly<Record<TestViewer, string>> = { "team-leader": "Team leader", ...VIEWER_KIND_LABELS };
-
-export function isTestViewer(value: unknown): value is TestViewer {
-  return typeof value === "string" && (TEST_VIEWERS as readonly string[]).includes(value);
-}
-
-/** The viewer kind a test viewer is: the team leader is full access, the `operations-lead` kind. */
-export function kindOfTestViewer(viewer: TestViewer): ViewerKind {
+/** The viewer kind a plain seat is: the team leader is full access, the `operations-lead` kind. */
+export function kindOfPlainSeat(viewer: PlainSeat): ViewerKind {
   return viewer === "team-leader" ? "operations-lead" : viewer;
 }
 
 /**
- * A test developer holds no scope rows, so their standing is who they look
- * as: the operations-lead test developer sits in the operations lead's seat,
- * the team-leader one in the team leader's. `approveOrders` is whether the
- * person they look as holds "Approve orders" in the dummy data, which the
- * team leader gives on the Access page (issue #270); someone off the team
- * never holds it.
+ * The standing of a kind alone, with no scope rows: the operations-lead one
+ * sits in the operations lead's seat, the team-leader one in the team
+ * leader's. `approveOrders` is whether that person holds "Approve orders",
+ * which the team leader gives on the Access page (issue #270); someone off
+ * the team never holds it.
  */
-export function testDeveloperStanding(viewer: TestViewer, approveOrders = false): ViewerStanding {
+export function plainSeatStanding(viewer: PlainSeat, approveOrders = false): ViewerStanding {
   switch (viewer) {
     case "non-member":
     case "alumni":
@@ -182,11 +188,6 @@ export function testDeveloperStanding(viewer: TestViewer, approveOrders = false)
   }
 }
 
-/** The test viewer a standing shows as in View as: the team leader's seat is its own entry. */
-export function testViewerOf(viewer: ViewerStanding): TestViewer {
-  return seatOf(viewer) === "team-leader" ? "team-leader" : viewer.kind;
-}
-
 /** The standing alone, out of anything that carries one (an identity, a viewer). */
 export function standingOf(viewer: ViewerStanding): ViewerStanding {
   switch (viewer.kind) {
@@ -194,17 +195,17 @@ export function standingOf(viewer: ViewerStanding): ViewerStanding {
     case "alumni":
       return { kind: viewer.kind, siteContent: false, approveOrders: false };
     case "operations-lead":
-      return { kind: viewer.kind, seat: viewer.seat, siteContent: viewer.siteContent, ...alumniGrantOf(viewer.alumniGrant === true), approveOrders: viewer.approveOrders };
+      if (isBreakGlass(viewer)) return BREAK_GLASS_STANDING;
+      return { kind: viewer.kind, seat: viewer.seat, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
     case "member":
       return {
         kind: viewer.kind,
         grantedAreas: viewer.grantedAreas,
         siteContent: viewer.siteContent,
-        ...alumniGrantOf(viewer.alumniGrant === true),
         approveOrders: viewer.approveOrders,
       };
     default:
-      return { kind: viewer.kind, siteContent: viewer.siteContent, ...alumniGrantOf(viewer.alumniGrant === true), approveOrders: viewer.approveOrders };
+      return { kind: viewer.kind, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
   }
 }
 
@@ -271,6 +272,15 @@ export function grantedAreasOf(scopes: readonly ScopeRef[]): GrantArea[] {
   return GRANT_AREAS.filter((area) => targets.includes("all") || targets.includes(area));
 }
 
+/**
+ * The areas the viewer holds an area grant on, in `GRANT_AREAS` order: a
+ * grant on one of them, or on `all` for every one (issue #593). Unlike
+ * `readsArea`, a seat that reads an area by its role holds no grant on it.
+ */
+export function areasGrantedBy(grants: readonly AreaGrant[]): GrantArea[] {
+  return GRANT_AREAS.filter((area) => grants.some((g) => g.target === area || g.target === "all"));
+}
+
 /** The full-access seat the viewer holds; null for anyone else, and for full access from a scope row alone. */
 export function seatOf(viewer: ViewerStanding): FullAccessSeat | null {
   return viewer.kind === "operations-lead" ? viewer.seat : null;
@@ -281,13 +291,33 @@ export function isTeamLeader(viewer: ViewerStanding): boolean {
   return seatOf(viewer) === "team-leader";
 }
 
+/**
+ * The standing the break-glass admin signs in with (issue #646): the team
+ * leader's, read from no role and no scope row, so it holds no Content grant
+ * and no "Approve orders" row; full access and the team leader's seat give
+ * both rights anyway.
+ */
+export const BREAK_GLASS_STANDING: BreakGlassStanding = {
+  kind: "operations-lead",
+  seat: "team-leader",
+  siteContent: false,
+  approveOrders: false,
+  breakGlass: true,
+};
+
+/** Whether the standing is the break-glass one (issue #727), never a real team leader's. */
+export function isBreakGlass(viewer: ViewerStanding): viewer is BreakGlassStanding {
+  return viewer.kind === "operations-lead" && viewer.breakGlass === true;
+}
+
 export type DashboardViewer = ViewerStanding & {
   readonly name: string;
   /** The line under the name in the user card: "Operations Lead", "Member". */
   readonly role: string;
   /** Their profile photo, which the user card draws in place of the PRT mark. */
   readonly photoUrl: string | null;
-  readonly session: ViewerSession;
+  /** Whether they have a profile of their own (`hasOwnProfile`): the user menu offers My profile only then. */
+  readonly hasOwnProfile: boolean;
 };
 
 /**
@@ -414,27 +444,19 @@ export function ledDivisionIds(access: MemberAccess): number[] {
 }
 
 /**
- * Whether the rows hold a Content grant (issue #504): a `website` row on
- * `content`, and only that row. The Alumni row is never one.
+ * Whether the rows hold a Content grant (issues #504, #589): a `website` row
+ * on `content` at Can edit, and only that row. Content is an edit grant, so a
+ * Can view `website` row is none, and a `website` row on any other target
+ * (the old Alumni grant, `all`) is read as nothing at all.
  */
-export function holdsContentGrant(scopes: readonly Pick<ScopeRef, "scope" | "target">[]): boolean {
-  return scopes.some((s) => s.scope === "website" && s.target === "content");
-}
-
-/**
- * Whether the rows hold an Alumni grant: a `website` row on any target but
- * `content`. The Access page stores it on `all` (`grantRowOf`,
- * ./division-access.ts), and an older `website` row keeps the meaning it had
- * before Content was split from it.
- */
-export function holdsAlumniGrant(scopes: readonly Pick<ScopeRef, "scope" | "target">[]): boolean {
-  return scopes.some((s) => s.scope === "website" && s.target !== "content");
+export function holdsContentGrant(scopes: readonly ScopeRef[]): boolean {
+  return scopes.some((s) => s.scope === "website" && s.target === "content" && s.level === "edit");
 }
 
 /**
  * A real account's standing: its viewer kind, its full-access seat, a
- * Content grant and an Alumni grant from its `website` rows, each read on its
- * own (issue #504), "Approve orders" from a `team` row (`unitRowsOf` leaves
+ * Content grant from its `website` rows (`holdsContentGrant`), "Approve
+ * orders" from a `team` row (`unitRowsOf` leaves
  * no other `team` row), and, for a member, the areas their `division` and
  * `department` rows grant (`grantedAreasOf`).
  */
@@ -444,11 +466,10 @@ export function viewerStandingOf(access: MemberAccess | null): ViewerStanding {
   if (isOffTeam(kind)) return { kind, siteContent: false, approveOrders: false };
   if (access === null) return { kind: "non-member", siteContent: false, approveOrders: false };
   const siteContent = holdsContentGrant(access.scopes);
-  const alumni = alumniGrantOf(holdsAlumniGrant(access.scopes));
   const approveOrders = access.scopes.some((s) => s.scope === "team");
-  if (kind === "operations-lead") return { kind, seat: fullAccessSeatOf(access.activeRoles), siteContent, ...alumni, approveOrders };
-  if (kind === "member") return { kind, grantedAreas: grantedAreasOf(access.scopes), siteContent, ...alumni, approveOrders };
-  return { kind, siteContent, ...alumni, approveOrders };
+  if (kind === "operations-lead") return { kind, seat: fullAccessSeatOf(access.activeRoles), siteContent, approveOrders };
+  if (kind === "member") return { kind, grantedAreas: grantedAreasOf(access.scopes), siteContent, approveOrders };
+  return { kind, siteContent, approveOrders };
 }
 
 /** A scope row as `readIdentity` reads it: which unit it opens, on which area, at which level. */

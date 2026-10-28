@@ -5,7 +5,6 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
   Check,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   CircleCheck,
   ExternalLink,
@@ -17,7 +16,6 @@ import {
   Minus,
   PackageCheck,
   Plus,
-  Search,
   Upload,
   X,
   XCircle,
@@ -42,12 +40,12 @@ import {
   ORDER_STATUSES,
   orderActions,
   orderBreakdown,
+  orderEditControls,
   orderFormFields,
   orderingDivisions,
   orderPage,
   ordersIntro,
   orderTotal,
-  pagerSlots,
   parseEuros,
   toggleDepartment,
   unitLine,
@@ -55,6 +53,7 @@ import {
   type Order,
   type OrderDecision,
   type OrderDivision,
+  type OrderEditButton,
   type OrderFilters,
   type OrdersPage,
   type OrdersScope,
@@ -74,10 +73,12 @@ import {
   PanelBody,
   SidePanel,
 } from "./drawer";
+import { Pager } from "./directory";
 import { Field, inputClass } from "./field";
 import { DivisionMenu } from "./new-position-drawer";
 import { PANEL } from "./panel";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
+import { SearchField } from "./search-field";
 
 export type OrderWrites = {
   placeOrder: (form: FormData) => Promise<WriteResult<Order>>;
@@ -196,7 +197,9 @@ export function OrdersView({ data, writes }: { data: OrdersPage; writes: OrderWr
         })}
       </ul>
       {shown.orders.length === 0 && <p className="mt-6 text-center text-[14px] text-prt-muted md:hidden">No orders match these filters.</p>}
-      <Pager className="mt-5 md:hidden" page={shown.page} pages={shown.pages} onPage={setPage} />
+      <div className="mt-5 flex justify-center md:hidden">
+        <Pager page={shown.page} last={shown.pages} onPage={setPage} />
+      </div>
 
       <section aria-label="Orders" className={`${PANEL} mt-5 hidden md:block`}>
         <div className={`${rowGrid(drawerOpen)} h-10 border-b border-hairline`}>
@@ -255,7 +258,7 @@ export function OrdersView({ data, writes }: { data: OrdersPage; writes: OrderWr
         {shown.orders.length === 0 && <p className="px-[18px] py-10 text-center text-[14px] text-prt-muted">No orders match these filters.</p>}
         <div className="grid grid-cols-[1fr_auto_1fr] items-center border-t border-hairline px-[18px] py-3">
           <span className="text-[13px] text-prt-muted">Newest first</span>
-          <Pager page={shown.page} pages={shown.pages} onPage={setPage} />
+          <Pager page={shown.page} last={shown.pages} onPage={setPage} />
           <span aria-hidden />
         </div>
       </section>
@@ -345,41 +348,6 @@ function StatusPill({ status, dot }: { status: OrderStatus; dot: boolean }) {
       {dot && <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`} />}
       <span className="truncate">{ORDER_STATUS_LABELS[status]}</span>
     </span>
-  );
-}
-
-/** "‹ 1 2 3 … 6 ›", centred, with no total count (Owner decision on #233). */
-function Pager({ page, pages, onPage, className = "" }: { page: number; pages: number; onPage: (page: number) => void; className?: string }) {
-  const step = `flex h-7 w-7 items-center justify-center rounded-md text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text disabled:pointer-events-none disabled:opacity-40 ${FOCUS}`;
-  return (
-    <nav aria-label="Pages" className={`flex items-center justify-center gap-1.5 ${className}`}>
-      <button type="button" aria-label="Previous page" disabled={page <= 1} onClick={() => onPage(page - 1)} className={step}>
-        <ChevronLeft aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-      </button>
-      {pagerSlots(page, pages).map((slot, i) =>
-        slot === "gap" ? (
-          <span key={`gap-${i}`} aria-hidden className="w-7 text-center text-[13px] text-prt-muted">
-            …
-          </span>
-        ) : (
-          <button
-            key={slot}
-            type="button"
-            aria-current={slot === page ? "page" : undefined}
-            aria-label={`Page ${slot}`}
-            onClick={() => onPage(slot)}
-            className={`flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-[13px] tabular-nums transition-colors duration-300 ease-out ${FOCUS} ${
-              slot === page ? "bg-white-10 font-semibold text-prt-text" : "text-text-2 hover:text-prt-text"
-            }`}
-          >
-            {slot}
-          </button>
-        ),
-      )}
-      <button type="button" aria-label="Next page" disabled={page >= pages} onClick={() => onPage(page + 1)} className={step}>
-        <ChevronRight aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-      </button>
-    </nav>
   );
 }
 
@@ -537,17 +505,7 @@ function DepartmentFilter({
 
   return (
     <ColumnFilter variant={variant} label="Department" active={value !== null} align="start" open={open} onOpenChange={onOpenChange}>
-      <label className="relative mb-1 block">
-        <span className="sr-only">Search departments</span>
-        <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-prt-muted" strokeWidth={2} />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search departments"
-          className="h-9 w-full rounded-lg border border-hairline bg-white-5 pl-9 pr-3 text-[13px] text-prt-text outline-none transition-colors duration-300 ease-out placeholder:text-prt-muted focus:border-border-strong"
-        />
-      </label>
+      <SearchField value={query} onChange={setQuery} placeholder="Search departments" className="mb-1" />
       <ul className="max-h-[320px] overflow-y-auto max-md:max-h-[50svh]">
         {departments.filter(matches).map((d) => {
           const state = departmentTick(d, ticked);
@@ -676,8 +634,9 @@ type Asking =
  * (orderActions): an order outside their scope, or one already answered, opens
  * read-only for editing; the team leader and holders of "Approve orders"
  * decide a waiting one (Reject, Ask for changes, Approve) and mark an approved
- * one as ordered. While they decide, Edit moves to the panel's head (board
- * 70b). Every action asks "are you sure" first.
+ * one as ordered. Everyone who may edit it gets the same edit buttons
+ * (orderEditControls); while the footer decides, they move to the panel's head
+ * (board 70b). Every action but Edit asks "are you sure" first.
  */
 function OrderPanel({
   order,
@@ -724,6 +683,10 @@ function OrderPanel({
       ? [divisionShort(current.unit.division.name), current.unit.department?.name, formatEuro(total)]
       : [current.reason, formatEuro(total)];
   const writingNote = actions.decide && deciding !== "choose";
+  // The same edit buttons, with the same labels, for everyone who may edit this order (issue #675).
+  const edits = orderEditControls(actions);
+  /** Cancel request asks "are you sure" first; Edit opens the form. */
+  const press = (button: OrderEditButton) => (button.kind === "cancel" ? setAsking({ kind: "cancel" }) : onEdit(current));
 
   const startNote = (kind: Exclude<Deciding, "choose">) => {
     setDeciding(kind);
@@ -800,19 +763,17 @@ function OrderPanel({
     <button type="button" onClick={() => setAsking({ kind: "mark-ordered" })} className={`${PANEL_PRIMARY_BUTTON} flex-1`}>
       Mark as ordered
     </button>
-  ) : actions.cancel || actions.edit ? (
-    <>
-      {actions.cancel && (
-        <button type="button" onClick={() => setAsking({ kind: "cancel" })} className={`${PANEL_DANGER_BUTTON} flex-1`}>
-          Cancel request
-        </button>
-      )}
-      {actions.edit && (
-        <button type="button" onClick={() => onEdit(current)} className={`${PANEL_PRIMARY_BUTTON} flex-1`}>
-          {actions.edit === "edit-and-resend" ? "Edit and send again" : "Edit order"}
-        </button>
-      )}
-    </>
+  ) : edits.place === "footer" && edits.buttons.length > 0 ? (
+    edits.buttons.map((button) => (
+      <button
+        key={button.kind}
+        type="button"
+        onClick={() => press(button)}
+        className={`${button.kind === "cancel" ? PANEL_DANGER_BUTTON : PANEL_PRIMARY_BUTTON} flex-1`}
+      >
+        {button.label}
+      </button>
+    ))
   ) : undefined;
 
   return (
@@ -821,16 +782,21 @@ function OrderPanel({
       onOpenChange={(next) => !next && onClose()}
       title={current.item}
       detail={detail.filter(Boolean).join(" · ")}
-      // The footer is deciding, so Edit sits at the head (board 70b).
+      // The footer is deciding, so the edit buttons sit at the head (board 70b).
       action={
-        actions.edit && (actions.decide || actions.markOrdered) ? (
-          <button
-            type="button"
-            onClick={() => onEdit(current)}
-            className={`rounded-md px-1.5 text-[13px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}
-          >
-            Edit
-          </button>
+        edits.place === "head" && edits.buttons.length > 0 ? (
+          <div className="flex shrink-0 items-center gap-1">
+            {edits.buttons.map((button) => (
+              <button
+                key={button.kind}
+                type="button"
+                onClick={() => press(button)}
+                className={`whitespace-nowrap rounded-md px-1.5 text-[13px] transition-colors duration-300 ease-out ${button.kind === "cancel" ? "text-danger hover:text-prt-text" : "text-text-2 hover:text-prt-text"} ${FOCUS}`}
+              >
+                {button.label}
+              </button>
+            ))}
+          </div>
         ) : undefined
       }
       footer={footer}

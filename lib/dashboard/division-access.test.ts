@@ -3,19 +3,28 @@ import { test } from "node:test";
 import { maySiteContent } from "@/lib/content/gate";
 import { canReach } from "./access";
 import {
+  ACCESS_TARGET_LABELS,
+  ACCESS_TARGETS,
   accessByPerson,
+  areaRule,
   canGiveApproveOrders,
   checkRemoveAllAccess,
   checkRemoveGrant,
   checkSaveAccess,
   departmentOfPlace,
+  grantablePeople,
   grantRowOf,
   heldLines,
+  LEAD_ROLE_HELD_ACCESS,
   NO_APPROVE_ORDERS,
+  NO_ROLE,
   placeKey,
   placesOf,
+  ROLE_HELD_ACCESS,
+  roleCovers,
   roleDivision,
   SEAT_LABELS,
+  shownAreas,
   WHOLE_TEAM_PLACE,
   type AccessGrant,
   type AccessPerson,
@@ -30,9 +39,9 @@ const msa = { id: 1, name: "Mission Analysis Division" };
 const aoa = { id: 2, name: "Optimization and Analysis Division" };
 const aerodynamics = { id: 1, name: "Aerodynamics" };
 
-const pietro: AccessPerson = { id: 6, name: "Pietro Ricci", standing: "member", division: msa };
-const sofia: AccessPerson = { id: 3, name: "Sofia Neri", standing: "member", division: msa };
-const coLead: AccessPerson = { id: 9, name: "Luca Bianchi", standing: "lead", division: msa };
+const pietro: AccessPerson = { id: 6, name: "Pietro Ricci", photoUrl: null, role: NO_ROLE, division:msa };
+const sofia: AccessPerson = { id: 3, name: "Sofia Neri", photoUrl: null, role: NO_ROLE, division:msa };
+const coLead: AccessPerson = { id: 9, name: "Luca Bianchi", photoUrl: null, role: { kind: "lead", divisions:[msa] }, division: msa };
 const people = [pietro, sofia, coLead];
 
 const inMsa: AccessPlace = { kind: "division", division: msa };
@@ -150,9 +159,9 @@ test("the table shows one row per person, areas in the order given, with the lat
 const departmentUnit: AccessUnit = { kind: "department", department: aerodynamics, divisions: [msa, aoa] };
 const wholeDepartment: AccessPlace = { kind: "department", department: aerodynamics };
 const inAoa: AccessPlace = { kind: "division", division: aoa };
-const luca: AccessPerson = { id: 4, name: "Luca Marino", standing: "member", division: aoa };
-const laura: AccessPerson = { id: 20, name: "Laura Greco", standing: "lead", division: aoa };
-const marco: AccessPerson = { id: 2, name: "Marco Bianchi", standing: "lead", division: msa };
+const luca: AccessPerson = { id: 4, name: "Luca Marino", photoUrl: null, role: NO_ROLE, division:aoa };
+const laura: AccessPerson = { id: 20, name: "Laura Greco", photoUrl: null, role: { kind: "lead", divisions:[aoa] }, division: aoa };
+const marco: AccessPerson = { id: 2, name: "Marco Bianchi", photoUrl: null, role: { kind: "lead", divisions:[msa] }, division: msa };
 const headPeople = [sofia, luca, laura, marco];
 const head = (grants: AccessGrant[] = []) => ({
   unit: departmentUnit,
@@ -175,18 +184,51 @@ test("a head gives access in the whole department or in one of its divisions", (
   assert.ok(home.ok && home.value.place.kind === "department");
 });
 
-test("a head gives every unit area their role holds, never Alumni, and only inside their department", () => {
+test("a head gives every unit area their role holds, and only inside their department", () => {
   assert.equal(checkSaveAccess(head(), { personId: 3, where: "department-1", areas: { members: "edit", orders: "view" } }).ok, true);
-  assert.equal(checkSaveAccess(head(), { personId: 3, where: "department-1", areas: { alumni: "view" } }).ok, false);
   // A division of another department, and a person from another department, are refused.
   assert.equal(checkSaveAccess(head(), { personId: 3, where: 4, areas: { members: "view" } }).ok, false);
   assert.equal(checkSaveAccess(head(), { personId: 44, where: "department-1", areas: { members: "view" } }).ok, false);
 });
 
-test("a lead's role access cannot be changed or removed by a head", () => {
+test("a head never changes a lead's role access, and gives, changes and removes their other grants (issue #591)", () => {
+  // Members and Orders in the division Laura leads come with her role (#632).
   assert.equal(checkSaveAccess(head(), { personId: 20, where: 2, areas: { members: "view" } }).ok, false);
-  const marcosGrant = grant(9, marco, "orders", "edit");
-  assert.equal(checkRemoveAllAccess(head([marcosGrant]), 2).ok, false);
+  assert.equal(checkSaveAccess(head(), { personId: 20, where: 2, areas: { orders: "view" } }).ok, false);
+  // Members and Orders across the whole department are grants like anyone's.
+  assert.equal(checkSaveAccess(head(), { personId: 20, where: "department-1", areas: { members: "view" } }).ok, true);
+  assert.equal(checkSaveAccess(head(), { personId: 20, where: "department-1", areas: { orders: "view" } }).ok, true);
+  const marcosGrant = grant(9, marco, "orders", "edit", wholeDepartment);
+  assert.deepEqual(checkRemoveAllAccess(head([marcosGrant]), 2), {
+    ok: true,
+    value: [{ personId: 2, place: wholeDepartment, changes: [{ kind: "remove", target: "orders", from: "edit" }], approveOrders: null }],
+  });
+  // The drawer reads the same rule: every unit area in Laura's division is locked, and nothing is offered there.
+  assert.equal(areaRule(ROLE_HELD_ACCESS, laura, inAoa, "members", null).changeable, false);
+  assert.equal(areaRule(ROLE_HELD_ACCESS, laura, inAoa, "orders", null).changeable, false);
+  assert.deepEqual(shownAreas(ROLE_HELD_ACCESS, laura, inAoa, {}), []);
+  assert.deepEqual(shownAreas(ROLE_HELD_ACCESS, laura, wholeDepartment, {}), ["positions", "applications", "members", "orders"]);
+});
+
+test("a lead's role covers Orders in each division they lead and nowhere else (issue #632)", () => {
+  const twoDivisions: AccessPerson = { id: 21, name: "Giorgia Galli", photoUrl: null, role: { kind: "lead", divisions:[msa, aoa] }, division: msa };
+  assert.deepEqual(LEAD_ROLE_HELD_ACCESS, ["positions", "applications", "members", "orders"].map((target) => ({ target, level: "edit" })));
+  for (const place of [inMsa, inAoa]) assert.equal(roleCovers(twoDivisions, place, "orders"), true);
+  assert.equal(roleCovers(laura, inMsa, "orders"), false, "a division Laura does not lead");
+  assert.equal(roleCovers(laura, wholeDepartment, "orders"), false, "the whole department");
+  assert.equal(roleCovers(laura, WHOLE_TEAM_PLACE, "orders"), false, "the whole team");
+});
+
+test("Access offers no Orders for a lead in a division they lead: locked, left out, and no Give access entry for that alone (issue #632)", () => {
+  // A lead's page where the viewer could give only Orders: their co-lead is not listed.
+  const ordersOnly: AccessUnit = { kind: "division", divisions: [{ division: msa, held: [{ target: "orders", level: "edit" }] }] };
+  const access = { unit: ordersOnly, people: [pietro, coLead], grants: [], approveOrders: NO_APPROVE_ORDERS };
+  assert.deepEqual(grantablePeople(access).map((p) => p.id), [pietro.id]);
+  assert.deepEqual(areaRule(held, coLead, inMsa, "orders", null), { changeable: false });
+  assert.deepEqual(shownAreas(held, coLead, inMsa, {}), []);
+  assert.equal(checkSaveAccess(lead(), { personId: coLead.id, areas: { orders: "view" } }).ok, false);
+  // A member there is offered Orders as before.
+  assert.deepEqual(areaRule(held, pietro, inMsa, "orders", null), { changeable: true, highest: "edit" });
 });
 
 test("a grant in one place leaves the same area in another place alone; Remove all takes every place", () => {
@@ -260,7 +302,7 @@ const teamUnit: AccessUnit = {
     { department: structures, divisions: [dm] },
   ],
 };
-const giulio: AccessPerson = { id: 31, name: "Giulio Russo", standing: "member", division: dm };
+const giulio: AccessPerson = { id: 31, name: "Giulio Russo", photoUrl: null, role: NO_ROLE, division:dm };
 const team = (grants: AccessGrant[] = [], approveOrders: ApproveOrdersAccess = NO_APPROVE_ORDERS) => ({
   unit: teamUnit,
   people: [...headPeople, giulio],
@@ -330,34 +372,32 @@ test("Give access offers the whole team, one department or one division, every a
       }
     }
   }
-  const wholeTeam = checkSaveAccess(team(), { personId: 31, where: "team", areas: { positions: "view", alumni: "edit", orders: "edit" } });
-  assert.deepEqual(wholeTeam.ok && wholeTeam.value.changes.map((c) => c.target), ["positions", "alumni", "orders"]);
+  const wholeTeam = checkSaveAccess(team(), { personId: 31, where: "team", areas: { positions: "view", members: "edit", orders: "edit" } });
+  assert.deepEqual(wholeTeam.ok && wholeTeam.value.changes.map((c) => c.target), ["positions", "members", "orders"]);
 });
 
-test("the operations lead and the IT lead give every area but Approve orders, Alumni only across the whole team", () => {
-  for (const level of ["view", "edit"] as const) {
-    assert.equal(checkSaveAccess(team([], fullAccessOnly), { personId: 31, where: "team", areas: { alumni: level } }).ok, true, level);
+test("the Access page offers no Alumni area: the Alumni page is site content under Content (issue #589)", () => {
+  assert.deepEqual([...ACCESS_TARGETS], ["positions", "applications", "members", "content", "orders"]);
+  assert.equal(Object.values(ACCESS_TARGET_LABELS).includes("Alumni"), false);
+  // The drawer's schema refuses an Alumni key from anyone, full access included, in any place.
+  for (const facts of [team(), team([], fullAccessOnly), team([], teamLeaderGives), head()]) {
+    for (const where of ["team", "department-1", 3] as const) {
+      for (const level of ["view", "edit"] as const) {
+        assert.equal(checkSaveAccess(facts, { personId: 31, where, areas: { alumni: level } }).ok, false, `${where} ${level}`);
+      }
+    }
   }
-  // Alumni has no unit: it is never given in one department or division.
-  assert.equal(checkSaveAccess(team(), { personId: 31, where: "department-2", areas: { alumni: "view" } }).ok, false);
-  assert.equal(checkSaveAccess(team(), { personId: 31, where: 3, areas: { alumni: "edit" } }).ok, false);
-  // A head holds no Alumni, so never gives it.
-  assert.equal(checkSaveAccess(head(), { personId: 3, where: "department-1", areas: { alumni: "view" } }).ok, false);
+  // Full access's own summary lists every area but Alumni.
+  const [line] = heldLines(team().unit);
+  assert.deepEqual(
+    line.held.map((h) => h.target),
+    ["positions", "applications", "members", "content", "orders"],
+  );
 });
 
 test("the Activity log is never offered: it is no area of Give access", () => {
   assert.equal(checkSaveAccess(team([], teamLeaderGives), { personId: 31, where: "team", areas: { logs: "view" } }).ok, false);
   assert.equal(checkSaveAccess(team([], teamLeaderGives), { personId: 31, where: "team", areas: { "activity-log": "edit" } }).ok, false);
-});
-
-test("an Alumni grant gives the person Alumni page reach, and no content editor (issue #504)", () => {
-  const row = grantRowOf(WHOLE_TEAM_PLACE, "alumni");
-  assert.deepEqual(row, { scope: "website", target: "all", deptId: null, divisionId: null });
-  const member = { type: null, divisionId: 1, fullAccess: null } as const;
-  assert.equal(canReach(viewerStandingOf({ scopes: [], activeRoles: [member] }), "alumni"), false);
-  const holder = viewerStandingOf({ scopes: [{ scope: row.scope, target: "all", level: "view" }], activeRoles: [member] });
-  assert.equal(canReach(holder, "alumni"), true);
-  assert.equal(maySiteContent(holder), false);
 });
 
 // Content (Owner decision, 2026-10-21, issue #504) ------------------------------
@@ -369,9 +409,9 @@ test("full access gives Content across the whole team at Can edit only, never in
   for (const where of ["department-1", "department-2", 3] as const) {
     assert.deepEqual(checkSaveAccess(team(), { personId: 31, where, areas: { content: "edit" } }), { ok: false, error: "Content access is given to the whole team only." }, String(where));
   }
-  // It follows Alumni in the drawer's order.
-  const both = checkSaveAccess(team(), { personId: 31, where: "team", areas: { orders: "view", content: "edit", alumni: "view" } });
-  assert.deepEqual(both.ok && both.value.changes.map((c) => c.target), ["alumni", "content", "orders"]);
+  // It follows Members in the drawer's order.
+  const both = checkSaveAccess(team(), { personId: 31, where: "team", areas: { orders: "view", content: "edit", members: "view" } });
+  assert.deepEqual(both.ok && both.value.changes.map((c) => c.target), ["members", "content", "orders"]);
 });
 
 test("a lead or head who holds neither full access nor Content cannot give, change or remove Content", () => {
@@ -405,14 +445,13 @@ test("a lead or head who holds Content gives, keeps and removes it across the wh
   assert.equal(checkRemoveGrant(team([grant(82, giulio, "content", "edit", WHOLE_TEAM_PLACE)]), { personId: 31, where: "team", target: "content" }).ok, true, "full access removes it");
 });
 
-test("a Content grant is the website row on content: it opens the content editors, and never the Alumni page", () => {
+test("a Content grant is the website row on content: it opens the content editors, the Alumni page among them (issue #589)", () => {
   const row = grantRowOf(WHOLE_TEAM_PLACE, "content");
   assert.deepEqual(row, { scope: "website", target: "content", deptId: null, divisionId: null });
   const member = { type: null, divisionId: 1, fullAccess: null } as const;
   const holder = viewerStandingOf({ scopes: [{ scope: row.scope, target: row.target, level: "edit" }], activeRoles: [member] });
   assert.equal(maySiteContent(holder), true);
-  for (const page of ["projects", "outreach", "partners", "faq", "team-page"] as const) assert.equal(canReach(holder, page), true, page);
-  assert.equal(canReach(holder, "alumni"), false);
+  for (const page of ["projects", "outreach", "partners", "alumni", "faq", "team-page"] as const) assert.equal(canReach(holder, page), true, page);
 });
 
 test("an area given across the whole team opens its pages in every open department", () => {
@@ -458,7 +497,7 @@ test("a holder of Approve orders gets a row of their own, with the chip before t
 // A lead of several divisions (issue #185) ---------------------------------------
 
 test("a lead of two divisions gives access in the division of the person they edit, up to what they hold there", () => {
-  const sara: AccessPerson = { id: 32, name: "Sara Fontana", standing: "member", division: aoa };
+  const sara: AccessPerson = { id: 32, name: "Sara Fontana", photoUrl: null, role: NO_ROLE, division:aoa };
   const viewInAoa: HeldAccess[] = [{ target: "applications", level: "view" }];
   const twoDivisions: AccessUnit = { kind: "division", divisions: [{ division: msa, held }, { division: aoa, held: viewInAoa }] };
   const access = { unit: twoDivisions, people: [...people, sara], grants: [], approveOrders: NO_APPROVE_ORDERS };
@@ -481,9 +520,9 @@ test("a lead of two divisions gives access in the division of the person they ed
 });
 
 test("a lead of two divisions has a role row in each, each in its own division, not their primary one", () => {
-  const marco: AccessPerson = { id: 2, name: "Marco Bianchi", standing: "lead", division: msa };
+  const marco: AccessPerson = { id: 2, name: "Marco Bianchi", photoUrl: null, role: { kind: "lead", divisions:[msa] }, division: msa };
   assert.equal(roleDivision({ person: marco, place: { kind: "division", division: msa } }), msa);
   assert.equal(roleDivision({ person: marco, place: { kind: "division", division: aoa } }), aoa);
   // A head's role is in a department: the row stays with the person's own division, if any.
-  assert.equal(roleDivision({ person: marco, place: { kind: "department", department: aerodynamics } }), msa);
+  assert.equal(roleDivision({ person: marco, place: { kind: "department", department: aerodynamics }, title: "Head of Aerodynamics" }), msa);
 });

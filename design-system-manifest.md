@@ -63,11 +63,15 @@ Rules:
   award tag accent and every other tag `white-10` with `prt-text`. Project status pills sit on a texture, so they follow
   board 21 instead: flown = `ground/70` with `prt-text`, In design = `prt-text` with `ground`
   (`project-card.tsx`).
-- Application stage pills on the dashboard follow the same pairing (board 58b, issue #171,
-  `stage-pill.tsx`): New and "Interview · no time yet" = `white-10` with `prt-text`, In review =
-  `info`, a booked interview = accent, Accepted and Joined = success, Rejected and Withdrawn =
-  `white-5` with `prt-muted`. `info` marks In review (on the stage pill and tag, and on the
-  panel's stage menu trigger and its dot: `toneSurface`, `toneDot`) and, on the Team tree only
+- Application status pills and tags on the dashboard (`stage-pill.tsx`, issue #752) show the
+  name and colour the status list stores, so a rename or recolour in the Statuses editor
+  (board 97d) reaches every application in that status: a 16% fill of the status's colour, a
+  dot in it, and `prt-text` words, which stay legible whatever colour is picked. The Status
+  picker at the head of the application drawer (boards 97 to 97c, issue #750) and the Statuses
+  editor paint each status's dot in that colour too. It is data the editor sets, from the
+  colours `STATUS_COLOURS` offers (`lib/dashboard/application-status.ts`), like a project's
+  stored colours, not a colour of the page.
+  `info` marks, on the Team tree only
   (board 54e, issue #229, `team-tree.tsx`), someone in another division: the dashed line from a
   division to someone drawn under another one, their "also {division}" tag (`info-soft` fill,
   `info` text) and the legend's line, so they read apart from the accent path. It is not a second
@@ -126,7 +130,10 @@ Rules:
   on phones, 240px from md. The hero has no pad of its own, so the page sky adds one under it,
   less `--hero-bottom-space` (the empty hero below its last line of text, `app/globals.css`):
   the gap from that line to the Track record eyebrow is the same 112px / 240px. The footer's
-  top pad and the /projects page's bottom pad are `section` too, and /projects keeps one
+  top pad is `section` too, and it alone sets the gap above the footer: a page's `<main>` has
+  no bottom pad (issue #582, held by `lib/footer-gap.test.ts`). A page that puts the apply
+  band between its sky and the footer (Team, alumni) pads the sky's bottom by `section`
+  instead, so the band sits one pad below the last section (issue #718). /projects keeps one
   `section` pad between the bar and its header. Never
   set a section's vertical padding with another value. Sides are `px-5 md:px-16` (board 24
   gives phones 20px sides). Sections below the hero have no borders
@@ -268,7 +275,9 @@ right. There is no Sign in on the bar: it is in the menu.
 38px round avatar at every width (the photo, else the PRT mark on `accent`), with no name text;
 on phones it sits beside the menu icon. Its accessible name is "Account menu". It opens the
 repo's Radix dropdown below it, aligned right: a `panel` card with a `hairline` edge, the full
-name and team email as header, then Dashboard (`text-2`) and Log out (`danger`). While open
+name and the sign-in Google address as header (never the team address, issue #683), then
+Dashboard (`text-2`), Wiki (`text-2`, the external-link icon, opens the team wiki in a new tab)
+and Log out (`danger`). While open
 the avatar wears a 2px `accent` ring. Signed in, the sidebar has no foot. Signed out nothing
 changes. Log out is the one shared sign-out (`components/use-sign-out.ts`).
 
@@ -551,8 +560,15 @@ plus a starfield and one shooting star about every 20s in the upper half. Brand 
 four columns (About, Projects, Get involved, Contact); the email link is accent
 (`footer.tsx`). From lg the brand block and the four columns are one row, each as wide as its
 widest line, spread edge to edge, so every gap between columns is the same, brand to About
-included. Phones (board 24): brand block, then the columns 2 x 2, then the address lines
-stacked.
+included. The street address sits under the tagline (issue #737). Phones (board 24): brand
+block, then the columns 2 x 2. Bottom row, under the hairline, in `font-mono` 11px `text-dim`:
+the copyright line, the legal links (Terms of Service, Privacy Policy) side by side, then
+"POLITECNICO DI TORINO", which is hidden below md. Below lg the three stack, the copyright
+line first; from lg they are one row, copyright left, the legal links and Politecnico right.
+Each bottom-row item stays on one line at every width (`whitespace-nowrap`, issue #774).
+The gap above the bottom row (from the hairline, `mt-10`) equals the footer's bottom padding
+(`pb-10`): 40px at every breakpoint, so the row sits evenly between the line and the page end
+(issue #779).
 
 ## Accessibility
 

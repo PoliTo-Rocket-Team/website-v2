@@ -34,13 +34,13 @@ const org: OrgChart = {
 
 const team: TeamPerson[] = [
   { id: 1, name: "Marco Bianchi", emails: ["marco@prt.it"], memberships: membershipsOf([{ divisionId: 1, role: "lead", since: "2023-10-01" }]), beyond: [] },
-  { id: 6, name: "Chiara Rinaldi", emails: ["chiara@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "head", departmentId: 1 }] },
-  { id: 7, name: "Alessandro Greco", emails: ["alessandro@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "team-leader" }] },
+  { id: 6, name: "Chiara Rinaldi", emails: ["chiara@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "head", departmentId: 1, title: "Head of Aerodynamics" }] },
+  { id: 7, name: "Alessandro Greco", emails: ["alessandro@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "team-leader", title: "" }] },
 ];
 
 const fullAccess: TeamActor = { kind: "team" };
 const head: TeamActor = { kind: "head", departmentIds: [1] };
-const lead: TeamActor = { kind: "lead", divisionIds: [1] };
+const lead: TeamActor = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] };
 const propulsion: DepartmentCreate = { name: "Propulsion", code: "PR", heads: [1], kind: "technical" };
 
 const create = (save: Partial<DepartmentCreate>, actor: TeamActor | null = fullAccess) => planDepartmentCreate({ actor, org, save: { ...propulsion, ...save }, team });
@@ -89,7 +89,7 @@ test("Edit department saves a new name or code under the same rules, for an open
 const DM: Unit = { kind: "division", divisionId: 3 };
 const STRUCTURES: Unit = { kind: "department", departmentId: 2 };
 
-const record = (r: Partial<ClosingRecord> & Pick<ClosingRecord, "id" | "name">): ClosingRecord => ({ memberships: membershipsOf([]), beyondDivisions: [], advising: [], ...r });
+const record = (r: Partial<ClosingRecord> & Pick<ClosingRecord, "id" | "name">): ClosingRecord => ({ photoUrl: null, memberships: membershipsOf([]), beyondDivisions: [], advising: [], ...r });
 
 /** Aerodynamics: its head, a lead, a member also in Design & Manufacturing, an advisor in a division and one on the department; and someone only in Structures. */
 const records: ClosingRecord[] = [
@@ -97,7 +97,7 @@ const records: ClosingRecord[] = [
   record({ id: 1, name: "Marco Bianchi", memberships: membershipsOf([{ divisionId: 1, role: "lead", since: "2023-10-01" }]) }),
   record({ id: 13, name: "Luca Neri", memberships: membershipsOf([{ divisionId: 2, role: "member", since: "2025-10-01" }]), advising: [2] }),
   record({ id: 20, name: "Elena Russo", beyondDivisions: [{ kind: "advisor", departmentId: 1 }] }),
-  record({ id: 6, name: "Chiara Rinaldi", beyondDivisions: [{ kind: "head", departmentId: 1 }] }),
+  record({ id: 6, name: "Chiara Rinaldi", beyondDivisions: [{ kind: "head", departmentId: 1, title: "Head of Aerodynamics" }] }),
   record({ id: 30, name: "Paolo Gallo", memberships: membershipsOf([{ divisionId: 3, role: "member", since: "2024-10-01" }]) }),
 ];
 

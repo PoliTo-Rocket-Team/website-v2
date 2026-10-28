@@ -173,8 +173,8 @@ function Picker({
           </h3>
           <p className="mt-2.5 text-[13px] leading-relaxed text-text-2">
             {mode === "offer"
-              ? `The site does not send emails. ${first} only learns about the interview from you. Ask them to open My applications on the PRT Dashboard and pick a time.`
-              : `The site does not send emails. Tell ${first} the times changed and to pick a new one in My applications.`}
+              ? `The site doesn't send emails, so ${first} won't hear about the interview unless you tell them. Email them to pick a time in My applications on the PRT Dashboard. Their pick then shows on this application.`
+              : `The site doesn't send emails, so ${first} won't see that the times changed. Email them to pick a new time in My applications. Their new pick shows on this application.`}
           </p>
           <div className="mt-3.5 flex flex-col gap-2 sm:flex-row">
             <p className="flex h-9 min-w-0 items-center truncate rounded-lg border border-white-10 bg-white-5 px-3 text-[13px] text-prt-text sm:flex-1">

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { NO_MEMBER_DETAILS } from "./details";
-import { addOutcome, checkAddMember, divisionMembers, headcountLine, lookupForAdd, type PersonRecord } from "./division-members";
+import { NO_NAME } from "./person-name";
+import { addedSentence, addOutcome, checkAddMember, checkMemberEdit, divisionMembers, headcountLine, lookupForAdd, type PersonRecord } from "./division-members";
 import { membershipsOf, type OrgChart } from "./team";
 
 // Issue #231: the division page's shapes and Add member's rules, as both
@@ -23,6 +24,7 @@ function record(id: number, name: string, list: [divisionId: number, role: "lead
   return {
     id,
     name,
+    storedName: NO_NAME,
     signInEmail: `${name.split(" ")[0].toLowerCase()}@gmail.com`,
     photoUrl: null,
     since: 2024,
@@ -45,7 +47,7 @@ const records = [
 ];
 
 test("a division's page lists its people with this division first, a code chip inside the department and the department's name outside it", () => {
-  const page = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1] }, selfId: 2, reach: [1], waiting: [], joining: [] })!;
+  const page = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1], ledDivisionIds: [1] }, selfId: 2, reach: [1], waiting: [], joining: [] })!;
   assert.deepEqual(page.people.map((p) => p.name), ["Marco Bianchi", "Davide Russo"], "leads first, and nobody from outside the division");
   const davide = page.people[1];
   assert.equal(davide.title, "Mission Analyst");
@@ -55,8 +57,10 @@ test("a division's page lists its people with this division first, a code chip i
   ]);
   assert.deepEqual(davide.chips.map((c) => [c.label, c.code]), [["MA", true], ["Structures", false]]);
   assert.equal(page.people[0].self, true);
-  assert.equal(page.division.leadsHint, "Leads are changed by the Head of Aerodynamics");
-  assert.equal(headcountLine({ people: page.people, waiting: [{ joinId: 1, email: "e@x.it", name: null, title: null, details: NO_MEMBER_DETAILS }] }), "1 lead, 3 members");
+  assert.equal(page.division.leadsHint, null, "its own lead changes its leads (#594)");
+  const granted = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1], ledDivisionIds: [] }, selfId: null, reach: [1], waiting: [], joining: [] })!;
+  assert.equal(granted.division.leadsHint, "Leads are changed by the Head of Aerodynamics", "a Members grant does not");
+  assert.equal(headcountLine({ people: page.people, waiting: [{ joinId: 1, email: "e@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS, addedOn: "2026-10-20", signedIn: false, addedBy: { kind: "viewer" } }] }), "1 lead, 3 members");
 });
 
 test("Add member: a team member joins at once with no second NDA; anyone else waits for Confirm NDA (#231)", () => {
@@ -76,19 +80,25 @@ test("an added email is kept as the sign-in account will carry it, so their firs
 });
 
 test("Add member's field finds a member by name or by either email, and says when an email is new or already waiting", () => {
-  const team = records.map((r) => ({ id: r.id, name: r.name, emails: [r.signInEmail, `${r.name[0].toLowerCase()}.x@politorocketteam.it`], memberships: r.memberships }));
+  const team = records.map((r) => ({ id: r.id, name: r.name, emails: [r.signInEmail, `${r.name[0].toLowerCase()}.x@politorocketteam.it`], photoUrl: r.photoUrl, memberships: r.memberships }));
   const byName = lookupForAdd("paolo", team, [], 1, org);
   assert.ok(byName.kind === "people" && byName.people.length === 1 && byName.people[0].here === false);
   const byEmail = lookupForAdd("DAVIDE@gmail.com", team, [], 1, org);
   assert.ok(byEmail.kind === "people" && byEmail.people[0].id === 16 && byEmail.people[0].here === true);
   assert.deepEqual(lookupForAdd("new.person@studenti.polito.it", team, [], 1, org), { kind: "new-email", email: "new.person@studenti.polito.it" });
   assert.deepEqual(lookupForAdd("Elena@x.it", team, ["elena@x.it"], 1, org), { kind: "waiting", email: "elena@x.it" });
-  assert.deepEqual(lookupForAdd("p", team, [], 1, org), { kind: "none" });
+  // Issue #618: an empty field lists the whole team by name, and each letter narrows it.
+  const opened = lookupForAdd("", team, [], 1, org);
+  assert.ok(opened.kind === "people");
+  assert.deepEqual(opened.people.map((p) => p.name), team.map((c) => c.name).sort((x, y) => x.localeCompare(y)));
+  const narrowed = lookupForAdd("p", team, [], 1, org);
+  assert.ok(narrowed.kind === "people" && narrowed.people.length < team.length && narrowed.people.every((p) => p.name.toLowerCase().includes("p")));
+  assert.deepEqual(lookupForAdd("zzz", team, [], 1, org), { kind: "none" });
 });
 
 // Issue #351: the page offers a change only where the viewer may make it.
 test("a viewer who changes nobody in the division sees its people with no action on any row", () => {
-  for (const actor of [null, { kind: "lead" as const, divisionIds: [2] }]) {
+  for (const actor of [null, { kind: "lead" as const, divisionIds: [2], ledDivisionIds: [2] }]) {
     const page = divisionMembers({ records, org, divisionId: 1, actor, selfId: null, reach: [1, 2], waiting: [], joining: [] })!;
     assert.equal(page.editable, false);
     assert.deepEqual(page.people.map((p) => p.name), ["Marco Bianchi", "Davide Russo"], "viewing is unchanged");
@@ -97,7 +107,27 @@ test("a viewer who changes nobody in the division sees its people with no action
 });
 
 test("a viewer who may change the division gets the row actions their actor allows", () => {
-  const page = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1, 2] }, selfId: null, reach: [1, 2], waiting: [], joining: [] })!;
+  const page = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1, 2], ledDivisionIds: [1, 2] }, selfId: null, reach: [1, 2], waiting: [], joining: [] })!;
   assert.equal(page.editable, true);
   assert.equal(page.people.find((p) => p.name === "Davide Russo")!.removal.kind, "offered");
+});
+
+test("a corrected sign-in email is checked like the other email fields, and its error lands on its own field (issue #741)", () => {
+  const edit = (signInEmail?: string) => checkMemberEdit({ title: "", details: NO_MEMBER_DETAILS, ...(signInEmail === undefined ? {} : { signInEmail }) });
+  assert.deepEqual(edit(), { ok: true, value: { title: null, details: NO_MEMBER_DETAILS, name: null, signInEmail: null } });
+  assert.deepEqual(edit(" New.Person@Example.com "), { ok: true, value: { title: null, details: NO_MEMBER_DETAILS, name: null, signInEmail: "new.person@example.com" } });
+  for (const bad of ["", "not-an-email"]) assert.deepEqual(edit(bad), { ok: false, errors: { signInEmail: "Write an email address." } }, JSON.stringify(bad));
+});
+
+// Issue #799: the "hasn't signed in yet" box names who added the person.
+test("the box says You to the adder and the adder's full name to anyone else", () => {
+  const added = { addedOn: "2026-10-20", email: "elena@x.it" };
+  assert.equal(addedSentence({ ...added, addedBy: { kind: "viewer" } }, "Mission Analysis Division"), "You added them to Mission Analysis Division on 20 Oct with elena@x.it.");
+  assert.equal(addedSentence({ ...added, addedBy: { kind: "member", name: "Marco Rossi" } }, "Mission Analysis Division"), "Marco Rossi added them to Mission Analysis Division on 20 Oct with elena@x.it.");
+});
+
+test("with no known adder the box names no one", () => {
+  const sentence = addedSentence({ addedOn: "2026-10-20", email: "elena@x.it", addedBy: { kind: "unknown" } }, "Mission Analysis Division");
+  assert.equal(sentence, "They were added to Mission Analysis Division on 20 Oct with elena@x.it.");
+  assert.doesNotMatch(sentence, /^\s|\s{2}|You/);
 });

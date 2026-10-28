@@ -248,17 +248,23 @@ export function stepsDown(standing: ClosingStanding): standing is "head" | "lead
   return standing === "head" || standing === "lead";
 }
 
-/** Someone Close department moves: who they are, what they hold in the department, and the units outside it they already hold a role in. */
+/**
+ * Someone Close department moves: who they are, what they hold in the
+ * department, and the units outside it they already hold a role in. The head
+ * carries their head role's title as stored (`beyondTitle`: the default only
+ * for a blank one), which the panel names them by (issue #625).
+ */
 export type ClosingPerson = {
   readonly id: number;
   readonly name: string;
-  readonly standing: ClosingStanding;
+  /** Their stored photo, on their card (issue #656); null for the PRT mark. */
+  readonly photoUrl: string | null;
   /** Units outside the closing department where they already hold a role: they cannot be moved there. */
   readonly holds: readonly Unit[];
-};
+} & ({ readonly standing: "head"; readonly title: string } | { readonly standing: Exclude<ClosingStanding, "head"> });
 
 /** A person as `closingPeople` reads them: both data sources build these records (./division-members.ts). */
-export type ClosingRecord = Pick<PersonRecord, "id" | "name" | "memberships" | "beyondDivisions" | "advising">;
+export type ClosingRecord = Pick<PersonRecord, "id" | "name" | "photoUrl" | "memberships" | "beyondDivisions" | "advising">;
 
 const STANDING_ORDER: Readonly<Record<ClosingStanding, number>> = { head: 0, lead: 1, advisor: 2, member: 3 };
 
@@ -272,11 +278,10 @@ export function closingPeople(records: readonly ClosingRecord[], org: OrgChart, 
   const own = new Set(org.divisions.filter((d) => d.departmentId === departmentId).map((d) => d.id));
   const people = records.flatMap((r): ClosingPerson[] => {
     const here = r.memberships.filter((m) => own.has(m.divisionId));
-    const heads = r.beyondDivisions.some((b) => b.kind === "head" && b.departmentId === departmentId);
+    const heads = r.beyondDivisions.find((b) => b.kind === "head" && b.departmentId === departmentId);
     const kept = r.beyondDivisions.filter((b) => (b.kind === "advisor" || b.kind === "department") && b.departmentId === departmentId);
-    if (!heads && here.length === 0 && kept.length === 0) return [];
+    if (heads === undefined && here.length === 0 && kept.length === 0) return [];
     const advises = kept.some((b) => b.kind === "advisor") || here.some((m) => r.advising.includes(m.divisionId));
-    const standing: ClosingStanding = heads ? "head" : here.some((m) => m.role === "lead") ? "lead" : advises ? "advisor" : "member";
     const holds: Unit[] = [
       ...r.memberships.filter((m) => !own.has(m.divisionId)).map((m): Unit => ({ kind: "division", divisionId: m.divisionId })),
       ...r.beyondDivisions.flatMap((b): Unit[] =>
@@ -285,7 +290,9 @@ export function closingPeople(records: readonly ClosingRecord[], org: OrgChart, 
           : [],
       ),
     ];
-    return [{ id: r.id, name: r.name, standing, holds }];
+    if (heads !== undefined) return [{ id: r.id, name: r.name, photoUrl: r.photoUrl, holds, standing: "head", title: beyondTitle(heads, org) }];
+    const standing = here.some((m) => m.role === "lead") ? "lead" : advises ? "advisor" : "member";
+    return [{ id: r.id, name: r.name, photoUrl: r.photoUrl, holds, standing }];
   });
   return people.sort((a, b) => STANDING_ORDER[a.standing] - STANDING_ORDER[b.standing] || a.name.localeCompare(b.name));
 }

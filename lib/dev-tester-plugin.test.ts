@@ -1,129 +1,362 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { memoryAdapter } from "better-auth/adapters/memory";
 import { getCookieCache } from "better-auth/cookies";
-import { TESTERS } from "./dev-tester";
+import { viewAsRefusalOf, viewAsSiteOf, type ViewAsAccount, type ViewAsEntry, type ViewAsRefusal } from "./dashboard/view-as";
+import { SEAT_OF_FLAG } from "./dashboard/viewer";
+import {
+  BASE,
+  GATE_ON,
+  Jar,
+  PREVIEW_DB,
+  TEST_ENV,
+  envRestorer,
+  memoryAuth,
+  seededMemoryDb,
+  setEnv,
+  type MemoryDb,
+} from "./dev-tester-fixture";
+import type { TesterDirectory } from "./dev-tester-plugin";
+import { ADMIN_TESTERS, SEATS, SEEDED_ACCOUNTS, seatOf, type SeededAccount } from "./seeded-accounts";
+import type { ViewAsGate } from "./view-as-plugin";
 
-// Throwaway values for an in-memory auth instance; nothing here is a real
-// secret or reads .env.
-const TEST_ENV = {
-  BETTER_AUTH_URL: "http://localhost:3000",
-  BETTER_AUTH_SECRET: "dev-tester-plugin-test-secret-0123456789abcdef",
-};
+// The tester sign-in through the real Better Auth instance (issues #608,
+// #653), over an in-memory database: under `next dev` and on a preview of the
+// shared `preview` database it opens a real session for any seeded person,
+// named by a seat's key, a person key or a member id, and for no account the
+// seed did not make; any account signed in this way passes the View as rule there
+// (issues #604, #648), and signing out deletes the session. A Google session
+// reaches the same View as check as a tester one and gets the same answer.
+// Where the gate is off, the plugin is not registered (lib/dev-tester.test.ts).
 
-const savedEnv = { ...process.env };
+afterEach(envRestorer());
 
-afterEach(() => {
-  for (const key of Object.keys(process.env)) {
-    if (!(key in savedEnv)) delete process.env[key];
-  }
-  Object.assign(process.env, savedEnv);
-});
+const label = (vars: Record<string, string | undefined>) => JSON.stringify(vars);
 
-function setEnv(vars: Record<string, string | undefined>): void {
-  for (const [key, value] of Object.entries(vars)) {
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
-  }
+/** The stored sessions an account is signed in with. */
+const sessionRowsOf = (db: MemoryDb, userId: string) => db.session.filter((row) => row.userId === userId);
+
+async function signIn(auth: Awaited<ReturnType<typeof memoryAuth>>, account: SeededAccount, cb?: string): Promise<{ response: Response; jar: Jar }> {
+  const query = cb === undefined ? "" : `&cb=${encodeURIComponent(cb)}`;
+  const response = await auth.handler(new Request(`${BASE}/dev-tester/sign-in?tester=${account.key}${query}`));
+  const jar = new Jar();
+  jar.take(response);
+  return { response, jar };
 }
 
-async function authWithTesters() {
-  const db: Record<string, Record<string, unknown>[]> = {
-    user: [],
-    session: [],
-    account: [],
-    verification: [],
-  };
-  const now = new Date();
-  for (const tester of Object.values(TESTERS)) {
-    db.user.push({
-      id: tester.id,
-      name: tester.name,
-      email: tester.email,
-      emailVerified: true,
-      image: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-  const { createAuth } = await import("./auth");
-  return createAuth(memoryAdapter(db));
-}
-
-const BASE = "http://localhost:3000/api/auth";
-
-test("with the gate off, getAuth keeps Google alone and the tester routes are 404", async () => {
-  for (const vars of [
-    { NODE_ENV: "production", VERCEL_ENV: undefined },
-    { NODE_ENV: "production", VERCEL_ENV: "preview" },
-    { NODE_ENV: "development", VERCEL_ENV: "preview" },
-    { NODE_ENV: "test", VERCEL_ENV: undefined },
-  ]) {
+test("where the gate is on, signing in as any seeded seat or admin tester makes a real session for that account", async () => {
+  for (const vars of GATE_ON) {
     setEnv({ ...TEST_ENV, ...vars });
-    const auth = await authWithTesters();
-    const label = JSON.stringify(vars);
+    const db = seededMemoryDb();
+    const auth = await memoryAuth(db);
 
-    assert.deepEqual(Object.keys(auth.options.socialProviders ?? {}), ["google"], label);
-    assert.equal("emailAndPassword" in auth.options, false, label);
-    assert.deepEqual(auth.options.plugins.map((plugin) => plugin.id), ["custom-session"], label);
+    for (const account of SEEDED_ACCOUNTS) {
+      const at = `${label(vars)} ${account.key}`;
+      const { response, jar } = await signIn(auth, account, "/apply/15-mission-analyst");
+      assert.equal(response.status, 302, at);
+      assert.equal(response.headers.get("location"), "/apply/15-mission-analyst", at);
 
-    for (const path of ["/dev-tester", "/dev-tester/sign-in?tester=applicant"]) {
-      const response = await auth.handler(new Request(BASE + path));
-      assert.equal(response.status, 404, `${label} ${path}`);
-      assert.equal(response.headers.getSetCookie().length, 0, `${label} ${path}`);
+      const cache = await getCookieCache(jar.headers(), { secret: TEST_ENV.BETTER_AUTH_SECRET });
+      assert.equal(cache?.session.userId, account.id, `${at}: the cookie cache getCurrentUserId reads`);
+
+      const session = await auth.api.getSession({ headers: jar.headers(), query: { disableCookieCache: true } });
+      assert.equal(session?.user.id, account.id, `${at}: the session row the server reads`);
+      assert.equal(session?.impersonatedBy, null, `${at}: a plain session, not View as`);
+      assert.ok(sessionRowsOf(db, account.id).length > 0, `${at}: stored in the database`);
     }
   }
 });
 
-test("on next dev, signing in as a tester sets a cookie cache getCurrentUserId reads", async () => {
-  setEnv({ ...TEST_ENV, NODE_ENV: "development", VERCEL_ENV: undefined });
-  const auth = await authWithTesters();
-  assert.deepEqual(
-    auth.options.plugins.map((plugin) => plugin.id),
-    ["custom-session", "dev-tester"],
-  );
-  assert.deepEqual(Object.keys(auth.options.socialProviders ?? {}), ["google"]);
+test("the tester list links every seeded seat and admin tester, and an unknown key is refused", async () => {
+  for (const vars of GATE_ON) {
+    setEnv({ ...TEST_ENV, ...vars });
+    const auth = await memoryAuth();
 
-  for (const tester of Object.values(TESTERS)) {
-    const response = await auth.handler(
-      new Request(`${BASE}/dev-tester/sign-in?tester=${tester.key}&cb=/apply/15-mission-analyst`),
-    );
-    assert.equal(response.status, 302, tester.key);
-    assert.equal(response.headers.get("location"), "/apply/15-mission-analyst");
+    const list = await auth.handler(new Request(`${BASE}/dev-tester`));
+    assert.equal(list.status, 200, label(vars));
+    const html = await list.text();
+    for (const account of SEEDED_ACCOUNTS) {
+      assert.ok(html.includes(`/api/auth/dev-tester/sign-in?tester=${account.key}`), `${label(vars)} ${account.key}`);
+    }
 
-    const cookie = response.headers
-      .getSetCookie()
-      .map((line) => line.split(";")[0])
-      .join("; ");
-    const cache = await getCookieCache(new Headers({ cookie }), {
-      secret: TEST_ENV.BETTER_AUTH_SECRET,
+    const unknown = await auth.handler(new Request(`${BASE}/dev-tester/sign-in?tester=admin`));
+    assert.equal(unknown.status, 400, label(vars));
+    assert.equal(unknown.headers.getSetCookie().length, 0, label(vars));
+  }
+});
+
+test("an account missing from the database gets no session", async () => {
+  for (const vars of GATE_ON) {
+    setEnv({ ...TEST_ENV, ...vars });
+    const auth = await memoryAuth({ user: [], session: [], account: [], verification: [] });
+
+    const response = await auth.handler(new Request(`${BASE}/dev-tester/sign-in?tester=member`));
+    assert.equal(response.status, 404, label(vars));
+    assert.equal(response.headers.getSetCookie().length, 0, label(vars));
+  }
+});
+
+/** A seeded person who is no seat, as the seed writes their sign-in row: named by their person key. */
+const PERSON = { id: "5eed0000-0000-4000-8000-000000000119", email: "beatrice.la.motta@example.com", name: "Beatrice La Motta", memberId: 119 };
+/** A developer's own account, which no seed made. */
+const OWN_ACCOUNT = { id: "own-account", email: "someone@gmail.com", name: "Someone", memberId: 777 };
+
+function withAccounts(...accounts: readonly { id: string; email: string; name: string }[]): MemoryDb {
+  const db = seededMemoryDb();
+  const now = new Date();
+  for (const a of accounts) db.user.push({ id: a.id, name: a.name, email: a.email, emailVerified: true, image: null, createdAt: now, updatedAt: now, role: null });
+  return db;
+}
+
+/** Member ids as the `users` rows name them: each seat's, the person's and the developer's own. */
+const DIRECTORY: TesterDirectory = {
+  memberUserId: async (memberId) => [...SEATS, PERSON, OWN_ACCOUNT].find((a) => a.memberId === memberId)?.id ?? null,
+};
+
+async function signInAt(auth: Awaited<ReturnType<typeof memoryAuth>>, query: string): Promise<{ response: Response; jar: Jar }> {
+  const response = await auth.handler(new Request(`${BASE}/dev-tester/sign-in?${query}`));
+  const jar = new Jar();
+  jar.take(response);
+  return { response, jar };
+}
+
+test("any seeded person signs in by their person key or their member id, through a real session (issue #653)", async () => {
+  for (const vars of GATE_ON) {
+    setEnv({ ...TEST_ENV, ...vars });
+    const db = withAccounts(PERSON, OWN_ACCOUNT);
+    const auth = await memoryAuth(db, undefined, DIRECTORY);
+
+    for (const [query, id] of [
+      ["tester=beatrice.la.motta&cb=/dashboard", PERSON.id],
+      ["member=119&cb=/dashboard", PERSON.id],
+      [`member=${seatOf("member").memberId}&cb=/dashboard`, seatOf("member").id],
+      ["tester=filippo.prosperi&cb=/dashboard", seatOf("member").id],
+    ] as const) {
+      const at = `${label(vars)} ${query}`;
+      const { response, jar } = await signInAt(auth, query);
+      assert.equal(response.status, 302, at);
+      assert.equal(response.headers.get("location"), "/dashboard", at);
+      const session = await auth.api.getSession({ headers: jar.headers(), query: { disableCookieCache: true } });
+      assert.equal(session?.user.id, id, `${at}: the session row the server reads`);
+      assert.equal(session?.impersonatedBy, null, `${at}: a plain session`);
+    }
+  }
+});
+
+test("the sign-in refuses an account no seed made, a person who is not seeded, and a query that names nobody or two people", async () => {
+  for (const vars of GATE_ON) {
+    setEnv({ ...TEST_ENV, ...vars });
+    const db = withAccounts(PERSON, OWN_ACCOUNT);
+    const auth = await memoryAuth(db, undefined, DIRECTORY);
+
+    for (const [query, status] of [
+      [`member=${OWN_ACCOUNT.memberId}`, 404],
+      ["tester=someone.else", 404],
+      ["member=4242", 404],
+      ["", 400],
+      ["tester=member&member=119", 400],
+      ["member=nobody", 400],
+      ["tester=Beatrice", 400],
+    ] as const) {
+      const { response } = await signInAt(auth, query);
+      assert.equal(response.status, status, `${label(vars)} ${query}`);
+      assert.equal(response.headers.getSetCookie().length, 0, `${label(vars)} ${query}`);
+    }
+    assert.deepEqual(db.session, [], `${label(vars)}: no session was made`);
+  }
+});
+
+test("the tester list says how to name any seeded person: a seat, a person key or a member id", async () => {
+  for (const vars of GATE_ON) {
+    setEnv({ ...TEST_ENV, ...vars });
+    const auth = await memoryAuth();
+    const html = await (await auth.handler(new Request(`${BASE}/dev-tester`))).text();
+    for (const how of ["?tester=&lt;seat&gt;", "?tester=&lt;person key&gt;", "?member=&lt;member id&gt;"]) assert.ok(html.includes(how), `${label(vars)} ${how}`);
+  }
+});
+
+/** One question the gate was asked, and its answer. */
+type Asked = { readonly start: Parameters<ViewAsGate["refusal"]>[0]; readonly answer: ViewAsRefusal | null };
+
+/**
+ * The View as gate of issue #604 with its database reads swapped for this
+ * in-memory one: the same rule (`viewAsRefusalOf`) on the same site reading
+ * (`viewAsSiteOf`, read at each request), each account's full-access seat
+ * from the seat table. It keeps what it was asked, its answers and what it
+ * logged.
+ */
+function issue604Gate(db: MemoryDb): { gate: ViewAsGate; asked: Asked[]; entries: ViewAsEntry[] } {
+  const accountOf = (id: string): ViewAsAccount | null => {
+    if (!db.user.some((u) => u.id === id)) return null;
+    const seeded = SEEDED_ACCOUNTS.find((a) => a.id === id);
+    const activeRoles = seeded?.kind === "seat" ? seeded.roles.map((r) => ({ fullAccess: r.fullAccess === null ? null : SEAT_OF_FLAG[r.fullAccess] })) : [];
+    return { activeRoles, breakGlass: false };
+  };
+  const asked: Asked[] = [];
+  const entries: ViewAsEntry[] = [];
+  return {
+    asked,
+    entries,
+    gate: {
+      refusal: async (start) => {
+        const answer = viewAsRefusalOf({ ...start, acting: accountOf(start.actingAccountId), person: accountOf(start.personId) }, viewAsSiteOf());
+        asked.push({ start, answer });
+        return answer;
+      },
+      record: async (entry) => {
+        entries.push(entry);
+      },
+    },
+  };
+}
+
+async function post(auth: Awaited<ReturnType<typeof memoryAuth>>, jar: Jar, path: string, body: unknown = {}): Promise<Response> {
+  const headers = jar.headers();
+  headers.set("content-type", "application/json");
+  const response = await auth.handler(new Request(BASE + path, { method: "POST", headers, body: JSON.stringify(body) }));
+  jar.take(response);
+  return response;
+}
+
+test("any account signed in this way can start View as through the gate, a plain member seat included (issue #648)", async () => {
+  const person = seatOf("department-head");
+  for (const vars of GATE_ON) {
+    setEnv({ ...TEST_ENV, ...vars });
+    const db = seededMemoryDb();
+    const { gate, entries } = issue604Gate(db);
+    const auth = await memoryAuth(db, gate);
+
+    for (const acting of [seatOf("member"), seatOf("division-lead"), ...ADMIN_TESTERS]) {
+      const at = `${label(vars)} ${acting.key}`;
+      const { jar } = await signIn(auth, acting);
+      const started = await post(auth, jar, "/admin/impersonate-user", { userId: person.id });
+      assert.equal(started.status, 200, at);
+      const session = await auth.api.getSession({ headers: jar.headers(), query: { disableCookieCache: true } });
+      assert.equal(session?.user.id, person.id, `${at}: viewing as the department head seat`);
+      assert.equal(session?.impersonatedBy, acting.id, `${at}: the session names the acting account`);
+      const viewAsRows = db.session.filter((row) => row.impersonatedBy === acting.id);
+      assert.equal(viewAsRows.length, 1, `${at}: one stored View as session`);
+      assert.deepEqual(entries.at(-1), { event: "start", sessionId: viewAsRows[0].id, personId: person.id, actingAccountId: acting.id }, at);
+
+      const chained = await post(auth, jar, "/admin/impersonate-user", { userId: seatOf("alumni").id });
+      assert.equal(chained.status, 403, `${at}: no second start from inside the View as session`);
+      assert.equal((await post(auth, jar, "/admin/stop-impersonating")).status, 200, `${at}: Stop`);
+    }
+  }
+});
+
+// Google sign-in, over the same in-memory database: the real `/sign-in/social`
+// and `/callback/google` endpoints, with only Google's token endpoint
+// answered here. The ID token is not signed, as Better Auth only decodes the
+// one its own token exchange returns.
+
+const GOOGLE_ENV = { AUTH_GOOGLE_ID: "google-client-id.test", AUTH_GOOGLE_SECRET: "google-client-secret-test" };
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+
+function unsignedIdToken(claims: Record<string, unknown>): string {
+  const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  return `${part({ alg: "none", typ: "JWT" })}.${part(claims)}.`;
+}
+
+/** Signs in with Google as the account, through the real OAuth endpoints, and returns the browser's cookies. */
+async function googleSignIn(auth: Awaited<ReturnType<typeof memoryAuth>>, account: SeededAccount): Promise<Jar> {
+  const jar = new Jar();
+  const headers = jar.headers();
+  headers.set("content-type", "application/json");
+  const started = await auth.handler(new Request(`${BASE}/sign-in/social`, { method: "POST", headers, body: JSON.stringify({ provider: "google", callbackURL: "/dashboard" }) }));
+  assert.equal(started.status, 200, `${account.key}: the Google sign-in starts`);
+  jar.take(started);
+  const state = new URL(((await started.json()) as { url: string }).url).searchParams.get("state");
+  assert.ok(state, `${account.key}: Google is sent a state`);
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const target = input instanceof Request ? input.url : String(input);
+    if (!target.startsWith(GOOGLE_TOKEN_URL)) return realFetch(input, init);
+    const idToken = unsignedIdToken({
+      iss: "https://accounts.google.com",
+      aud: GOOGLE_ENV.AUTH_GOOGLE_ID,
+      sub: `google-${account.id}`,
+      email: account.email,
+      email_verified: true,
+      name: account.name,
     });
-    assert.equal(cache?.session.userId, tester.id, tester.key);
+    return Response.json({ access_token: "google-access-token", token_type: "Bearer", expires_in: 3600, scope: "openid email profile", id_token: idToken });
+  }) as typeof fetch;
+  try {
+    const callback = await auth.handler(new Request(`${BASE}/callback/google?state=${encodeURIComponent(state)}&code=google-code`, { headers: jar.headers() }));
+    assert.equal(callback.status, 302, `${account.key}: Google answers back`);
+    assert.equal(callback.headers.get("location"), "/dashboard", `${account.key}: signed in`);
+    jar.take(callback);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  return jar;
+}
+
+test("a Google session and a tester session reach the same View as check and get the same answer, on a test site and on production", async () => {
+  const person = seatOf("department-head");
+  for (const vars of GATE_ON) {
+    setEnv({ ...TEST_ENV, ...GOOGLE_ENV, ...vars });
+    const db = seededMemoryDb();
+    const { gate, asked } = issue604Gate(db);
+    const auth = await memoryAuth(db, gate);
+
+    for (const acting of [seatOf("member"), seatOf("division-lead"), ADMIN_TESTERS[0]]) {
+      const at = `${label(vars)} ${acting.key}`;
+      const google = await googleSignIn(auth, acting);
+      const session = await auth.api.getSession({ headers: google.headers(), query: { disableCookieCache: true } });
+      assert.equal(session?.user.id, acting.id, `${at}: the Google session is theirs`);
+      assert.ok(db.account.some((row) => row.userId === acting.id && row.providerId === "google"), `${at}: signed in with Google`);
+      const viaGoogle = await post(auth, google, "/admin/impersonate-user", { userId: person.id });
+      const googleAsked = asked.at(-1);
+
+      const { jar: tester } = await signIn(auth, acting);
+      const viaTester = await post(auth, tester, "/admin/impersonate-user", { userId: person.id });
+      const testerAsked = asked.at(-1);
+
+      assert.notEqual(googleAsked, testerAsked, `${at}: the gate is asked for each session`);
+      assert.deepEqual(googleAsked, testerAsked, `${at}: the same question, the same answer`);
+      assert.deepEqual(testerAsked, { start: { actingAccountId: acting.id, viewingAs: false, personId: person.id }, answer: null }, at);
+      assert.deepEqual([viaGoogle.status, viaTester.status], [200, 200], at);
+    }
+  }
+
+  // Production, even on the shared preview database: tester sign-in is off, so a Google session is the only one, and only the IT lead seat starts.
+  setEnv({ ...TEST_ENV, ...GOOGLE_ENV, NODE_ENV: "production", VERCEL_ENV: "production", DATABASE_URL: PREVIEW_DB });
+  const db = seededMemoryDb();
+  const { gate, asked } = issue604Gate(db);
+  const auth = await memoryAuth(db, gate);
+  for (const [acting, answer] of [
+    [seatOf("member"), "not-allowed"],
+    [person, "not-allowed"],
+    [ADMIN_TESTERS[0], "not-allowed"],
+    [seatOf("it-lead"), null],
+  ] as const) {
+    const google = await googleSignIn(auth, acting);
+    const started = await post(auth, google, "/admin/impersonate-user", { userId: seatOf("alumni").id });
+    assert.equal(asked.at(-1)?.answer, answer, `production ${acting.key}`);
+    assert.equal(started.status, answer === null ? 200 : 403, `production ${acting.key}`);
   }
 });
 
-test("on next dev, the tester list links every tester and an unknown key is refused", async () => {
-  setEnv({ ...TEST_ENV, NODE_ENV: "development", VERCEL_ENV: undefined });
-  const auth = await authWithTesters();
+test("signing out ends the real session: its row is deleted and its cookies no longer sign anyone in", async () => {
+  for (const vars of GATE_ON) {
+    setEnv({ ...TEST_ENV, ...vars });
+    const db = seededMemoryDb();
+    const auth = await memoryAuth(db);
+    for (const account of [seatOf("member"), ADMIN_TESTERS[0]]) {
+      const at = `${label(vars)} ${account.key}`;
+      const { jar } = await signIn(auth, account);
+      const before = await auth.api.getSession({ headers: jar.headers(), query: { disableCookieCache: true } });
+      assert.equal(before?.user.id, account.id, `${at}: signed in`);
+      assert.equal(sessionRowsOf(db, account.id).length, 1, `${at}: one stored session`);
+      const stale = jar.headers();
 
-  const list = await auth.handler(new Request(`${BASE}/dev-tester`));
-  assert.equal(list.status, 200);
-  const html = await list.text();
-  for (const tester of Object.values(TESTERS)) {
-    assert.ok(html.includes(`/api/auth/dev-tester/sign-in?tester=${tester.key}`), tester.key);
+      const out = await post(auth, jar, "/sign-out");
+      assert.equal(out.status, 200, at);
+      assert.deepEqual(sessionRowsOf(db, account.id), [], `${at}: the session row is gone`);
+      assert.equal(await auth.api.getSession({ headers: jar.headers() }), null, `${at}: the browser is signed out`);
+      assert.equal(await auth.api.getSession({ headers: stale, query: { disableCookieCache: true } }), null, `${at}: the old session cookie opens nothing`);
+    }
   }
-
-  const unknown = await auth.handler(new Request(`${BASE}/dev-tester/sign-in?tester=admin`));
-  assert.equal(unknown.status, 400);
-  assert.equal(unknown.headers.getSetCookie().length, 0);
-});
-
-test("on next dev, a tester missing from the database gets no session", async () => {
-  setEnv({ ...TEST_ENV, NODE_ENV: "development", VERCEL_ENV: undefined });
-  const { createAuth } = await import("./auth");
-  const auth = createAuth(memoryAdapter({ user: [], session: [], account: [], verification: [] }));
-
-  const response = await auth.handler(new Request(`${BASE}/dev-tester/sign-in?tester=member`));
-  assert.equal(response.status, 404);
-  assert.equal(response.headers.getSetCookie().length, 0);
 });

@@ -1,8 +1,11 @@
 // My applications (boards 50, 50b, 50c, 50d and 53; 50m to 50d-m on phones,
 // issue #169): the viewer's own applications, each followed from sent to
-// decision, and the ones that are over. Types and rules only; the dummy side
-// (lib/dummy-data/my-applications.ts) and the database side
-// (./database-self.ts) build the same shapes.
+// decision, and the ones that are over. Types and rules only; the database
+// side (./database-self.ts) builds the shapes. The status is read through the
+// status list (./application-status.ts, issue #748) and shown only as its
+// public step (issue #753).
+
+import { builtInOf, type ApplicationStatus, type BuiltInStatusKey } from "./application-status";
 
 /** One interview time a division lead offers (the lead's side is issue #171). ISO timestamps. */
 export type InterviewSlot = {
@@ -80,16 +83,50 @@ export function hasNoneShown(mine: MyApplications): boolean {
   return mine.active.length === 0 && mine.past.length === 0;
 }
 
-/** The text of the "Next steps" box on an accepted application (board 50d, Huey's latest ruling). */
-export const NEXT_STEPS_TEXT = "The team will contact you about joining. Watch your inbox.";
+/** The text of the "Next steps" box on an accepted application (board 50d, issue #790): the applicant only sees Accepted once the acceptance email was sent. */
+export const NEXT_STEPS_TEXT = "Check your email.";
+
+/**
+ * The step of an application the applicant sees (Owner decision on epic #588,
+ * 2026-10-25). The applicant never sees the team's status, only this:
+ * Received, In review, Interview, the outcome (Accepted, then joined, or Not
+ * selected), and Withdrawn.
+ */
+export type PublicStep = "received" | "in-review" | "interview" | "accepted" | "joined" | "not-selected" | "withdrawn";
+
+/**
+ * The public step of each built-in status. New is Received; every status in
+ * between is In review, the two "email to be sent" ones included, so no
+ * outcome shows before its email is sent. Accepted shows from "Accepted ·
+ * email sent" on, Not selected from "Rejected · email sent" and for "Accepted
+ * for another position". Interview shows the Interview step only once times
+ * are offered (`placeOf`).
+ */
+const PUBLIC_STEP_OF = {
+  new: "received",
+  interview: "interview",
+  accepted_email_to_be_sent: "in-review",
+  accepted_email_sent: "accepted",
+  nda_received: "accepted",
+  joined: "joined",
+  rejected_email_to_be_sent: "in-review",
+  rejected_email_sent: "not-selected",
+  accepted_for_another_position: "not-selected",
+  withdrawn: "withdrawn",
+} as const satisfies Record<BuiltInStatusKey, PublicStep>;
+
+/** The public step a status shows: its own, or for an added status its parent's. */
+export function publicStepOf(status: ApplicationStatus): PublicStep {
+  return PUBLIC_STEP_OF[builtInOf(status)];
+}
 
 /** One application as stored: its status, and the times that end it. ISO timestamps. */
 export type StoredApplication = {
-  readonly status: "received" | "pending" | "interview" | "accepted" | "rejected" | "accepted_by_another_team" | "joined";
+  readonly status: ApplicationStatus;
   readonly appliedAt: string;
   readonly withdrawnAt: string | null;
   readonly acceptedAt: string | null;
-  /** When it was rejected or another team took the person (`rejected_at`, drizzle/0030). */
+  /** When it was rejected, another team took the person, or the team picked a status added under Withdrawn (`rejected_at`, drizzle/0030). */
   readonly rejectedAt: string | null;
   readonly joinedAt: string | null;
 };
@@ -99,7 +136,8 @@ export type StoredApplication = {
  * (received, in review, at its interview), or decided at a time, or decided
  * with no time on record (decided before the time was stored, issue #317).
  * A withdrawal is the applicant's decision; a join after an accept is the
- * latest decision.
+ * latest decision. A decision the applicant does not see yet (an "email to be
+ * sent" status) is still being decided for them.
  */
 export type LatestDecision =
   | { readonly kind: "undecided" }
@@ -114,17 +152,19 @@ function decidedAt(...times: readonly (string | null)[]): LatestDecision {
 
 export function latestDecisionOf(application: StoredApplication): LatestDecision {
   if (application.withdrawnAt !== null) return { kind: "decided", at: application.withdrawnAt };
-  switch (application.status) {
+  switch (publicStepOf(application.status)) {
     case "received":
-    case "pending":
+    case "in-review":
     case "interview":
       return { kind: "undecided" };
     case "accepted":
       return decidedAt(application.acceptedAt);
     case "joined":
       return decidedAt(application.acceptedAt, application.joinedAt);
-    case "rejected":
-    case "accepted_by_another_team":
+    case "not-selected":
+      return decidedAt(application.rejectedAt);
+    case "withdrawn":
+      // The applicant's Withdraw has returned above. A status the team added under Withdrawn ends it on the day it was picked (`daysOfAddedPick`).
       return decidedAt(application.rejectedAt);
   }
 }
@@ -170,18 +210,21 @@ export type ApplicationPlace =
   | { readonly kind: "past"; readonly outcome: PastOutcome };
 
 /**
- * Where a stored application lists. Accept is not join (docs/dashboard-rules.md):
- * an accepted application stays active at `accepted` whether or not the viewer
- * is already a member, and only a confirmed join (status `joined`) is over as
- * `joined`. `interview` is the times its lead offered, or null when none are;
- * `roleSince` is when the viewer's current role started, the date a join stored
- * without `joinedAt` falls back to.
+ * Where a stored application lists, from its public step. Accept is not join
+ * (docs/dashboard-rules.md): an accepted application stays active at
+ * `accepted` whether or not the viewer is already a member, and only a
+ * confirmed join (status Joined) is over as `joined`. `interview` is the times
+ * its lead offered, or null when none are: the Interview step shows only while
+ * the applicant has a time to pick or see, and In review before. `roleSince` is
+ * when the viewer's current role started, the date a join stored without
+ * `joinedAt` falls back to.
  */
 export function placeOf(application: StoredApplication, interview: Interview | null, roleSince: string | null): ApplicationPlace {
   if (application.withdrawnAt !== null) return { kind: "past", outcome: { kind: "withdrawn" } };
-  switch (application.status) {
-    case "rejected":
-    case "accepted_by_another_team":
+  switch (publicStepOf(application.status)) {
+    case "withdrawn":
+      return { kind: "past", outcome: { kind: "withdrawn" } };
+    case "not-selected":
       return { kind: "past", outcome: { kind: "not-selected" } };
     case "joined":
       return {
@@ -192,28 +235,45 @@ export function placeOf(application: StoredApplication, interview: Interview | n
       return { kind: "active", stage: { kind: "accepted" } };
     case "received":
       return { kind: "active", stage: { kind: "received" } };
-    case "pending":
+    case "in-review":
+      return { kind: "active", stage: { kind: "in-review" } };
     case "interview":
       return { kind: "active", stage: interview === null ? { kind: "in-review" } : { kind: "interview", interview } };
   }
 }
+
+/** Whether the applicant may have an interview time to pick or see: the database side reads offered times only for these. */
+export function mayOfferInterview(application: StoredApplication): boolean {
+  return application.withdrawnAt === null && publicStepOf(application.status) === "interview";
+}
+
+/**
+ * The built-in statuses the applicant can still withdraw from: those whose
+ * public step is before an outcome. An "email to be sent" status shows In
+ * review, so it can be withdrawn like one.
+ */
+export const WITHDRAWABLE_STATUS_KEYS: readonly BuiltInStatusKey[] = (Object.keys(PUBLIC_STEP_OF) as BuiltInStatusKey[]).filter((key) => {
+  const step = PUBLIC_STEP_OF[key];
+  return step === "received" || step === "in-review" || step === "interview";
+});
+
+/** Whether an application at this status can still be withdrawn: its status, or an added status's parent, is one of `WITHDRAWABLE_STATUS_KEYS`. */
+export function isWithdrawable(status: ApplicationStatus): boolean {
+  return WITHDRAWABLE_STATUS_KEYS.includes(builtInOf(status));
+}
+
+/** The status every withdrawal sets, from the Withdraw button or from Delete account (issues #749, #759). */
+export const WITHDRAWN_STATUS_KEY = "withdrawn" satisfies BuiltInStatusKey;
 
 /** An application can be withdrawn until it is accepted (board 50d hides Withdraw). */
 export function canWithdraw(stage: ActiveStage): boolean {
   return stage.kind !== "accepted";
 }
 
-/**
- * The stored statuses of an application the person can still withdraw:
- * received, in review, or at interview (the lead's "Move to interview",
- * issue #171, marks `interview`).
- */
-export const OPEN_STATUSES = ["received", "pending", "interview"] as const;
-
 /** One of the person's own applications, as Delete account reads it. */
 export type OwnApplication = {
   readonly id: number;
-  readonly status: string;
+  readonly status: ApplicationStatus;
   readonly withdrawnAt: string | null;
   readonly cvFileId: number | null;
   readonly coverLetterFileId: number | null;
@@ -221,15 +281,16 @@ export type OwnApplication = {
 
 /**
  * What "Also withdraw my open applications" on Delete account withdraws: the
- * open applications, and the files only they use. The files of the person's
- * other applications stay with those applications, kept like the rest of the
- * data until the account is anonymized (issue #191).
+ * open applications, the ones the Withdraw button could still withdraw
+ * (`isWithdrawable`, issue #759), and the files only they use. The files of
+ * the person's other applications stay with those applications, kept like the
+ * rest of the data until the account is anonymized (issue #191).
  */
 export function withdrawnOnDelete(applications: readonly OwnApplication[]): {
   readonly applicationIds: readonly number[];
   readonly fileIds: readonly number[];
 } {
-  const open = (a: OwnApplication) => a.withdrawnAt === null && (OPEN_STATUSES as readonly string[]).includes(a.status);
+  const open = (a: OwnApplication) => a.withdrawnAt === null && isWithdrawable(a.status);
   const filesOf = (a: OwnApplication) => [a.cvFileId, a.coverLetterFileId].filter((id): id is number => id !== null);
   const withdrawn = applications.filter(open);
   const kept = new Set(applications.filter((a) => !open(a)).flatMap(filesOf));

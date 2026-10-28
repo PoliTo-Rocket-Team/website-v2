@@ -1,14 +1,21 @@
 import { z } from "zod";
-import { NO_MEMBER_DETAILS, parseMemberDetails, type MemberDetailErrors, type MemberDetails } from "./details";
+import { NO_MEMBER_DETAILS, noDetailsFilled, parseMemberDetails, type MemberDetailErrors, type MemberDetails } from "./details";
+import { movablePlacesOf, type MovablePlace } from "./member-move";
+import { placesOf, type PersonPlace } from "./member-places";
+import { nameRule, NO_NAME, type PersonName } from "./person-name";
 import {
+  beyondTitle,
   divisionLabel,
   homeFirst,
   leadsChangedBy,
   matchesQuery,
+  mayChangeDivision,
   mayLeaveTeam,
   reachesDivision,
   removalFrom,
   roleIn,
+  seatTitleValue,
+  titledSeatOf,
   type DivisionRole,
   type Joining,
   type Memberships,
@@ -18,6 +25,7 @@ import {
   type RoleBeyondDivisions,
   type TeamActor,
 } from "./team";
+import { shortDate } from "./write";
 
 // A division's Members page (issue #231, boards 61e to 61h2): the people in
 // the division with every division they are in, their contact, studies and
@@ -73,6 +81,8 @@ export type DivisionPerson = {
   readonly advisor: boolean;
   /** Every division they are in, this one first. */
   readonly divisions: readonly PersonDivision[];
+  /** Every place they hold, seats and headships included, with its stored title: the member panel's Placement (board 98, issue #647). */
+  readonly places: readonly PersonPlace[];
   readonly chips: readonly DivisionChip[];
   readonly details: MemberDetails;
   /** Null only for a record from before the NDA was kept. */
@@ -81,7 +91,107 @@ export type DivisionPerson = {
   readonly self: boolean;
   readonly leave: Permission;
   readonly removal: Removal;
+  /** What Edit details may change about them (`positionOf`); null when the viewer may change nothing here, or it is their own row. */
+  readonly position: MemberPosition | null;
 };
+
+// The position part of the one Edit details panel (issue #584): every viewer
+// who may edit a member in scope gets the same panel, and what it offers is
+// worked out here, on both sides of the data interface, from the same rules
+// the server checks (./team.ts).
+
+/** "Remove from <division>" for one division a person is in. */
+export type DivisionRemoval = {
+  readonly divisionId: number;
+  /** "Mission Analysis" */
+  readonly short: string;
+  readonly removal: Removal;
+};
+
+/** Lead or member in one division, offered where the viewer may change who leads it (`mayChangeDivision`). */
+export type LeadChoice = {
+  readonly divisionId: number;
+  readonly short: string;
+  readonly role: DivisionRole;
+};
+
+/**
+ * The role title Edit details sets: their title in one division the viewer
+ * reaches, or, for someone in none, their seat's stored title (`titledSeatOf`:
+ * the team leader's, a head's or a team-level seat's), which the team edits
+ * there too (issue #626) and which may not be blank. `fixed` is someone with
+ * no such seat either (an Advisor role, a role kept on a department): their
+ * role is shown and nothing sets it here.
+ */
+export type PositionTitle =
+  | { readonly kind: "division"; readonly divisionId: number; readonly short: string; readonly value: string | null }
+  | { readonly kind: "seat"; readonly value: string }
+  | { readonly kind: "fixed"; readonly label: string };
+
+/** What the viewer may change about someone's place on the team from Edit details. */
+export type MemberPosition = {
+  /** Their first and last name as stored, which Edit details renames them by (issue #668): anyone who may edit them may. */
+  readonly name: PersonName;
+  readonly title: PositionTitle;
+  readonly leads: readonly LeadChoice[];
+  /** The places the viewer may move them out of, from Edit details and the Team tree (`movablePlacesOf`, issue #647). */
+  readonly moves: readonly MovablePlace[];
+  /** Every division of theirs the viewer reaches; the panel and the ⋯ menu show those offered or locked. */
+  readonly removals: readonly DivisionRemoval[];
+  readonly leave: Permission;
+};
+
+/** A person's position with whose it is: the whole team's rows. */
+export type PersonPosition = MemberPosition & { readonly id: number };
+
+/**
+ * Whether `actor` may edit the person at all: the team reaches everyone, a
+ * head or a lead (or a Members grant at Can edit) whoever is in a division
+ * they reach. The server's `rolesTheViewerChanges` is the same rule.
+ */
+export function editsPerson(actor: TeamActor, record: Pick<PersonRecord, "memberships">, org: OrgChart): boolean {
+  return actor.kind === "team" || record.memberships.some((m) => reachesDivision(actor, m.divisionId, org));
+}
+
+/**
+ * The position part for `record` as `actor` sees it. `titleIn` is the
+ * division the page lists them under; the title falls back to their first
+ * division the actor reaches, and to their seat when there is none.
+ */
+export function positionOf(record: PersonRecord, org: OrgChart, actor: TeamActor, titleIn: number | null): MemberPosition {
+  const standing = { memberships: record.memberships, beyond: record.beyondDivisions };
+  const reached = homeFirst(record.memberships).filter((m) => org.divisions.some((d) => d.id === m.divisionId) && reachesDivision(actor, m.divisionId, org));
+  const short = (divisionId: number) => divisionLabel(org.divisions.find((d) => d.id === divisionId)?.name ?? "");
+  const titled = reached.find((m) => m.divisionId === titleIn) ?? reached[0];
+  return {
+    name: record.storedName,
+    title:
+      titled === undefined
+        ? seatTitleOf(record, org)
+        : { kind: "division", divisionId: titled.divisionId, short: short(titled.divisionId), value: record.titles[titled.divisionId] ?? null },
+    // An Advisor role is no lead or member role, so the switch does not set it.
+    leads: reached
+      .filter((m) => !record.advising.includes(m.divisionId) && mayChangeDivision(actor, m.divisionId, org).allowed)
+      .map((m) => ({ divisionId: m.divisionId, short: short(m.divisionId), role: m.role })),
+    moves: movablePlacesOf(record, org, actor),
+    removals: reached.map((m) => ({ divisionId: m.divisionId, short: short(m.divisionId), removal: removalFrom(actor, standing, m.divisionId, org) })),
+    leave: mayLeaveTeam(actor, standing, org),
+  };
+}
+
+/** The title of someone in no division the viewer reaches: their seat's, as stored (`seatTitleValue`), or their role, fixed. */
+function seatTitleOf(record: PersonRecord, org: OrgChart): PositionTitle {
+  const titled = titledSeatOf(record.beyondDivisions, (role) => role);
+  if (titled !== null) return { kind: "seat", value: seatTitleValue(titled.seat, org) };
+  const other = record.beyondDivisions[0];
+  return { kind: "fixed", label: other === undefined ? "Member" : beyondTitle(other, org) };
+}
+
+/** The whole team's positions: everyone `actor` may edit, never the viewer; none for no actor. */
+export function positionsOf(records: readonly PersonRecord[], org: OrgChart, actor: TeamActor | null, selfId: number | null): PersonPosition[] {
+  if (actor === null) return [];
+  return records.flatMap((r) => (r.id === selfId || !editsPerson(actor, r, org) ? [] : [{ id: r.id, ...positionOf(r, org, actor, null) }]));
+}
 
 /**
  * Someone added by email who is not on the team yet (Owner decision,
@@ -93,11 +203,59 @@ export type WaitingPerson = {
   /** The add, which Confirm NDA and Fill details act on. */
   readonly joinId: number;
   readonly email: string;
+  /**
+   * Whether the viewer may correct `email` in Fill details (issue #741): full
+   * access only, while no sign-in account holds their user row
+   * (`correctsSignInEmail`, ./sign-in-email.ts). Set on the server.
+   */
+  readonly correctsSignInEmail: boolean;
   /** Null until a name is given. */
   readonly name: string | null;
   readonly title: string | null;
   readonly details: MemberDetails;
+  /** The day they were added, in the team's time zone: "2026-10-20". */
+  readonly addedOn: string;
+  /** Whether a sign-in account already holds their user row: they have signed in at least once. */
+  readonly signedIn: boolean;
+  /** Who added them, as the viewer reads it (issue #799). Set on the server. */
+  readonly addedBy: WaitingAdder;
 };
+
+/**
+ * Who added someone waiting, from `team_joins.added_by` (issue #799): the
+ * viewer, another member by full name, or nobody known, since the column is
+ * cleared when the adder's member record goes.
+ */
+export type WaitingAdder =
+  | { readonly kind: "viewer" }
+  | { readonly kind: "member"; readonly name: string }
+  | { readonly kind: "unknown" };
+
+/**
+ * The first sentence of the "hasn't signed in yet" box (issues #790, #799):
+ * "You added them…" for the adder, the adder's name for anyone else, and a
+ * sentence that names no one when the adder is not known.
+ */
+export function addedSentence(waiting: Pick<WaitingPerson, "addedBy" | "addedOn" | "email">, unit: string): string {
+  const where = `to ${unit} on ${shortDate(waiting.addedOn)} with ${waiting.email}.`;
+  switch (waiting.addedBy.kind) {
+    case "viewer":
+      return `You added them ${where}`;
+    case "member":
+      return `${waiting.addedBy.name} added them ${where}`;
+    case "unknown":
+      return `They were added ${where}`;
+  }
+}
+
+/**
+ * Whether the "hasn't signed in yet" box shows for them (issue #790): only
+ * while they have not signed in and nobody has filled in their details, since
+ * until then they may not know they were added.
+ */
+export function mayNotKnowTheyWereAdded(waiting: Pick<WaitingPerson, "signedIn" | "details">): boolean {
+  return !waiting.signedIn && noDetailsFilled(waiting.details);
+}
 
 export type DivisionHeader = {
   readonly id: number;
@@ -105,8 +263,8 @@ export type DivisionHeader = {
   readonly name: string;
   readonly code: string | null;
   readonly department: string;
-  /** "Leads are changed by the Head of Aerodynamics" */
-  readonly leadsHint: string;
+  /** "Leads are changed by the Head of Aerodynamics"; null where the viewer changes them (`mayChangeDivision`, issue #594). */
+  readonly leadsHint: string | null;
 };
 
 export type DivisionMembers = {
@@ -128,7 +286,10 @@ export type DivisionMembers = {
 /** One person as a data source holds them. */
 export type PersonRecord = {
   readonly id: number;
+  /** Their name as the pages show it: the stored names, or their email when both are empty. */
   readonly name: string;
+  /** Their first and last name as stored; "" for one never given. */
+  readonly storedName: PersonName;
   readonly signInEmail: string;
   readonly photoUrl: string | null;
   readonly since: number;
@@ -182,9 +343,10 @@ function byRoleThenName(a: DivisionPerson, b: DivisionPerson): number {
 }
 
 /** A row's actions where the viewer may not change the division: none is offered (issue #351). */
-const VIEW_ONLY: { readonly leave: Permission; readonly removal: Removal } = {
+const VIEW_ONLY: { readonly leave: Permission; readonly removal: Removal; readonly position: null } = {
   leave: { allowed: false, reason: "You can view this division, not change it" },
   removal: { kind: "not-in-reach" },
+  position: null,
 };
 
 /**
@@ -226,13 +388,18 @@ export function divisionMembers(input: {
         title: record.titles[divisionId] ?? null,
         advisor: record.advising.includes(divisionId),
         divisions: ordered,
+        places: placesOf(record, org),
         chips: chipsOf(ordered),
         details: record.details,
         nda: record.nda,
         self: record.id === input.selfId,
         ...(changer === null
           ? VIEW_ONLY
-          : { leave: mayLeaveTeam(changer, standing, org), removal: removalFrom(changer, standing, divisionId, org) }),
+          : {
+              leave: mayLeaveTeam(changer, standing, org),
+              removal: removalFrom(changer, standing, divisionId, org),
+              position: record.id === input.selfId ? null : positionOf(record, org, changer, divisionId),
+            }),
       },
     ];
   });
@@ -242,7 +409,7 @@ export function divisionMembers(input: {
       name: division.name,
       code: division.code ?? null,
       department: departmentNameOf(org, division.departmentId),
-      leadsHint: leadsChangedBy(division.id, org),
+      leadsHint: changer !== null && mayChangeDivision(changer, division.id, org).allowed ? null : leadsChangedBy(division.id, org),
     },
     divisions: input.reach.flatMap((id) => {
       const d = org.divisions.find((x) => x.id === id);
@@ -262,12 +429,21 @@ export function headcountLine(page: Pick<DivisionMembers, "people" | "waiting">)
   return `${leads} ${leads === 1 ? "lead" : "leads"}, ${all} ${all === 1 ? "member" : "members"}`;
 }
 
-/** The page's search (board 61e: "Search name, email, phone"): every word in the name, an email or the phone. */
-export function matchesPerson(person: Pick<DivisionPerson, "name" | "signInEmail" | "details">, query: string): boolean {
+/**
+ * The page's search (board 61e: "Search name, email, phone"): every word in
+ * the name, an email or the phone. `teamAddresses` are the shared team
+ * addresses the person holds (issue #800), so a lead who knows only a team
+ * address finds who holds it; a search with no address data passes none.
+ */
+export function matchesPerson(
+  person: Pick<DivisionPerson, "name" | "signInEmail" | "details">,
+  query: string,
+  teamAddresses: readonly string[] = [],
+): boolean {
   const digits = person.details.phone.replace(/\D/g, "");
   const typed = query.replace(/\D/g, "");
   if (typed.length >= 3 && digits.includes(typed)) return true;
-  return matchesQuery([person.name, person.signInEmail, person.details.prtEmail], query);
+  return matchesQuery([person.name, person.signInEmail, person.details.prtEmail, ...teamAddresses], query);
 }
 
 // Add member (boards 61h and 61h2)
@@ -310,7 +486,7 @@ export type AddMember =
       readonly details: MemberDetails | null;
     };
 
-export type AddMemberErrors = Partial<Record<"email" | "firstName" | "lastName" | "title" | "person", string>> & MemberDetailErrors;
+export type AddMemberErrors = Partial<Record<"email" | "firstName" | "lastName" | "title" | "person" | "signInEmail", string>> & MemberDetailErrors;
 
 const MAX_TITLE = 80;
 
@@ -365,6 +541,8 @@ export type TeamMatch = {
   readonly id: number;
   readonly name: string;
   readonly email: string;
+  /** Their stored photo (`members.picture`), on their row and once picked (issue #656); null for the PRT mark. */
+  readonly photoUrl: string | null;
   readonly chips: readonly DivisionChip[];
   /** Already in the division being added to. */
   readonly here: boolean;
@@ -382,10 +560,9 @@ export type TeamCandidate = {
   readonly id: number;
   readonly name: string;
   readonly emails: readonly string[];
+  readonly photoUrl: string | null;
   readonly memberships: Memberships;
 };
-
-const LOOKUP_LIMIT = 6;
 
 function looksLikeEmail(text: string): boolean {
   return z.email().safeParse(text).success;
@@ -394,7 +571,8 @@ function looksLikeEmail(text: string): boolean {
 /**
  * The field's answer: an email finds the member with it, the person waiting
  * with it, or says they are not on the team yet; anything else searches the
- * team by name.
+ * team by name. An empty field lists the whole team by name, so the field
+ * shows people as soon as it opens, and typing narrows them (issue #618).
  */
 export function lookupForAdd(
   query: string,
@@ -409,8 +587,9 @@ export function lookupForAdd(
     const record: PersonRecord = {
       id: c.id,
       name: c.name,
+      storedName: NO_NAME,
       signInEmail: c.emails[0] ?? "",
-      photoUrl: null,
+      photoUrl: c.photoUrl,
       since: 0,
       memberships: c.memberships,
       beyondDivisions: [],
@@ -423,6 +602,7 @@ export function lookupForAdd(
       id: c.id,
       name: c.name,
       email: c.emails[0] ?? "",
+      photoUrl: c.photoUrl,
       chips: chipsOf(personDivisions(record, org, departmentId)),
       here: roleIn(c.memberships, divisionId) !== null,
     };
@@ -434,18 +614,30 @@ export function lookupForAdd(
     if (waitingEmails.some((e) => signInEmailOf(e) === email)) return { kind: "waiting", email };
     return { kind: "new-email", email };
   }
-  if (text.length < 2) return { kind: "none" };
-  const people = team.filter((c) => matchesQuery([c.name], text)).slice(0, LOOKUP_LIMIT);
+  const people = team.filter((c) => matchesQuery([c.name], text)).sort((x, y) => x.name.localeCompare(y.name));
   return people.length === 0 ? { kind: "none" } : { kind: "people", people: people.map(match) };
 }
 
 // Edit details and Fill details (board 61g)
 
-/** What Edit details saves: the title in the editor's own division, and the details. */
+/**
+ * What Edit details saves: the title in the editor's own division, the
+ * details, and for someone on the team their first and last name (issue
+ * #668). `name` is null when the form sent none, as Fill details does for
+ * someone waiting: nothing renames them. `signInEmail` is a corrected
+ * sign-in email (issue #741), null when the form sent none.
+ */
 export type MemberEditDetails = {
   readonly title: string | null;
   readonly details: MemberDetails;
+  readonly name: PersonName | null;
+  readonly signInEmail: string | null;
 };
+
+/** A corrected sign-in email: the rule of the other email fields, never blank, keyed as Google answers it. */
+const signInEmailRule = z.string().transform(signInEmailOf).pipe(z.email("Write an email address.").max(200, "Too long."));
+
+const renameSchema = z.object({ firstName: nameRule("Enter their first name."), lastName: nameRule("Enter their last name.") });
 
 /** Who Edit details is about: someone in the division, or someone waiting for their NDA (Fill details). */
 export type DetailsTarget = { readonly kind: "person"; readonly id: number } | { readonly kind: "waiting"; readonly joinId: number };
@@ -458,13 +650,35 @@ export function isDetailsTarget(value: unknown): value is DetailsTarget {
   return false;
 }
 
-export function checkMemberEdit(input: unknown): { ok: true; value: MemberEditDetails } | { ok: false; errors: AddMemberErrors } {
+/** A seat's title (`PositionTitle` kind `seat`) is never blank: the Team tree and the Team page name the seat by it. */
+export const SEAT_TITLE_REQUIRED = "Enter their role.";
+
+/**
+ * What Edit details sends, checked. `titled` says whether the role title may
+ * be blank: a division title may, a seat's is `required` (issue #626).
+ */
+export function checkMemberEdit(
+  input: unknown,
+  titled: "optional" | "required" = "optional",
+): { ok: true; value: MemberEditDetails } | { ok: false; errors: AddMemberErrors } {
   const sent = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
   const t = title.safeParse(sent.title ?? "");
   if (!t.success) return { ok: false, errors: { title: t.error.issues[0]?.message ?? "Check the role." } };
+  if (titled === "required" && t.data === null) return { ok: false, errors: { title: SEAT_TITLE_REQUIRED } };
   const details = parseMemberDetails(sent.details);
   if (!details.ok) return { ok: false, errors: details.errors };
-  return { ok: true, value: { title: t.data, details: details.value } };
+  const email = sent.signInEmail === undefined ? null : signInEmailRule.safeParse(sent.signInEmail);
+  if (email !== null && !email.success) return { ok: false, errors: { signInEmail: email.error.issues[0]?.message ?? "Write an email address." } };
+  const signInEmail = email === null ? null : email.data;
+  if (sent.firstName === undefined && sent.lastName === undefined) return { ok: true, value: { title: t.data, details: details.value, name: null, signInEmail } };
+  // A rename sends both names, each trimmed and never blank, so the Team page never shows a nameless person.
+  const name = renameSchema.safeParse({ firstName: sent.firstName ?? "", lastName: sent.lastName ?? "" });
+  if (!name.success) {
+    const errors: AddMemberErrors = {};
+    for (const issue of name.error.issues) errors[issue.path[0] as "firstName" | "lastName"] ??= issue.message;
+    return { ok: false, errors };
+  }
+  return { ok: true, value: { title: t.data, details: details.value, name: name.data, signInEmail } };
 }
 
 /** A member photo set from Edit details (board 61g): a square JPEG under 500 KB, as the crop dialog makes it. */

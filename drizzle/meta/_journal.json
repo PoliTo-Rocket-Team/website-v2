@@ -365,6 +365,160 @@
       "when": 1793294400000,
       "tag": "0051_alias_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1793380800000,
+      "tag": "0052_revert_preview_reviewer_writes",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1793467200000,
+      "tag": "0053_prt_email_from_email_alias",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1793553600000,
+      "tag": "0054_revert_preview_alias_test_writes",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1793640000000,
+      "tag": "0055_preview_reseeds",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1793985600000,
+      "tag": "0058_alumni_grants_to_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794072000000,
+      "tag": "0059_rd_department_head",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1794158400000,
+      "tag": "0060_view_as_admin_plugin",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1794244800000,
+      "tag": "0061_impersonated_write_attribution",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1794331200000,
+      "tag": "0062_roles_one_active_seat_holder",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1794417600000,
+      "tag": "0063_notice_acting_account",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1794504000000,
+      "tag": "0064_interview_slots_offered_by",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1794590400000,
+      "tag": "0065_application_statuses",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1794676800000,
+      "tag": "0066_team_addresses",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1794763200000,
+      "tag": "0067_team_address_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1794849600000,
+      "tag": "0068_team_address_reroutes",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1794936000000,
+      "tag": "0069_team_address_set_up",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1795022400000,
+      "tag": "0070_team_address_removals",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1795108800000,
+      "tag": "0071_alias_request_address",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1795195200000,
+      "tag": "0072_project_page_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1795281600000,
+      "tag": "0073_drop_project_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1795368000000,
+      "tag": "0074_delete_old_alumni_grant_rows",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1795454400000,
+      "tag": "0075_drop_members_email_alias",
+      "breakpoints": true
     }
   ]
 }

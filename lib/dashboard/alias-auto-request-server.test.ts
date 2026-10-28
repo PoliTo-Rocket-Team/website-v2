@@ -5,27 +5,27 @@ import { describe, test } from "node:test";
 import * as actions from "@/app/dashboard/actions";
 import * as teamActions from "@/app/dashboard/team-actions";
 import { aliasRequests, handOverRequests, members } from "@/db/schema";
-import { insertRows, keepWrites, recordedWrites, rowsIn, updateRows } from "./access-matrix/fake-db";
+import { addRows, changeRows, databaseWrites, tableRows } from "./access-matrix/test-database";
 import { accountOf, EXTRA, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 
 // Automatic alias requests on the database (issue #543): every write that
 // makes someone a division lead, a department head or the team leader asks
-// for their alias in the same batch, unless they have one on their record or
-// an open request already. Each route runs for real against the in-memory
-// database (./access-matrix/fake-db.ts), which stores what each write does.
+// for their alias in the same batch, unless their PRT email is set (issue
+// #563) or they have an open request already. Each route runs for real against the migrated
+// in-memory Postgres (./access-matrix/test-database.ts).
 
 const DM = IDS.division("DM");
 const STRUCTURES = IDS.department("DM");
 const LEAD = IDS.lead("DM"); // leads Design & Manufacturing
-const MEMBER = IDS.person("DM"); // a member of Design & Manufacturing, with no alias and no request
+const MEMBER = IDS.person("DM"); // a member of Design & Manufacturing, with no PRT email and no request
 const TEAM_LEADER = accountOf("team leader").userId;
 const OTHER_REQUESTER = accountOf("team leader").memberId;
 
 /** The open requests for `memberId`, each as who asked. */
-const openFor = (memberId: number) => rowsIn(aliasRequests).filter((r) => r.memberId === memberId && r.outcome === null).map((r) => r.requestedBy);
+const openFor = async (memberId: number) => (await tableRows(aliasRequests)).filter((r) => r.memberId === memberId && r.outcome === null).map((r) => r.requestedBy);
 
-const aliasInserts = () => recordedWrites().filter((w) => w.kind === "insert" && w.table === "alias_requests").length;
+const aliasInserts = async () => (await databaseWrites()).filter((w) => w.kind === "insert" && w.table === "alias_requests").length;
 
 /** Each route that makes MEMBER a lead, a head or the team leader, signed in as someone who may. */
 const ROUTES: readonly { readonly name: string; readonly run: () => Promise<{ ok: boolean }> }[] = [
@@ -73,41 +73,40 @@ const ROUTES: readonly { readonly name: string; readonly run: () => Promise<{ ok
   },
   {
     name: "a head's hand-over request, confirmed",
-    run: () => {
-      insertRows(handOverRequests, [{ id: 99, fromId: EXTRA.head, role: "head", deptId: STRUCTURES, toId: MEMBER, outcome: "advisor", createdAt: new Date().toISOString() }]);
+    run: async () => {
+      await addRows(handOverRequests, [{ id: 99, fromId: EXTRA.head, role: "head", deptId: STRUCTURES, toId: MEMBER, outcome: "advisor", createdAt: new Date().toISOString() }]);
       signInAs(TEAM_LEADER);
       return actions.answerHandOver(99, "confirm");
     },
   },
 ];
 
-function seeded(): void {
-  seedFixture();
-  keepWrites();
+function seeded(): Promise<void> {
+  return seedFixture();
 }
 
 describe("every route that makes someone a lead, a head or the team leader asks for their alias", () => {
   for (const route of ROUTES) {
-    test(`${route.name}: one automatic request when they have no alias and no open request`, async () => {
-      seeded();
+    test(`${route.name}: one automatic request when their PRT email is empty and no request is open`, async () => {
+      await seeded();
       assert.equal((await route.run()).ok, true);
-      assert.deepEqual(openFor(MEMBER), [null]);
+      assert.deepEqual(await openFor(MEMBER), [null]);
     });
 
-    test(`${route.name}: none when they already have an alias on their record`, async () => {
-      seeded();
-      updateRows(members, { memberId: MEMBER }, { emailAlias: "person.dm@politorocketteam.it" });
+    test(`${route.name}: none when their PRT email is already set`, async () => {
+      await seeded();
+      await changeRows(members, { memberId: MEMBER }, { prtEmail: "person.dm@politorocketteam.it" });
       assert.equal((await route.run()).ok, true);
-      assert.deepEqual(openFor(MEMBER), []);
-      assert.equal(aliasInserts(), 0);
+      assert.deepEqual(await openFor(MEMBER), []);
+      assert.equal(await aliasInserts(), 0);
     });
 
     test(`${route.name}: none when they already have an open request, which stays as it was`, async () => {
-      seeded();
-      insertRows(aliasRequests, [{ id: 77, memberId: MEMBER, requestedBy: OTHER_REQUESTER, createdAt: new Date().toISOString() }]);
+      await seeded();
+      await addRows(aliasRequests, [{ id: 77, memberId: MEMBER, requestedBy: OTHER_REQUESTER, createdAt: new Date().toISOString() }]);
       assert.equal((await route.run()).ok, true);
-      assert.deepEqual(openFor(MEMBER), [OTHER_REQUESTER]);
-      assert.equal(aliasInserts(), 0, "the one-open-request index is never reached");
+      assert.deepEqual(await openFor(MEMBER), [OTHER_REQUESTER]);
+      assert.equal(await aliasInserts(), 0, "the one-open-request index is never reached");
     });
   }
 });
@@ -122,18 +121,18 @@ describe("a role change refused asks for nothing", () => {
   ];
   for (const route of REFUSED) {
     test(route.name, async () => {
-      seeded();
+      await seeded();
       assert.equal((await route.run()).ok, false);
-      assert.equal(aliasInserts(), 0);
-      assert.deepEqual(openFor(MEMBER), []);
+      assert.equal(await aliasInserts(), 0);
+      assert.deepEqual(await openFor(MEMBER), []);
     });
   }
 });
 
 test("closing a division or a department makes nobody a lead or a head, so it asks for nothing", async () => {
-  seeded();
+  await seeded();
   signInAs(TEAM_LEADER);
   assert.equal((await teamActions.closeDivision(EXTRA.emptyDivision)).ok, true);
   assert.equal((await teamActions.closeDepartment(EXTRA.emptyDepartment, { people: [] })).ok, true);
-  assert.equal(aliasInserts(), 0);
+  assert.equal(await aliasInserts(), 0);
 });

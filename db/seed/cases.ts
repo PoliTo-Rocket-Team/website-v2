@@ -4,13 +4,15 @@
 
 import type { InferInsertModel } from "drizzle-orm";
 import {
-  applicationStatusEnum,
   orderStatusEnum,
+  type aliasRequests,
   type alumniEntries,
   type alumniImportedRoles,
   type applicationFiles,
   type applications,
+  type applicationStatuses,
   type applyPositions,
+  type dashboardNotices,
   type departments,
   type divisions,
   type faqs,
@@ -30,8 +32,10 @@ import {
   type recruitmentSetting,
   type roles,
   type scopes,
+  type teamAddresses,
   type teamPageAdvisors,
   type teamPageAdvisorVersions,
+  type teamJoins,
   type teamPageLayerVersions,
   type users,
 } from "@/db/schema";
@@ -42,7 +46,7 @@ import { applyLayer, isTeamPageLayer, NO_TEAM_LAYER, NO_UPLOADS, resetLayer, typ
 import type { TeamPerson as PagePerson } from "@/lib/about/team-person";
 import { teamBuildOf, teamPageFromRoles, type TeamRoles } from "@/lib/about/team-roles";
 import { publicItems, statusOf, versionedFromRows, type ContentItem, type VersionKind } from "@/lib/content/versioned";
-import { APPLICATION_STAGES, type ApplicationStage } from "@/lib/dashboard/application-flow";
+import { BUILT_IN_STATUS_KEYS, isBuiltInStatusKey, type BuiltInStatusKey } from "@/lib/dashboard/application-status";
 import { storedApplicationState } from "@/lib/dashboard/stored-application";
 import type { FaqVersion } from "@/lib/faq/faq";
 import { trackRecord } from "@/lib/outreach";
@@ -54,23 +58,28 @@ import { visualModelOf, type ProjectRecord } from "@/lib/project-content/record"
 import { rowRecordOf } from "@/lib/project-content/row";
 import { rocketModelOf, type OwnModel } from "@/lib/rocket-model";
 import { partnerFromColumns } from "@/lib/partners-rows";
+import { aliasAttentionFor, memberAliasesFor, teamAddressOf, type AliasRequest } from "@/lib/dashboard/alias-request";
+import { ownAliasOf, showsAliasCard } from "@/lib/dashboard/alias-setup";
 import { UNIT_TARGETS } from "@/lib/dashboard/division-access";
 import type { TeamPerson } from "@/lib/dashboard/division-edit";
 import { steppingDown } from "@/lib/dashboard/hand-over";
+import { attentionOf, noticeOf } from "@/lib/dashboard/notices";
 import { handOverAttentionFor, hasLapsed, successorsFor, type HandOverRequest, type RequestedRole } from "@/lib/dashboard/hand-over-request";
-import { boardSeatOf, headDepartmentOf, membershipsOfRoles, roleBeyondDivisions, type OrgChart, type Placement, type RoleSeat } from "@/lib/dashboard/team";
+import { isTeamSeat, membershipsOfRoles, roleBeyondDivisions, type OrgChart, type Placement, type RoleSeat } from "@/lib/dashboard/team";
 import {
-  kindOfTestViewer,
+  kindOfPlainSeat,
   seatOf,
   SEAT_OF_FLAG,
-  TEST_VIEWERS,
-  testDeveloperStanding,
+  PLAIN_SEATS,
+  plainSeatStanding,
   unitRowsOf,
   viewerStandingOf,
   type ScopeKind,
-  type TestViewer,
+  type PlainSeat,
   type ViewerStanding,
 } from "@/lib/dashboard/viewer";
+import { memberTeamAddressesFor, movesWithOf, ownTeamAddressesOf, teamAddressCardsOf } from "@/lib/dashboard/team-address";
+import { ALIAS_NOTICE_ROWS, ALIAS_REQUEST_ROWS, AUTOMATIC_REQUEST, CREATED_ALIAS, DECLINED_REQUEST, OPEN_REQUEST, TEAM_ADDRESS_ROWS } from "./aliases";
 import { ALUMNI_ENTRY_ROWS, ALUMNI_IMPORTED_ROLE_ROWS } from "./alumni";
 import { SCOPE_ROWS } from "./access";
 import { FAQ_ROWS, FAQ_VERSION_ROWS } from "./faq";
@@ -84,12 +93,10 @@ import {
 } from "./outreach";
 import { PARTNER_ROWS, PARTNER_VERSION_ROWS } from "./partners";
 import { PROJECT_ROWS, PROJECT_VERSION_ROWS } from "./projects";
-import { MEMBER_ROWS, ROLE_ROWS, TEST_VIEWER_PEOPLE, USER_ROWS } from "./people";
-import { APPLICATION_FILE_ROWS, APPLICATION_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
+import { ADDED_BY_EMAIL, ADDED_USER_ROWS, IT_LEAD, MEMBER_ROWS, ROLE_ROWS, PLAIN_SEAT_PEOPLE, SIGN_IN_ROWS, TEAM_JOIN_ROWS, USER_ROWS } from "./people";
+import { APPLICATION_FILE_ROWS, APPLICATION_ROWS, APPLICATION_STATUS_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
 import { DEPARTMENT_ROWS, DIVISION_ROWS } from "./structure";
 import {
-  ADDED_LEAD_DEPARTMENT,
-  ADDED_LEAD_PERSON,
   ADDED_LEADER_AFTER,
   ADDED_LEADER_PERSON,
   HIDDEN_LEAD_SPOT,
@@ -105,6 +112,9 @@ export type SeedData = {
   readonly divisions: readonly InferInsertModel<typeof divisions>[];
   readonly members: readonly InferInsertModel<typeof members>[];
   readonly users: readonly InferInsertModel<typeof users>[];
+  /** The people added by email who have not signed in (issue #746): `users` rows with no sign-in row. */
+  readonly addedUsers: readonly InferInsertModel<typeof users>[];
+  readonly teamJoins: readonly InferInsertModel<typeof teamJoins>[];
   readonly roles: readonly InferInsertModel<typeof roles>[];
   readonly scopes: readonly InferInsertModel<typeof scopes>[];
   readonly alumniEntries: readonly InferInsertModel<typeof alumniEntries>[];
@@ -115,11 +125,15 @@ export type SeedData = {
   readonly applicationFiles: readonly InferInsertModel<typeof applicationFiles>[];
   readonly interviewSlots: readonly InferInsertModel<typeof interviewSlots>[];
   readonly recruitmentSetting: readonly InferInsertModel<typeof recruitmentSetting>[];
+  readonly applicationStatuses: readonly InferInsertModel<typeof applicationStatuses>[];
   readonly partners: readonly InferInsertModel<typeof partners>[];
   readonly partnerVersions: readonly InferInsertModel<typeof partnerVersions>[];
   readonly faqs: readonly InferInsertModel<typeof faqs>[];
   readonly faqVersions: readonly InferInsertModel<typeof faqVersions>[];
   readonly handOvers: readonly InferInsertModel<typeof handOverRequests>[];
+  readonly aliasRequests: readonly InferInsertModel<typeof aliasRequests>[];
+  readonly aliasNotices: readonly InferInsertModel<typeof dashboardNotices>[];
+  readonly teamAddresses: readonly InferInsertModel<typeof teamAddresses>[];
   readonly outreachTags: readonly InferInsertModel<typeof outreachTags>[];
   readonly outreachPosts: readonly InferInsertModel<typeof outreachPosts>[];
   readonly outreachPostVersions: readonly InferInsertModel<typeof outreachPostVersions>[];
@@ -136,6 +150,8 @@ export const SEED_DATA: SeedData = {
   divisions: DIVISION_ROWS.rows,
   members: MEMBER_ROWS.rows,
   users: USER_ROWS.rows,
+  addedUsers: ADDED_USER_ROWS.rows,
+  teamJoins: TEAM_JOIN_ROWS.rows,
   roles: ROLE_ROWS.rows,
   scopes: SCOPE_ROWS.rows,
   alumniEntries: ALUMNI_ENTRY_ROWS.rows,
@@ -146,11 +162,15 @@ export const SEED_DATA: SeedData = {
   applicationFiles: APPLICATION_FILE_ROWS.rows,
   interviewSlots: SLOT_ROWS.rows,
   recruitmentSetting: RECRUITMENT_SETTING_ROWS.rows,
+  applicationStatuses: APPLICATION_STATUS_ROWS.rows,
   partners: PARTNER_ROWS.rows,
   partnerVersions: PARTNER_VERSION_ROWS.rows,
   faqs: FAQ_ROWS.rows,
   faqVersions: FAQ_VERSION_ROWS.rows,
   handOvers: HAND_OVER_ROWS.rows,
+  aliasRequests: ALIAS_REQUEST_ROWS.rows,
+  aliasNotices: ALIAS_NOTICE_ROWS.rows,
+  teamAddresses: TEAM_ADDRESS_ROWS.rows,
   outreachTags: OUTREACH_TAG_ROWS.rows,
   outreachPosts: OUTREACH_POST_ROWS.rows,
   outreachPostVersions: OUTREACH_POST_VERSION_ROWS.rows,
@@ -166,6 +186,23 @@ export const SEED_DATA: SeedData = {
 export const SEED_CURRENT_YEAR = 2026;
 
 type Role = SeedData["roles"][number];
+
+/**
+ * A seeded role row of `data` as `RoleSeat`, the way lib/dashboard/team-database.ts
+ * reads a stored one. A row seeded with no id gets the one a fresh database
+ * gives it: its place in `data.roles`, from 1.
+ */
+function seatOfRole(data: SeedData, role: Role): RoleSeat {
+  return {
+    id: role.id ?? data.roles.indexOf(role) + 1,
+    type: role.type ?? null,
+    divisionId: role.divisionId ?? null,
+    since: role.startedAt!,
+    departmentId: role.deptId ?? null,
+    title: role.title,
+    fullAccess: role.fullAccess == null ? null : SEAT_OF_FLAG[role.fullAccess],
+  };
+}
 
 export function isActive(role: Role): boolean {
   return (role.leavedAt ?? null) === null;
@@ -207,12 +244,12 @@ export function standingOfUser(data: SeedData, userId: string): ViewerStanding |
   return viewerStandingOf({ scopes: unitRowsOf(scopeRows, openDepartmentIds), activeRoles, onAlumniRecord });
 }
 
-/** Whether the seeded person reads as the test viewer: the same kind and the same full-access seat. */
-export function resolvesTo(data: SeedData, viewer: TestViewer): boolean {
-  const standing = standingOfUser(data, TEST_VIEWER_PEOPLE[viewer]);
+/** Whether the seeded person reads as the plain seat: the same kind and the same full-access seat. */
+export function resolvesTo(data: SeedData, viewer: PlainSeat): boolean {
+  const standing = standingOfUser(data, PLAIN_SEAT_PEOPLE[viewer]);
   if (standing === null) return false;
-  const expected = testDeveloperStanding(viewer);
-  return standing.kind === kindOfTestViewer(viewer) && seatOf(standing) === seatOf(expected);
+  const expected = plainSeatStanding(viewer);
+  return standing.kind === kindOfPlainSeat(viewer) && seatOf(standing) === seatOf(expected);
 }
 
 /** The Alumni page's record built from the seeded rows, as lib/dashboard/database-alumni.ts reads it. */
@@ -305,8 +342,8 @@ export function orderDepartments(data: SeedData): Set<number> {
 
 type Application = SeedData["applications"][number];
 
-/** Where a seeded application stands, as the dashboard reads it: withdrawn first, then ./stored-application.ts. */
-export function stageOf(data: SeedData, application: Application): ApplicationStage {
+/** The built-in status a seeded application reads as on the dashboard: withdrawn first, then ./stored-application.ts. */
+export function applicationStatusOf(data: SeedData, application: Application): BuiltInStatusKey {
   if (application.withdrawnAt != null) return "withdrawn";
   const slots = data.interviewSlots
     .filter((s) => s.applicationId === application.id)
@@ -318,16 +355,18 @@ export function stageOf(data: SeedData, application: Application): ApplicationSt
       chosen_at: s.chosenAt ?? null,
       created_at: s.createdAt!,
     }));
+  const statusKey = application.statusKey ?? null;
   return storedApplicationState(
     {
-      status: application.status ?? "received",
+      status_key: statusKey,
+      status_parent_key: data.applicationStatuses.find((s) => s.key === statusKey)?.parentKey ?? null,
       applied_at: application.appliedAt!,
       accepted_at: application.acceptedAt ?? null,
       nda_arrived_at: application.ndaArrivedAt ?? null,
       joined_at: application.joinedAt ?? null,
     },
     slots,
-  ).stage;
+  ).status;
 }
 
 /** Items read back from their version rows, the way the database sources build them. */
@@ -421,7 +460,7 @@ export function teamOf(data: SeedData): TeamPerson[] {
   return [...onTeam(data)].map((memberId) => {
     const active = data.roles
       .filter((r) => r.memberId === memberId && isActive(r))
-      .map((r): RoleSeat => ({ type: r.type ?? null, divisionId: r.divisionId ?? null, since: r.startedAt!, departmentId: r.deptId ?? null, title: r.title }));
+      .map((r) => seatOfRole(data, r));
     const user = data.users.find((u) => u.member === memberId);
     const inOpenDivision = (r: RoleSeat) => org.divisions.some((d) => d.id === r.divisionId);
     return {
@@ -448,6 +487,94 @@ export function waitingHandOversOf(data: SeedData): HandOverRequest[] {
     return row.decision != null || role === null
       ? []
       : [{ id: row.id!, fromId: row.fromId, role, toId: row.toId, outcome: row.outcome, sentAt: row.createdAt! }];
+  });
+}
+
+// Email aliases (issue #550), read through the alias rules
+// (lib/dashboard/alias-request.ts, alias-setup.ts) the way the database source
+// reads them (lib/dashboard/database-alias.ts).
+
+/** The requests still open, as `readOpenAliasRequests` reads them. */
+export function openAliasRequestsOf(data: SeedData): AliasRequest[] {
+  return data.aliasRequests.flatMap((r) =>
+    r.outcome != null ? [] : [{ id: r.id!, memberId: r.memberId, requesterId: r.requestedBy ?? null, address: r.address ?? null, sentAt: r.createdAt! }],
+  );
+}
+
+/** Every member's PRT email that is set, their alias, by member id, as `readAliasAddresses` reads them (issue #563). */
+export function aliasAddressesOf(data: SeedData): Map<number, string> {
+  return new Map(
+    data.members.flatMap((m) => {
+      const address = teamAddressOf(m.prtEmail);
+      return address === null ? [] : [[m.memberId!, address] as const];
+    }),
+  );
+}
+
+/** The member a seeded user is, by member id: the user whose `member` it is. */
+function userOfMember(data: SeedData, memberId: number): string | undefined {
+  return data.users.find((u) => u.member === memberId)?.id;
+}
+
+/** The three approver seats' standings: the team leader, the operations lead and the IT lead. */
+export function aliasApproversOf(data: SeedData): ViewerStanding[] {
+  const users = [PLAIN_SEAT_PEOPLE["team-leader"], PLAIN_SEAT_PEOPLE["operations-lead"], userOfMember(data, IT_LEAD)];
+  return users.flatMap((id) => {
+    const standing = id === undefined ? null : standingOfUser(data, id);
+    return standing === null ? [] : [standing];
+  });
+}
+
+/** The alias of `memberId` in `viewer`'s member drawer, with the viewer's standing as `readIdentity` builds it. */
+export function drawerAliasOf(data: SeedData, viewer: number | null, memberId: number) {
+  const user = viewer === null ? undefined : userOfMember(data, viewer);
+  return memberAliasesFor({
+    viewerId: viewer,
+    standing: (user === undefined ? null : standingOfUser(data, user)) ?? viewerStandingOf(null),
+    memberIds: [memberId],
+    team: teamOf(data),
+    org: orgOf(data),
+    addresses: aliasAddressesOf(data),
+    open: openAliasRequestsOf(data),
+    now: new Date(),
+  })[memberId];
+}
+
+/** The Team addresses row of `memberId`'s side view (board 102), as `readMemberTeamAddresses` reads it. */
+export function drawerTeamAddressesOf(data: SeedData, memberId: number) {
+  const held = data.teamAddresses.map((r, i) => ({
+    id: r.id ?? i + 1,
+    address: r.address,
+    purpose: r.purpose,
+    holderId: r.holderId,
+    movesWith: movesWithOf({
+      moves_with: r.movesWith ?? null,
+      moves_with_seat: r.movesWithSeat ?? null,
+      moves_with_dept_id: r.movesWithDeptId ?? null,
+      moves_with_division_id: r.movesWithDivisionId ?? null,
+    }),
+  }));
+  // The lines alone, which every viewer of the row reads the same; who may request is the viewer's.
+  return (
+    memberTeamAddressesFor({ viewerId: null, standing: viewerStandingOf(null), memberIds: [memberId], team: teamOf(data), org: orgOf(data), held, removing: [] }).rows[memberId]
+      ?.lines ?? []
+  );
+}
+
+/** The rows each approver reads under "Needs your attention" for the open requests. */
+export function aliasRowsOf(data: SeedData, viewer: ViewerStanding) {
+  // Each with the address they sign in with, as `aliasTeamOf` reads it (issue #586).
+  const team = teamOf(data).map((p) => ({ ...p, signInEmail: data.users.find((u) => u.member === p.id)?.email ?? "" }));
+  return aliasAttentionFor(viewer, openAliasRequestsOf(data), team, orgOf(data), new Date());
+}
+
+/** `recipient`'s alias notices as their attention rows, as `readNotices` reads them. */
+export function aliasNoticeRowsOf(data: SeedData, recipient: number | null) {
+  const team = teamOf(data);
+  return data.aliasNotices.flatMap((row, i) => {
+    if (row.recipientId !== recipient) return [];
+    const notice = noticeOf({ id: i + 1, kind: row.kind, subject: team.find((p) => p.id === row.subjectId)?.name ?? "", createdAt: row.createdAt!, data: row.data });
+    return notice === null ? [] : [attentionOf(notice, new Date())];
   });
 }
 
@@ -552,26 +679,22 @@ function outreachVersionsOf(data: SeedData): OutreachDraft[] {
 /** A role's rank when the roster picks where someone sits, as lib/dashboard/team-database.ts ranks it. */
 function placementRank(role: Role): number {
   if (role.type === "president") return 0;
-  if (role.deptId == null && role.divisionId == null && boardSeatOf(role.title) !== null) return 1;
+  if (isTeamSeat({ type: role.type ?? null, departmentId: role.deptId ?? null, divisionId: role.divisionId ?? null })) return 1;
   const ranks: Readonly<Record<string, number>> = { head: 2, lead: 3, core: 4, advisor: 4 };
   return ranks[role.type ?? ""] ?? 5;
 }
 
-function seatOfRole(role: Role): RoleSeat {
-  return { type: role.type ?? null, divisionId: role.divisionId ?? null, since: role.startedAt!, departmentId: role.deptId ?? null, title: role.title };
-}
-
 /** Where someone's active roles put them, highest first, as `placementOf` in lib/dashboard/team-database.ts. */
-function placementOfRoles(active: readonly Role[], org: OrgChart): Placement {
+function placementOfRoles(data: SeedData, active: readonly Role[], org: OrgChart): Placement {
   const [top] = active;
-  const open = active.filter((r) => org.divisions.some((d) => d.id === r.divisionId)).map(seatOfRole);
+  const open = active.filter((r) => org.divisions.some((d) => d.id === r.divisionId)).map((r) => seatOfRole(data, r));
   const beside = () => membershipsOfRoles(open.filter((r) => roleBeyondDivisions(r, org) === null));
-  if (top.type === "president") return { role: "team-leader", memberships: beside() };
-  const seat = placementRank(top) === 1 ? boardSeatOf(top.title) : null;
-  if (seat !== null) return { role: "board", seat, memberships: beside() };
-  if (top.type === "head") {
-    const departmentId = headDepartmentOf(seatOfRole(top), org);
-    if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId, memberships: beside() };
+  const seat = roleBeyondDivisions(seatOfRole(data, top), org);
+  if (seat?.kind === "team-leader") return { role: "team-leader", memberships: beside() };
+  if (seat?.kind === "board") return { role: "board", seat: seat.seat, memberships: beside() };
+  if (seat?.kind === "head") {
+    const { departmentId, title } = seat;
+    if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId, title, memberships: beside() };
   }
   return { role: "divisions", memberships: membershipsOfRoles(open) };
 }
@@ -588,7 +711,7 @@ export function teamRolesOf(data: SeedData): TeamRoles {
       {
         id: memberId,
         name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email,
-        placement: placementOfRoles(active, org),
+        placement: placementOfRoles(data, active, org),
         pageTitle: active[0].title || null,
         photo: member?.picture ?? null,
         linkedin: user.linkedin ?? null,
@@ -620,8 +743,6 @@ export function teamAdvisorItemsOf(data: SeedData): AdvisorItem[] {
   );
 }
 
-const shownDepartment = (shown: ShownTeam, id: number) => shown.departments.find((d) => d.at === id);
-
 export type SeedArea =
   | "structure"
   | "people"
@@ -634,6 +755,7 @@ export type SeedArea =
   | "outreach"
   | "projects"
   | "hand-overs"
+  | "aliases"
   | "team-page";
 
 export const SEED_AREAS: readonly SeedArea[] = [
@@ -648,6 +770,7 @@ export const SEED_AREAS: readonly SeedArea[] = [
   "outreach",
   "projects",
   "hand-overs",
+  "aliases",
   "team-page",
 ];
 
@@ -686,14 +809,6 @@ export const SEED_CASES: readonly SeedCase[] = [
       ),
   },
   {
-    area: "structure",
-    case: "An open division with nobody in it",
-    data: "invented",
-    rows: "`divisions` code `PLI`",
-    exercisedBy: issue(251),
-    holds: (data) => openDivisions(data).some((d) => !data.roles.some((r) => r.divisionId === d.id)),
-  },
-  {
     area: "people",
     case: "One team leader",
     data: "public",
@@ -703,15 +818,16 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "people",
-    case: "A Project Manager and a Chief Engineer, the two board seats, so the roles fill every section of the Team page",
+    case: "A Project Manager and a Chief Engineer, the two flagged board seats, so the roles fill every section of the Team page; the Head of R&D heads a department with no divisions, a core member there",
     data: "public",
-    rows: "`roles` titled by the seat, members 52 and 53",
-    exercisedBy: `${issue(282)}, ${issue(311)}`,
+    rows: "`roles` in no department or division, members 52 and 53 flagged by `roles.full_access`; member 9's head row on department 8",
+    exercisedBy: `${issue(282)}, ${issue(311)}, ${issue(625)}, ${issue(627)}`,
     holds: (data) => {
       const roles = teamRolesOf(data);
       const { build } = teamPageOfSeed(data);
       return (
         build.arc.map((l) => l.spot).join(",") === "arc:project-manager:0,arc:chief-engineer:0" &&
+        build.core.some((m) => m.name === "Marco Dona" && m.role === "Head of R&D") &&
         teamPageFromRoles(roles, teamRecord) !== null
       );
     },
@@ -720,7 +836,7 @@ export const SEED_CASES: readonly SeedCase[] = [
     area: "people",
     case: "One operations lead and one IT lead, the two full-access seats",
     data: "invented",
-    rows: "`roles.full_access`, members 903 and 11",
+    rows: "`roles.full_access`, members 3 and 11",
     exercisedBy: `${issue(238)}, ${issue(252)}`,
     holds: (data) =>
       (["operations_lead", "it_lead"] as const).every(
@@ -801,11 +917,35 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "people",
-    case: "One seeded person per test viewer, read as that viewer",
+    case: "One seeded person per plain seat, read as that seat",
     data: "invented",
-    rows: "`TEST_VIEWER_PEOPLE` in `db/seed/people.ts`",
+    rows: "`PLAIN_SEAT_PEOPLE` in `db/seed/people.ts`",
     exercisedBy: issue(247),
-    holds: (data) => TEST_VIEWERS.every((viewer) => resolvesTo(data, viewer)),
+    holds: (data) => PLAIN_SEATS.every((viewer) => resolvesTo(data, viewer)),
+  },
+  {
+    area: "people",
+    case: "Someone a division lead added by email who has not signed in yet, so they wait with no member row and no sign-in",
+    data: "invented",
+    rows: `\`users\` id \`${ADDED_BY_EMAIL.userId}\`, its \`team_joins\` row in Test Bench added by member ${ADDED_BY_EMAIL.addedBy}`,
+    exercisedBy: issue(741),
+    holds: (data) => {
+      const added = data.addedUsers.filter((u) => u.id.startsWith("added:"));
+      if (added.length !== 1) return false;
+      const [user] = added;
+      const joins = data.teamJoins.filter((j) => j.userId === user.id);
+      if (joins.length !== 1) return false;
+      const [join] = joins;
+      return (
+        user.email.endsWith("@example.com") &&
+        (user.member ?? null) === null &&
+        !data.users.some((u) => u.id === user.id || u.email === user.email) &&
+        !SIGN_IN_ROWS.rows.some((row) => row.id === user.id || row.email === user.email) &&
+        openDivisions(data).some((d) => d.id === join.divisionId) &&
+        join.addedBy != null &&
+        activeIn(data, join.divisionId).some((r) => r.memberId === join.addedBy && r.type === "lead")
+      );
+    },
   },
   {
     area: "alumni",
@@ -868,12 +1008,12 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "alumni",
-    case: "A former member read as the alumni test viewer: every role ended, an Alumni entry kept",
+    case: "A former member read as the alumni plain seat: every role ended, an Alumni entry kept",
     data: "invented",
-    rows: "`TEST_VIEWER_PEOPLE` alumni, member 50",
+    rows: "`PLAIN_SEAT_PEOPLE` alumni, member 50",
     exercisedBy: issue(317),
     holds: (data) => {
-      const user = data.users.find((u) => u.id === TEST_VIEWER_PEOPLE.alumni);
+      const user = data.users.find((u) => u.id === PLAIN_SEAT_PEOPLE.alumni);
       const memberId = user?.member ?? null;
       if (memberId === null) return false;
       const roles = data.roles.filter((r) => r.memberId === memberId);
@@ -928,11 +1068,11 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "access",
-    case: "Alumni access, given across the whole team",
+    case: "Content access, which opens the Alumni page, given across the whole team",
     data: "invented",
-    rows: "`scopes` scope `website`, member 144",
+    rows: "`scopes` scope `website` on `content`, member 144",
     exercisedBy: `${issue(247)}, ${issue(257)}`,
-    holds: (data) => data.scopes.some((s) => s.scope === "website"),
+    holds: (data) => data.scopes.some((s) => s.scope === "website" && s.target === "content" && s.accessLevel === "edit"),
   },
   {
     area: "orders",
@@ -979,19 +1119,27 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "recruitment",
-    case: "An application in every stage: new, in review, interview, accepted, joined, rejected and withdrawn",
+    case: "An application where each built-in status reads, withdrawn included, as the dashboard reads it",
     data: "invented",
     rows: "`applications`, `interview_slots`",
-    exercisedBy: `${issue(169)}, ${issue(171)}`,
-    holds: (data) => APPLICATION_STAGES.every((stage) => data.applications.some((a) => stageOf(data, a) === stage)),
+    exercisedBy: `${issue(169)}, ${issue(171)}, ${issue(748)}`,
+    holds: (data) => BUILT_IN_STATUS_KEYS.every((status) => data.applications.some((a) => applicationStatusOf(data, a) === status)),
   },
   {
     area: "recruitment",
-    case: "An application in every stored status, \"accepted by another team\" among them",
+    case: "Every application references a status: each of the ten built-in statuses, and the added status \"Second interview\"",
     data: "invented",
-    rows: "`applications.status`",
-    exercisedBy: issue(171),
-    holds: (data) => applicationStatusEnum.enumValues.every((status) => data.applications.some((a) => a.status === status)),
+    rows: "`application_statuses`, `applications.status_key`",
+    exercisedBy: issue(748),
+    holds: (data) => {
+      const referenced = data.applications.map((a) => a.statusKey ?? null);
+      const added = data.applicationStatuses.filter((s) => !isBuiltInStatusKey(s.key)).map((s) => s.key);
+      return (
+        referenced.every((key) => key !== null && data.applicationStatuses.some((s) => s.key === key)) &&
+        BUILT_IN_STATUS_KEYS.every((key) => referenced.includes(key)) &&
+        added.some((key) => referenced.includes(key))
+      );
+    },
   },
   {
     area: "recruitment",
@@ -1000,7 +1148,7 @@ export const SEED_CASES: readonly SeedCase[] = [
     rows: "`interview_slots` of applications 5 and 6",
     exercisedBy: `${issue(169)}, ${issue(186)}`,
     holds: (data) => {
-      const interviews = data.applications.filter((a) => stageOf(data, a) === "interview");
+      const interviews = data.applications.filter((a) => applicationStatusOf(data, a) === "interview");
       const booked = (a: Application) => data.interviewSlots.some((s) => s.applicationId === a.id && s.chosen);
       return interviews.some(booked) && interviews.some((a) => !booked(a));
     },
@@ -1012,19 +1160,19 @@ export const SEED_CASES: readonly SeedCase[] = [
     rows: "`applications` 3 and 1",
     exercisedBy: issue(171),
     holds: (data) => {
-      const accepted = data.applications.filter((a) => stageOf(data, a) === "accepted");
+      const accepted = data.applications.filter((a) => ["accepted_email_to_be_sent", "accepted_email_sent", "nda_received"].includes(applicationStatusOf(data, a)));
       return accepted.some((a) => a.ndaArrivedAt == null) && accepted.some((a) => a.ndaArrivedAt != null);
     },
   },
   {
     area: "recruitment",
-    case: "The local applicant tester holds applications to act on",
+    case: "The applicant plain seat holds applications to act on",
     data: "invented",
     rows: "`applications` 24 and 25",
     exercisedBy: `${issue(129)}, ${issue(169)}`,
     holds: (data) => {
-      const theirs = data.applications.filter((a) => a.userId === TEST_VIEWER_PEOPLE["non-member"]);
-      return theirs.some((a) => stageOf(data, a) === "interview") && theirs.some((a) => stageOf(data, a) === "new");
+      const theirs = data.applications.filter((a) => a.userId === PLAIN_SEAT_PEOPLE["non-member"]);
+      return theirs.some((a) => applicationStatusOf(data, a) === "interview") && theirs.some((a) => applicationStatusOf(data, a) === "new");
     },
   },
   {
@@ -1229,15 +1377,15 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "hand-overs",
-    case: "A division lead's hand-over waiting for the head of their department, on the department-head test viewer's Overview",
+    case: "A division lead's hand-over waiting for the head of their department, on the department-head plain seat's Overview",
     data: "invented",
-    rows: "`hand_over_requests` 2, member 902 to member 901",
+    rows: "`hand_over_requests` 2, member 195 to member 140",
     exercisedBy: issue(262),
     holds: (data) => {
       const waiting = waitingHandOversOf(data);
       const team = teamOf(data);
       const org = orgOf(data);
-      const head = memberOfUser(data, TEST_VIEWER_PEOPLE["department-head"]);
+      const head = memberOfUser(data, PLAIN_SEAT_PEOPLE["department-head"]);
       return (
         waiting.length === 1 &&
         waiting.every((r) => !hasLapsed(r, team) && successorsFor(r.role, r.fromId, team, org).some((s) => s.id === r.toId)) &&
@@ -1252,6 +1400,112 @@ export const SEED_CASES: readonly SeedCase[] = [
     rows: "`hand_over_requests` 1, member 43 to member 10",
     exercisedBy: `${issue(253)}, ${issue(262)}`,
     holds: (data) => data.handOvers.some((row) => row.outcome === "advisor" && confirmedAsWritten(data, row)),
+  },
+  {
+    area: "aliases",
+    case: "An open alias request the division-lead plain seat sent, which they may cancel and each approver may decline or mark created",
+    data: "invented",
+    rows: "`alias_requests` 1, member 195 for member 134",
+    exercisedBy: `${issue(541)}, ${issue(550)}`,
+    holds: (data) => {
+      const lead = memberOfUser(data, PLAIN_SEAT_PEOPLE["division-lead"]);
+      const drawer = drawerAliasOf(data, lead, OPEN_REQUEST.member);
+      const approvers = aliasApproversOf(data);
+      return (
+        lead === OPEN_REQUEST.by &&
+        drawer?.kind === "requested" &&
+        drawer.cancellable &&
+        drawer.line.startsWith("by you") &&
+        approvers.length === 3 &&
+        approvers.every((a) => aliasRowsOf(data, a).some((r) => r.kind === "prt-email-request" && "answerAlias" in r.action && r.action.answerAlias === OPEN_REQUEST.id))
+      );
+    },
+  },
+  {
+    area: "aliases",
+    case: "An open alias request the site made by itself when someone became a division lead",
+    data: "invented",
+    rows: "`alias_requests` 2, member 13, no requester",
+    exercisedBy: `${issue(543)}, ${issue(550)}`,
+    holds: (data) => {
+      const request = openAliasRequestsOf(data).find((r) => r.id === AUTOMATIC_REQUEST.id);
+      const [leader] = aliasApproversOf(data);
+      const row = leader === undefined ? undefined : aliasRowsOf(data, leader).find((r) => r.kind === "prt-email-request" && "answerAlias" in r.action && r.action.answerAlias === AUTOMATIC_REQUEST.id);
+      return (
+        request?.requesterId === null &&
+        teamOf(data).some((p) => p.id === AUTOMATIC_REQUEST.member && p.memberships.some((m) => m.role === "lead")) &&
+        row !== undefined &&
+        row.title.startsWith("PRT email request for ") &&
+        row.detail.startsWith("Personal · automatic · became")
+      );
+    },
+  },
+  {
+    area: "aliases",
+    case: "An alias marked created on the member plain seat's record and not yet set up, with the notice to the division lead who asked for it",
+    data: "invented",
+    rows: "`alias_requests` 3, `members` 140 `prt_email`, `dashboard_notices` `alias-created`",
+    exercisedBy: `${issue(542)}, ${issue(550)}`,
+    holds: (data) => {
+      const member = memberOfUser(data, PLAIN_SEAT_PEOPLE.member);
+      const standing = standingOfUser(data, PLAIN_SEAT_PEOPLE.member);
+      const row = data.members.find((m) => m.memberId === member);
+      const own = standing === null || row === undefined ? null : ownAliasOf({ kind: standing.kind, alias: row.prtEmail ?? null, setUpAt: row.emailAliasSetUpAt ?? null });
+      const drawer = drawerAliasOf(data, CREATED_ALIAS.by, CREATED_ALIAS.member);
+      return (
+        member === CREATED_ALIAS.member &&
+        showsAliasCard(own) &&
+        own.address === CREATED_ALIAS.address &&
+        data.aliasRequests.some((r) => r.id === CREATED_ALIAS.id && r.memberId === member && r.outcome === "created") &&
+        drawer?.kind === "set" &&
+        !aliasNoticeRowsOf(data, member).some((r) => r.title.includes("PRT email is ready")) &&
+        aliasNoticeRowsOf(data, CREATED_ALIAS.by).some((r) => r.title.endsWith("'s PRT email is ready"))
+      );
+    },
+  },
+  {
+    area: "aliases",
+    case: "A declined alias request, with the notice to the division lead who sent it, who may ask again",
+    data: "invented",
+    rows: "`alias_requests` 4, member 195 for member 168, `dashboard_notices` `alias-declined`",
+    exercisedBy: `${issue(541)}, ${issue(550)}`,
+    holds: (data) => {
+      const drawer = drawerAliasOf(data, DECLINED_REQUEST.by, DECLINED_REQUEST.member);
+      return (
+        data.aliasRequests.some((r) => r.id === DECLINED_REQUEST.id && r.outcome === "declined" && r.answeredBy === DECLINED_REQUEST.declinedBy) &&
+        drawer?.kind === "none" &&
+        drawer.requestable &&
+        aliasNoticeRowsOf(data, DECLINED_REQUEST.by).some((r) => r.title.includes("declined the PRT email for"))
+      );
+    },
+  },
+  {
+    area: "aliases",
+    case: "Two team addresses the member plain seat holds, one that moves with the Logistics lead and one tied to no role, so their side view lists them as special lines of the PRT emails row",
+    data: "invented",
+    rows: "`team_addresses`, member 140, `logistics@prt.example.com` (division 15) and `recruitment@prt.example.com`",
+    exercisedBy: issue(786),
+    holds: (data) => {
+      const lines = drawerTeamAddressesOf(data, memberOfUser(data, PLAIN_SEAT_PEOPLE.member) ?? -1);
+      return lines.length === 2 && lines[0].movesWith === "Logistics Lead" && lines[1].movesWith === null;
+    },
+  },
+  {
+    area: "aliases",
+    case: "Of the member plain seat's two team addresses, the Logistics one is set up and the recruitment one is not, so their Overview shows one PRT email ready card",
+    data: "invented",
+    rows: "`team_addresses` `set_up_at`, member 140, `logistics@prt.example.com` set up, `recruitment@prt.example.com` not",
+    exercisedBy: issue(578),
+    holds: (data) => {
+      const member = memberOfUser(data, PLAIN_SEAT_PEOPLE.member);
+      const standing = standingOfUser(data, PLAIN_SEAT_PEOPLE.member);
+      if (standing === null) return false;
+      const held = data.teamAddresses
+        .filter((r) => r.holderId === member)
+        .map((r, id) => ({ id, address: r.address, setUpAt: r.setUpAt ?? null }));
+      const cards = teamAddressCardsOf(ownTeamAddressesOf({ kind: standing.kind, held }));
+      return held.length === 2 && cards.length === 1 && cards[0].address.startsWith("recruitment@");
+    },
   },
   {
     area: "team-page",
@@ -1310,20 +1564,6 @@ export const SEED_CASES: readonly SeedCase[] = [
         build.departments.some((d) => d.leads.some((l) => l.spot === HIDDEN_LEAD_SPOT)) &&
         !shown.departments.some((d) => d.leads.some((l) => l.at === HIDDEN_LEAD_SPOT))
       );
-    },
-  },
-  {
-    area: "team-page",
-    case: "A division lead added to a department whose one division has nobody in it",
-    data: "invented",
-    rows: "`team_page_layer_versions` published, `departments` 8 `addedLeads`, member 183",
-    exercisedBy: `${issue(283)}, ${issue(285)}`,
-    holds: (data) => {
-      const { build, shown } = teamPageOfSeed(data);
-      const before = build.departments.find((d) => d.id === ADDED_LEAD_DEPARTMENT);
-      const after = shownDepartment(shown, ADDED_LEAD_DEPARTMENT);
-      const leadsNothing = !data.roles.some((r) => r.memberId === ADDED_LEAD_PERSON && r.type === "lead" && isActive(r));
-      return before?.leads.length === 0 && (after?.leads.some((l) => l.at.startsWith("added:")) ?? false) && leadsNothing;
     },
   },
   {

@@ -20,7 +20,7 @@ export default function MissionVisionPage() {
     <div className="relative bg-ground">
       <LandingNavbar />
       <PageSky>
-        <main className="pb-section pt-16 md:pt-[72px]">
+        <main className="pt-16 md:pt-[72px]">
           <PageHeader {...mission.header} />
           <Mission mission={mission.mission} />
           <Vision vision={mission.vision} />

@@ -1,13 +1,13 @@
-import { seatOf, type FullAccessSeat, type GrantArea, type ViewerKind, type ViewerStanding } from "./viewer";
+import { isBreakGlass, seatOf, type FullAccessSeat, type GrantArea, type ViewerKind, type ViewerStanding } from "./viewer";
 
 // Which viewer reaches which dashboard page, and where the page sits (Dashboard
 // v2 boards 51b, 52, 56 and 72). One row per page: a new page adds one row. A
 // viewer whose kind is missing from a row's `reach` does not reach the page,
 // unless the row names a `grantArea` and they are a member granted that area
-// (issues #160, #471), `siteContent` and they hold a Content grant, `alumni`
-// and they hold an Alumni grant (issue #504), or `approveOrders` and they
-// hold "Approve orders". A row that names a `seat` is
-// reached by that full-access seat alone (issue #238). The `operations-lead`
+// (issues #160, #471), `siteContent` and they hold a Content grant (issues
+// #504, #589), or `approveOrders` and they hold "Approve orders". A row that names a `seat` is
+// reached by that full-access seat alone (issue #238), and also by the
+// break-glass standing when the row says so (issue #727). The `operations-lead`
 // kind is full access: the team leader, the operations lead and the IT lead,
 // or an admin or org scope row (./viewer.ts), so it reaches every page of the
 // team.
@@ -54,14 +54,14 @@ type PageRow = {
   readonly grantArea?: GrantArea;
   /** A viewer whose kind does not reach the page reaches it with a Content grant (issue #504). */
   readonly siteContent?: true;
-  /** A viewer whose kind does not reach the page reaches it with an Alumni grant (issue #504). */
-  readonly alumni?: true;
   /** A viewer whose kind does not reach the page reaches it with "Approve orders". */
   readonly approveOrders?: true;
   /** The viewers whose sidebar lists the page only when a fact holds; the rest always see it. */
   readonly shownWhen?: Readonly<Partial<Record<ViewerKind, NavCondition>>>;
   /** The one full-access seat that reaches the page; every other viewer, full access or not, does not. */
   readonly seat?: FullAccessSeat;
+  /** Beside `seat`, the break-glass standing reaches the page too; no other seat does (issue #727). */
+  readonly breakGlass?: true;
 };
 
 /** Rows in sidebar order within each group. */
@@ -169,13 +169,14 @@ export const DASHBOARD_PAGES = [
     key: "alumni",
     label: "Alumni",
     href: "/dashboard/alumni",
-    // Owner decision on #234: full access (issue #238) and anyone given an
-    // Alumni grant; a Content grant does not open it (Owner decision,
-    // 2026-10-21, issue #504). A division lead or department head gets
-    // nothing from their role here. It sits under Content (board 72, issue #252).
+    // The site-content rule (maySiteContent, lib/content/gate.ts): full
+    // access and a Content grant (Owner decision, 2026-10-22, issue #589,
+    // which replaced the separate Alumni grant of #504). A division lead or
+    // department head gets nothing from their role here. It sits under
+    // Content (board 72, issue #252).
     place: "content",
     reach: ["operations-lead"],
-    alumni: true,
+    siteContent: true,
   },
   {
     key: "faq",
@@ -225,10 +226,12 @@ export const DASHBOARD_PAGES = [
     label: "Activity log",
     href: "/dashboard/activity-log",
     // Owner decision on #238: the IT lead alone, not the rest of full access.
-    // The page is not built yet, so the sidebar does not list it.
-    place: "unlisted",
+    // Owner decision on #727: the break-glass standing too, never a real
+    // team leader. Board 101 (issue #642) lists it under Team.
+    place: "team",
     reach: ["operations-lead"],
     seat: "it-lead",
+    breakGlass: true,
   },
   {
     key: "my-profile",
@@ -281,12 +284,11 @@ export type MenuPage = {
 
 /** Whether `viewer` reaches `page`, by their role or by a grant the row admits. */
 function reaches(page: PageRow, viewer: ViewerStanding): boolean {
-  if (page.seat !== undefined && seatOf(viewer) !== page.seat) return false;
+  if (page.seat !== undefined && seatOf(viewer) !== page.seat && !(page.breakGlass === true && isBreakGlass(viewer))) return false;
   return (
     page.reach.includes(viewer.kind) ||
     (viewer.kind === "member" && page.grantArea !== undefined && viewer.grantedAreas.includes(page.grantArea)) ||
     (viewer.siteContent && page.siteContent === true) ||
-    (viewer.alumniGrant === true && page.alumni === true) ||
     (viewer.approveOrders && page.approveOrders === true)
   );
 }
@@ -337,6 +339,16 @@ export const LANDING_AFTER_LEAVING: DashboardLanding = "/dashboard";
 export function userMenuPageFor(kind: ViewerKind): MenuPage | null {
   const page = DASHBOARD_PAGES.find((row: PageRow) => row.place === "user-menu" && row.reach.includes(kind));
   return page ? { key: page.key, label: page.label, href: page.href } : null;
+}
+
+/**
+ * The page this viewer's user menu links to: their kind's page, except My
+ * profile for an account with no profile of its own (`hasOwnProfile`, issue
+ * #725), whose My profile page answers not-found.
+ */
+export function userMenuPageOf(viewer: { readonly kind: ViewerKind; readonly hasOwnProfile: boolean }): MenuPage | null {
+  const page = userMenuPageFor(viewer.kind);
+  return page?.key === "my-profile" && !viewer.hasOwnProfile ? null : page;
 }
 
 /**

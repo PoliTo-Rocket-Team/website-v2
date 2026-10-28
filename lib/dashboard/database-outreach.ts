@@ -8,7 +8,7 @@ import { outreachPosts, outreachPostTags, outreachPostVersions, outreachTags } f
 import { versionRows, type VersionKind } from "@/lib/content/versioned";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { publicOutreach, type OutreachStore, type StoredOutreach } from "@/lib/outreach-editor";
-import { featuredIdsOf, featuring, freeFeaturedSlot, isFeatured, type FeaturedIds, type FeaturedSlot } from "@/lib/outreach-featured";
+import { featuredIdsOf, featuring, freeFeaturedSlot, holdsFeature, isFeatured, type FeaturedIds, type FeaturedSlot } from "@/lib/outreach-featured";
 import { publicStorePhotoFiles, type PhotoFiles } from "@/lib/outreach-photos";
 import { draftFromColumns, postColumns, postFromColumns } from "@/lib/outreach-rows";
 import type { OutreachContent, OutreachDraft, OutreachTag, PostItem, PostStore, PostVersions } from "@/lib/outreach-types";
@@ -192,13 +192,17 @@ const databasePostStore: PostStore = {
   },
 
   async update(id, version) {
-    const before = (await readStoredOutreach()).posts.find((item) => item.id === id) ?? null;
+    const stored = await readStoredOutreach();
+    const before = stored.posts.find((item) => item.id === id) ?? null;
     const { versions, tags } = versionsValues(id, version);
+    // A featured post taken off the site gives up its slot in the same batch (issue #502).
+    const unfeature = isFeatured(stored.featured, id) && !holdsFeature(version);
     // The old versions' tags go with them (ON DELETE CASCADE). A draft may have no tag yet.
     await runAuditBatch((db) => [
       db.delete(outreachPostVersions).where(eq(outreachPostVersions.postId, id)),
       db.insert(outreachPostVersions).values(versions),
       ...(tags.length === 0 ? [] : [db.insert(outreachPostTags).values(tags)]),
+      ...(unfeature ? [db.update(outreachPosts).set({ featuredSlot: null }).where(eq(outreachPosts.id, id))] : []),
     ]);
     updateTag(OUTREACH_CACHE_TAG);
     return written({ id, siteOrder: before?.siteOrder ?? 0, version });

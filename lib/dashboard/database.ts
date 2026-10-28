@@ -4,12 +4,13 @@ import { and, asc, count, eq, inArray, isNull, max, min, notInArray, or, sql } f
 import { alias } from "drizzle-orm/pg-core";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
 import { getRecruitmentControlFor } from "@/app/actions/get-apply-positions";
-import { getScopeInfoForMember } from "@/app/actions/get-member-scopes";
 import { cachedReadTags, refreshAfter } from "@/lib/cache-tags";
 import { getDb, isDatabaseConfigured } from "@/db/client";
 import {
   applications,
+  applicationStatuses,
   applyPositions,
+  betterAuthUsers,
   departments,
   divisions,
   members,
@@ -20,7 +21,8 @@ import {
 } from "@/db/schema";
 import type { Recruitment } from "@/lib/apply/positions";
 import { canSwitchRecruitment, switchRecruitment } from "@/lib/apply/recruitment-switch";
-import { getCurrentUser } from "@/lib/current-user";
+import { getCurrentUser, type CurrentUser } from "@/lib/current-user";
+import { isBreakGlassEmail } from "@/lib/break-glass";
 import { runAuditQuery } from "@/lib/db-audit";
 import { canReach, LANDING_AFTER_LEAVING, type NavCounts } from "./access";
 import { isShownAt } from "./my-applications";
@@ -28,37 +30,49 @@ import { DashboardRefused, type DashboardData } from "./data";
 import {
   buildTeamTree,
   seasonAt,
-  teamPageEditOf,
   type MemberDirectory,
   type RoleType,
 } from "./team";
 import { readTeamSnapshot, recordsOf, rosterOf } from "./team-database";
+import { acceptanceEmailsAttention } from "./acceptance-emails";
 import { departmentSummaries, leaderAttention, leaderStats } from "./leader-overview";
-import { wholeTeamMembers } from "./team-members";
 import { opensWholeTeam } from "./members-view";
 import { databaseAlumniWrites, databaseOwnAlumni, readAlumniDirectory, readOwnAlumnus } from "./database-alumni";
-import { formatEuro, waitingOrders } from "./orders";
+import { decideRightOfStanding, formatEuro, waitingOrders, type Order } from "./orders";
+import { departmentLabel } from "./recruitment";
 import {
-  checklistProgress,
+  departmentHeadcount,
+  departmentRoster,
   divisionRoster,
+  holdsLeaderSeat,
+  myDepartmentStat,
   noPhotoItem,
   oldestLine,
+  overviewLayoutOf,
+  overviewOfSections,
+  pageChecklistOf,
   type AttentionItem,
-  type ChecklistItem,
   type DepartmentOverview,
+  type DepartmentRosterRow,
   type DivisionOverview,
   type DivisionSummary,
-  type PersonalOverview,
+  type OverviewSections,
+  type PersonalPanels,
+  type PersonHeader,
+  type Roster,
+  type ScopeBoard,
   type TeamLeaderOverview,
   type TeamOverview,
-  type TeamSideOverview,
   type UpcomingInterview,
 } from "./overview";
+import { readActivityLog } from "./database-activity-log";
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
-import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
-import { divisionOverviewOf, overviewAreasOf, type DivisionFigures } from "./division-overview";
-import { accessSummariesOf, type AccessFigures, type AccessSummary } from "./access-summary";
-import { answerHandOver, databaseTeamWrites, findForAdd, findPeople, readDivisionMembers, readTeamStructure } from "./database-team";
+import { databaseRecruitmentPages, interviewStatuses, readAcceptanceEmailCount, readSlots, STATUS_COLUMNS, STATUS_JOIN } from "./database-recruitment";
+import { readsAsNew } from "./stored-application";
+import { statusOfStored } from "./application-status";
+import { divisionOverviewOf, membersScopeOf, overviewAreasOf, type DivisionFigures } from "./division-overview";
+import { accessSectionOf, accessSummariesOf, type AccessFigures, type AccessSummary } from "./access-summary";
+import { answerHandOver, databaseTeamWrites, findForAdd, findMoveTargets, findPeople, readDivisionMembers, readMembersDivisionReach, readTeamStructure, readWholeTeamMembers } from "./database-team";
 import { databaseSelfPages } from "./database-self";
 import { blobLogoFiles, databasePartnerStore } from "./database-partners";
 import { partnerEditor } from "@/lib/partners-editor";
@@ -77,23 +91,44 @@ import { outreachEditor } from "@/lib/outreach-editor";
 import { projectEditor } from "@/lib/project-content/editor";
 import { blobProjectBackgroundFiles, blobProjectPhotoFiles, databaseProjectStore, readProjectStamps } from "./database-projects";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
+import { readsRecruitmentIn } from "./application-documents";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { answerAlias, cancelAliasRequest, confirmAliasSetUp, readAliasAttention, readMemberAliases, readOwnAlias, requestAlias } from "./database-alias";
+import {
+  answerTeamAddress,
+  confirmTeamAddressSetUp,
+  markTeamAddressRemovalDone,
+  markTeamAddressRerouteDone,
+  readMemberTeamAddresses,
+  readOwnTeamAddresses,
+  readTeamAddressAttention,
+  readTeamAddressRemovalAttention,
+  readTeamAddressRerouteAttention,
+  removeTeamAddress,
+  requestTeamAddress,
+} from "./database-team-address";
+import { NO_TEAM_ADDRESSES } from "./team-address";
 import { upcomingInterviews } from "./interview-slots";
-import { SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areaUnitsOf, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type ViewerStanding } from "./viewer";
+import { BREAK_GLASS_STANDING, SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, hasOwnProfile, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type BreakGlassStanding, type ViewerStanding } from "./viewer";
 import { written } from "./write";
+import { BREAK_GLASS_TITLE } from "./acting-account";
+import { primaryRoleOf, roleLabelOf } from "./role-label";
 
-// The signed-in account's side of the dashboard data interface: the same
-// answers as lib/dummy-data/, read from the database. Reads follow
+// The dashboard data interface for the signed-in account, read from the
+// database. Reads follow
 // .patterns/drizzle-reads.md: getDb() per call, closed units and deleted
 // positions left out.
 
 type ActiveRole = {
+  id: number;
   title: string;
   type: RoleType;
   startedAt: string;
   divisionId: number | null;
   divisionName: string | null;
+  /** Its division's code, and the day that division closed (null while open): what finds the recruitment manager (issue #194). */
+  divisionCode: string | null;
+  divisionClosedAt: string | null;
   departmentId: number | null;
   departmentName: string | null;
   /** The full-access seat the role is flagged as (issue #238). */
@@ -101,8 +136,14 @@ type ActiveRole = {
 };
 
 
-type Identity = {
+type IdentityFields = {
   userId: string;
+  /**
+   * The account behind a View as session, read from the session on the
+   * server (issue #605): `userId` is then the person viewed as. Each write
+   * that names its author stores it beside them; null for a plain session.
+   */
+  actingAccountId: string | null;
   name: string;
   email: string;
   linkedin: string | null;
@@ -120,7 +161,15 @@ type Identity = {
   departmentIds: number[];
   /** Each area grant they hold, with its area and level: what a recruitment change checks (`mayChange`, issue #160). */
   grants: readonly AreaGrant[];
-} & ViewerStanding;
+};
+
+/**
+ * Who the signed-in account is. `breakGlass` says whether the standing comes
+ * from the break-glass setting (issue #646) rather than from roles and scope
+ * rows: such an account always stands as the team leader, and code reads
+ * this fact rather than the environment again.
+ */
+type Identity = IdentityFields & (({ readonly breakGlass: false } & ViewerStanding) | BreakGlassStanding);
 
 /** Who the signed-in account is; the page modules beside this one read it. */
 export type DashboardIdentity = Identity;
@@ -131,7 +180,7 @@ export type DashboardIdentity = Identity;
  * the open departments go out together, since none needs another's answer.
  * Only someone with no active role waits for one more read, the Alumni record.
  */
-async function readIdentity(userId: string): Promise<Identity | null> {
+async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "id" | "actingAccountId">): Promise<Identity | null> {
   const db = getDb();
   const [[user], scopeRows, roleRows, openDepartments] = await Promise.all([
     db
@@ -142,9 +191,12 @@ async function readIdentity(userId: string): Promise<Identity | null> {
         linkedin: users.linkedin,
         member_id: users.member,
         picture: members.picture,
+        // The email the account signs in with, which the break-glass setting names (issue #646).
+        sign_in_email: betterAuthUsers.email,
       })
       .from(users)
       .leftJoin(members, eq(users.member, members.memberId))
+      .leftJoin(betterAuthUsers, eq(betterAuthUsers.id, users.id))
       .where(eq(users.id, userId))
       .limit(1),
     db
@@ -160,11 +212,14 @@ async function readIdentity(userId: string): Promise<Identity | null> {
       .where(eq(users.id, userId)),
     db
       .select({
+        id: roles.id,
         title: roles.title,
         type: roles.type,
         startedAt: roles.startedAt,
         divisionId: roles.divisionId,
         divisionName: divisions.name,
+        divisionCode: divisions.code,
+        divisionClosedAt: divisions.closedAt,
         departmentId: departments.id,
         departmentName: departments.name,
         fullAccess: roles.fullAccess,
@@ -183,14 +238,19 @@ async function readIdentity(userId: string): Promise<Identity | null> {
   const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email;
   const base = {
     userId,
+    actingAccountId,
     name,
     email: user.email,
     linkedin: user.linkedin,
     memberId: user.member_id,
     picture: user.picture,
   };
+  // The break-glass admin stands as the team leader, with or without a member row or a role (issue #646).
+  const breakGlass = isBreakGlassEmail(user.sign_in_email);
+  const noUnits = { role: null, roles: [], divisionIds: [], departmentIds: [], grants: [] };
   if (user.member_id === null) {
-    return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], grants: [], ...viewerStandingOf(null) };
+    if (breakGlass) return { ...base, ...noUnits, ...BREAK_GLASS_STANDING };
+    return { ...base, ...noUnits, breakGlass, ...viewerStandingOf(null) };
   }
 
   const activeRoles: ActiveRole[] = roleRows.map((r) => ({ ...r, fullAccess: r.fullAccess === null ? null : SEAT_OF_FLAG[r.fullAccess] }));
@@ -202,32 +262,23 @@ async function readIdentity(userId: string): Promise<Identity | null> {
     scopeRows.map((s) => ({ scope: s.scope, target: s.target, level: s.level, divisionId: s.division_id, deptId: s.dept_id })),
     openDepartmentIds,
   );
-  // Someone with no active role left the team: an alumnus when the Alumni record knows them (issue #317).
-  const onAlumniRecord = activeRoles.length === 0 && (await readOwnAlumnus(user.member_id)) !== null;
-  const access = { scopes: unitRows, activeRoles, onAlumniRecord };
-  const standing = viewerStandingOf(access);
-  // Off the team, scope rows that outlived the roles reach nothing.
-  if (isOffTeam(standing.kind)) return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], grants: [], ...standing };
-
   // Every division they lead and the department they head, plus the units their scopes name.
   const units = viewerUnitsOf(unitRows, activeRoles);
-  return {
-    ...base,
-    role: primaryRole(activeRoles),
+  const held = {
+    role: primaryRoleOf(activeRoles),
     roles: activeRoles,
     divisionIds: [...units.divisionIds],
     departmentIds: [...units.departmentIds],
     grants: areaGrantsOf(unitRows),
-    ...standing,
   };
-}
+  if (breakGlass) return { ...base, ...held, ...BREAK_GLASS_STANDING };
 
-const ROLE_RANK: Readonly<Record<NonNullable<ActiveRole["type"]>, number>> = { president: 0, head: 1, lead: 2, core: 3, advisor: 3 };
-
-/** Their highest role, the oldest of those when they hold several: a lead role over a member role. */
-function primaryRole(active: readonly ActiveRole[]): ActiveRole | null {
-  const rank = (r: ActiveRole) => (r.type === null ? 4 : ROLE_RANK[r.type]);
-  return [...active].sort((a, b) => rank(a) - rank(b) || a.startedAt.localeCompare(b.startedAt))[0] ?? null;
+  // Someone with no active role left the team: an alumnus when the Alumni record knows them (issue #317).
+  const onAlumniRecord = activeRoles.length === 0 && (await readOwnAlumnus(user.member_id)) !== null;
+  const standing = viewerStandingOf({ scopes: unitRows, activeRoles, onAlumniRecord });
+  // Off the team, scope rows that outlived the roles reach nothing.
+  if (isOffTeam(standing.kind)) return { ...base, ...noUnits, breakGlass, ...standing };
+  return { ...base, ...held, breakGlass, ...standing };
 }
 
 type LivePosition = {
@@ -295,27 +346,36 @@ async function readLivePositions(): Promise<LivePosition[]> {
 }
 
 /**
- * The live positions the viewer's figures cover in `area` (`readsAreaIn`):
- * a head's or a lead's units in every area, a member's granted ones in that
- * area alone (issue #471).
+ * The live positions the viewer's figures cover in `area`, by the rule the
+ * recruitment pages read (`readsRecruitmentIn`): a head's or a lead's units
+ * in every area, a member's granted ones in that area alone (issue #471),
+ * and every one on Applications for the recruitment manager (issue #194).
  */
 async function scopedPositions(identity: Identity, area: "positions" | "applications"): Promise<LivePosition[]> {
   const rows = await readLivePositions();
-  return rows.filter((r) => readsAreaIn(identity, area, { divisionId: r.divisionId, departmentId: r.departmentId }));
+  return rows.filter((r) => readsRecruitmentIn(identity, area, { divisionId: r.divisionId, departmentId: r.departmentId }));
 }
 
 /**
  * The unread applications on every position: how many, and when the oldest
- * came in. Applications change by the minute, so this is read on request,
- * beside the cached positions rather than after them.
+ * came in. An application is unread while its status reference reads as New
+ * (`readsAsNew`, issue #748). Applications change by the minute, so this is
+ * read on request, beside the cached positions rather than after them.
  */
 async function readUnread(): Promise<Map<number | null, { n: number; oldest: string | null }>> {
-  const unread = await getDb()
-    .select({ position_id: applications.applyPositionId, n: count(), oldest: min(applications.appliedAt) })
+  const tallies = await getDb()
+    .select({ position_id: applications.applyPositionId, ...STATUS_COLUMNS, n: count(), oldest: min(applications.appliedAt) })
     .from(applications)
-    .where(and(eq(applications.status, "received"), isNull(applications.withdrawnAt)))
-    .groupBy(applications.applyPositionId);
-  return new Map(unread.map((u) => [u.position_id, u]));
+    .leftJoin(applicationStatuses, STATUS_JOIN)
+    .where(isNull(applications.withdrawnAt))
+    .groupBy(applications.applyPositionId, applications.statusKey, applicationStatuses.parentKey);
+  const unread = new Map<number | null, { n: number; oldest: string | null }>();
+  for (const t of tallies.filter(readsAsNew)) {
+    const sofar = unread.get(t.position_id) ?? { n: 0, oldest: null };
+    const oldest = sofar.oldest === null || (t.oldest !== null && t.oldest < sofar.oldest) ? t.oldest : sofar.oldest;
+    unread.set(t.position_id, { n: sofar.n + t.n, oldest });
+  }
+  return unread;
 }
 
 /** The live positions in the units where the viewer reads Applications. */
@@ -418,17 +478,25 @@ async function teamOverview(identity: Identity): Promise<TeamOverview> {
 }
 
 /**
- * Board 72 (issue #252): the team leader's figures, what waits for their
- * decision, and the Departments panel, across the team. The database holds
- * no activity feed, so that reads empty.
+ * Every order in the team. Deciding is team-wide (`ordersScopeOf`), so what
+ * waits for a decision is counted across the team.
  */
-async function leaderOverview(identity: Identity): Promise<TeamLeaderOverview> {
-  const snapshotRead = readTeamSnapshot();
+function readTeamOrders(): Promise<Order[]> {
+  return readTeamSnapshot().then((s) => readOrdersIn(s.org.divisions.map((d) => d.id)));
+}
+
+/**
+ * Board 72 (issue #252): the team leader's figures and the Departments
+ * panel, across the team, from the team's orders (`teamOrders`). What waits
+ * for their decision is added by `overviewOf`, as for anyone who decides. The
+ * database holds no activity feed, so that reads empty.
+ */
+async function leaderOverview(identity: Identity, teamOrders: Promise<Order[]>): Promise<TeamLeaderOverview> {
   const [positions, unread, snapshot, orders, notices] = await Promise.all([
     scopedPositions(identity, "positions"),
     readUnreadPositions(identity),
-    snapshotRead,
-    snapshotRead.then((s) => readOrdersIn(s.org.divisions.map((d) => d.id))),
+    readTeamSnapshot(),
+    teamOrders,
     readNoticeAttention(identity, new Date()),
   ]);
   const records = recordsOf(snapshot);
@@ -444,7 +512,7 @@ async function leaderOverview(identity: Identity): Promise<TeamLeaderOverview> {
       people: records.length,
       departments: snapshot.org.departments.length,
     }),
-    attention: [...leaderAttention({ orders, now: new Date() }), ...notices],
+    attention: notices,
     departments: departmentSummaries(records, snapshot.org, positions, unread),
     people: records.length,
     activity: [],
@@ -472,9 +540,9 @@ async function readMembersWithoutPhoto(divisionIds: number[]): Promise<string[]>
 }
 
 /**
- * The upcoming interviews on the given positions: each live application at
- * status `interview` with times offered, booked or waiting for the
- * applicant, read the way the applications page reads them
+ * The upcoming interviews on the given positions: each live application in
+ * Interview or a status added under it, with times offered, booked or
+ * waiting for the applicant, read the way the applications page reads them
  * (./interview-slots.ts).
  */
 async function readInterviews(positions: readonly { id: number; title: string }[]): Promise<UpcomingInterview[]> {
@@ -492,7 +560,8 @@ async function readInterviews(positions: readonly { id: number; title: string }[
     .innerJoin(users, eq(applications.userId, users.id))
     .where(
       and(
-        eq(applications.status, "interview"),
+        // The status reference, not the old status column: a hand pick of an added status changes only the reference (#588).
+        inArray(applications.statusKey, interviewStatuses()),
         isNull(applications.withdrawnAt),
         inArray(applications.applyPositionId, [...titles.keys()]),
       ),
@@ -515,15 +584,15 @@ async function readInterviews(positions: readonly { id: number; title: string }[
 
 /**
  * Board 56: the division lead's figures, attention, interviews and activity,
- * scoped to their division. Interviews are those on the positions the lead
- * reaches, with their booked or offered times. The database holds no
- * activity feed, so that reads empty here.
+ * scoped to their division; a member's, with only the areas they are granted
+ * (issue #593). Interviews are those on the positions the viewer reaches,
+ * with their booked or offered times. The database holds no activity feed,
+ * so that reads empty here.
  */
 async function divisionOverview(identity: Identity): Promise<DivisionOverview> {
   const now = new Date();
   // Each area is read only when the viewer reads it (`overviewAreasOf`,
-  // ./division-overview.ts). A lead reads every area; a member never gets
-  // this board (issue #480).
+  // ./division-overview.ts): a lead every area, a member the granted ones.
   const areas = overviewAreasOf(identity);
   const reads = (area: GrantArea) => areas.includes(area);
   const [positions, applications, orders, members, notices] = await Promise.all([
@@ -559,11 +628,24 @@ async function readOrderFigures(identity: Identity): Promise<NonNullable<Divisio
   return waitingOrders(granted);
 }
 
-/** How many people are in the divisions the viewer reads Members in, their division's name, and who there has no photo. */
+/**
+ * How many people are in the open divisions the viewer reads Members in
+ * (`readsAreaIn`), each once; the scope those divisions make, which the
+ * figure names (issue #593); and who there has no photo.
+ */
 async function readMemberFigures(identity: Identity): Promise<NonNullable<DivisionFigures["members"]>> {
-  const divisionIds = [...areaUnitsOf(identity, "members").divisionIds];
-  const [count, withoutPhoto] = await Promise.all([readActiveMemberCount(divisionIds), readMembersWithoutPhoto(divisionIds)]);
-  return { count, divisionName: identity.role?.divisionName ?? "", withoutPhoto };
+  const { org, roles: roleRows } = await readTeamSnapshot();
+  const covered = coveredMemberDivisions(identity, org.divisions);
+  const people = new Set(
+    roleRows.filter((r) => r.leaved_at === null && r.division_id !== null && covered.includes(r.division_id)).map((r) => r.member_id),
+  );
+  const own = identity.roles.flatMap((r) => (r.divisionId === null ? [] : [r.divisionId]));
+  return { count: people.size, scope: membersScopeOf(covered, org, own), withoutPhoto: await readMembersWithoutPhoto(covered) };
+}
+
+/** The open divisions where the viewer reads Members: a grant on a department covers each of its divisions, as on the Members page. */
+function coveredMemberDivisions(identity: Identity, divisionRows: readonly { id: number; departmentId: number }[]): number[] {
+  return divisionRows.filter((d) => readsAreaIn(identity, "members", { divisionId: d.id, departmentId: d.departmentId })).map((d) => d.id);
 }
 
 /**
@@ -573,7 +655,6 @@ async function readMemberFigures(identity: Identity): Promise<NonNullable<Divisi
  */
 async function departmentOverview(identity: Identity): Promise<DepartmentOverview> {
   const now = new Date();
-  const db = getDb();
   // The positions, their interviews and the notices need nothing of the
   // department, so they start beside its read; the rest wait for its divisions.
   // The new applications and the interviews are Applications data, so they
@@ -583,27 +664,14 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
   const interviewed = applicationsPositions(identity);
   const departmentRead = readHeadDepartment(identity).then(async (department) => {
     const divisionIds = department?.divisions.map((d) => d.id) ?? [];
-    const [team, orders, withoutPhoto] = await Promise.all([
-      divisionIds.length === 0
-        ? []
-        : db
-            .select({
-              member_id: roles.memberId,
-              division_id: roles.divisionId,
-              type: roles.type,
-              first_name: users.firstName,
-              last_name: users.lastName,
-              email: users.email,
-            })
-            .from(roles)
-            .innerJoin(users, eq(users.member, roles.memberId))
-            .where(and(inArray(roles.divisionId, divisionIds), isNull(roles.leavedAt))),
+    const [people, orders, withoutPhoto] = await Promise.all([
+      department === null ? [] : readDepartmentPeople([department.id]),
       readOrdersIn(divisionIds),
       readMembersWithoutPhoto(divisionIds),
     ]);
-    return { department, team, orders, withoutPhoto };
+    return { department, people, orders, withoutPhoto };
   });
-  const [positions, unread, interviews, notices, { department, team, orders, withoutPhoto }] = await Promise.all([
+  const [positions, unread, interviews, notices, { department, people, orders, withoutPhoto }] = await Promise.all([
     scoped,
     withUnread(interviewed),
     interviewed.then(readInterviews),
@@ -615,10 +683,10 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
   const waiting = waitingOrders(orders);
   const noPhoto = noPhotoItem(withoutPhoto);
   // One row per active role, so someone in two of the department's divisions
-  // has two rows; the department figure counts each person once (issue #229).
-  const headcount = new Set(team.map((t) => t.member_id)).size;
-  const nameOf = (r: { first_name: string | null; last_name: string | null; email: string }) =>
-    [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email;
+  // has two rows; the department figure counts each person once (issue #229),
+  // its heads included, the people the head's roster counts (issue #760) and
+  // the Divisions panel's header (issue #777).
+  const headcount = departmentHeadcount(people);
 
   const attention: AttentionItem[] = [
     ...unread.flatMap((p): AttentionItem[] =>
@@ -652,25 +720,22 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
         detail: `${formatEuro(waiting.total)} to be placed`,
         live: waiting.count > 0,
       },
-      {
-        label: "My department",
-        value: String(headcount),
-        detail: `${headcount === 1 ? "person" : "people"} in ${department?.name ?? identity.role?.departmentName ?? ""}`,
-      },
+      myDepartmentStat(headcount, department?.name ?? identity.role?.departmentName ?? ""),
     ],
     attention,
     divisions: (department?.divisions ?? []).map((division): DivisionSummary => {
       const own = positions.filter((p) => p.divisionId === division.id);
-      const members = team.filter((t) => t.division_id === division.id);
+      const members = people.filter((p) => p.divisionId === division.id);
       return {
         id: division.id,
         name: division.name,
-        leads: members.filter((t) => t.type === "lead" || t.type === "head").map(nameOf),
-        people: new Set(members.map((t) => t.member_id)).size,
+        leads: members.filter((p) => p.type === "lead" || p.type === "head").map((p) => p.name),
+        people: new Set(members.map((p) => p.memberId)).size,
         newApplications: unread.filter((p) => p.divisionId === division.id).reduce((sum, p) => sum + p.newApplications, 0),
         openPositions: own.filter((p) => p.open).length,
       };
     }),
+    people: headcount,
     interviews,
     activity: [],
   };
@@ -678,94 +743,190 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
 
 const monthYear = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 
-async function memberOverview(identity: Identity): Promise<PersonalOverview> {
+/** Who leads board 52, from the identity alone: it needs no read of its own. */
+function personHeaderOf(identity: Identity): PersonHeader {
   const role = identity.role;
-  const items: ChecklistItem[] = [
-    { label: "Name and division", detail: "Set by your division lead", done: role?.divisionId != null, action: null },
-    { label: "Email", detail: identity.email, done: true, action: null },
-    {
-      label: "Photo",
-      detail: "A clear, square photo of your face",
-      done: identity.picture !== null,
-      action: identity.picture !== null ? null : { label: "Upload", href: "/dashboard/profile" },
-    },
-    {
-      label: "LinkedIn",
-      detail: "Optional, shown as an icon on your card",
-      done: identity.linkedin !== null,
-      action: identity.linkedin !== null ? null : { label: "Add", href: "/dashboard/profile" },
-    },
-  ];
-
-  const readRoster = async (): Promise<PersonalOverview["roster"]> => {
-    if (role?.divisionId == null) return null;
-    const rows = await getDb()
-      .select({
-        member_id: roles.memberId,
-        type: roles.type,
-        first_name: users.firstName,
-        last_name: users.lastName,
-        email: users.email,
-      })
-      .from(roles)
-      .innerJoin(users, eq(users.member, roles.memberId))
-      .where(and(eq(roles.divisionId, role.divisionId), isNull(roles.leavedAt)));
-    return divisionRoster(
-      { title: role.divisionName ?? "", department: role.departmentName ?? "" },
-      rows.flatMap((r) =>
-        r.member_id === null
-          ? []
-          : [{ memberId: r.member_id, type: r.type, name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email }],
-      ),
-      identity.memberId,
-    );
-  };
-  // The notices and the granted areas' figures need nothing of the roster, so
-  // they are read beside it.
-  const [roster, notices, access] = await Promise.all([
-    readRoster(),
-    readNoticeAttention(identity, new Date()),
-    readAccessSummaries(identity),
-  ]);
-
   return {
-    shape: "personal",
-    // Their own notices alone: a grant adds no attention row (issue #480).
-    attention: notices,
-    person: {
-      name: identity.name,
-      line: [role?.title ?? "Member", role?.divisionName, role?.departmentName].filter(Boolean).join(" · "),
-      since: role ? `In the team since ${monthYear.format(new Date(`${role.startedAt}T00:00:00Z`))}` : null,
-      edit: { label: "Edit profile", href: "/dashboard/profile" },
-    },
-    checklist: {
-      title: "Your page on the site",
-      detail: `This is how you appear on The Team page. ${checklistProgress(items)}`,
-      items,
-    },
-    roster,
-    access,
+    name: identity.name,
+    line: [role?.title ?? "Member", role?.divisionName, role?.departmentName].filter(Boolean).join(" · "),
+    since: role ? `In the team since ${monthYear.format(new Date(`${role.startedAt}T00:00:00Z`))}` : null,
+    edit: { label: "Edit profile", href: "/dashboard/profile" },
+    // The photo the sidebar shows, `DashboardViewer.photoUrl` (issue #599).
+    photoUrl: identity.picture,
   };
 }
 
 /**
- * "Your access" on a member's Overview (issue #480): each granted area's
- * counts, read only for an area the member reads (`overviewAreasOf`) and only
- * in the units their grants on it cover (`readsAreaIn`). Nothing is read for
- * an area they are not granted, and the summaries keep counts alone. A
- * Content grant adds its own line, which reads nothing (issue #504).
+ * Board 52's panels, for every team seat (issue #593): their page on the
+ * site, their rosters, and "Your access". `teamOrders` is the team's orders
+ * when they decide orders, else null.
  */
-async function readAccessSummaries(identity: Identity): Promise<AccessSummary[]> {
-  const areas = overviewAreasOf(identity);
-  if (areas.length === 0) return accessSummariesOf([], {}, identity.siteContent);
-  const reads = (area: GrantArea) => areas.includes(area);
-  const [positions, applications, orders, members] = await Promise.all([
-    reads("positions") ? scopedPositions(identity, "positions") : undefined,
-    reads("applications") ? readApplicationFigures(identity) : undefined,
-    reads("orders") ? readOrderFigures(identity) : undefined,
-    reads("members") ? readMemberAccess(identity) : undefined,
+async function personalPanelsOf(identity: Identity, teamOrders: Promise<Order[]> | null): Promise<Omit<PersonalPanels, "person">> {
+  // The grants' figures need nothing of the rosters, so they are read beside them.
+  // "Approve orders" is a grant only where the viewer holds it: the team leader decides by their seat, and that is no grant.
+  const [rosters, lines] = await Promise.all([readRosters(identity), readAccessSummaries(identity, identity.approveOrders ? teamOrders : null)]);
+
+  return {
+    layout: overviewLayoutOf(identity),
+    // Done from every seat they hold, not only a division role (issue #641).
+    checklist: pageChecklistOf({ roles: identity.roles, email: identity.email, photoUrl: identity.picture, linkedin: identity.linkedin }),
+    rosters,
+    access: accessSectionOf(lines),
+  };
+}
+
+/**
+ * The rosters of the viewer's own units, in the order their roles come
+ * (issues #593 and #652): one per department they head, and one per division
+ * they hold a role in outside those departments. Only their roles count, so a
+ * grant never widens a roster. The seats of `LEADER_SEATS` (./overview.ts)
+ * get none, since the whole team is on their Members page (issue #760). "See
+ * all" opens the Members page on the same list: a department's for a head who
+ * reaches that page, a division's only where the page opens that division
+ * (`readMembersDivisionReach`).
+ */
+async function readRosters(identity: Identity): Promise<Roster[]> {
+  if (holdsLeaderSeat(identity)) return [];
+  const headed = [...new Map(identity.roles.flatMap((r) => (r.type === "head" && r.divisionId === null && r.departmentId !== null ? [[r.departmentId, r] as const] : []))).values()];
+  const headedIds = headed.map((r) => r.departmentId!);
+  const divisionsHeld = [
+    ...new Map(
+      identity.roles.flatMap((r) => (r.divisionId === null || (r.departmentId !== null && headedIds.includes(r.departmentId)) ? [] : [[r.divisionId, r] as const])),
+    ).values(),
+  ];
+  if (headed.length === 0 && divisionsHeld.length === 0) return [];
+  const db = getDb();
+  const reachesMembers = canReach(identity, "members");
+  const [divisionRows, departmentPeople, headedDivisions, membersReach] = await Promise.all([
+    divisionsHeld.length === 0
+      ? []
+      : db
+          .select({ ...PERSON_COLUMNS, division_id: roles.divisionId })
+          .from(roles)
+          .innerJoin(users, eq(users.member, roles.memberId))
+          .leftJoin(members, eq(members.memberId, roles.memberId))
+          .where(and(inArray(roles.divisionId, divisionsHeld.map((r) => r.divisionId!)), isNull(roles.leavedAt))),
+    readDepartmentPeople(headedIds),
+    headedIds.length === 0
+      ? []
+      : db.select({ department_id: divisions.deptId }).from(divisions).where(and(inArray(divisions.deptId, headedIds), isNull(divisions.closedAt))),
+    reachesMembers && divisionsHeld.length > 0 ? readMembersDivisionReach(identity) : NO_DIVISIONS,
   ]);
-  return accessSummariesOf(areas, { positions, applications, orders, members }, identity.siteContent);
+  const divisionPeople = divisionRows.flatMap((r) => personOf(r, (row) => ({ divisionId: row.division_id })));
+  return [
+    ...headed.map((held) =>
+      departmentRoster(
+        {
+          title: departmentLabel(held.departmentName ?? ""),
+          divisions: headedDivisions.filter((d) => d.department_id === held.departmentId).length,
+          members: reachesMembers ? "/dashboard/members" : null,
+        },
+        departmentPeople.filter((p) => p.departmentId === held.departmentId),
+        identity.memberId,
+      ),
+    ),
+    ...divisionsHeld.map((held) =>
+      divisionRoster(
+        {
+          title: held.divisionName ?? "",
+          department: held.departmentName ?? "",
+          members: membersReach.includes(held.divisionId!) ? `/dashboard/members?division=${held.divisionId}` : null,
+        },
+        divisionPeople.filter((p) => p.divisionId === held.divisionId),
+        identity.memberId,
+      ),
+    ),
+  ];
+}
+
+const NO_DIVISIONS: readonly number[] = [];
+
+/** What a roster reads of each role row's person. */
+const PERSON_COLUMNS = {
+  member_id: roles.memberId,
+  type: roles.type,
+  first_name: users.firstName,
+  last_name: users.lastName,
+  email: users.email,
+  picture: members.picture,
+};
+
+/** A role row's person as a roster lists them, with `place`: where the row sits. None for a row with no member. */
+function personOf<R extends { member_id: number | null; type: RoleType | null; first_name: string | null; last_name: string | null; email: string; picture: string | null }, P>(
+  r: R,
+  place: (r: R) => P,
+) {
+  if (r.member_id === null) return [];
+  return [{ memberId: r.member_id, type: r.type, name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email, photoUrl: r.picture, ...place(r) }];
+}
+
+/**
+ * Everyone in the departments `departmentIds`, one row per active role: each
+ * head's row, kept on the department or on one of its divisions, and every
+ * role in its open divisions. The same people the team leader's Departments
+ * panel counts (`departmentSummaries`), so a department head's "My
+ * department" figure and their roster count one set (issue #760).
+ */
+async function readDepartmentPeople(departmentIds: readonly number[]): Promise<(DepartmentRosterRow & { readonly departmentId: number })[]> {
+  if (departmentIds.length === 0) return [];
+  const ids = [...departmentIds];
+  const rows = await getDb()
+    .select({ ...PERSON_COLUMNS, division_id: roles.divisionId, department_id: sql<number>`coalesce(${divisions.deptId}, ${roles.deptId})` })
+    .from(roles)
+    .innerJoin(users, eq(users.member, roles.memberId))
+    .leftJoin(members, eq(members.memberId, roles.memberId))
+    .leftJoin(divisions, eq(divisions.id, roles.divisionId))
+    .where(
+      and(
+        isNull(roles.leavedAt),
+        or(
+          and(eq(roles.type, "head"), isNull(roles.divisionId), inArray(roles.deptId, ids)),
+          and(isNull(divisions.closedAt), inArray(divisions.deptId, ids)),
+        ),
+      ),
+    );
+  return rows.flatMap((r) => personOf(r, (row) => ({ divisionId: row.division_id, departmentId: row.department_id })));
+}
+
+/**
+ * "Your access" on the Overview (issues #480, #593): each area the viewer
+ * holds a grant on (`areasGrantedBy`), whatever their seat, counted only in
+ * the units those grants cover (`grantReachOf`), never in a lead's own
+ * division. Nothing is read for an area they hold no grant on, and the
+ * summaries keep counts alone. A Content grant adds its own line, which
+ * reads nothing (issue #504). Approve orders adds the count of the team's
+ * orders waiting for a decision, from `teamOrders`, which is null when they
+ * do not hold it (issue #592).
+ */
+async function readAccessSummaries(identity: Identity, teamOrders: Promise<Order[]> | null): Promise<AccessSummary[]> {
+  const reach = grantReachOf(identity);
+  const areas = reach.grantedAreas;
+  const reads = (area: GrantArea) => areas.includes(area);
+  const [positions, applications, orders, members, approveOrders] = await Promise.all([
+    reads("positions") ? scopedPositions(reach, "positions") : undefined,
+    reads("applications") ? readApplicationFigures(reach) : undefined,
+    reads("orders") ? readOrderFigures(reach) : undefined,
+    reads("members") ? readMemberAccess(reach) : undefined,
+    teamOrders?.then((all) => ({ waiting: waitingOrders(all).count })),
+  ]);
+  return accessSummariesOf(areas, { positions, applications, orders, members, approveOrders }, identity.siteContent);
+}
+
+/**
+ * The viewer as their area grants alone reach (issue #593): a member holding
+ * exactly those grants, so every read sees the units the grants name and
+ * none a lead's, a head's or full access's role adds.
+ */
+function grantReachOf(identity: Identity): Identity & { kind: "member" } {
+  return {
+    ...identity,
+    // A member's reach, so no break-glass standing comes with it (issue #646).
+    breakGlass: false,
+    kind: "member",
+    grantedAreas: areasGrantedBy(identity.grants),
+    siteContent: identity.siteContent,
+    approveOrders: identity.approveOrders,
+  };
 }
 
 /**
@@ -775,9 +936,7 @@ async function readAccessSummaries(identity: Identity): Promise<AccessSummary[]>
  */
 async function readMemberAccess(identity: Identity): Promise<NonNullable<AccessFigures["members"]>> {
   const { org, roles: roleRows } = await readTeamSnapshot();
-  const covered = new Set(
-    org.divisions.filter((d) => readsAreaIn(identity, "members", { divisionId: d.id, departmentId: d.departmentId })).map((d) => d.id),
-  );
+  const covered = new Set(coveredMemberDivisions(identity, org.divisions));
   const people = new Set(
     roleRows.filter((r) => r.leaved_at === null && r.division_id !== null && covered.has(r.division_id)).map((r) => r.member_id),
   );
@@ -785,30 +944,65 @@ async function readMemberAccess(identity: Identity): Promise<NonNullable<AccessF
 }
 
 /**
- * The viewer's Overview, with the hand-overs they answer as its top
- * attention rows (board 62c, issue #262): a head of the sender's department
- * or the team leader, whatever their Overview's shape. The open alias
- * requests follow them for the three approver seats (board 94c, epic #538).
+ * The viewer's Overview (issue #593): the board their scope reads, with the
+ * personal panels every team seat gets. The hand-overs they answer are its
+ * top attention rows (board 62c, issue #262): a head of the sender's
+ * department or the team leader, whatever their Overview's shape. The open
+ * alias requests follow them for the three approver seats (board 94c, epic
+ * #538), then the open team address requests (epic #578, issue #788) and
+ * the open team address routing items (issue #789) and removals (issue #797). Whoever decides orders (`decideRightOfStanding`), whatever the
+ * shape, then gets what waits for their decision across the team
+ * (`leaderAttention`, issue #592); nobody else's Overview reads the team's
+ * orders for it. The team leader alone also gets the count of acceptance
+ * emails to send, linking to their box on Applications (board 100, issue
+ * #744), just before those order rows. Its sections are read side by side, and the page streams
+ * each one as it arrives (issue #397); the team's orders are read once for
+ * both the board and the panels.
  */
-async function overviewOf(identity: Identity): Promise<TeamSideOverview> {
+function overviewSectionsOf(identity: Identity): OverviewSections {
+  if (isOffTeam(identity.kind)) throw new DashboardRefused("an Overview off the team is built from My applications");
   const now = new Date();
-  const [overview, handOvers, aliases] = await Promise.all([overviewShapeOf(identity), readHandOverAttention(identity, now), readAliasAttention(identity, now)]);
-  const top = [...handOvers, ...aliases];
-  return top.length === 0 ? overview : { ...overview, attention: [...top, ...overview.attention] };
+  const teamOrders = decideRightOfStanding(identity) === null ? null : readTeamOrders();
+  const board = Promise.all([
+    scopeBoardOf(identity, teamOrders),
+    readHandOverAttention(identity, now),
+    readAliasAttention(identity, now),
+    readTeamAddressAttention(identity, now),
+    readTeamAddressRerouteAttention(identity, now),
+    readTeamAddressRemovalAttention(identity, now),
+    isTeamLeader(identity) ? readAcceptanceEmailCount().then(acceptanceEmailsAttention) : null,
+    teamOrders?.then((orders) => leaderAttention({ orders, now })) ?? [],
+  ]).then(([scope, handOvers, aliases, teamAddressRequests, reroutes, removals, acceptance, decisions]) => ({
+    ...scope,
+    attention: [
+      ...handOvers,
+      ...aliases,
+      ...teamAddressRequests,
+      ...reroutes,
+      ...removals,
+      ...(acceptance === null ? [] : [acceptance]),
+      ...decisions,
+      ...scope.attention,
+    ],
+  }));
+  return { person: personHeaderOf(identity), board, panels: personalPanelsOf(identity, teamOrders) };
 }
 
-function overviewShapeOf(identity: Identity): Promise<TeamSideOverview> {
+/**
+ * The board the viewer's scope reads; `teamOrders` is the team's orders when
+ * they decide orders, else null. A member reads the division board with only
+ * the areas they are granted, as a lead reads it with every area (issue #593).
+ */
+function scopeBoardOf(identity: Identity, teamOrders: Promise<Order[]> | null): Promise<ScopeBoard> {
   switch (identity.kind) {
     case "operations-lead":
-      return isTeamLeader(identity) ? leaderOverview(identity) : teamOverview(identity);
+      // The team leader always decides, so their figures share the one read.
+      return isTeamLeader(identity) ? leaderOverview(identity, teamOrders ?? readTeamOrders()) : teamOverview(identity);
     case "department-head":
       return departmentOverview(identity);
     case "division-lead":
-      return divisionOverview(identity);
     case "member":
-      // A member keeps their own page whatever they are granted; each grant
-      // adds one "Your access" line to it (issue #480).
-      return memberOverview(identity);
+      return divisionOverview(identity);
     case "non-member":
     case "alumni":
       return Promise.reject(new DashboardRefused("an Overview off the team is built from My applications"));
@@ -819,7 +1013,7 @@ function overviewShapeOf(identity: Identity): Promise<TeamSideOverview> {
 async function hasShownApplications(identity: Identity): Promise<boolean> {
   const rows = await getDb()
     .select({
-      status: applications.status,
+      ...STATUS_COLUMNS,
       appliedAt: applications.appliedAt,
       withdrawnAt: applications.withdrawnAt,
       acceptedAt: applications.acceptedAt,
@@ -827,9 +1021,12 @@ async function hasShownApplications(identity: Identity): Promise<boolean> {
       joinedAt: applications.joinedAt,
     })
     .from(applications)
+    .leftJoin(applicationStatuses, STATUS_JOIN)
     .where(eq(applications.userId, identity.userId));
   const now = new Date();
-  return rows.some((row) => isShownAt(row, now));
+  return rows.some(({ status_key, status_parent_key, ...times }) =>
+    isShownAt({ status: statusOfStored({ key: status_key, parentKey: status_parent_key }), ...times }, now),
+  );
 }
 
 /** The Applications badge: unread applications where the viewer reads the Applications area; none for anyone else (issue #471). */
@@ -844,35 +1041,30 @@ async function navCountsOf(identity: Identity): Promise<NavCounts> {
  * full-access seat, the team leader, the operations lead and the IT lead alike
  * (boards 73 to 73c, issue #418); for a division lead one of their divisions,
  * with the people waiting for Confirm NDA and the people joining it
- * (./database-team.ts). Every full-access seat, the team leader included,
- * gets the Team page panel's edits on every row (board 46b; Owner decision,
- * 2026-10-19, issue #444).
+ * (./database-team.ts). Every page opens the same Edit details panel for each
+ * person the viewer may edit (issue #584), the team leader's included (Owner
+ * decision, 2026-10-19, issue #444).
  */
 async function membersOf(identity: Identity, divisionId: number | null): Promise<MemberDirectory> {
-  if (opensWholeTeam(identity)) {
-    const snapshot = await readTeamSnapshot();
-    return {
-      scope: "whole-team",
-      teamPageEdits: rosterOf(snapshot).map((entry) => teamPageEditOf(entry, snapshot.org)),
-      ...wholeTeamMembers({ records: recordsOf(snapshot), org: snapshot.org, selfId: identity.memberId }),
-    };
-  }
-  return readDivisionMembers(identity, divisionId);
+  return opensWholeTeam(identity) ? readWholeTeamMembers(identity) : readDivisionMembers(identity, divisionId);
 }
 
 /**
  * The line under the name on the user card: "Alumni" or "Applicant" off the
  * team (the layout reads "Signed in" for an applicant with nothing shown,
- * `userCardRole`, ./viewer.ts), else the role's title.
+ * `userCardRole`, ./viewer.ts), else their role label (`roleLabelOf`,
+ * ./role-label.ts), which the View as dialog reads too.
  */
-function roleLabelOf(identity: Identity): string {
+function cardRoleOf(identity: Identity): string {
+  // The break-glass admin holds no role to name, so the card names no account either (issue #646).
+  if (identity.breakGlass && identity.roles.length === 0) return BREAK_GLASS_TITLE;
   switch (identity.kind) {
     case "alumni":
       return VIEWER_KIND_LABELS.alumni;
     case "non-member":
       return "Applicant";
     default:
-      return identity.role?.title ?? "Member";
+      return roleLabelOf(identity.roles);
   }
 }
 
@@ -881,26 +1073,27 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
   if (!isDatabaseConfigured()) return null;
   const user = await getCurrentUser();
   if (!user) return null;
-  const identity = await readIdentity(user.id);
+  const identity = await readIdentity(user);
   if (!identity) return null;
 
   const viewer: DashboardViewer = {
     ...standingOf(identity),
     name: identity.name,
-    role: roleLabelOf(identity),
+    role: cardRoleOf(identity),
     photoUrl: identity.picture,
-    // A test developer read as a seeded person signs out as a test developer.
-    session: user.session,
+    hasOwnProfile: hasOwnProfile(identity),
   };
   const self = databaseSelfPages(identity);
   return {
     viewer,
     navCounts: () => navCountsOf(identity),
     hasShownApplications: () => hasShownApplications(identity),
-    overview: () => overviewOf(identity),
+    overview: async () => overviewOfSections(overviewSectionsOf(identity)),
+    overviewSections: () => overviewSectionsOf(identity),
     members: (divisionId) => membersOf(identity, divisionId ?? null),
     findForAdd: (divisionId, query) => findForAdd(identity, divisionId, query),
     findPeople: (query) => findPeople(identity, query),
+    findMoveTargets: (personId) => findMoveTargets(identity, personId),
     alumni: () => readAlumniDirectory(identity),
     teamTree: async () => {
       const snapshot = await readTeamSnapshot();
@@ -913,22 +1106,31 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     sendHandOver: (input) => sendHandOver(identity, input),
     answerHandOver: (requestId, answer) => answerHandOver(identity, requestId, answer),
     memberAliases: async (memberIds) => (canReach(identity, "members") ? readMemberAliases(identity, memberIds) : {}),
-    requestAlias: (memberId) => requestAlias(identity, memberId),
+    memberTeamAddresses: async (memberIds) => (canReach(identity, "members") ? readMemberTeamAddresses(identity, memberIds) : NO_TEAM_ADDRESSES),
+    requestTeamAddress: (input) => requestTeamAddress(identity, input),
+    answerTeamAddress: (requestId, answer) => answerTeamAddress(identity, requestId, answer),
+    markTeamAddressRerouteDone: (rerouteId) => markTeamAddressRerouteDone(identity, rerouteId),
+    removeTeamAddress: (addressId) => removeTeamAddress(identity, addressId),
+    markTeamAddressRemovalDone: (removalId) => markTeamAddressRemovalDone(identity, removalId),
+    myTeamAddresses: () => readOwnTeamAddresses(identity),
+    confirmTeamAddressSetUp: (addressId) => confirmTeamAddressSetUp(identity, addressId),
+    requestAlias: (input) => requestAlias(identity, input),
     cancelAliasRequest: (requestId) => cancelAliasRequest(identity, requestId),
     answerAlias: (requestId, answer) => answerAlias(identity, requestId, answer),
     myAlias: () => readOwnAlias(identity),
     confirmAliasSetUp: () => confirmAliasSetUp(identity),
     // The member this request already resolved, never the session a second time (issue #397).
-    recruitment: () => getRecruitmentControlFor(identity.memberId, identity),
+    recruitment: () => getRecruitmentControlFor(identity),
     setRecruitment: (next) =>
       switchRecruitment(next, {
-        // Read on the server, from the caller's seat and positions scope rows: the same rule the page shows.
-        maySwitch: async () => canSwitchRecruitment(identity, await getScopeInfoForMember(identity.memberId, "positions")),
+        // Read on the server, from the caller's standing: the same rule the page shows.
+        maySwitch: async () => canSwitchRecruitment(identity),
         save: saveRecruitment,
         refresh: () => refreshAfter("positions", updateTag),
       }),
     ...databaseRecruitmentPages(identity),
     ...databaseDivisionPages(identity),
+    activityLog: async () => (canReach(identity, "activity-log") ? readActivityLog(new Date()) : null),
     partners: partnerEditor(identity, databasePartnerStore, blobLogoFiles),
     faqs: faqEditor(identity, databaseFaqStore, () => new Date()),
     teamPage: teamPageEditor(identity, databaseTeamPageStore, databaseTeamRoles, teamRecord, blobTeamPagePhotos()),

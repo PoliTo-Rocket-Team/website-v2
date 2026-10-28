@@ -61,9 +61,12 @@ export type GroupMember = DepartmentHead | DivisionAsHead;
 /** One slide of the departments carousel. Members fill the grid row by row, in order. */
 export type DepartmentGroup = { name: string; members: UpTo<GroupMember, 10> };
 
-/** The Departments section: its eyebrow, title and intro (board 26), then the carousel. */
+/**
+ * The Departments section: its title and intro, then the carousel. Like
+ * Advisors it has no eyebrow, since its title is already the section's label
+ * (board 26's eyebrow repeated it, #645).
+ */
 export type Departments = {
-  eyebrow: string;
   title: string;
   intro: string;
   groups: UpTo<DepartmentGroup, 5>;

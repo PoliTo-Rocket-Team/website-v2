@@ -34,7 +34,7 @@ export function OutreachListPage(
     <div className="relative bg-ground">
       {footer !== null && <LandingNavbar />}
       <PageSky>
-        <main className={footer !== null ? "pb-section pt-16 md:pt-[72px]" : "pb-section"}>
+        <main className={footer !== null ? "pt-16 md:pt-[72px]" : undefined}>
           <PageHeader {...outreachCopy.header} />
           <Features features={features} frame={featureFrame} />
           <Posts title={outreachCopy.postsTitle} posts={cards} frame={frame} keepInView={keepInView} />

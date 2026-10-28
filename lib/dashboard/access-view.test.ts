@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ACCESS_SORTS, ACCESS_TOOLS, accessModelOf, NO_ACCESS_FILTER, shownAccess, type AccessFilter, type AccessRow } from "./access-view";
-import type { AccessPerson, AccessUnit, HeldAccess } from "./division-access";
+import { NO_ROLE, type AccessPerson, type AccessUnit, type HeldAccess } from "./division-access";
 
 // Issue #415: the team leader, the operations lead, the IT lead, a department
 // head and a division lead of one or several divisions open one Access
@@ -35,7 +35,7 @@ const byRole: Record<string, AccessUnit> = {
   "division lead of several divisions": twoDivisions,
 };
 
-const person = (id: number, name: string, division: AccessPerson["division"]): AccessPerson => ({ id, name, standing: "member", division });
+const person = (id: number, name: string, division: AccessPerson["division"]): AccessPerson => ({ id, name, photoUrl: null, role: NO_ROLE, division });
 const grants = (p: AccessPerson, givenOn: string, approveOrders = false): AccessRow => ({
   kind: "grants",
   access: {
@@ -49,7 +49,12 @@ const grants = (p: AccessPerson, givenOn: string, approveOrders = false): Access
 
 const seat: AccessRow = {
   kind: "role",
-  role: { person: { id: 10, name: "Giulia Ferri", standing: "lead", division: null }, place: { kind: "team" }, seat: "operations-lead" },
+  role: {
+    person: { id: 10, name: "Giulia Ferri", photoUrl: null, role: { kind: "full", seat: "operations-lead", title: "Operations lead" }, division: null },
+    place: { kind: "team" },
+    seat: "operations-lead",
+    title: "Operations lead",
+  },
 };
 const sofia = grants(person(1, "Sofia Neri", msa), "2026-10-02");
 const carlo = grants(person(2, "Carlo Rossi", aoa), "2026-10-05", true);

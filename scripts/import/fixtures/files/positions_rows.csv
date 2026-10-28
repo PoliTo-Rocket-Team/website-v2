@@ -1,0 +1,6 @@
+id,division,number,name,description,desirable,required,form,open
+pos-1,d-1,2,Feed Systems Engineer,"Design the feed system.
+Work with the test bench.","[""CAD"",""Python""]","{""Fluid dynamics"",""Teamwork""}",,true
+pos-2,d-9,1,Avionics Engineer,An old division.,,,,false
+pos-3,Information Technology,1,Web Developer,Build the site.,,"TypeScript
+SQL",,true

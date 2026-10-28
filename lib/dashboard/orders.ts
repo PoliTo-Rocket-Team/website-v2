@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { PAGE_SIZE } from "./team";
-import type { ScopeKind } from "./viewer";
+import { isTeamLeader, type ScopeKind, type ViewerStanding } from "./viewer";
 
 // The Orders page (Dashboard v2 boards 61 to 61d, issue #172; boards 61m, 67,
 // 67b and 67m, issue #233): every purchase request in the team, what state
@@ -145,6 +145,15 @@ export function decideRightOf(viewer: { readonly teamLeader: boolean; readonly a
   return viewer.approveOrders ? "approve-orders" : null;
 }
 
+/**
+ * The right a viewer decides orders with, from their standing: the team
+ * leader's seat, or "Approve orders" on any on-team kind. Their Overview
+ * says what waits for that decision, whatever its shape (issue #592).
+ */
+export function decideRightOfStanding(viewer: ViewerStanding): DecideRight | null {
+  return decideRightOf({ teamLeader: isTeamLeader(viewer), approveOrders: viewer.approveOrders });
+}
+
 /** An open department with its open divisions, for the Department filter (board 67b) and New order. */
 export type OrgDepartmentUnits = OrderDepartment & { readonly divisions: readonly OrderDivision[] };
 
@@ -206,6 +215,8 @@ export type OrdersViewer = {
   readonly teamLeader: boolean;
   /** The department a head's role holds at Can edit (board 65); null for anyone else. */
   readonly headDepartment: OrderDepartment | null;
+  /** The divisions the viewer leads by role (`ledDivisionIds`, ./viewer.ts); empty for anyone who leads none. */
+  readonly ledDivisionIds: readonly number[];
 };
 
 /**
@@ -213,10 +224,12 @@ export type OrdersViewer = {
  * Orders access anywhere. Full access edits every order in the team (issue
  * #238). A `division` or `department` row on `orders` (or on `all`) is access
  * there, at its level; a head's role is Can edit across their department
- * (board 65), and a `team` row on `orders` is access across the whole team
+ * (board 65), a lead's role is Can edit in each open division they lead
+ * (issue #590), and a `team` row on `orders` is access across the whole team
  * (issue #247). Deciding comes from being the team leader, or from the `team`
  * row on `approve_orders`, which is Orders access on its own (issue #270): it
- * opens the page with no edits. Full access alone does not decide.
+ * opens the page with no edits. Full access alone does not decide, and
+ * neither does leading a division.
  */
 export function ordersScopeOf(
   viewer: OrdersViewer,
@@ -238,6 +251,11 @@ export function ordersScopeOf(
     if (!edits.some((e) => key(e) === key(unit))) edits.push(unit);
   };
   if (viewer.headDepartment !== null) add({ kind: "department", department: viewer.headDepartment });
+  // A division the viewer leads, unless their head's department already covers it.
+  for (const department of org) {
+    if (department.id === viewer.headDepartment?.id) continue;
+    for (const division of department.divisions) if (viewer.ledDivisionIds.includes(division.id)) add({ kind: "division", division });
+  }
   for (const r of ordersRows) {
     if (r.level !== "edit") continue;
     if (r.scope === "department") {
@@ -248,7 +266,7 @@ export function ordersScopeOf(
       if (division) add({ kind: "division", division });
     }
   }
-  if (viewer.headDepartment === null && ordersRows.length === 0 && teamOrders.length === 0 && decides === null) return null;
+  if (edits.length === 0 && ordersRows.length === 0 && teamOrders.length === 0 && decides === null) return null;
   return { edits, decides };
 }
 
@@ -397,6 +415,35 @@ export function orderActions(scope: OrdersScope, order: Pick<Order, "status" | "
   const edits = canEditOrder(scope, order) ? editsFor(order.status) : NO_EDITS;
   const decides = scope.decides !== null;
   return { ...edits, decide: decides && order.status === "waiting", markOrdered: decides && order.status === "approved" };
+}
+
+/** One edit button in the order drawer, with the one label every viewer reads (issue #675). */
+export type OrderEditButton =
+  | { readonly kind: "cancel"; readonly label: "Cancel request" }
+  | { readonly kind: "edit"; readonly label: "Edit order" | "Edit and send again" };
+
+/**
+ * The order drawer's edit buttons, and where they sit (issue #675). Everyone
+ * who may edit an order gets the same buttons with the same labels, whatever
+ * else they may do with it. While the footer holds the decide buttons (board
+ * 70b) or Mark as ordered (70c), they sit at the panel's head instead.
+ */
+export type OrderEditControls = {
+  readonly place: "footer" | "head";
+  readonly buttons: readonly OrderEditButton[];
+};
+
+const EDIT_LABELS: Readonly<Record<NonNullable<OrderActions["edit"]>, Extract<OrderEditButton, { kind: "edit" }>["label"]>> = {
+  edit: "Edit order",
+  "edit-and-resend": "Edit and send again",
+};
+
+/** The drawer's edit buttons for what the viewer may do with an order (`orderActions`). */
+export function orderEditControls(actions: OrderActions): OrderEditControls {
+  const buttons: OrderEditButton[] = [];
+  if (actions.cancel) buttons.push({ kind: "cancel", label: "Cancel request" });
+  if (actions.edit !== null) buttons.push({ kind: "edit", label: EDIT_LABELS[actions.edit] });
+  return { place: actions.decide || actions.markOrdered ? "head" : "footer", buttons };
 }
 
 /** The state an edited request is in afterwards: an edit always goes back to the team leader. */
@@ -597,18 +644,6 @@ export function orderPage(orders: readonly Order[], page: number): { orders: Ord
   const current = Math.min(Math.max(1, Math.floor(page)), pages);
   const start = (current - 1) * ORDERS_PER_PAGE;
   return { orders: sortOrders(orders).slice(start, start + ORDERS_PER_PAGE), page: current, pages };
-}
-
-/**
- * The pager's numbers (board 61: "‹ 1 2 3 … 6 ›"): the first and last page,
- * the current one with its neighbours (three at either end), and a gap where
- * numbers are left out. Up to five pages show every number.
- */
-export function pagerSlots(page: number, pages: number): (number | "gap")[] {
-  if (pages <= 5) return Array.from({ length: pages }, (_, i) => i + 1);
-  const window = page <= 2 ? [1, 2, 3] : page >= pages - 1 ? [pages - 2, pages - 1, pages] : [page - 1, page, page + 1];
-  const shown = [...new Set([1, ...window, pages])].sort((a, b) => a - b);
-  return shown.flatMap((n, i): (number | "gap")[] => (i > 0 && n - shown[i - 1] > 1 ? ["gap", n] : [n]));
 }
 
 /**

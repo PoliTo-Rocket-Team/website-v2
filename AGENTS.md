@@ -14,6 +14,36 @@ Tailwind 3.
   `pnpm dev`.
 - Change the schema in `db/schema/`, then `pnpm db:generate`, read the new SQL in `drizzle/`, and
   `pnpm db:migrate`. Keep generated migrations as generated.
+- Databases ([ADR 0016](.decisions/0016-previews-read-their-own-seeded-branch.md), amendment of
+  2026-10-24): you may write to the shared `preview` database through a preview deployment to
+  set up and check a state, and a test write needs no revert migration. It is re-seeded on
+  demand, never on every build: the owner sets `PREVIEW_RESEED_REQUEST` and redeploys a preview
+  ([docs/seed-cases.md](docs/seed-cases.md#re-seed-the-preview-branch)). Never write to, seed or
+  migrate production. Never run a Neon "reset from parent" on `preview`: its parent is
+  production. Do not run the seed against a real database, set that variable or read env files.
+- Check a signed-in page with a real session. The test developer cookie and the dummy-data
+  pages are gone, and every page reads a database. Under `next dev` and on a preview
+  of the shared `preview` database, sign in with no Google account at `/api/auth/dev-tester` as
+  any seeded person: a seat or admin tester by key ([lib/seeded-accounts.ts](lib/seeded-accounts.ts)),
+  anyone else by their person key or member id ([README.md](README.md#sign-in-as-a-tester)); on
+  production those routes answer 404. No seeded person is a dedicated tester; every seat is a
+  normal member or applicant. To see another person's dashboard, sign in and open "View as…" in
+  the user menu; it shows what that person's own sign-in shows
+  ([lib/dashboard/view-as-equivalence-server.test.ts](lib/dashboard/view-as-equivalence-server.test.ts)).
+  On production only the IT lead seat may use View as. To check a grant, give it to a normal
+  seeded member on the Access page as the team leader and remove it there afterwards. The seats
+  and admin testers, with what each holds, are listed in
+  [docs/seed-cases.md](docs/seed-cases.md#test-seats) (Test seats, Admin testers).
+- A UI review captures a signed-in page on a PR preview by passing the tester sign-in URL,
+  `/api/auth/dev-tester/sign-in?tester=<key>&cb=<path>`, as the `review-ui render` `--surface`.
+  The route signs in and then opens `<path>`, so the shot is the signed-in page. Take `<key>` from
+  [lib/seeded-accounts.ts](lib/seeded-accounts.ts): the seat the change is about, or `admin-1`
+  when any signed-in view will do. `admin-1` holds no team role, so an area page it cannot reach
+  answers 404; use a seat that reaches the page. For example:
+  `fabrika review-ui render --pr <n> --out signed-in --surface '/api/auth/dev-tester/sign-in?tester=admin-1&cb=/dashboard' --viewport desktop --viewport mobile`.
+  Do not use sign-in scripts, Playwright or other, for signed-in screen reviews. This rule covers
+  only a page that a sign-in and one navigation reach. A state that exists only after clicks or a
+  save is outside it: capture it with `--interact`, or leave it to the owner check.
 - The check every change passes is `pnpm exec tsc --noEmit`, the same one CI runs
   ([ci.yml](.github/workflows/ci.yml)). `pnpm build` prerenders pages that query Neon, so it
   needs `DATABASE_URL`.
@@ -22,8 +52,9 @@ Tailwind 3.
 - An agent lane works in its own linked worktree. Lefthook's post-checkout hook
   ([lefthook.yml](lefthook.yml)) sets it up: it links `.env` and `.env.local` from the main
   checkout and runs `pnpm install`. `pnpm install` in the main checkout installs the hook.
-- Never ask Huey to type approval comments. Ask him in chat, then record his chat ruling on the
-  issue as [ADR 0006](.decisions/0006-pitch-approval-from-chat-ruling.md) says.
+- Never ask Huey to type approval comments. Ask him in chat, then record his chat decision on the
+  issue as a neutral owner-decision statement, never a quote, as
+  [ADR 0006](.decisions/0006-pitch-approval-from-chat-ruling.md) says.
 - The default branch is `huey/landing-page` for now (the redesign lives there and `dev` does not have it yet); pull requests target it. Branches you create by hand start with
   `huey/`. Fabrika lanes name their own branches.
 - Decisions live in `.decisions/` as `NNNN-slug.md`. Filenames plus each record's frontmatter

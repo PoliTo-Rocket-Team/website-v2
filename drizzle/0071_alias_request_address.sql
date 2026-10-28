@@ -1,0 +1,15 @@
+-- A personal PRT email request carries its address (issue #798): Request PRT
+-- email's Personal choice sends the address the requester confirmed, pre-filled
+-- as firstname.lastname on the team domain, and the approver's Mark created
+-- starts from it. A request the site made by itself (issue #543) stores none,
+-- and Mark created then starts from the member's name as before.
+-- lib/dashboard/alias-request.ts owns the rules.
+--
+-- Additive only: every preview build applies this to the shared preview
+-- database. One new nullable column; nothing is dropped, renamed or
+-- rewritten, and no row is changed. Requests already stored read as carrying
+-- no address.
+--
+-- Written to apply again over a database that already holds it (as 0066 to
+-- 0070 are), so a renumbered copy applies cleanly.
+ALTER TABLE "alias_requests" ADD COLUMN IF NOT EXISTS "address" text;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { boardSeatOf, buildTeamTree, homeDivisionOf, inDivisions, NO_MEMBERSHIPS, type OrgChart, type RosterEntry } from "./team";
+import { buildTeamTree, homeDivisionOf, inDivisions, NO_MEMBERSHIPS, type BoardFlag, type OrgChart, type RosterEntry } from "./team";
 import { boxOf, layoutTeamTree } from "./tree-layout";
 
 const org: OrgChart = {
@@ -16,17 +16,24 @@ const org: OrgChart = {
 };
 
 function person(id: number, name: string, placement: RosterEntry["placement"]): RosterEntry {
-  return { id, name, email: `${id}@prt.it`, placement, pageTitle: null, joined: 2024, program: null, study: null, access: [] };
+  return { id, name, email: `${id}@prt.it`, photoUrl: null, placement, pageTitle: null, joined: 2024, program: null, study: null, access: [] };
 }
 
 const lead = (divisionId: number) => inDivisions([{ divisionId, role: "lead", since: "2024-10-01" }]);
 const member = (divisionId: number) => inDivisions([{ divisionId, role: "member", since: "2024-10-01" }]);
+/** A team-level seat's placement, from its role row: flagged as `flag`, or a further seat (null). */
+const seat = (roleId: number, title: string, flag: BoardFlag | null, since = "2024-10-01"): RosterEntry["placement"] => ({
+  role: "board",
+  seat: { roleId, title, flag, since },
+  memberships: NO_MEMBERSHIPS,
+});
+const head = (departmentId: number, title: string): RosterEntry["placement"] => ({ role: "head", departmentId, title, memberships: NO_MEMBERSHIPS });
 
 const roster: RosterEntry[] = [
   person(1, "Alessandro Greco", { role: "team-leader", memberships: NO_MEMBERSHIPS }),
-  person(2, "Federica Moretti", { role: "board", seat: "chief-engineer", memberships: NO_MEMBERSHIPS }),
-  person(3, "Lorenzo Gallo", { role: "board", seat: "project-manager", memberships: NO_MEMBERSHIPS }),
-  person(4, "Chiara Rinaldi", { role: "head", departmentId: 1, memberships: NO_MEMBERSHIPS }),
+  person(2, "Federica Moretti", seat(28, "Chief Engineer", "chief-engineer")),
+  person(3, "Lorenzo Gallo", seat(27, "Project Manager", "project-manager")),
+  person(4, "Chiara Rinaldi", head(1, "Head of Aerodynamics")),
   person(5, "Marco Bianchi", lead(10)),
   person(6, "Elif Kaya", member(10)),
   person(7, "Sofia Neri", member(10)),
@@ -122,19 +129,13 @@ test("member rows take the plain width and each division column is the lead card
   assert.equal(optimization.x - mission.x, mission.w + 12, "the next column starts one gap after the lead card");
 });
 
-test("a board seat is read off a role title, in any case and spacing", () => {
-  assert.equal(boardSeatOf(" project  manager "), "project-manager");
-  assert.equal(boardSeatOf("Chief Engineer"), "chief-engineer");
-  assert.equal(boardSeatOf("Chief Engineer, Cavour"), null);
-});
-
 test("the board seats sit under the leader, Project Manager first", () => {
   const tree = buildTeamTree(roster, org, "2026–27", 6);
   assert.deepEqual(
-    tree.board.map((b) => [b.seat, b.person.name]),
+    tree.board.map((b) => [b.title, b.person.name]),
     [
-      ["project-manager", "Lorenzo Gallo"],
-      ["chief-engineer", "Federica Moretti"],
+      ["Project Manager", "Lorenzo Gallo"],
+      ["Chief Engineer", "Federica Moretti"],
     ],
   );
   const layout = layoutTeamTree(tree);
@@ -142,6 +143,44 @@ test("the board seats sit under the leader, Project Manager first", () => {
   const leader = boxOf(layout, 1)!;
   assert.equal(pm.y, ce.y);
   assert.ok(pm.x < ce.x && pm.y > leader.y);
+});
+
+/** Each card's level, x and subtitle, by the person on it. */
+const cards = (tree: ReturnType<typeof buildTeamTree>) =>
+  new Map(layoutTeamTree(tree).nodes.flatMap((n) => (n.kind === "card" && n.person ? [[n.person.id, { level: n.level, x: n.x, subtitle: n.subtitle }] as const] : [])));
+
+test("renaming the Project Manager's or Chief Engineer's title keeps them on the seat row, in the same place (issue #625)", () => {
+  const renamed = roster.map((p) =>
+    p.id === 2 ? { ...p, placement: seat(28, "Chief of Propulsion", "chief-engineer") } : p.id === 3 ? { ...p, placement: seat(27, "Programme Lead", "project-manager") } : p,
+  );
+  const [before, after] = [cards(buildTeamTree(roster, org, "2026–27", 6)), cards(buildTeamTree(renamed, org, "2026–27", 6))];
+  for (const id of [2, 3]) {
+    assert.equal(after.get(id)!.level, "board");
+    assert.equal(after.get(id)!.x, before.get(id)!.x, `seat ${id} stays where it was`);
+  }
+  assert.deepEqual([after.get(3)!.subtitle, after.get(2)!.subtitle], ["Programme Lead", "Chief of Propulsion"]);
+});
+
+test("a further team-level seat sits on the seat row after the flagged seats, oldest first (issue #625)", () => {
+  const more = [...roster, person(11, "Marco Dona", seat(11, "Head of R&D", null, "2025-10-01")), person(12, "Ada Ferri", seat(40, "Safety Officer", null, "2023-10-01"))];
+  assert.deepEqual(
+    buildTeamTree(more, org, "2026–27", 6).board.map((b) => [b.title, b.person.name]),
+    [
+      ["Project Manager", "Lorenzo Gallo"],
+      ["Chief Engineer", "Federica Moretti"],
+      ["Safety Officer", "Ada Ferri"],
+      ["Head of R&D", "Marco Dona"],
+    ],
+  );
+});
+
+test("a head's card shows their stored title; a blank one reads Head of the department (issue #625)", () => {
+  const renamed = roster.map((p) => (p.id === 4 ? { ...p, placement: head(1, "Chief of Aerodynamics") } : p));
+  assert.equal(cards(buildTeamTree(renamed, org, "2026–27", 6)).get(4)!.subtitle, "Chief of Aerodynamics");
+  assert.equal(buildTeamTree(renamed, org, "2026–27", 6).departments[0].head?.title, "Chief of Aerodynamics");
+  const blank = roster.map((p) => (p.id === 4 ? { ...p, placement: head(1, " ") } : p));
+  assert.equal(cards(buildTeamTree(blank, org, "2026–27", 6)).get(4)!.subtitle, "Head of Aerodynamics");
+  assert.equal(cards(buildTeamTree(roster, org, "2026–27", 6)).get(4)!.subtitle, "Head of Aerodynamics", "today's stored title reads as before");
 });
 
 test("someone in one place is drawn once, heads in one row over their leads", () => {

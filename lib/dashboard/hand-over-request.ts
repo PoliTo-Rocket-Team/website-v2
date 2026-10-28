@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Checked } from "./department-edit";
-import type { TeamPerson } from "./division-edit";
+import type { FoundPerson, TeamPerson } from "./division-edit";
 import {
   fullAccessMovesLine,
   HAND_OVER_OUTCOMES,
@@ -137,7 +137,8 @@ export type HandOverOffer = {
   /** Where they stay as an advisor: "Mission Analysis". */
   readonly unit: string;
   readonly approver: Approver;
-  readonly successors: readonly Successor[];
+  /** Who may take over, each with their stored photo for their row in the field (issue #656). */
+  readonly successors: readonly (Successor & { readonly photoUrl: string | null })[];
   /** The full-access seat the role carries, which moves to whoever takes over (`fullAccessMovesLine`); null for a role with none. */
   readonly seat: FullAccessSeat | null;
   /** The request they sent, until the next level up answers it. */
@@ -151,7 +152,7 @@ export type HandOverOffer = {
  */
 export function handOverOfferOf(
   person: TeamPerson,
-  team: readonly TeamPerson[],
+  team: readonly FoundPerson[],
   org: OrgChart,
   waiting: HandOverRequest | null,
   seats: readonly HeldSeat[] = [],
@@ -159,12 +160,13 @@ export function handOverOfferOf(
   const role = roleToHandOver(person);
   if (role === null) return null;
   const pending = waiting !== null && waiting.fromId === person.id && sameRole(waiting.role, role) ? waiting : null;
+  const photos = new Map(team.map((p) => [p.id, p.photoUrl]));
   return {
     role,
     title: roleTitle(role, org),
     unit: unitOf(role, org),
     approver: approverOf(role),
-    successors: successorsFor(role, person.id, team, org),
+    successors: successorsFor(role, person.id, team, org).map((s) => ({ ...s, photoUrl: photos.get(s.id) ?? null })),
     seat: seatOfHandedRole(seats, person.id, role),
     waiting:
       pending === null
@@ -286,6 +288,13 @@ export function answersRequest(viewerId: number | null, request: HandOverRequest
 export type HandOverAnswerPlan =
   | { readonly answer: "decline"; readonly request: HandOverRequest }
   | { readonly answer: "confirm"; readonly request: HandOverRequest; readonly steppingDown: SteppingDown };
+
+/**
+ * Why an account with no member row, the break-glass admin's (issue #646),
+ * cannot answer a hand-over: the answer is the next level up's, a person on
+ * the team, and the sender's notice names them.
+ */
+export const HAND_OVER_NEEDS_MEMBER = "Only a team member can answer a hand-over.";
 
 /**
  * Confirm or Decline as the rules allow it, or the first reason it is

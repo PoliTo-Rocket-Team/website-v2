@@ -4,9 +4,20 @@ import { resolve } from "node:path";
 import { test } from "node:test";
 import { publicItems, versionRows, type ContentItem } from "../content/versioned";
 import { ANONYMIZED_EMAIL, CLEARED_MEMBER } from "../dashboard/anonymize";
-import { APPLICATION_STAGES } from "../dashboard/application-flow";
-import { TEST_VIEWERS } from "../dashboard/viewer";
-import { TESTERS } from "../dev-tester";
+import { BUILT_IN_STATUS_KEYS, isStatusColour } from "../dashboard/application-status";
+import { PLAIN_SEATS } from "../dashboard/viewer";
+import { ACCESS_LEVEL_LABELS, ACCESS_TARGET_LABELS } from "../dashboard/division-access";
+import {
+  ADMIN_TESTERS,
+  SEATS,
+  SEEDED_ACCOUNTS,
+  seatOf,
+  type AdminTester,
+  type Seat,
+  type SeatGrant,
+  type SeatGrantArea,
+  type SeatRole,
+} from "../seeded-accounts";
 import { checkFaqFields, fieldsOf as faqFields } from "../faq/faq";
 import { checkPartnerFields, fieldsOf as partnerFields } from "../partners-fields";
 import { checkProjectFields, fieldsOf as projectFields } from "../project-content/fields";
@@ -35,7 +46,7 @@ import {
   SEED_AREAS,
   SEED_CASES,
   SEED_DATA,
-  stageOf,
+  applicationStatusOf,
   teamAdvisorItemsOf,
   teamOf,
   teamPageOfSeed,
@@ -43,7 +54,9 @@ import {
   waitingHandOversOf,
 } from "../../db/seed/cases";
 import { handOverAttentionFor } from "../dashboard/hand-over-request";
-import { ANONYMIZED_ALUMNUS, TESTER_AUTH_ROWS, TEST_VIEWER_PEOPLE } from "../../db/seed/people";
+import { ANONYMIZED_ALUMNUS, SIGN_IN_ROWS, PLAIN_SEAT_PEOPLE } from "../../db/seed/people";
+import { PUBLIC_TEAM } from "../../db/seed/public-team";
+import { DIVISION_ROWS } from "../../db/seed/structure";
 import { teamPageSeed } from "../../db/seed/team-page";
 import { getTableName } from "drizzle-orm";
 import { advisorOfFields, fieldsOf as advisorFields } from "../about/advisors";
@@ -67,18 +80,18 @@ test("docs/seed-cases.md lists every case, with the issue it exercises, and no o
 
 // Hand-overs (issue #308).
 
-test("the seed holds one waiting and one confirmed hand-over, and the department-head test viewer answers the waiting one", () => {
+test("the seed holds one waiting and one confirmed hand-over, and the department-head plain seat answers the waiting one", () => {
   assert.deepEqual(
     data.handOvers.map((r) => r.decision ?? null),
     ["confirmed", null],
   );
   const [waiting] = waitingHandOversOf(data);
-  const head = memberOfUser(data, TEST_VIEWER_PEOPLE["department-head"]);
+  const head = memberOfUser(data, PLAIN_SEAT_PEOPLE["department-head"]);
   const [row] = handOverAttentionFor(head, [waiting], teamOf(data), orgOf(data), new Date("2026-10-16T12:00:00Z"));
-  assert.equal(row?.title, "Tester Division Lead wants to hand over Test Bench lead to Tester Member");
+  assert.equal(row?.title, "Stefano Motta wants to hand over Test Bench lead to Filippo Prosperi");
   assert.deepEqual(row?.action, { answerHandOver: waiting.id });
   for (const viewer of ["team-leader", "division-lead", "member"] as const) {
-    assert.deepEqual(handOverAttentionFor(memberOfUser(data, TEST_VIEWER_PEOPLE[viewer]), [waiting], teamOf(data), orgOf(data), new Date()), [], viewer);
+    assert.deepEqual(handOverAttentionFor(memberOfUser(data, PLAIN_SEAT_PEOPLE[viewer]), [waiting], teamOf(data), orgOf(data), new Date()), [], viewer);
   }
 });
 
@@ -121,7 +134,7 @@ test("the anonymized alumnus carries no personal data but keeps its alumni entry
   for (const key of ["firstName", "lastName", "phone", "linkedin", "politoId"] as const) assert.equal(user[key] ?? null, null, key);
   assert.ok(user.deletedAt != null && user.anonymizedAt != null && user.deletedAt < user.anonymizedAt);
   for (const [key, value] of Object.entries(CLEARED_MEMBER)) assert.equal(member[key as keyof typeof member] ?? null, value, key);
-  assert.ok(!TESTER_AUTH_ROWS.rows.some((row) => row.id === user.id), "an anonymized account has no sign-in");
+  assert.ok(!SIGN_IN_ROWS.rows.some((row) => row.id === user.id), "an anonymized account has no sign-in");
 
   const entry = data.alumniEntries.find((e) => e.memberId === ANONYMIZED_ALUMNUS);
   assert.ok(entry);
@@ -133,18 +146,21 @@ test("the anonymized alumnus carries no personal data but keeps its alumni entry
   assert.equal(alumnus.email, ANONYMIZED_EMAIL);
 });
 
-test("every test viewer resolves to a seeded person read as that viewer", () => {
-  for (const viewer of TEST_VIEWERS) {
-    assert.ok(data.users.some((u) => u.id === TEST_VIEWER_PEOPLE[viewer]), `${viewer} has no seeded person`);
+test("every plain seat resolves to a seeded person read as that seat", () => {
+  for (const viewer of PLAIN_SEATS) {
+    assert.ok(data.users.some((u) => u.id === PLAIN_SEAT_PEOPLE[viewer]), `${viewer} has no seeded person`);
     assert.ok(resolvesTo(data, viewer), `${viewer} reads as someone else`);
   }
 });
 
-test("each local tester is seeded with the id and email lib/dev-tester.ts names, and can sign in", () => {
-  for (const tester of Object.values(TESTERS)) {
-    assert.ok(data.users.some((u) => u.id === tester.id && u.email === tester.email), tester.key);
-    assert.ok(TESTER_AUTH_ROWS.rows.some((row) => row.id === tester.id && row.email === tester.email), tester.key);
+test("no seat is a dedicated tester person: each is someone the people seed writes like any member or applicant (issue #653)", () => {
+  for (const seat of SEATS) {
+    const user = data.users.find((u) => u.id === seat.id);
+    assert.ok(user, seat.key);
+    assert.notEqual(user.firstName, "Tester", `${seat.key} is a tester person`);
+    assert.ok(!seat.email.endsWith(".tester@example.com"), `${seat.key} has a tester email`);
   }
+  assert.ok(!data.users.some((u) => u.member != null && u.firstName === "Tester"), "no member is a tester person");
 });
 
 // The schema: every reference resolves, and every key is unique.
@@ -233,8 +249,12 @@ test("each order is made by a member who holds a role in its division, and only 
   }
 });
 
-test("invariant: every application stage is present", () => {
-  for (const stage of APPLICATION_STAGES) assert.ok(data.applications.some((a) => stageOf(data, a) === stage), stage);
+test("invariant: an application reads as each built-in status (issue #749)", () => {
+  for (const status of BUILT_IN_STATUS_KEYS) assert.ok(data.applications.some((a) => applicationStatusOf(data, a) === status), status);
+});
+
+test("every seeded status has a colour the Statuses editor offers, so a rename alone saves (epic #588)", () => {
+  for (const status of data.applicationStatuses) assert.ok(isStatusColour(status.colour), `${status.key}: ${status.colour}`);
 });
 
 test("every position sits in an open division, and every application in a seeded position, after it opened", () => {
@@ -255,24 +275,26 @@ test("every position sits in an open division, and every application in a seeded
   }
 });
 
-test("each application is by a seeded applicant, once per position, and its dates follow its stage", () => {
+test("each application is by a seeded applicant, once per position, and its dates follow its status", () => {
   const live = data.applications.filter((a) => a.withdrawnAt == null).map((a) => `${a.userId}/${a.applyPositionId}`);
   assert.equal(new Set(live).size, live.length, "a person holds two live applications to one position");
   for (const a of data.applications) {
     const user = data.users.find((u) => u.id === a.userId);
     assert.ok(user, `application ${a.id}`);
-    const stage = stageOf(data, a);
-    assert.equal(user.member != null, stage === "joined", `application ${a.id}: only the joined applicant is a member`);
-    assert.equal(a.acceptedAt != null, stage === "accepted" || stage === "joined", `application ${a.id} accepted_at`);
-    assert.equal(a.joinedAt != null, stage === "joined", `application ${a.id} joined_at`);
-    assert.equal(a.rejectedAt != null, stage === "rejected", `application ${a.id} rejected_at`);
+    const status = applicationStatusOf(data, a);
+    const accepted = ["accepted_email_to_be_sent", "accepted_email_sent", "nda_received", "joined"].includes(status);
+    const rejected = ["rejected_email_to_be_sent", "rejected_email_sent", "accepted_for_another_position"].includes(status);
+    assert.equal(user.member != null, status === "joined", `application ${a.id}: only the joined applicant is a member`);
+    assert.equal(a.acceptedAt != null, accepted, `application ${a.id} accepted_at`);
+    assert.equal(a.joinedAt != null, status === "joined", `application ${a.id} joined_at`);
+    assert.equal(a.rejectedAt != null, rejected, `application ${a.id} rejected_at`);
     const times = [a.appliedAt, a.acceptedAt, a.ndaArrivedAt, a.joinedAt].flatMap((t) => (t == null ? [] : [Date.parse(t)]));
     assert.deepEqual(times, [...times].sort((x, y) => x - y), `application ${a.id}: its dates run out of order`);
   }
 });
 
 test("the joined applicant holds a role in the position's division from the day they joined", () => {
-  const joined = data.applications.filter((a) => stageOf(data, a) === "joined");
+  const joined = data.applications.filter((a) => applicationStatusOf(data, a) === "joined");
   assert.ok(joined.length > 0);
   for (const a of joined) {
     const memberId = data.users.find((u) => u.id === a.userId)?.member;
@@ -479,6 +501,41 @@ test("the seeded layer is published, is one the editor could have saved, and eve
   for (const id of named) assert.ok(onTeam.has(id), `member ${id} is on the team`);
 });
 
+test("the public Team page the seed builds shows only real units, and no one as a lead of a division they do not lead (issue #644)", () => {
+  const { build, layer, shown } = teamPageOfSeed(data);
+  const publicRoles = PUBLIC_TEAM.flatMap((p) => p.roles);
+  const publicDivisions = new Set(publicRoles.flatMap((r) => (r.divisionId === null ? [] : [r.divisionId])));
+  const publicDepartments = new Set([
+    ...publicRoles.flatMap((r) => (r.deptId === null ? [] : [r.deptId])),
+    ...DIVISION_ROWS.rows.filter((d) => publicDivisions.has(d.id!)).map((d) => d.deptId),
+  ]);
+  const divisionNamed = (name: string) => DIVISION_ROWS.rows.find((d) => d.name === name && d.closedAt == null);
+  assert.ok(shown.departments.length > 0);
+  for (const department of shown.departments) {
+    assert.equal(typeof department.at, "number", `${department.name} is a seeded department, not one the layer added`);
+    assert.ok(publicDepartments.has(department.at as number), `${department.name} is a department the public team data uses`);
+    assert.notEqual(department.name, "Payload");
+    for (const { at, shown: lead } of department.leads) {
+      assert.notEqual(lead.division, "Payload Integration");
+      const division = divisionNamed(lead.division);
+      assert.ok(division !== undefined && publicDivisions.has(division.id!), `${lead.division} is a division the public team data uses`);
+      assert.ok(at.startsWith("lead:"), `${lead.name} is a lead the roles place, not one the layer added`);
+      const built = build.departments.flatMap((d) => d.leads).find((l) => l.spot === at);
+      const person = layer.spots[at as `lead:${number}:${number}`]?.person ?? built?.person.id;
+      assert.ok(
+        data.roles.some((r) => r.memberId === person && r.type === "lead" && r.divisionId === division!.id && isActive(r)),
+        `${lead.name} holds a lead role in ${lead.division}`,
+      );
+    }
+  }
+  const names = [
+    ...(shown.leader === null ? [] : [shown.leader.name]),
+    ...shown.leaders.map((l) => l.shown.name),
+    ...shown.departments.flatMap((d) => [...d.heads.map((h) => h.shown.name), ...d.leads.map((l) => l.shown.name)]),
+  ];
+  assert.ok(!names.includes("Tester Department Head"), "no one is shown as the old department-head tester");
+});
+
 test("each seeded advisor is one the Advisors panel would keep as it is", () => {
   const items = teamAdvisorItemsOf(data);
   assert.equal(items.length, data.teamPageAdvisors.length);
@@ -490,4 +547,127 @@ test("each seeded advisor is one the Advisors panel would keep as it is", () => 
     const { place: _, ...advisor } = item.version.published;
     assert.deepEqual(advisorOfFields(advisorFields(advisor)), advisor, item.version.published.name);
   }
+});
+
+// The plain seats and the admin testers (issues #595, #607): every seat in
+// lib/seeded-accounts.ts holds exactly the roles and grants its row names and
+// nothing else, so an access check on a re-seeded preview starts from a clean
+// seat; every admin tester is stored as an admin and holds no team role and
+// no grant.
+
+type SeedRole = (typeof data.roles)[number];
+type SeedScope = (typeof data.scopes)[number];
+
+function unitName(role: SeedRole): string {
+  if (role.divisionId != null) return data.divisions.find((d) => d.id === role.divisionId)!.name!;
+  if (role.deptId != null) return data.departments.find((d) => d.id === role.deptId)!.name!;
+  return "the team";
+}
+
+/** A seeded role, read as a seat names it. */
+function seatRoleOf(r: SeedRole): SeatRole {
+  const unit = r.divisionId != null ? "division" : r.deptId != null ? "department" : "team";
+  return { type: r.type as SeatRole["type"], unit, fullAccess: (r.fullAccess ?? null) as SeatRole["fullAccess"] };
+}
+
+/** A seeded `scopes` row, read as a seat's grant and where it holds. */
+function seatGrantOf(s: SeedScope): SeatGrant & { readonly across: string } {
+  const across = s.scope === "department" ? `department ${s.deptId}` : s.scope === "division" ? `division ${s.divisionId}` : "team";
+  // A Content grant is the `website` row on `content`; every other grant names its area (lib/dashboard/division-access.ts, `grantRowOf`).
+  const area = s.target as SeatGrantArea;
+  return { area, level: s.accessLevel!, across };
+}
+
+const byJson = <T,>(values: readonly T[]) => values.map((v) => JSON.stringify(v)).sort();
+
+function seatHoldings(seat: Seat) {
+  const theirs = seat.memberId === null ? [] : data.roles.filter((r) => r.memberId === seat.memberId);
+  const scopes = seat.memberId === null ? [] : data.scopes.filter((s) => s.memberId === seat.memberId);
+  return { active: theirs.filter(isActive), ended: theirs.filter((r) => !isActive(r)), scopes };
+}
+
+test("each seat holds exactly the roles and grants its name says, and nothing else", () => {
+  for (const seat of SEATS) {
+    const { active, ended, scopes } = seatHoldings(seat);
+    assert.equal(memberOfUser(data, seat.id), seat.memberId, `${seat.key} is member ${seat.memberId}`);
+    assert.deepEqual(byJson(active.map(seatRoleOf)), byJson(seat.roles), `${seat.key} roles`);
+    assert.equal(ended.length > 0, seat.former, `${seat.key} ${seat.former ? "held" : "held no"} ended roles`);
+    assert.deepEqual(byJson(scopes.map(seatGrantOf)), byJson(seat.grants.map((g) => ({ ...g, across: "team" }))), `${seat.key} grants`);
+  }
+  assert.equal(seatOf("non-member").memberId, null, "the applicant is no member");
+  assert.ok(data.alumniEntries.some((e) => e.memberId === seatOf("alumni").memberId), "the alumnus keeps an Alumni entry");
+});
+
+test("no seat holds an area grant: a check gives one through the Access page; the Approve-orders holder holds that alone (issue #653)", () => {
+  assert.deepEqual(
+    SEATS.filter((s) => s.grants.some((g) => g.area !== "approve_orders")).map((s) => s.key),
+    [],
+  );
+  assert.deepEqual(seatOf("approve-orders").grants, [{ area: "approve_orders", level: "edit" }]);
+  for (const viewer of PLAIN_SEATS) assert.equal(PLAIN_SEAT_PEOPLE[viewer], seatOf(viewer).id, `${viewer} views as its seat`);
+});
+
+test("the seeded admin testers are stored as admins and hold no team role and no grant", () => {
+  assert.ok(ADMIN_TESTERS.length >= 1);
+  for (const admin of ADMIN_TESTERS) {
+    const user = data.users.find((u) => u.id === admin.id);
+    assert.ok(user, `${admin.key} has a users row`);
+    assert.equal(user.member ?? null, null, `${admin.key} has no member row, so no role and no grant`);
+    const signIn = SIGN_IN_ROWS.rows.filter((row) => row.id === admin.id);
+    assert.deepEqual(signIn.map((row) => [row.email, row.role]), [[admin.email, "admin"]], admin.key);
+  }
+  const admins = SIGN_IN_ROWS.rows.filter((row) => row.role === "admin").map((row) => row.id);
+  assert.deepEqual(admins, ADMIN_TESTERS.map((a) => a.id), "nobody else is stored as an admin");
+});
+
+test("every seat and admin tester has one stable id and email, seeded on its users row and its sign-in row", () => {
+  unique(SEEDED_ACCOUNTS.map((a) => a.key), "account key");
+  unique(SEEDED_ACCOUNTS.map((a) => a.id), "account id");
+  unique(SEEDED_ACCOUNTS.map((a) => a.email), "account email");
+  for (const account of SEEDED_ACCOUNTS) {
+    const user = data.users.find((u) => u.id === account.id);
+    assert.ok(user, `${account.key} has a users row`);
+    assert.equal(user.email, account.email, `${account.key} email`);
+    assert.equal(`${user.firstName} ${user.lastName}`, account.name, `${account.key} name`);
+    const signIn = SIGN_IN_ROWS.rows.filter((row) => row.id === account.id);
+    assert.deepEqual(signIn.map((row) => row.email), [account.email], `${account.key} has one sign-in row`);
+  }
+});
+
+/** One row of docs/seed-cases.md's "Test seats" table, read off the seed. */
+function seatDocRow(seat: Seat): string {
+  const { active, ended, scopes } = seatHoldings(seat);
+  const person = `${seat.name}: ${seat.memberId === null ? "no member row" : `member ${seat.memberId}`}, user \`${seat.id}\`, \`${seat.email}\``;
+  const role = (r: SeedRole) => `${r.title} (\`${r.type}\`${r.fullAccess ? `, full access \`${r.fullAccess}\`` : ""}) in ${unitName(r)}`;
+  const roles =
+    active.length > 0 ? active.map(role).join("; ") : ended.length > 0 ? `none now; ended: ${ended.map(role).join("; ")}` : "none";
+  const grant = (s: SeedScope) => {
+    const { area, level } = seatGrantOf(s);
+    return area === "approve_orders" ? `"Approve orders" (\`approve_orders\`)` : `${ACCESS_TARGET_LABELS[area]} at ${ACCESS_LEVEL_LABELS[level]} across the whole team`;
+  };
+  const grants = scopes.length > 0 ? scopes.map(grant).join("; ") : "none: no `scopes` row";
+  return `| ${seat.label} | ${person} | ${roles} | ${grants} | ${seat.sees} |`;
+}
+
+/** One row of docs/seed-cases.md's "Admin testers" table. */
+function adminDocRow(admin: AdminTester): string {
+  return `| ${admin.label} | ${admin.name}: no member row, user \`${admin.id}\`, \`${admin.email}\` | \`${admin.storedRole}\` | ${admin.sees} |`;
+}
+
+function docSection(heading: string): string[] {
+  const doc = readFileSync(resolve(process.cwd(), "docs/seed-cases.md"), "utf8");
+  const start = doc.indexOf(`## ${heading}`);
+  assert.ok(start >= 0, `docs/seed-cases.md has a ${heading} section`);
+  const end = doc.indexOf("\n## ", start + 1);
+  return doc.slice(start, end < 0 ? undefined : end).split("\n");
+}
+
+test("docs/seed-cases.md lists each seat with its seeded person, roles, grants and what it sees, as the seed holds them", () => {
+  const rows = docSection("Test seats").filter((line) => SEATS.some((s) => line.startsWith(`| ${s.label} |`)));
+  assert.deepEqual(rows, SEATS.map(seatDocRow));
+});
+
+test("docs/seed-cases.md lists each admin tester with its account, stored role and what it sees", () => {
+  const rows = docSection("Admin testers").filter((line) => ADMIN_TESTERS.some((a) => line.startsWith(`| ${a.label} |`)));
+  assert.deepEqual(rows, ADMIN_TESTERS.map(adminDocRow));
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState, type DragEvent } from "react";
-import { ArrowDown, ArrowUp, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, GripVertical, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { moveTo } from "@/lib/content/order";
 import { textLength } from "@/lib/content/text";
 import { CONTENT_STATUS_LABELS, type ContentStatus, type PublishStep } from "@/lib/content/versioned";
@@ -43,7 +43,12 @@ export function StatusPill({ status, short = false }: { status: ContentStatus; s
 const MENU_ITEM =
   "flex h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-text-2 outline-none transition-colors data-[disabled]:cursor-default data-[disabled]:opacity-40 data-[highlighted]:bg-white-5 data-[highlighted]:text-prt-text";
 
-/** A row's ⋯ menu: Edit, Move up and Move down (the keyboard's way to reorder), Remove. */
+/**
+ * A row's ⋯ menu: Move up and Move down (the keyboard's way to reorder), Remove.
+ * Edit shows only where `onEdit` is given: a list row opens its side view on the
+ * row click, so its menu holds secondary actions only (.patterns/dashboard-lists.md);
+ * a block row inside an editor panel, which has no side view, still passes it.
+ */
 export function RowMenu({
   name,
   onEdit,
@@ -52,7 +57,7 @@ export function RowMenu({
   onRemove,
 }: {
   name: string;
-  onEdit: () => void;
+  onEdit?: () => void;
   onUp: (() => void) | null;
   onDown: (() => void) | null;
   onRemove: () => void;
@@ -72,10 +77,12 @@ export function RowMenu({
             sideOffset={6}
             className="z-50 min-w-[180px] rounded-xl border border-hairline bg-panel p-1.5 text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0"
           >
-            <DropdownMenuPrimitive.Item onSelect={onEdit} className={MENU_ITEM}>
-              <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Edit
-            </DropdownMenuPrimitive.Item>
+            {onEdit && (
+              <DropdownMenuPrimitive.Item onSelect={onEdit} className={MENU_ITEM}>
+                <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
+                Edit
+              </DropdownMenuPrimitive.Item>
+            )}
             <DropdownMenuPrimitive.Item disabled={onUp === null} onSelect={() => onUp?.()} className={MENU_ITEM}>
               <ArrowUp aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
               Move up
@@ -92,6 +99,18 @@ export function RowMenu({
           </DropdownMenuPrimitive.Content>
         </DropdownMenuPortal>
       </DropdownMenu>
+    </span>
+  );
+}
+
+/**
+ * A draggable list row's grip, from md. The whole row drags; a click on the
+ * grip stops there, so it does not open the row's editor (issue #617).
+ */
+export function DragGrip({ className = "" }: { className?: string }) {
+  return (
+    <span aria-hidden onClick={(e) => e.stopPropagation()} className={`hidden shrink-0 cursor-grab text-dim md:block ${className}`}>
+      <GripVertical className="h-4 w-4" strokeWidth={1.75} />
     </span>
   );
 }

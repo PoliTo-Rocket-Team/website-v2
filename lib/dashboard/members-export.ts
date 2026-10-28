@@ -1,5 +1,4 @@
 import writeXlsxFile from "write-excel-file/node";
-import type { MemberAliases } from "./alias-request";
 import { memberDetailText, type MemberDetailKey } from "./details";
 import { opensWholeTeam } from "./members-view";
 import type { TeamMember } from "./team-members";
@@ -21,12 +20,8 @@ export function mayExportMembers(viewer: ViewerStanding): boolean {
   return opensWholeTeam(viewer);
 }
 
-/**
- * One column of the file: its header and what a member holds in it, "" for
- * nothing. `aliasAddress` is the email alias on the member's record, null
- * while they have none.
- */
-type ExportColumn = { readonly header: string; readonly value: (person: TeamMember, aliasAddress: string | null) => string };
+/** One column of the file: its header and what a member holds in it, "" for nothing. */
+type ExportColumn = { readonly header: string; readonly value: (person: TeamMember) => string };
 
 const detail = (key: MemberDetailKey) => (person: TeamMember) => memberDetailText(person.details, key) ?? "";
 
@@ -48,11 +43,12 @@ function divisionsText(person: TeamMember): string {
 export const MEMBERS_EXPORT_COLUMNS: readonly ExportColumn[] = [
   { header: "Name", value: (p) => p.name },
   { header: "Role", value: (p) => p.roleLabel },
+  // The table's Department cell (issue #767); a head's Divisions cell stays empty, as heading adds no division.
+  { header: "Department", value: (p) => p.departments.join("; ") },
   { header: "Divisions", value: divisionsText },
   { header: "Member since", value: (p) => String(p.since) },
+  // The member's team address, their email alias once one is created (issue #563).
   { header: "PRT email", value: detail("prtEmail") },
-  // The alias beside the team email, as the member panel shows it (epic #538, board 94e).
-  { header: "Email alias", value: (_p, aliasAddress) => aliasAddress ?? "" },
   { header: "Personal email", value: (p) => p.signInEmail },
   { header: "Phone", value: detail("phone") },
   { header: "Discord", value: detail("discord") },
@@ -68,24 +64,9 @@ export const MEMBERS_EXPORT_COLUMNS: readonly ExportColumn[] = [
   { header: "NDA confirmed by", value: (p) => p.nda?.confirmedBy ?? "" },
 ];
 
-/** The address on a member's record, or null while they have none (an open request included). */
-function aliasAddressOf(aliases: MemberAliases, memberId: number): string | null {
-  const alias = aliases[memberId];
-  return alias?.kind === "set" ? alias.address : null;
-}
-
-/**
- * The sheet: the header row, then one row per member in the order given
- * (heads and leads first), each with the alias `aliases` holds for them.
- */
-export function membersExportRows(people: readonly TeamMember[], aliases: MemberAliases): string[][] {
-  return [
-    MEMBERS_EXPORT_COLUMNS.map((c) => c.header),
-    ...people.map((p) => {
-      const aliasAddress = aliasAddressOf(aliases, p.id);
-      return MEMBERS_EXPORT_COLUMNS.map((c) => c.value(p, aliasAddress));
-    }),
-  ];
+/** The sheet: the header row, then one row per member in the order given (heads and leads first). */
+export function membersExportRows(people: readonly TeamMember[]): string[][] {
+  return [MEMBERS_EXPORT_COLUMNS.map((c) => c.header), ...people.map((p) => MEMBERS_EXPORT_COLUMNS.map((c) => c.value(p)))];
 }
 
 /** The team's own calendar day, so a file made after midnight in Turin carries that day. */
@@ -99,6 +80,6 @@ export function membersExportFileName(at: Date): string {
 export const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 /** The .xlsx file: one plain sheet, "Members", every cell text. */
-export async function membersWorkbook(people: readonly TeamMember[], aliases: MemberAliases): Promise<Buffer> {
-  return writeXlsxFile(membersExportRows(people, aliases), { sheet: "Members" }).toBuffer();
+export async function membersWorkbook(people: readonly TeamMember[]): Promise<Buffer> {
+  return writeXlsxFile(membersExportRows(people), { sheet: "Members" }).toBuffer();
 }

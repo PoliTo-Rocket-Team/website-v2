@@ -1,12 +1,14 @@
+import type { AcceptanceEmailRow } from "./acceptance-emails";
 import type { ApplicantDetails } from "./applicant-details";
-import type { ApplicantStanding, ApplicationStage, ApplicationState } from "./application-flow";
+import type { ApplicantStanding, ApplicationState } from "./application-flow";
+import type { ApplicationStatus, BuiltInStatusKey, ListedStatus } from "./application-status";
 import type { DivisionChoice, PositionContent } from "./new-position";
 import { areaUnitsOf, type AreaReader } from "./viewer";
 
 // What the Positions and Applications pages show (Dashboard v2 boards 57 and
 // 58, issue #171, after boards 41 to 41c of issue #142). The dashboard data
-// interface (./data.ts) answers these shapes from the dummy arrays or the
-// database; the components in components/dashboard/ render them and fetch
+// interface (./data.ts) answers these shapes from the database (the dummy
+// arrays only in tests); the components in components/dashboard/ render them and fetch
 // nothing. Where an application stands, and how it moves, is
 // ./application-flow.ts.
 
@@ -67,32 +69,58 @@ export type PositionRow = {
   readonly content: PositionContent;
 };
 
-/** A place a member's Positions grant covers, as the page's intro names it (issue #487). */
+/** A place a member's grant covers, as a page's intro names it (issue #487). */
 export type GrantPlace = { readonly kind: "department"; readonly name: string } | { readonly kind: "division"; readonly name: string };
 
-/** An open department or division by id, as `grantPlacesOf` names it. */
+/** An open department or division by id, as `grantReachOf` names it. */
 export type NamedUnit = { readonly id: number; readonly name: string };
 
 /**
- * The places a member's Positions grants cover (issue #487): the units
- * `areaUnitsOf` gives for Positions, departments first, each by name, among
- * the open ones. A member's own role adds no unit there, so the page never
- * names their own division for a grant elsewhere.
+ * What a member's grants on one area cover, as the Positions and
+ * Applications intros name it (issues #487, #577): the whole team when they
+ * cover every open department, which is what a `team` scope row opens, else
+ * the places they cover.
  */
-export function grantPlacesOf(
+export type GrantReach = { readonly kind: "team" } | { readonly kind: "places"; readonly places: readonly [GrantPlace, ...GrantPlace[]] };
+
+/**
+ * The reach of a member's grants on `area` (issues #487, #577): the units
+ * `areaUnitsOf` gives, departments first, each by name, among the open ones.
+ * A member's own role adds no unit there, so the page never names their own
+ * division for a grant elsewhere. Null when the grants cover no open unit.
+ */
+export function grantReachOf(
   viewer: AreaReader,
+  area: "positions" | "applications",
   open: { readonly departments: readonly NamedUnit[]; readonly divisions: readonly NamedUnit[] },
-): GrantPlace[] {
-  const units = areaUnitsOf(viewer, "positions");
+): GrantReach | null {
+  const units = areaUnitsOf(viewer, area);
+  if (open.departments.length > 0 && open.departments.every((d) => units.departmentIds.includes(d.id))) return { kind: "team" };
   const named = (list: readonly NamedUnit[], ids: readonly number[]) =>
     list
       .filter((u) => ids.includes(u.id))
       .map((u) => u.name)
       .sort((a, b) => a.localeCompare(b));
-  return [
+  const [first, ...rest] = [
     ...named(open.departments, units.departmentIds).map((name): GrantPlace => ({ kind: "department", name })),
     ...named(open.divisions, units.divisionIds).map((name): GrantPlace => ({ kind: "division", name })),
   ];
+  return first === undefined ? null : { kind: "places", places: [first, ...rest] };
+}
+
+/**
+ * The places a grant covers, named once (issue #577): "the Propulsion
+ * Department", "the Propulsion Department and the Test Bench", and past two
+ * places a count, "3 departments and 1 division", so a line never chains
+ * every department with "and".
+ */
+export function placesPhrase(places: readonly [GrantPlace, ...GrantPlace[]]): string {
+  if (places.length <= 2) return places.map((p) => `the ${p.kind === "department" ? departmentLabel(p.name) : p.name}`).join(" and ");
+  const counted = (kind: GrantPlace["kind"]) => {
+    const n = places.filter((p) => p.kind === kind).length;
+    return n === 0 ? [] : [`${n} ${kind}${n === 1 ? "" : "s"}`];
+  };
+  return [...counted("department"), ...counted("division")].join(" and ");
 }
 
 /**
@@ -120,11 +148,11 @@ export type PositionsPage = (
     }
   | {
       /**
-       * A member who reads Positions by a grant (issue #487): the places their
-       * Positions grants cover (`areaUnitsOf`), never their own role's division.
+       * A member who reads Positions by a grant (issue #487): what their
+       * Positions grants cover (`grantReachOf`), never their own role's division.
        */
       readonly scope: "granted";
-      readonly places: readonly [GrantPlace, ...GrantPlace[]];
+      readonly reach: GrantReach;
       readonly positions: readonly PositionRow[];
     }
 ) & {
@@ -207,16 +235,25 @@ export type OtherApplication = {
   readonly title: string;
   readonly department: string;
   readonly division: string;
-  readonly stage: ApplicationStage;
+  /** The built-in status it behaves like. */
+  readonly status: BuiltInStatusKey;
+  /** Its status from the status list, an added one included: its tag shows that status's name and colour (issue #752). */
+  readonly listStatus: ApplicationStatus;
 };
 
 export type ApplicationEntry = {
   readonly id: number;
   /** Where it stands; ./application-flow.ts says what can happen next. */
   readonly state: ApplicationState;
-  /** Their name, and every field they gave on the apply form and in "Your details" (issue #406). */
-  readonly applicant: ApplicantDetails & { readonly name: string };
-  /** Where the applicant stands with the team: a member joins with no NDA wait (board 58h2). */
+  /** Its status from the status list (issue #750): the Status picker shows it; `state` is the built-in status it behaves like. */
+  readonly status: ApplicationStatus;
+  /**
+   * Their name, and every field they gave on the apply form and in "Your
+   * details" (issue #406). `photoUrl` is the stored photo of their member
+   * record (issue #656): null for the PRT mark, as for anyone with no record.
+   */
+  readonly applicant: ApplicantDetails & { readonly name: string; readonly photoUrl: string | null };
+  /** Where the applicant stands with the team: what Confirm join adds, and how its confirm reads (58h, 58h2). */
   readonly standing: ApplicantStanding;
   readonly position: { readonly ref: PositionRef; readonly title: string; readonly division: string };
   /** "Today" in the list, "today, 14:32" in the detail panel. */
@@ -225,11 +262,23 @@ export type ApplicationEntry = {
   readonly answers: readonly { readonly question: string; readonly answer: string }[];
   /** Newest first; the list's "+2 other" tag counts them. */
   readonly otherApplications: readonly OtherApplication[];
+  /**
+   * Whether the viewer may move this application (issue #577), by the rule
+   * every application write asks (`mayChangePositionIn` on Applications in
+   * its position's unit, ./position-access.ts). Where false the panel shows
+   * its status and offers no button.
+   */
+  readonly canChange: boolean;
 };
 
-/** Whose applications the page lists: the whole team's, a lead's division's, or a head's department's (board 64, issue #230). */
+/**
+ * Whose applications the page lists: the whole team's, a lead's division's, a
+ * head's department's (board 64, issue #230), or what a member's Applications
+ * grants cover (issue #577), never their own role's division.
+ */
 export type ApplicationsScope =
   | { readonly kind: "team" }
+  | { readonly kind: "granted"; readonly reach: GrantReach }
   | {
       readonly kind: "division";
       /** As the page's intro names it; null when the lead's access names none. */
@@ -243,13 +292,36 @@ export type ApplicationsPage = {
   readonly now: string;
   /** The positions the viewer reaches, for the position filter, with the division and department each sits in. */
   readonly positions: readonly { readonly ref: PositionRef; readonly title: string; readonly division: string; readonly department: string }[];
+  /** The status list in the Status picker's order (board 97c, `statusListOf`): built-in statuses, each with its added ones under it. */
+  readonly statuses: readonly ListedStatus[];
+  /**
+   * Whether the viewer is the team leader, the one who sets "Accepted · email
+   * sent" (`maySetStatus`, ./application-status.ts): the rule the move write
+   * asks, so the panel never offers that status to anyone else (board 97e).
+   */
+  readonly teamLeader: boolean;
+  /**
+   * How many applications, anywhere on the team, use each status of the list,
+   * by its key, for the Statuses editor (board 97d, issue #752); an
+   * application with no status reference counts as New. Null where the viewer
+   * may move no application and so does not manage the list
+   * (`managesStatusList`, ./application-status.ts).
+   */
+  readonly statusUses: Readonly<Record<string, number>> | null;
+  /**
+   * The acceptance emails to send, team-wide, oldest acceptance first (board
+   * 100, `acceptanceEmailsFor`, ./acceptance-emails.ts): the team leader's
+   * box above the filters. Null for every other viewer, so no row of it
+   * reaches their page.
+   */
+  readonly acceptanceEmails: readonly AcceptanceEmailRow[] | null;
   /** Newest first. */
   readonly applications: readonly ApplicationEntry[];
 };
 
 /** How many applications wait for a first look: the sidebar's count and the New tab's. */
 export function newCount(applications: readonly { readonly state: ApplicationState }[]): number {
-  return applications.filter((a) => a.state.stage === "new").length;
+  return applications.filter((a) => a.state.status === "new").length;
 }
 
 /** "CV + letter" or "CV", as the Documents column reads (board 58b). */

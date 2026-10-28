@@ -1,12 +1,14 @@
 // The first half of `pnpm build` (issue #307, ADR 0016). On a Vercel preview
 // build that was given a database, it migrates that database and seeds it
 // only when it is still empty, holding a Postgres advisory lock so concurrent
-// preview builds take turns on the one shared `preview` branch. It never
-// resets that branch, so rows made on a preview last across preview builds
-// (issue #465). Every other build skips it and touches no database. A refusal
+// preview builds take turns on the one shared `preview` branch. An ordinary
+// build never resets that branch, so rows made on a preview last across
+// preview builds (issue #465). A build that carries a `PREVIEW_RESEED_REQUEST`
+// the branch has not served yet empties it and seeds it again, once (issue
+// #595, lib/seed/reseed.ts). Every other build skips it and touches no database. A refusal
 // or a failure fails the build: a preview whose database was not migrated, or
 // not seeded while empty, must not deploy, because its pages read that
-// database (lib/dummy-data/mode.ts).
+// database (lib/database-required.ts).
 //
 // It reads the real environment only, never a .env file, so a local build
 // never seeds.
@@ -15,12 +17,14 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { preparePreviewDatabase, type PreviewBuildSteps } from "@/lib/seed/preview-build";
+import { RESEED_SERVED, runReseed } from "@/lib/seed/reseed";
 import { runSeed } from "@/lib/seed/runner";
 import { guardSeedTarget } from "@/lib/seed/target";
 import { readPrivateFile, uploadPrivateFile } from "@/lib/storage/private-blob";
 import { seedConnection } from "./seed/connection";
 import { SEED_SAMPLE_DOCUMENT } from "./seed/recruitment";
 import { SEED_MODULES } from "./seed/registry";
+import { runStatement } from "./seed/rows";
 
 /** The advisory lock every preview build takes before it migrates and seeds. */
 const PREVIEW_SEED_LOCK = "prt-website-preview-seed";
@@ -70,6 +74,21 @@ const steps: PreviewBuildSteps = {
     await storeSampleDocument();
     return report;
   },
+  // Reads the re-seed ledger on its own direct connection and writes nothing.
+  async served(target, request) {
+    const client = postgres(target.connectionString, { max: 1 });
+    try {
+      const [row] = await client.unsafe<{ served: boolean }[]>(RESEED_SERVED, [request.id]);
+      return row?.served === true;
+    } finally {
+      await client.end();
+    }
+  },
+  async reseed(target, request) {
+    const report = await runReseed(target, request, SEED_MODULES, runStatement, seedConnection);
+    await storeSampleDocument();
+    return report;
+  },
 };
 
 /**
@@ -100,6 +119,7 @@ async function main() {
       VERCEL_ENV: process.env.VERCEL_ENV,
       DATABASE_URL: process.env.DATABASE_URL,
       DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
+      PREVIEW_RESEED_REQUEST: process.env.PREVIEW_RESEED_REQUEST,
     },
     steps,
   );
@@ -115,9 +135,16 @@ async function main() {
       console.log(`Migrated and seeded ${target.kind} ${target.label}, which was empty: ${modules.join(", ")}.`);
       return;
     }
-    case "migrated":
-      console.log(`Migrated ${outcome.target.kind} ${outcome.target.label}; it already holds data, so it was not seeded and its rows were left as they were.`);
+    case "migrated-and-reseeded": {
+      const { target, modules } = outcome.report;
+      console.log(`Migrated ${target.kind} ${target.label}, emptied it and seeded it again for re-seed request "${outcome.request.id}": ${modules.join(", ")}.`);
       return;
+    }
+    case "migrated": {
+      const served = outcome.servedRequest === null ? "" : ` Re-seed request "${outcome.servedRequest.id}" was already served, so it did not run again.`;
+      console.log(`Migrated ${outcome.target.kind} ${outcome.target.label}; it already holds data, so it was not seeded and its rows were left as they were.${served}`);
+      return;
+    }
   }
 }
 

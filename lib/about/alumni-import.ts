@@ -14,7 +14,7 @@ import type { Photo } from "./types";
 // the roles hold no advisors, so they are imported as that year's Advisors.
 //
 // drizzle/0021_alumni_import.sql wrote this data into the database once; the
-// dummy data reads it from here. Fixes from the dashboard never change it.
+// seed and the tests read it from here. Fixes from the dashboard never change it.
 
 /** Someone in an imported group, with the role they held that year. */
 export type ImportedAlum = { readonly name: string; readonly role: string };

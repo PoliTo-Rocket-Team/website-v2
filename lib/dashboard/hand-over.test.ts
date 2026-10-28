@@ -32,8 +32,8 @@ const org: OrgChart = {
 };
 
 const team: TeamPerson[] = [
-  { id: 14, name: "Alessandro Greco", emails: ["alessandro@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "team-leader" }] },
-  { id: 1, name: "Giulia Romano", emails: ["giulia@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "team", title: "Head of Operations" }] },
+  { id: 14, name: "Alessandro Greco", emails: ["alessandro@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "team-leader", title: "" }] },
+  { id: 1, name: "Giulia Romano", emails: ["giulia@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "board", seat: { roleId: 3, title: "Head of Operations", flag: null, since: "2024-10-01" } }] },
   { id: 7, name: "Sara Conti", emails: ["sara@prt.it"], memberships: membershipsOf([{ divisionId: 1, role: "member", since: "2024-10-01" }]), beyond: [] },
 ];
 
@@ -120,8 +120,8 @@ test("every drawer and dialog words Become an advisor the same way, for the edit
 });
 
 test("no hand-over, replacement or close path writes the Team page's advisory board: it is edited by hand only", () => {
-  // Both data sources' hand-over, replace and close writes live in these two files; the board is `team_page_advisors`.
-  for (const file of ["./database-team.ts", "../dummy-data/team-pages.ts"]) {
+  // The hand-over, replace and close writes live in this file; the board is `team_page_advisors`.
+  for (const file of ["./database-team.ts"]) {
     const source = readFileSync(new URL(file, import.meta.url), "utf8");
     assert.doesNotMatch(source, /teamPageAdvisor|team_page_advisor|database-team-advisors|AdvisorStore|advisorEditor/, file);
   }
@@ -137,7 +137,7 @@ test("an advisor is never counted as a lead or a head", () => {
   assert.deepEqual([...membershipsOfRoles([{ type: "advisor", divisionId: 1, since: "2026-10-16" }])], [{ divisionId: 1, role: "member", since: "2026-10-16" }]);
   assert.equal(isDivisionRole({ type: "advisor", divisionId: 1 }), true, "a former lead stays in the division with the Advisor role");
   // A former head's Advisor role sits on their department; a former team leader's on the whole team. Neither is a head.
-  const seat = (departmentId: number | null) => roleBeyondDivisions({ type: "advisor", divisionId: null, departmentId, title: "Advisor", since: "2026-10-16" }, org);
+  const seat = (departmentId: number | null) => roleBeyondDivisions({ id: 1, type: "advisor", divisionId: null, departmentId, title: "Advisor", since: "2026-10-16", fullAccess: null }, org);
   assert.deepEqual(seat(1), { kind: "advisor", departmentId: 1 });
   assert.deepEqual(seat(null), { kind: "advisor", departmentId: null });
 });

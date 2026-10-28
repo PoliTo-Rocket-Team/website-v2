@@ -3,9 +3,10 @@
 import { useState, useTransition, type ReactNode } from "react";
 import { Copy, ExternalLink, Lock, Mail, MoreHorizontal, Pencil, UserCheck, UserMinus, UserX } from "lucide-react";
 import { toast } from "sonner";
+import { moveApplication } from "@/app/dashboard/recruitment-actions";
 import { cancelAdd, confirmJoin, confirmNda, removeFromDivision } from "@/app/dashboard/team-actions";
 import { noDetailsFilled } from "@/lib/dashboard/details";
-import type { DivisionPerson, WaitingPerson } from "@/lib/dashboard/division-members";
+import { addedSentence, type DivisionPerson, type WaitingPerson } from "@/lib/dashboard/division-members";
 import type { Joining } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
@@ -16,34 +17,44 @@ import { GHOST_PILL } from "./page-header";
 
 // The parts a Members page and the Team tree's division panel share (boards
 // 61e to 61h2, issue #231): the people added by email who wait for Confirm
-// NDA, the amber note that the site sends no emails, a row's ⋯ menu and the
+// NDA, the amber note that they have not signed in yet, a row's ⋯ menu and the
 // "are you sure" dialogs behind it. The Members page itself is one view for
 // every role (issue #408, ./team-members.tsx).
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
-/** The "are you sure" a row or a note opened, with the division it is about. */
+/** Who a removal or a move to Alumni is about: a division page's person or one on the whole team. */
+type AskedPerson = Pick<DivisionPerson, "id" | "name" | "since" | "divisions">;
+
+/** The "are you sure" a row, a note or Edit details opened, with the division it is about. */
 export type Asking =
   | { readonly kind: "nda"; readonly waiting: WaitingPerson; readonly division: string }
   | { readonly kind: "cancel"; readonly waiting: WaitingPerson; readonly short: string }
-  | { readonly kind: "remove"; readonly person: DivisionPerson; readonly divisionId: number; readonly short: string }
-  | { readonly kind: "leave"; readonly person: DivisionPerson };
+  | { readonly kind: "remove"; readonly person: AskedPerson; readonly divisionId: number; readonly short: string }
+  | { readonly kind: "leave"; readonly person: AskedPerson };
 
 export { matchesWaiting } from "@/lib/dashboard/members-view";
 
-/** The "are you sure" dialogs a Members page's rows and notes open. */
-export function MemberDialogs({ asking, onClose }: { asking: Asking | null; onClose: () => void }) {
+/**
+ * The "are you sure" dialogs a Members page's rows, notes and Edit details
+ * open. `onDone` runs after a removal or a move to Alumni went through, so
+ * Edit details can close behind it.
+ */
+export function MemberDialogs({ asking, onClose, onDone }: { asking: Asking | null; onClose: () => void; onDone?: () => void }) {
   return (
     <>
       <ConfirmNdaDialog asking={asking?.kind === "nda" ? asking : null} onClose={onClose} />
       <CancelAddDialog asking={asking?.kind === "cancel" ? asking : null} onClose={onClose} />
-      <RemoveDialog asking={asking?.kind === "remove" ? asking : null} onClose={onClose} />
+      <RemoveDialog asking={asking?.kind === "remove" ? asking : null} onClose={onClose} onDone={onDone} />
       {asking?.kind === "leave" && (
         <AlumniDialog
           open
           onOpenChange={(next) => !next && onClose()}
           person={{ id: asking.person.id, name: asking.person.name, joined: asking.person.since }}
-          onDone={onClose}
+          onDone={() => {
+            onClose();
+            onDone?.();
+          }}
         />
       )}
     </>
@@ -160,11 +171,13 @@ export function MenuItem({
 }
 
 /**
- * The amber note under the table (board 61e): the site sends no emails, so
- * the lead tells the person themselves, with Fill details, Copy email and
- * Open email.
+ * The amber note under the table (board 61e): someone added by email who has
+ * not signed in, and what happened, why the box shows, what to do and when
+ * it goes away (issue #790), with Fill details, Copy email and Open email.
+ * Shown only while `mayNotKnowTheyWereAdded`; `unit` is the division they
+ * were added to.
  */
-export function NoEmailNote({ waiting, editable, onFill }: { waiting: WaitingPerson; editable: boolean; onFill: () => void }) {
+export function NoEmailNote({ waiting, unit, editable, onFill }: { waiting: WaitingPerson; unit: string; editable: boolean; onFill: () => void }) {
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(waiting.email);
@@ -175,13 +188,21 @@ export function NoEmailNote({ waiting, editable, onFill }: { waiting: WaitingPer
   };
   return (
     <section className="mt-4 rounded-xl border border-warning/30 bg-warning/[0.05] px-4 py-3.5">
-      <p className="flex items-start gap-2.5 text-[13px] leading-relaxed text-text-2">
+      <div className="flex items-start gap-2.5 text-[13px] leading-relaxed text-text-2">
         <Mail aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-warning" strokeWidth={1.75} />
-        <span>
-          The site doesn&apos;t send emails, so you need to let {waiting.email} know. A lead or head can fill in their details, or they can sign in
-          with this email and fill them in themselves.
-        </span>
-      </p>
+        <div className="min-w-0 space-y-1.5">
+          <h3 className="font-semibold text-prt-text">{waiting.name ?? waiting.email} hasn&apos;t signed in yet</h3>
+          <p>
+            {addedSentence(waiting, unit)} The site doesn&apos;t send emails, so they don&apos;t know
+            yet.
+          </p>
+          <p>
+            Next: message them to sign in with Google using that address. Their profile stays empty until then
+            {editable ? "; you can fill in their details now instead." : "."}
+          </p>
+          <p>This box goes away once they sign in or their details are filled in.</p>
+        </div>
+      </div>
       <div className="mt-3 flex flex-wrap gap-2 md:pl-[26px]">
         {editable && (
           <button type="button" onClick={onFill} className={GHOST_PILL}>
@@ -273,7 +294,15 @@ function CancelAddDialog({ asking, onClose }: { asking: Extract<Asking, { kind: 
 }
 
 /** "Remove from <division>": an "are you sure" first; the person keeps their other divisions. */
-function RemoveDialog({ asking, onClose }: { asking: Extract<Asking, { kind: "remove" }> | null; onClose: () => void }) {
+function RemoveDialog({
+  asking,
+  onClose,
+  onDone,
+}: {
+  asking: Extract<Asking, { kind: "remove" }> | null;
+  onClose: () => void;
+  onDone?: () => void;
+}) {
   const [pending, startTransition] = useTransition();
   const [shownAsking, setShown] = useState(asking);
   if (asking !== null && asking !== shownAsking) setShown(asking);
@@ -292,6 +321,7 @@ function RemoveDialog({ asking, onClose }: { asking: Extract<Asking, { kind: "re
       }
       toast.success(`${shown.name} left ${short}`);
       onClose();
+      onDone?.();
     });
   return (
     <ConfirmDialog
@@ -309,15 +339,37 @@ function RemoveDialog({ asking, onClose }: { asking: Extract<Asking, { kind: "re
   );
 }
 
+/** The banner's outlined success pill: Confirm join's look, which Mark NDA received shares (issue #601). */
+const BANNER_ACTION =
+  "inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-success/60 px-4 text-[14px] font-semibold text-success transition-colors duration-300 ease-out hover:border-success hover:bg-success/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-success/60 disabled:hover:bg-transparent md:h-8 md:px-3.5 md:text-[13px]";
+
 /**
- * "Giulia Rossi is joining" (boards 59 and 59m): Confirm join, once "The signed
- * NDA arrived" is ticked on the application (58g). It is the Applications
- * page's own Confirm join, so the button waits for that tick here too.
+ * "Giulia Rossi is joining" (boards 59 and 59m): Confirm join, once the
+ * application's status is NDA received. It is the Applications page's own
+ * Confirm join, so the button waits for that status here too, and shows only
+ * where `editable`: the viewer may change applications there
+ * (`Joining.canConfirm`, issue #584). While the NDA waits, the same viewer
+ * records it here with Mark NDA received: the Applications page's NDA received
+ * button (`nda-received`), so the banner adds no rule or write path of its own
+ * (issue #601). Like that button, it is refused until the acceptance email is
+ * marked sent (issue #749).
+ * The server's yes is what readies Confirm join: the banner holds it at once,
+ * so it does not wait on the page's refresh to show the NDA arrived.
  */
 export function JoiningBanner({ joining, division, editable }: { joining: Joining; division: string; editable: boolean }) {
   const [asking, setAsking] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [marking, startMarking] = useTransition();
+  const [marked, setMarked] = useState(false);
+  const ndaArrived = joining.ndaArrived || marked;
   const firstName = joining.name.split(" ")[0];
+
+  const markNda = () =>
+    startMarking(async () => {
+      const result = await moveApplication(joining.applicationId, { kind: "nda-received" });
+      if (result.ok) setMarked(true);
+      else toast.error(result.error);
+    });
 
   const confirm = () =>
     startTransition(async () => {
@@ -334,24 +386,26 @@ export function JoiningBanner({ joining, division, editable }: { joining: Joinin
     <li className="flex flex-col gap-3 rounded-xl border border-success/40 bg-success/[0.06] px-4 py-3.5 md:flex-row md:items-center md:gap-4">
       <span className="flex min-w-0 flex-1 items-center gap-3.5">
         <span className="hidden md:block">
-          <Avatar />
+          <Avatar person={joining} />
         </span>
         <span className="min-w-0">
           <span className="block text-[15px] font-semibold">{joining.name} is joining</span>
           <span className="block text-[13px] text-prt-muted">
-            Accepted for {joining.position} · {joining.ndaArrived ? "signed NDA arrived" : "waiting for the signed NDA"}
+            Accepted for {joining.position} · {ndaArrived ? "signed NDA arrived" : "waiting for the signed NDA"}
           </span>
         </span>
       </span>
       {editable && (
-        <button
-          type="button"
-          onClick={() => setAsking(true)}
-          disabled={!joining.ndaArrived}
-          className="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-success/60 px-4 text-[14px] font-semibold text-success transition-colors duration-300 ease-out hover:border-success hover:bg-success/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-success/60 disabled:hover:bg-transparent md:h-8 md:px-3.5 md:text-[13px]"
-        >
-          Confirm join
-        </button>
+        <span className="flex shrink-0 flex-wrap items-center gap-2">
+          {!ndaArrived && (
+            <button type="button" onClick={markNda} disabled={marking} className={BANNER_ACTION}>
+              Mark NDA received
+            </button>
+          )}
+          <button type="button" onClick={() => setAsking(true)} disabled={!ndaArrived} className={BANNER_ACTION}>
+            Confirm join
+          </button>
+        </span>
       )}
       <ConfirmDialog
         open={asking}

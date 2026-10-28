@@ -1,36 +1,71 @@
 "use client";
 
-import { useEffect, useId, useOptimistic, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useOptimistic, useState, useTransition, type ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ArrowLeft, CalendarClock, CalendarPlus, Check, ChevronDown, ExternalLink, FileText, Signature, UserPlus, X } from "lucide-react";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import {
+  ArrowLeft,
+  ArrowRightLeft,
+  CalendarClock,
+  CalendarPlus,
+  Check,
+  ChevronDown,
+  CircleAlert,
+  ExternalLink,
+  FileCheck2,
+  FileText,
+  Lock,
+  LogOut,
+  Mail,
+  MailCheck,
+  Signature,
+  SlidersHorizontal,
+  Undo2,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogClose, DialogPortal, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { moveApplication } from "@/app/dashboard/recruitment-actions";
 import {
   APPLICATION_TABS,
   applyMove,
   dayMonth,
   firstNameOf,
-  footerSteps,
   icsFileName,
   interviewIcs,
   memberDivisionNames,
-  menuSteps,
+  moveToStatus,
   PROGRESS_STEPS,
   progressOf,
   pronounsOf,
   slotBadge,
   slotDayTime,
   slotRange,
-  STAGE_LABELS,
-  stagePill,
+  statusAfter,
   studiesLine,
+  takenByJoinElsewhere,
+  type AcceptedStatus,
   type ApplicationState,
+  type ApproverMove,
+  type PickTarget,
   type SlotTime,
-  type LeadMove,
   type LeadStep,
   type Pronouns,
 } from "@/lib/dashboard/application-flow";
+import {
+  builtInOf,
+  DO_NOT_EMAIL_NOTE,
+  listedStatusOf,
+  maySetStatus,
+  sameStatus,
+  seesDoNotEmailNote,
+  type ApplicationStatus,
+  type BuiltInStatusKey,
+  type ListedStatus,
+  type StatusSetterViewer,
+} from "@/lib/dashboard/application-status";
 import { applicantSections, type ApplicantField } from "@/lib/dashboard/applicant-details";
 import {
   APPLICATION_FILTER_LABELS,
@@ -47,32 +82,42 @@ import {
   applicationsModelOf,
   divisionOptions,
   NO_APPLICATIONS_FILTER,
+  panelStepsOf,
   shownApplications,
+  unsavedPickHint,
   type ApplicationsFilter,
   type ApplicationsTool,
 } from "@/lib/dashboard/applications-view";
 import { shortUnitName } from "@/lib/dashboard/division-access";
 import { documentsLine, type ApplicationEntry, type ApplicationsPage, type OtherApplication, type PositionRef } from "@/lib/dashboard/recruitment";
 import { divisionLabel } from "@/lib/dashboard/team";
+import { AcceptanceEmailsBox } from "./acceptance-emails";
 import { Avatar } from "./avatar";
 import { ColumnFilter } from "./column-filter";
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { FilterMenu, SearchField, Segmented } from "./controls";
+import { FilterMenu, Segmented } from "./controls";
+import { SearchField } from "./search-field";
 import { DecisionDialog, NextSteps } from "./decision-dialog";
 import { InterviewDialog } from "./interview-dialog";
 import { PANEL } from "./panel";
 import { ICON_BUTTON, PhoneTopBar } from "./shell";
-import { StagePill, StageTag, toneDot, toneSurface } from "./stage-pill";
+import { StatusPill, StatusTag } from "./stage-pill";
+import { StatusesEditor } from "./statuses-editor";
 
-// The Applications page (Dashboard v2 boards 58b, 58 to 58i, and phone boards
-// 58m and 58d-m, issue #171): the stage tabs, the position filter, the list,
-// and the detail panel of the chosen application with its next steps. Props
-// in, nothing fetched. Every step goes through the dashboard's server action;
-// which steps are legal is lib/dashboard/application-flow.ts's alone, and the
-// page shows the result at once.
+// The Applications page (Dashboard v2 boards 58b, 58 to 58i and 97 to 97e,
+// and phone boards 58m and 58d-m, issues #171, #749 and #750): the status
+// tabs, the position filter, the list, and the detail panel of the chosen
+// application with its Status picker and action buttons. Props in, nothing
+// fetched. Every button and every saved hand pick goes through the
+// dashboard's one server move; which buttons a status offers, the status each
+// sets, and the move a hand pick runs is lib/dashboard/application-flow.ts's
+// alone, and the page shows the result at once. Where the viewer may not move
+// an application (`canChange` false, issue #577) the same panel shows its
+// status and no button.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+
+/** An action button while a hand pick is unsaved (board 97b): dimmed, and it cannot be pressed. */
+const LOCKABLE = "disabled:cursor-not-allowed disabled:opacity-40";
 
 // The detail panel and the room the list leaves for it are one pair (board 58):
 // the panel is 460px wide, and the list card ends 28px before it. The shell's
@@ -96,9 +141,9 @@ export function ApplicationsView({
   /** The viewer's name: the interview email is signed with it. */
   lead: string;
 }) {
-  const [states, setState] = useOptimistic(
-    Object.fromEntries(page.applications.map((a) => [a.id, a.state])) as Record<number, ApplicationState>,
-    (current, change: { id: number; state: ApplicationState }) => ({ ...current, [change.id]: change.state }),
+  const [standings, setStanding] = useOptimistic(
+    Object.fromEntries(page.applications.map((a) => [a.id, { state: a.state, status: a.status }])) as Record<number, Standing>,
+    (current, change: { id: number; standing: Standing }) => ({ ...current, [change.id]: change.standing }),
   );
   const [pending, startTransition] = useTransition();
   // Every role's page starts on all departments, all divisions and all stages, newest first.
@@ -111,7 +156,7 @@ export function ApplicationsView({
   const model = applicationsModelOf(page);
   const has = (tool: ApplicationsTool) => model.tools.includes(tool);
   const narrow = (change: Partial<ApplicationsFilter>) => setFilter((f) => ({ ...f, ...change }));
-  const applications = page.applications.map((a) => ({ ...a, state: states[a.id] ?? a.state }));
+  const applications = page.applications.map((a) => ({ ...a, ...standings[a.id] }));
   const shown = shownApplications(page, model.units, applications, filter);
   const rows = shown.rows;
   // The desktop table's column filters narrow what the toolbar leaves; phones list cards of the toolbar's rows, as Members does.
@@ -154,19 +199,24 @@ export function ApplicationsView({
   };
 
   /** Shows the step at once, then saves it; a refusal puts the row back and says why. */
-  const move = (application: ApplicationEntry, step: LeadMove, done?: () => void) =>
+  const move = (application: ApplicationEntry, step: ApproverMove, done?: () => void) =>
     startTransition(async () => {
-      const result = applyMove(application.state, step, new Date(page.now), application.standing);
-      if (result.ok) setState({ id: application.id, state: result.state });
+      if (step.kind === "pick-added") {
+        // An added status changes the status alone; the page's refresh brings back what it behaves like.
+        const listed = page.statuses.find((s) => s.status.kind === "added" && s.status.key === step.key);
+        if (listed) setStanding({ id: application.id, standing: { state: application.state, status: listed.status } });
+      } else {
+        const result = applyMove(application.state, step, new Date(page.now));
+        const via = step.kind === "pick" ? "pick" : "button";
+        if (result.ok) setStanding({ id: application.id, standing: { state: result.state, status: statusAfter(application.status, result.state, via) } });
+      }
       const saved = await moveApplication(application.id, step);
       if (!saved.ok) toast.error(saved.error);
       else done?.();
     });
 
-  const choose = (application: ApplicationEntry) => {
-    setChosenId(application.id);
-    if (application.state.stage === "new") move(application, { kind: "open" });
-  };
+  // Opening an application never changes its status (ruling R1.2 on #745).
+  const choose = (application: ApplicationEntry) => setChosenId(application.id);
 
   return (
     <div className={chosen ? ROOM_FOR_PANEL : ""}>
@@ -177,6 +227,15 @@ export function ApplicationsView({
           {model.intro}
         </p>
       </header>
+
+      {/* The team leader's acceptance emails (board 100): above the filters and blind to them; null for every other viewer. */}
+      {page.acceptanceEmails && (
+        <AcceptanceEmailsBox
+          rows={page.acceptanceEmails}
+          sentStatusName={listedStatusOf(page.statuses, { kind: "built-in", key: "accepted_email_sent" }).name}
+          onOpen={setChosenId}
+        />
+      )}
 
       <div className="flex flex-col gap-3 md:mt-6 md:flex-row md:flex-wrap md:items-center">
         <div className="flex min-w-0 flex-wrap items-center gap-3">
@@ -228,7 +287,7 @@ export function ApplicationsView({
               options={APPLICATIONS_SORTS.slice(1).map((s) => ({ value: s.sort, label: s.label }))}
             />
           )}
-          {has("search") && <SearchField label="Search applicant or position" value={filter.query} onChange={(query) => narrow({ query })} />}
+          {has("search") && <SearchField placeholder="Search applicant or position" value={filter.query} onChange={(query) => narrow({ query })} className="md:w-[260px]" />}
         </div>
       </div>
 
@@ -261,7 +320,7 @@ export function ApplicationsView({
                 } focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent`}
               >
                 <span className="flex min-w-0 items-center gap-3">
-                  <Avatar />
+                  <Avatar person={a.applicant} />
                   <span className="min-w-0">
                     <span className="block truncate text-[14px] font-medium leading-snug">{a.applicant.name}</span>
                     <span className="block truncate text-[12px] leading-snug text-prt-muted">{a.applicant.email}</span>
@@ -279,7 +338,7 @@ export function ApplicationsView({
                   <>
                     <span className="truncate text-[13px] text-text-2">{studiesLine(a.applicant.degree, a.applicant.year)}</span>
                     <span className="min-w-0">
-                      <StagePill state={a.state} standing={a.standing} />
+                      <StatusPill state={a.state} listed={listedStatusOf(page.statuses, a.status)} />
                     </span>
                     <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-prt-muted">
                       {a.documents.length > 0 && <FileText aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />}
@@ -313,10 +372,10 @@ export function ApplicationsView({
               </span>
               <span className="shrink-0 pt-0.5">
                 <span className="md:hidden">
-                  <StagePill state={a.state} standing={a.standing} short />
+                  <StatusPill state={a.state} listed={listedStatusOf(page.statuses, a.status)} short />
                 </span>
                 <span className="hidden md:inline">
-                  <StagePill state={a.state} standing={a.standing} />
+                  <StatusPill state={a.state} listed={listedStatusOf(page.statuses, a.status)} />
                 </span>
               </span>
             </button>
@@ -327,6 +386,9 @@ export function ApplicationsView({
 
       <DetailPanel
         application={chosen}
+        statuses={page.statuses}
+        statusUses={page.statusUses}
+        viewer={{ teamLeader: page.teamLeader }}
         now={page.now}
         lead={lead}
         pending={pending}
@@ -342,7 +404,10 @@ function OtherTag({ count }: { count: number }) {
   return <span className="shrink-0 rounded-full bg-white-10 px-2 py-0.5 text-[11px] text-text-2">+{count} other</span>;
 }
 
-type Move = (application: ApplicationEntry, step: LeadMove, done?: () => void) => void;
+/** Where an application stands, as the page shows it before the server answers. */
+type Standing = { readonly state: ApplicationState; readonly status: ApplicationStatus };
+
+type Move = (application: ApplicationEntry, step: ApproverMove, done?: () => void) => void;
 
 // The panel on the right (board 58); on a phone a full page with a back arrow
 // and the steps pinned at the foot (58d-m). It is the repo's Radix dialog, not
@@ -351,6 +416,9 @@ type Move = (application: ApplicationEntry, step: LeadMove, done?: () => void) =
 // only under motion-safe and closes at once (design-system-manifest.md).
 function DetailPanel({
   application,
+  statuses,
+  statusUses,
+  viewer,
   now,
   lead,
   pending,
@@ -358,6 +426,9 @@ function DetailPanel({
   onMove,
 }: {
   application: ApplicationEntry | null;
+  statuses: readonly ListedStatus[];
+  statusUses: ApplicationsPage["statusUses"];
+  viewer: StatusSetterViewer;
   now: string;
   lead: string;
   pending: boolean;
@@ -372,15 +443,32 @@ function DetailPanel({
           onInteractOutside={(event) => event.preventDefault()}
           className={`fixed inset-0 z-40 flex flex-col bg-ground text-prt-text focus:outline-none md:left-auto ${PANEL_WIDTH} md:border-l md:border-hairline motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=open]:duration-200`}
         >
-          {application && <Detail key={application.id} application={application} now={now} lead={lead} pending={pending} onMove={onMove} />}
+          {application && (
+            <Detail
+              key={application.id}
+              application={application}
+              statuses={statuses}
+              statusUses={statusUses}
+              viewer={viewer}
+              now={now}
+              lead={lead}
+              pending={pending}
+              onMove={onMove}
+            />
+          )}
         </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>
   );
 }
 
-/** Which confirm step is open over the panel. */
-type Asking = "offer-interview" | "accept" | "reject" | "confirm-join" | null;
+/**
+ * Which confirm is open over the panel, named by the built-in status it sets:
+ * every action button asks first (ADR 0011, amendment of 2026-10-25), and a
+ * saved hand pick asks the same confirm as the step that sets the status
+ * (ruling R1.1 on #745).
+ */
+type Asking = BuiltInStatusKey | null;
 
 function capital(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1);
@@ -393,25 +481,52 @@ function verb(they: Pronouns, singular: string, plural: string): string {
 
 function Detail({
   application: a,
+  statuses,
+  statusUses,
+  viewer,
   now,
   lead,
   pending,
   onMove,
 }: {
   application: ApplicationEntry;
+  statuses: readonly ListedStatus[];
+  /** Null where the viewer does not manage the status list: "Manage statuses…" is not offered (issue #752). */
+  statusUses: ApplicationsPage["statusUses"];
+  /** Who the viewer is to the status list's team-leader rule (board 97e). */
+  viewer: StatusSetterViewer;
   now: string;
   lead: string;
   pending: boolean;
   onMove: Move;
 }) {
   const [asking, setAsking] = useState<Asking>(null);
+  // The Statuses editor (board 97d), opened from "Manage statuses…" in the Status picker.
+  const [managing, setManaging] = useState(false);
+  // A hand pick in the Status picker, not saved yet (board 97b): it locks every action button until Save or Cancel.
+  const [draft, setDraft] = useState<ApplicationStatus | null>(null);
   const first = firstNameOf(a.applicant.name);
   const they = pronounsOf(a.applicant.gender);
   const unit = divisionLabel(a.position.division);
-  const footer = footerSteps(a.state, a.standing, unit);
-  const pill = stagePill(a.state, a.standing);
+  const steps = panelStepsOf(a, viewer);
+  const locked = draft !== null;
   const close = () => setAsking(null);
-  const run = (step: LeadMove) => onMove(a, step, close);
+  // Confirm join sets these to "Accepted for another position" (ADR 0011, amendment of 2026-10-25).
+  const othersTaken = a.otherApplications.filter((o) => takenByJoinElsewhere({ kind: "built-in", key: o.status })).length;
+  // A button and a saved hand pick of the same status run the same move (`moveToStatus`), behind the same confirm.
+  // The buttons are locked while a pick is a draft, so a confirm asked with a draft open is the pick's.
+  const run = (target: PickTarget) =>
+    onMove(a, moveToStatus(a.state, target, draft === null ? "button" : "pick"), () => {
+      setAsking(null);
+      setDraft(null);
+    });
+  const pick = (status: ApplicationStatus) => setDraft(sameStatus(status, a.status) ? null : status);
+  // Saving an added status sets it and nothing else; a built-in one asks the confirm of the step that sets it.
+  const save = () => {
+    if (draft === null) return;
+    if (draft.kind === "added") onMove(a, { kind: "pick-added", key: draft.key }, () => setDraft(null));
+    else setAsking(draft.key);
+  };
 
   // Every field the applicant gave, grouped; empty ones are left out (issue #406).
   const details = applicantSections(a.applicant);
@@ -430,9 +545,10 @@ function Detail({
         }
       />
 
-      <div className="hidden border-b border-hairline px-7 pb-5 pt-7 md:block">
-        <div className="flex items-start gap-4">
-          <Avatar size="panel" />
+      {/* The head: the applicant from md (board 97), then the Status picker on every width. */}
+      <div className="border-b border-hairline px-5 pb-4 pt-4 md:px-7 md:pb-5 md:pt-7">
+        <div className="hidden items-start gap-4 md:flex">
+          <Avatar size="panel" person={a.applicant} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-[20px] font-bold leading-tight" aria-hidden="true">
               {a.applicant.name}
@@ -448,18 +564,38 @@ function Detail({
             <X aria-hidden className="h-4 w-4" strokeWidth={2} />
           </DialogClose>
         </div>
-        <StageMenu label={STAGE_LABELS[a.state.stage]} tone={pill.tone} steps={menuSteps(a.state)} onStep={(step) => setAsking(step.move === "set-nda" || step.move === "open" ? null : step.move)} />
+        <p className="mb-3 truncate text-[13px] text-prt-muted md:hidden">
+          {a.position.title} · applied {a.applied.at}
+        </p>
+        <StatusPicker
+          statuses={statuses}
+          current={a.status}
+          draft={draft}
+          canChange={a.canChange}
+          maySet={(status) => maySetStatus(status, viewer)}
+          pending={pending}
+          hint={unsavedPickHint(steps)}
+          onPick={pick}
+          onSave={save}
+          onCancel={() => setDraft(null)}
+          onManage={statusUses === null ? null : () => setManaging(true)}
+        />
+        {statusUses !== null && (
+          <StatusesEditor open={managing} onOpenChange={setManaging} statuses={statuses} uses={statusUses} defaultParent={builtInOf(a.status)} />
+        )}
+        {seesDoNotEmailNote(a.status, viewer) && (
+          <p
+            role="note"
+            className="mt-3 flex gap-2.5 rounded-lg border border-warning/40 bg-warning-soft px-3.5 py-2.5 text-[12px] leading-snug text-warning"
+          >
+            <Mail aria-hidden className="mt-px h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+            {DO_NOT_EMAIL_NOTE}
+          </p>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-6 pt-4 md:px-7 md:py-5">
-        <div className="mb-4 flex items-center justify-between gap-3 md:hidden">
-          <p className="min-w-0 truncate text-[13px] text-prt-muted">
-            {a.position.title} · applied {a.applied.at}
-          </p>
-          <StagePill state={a.state} standing={a.standing} short />
-        </div>
-
-        <StageCard application={a} first={first} they={they} now={now} pending={pending} onAsk={setAsking} onMove={(step) => onMove(a, step)} />
+        <StageCard application={a} first={first} they={they} viewer={viewer} changeTimes={steps.changeTimes} locked={locked} onAsk={setAsking} />
         {details.map((section) => (
           <Fields key={section.title} title={section.title} fields={section.fields} />
         ))}
@@ -468,7 +604,7 @@ function Detail({
             <ul className="flex flex-col gap-2.5">
               {a.otherApplications.map((o, i) => (
                 <li key={i}>
-                  <OtherCard other={o} />
+                  <OtherCard other={o} listed={listedStatusOf(statuses, o.listStatus)} />
                 </li>
               ))}
             </ul>
@@ -497,32 +633,34 @@ function Detail({
         )}
       </div>
 
-      {footer && (
-        <div className="grid shrink-0 grid-cols-3 gap-3 border-t border-hairline px-5 py-4 md:px-7">
+      {/* The bottom bar: only the current status's buttons (board 97). It sits under the scrolling content, never over it. */}
+      {steps.bar.length > 0 && (
+        <div className="grid shrink-0 grid-cols-3 gap-3 border-t border-hairline bg-ground px-5 py-4 md:px-7">
           {/* Cancel closes the panel without deciding (Owner decision, 2026-10-19). */}
           <DialogPrimitive.Close
             className={`h-11 rounded-full text-[14px] font-semibold text-text-2 transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}
           >
             Cancel
           </DialogPrimitive.Close>
-          <FooterButton step={footer.secondary} kind="secondary" onAsk={setAsking} />
-          <FooterButton step={footer.primary} kind="primary" ready={footer.primary.ready} onAsk={setAsking} />
+          {steps.bar.map((step) => (
+            <FooterButton key={step.move} step={step} wide={steps.bar.length === 1} locked={locked} onAsk={setAsking} />
+          ))}
         </div>
       )}
 
       <InterviewDialog
-        open={asking === "offer-interview"}
+        open={asking === "interview"}
         onOpenChange={(open) => !open && close()}
-        mode={a.state.stage === "interview" ? "change" : "offer"}
+        mode={a.state.status === "interview" ? "change" : "offer"}
         applicant={{ name: a.applicant.name, email: a.applicant.email, position: a.position.title }}
         lead={lead}
         now={now}
-        offered={a.state.stage === "interview" ? a.state.offered : []}
+        offered={a.state.status === "interview" ? a.state.offered : []}
         pending={pending}
-        onSubmit={(slots) => run({ kind: "offer-interview", slots })}
+        onSubmit={(slots) => run({ to: "interview", slots })}
       />
       <DecisionDialog
-        open={asking === "accept"}
+        open={asking === "accepted_email_to_be_sent"}
         onOpenChange={(open) => !open && close()}
         tone="success"
         icon={<Check className="h-5 w-5" strokeWidth={2} />}
@@ -530,30 +668,113 @@ function Detail({
         cancelLabel="Not yet"
         confirmLabel="Yes, accept"
         pending={pending}
-        onConfirm={() => run({ kind: "accept" })}
+        onConfirm={() => run({ to: "accepted_email_to_be_sent" })}
       >
-        {capital(they.possessive)} application is marked as accepted.
-        <NextSteps steps={[`The team leader emails ${first} the NDA.`, `${first} signs it and sends it back.`, `You confirm ${they.possessive} join here.`]} />
+        {capital(they.possessive)} status becomes Accepted · email to be sent.
+        <NextSteps steps={[`The team leader emails ${first} the NDA and marks the email sent.`, `${first} signs it and sends it back.`, `You mark the NDA received and confirm ${they.possessive} join here.`]} />
       </DecisionDialog>
       <DecisionDialog
-        open={asking === "reject"}
+        open={asking === "rejected_email_to_be_sent"}
         onOpenChange={(open) => !open && close()}
         tone="danger"
         icon={<X className="h-5 w-5" strokeWidth={2} />}
-        title={a.state.stage === "accepted" ? `Withdraw ${first}'s acceptance?` : `Reject ${first} for ${a.position.title}?`}
-        cancelLabel={a.state.stage === "accepted" ? "Not yet" : `Keep ${they.possessive} application`}
-        confirmLabel={a.state.stage === "accepted" ? "Yes, withdraw" : "Yes, reject"}
+        title={`Reject ${first} for ${a.position.title}?`}
+        cancelLabel={`Keep ${they.possessive} application`}
+        confirmLabel="Yes, reject"
         pending={pending}
-        onConfirm={() => run({ kind: "reject" })}
+        onConfirm={() => run({ to: "rejected_email_to_be_sent" })}
       >
-        {a.state.stage === "accepted"
-          ? `${capital(they.possessive)} application moves to Rejected, and ${they.subject} ${verb(they, "sees", "see")} "Not selected" on ${they.possessive} My applications page. The site sends no email: tell ${they.object} yourself. You can't undo this.`
-          : `${capital(they.subject)} ${verb(they, "sees", "see")} "Not selected" on ${they.possessive} My applications page. You can't undo this.`}
+        {capital(they.possessive)} status becomes Rejected · email to be sent. The site sends no email: tell {they.object}{" "}yourself, then mark the
+        email sent. You can&apos;t undo this.
+      </DecisionDialog>
+      <DecisionDialog
+        open={asking === "new"}
+        onOpenChange={(open) => !open && close()}
+        tone="danger"
+        icon={<Undo2 className="h-5 w-5" strokeWidth={2} />}
+        // Withdraw acceptance's confirm; a hand pick of New from a status that was never accepted asks it in plain words.
+        title={"acceptedAt" in a.state ? `Withdraw ${first}'s acceptance?` : `Move ${first}'s application back to New?`}
+        cancelLabel="Not yet"
+        confirmLabel={"acceptedAt" in a.state ? "Yes, withdraw" : "Yes, move it"}
+        pending={pending}
+        onConfirm={() => run({ to: "new" })}
+      >
+        {capital(they.possessive)} application goes back to New.
+      </DecisionDialog>
+      <DecisionDialog
+        open={asking === "rejected_email_sent"}
+        onOpenChange={(open) => !open && close()}
+        tone="danger"
+        icon={<MailCheck className="h-5 w-5" strokeWidth={1.75} />}
+        title={`Mark the refusal email to ${first} sent?`}
+        cancelLabel="Not yet"
+        confirmLabel="Yes, it's sent"
+        pending={pending}
+        onConfirm={() => run({ to: "rejected_email_sent" })}
+      >
+        {capital(they.possessive)} status becomes Rejected · email sent, and {they.subject} {verb(they, "sees", "see")} &ldquo;Not selected&rdquo; on{" "}
+        {they.possessive} My applications page.
+      </DecisionDialog>
+      <DecisionDialog
+        open={asking === "accepted_email_sent"}
+        onOpenChange={(open) => !open && close()}
+        tone="success"
+        icon={<MailCheck className="h-5 w-5" strokeWidth={1.75} />}
+        title={`Mark the acceptance email to ${first} sent?`}
+        cancelLabel="Not yet"
+        confirmLabel="Yes, it's sent"
+        pending={pending}
+        onConfirm={() => run({ to: "accepted_email_sent" })}
+      >
+        {capital(they.possessive)} status becomes Accepted · email sent, and {they.subject} {verb(they, "sees", "see")} the acceptance on{" "}
+        {they.possessive} My applications page.
+      </DecisionDialog>
+      {/* No button sets these two: a hand pick asks what the step that sets each does (ruling R1.1 on #745). */}
+      <DecisionDialog
+        open={asking === "accepted_for_another_position"}
+        onOpenChange={(open) => !open && close()}
+        tone="danger"
+        icon={<ArrowRightLeft className="h-5 w-5" strokeWidth={1.75} />}
+        title={`Mark ${first} accepted for another position?`}
+        cancelLabel="Not yet"
+        confirmLabel="Yes, mark it"
+        pending={pending}
+        onConfirm={() => run({ to: "accepted_for_another_position" })}
+      >
+        {capital(they.possessive)} status becomes Accepted for another position, as when {they.subject} {verb(they, "joins", "join")} through another
+        application, and {they.subject} {verb(they, "sees", "see")} &ldquo;Not selected&rdquo; for this one.
+      </DecisionDialog>
+      <DecisionDialog
+        open={asking === "withdrawn"}
+        onOpenChange={(open) => !open && close()}
+        tone="danger"
+        icon={<LogOut className="h-5 w-5" strokeWidth={1.75} />}
+        title={`Withdraw ${first}'s application?`}
+        cancelLabel={`Keep ${they.possessive} application`}
+        confirmLabel="Yes, withdraw"
+        pending={pending}
+        onConfirm={() => run({ to: "withdrawn" })}
+      >
+        {capital(they.possessive)} status becomes Withdrawn, as when {they.subject} {verb(they, "withdraws", "withdraw")} it, and it leaves this list.
+        You can&apos;t undo this.
+      </DecisionDialog>
+      <DecisionDialog
+        open={asking === "nda_received"}
+        onOpenChange={(open) => !open && close()}
+        tone="success"
+        icon={<FileCheck2 className="h-5 w-5" strokeWidth={1.75} />}
+        title={`Mark ${first}'s signed NDA received?`}
+        cancelLabel="Not yet"
+        confirmLabel="Yes, it arrived"
+        pending={pending}
+        onConfirm={() => run({ to: "nda_received" })}
+      >
+        {capital(they.possessive)} status becomes NDA received. Then confirm {they.possessive} join.
       </DecisionDialog>
       {a.standing.kind === "member" ? (
-        // 58h2: already on the team, so no NDA wait; they keep every division they are in.
+        // 58h2: already on the team; they keep every division they are in.
         <DecisionDialog
-          open={asking === "confirm-join"}
+          open={asking === "joined"}
           onOpenChange={(open) => !open && close()}
           tone="success"
           icon={<UserPlus className="h-5 w-5" strokeWidth={1.75} />}
@@ -561,14 +782,15 @@ function Detail({
           cancelLabel="Not yet"
           confirmLabel="Yes, add them"
           pending={pending}
-          onConfirm={() => run({ kind: "confirm-join" })}
+          onConfirm={() => run({ to: "joined" })}
         >
           {memberJoinLine(first, unit, memberDivisionNames(a.standing))}
+          {othersTaken > 0 && ` ${otherApplicationsLine(othersTaken)}`}
         </DecisionDialog>
       ) : (
         // 58h: someone new, in neutral words whatever the form says.
         <DecisionDialog
-          open={asking === "confirm-join"}
+          open={asking === "joined"}
           onOpenChange={(open) => !open && close()}
           tone="success"
           icon={<UserPlus className="h-5 w-5" strokeWidth={1.75} />}
@@ -576,14 +798,21 @@ function Detail({
           cancelLabel="Not yet"
           confirmLabel="Yes, they join"
           pending={pending}
-          onConfirm={() => run({ kind: "confirm-join" })}
+          onConfirm={() => run({ to: "joined" })}
         >
-          Only confirm once their signed NDA has arrived. They become a member, get the member dashboard, and show up in Members and on the Team
-          tree.
+          They become a member, get the member dashboard, and show up in Members and on the Team tree.
+          {othersTaken > 0 && ` ${otherApplicationsLine(othersTaken)}`}
         </DecisionDialog>
       )}
     </>
   );
+}
+
+/** Confirm join's word on the person's other open applications, which it sets to "Accepted for another position". */
+function otherApplicationsLine(count: number): string {
+  return count === 1
+    ? "Their other open application becomes Accepted for another position."
+    : `Their ${count} other open applications become Accepted for another position.`;
 }
 
 /**
@@ -601,168 +830,173 @@ function memberJoinLine(first: string, unit: string, divisions: readonly string[
   return `${first} is already in ${places}, and signed the NDA. They join ${unit} too and keep ${kept}.`;
 }
 
-function FooterButton({
-  step,
-  kind,
-  ready = true,
-  onAsk,
-}: {
-  step: LeadStep;
-  kind: "primary" | "secondary";
-  ready?: boolean;
-  onAsk: (asking: Asking) => void;
-}) {
+/**
+ * One action button of the bottom bar; it only opens the confirm of the
+ * status it sets. A lone button takes both columns beside Cancel. While a
+ * hand pick is unsaved it is `locked` (board 97b).
+ */
+function FooterButton({ step, wide, locked, onAsk }: { step: LeadStep; wide: boolean; locked: boolean; onAsk: (asking: Asking) => void }) {
   const look =
-    kind === "primary"
-      ? "bg-prt-text text-ground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-      : "border border-danger/40 text-danger hover:border-danger md:border-white-10 md:text-prt-text md:hover:border-border-strong";
+    step.emphasis === "primary"
+      ? "bg-prt-text text-ground hover:opacity-90"
+      : step.sets.startsWith("rejected") || step.move === "withdraw-acceptance"
+        ? "border border-danger/40 text-danger hover:border-danger md:border-white-10 md:text-prt-text md:hover:border-border-strong"
+        : "border border-white-10 text-prt-text hover:border-border-strong";
   return (
     <button
       type="button"
-      disabled={!ready}
-      onClick={() => onAsk(step.move === "open" || step.move === "set-nda" ? null : step.move)}
-      className={`h-11 rounded-full text-[14px] font-semibold transition duration-300 ease-out ${look} ${FOCUS}`}
+      disabled={locked}
+      onClick={() => onAsk(step.sets)}
+      className={`h-11 rounded-full px-3 text-[14px] font-semibold transition duration-300 ease-out ${wide ? "col-span-2" : ""} ${look} ${LOCKABLE} ${FOCUS}`}
     >
       {step.label}
     </button>
   );
 }
 
-/** The card for where the application stands now: the interview (58d), the NDA wait (58g), or the join. */
+/**
+ * The card for where the application stands now: the interview (58d), the
+ * acceptance email and the NDA (58g), or the join. It only says where it
+ * stands; the bottom bar's buttons move it, and Change times sits here, on
+ * the interview, where `changeTimes` offers it. Its buttons are `locked`
+ * while a hand pick is unsaved (board 97b).
+ */
 function StageCard({
   application: a,
   first,
   they,
-  now,
-  pending,
+  viewer,
+  changeTimes,
+  locked,
   onAsk,
-  onMove,
 }: {
   application: ApplicationEntry;
   first: string;
   they: Pronouns;
-  now: string;
-  pending: boolean;
+  /** The team leader reads the acceptance email step as their own (issue #790). */
+  viewer: StatusSetterViewer;
+  changeTimes: boolean;
+  locked: boolean;
   onAsk: (asking: Asking) => void;
-  onMove: (step: LeadMove) => void;
 }) {
   const state = a.state;
-  const boxId = useId();
-  if (state.stage === "interview") {
-    const booked = state.booked;
-    return (
-      <Section title="Interview">
-        <div className={`rounded-xl border px-4 py-4 ${booked ? "border-accent/40 bg-accent/[0.06]" : "border-hairline bg-panel/60"}`}>
-          {booked ? (
-            <div className="flex items-center gap-3.5">
-              <span className="hidden h-11 w-11 shrink-0 flex-col items-center justify-center rounded-lg border border-accent/40 bg-accent-soft md:flex">
-                <span className="text-[16px] font-bold leading-none text-accent">{slotBadge(booked.slot).day}</span>
-                <span className="mt-0.5 font-mono text-[8px] tracking-[0.2em] text-accent">{slotBadge(booked.slot).month}</span>
-              </span>
-              <div className="min-w-0">
-                <p className="text-[15px] font-semibold">{slotRange(booked.slot)}</p>
-                <p className="mt-0.5 text-[12px] text-prt-muted">
-                  {first} picked this on {dayMonth(booked.at)}
-                </p>
+  switch (state.status) {
+    case "interview": {
+      const booked = state.booked;
+      const offered = state.offered.length;
+      return (
+        <Section title="Interview">
+          <div className={`rounded-xl border px-4 py-4 ${booked ? "border-accent/40 bg-accent/[0.06]" : "border-hairline bg-panel/60"}`}>
+            {booked ? (
+              <div className="flex items-center gap-3.5">
+                <span className="hidden h-11 w-11 shrink-0 flex-col items-center justify-center rounded-lg border border-accent/40 bg-accent-soft md:flex">
+                  <span className="text-[16px] font-bold leading-none text-accent">{slotBadge(booked.slot).day}</span>
+                  <span className="mt-0.5 font-mono text-[8px] tracking-[0.2em] text-accent">{slotBadge(booked.slot).month}</span>
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[15px] font-semibold">{slotRange(booked.slot)}</p>
+                  <p className="mt-0.5 text-[12px] text-prt-muted">
+                    {first} picked this on {dayMonth(booked.at)}
+                  </p>
+                </div>
               </div>
-            </div>
-          ) : (
-            <div>
-              <p className="text-[15px] font-semibold">No time picked yet</p>
-              <p className="mt-0.5 text-[12px] text-prt-muted">
-                You offered {state.offered.length} {state.offered.length === 1 ? "time" : "times"}. {first} picks one on {they.possessive} My applications page.
-              </p>
-              <ul className="mt-3 flex flex-wrap gap-1.5">
-                {state.offered.map((s) => (
-                  <li key={s.start} className="rounded-md border border-hairline px-2 py-1 text-[12px] text-text-2">
-                    {slotDayTime(s)}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <div className={`mt-4 grid gap-2.5 ${booked ? "grid-cols-2" : "grid-cols-1"}`}>
-            {booked && (
-              <button type="button" onClick={() => downloadIcs(a, booked.slot)} className={CARD_BUTTON}>
-                <CalendarPlus aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-                Add to calendar
-              </button>
+            ) : offered === 0 ? (
+              <div>
+                <p className="text-[15px] font-semibold">No times offered yet</p>
+                <p className="mt-0.5 text-[12px] text-prt-muted">The interview is being arranged.</p>
+              </div>
+            ) : (
+              <div>
+                <p className="text-[15px] font-semibold">No time picked yet</p>
+                <p className="mt-0.5 text-[12px] text-prt-muted">
+                  {/* A viewer who may not move it offered nothing (issue #577). */}
+                  {a.canChange ? `You offered ${offered} ${offered === 1 ? "time" : "times"}.` : `${offered} ${offered === 1 ? "time is" : "times are"} offered.`}{" "}
+                  {first} picks one on {they.possessive} My applications page.
+                </p>
+                <ul className="mt-3 flex flex-wrap gap-1.5">
+                  {state.offered.map((s) => (
+                    <li key={s.start} className="rounded-md border border-hairline px-2 py-1 text-[12px] text-text-2">
+                      {slotDayTime(s)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
-            <button type="button" onClick={() => onAsk("offer-interview")} className={CARD_BUTTON}>
-              <CalendarClock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Change times
-            </button>
+            {/* Change times is a button of the Interview status, so only where the viewer may move it (issue #577); Add to calendar is the viewer's own. */}
+            {(booked || changeTimes) && (
+              <div className={`mt-4 grid gap-2.5 ${booked && changeTimes ? "grid-cols-2" : "grid-cols-1"}`}>
+                {booked && (
+                  <button type="button" disabled={locked} onClick={() => downloadIcs(a, booked.slot)} className={CARD_BUTTON}>
+                    <CalendarPlus aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    Add to calendar
+                  </button>
+                )}
+                {changeTimes && (
+                  <button type="button" disabled={locked} onClick={() => onAsk("interview")} className={CARD_BUTTON}>
+                    <CalendarClock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    Change times
+                  </button>
+                )}
+              </div>
+            )}
           </div>
-        </div>
-      </Section>
-    );
-  }
-  if (state.stage === "accepted" && a.standing.kind === "member") {
-    // 58h2: they signed the team's one NDA when they joined, so there is nothing to tick.
-    const signed = a.standing.ndaYear === null ? "when they joined" : `in ${a.standing.ndaYear}`;
-    return (
-      <Section title="Joining">
-        <div className="rounded-xl border border-success/40 bg-success/5 px-4 py-4">
-          <p className="flex items-center gap-2.5 text-[15px] font-semibold">
-            <Signature aria-hidden className="h-4 w-4 text-success" strokeWidth={1.75} />
-            Ready to confirm the join
+        </Section>
+      );
+    }
+    case "accepted_email_to_be_sent":
+    case "accepted_email_sent":
+    case "nda_received":
+      return (
+        <Section title="Joining">
+          <div className="rounded-xl border border-success/40 bg-success/5 px-4 py-4">
+            <p className="flex items-center gap-2.5 text-[15px] font-semibold">
+              <Signature aria-hidden className="h-4 w-4 text-success" strokeWidth={1.75} />
+              {JOINING_TITLE[state.status]}
+            </p>
+            <p className="mt-2 text-[12px] leading-relaxed text-text-2">
+              Accepted on {dayMonth(state.acceptedAt)}. {joiningLine(state.status, first, they, a.canChange, viewer.teamLeader)}
+            </p>
+          </div>
+        </Section>
+      );
+    case "joined":
+      return (
+        <Section title="Joining">
+          <p className="flex items-center gap-2.5 rounded-xl border border-success/40 bg-success/5 px-4 py-3.5 text-[14px] font-semibold">
+            <UserPlus aria-hidden className="h-4 w-4 text-success" strokeWidth={1.75} />
+            Joined the team on {dayMonth(state.joinedAt)}
           </p>
-          <p className="mt-2 text-[12px] leading-relaxed text-text-2">
-            Accepted on {dayMonth(state.acceptedAt)}. {first} is already a member and signed the NDA {signed}, so no NDA is needed.
-          </p>
-        </div>
-      </Section>
-    );
+        </Section>
+      );
+    default:
+      return null;
   }
-  if (state.stage === "accepted") {
-    return (
-      <Section title="Joining">
-        <div className="rounded-xl border border-success/40 bg-success/5 px-4 py-4">
-          <p className="flex items-center gap-2.5 text-[15px] font-semibold">
-            <Signature aria-hidden className="h-4 w-4 text-success" strokeWidth={1.75} />
-            {state.ndaArrived ? "Ready to confirm the join" : "Waiting for the signed NDA"}
-          </p>
-          <p className="mt-2 text-[12px] leading-relaxed text-text-2">
-            Accepted on {dayMonth(state.acceptedAt)}. The team leader sends the welcome email with the NDA. When {first} sends it back signed,
-            confirm {they.possessive} join.
-          </p>
-          <label htmlFor={boxId} className="mt-3.5 flex cursor-pointer items-center gap-2.5 text-[14px] font-medium">
-            <input
-              id={boxId}
-              type="checkbox"
-              checked={state.ndaArrived}
-              disabled={pending}
-              onChange={(e) => onMove({ kind: "set-nda", arrived: e.target.checked })}
-              className="peer sr-only"
-            />
-            <span
-              aria-hidden
-              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border transition-colors duration-300 ease-out peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent ${
-                state.ndaArrived ? "border-success bg-success text-prt-text" : "border-border-strong"
-              }`}
-            >
-              {state.ndaArrived && <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
-            </span>
-            The signed NDA arrived
-          </label>
-        </div>
-      </Section>
-    );
-  }
-  if (state.stage === "joined") {
-    return (
-      <Section title="Joining">
-        <p className="flex items-center gap-2.5 rounded-xl border border-success/40 bg-success/5 px-4 py-3.5 text-[14px] font-semibold">
-          <UserPlus aria-hidden className="h-4 w-4 text-success" strokeWidth={1.75} />
-          Joined the team on {dayMonth(state.joinedAt)}
-        </p>
-      </Section>
-    );
-  }
-  return null;
 }
 
-const CARD_BUTTON = `inline-flex h-9 items-center justify-center gap-2 rounded-full border border-white-10 text-[13px] font-semibold transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`;
+/** The joining card's title for each accepted status (58g). */
+const JOINING_TITLE: Readonly<Record<AcceptedStatus, string>> = {
+  accepted_email_to_be_sent: "Waiting for the acceptance email",
+  accepted_email_sent: "Waiting for the signed NDA",
+  nda_received: "Ready to confirm the join",
+};
+
+/**
+ * What happens next on an accepted application; the step a viewer who may not
+ * move it cannot take is left out (issue #577). The team leader, who sends the
+ * acceptance email, reads that step as their own (issue #790).
+ */
+function joiningLine(status: AcceptedStatus, first: string, they: Pronouns, canChange: boolean, teamLeader: boolean): string {
+  switch (status) {
+    case "accepted_email_to_be_sent":
+      return teamLeader ? "You send the welcome email with the NDA, then mark it sent." : "The team leader sends the welcome email with the NDA, then marks it sent.";
+    case "accepted_email_sent":
+      return `The email with the NDA went out.${canChange ? ` When ${first} sends it back signed, mark it received.` : ""}`;
+    case "nda_received":
+      return `The signed NDA arrived.${canChange ? ` Confirm ${they.possessive} join.` : ""}`;
+  }
+}
+
+const CARD_BUTTON = `inline-flex h-9 items-center justify-center gap-2 rounded-full border border-white-10 text-[13px] font-semibold transition duration-300 ease-out hover:border-border-strong ${LOCKABLE} ${FOCUS}`;
 
 /** Add to calendar: the booked time as an .ics file, made in the browser. The site sends no invite. */
 function downloadIcs(a: ApplicationEntry, slot: SlotTime) {
@@ -775,8 +1009,8 @@ function downloadIcs(a: ApplicationEntry, slot: SlotTime) {
   URL.revokeObjectURL(url);
 }
 
-function OtherCard({ other }: { other: OtherApplication }) {
-  const reached = progressOf(other.stage);
+function OtherCard({ other, listed }: { other: OtherApplication; listed: ListedStatus }) {
+  const reached = progressOf(other.status);
   return (
     <div className="rounded-xl border border-hairline bg-panel/60 px-4 py-3">
       <div className="flex items-start justify-between gap-3">
@@ -786,7 +1020,7 @@ function OtherCard({ other }: { other: OtherApplication }) {
             {other.department} · {other.division}
           </p>
         </div>
-        <StageTag stage={other.stage} />
+        <StatusTag listed={listed} />
       </div>
       {reached !== null && (
         <div aria-hidden="true" className="mt-3 hidden grid-cols-4 gap-1.5 md:grid">
@@ -863,51 +1097,165 @@ function DocumentCard({ name, detail, href }: { name: string; detail: string; hr
   );
 }
 
-/** The stage at the top of the panel (boards 58, 58d, 58g); its menu offers the steps the flow allows from here. */
-function StageMenu({
-  label,
-  tone,
-  steps,
-  onStep,
+/** "built-in:interview", "added:second_interview": one radio value per entry of the list. */
+function statusValue(status: ApplicationStatus): string {
+  return `${status.kind}:${status.key}`;
+}
+
+/** A status's colour, as the list stores it: it is data the Statuses editor sets, not a colour of this page. */
+function StatusDot({ colour }: { colour: string }) {
+  return <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: colour }} />;
+}
+
+const STATUS_LABEL = "w-14 shrink-0 font-mono text-[10px] uppercase tracking-[0.2em] text-dim";
+
+/**
+ * The Status picker at the head of the panel (boards 97, 97b, 97c, issue
+ * #750): the current status with its colour, opening the whole list, the ten
+ * built-in statuses with the added ones under their parent, then "Manage
+ * statuses…", which opens the Statuses editor (board 97d, issue #752). Any
+ * status can be picked. A pick is a draft: Save and Cancel sit beside it and
+ * the line under it says which action buttons wait. Where the viewer may not
+ * move the application it only shows the status.
+ */
+function StatusPicker({
+  statuses,
+  current,
+  draft,
+  canChange,
+  maySet,
+  pending,
+  hint,
+  onPick,
+  onSave,
+  onCancel,
+  onManage,
 }: {
-  label: string;
-  tone: ReturnType<typeof stagePill>["tone"];
-  steps: readonly LeadStep[];
-  onStep: (step: LeadStep) => void;
+  statuses: readonly ListedStatus[];
+  current: ApplicationStatus;
+  draft: ApplicationStatus | null;
+  canChange: boolean;
+  /** Whether the viewer may set a status: one only the team leader sets shows locked to anyone else (board 97e). */
+  maySet: (status: ApplicationStatus) => boolean;
+  pending: boolean;
+  hint: string;
+  onPick: (status: ApplicationStatus) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  /** Opens the Statuses editor; null where the viewer does not manage the status list. */
+  onManage: (() => void) | null;
 }) {
-  const trigger = `mt-4 flex h-9 w-full items-center gap-2 rounded-lg border px-3 text-[13px] font-medium transition-colors duration-300 ease-out ${toneSurface(tone)} ${FOCUS}`;
-  if (steps.length === 0) {
+  const shown = listedStatusOf(statuses, draft ?? current);
+  if (!canChange) {
     return (
-      <p className={trigger}>
-        <span aria-hidden="true" className={`h-2 w-2 rounded-full ${toneDot(tone)}`} />
-        {label}
-      </p>
+      <div className="flex items-center gap-3 md:mt-4">
+        <span className={STATUS_LABEL}>Status</span>
+        <p className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-hairline px-3 text-[13px] font-medium">
+          <span className="sr-only">Status: </span>
+          <StatusDot colour={shown.colour} />
+          <span className="truncate">{shown.name}</span>
+        </p>
+      </div>
     );
   }
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger aria-label={`Stage: ${label}. Next steps`} className={`${trigger} hover:border-border-strong data-[state=open]:border-border-strong`}>
-        <span aria-hidden="true" className={`h-2 w-2 rounded-full ${toneDot(tone)}`} />
-        {label}
-        <ChevronDown aria-hidden className="h-3.5 w-3.5 opacity-70" strokeWidth={2} />
-      </DropdownMenuTrigger>
-      <DropdownMenuPortal>
-        <DropdownMenuPrimitive.Content
-          align="start"
-          sideOffset={6}
-          className="z-50 min-w-[200px] rounded-xl border border-hairline bg-panel p-1.5 text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0"
-        >
-          {steps.map((step) => (
-            <DropdownMenuPrimitive.Item
-              key={step.label}
-              onSelect={() => onStep(step)}
-              className="flex h-8 cursor-pointer items-center rounded-lg px-2.5 text-[13px] text-text-2 outline-none transition-colors data-[highlighted]:bg-white-5 data-[highlighted]:text-prt-text"
+    <div className="md:mt-4">
+      <div className="flex items-center gap-3">
+        <span className={STATUS_LABEL}>Status</span>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={`Status: ${shown.name}${draft ? ", not saved" : ""}`}
+            className={`flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 text-left text-[13px] font-medium transition-colors duration-300 ease-out ${
+              draft ? "border-warning" : "border-hairline hover:border-border-strong data-[state=open]:border-border-strong"
+            } ${FOCUS}`}
+          >
+            <StatusDot colour={shown.colour} />
+            <span className="truncate">{shown.name}</span>
+            <ChevronDown aria-hidden className="ml-auto h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={2} />
+          </DropdownMenuTrigger>
+          <DropdownMenuPortal>
+            <DropdownMenuPrimitive.Content
+              align="end"
+              sideOffset={6}
+              className="z-50 max-h-[min(440px,var(--radix-dropdown-menu-content-available-height))] w-[var(--radix-dropdown-menu-trigger-width)] min-w-[260px] overflow-y-auto rounded-xl border border-hairline bg-panel p-1.5 text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0"
             >
-              {step.label}
-            </DropdownMenuPrimitive.Item>
-          ))}
-        </DropdownMenuPrimitive.Content>
-      </DropdownMenuPortal>
-    </DropdownMenu>
+              <DropdownMenuPrimitive.RadioGroup
+                value={statusValue(draft ?? current)}
+                onValueChange={(value) => {
+                  const picked = statuses.find((s) => statusValue(s.status) === value);
+                  if (picked) onPick(picked.status);
+                }}
+              >
+                {statuses.map((s) => {
+                  // A status only the team leader sets cannot be picked by anyone else, unless it is already the current one.
+                  const locked = !maySet(s.status) && !sameStatus(s.status, current);
+                  return (
+                    <DropdownMenuPrimitive.RadioItem
+                      key={statusValue(s.status)}
+                      value={statusValue(s.status)}
+                      disabled={locked}
+                      className={`flex h-[30px] cursor-pointer items-center gap-2.5 rounded-lg pr-2.5 text-[13px] text-text-2 outline-none transition-colors data-[highlighted]:bg-white-5 data-[state=checked]:bg-white-5 data-[highlighted]:text-prt-text data-[state=checked]:text-prt-text data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 ${
+                        s.status.kind === "added" ? "pl-[30px]" : "pl-2.5"
+                      }`}
+                    >
+                      <StatusDot colour={s.colour} />
+                      <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                      {locked ? (
+                        <span className="flex shrink-0 items-center gap-1.5 font-mono text-[9px] tracking-[0.1em] text-dim">
+                          <Lock aria-hidden className="h-3 w-3" strokeWidth={1.75} />
+                          Team leader<span className="sr-only"> only</span>
+                        </span>
+                      ) : (
+                        s.status.kind === "added" && <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.2em] text-dim">Added</span>
+                      )}
+                      <DropdownMenuPrimitive.ItemIndicator>
+                        <Check aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={2} />
+                      </DropdownMenuPrimitive.ItemIndicator>
+                    </DropdownMenuPrimitive.RadioItem>
+                  );
+                })}
+              </DropdownMenuPrimitive.RadioGroup>
+              {onManage && (
+                <>
+                  <DropdownMenuPrimitive.Separator className="mx-1 my-1.5 h-px bg-hairline" />
+                  <DropdownMenuPrimitive.Item
+                    onSelect={onManage}
+                    className="flex h-[30px] cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-text-2 outline-none transition-colors data-[highlighted]:bg-white-5 data-[highlighted]:text-prt-text"
+                  >
+                    <SlidersHorizontal aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                    Manage statuses…
+                  </DropdownMenuPrimitive.Item>
+                </>
+              )}
+            </DropdownMenuPrimitive.Content>
+          </DropdownMenuPortal>
+        </DropdownMenu>
+        {draft && (
+          <>
+            <button
+              type="button"
+              onClick={onCancel}
+              className={`h-9 shrink-0 rounded-full border border-white-10 px-4 text-[13px] font-semibold transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={pending}
+              className={`h-9 shrink-0 rounded-full bg-prt-text px-4 text-[13px] font-semibold text-ground transition duration-300 ease-out hover:opacity-90 ${LOCKABLE} ${FOCUS}`}
+            >
+              Save
+            </button>
+          </>
+        )}
+      </div>
+      {draft && (
+        <p role="status" className="mt-2.5 flex gap-1.5 text-[12px] leading-snug text-warning md:pl-[68px]">
+          <CircleAlert aria-hidden className="mt-px h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+          {hint}
+        </p>
+      )}
+    </div>
   );
 }

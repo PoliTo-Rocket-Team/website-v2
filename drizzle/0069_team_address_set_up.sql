@@ -1,0 +1,14 @@
+-- A team address's holder sets it up (epic #578, owner finding on PR #794):
+-- after Mark created, and after a hand-over's Mark done, the holder's
+-- Overview shows "Your team address is ready" with the Gmail set-up steps
+-- (as board 94f does for an email alias) until they press I've set it up.
+-- That press is stored here, on the address, and Mark done clears it, so the
+-- new holder gets the card. lib/dashboard/team-address.ts owns the rules.
+--
+-- Additive only: every preview build applies this to the shared preview
+-- database. One new nullable column; nothing is dropped, renamed or
+-- rewritten, and no row is changed. Rows already stored read as not set up.
+--
+-- Written to apply again over a database that already holds it (as 0066 to
+-- 0068 are), so a renumbered copy applies cleanly.
+ALTER TABLE "team_addresses" ADD COLUMN IF NOT EXISTS "set_up_at" timestamp with time zone;

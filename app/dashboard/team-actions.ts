@@ -6,13 +6,13 @@ import { canReach, type DashboardPageKey } from "@/lib/dashboard/access";
 import type { TeamWrites } from "@/lib/dashboard/data";
 import type { TeamSearch } from "@/lib/dashboard/division-edit";
 import { isDetailsTarget, type AddLookup, type DetailsTarget } from "@/lib/dashboard/division-members";
+import type { MoveLookup } from "@/lib/dashboard/member-move";
 import { openDashboard } from "@/lib/dashboard/open";
 import { checkDeparture, type EditableRole } from "@/lib/dashboard/team";
 import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
 
 // The Team pages' writes (issues #143 and #172). Each goes through the dashboard data
-// interface, so a test developer's change lands in their cookie and nowhere
-// else; a source that stores none answers false.
+// interface, which writes to the database; a source that stores none answers false.
 
 export type TeamActionResult = { readonly ok: true } | { readonly ok: false; readonly error: string };
 
@@ -74,15 +74,11 @@ export async function addAdvisor(input: unknown, form: FormData | null): Promise
   return answered(await writes.addAdvisor(input, await photoIn(form)));
 }
 
-export async function saveMember(
-  personId: number,
-  role: EditableRole | null,
-  pageTitle: string | null,
-): Promise<TeamActionResult> {
+/** Edit details' lead or member switch for one division (issue #584). */
+export async function saveMember(personId: number, divisionId: number, role: EditableRole): Promise<TeamActionResult> {
   const writes = await writesOn("members");
-  if (!writes || !isId(personId) || (role !== null && role !== "division-lead" && role !== "member")) return REFUSED;
-  if (pageTitle !== null && typeof pageTitle !== "string") return REFUSED;
-  return done(await writes.saveMember(personId, { role, pageTitle }));
+  if (!writes || !isId(personId) || !isId(divisionId) || (role !== "division-lead" && role !== "member")) return REFUSED;
+  return done(await writes.saveMember(personId, { divisionId, role }));
 }
 
 /** Board 59d: the years as typed ("2024 – 2026") and the reason, or none. */
@@ -94,8 +90,14 @@ export async function moveToAlumni(personId: number, years: string, reason: stri
   return done(await writes.moveToAlumni(personId, departure.value));
 }
 
+/**
+ * The Members banner's Confirm join (board 59). The Applications area decides
+ * it, as on the Applications page (Owner decision, 2026-10-22, issue #584):
+ * no Members page gate here, and the write runs `moveApplication`'s own rule.
+ */
 export async function confirmJoin(applicationId: number): Promise<TeamActionResult> {
-  const writes = await writesOn("members");
+  const opening = await openDashboard();
+  const writes = opening.kind === "open" ? opening.data.teamWrites : null;
   if (!writes || !isId(applicationId)) return REFUSED;
   return done(await writes.confirmJoin(applicationId));
 }
@@ -144,21 +146,36 @@ export async function removeFromDivision(personId: number, divisionId: number): 
   return done(await writes.removeFromDivision(personId, divisionId));
 }
 
-export async function saveMemberDetails(target: DetailsTarget, divisionId: number, input: unknown): Promise<TeamActionResult> {
+/** Where Edit details and the Team tree may move someone (issue #647): nothing for someone the viewer may not edit. */
+export async function findMoveTargets(personId: number): Promise<MoveLookup> {
+  const opening = await openDashboard();
+  if (opening.kind !== "open" || !canReach(opening.data.viewer, "members") || !isId(personId)) return { kind: "none" };
+  return opening.data.findMoveTargets(personId);
+}
+
+/** Move to another unit (issue #647): the one move Edit details and the Team tree both save through, checked again on the server. */
+export async function moveMember(input: unknown): Promise<TeamActionResult> {
   const writes = await writesOn("members");
-  if (!writes || !isDetailsTarget(target) || !isId(divisionId)) return REFUSED;
+  if (!writes) return REFUSED;
+  return answered(await writes.moveMember(input));
+}
+
+/** Edit details: `divisionId` names the division whose title the form sets, or null for a seat with none (issue #584). */
+export async function saveMemberDetails(target: DetailsTarget, divisionId: number | null, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes || !isDetailsTarget(target) || (divisionId !== null && !isId(divisionId))) return REFUSED;
   return answered(await writes.saveMemberDetails(target, divisionId, input));
 }
 
 /** Edit details' photo: the cropped square JPEG in the form's `photo` field, or none to remove it. */
-export async function setMemberPhoto(personId: number, divisionId: number, form: FormData | null): Promise<TeamActionResult> {
+export async function setMemberPhoto(personId: number, form: FormData | null): Promise<TeamActionResult> {
   const writes = await writesOn("members");
-  if (!writes || !isId(personId) || !isId(divisionId)) return REFUSED;
+  if (!writes || !isId(personId)) return REFUSED;
   const file = form?.get("photo");
   const photo: Upload | null =
     file instanceof File && file.size > 0 ? { name: file.name, contentType: file.type, bytes: new Uint8Array(await file.arrayBuffer()) } : null;
   if (form !== null && photo === null) return { ok: false, error: "Choose a photo." };
-  return answered(await writes.setMemberPhoto(personId, divisionId, photo));
+  return answered(await writes.setMemberPhoto(personId, photo));
 }
 
 // New division, Edit division and Close division (issue #232), opened from
@@ -222,4 +239,29 @@ export async function handOverTeamLeader(input: unknown): Promise<TeamActionResu
   const writes = await writesOn("team-tree");
   if (!writes) return REFUSED;
   return answered(await writes.handOverTeamLeader(input));
+}
+
+// The seat row of Edit team tree (issue #627). The rules are checked again
+// behind each of these (lib/dashboard/team-seats.ts): only the team leader
+// and full access change a team-level seat.
+
+/** Change holder on a seat box: who holds the seat `roleId` from now on, and what the holder does next. */
+export async function changeSeatHolder(roleId: number, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes || !isId(roleId)) return REFUSED;
+  return answered(await writes.changeSeatHolder(roleId, input));
+}
+
+/** Add seat: a person and the seat's title. */
+export async function addSeat(input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes) return REFUSED;
+  return answered(await writes.addSeat(input));
+}
+
+/** Remove seat (issue #643): the seat `roleId` ends with no successor; its holder stays on the team. */
+export async function removeSeat(roleId: number): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes || !isId(roleId)) return REFUSED;
+  return answered(await writes.removeSeat(roleId));
 }

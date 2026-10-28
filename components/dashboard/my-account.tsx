@@ -3,7 +3,6 @@
 import { useState } from "react";
 import type { YourDetails } from "@/lib/dashboard/details";
 import { DELETE_ACCOUNT_COPY, type MyAccount } from "@/lib/dashboard/self";
-import type { ViewerSession } from "@/lib/dashboard/viewer";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { DANGER_PILL, DangerBox, DangerRow, DeleteAccountDialog, SignInCard } from "./account-parts";
 import { PageHeader } from "./page-header";
@@ -17,13 +16,13 @@ type Actions = {
 // Board 51 (51m on phones): an applicant's own account. How they sign in,
 // "Your details", and Delete account. Their applications are on My
 // applications. Props in, nothing fetched.
-export function MyAccountView({ account, session, ...actions }: { account: MyAccount; session: ViewerSession } & Actions) {
+export function MyAccountView({ account, ...actions }: { account: MyAccount } & Actions) {
   const [deleting, setDeleting] = useState(false);
   return (
     <>
       <PageHeader title="My account" intro="Your sign-in and the details we keep for your applications." />
       <div className="mt-6 flex flex-col gap-5">
-        <SignInCard name={account.name} signIn={account.signIn} />
+        <SignInCard account={account} />
         <YourDetailsCard details={account.details} editor="applicant" saveDetails={actions.saveDetails} />
         <DangerBox>
           <DangerRow title="Delete account" text={DELETE_ACCOUNT_COPY}>
@@ -36,7 +35,6 @@ export function MyAccountView({ account, session, ...actions }: { account: MyAcc
       <DeleteAccountDialog
         open={deleting}
         onOpenChange={setDeleting}
-        session={session}
         openApplications={account.openApplications}
         member={false}
         deleteAccount={actions.deleteAccount}

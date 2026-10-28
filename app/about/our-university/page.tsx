@@ -20,7 +20,7 @@ export default function OurUniversityPage() {
     <div className="relative bg-ground">
       <LandingNavbar />
       <PageSky>
-        <main className="pb-section pt-16 md:pt-[72px]">
+        <main className="pt-16 md:pt-[72px]">
           <PageHeader {...university.header} statsOnPhone="two-by-two" />
           <EntrancePhoto photo={university.photo} />
           <Politecnico politecnico={university.politecnico} />

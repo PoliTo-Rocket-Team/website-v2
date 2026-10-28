@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
-import { ExternalLink, Pencil, Plus } from "lucide-react";
+import { ExternalLink, Plus } from "lucide-react";
 import type { ContentItem } from "@/lib/content/versioned";
 import { projectRows, type ProjectRow, type RowVisual } from "@/lib/project-content/dashboard-list";
 import { takenSlugs } from "@/lib/project-content/new-project";
@@ -13,13 +12,15 @@ import { CONTENT_FOCUS as FOCUS, StatusPill } from "./content-parts";
 import { NewProjectDialog } from "./new-project-dialog";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
+import { EditChip } from "./row-open";
 
 // The dashboard Projects page (board 91, issue #506): one row per stored
 // project, drafts included, newest first by the rule Home and /projects use
 // (lib/project-content/dashboard-list.ts). Each row shows the project's own
 // background with its top-of-page visual, its name and card line, its kind, years, card status and whether
-// it is on the site, then Edit page (the project on its page, board 75b),
-// View on site once a version is published. The row has no menu (Owner
+// it is on the site, then View on site once a version is published and the
+// Edit chip. A click anywhere on the row opens the project on its page
+// (board 75b, issue #617). The row has no menu (Owner
 // decision, issue #506). The list sets no order. On phones each row is a compact card with the same fields
 // and actions. New project in the header stores a draft and opens it in the
 // editor (issue #301).
@@ -27,7 +28,6 @@ import { PANEL } from "./panel";
 /** Project, Kind, Years, Status, On the site and the actions; below lg each row is a card. */
 const COLUMNS = "lg:grid lg:grid-cols-[minmax(0,2.6fr)_72px_minmax(0,1fr)_minmax(0,1.3fr)_128px_152px] lg:items-center lg:gap-4";
 
-const EDIT_PAGE = `inline-flex h-[30px] shrink-0 items-center justify-center gap-2 rounded-full bg-prt-text px-3 text-[13px] font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 ${FOCUS}`;
 const ICON_BUTTON = `inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white-10 text-prt-text transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`;
 const CARD_STATUS = "inline-flex h-[22px] max-w-full items-center whitespace-nowrap rounded-full bg-white-5 px-2 font-mono text-[10px] uppercase tracking-[0.2em] text-text-2";
 
@@ -93,10 +93,10 @@ function RowVisualImage({ visual }: { visual: RowVisual }) {
   }
 }
 
+/** A click anywhere on the row, or the Edit chip at its end, opens the project's editor (issue #617). */
 function ProjectRowItem({ row }: { row: ProjectRow }) {
-  const editHref = `/dashboard/projects/${row.slug}`;
   return (
-    <li className={`flex flex-col gap-3 px-4 py-4 transition-colors duration-300 ease-out hover:bg-white-5 ${COLUMNS}`}>
+    <li className={`relative flex flex-col gap-3 px-4 py-4 transition-colors duration-300 ease-out hover:bg-white-5 ${COLUMNS}`}>
       <div className="flex min-w-0 items-center gap-4">
         <span className="relative h-[72px] w-14 shrink-0 overflow-hidden rounded-md bg-white-5">
           {/* An uploaded background (issue #529) is served as it is, as uploaded photos are. */}
@@ -131,15 +131,19 @@ function ProjectRowItem({ row }: { row: ProjectRow }) {
       </div>
 
       <div className="flex items-center gap-2 lg:justify-end">
-        <Link href={editHref} className={EDIT_PAGE}>
-          <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
-          Edit page
-        </Link>
         {row.onSite !== null && (
-          <a href={row.onSite} target="_blank" rel="noopener noreferrer" aria-label={`View ${row.name} on site`} title="View on site" className={ICON_BUTTON}>
+          <a
+            href={row.onSite}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`View ${row.name} on site`}
+            title="View on site"
+            className={`relative z-10 ${ICON_BUTTON}`}
+          >
             <ExternalLink aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
           </a>
         )}
+        <EditChip label={`Edit ${row.name}`} target={{ href: `/dashboard/projects/${row.slug}` }} />
       </div>
     </li>
   );

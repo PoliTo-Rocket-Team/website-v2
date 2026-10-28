@@ -3,15 +3,16 @@
 import { refresh } from "next/cache";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
 import { openDashboard } from "@/lib/dashboard/open";
-import { parseLeadMove } from "@/lib/dashboard/application-flow";
+import { parseApproverMove } from "@/lib/dashboard/application-flow";
+import { parseStatusListChange } from "@/lib/dashboard/application-status";
 import type { CreatedPosition } from "@/lib/dashboard/new-position";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 
 // The writes of the Positions and Applications pages (issues #142, #171).
 // Each goes through the dashboard data interface, which decides what the
 // viewer may change and, for an application, whether the move is legal
-// (lib/dashboard/application-flow.ts): a test developer's write changes only
-// a cookie, an account's the database. The browser's arguments are checked
+// (lib/dashboard/application-flow.ts), and writes to the database (a test
+// developer's write only on a preview, ADR 0016). The browser's arguments are checked
 // here, never trusted.
 
 async function answer<T>(run: (data: DashboardData) => Promise<WriteResult<T>>): Promise<WriteResult<T>> {
@@ -42,11 +43,27 @@ export async function setPositionOpen(positionId: number, open: boolean): Promis
   return write((data) => data.setPositionOpen(positionId, open));
 }
 
-/** One step on an application: open it, offer interview times, accept, reject, tick the NDA, confirm the join. */
+/**
+ * One action button on an application (lib/dashboard/application-flow.ts,
+ * `LEAD_STEPS`), or a saved hand pick in the Status picker (issue #750): the
+ * one move both run, checked there and in the data source.
+ */
 export async function moveApplication(applicationId: number, move: unknown): Promise<WriteResult<null>> {
-  const parsed = parseLeadMove(move);
+  const parsed = parseApproverMove(move);
   if (!isId(applicationId) || parsed === null) return refused("That change is not valid.");
   return answer((data) => data.moveApplication(applicationId, parsed));
+}
+
+/**
+ * One change in the Statuses editor (board 97d, issue #752): add, rename,
+ * recolour or delete a status. Its shape is checked here
+ * (`parseStatusListChange`); who may make it and whether a delete is allowed
+ * is the data interface's.
+ */
+export async function changeStatusList(change: unknown): Promise<WriteResult<null>> {
+  const parsed = parseStatusListChange(change);
+  if (!parsed.ok) return refused(parsed.error);
+  return answer((data) => data.changeStatusList(parsed.value));
 }
 
 /** New position (boards 57a, 57b): the drawer's fields, checked by the data interface. */
@@ -58,6 +75,12 @@ export async function createPosition(input: unknown): Promise<WriteResult<Create
 export async function editPosition(positionId: number, input: unknown): Promise<WriteResult<null>> {
   if (!isId(positionId)) return refused("That change is not valid.");
   return answer((data) => data.editPosition(positionId, input));
+}
+
+/** Delete position (issue #772): a soft delete, run from the Edit position drawer's confirm. */
+export async function deletePosition(positionId: number): Promise<WriteResult<null>> {
+  if (!isId(positionId)) return refused("That change is not valid.");
+  return write((data) => data.deletePosition(positionId));
 }
 
 /** The site-wide switch is #121's: its own write answers a refusal rather than throwing one. */

@@ -8,11 +8,13 @@ import { moveTo } from "@/lib/content/order";
 import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
 import { FAQ_QUESTION_MAX, faqFieldErrors, fieldsOf, placeOnApplyPage, updatedLabel, type FaqFieldErrors, type FaqVersion } from "@/lib/faq/faq";
 import { ConfirmDialog } from "./confirm-dialog";
-import { CONTENT_FOCUS, PublishFooter, RowMenu, StatusPill, TextField, useDragOrder, type DragRow } from "./content-parts";
-import { DrawerPage, PanelBody, SidePanel } from "./drawer";
-import { inputClass } from "./field";
+import { CONTENT_FOCUS, DragGrip, PublishFooter, RowMenu, StatusPill, TextField, useDragOrder, type DragRow } from "./content-parts";
+import { DrawerPage } from "./drawer";
+import { EditorPanelModal } from "./editor-panel";
+import { GroupLabel, inputClass } from "./field";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
+import { EDIT_CHIP_WIDTH, EditChip } from "./row-open";
 
 // The FAQ page (boards 79 and 79b, issue #258): the questions at the bottom of
 // /apply in site order, each row dragged to its place; a row or New question
@@ -123,6 +125,7 @@ function FaqTable({
         <span className="flex-1">Question</span>
         <span className={`hidden w-[150px] shrink-0 md:block ${squeezed}`}>Updated</span>
         <span className="w-[120px] shrink-0">Status</span>
+        <span aria-hidden className={`${EDIT_CHIP_WIDTH} shrink-0`} />
         <span aria-hidden className="w-8 shrink-0" />
       </div>
       {items.length === 0 ? (
@@ -181,11 +184,11 @@ function FaqRow({
       onDragOver={drag.onDragOver}
       onDragEnd={drag.onDragEnd}
       onClick={onOpen}
-      className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors duration-300 ease-out md:gap-4 md:px-5 ${
+      className={`group/row flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors duration-300 ease-out md:gap-4 md:px-5 ${
         selected ? "bg-accent/[0.08]" : "hover:bg-white-5"
       } ${drag.dragged ? "opacity-50" : ""}`}
     >
-      <GripVertical aria-hidden className="hidden h-4 w-4 shrink-0 cursor-grab text-dim md:block" strokeWidth={1.75} />
+      <DragGrip />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[15px] text-prt-text">{faq.question}</span>
         <span className="block truncate text-[13px] text-prt-muted">{faq.answer[0]}</span>
@@ -194,7 +197,8 @@ function FaqRow({
       <span className="w-[120px] shrink-0">
         <StatusPill status={statusOf(item.version)} />
       </span>
-      <RowMenu name={faq.question} onEdit={onOpen} onUp={onUp} onDown={onDown} onRemove={onRemove} />
+      <EditChip label={`Edit ${faq.question}`} target={{ onOpen }} />
+      <RowMenu name={faq.question} onUp={onUp} onDown={onDown} onRemove={onRemove} />
     </li>
   );
 }
@@ -246,11 +250,12 @@ function RemoveDialog({
 /** One answer box in the panel; the key keeps a box's focus and text in place while boxes move. */
 type Paragraph = { readonly key: number; readonly text: string };
 
-// The edit panel (board 79b): the status and the question's place on /apply
-// under the title; Question with its counter; Answer as one box per
-// paragraph, each dragged to its place or removed, and Add paragraph; then
-// the question as the Apply page shows it. Remove, Save draft and Publish at
-// the foot. New question is the same panel, empty, with no Remove.
+// The edit panel (board 79b), on the content editors' shared modal frame
+// (epic #614): the status and the question's place on /apply first; Question
+// with its counter; Answer as one box per paragraph, each dragged to its
+// place or removed, and Add paragraph; then the question as the Apply page
+// shows it. Remove on the left of the foot, Save draft and Publish on the
+// right. New question is the same panel, empty, with no Remove.
 function FaqPanel({
   open,
   item,
@@ -305,47 +310,45 @@ function FaqPanel({
   const status = item === null ? null : statusOf(item.version);
 
   return (
-    <SidePanel
+    <EditorPanelModal
       open={open}
       onOpenChange={(next) => !next && onClose()}
       title={item === null ? "New question" : "Edit question"}
-      wide
-      below={
-        status !== null && (
-          <span className="mt-1.5 flex items-center gap-2.5 text-[13px] text-text-2">
+      foot={
+        <span className="flex flex-1 items-center justify-between gap-3">
+          <PublishFooter onRemove={item === null ? null : () => setConfirming(true)} pending={pending} onSubmit={submit} />
+        </span>
+      }
+    >
+      <form noValidate onSubmit={(e) => e.preventDefault()} className="flex flex-col gap-4">
+        {status !== null && (
+          <p className="flex items-center gap-2.5 text-[13px] text-text-2">
             <StatusPill status={status} />
             {place !== null && `${place.place} of ${place.of} on the Apply page`}
-          </span>
-        )
-      }
-      footerLayout="spread"
-      footer={<PublishFooter onRemove={item === null ? null : () => setConfirming(true)} pending={pending} onSubmit={submit} />}
-    >
-      <form noValidate onSubmit={(e) => e.preventDefault()} className="flex min-h-0 flex-1 flex-col">
-        <PanelBody className="flex flex-col gap-5">
-          <TextField
-            label="Question"
-            value={question}
-            limit={FAQ_QUESTION_MAX}
-            error={errors.question}
-            onChange={(v) => {
-              setQuestion(v);
-              setErrors((e) => ({ ...e, question: undefined }));
-            }}
-          />
-          <AnswerField
-            paragraphs={paragraphs}
-            error={errors.answer}
-            onChange={setParagraph}
-            onAdd={addParagraph}
-            onRemove={removeParagraph}
-            onReorder={orderParagraphs}
-          />
-          <ApplyPreview question={question} answer={fields.answer} />
-        </PanelBody>
+          </p>
+        )}
+        <TextField
+          label="Question"
+          value={question}
+          limit={FAQ_QUESTION_MAX}
+          error={errors.question}
+          onChange={(v) => {
+            setQuestion(v);
+            setErrors((e) => ({ ...e, question: undefined }));
+          }}
+        />
+        <AnswerField
+          paragraphs={paragraphs}
+          error={errors.answer}
+          onChange={setParagraph}
+          onAdd={addParagraph}
+          onRemove={removeParagraph}
+          onReorder={orderParagraphs}
+        />
+        <ApplyPreview question={question} answer={fields.answer} />
       </form>
       {item !== null && <RemoveDialog open={confirming} onOpenChange={setConfirming} item={item} onRemoved={() => onRemoved(item.id)} />}
-    </SidePanel>
+    </EditorPanelModal>
   );
 }
 
@@ -381,9 +384,7 @@ function AnswerField({
 
   return (
     <div role="group" aria-labelledby={labelId}>
-      <p id={labelId} className="mb-2 text-[13px] leading-snug text-prt-text">
-        Answer <span className="ml-1.5 text-prt-muted">one box per paragraph</span>
-      </p>
+      <GroupLabel id={labelId} label="Answer" hint="one box per paragraph" />
       <ol className="flex flex-col gap-2.5" {...drag.list}>
         {shown.map((paragraph, index) => {
           const row = drag.row(paragraph.key, index);

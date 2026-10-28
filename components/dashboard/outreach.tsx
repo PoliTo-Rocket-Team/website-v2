@@ -30,16 +30,18 @@ import {
 } from "@/lib/outreach-list";
 import { titleOf, type MainChannelName, type OutreachPhoto, type OutreachTag } from "@/lib/outreach-types";
 import { ConfirmDialog } from "./confirm-dialog";
-import { CONTENT_FOCUS as FOCUS, StatusPill } from "./content-parts";
+import { StatusPill } from "./content-parts";
 import { ColumnFilterMenu, FilterMenu } from "./controls";
 import { MenuItem, RowMenu } from "./division-members";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
+import { EditChip } from "./row-open";
 
 // The Outreach page (board 74, issue #289): every post, newest first, with tag
 // and status filters in the table's headings and each row's menu: View on
-// site, Feature or Unfeature, Unpublish, Delete. A post opens on its own page
-// under the edit shell (issue #288); New post opens an empty one there (board
+// site, Feature or Unfeature, Unpublish, Delete. A click anywhere on a row, or
+// its Edit chip, opens the post on its own page under the edit shell (issues
+// #288, #617); New post opens an empty one there (board
 // 74f, issue #292). A draft with no title yet is listed as "Untitled post",
 // and one with no photo yet shows an empty thumbnail. Featured is a setting
 // on any published post (issue #496): a featured post takes a Featured card
@@ -75,6 +77,8 @@ export function OutreachView({
         return;
       }
       setRows((list) => list.map((r) => (r.id === row.id ? outreachRow(result.value, row.slug) : r)));
+      // The server freed its featured slot in the same write (issue #502).
+      setFeatured((ids) => unfeaturing(ids, row.id));
       toast.success(`${titleOf(row.post)} is off the Outreach page and kept as a draft.`);
     });
   };
@@ -140,6 +144,7 @@ export function OutreachView({
           <span className={`${EYEBROW} hidden lg:block`}>Shared on</span>
           <span>{filters.status}</span>
           <span />
+          <span />
         </div>
         {shown.length === 0 ? (
           <p className="px-5 py-6 text-[14px] text-prt-muted">{rows.length === 0 ? "No posts yet." : "No post matches these filters."}</p>
@@ -176,9 +181,9 @@ export function OutreachView({
   );
 }
 
-/** Post, Date · Place, Tags, Shared on, Status and the menu; below lg the tags and channels give way. */
+/** Post, Date · Place, Tags, Shared on, Status, the Edit chip and the menu; below lg the tags and channels give way. */
 const COLUMNS =
-  "md:grid-cols-[minmax(0,1fr)_150px_110px_32px] lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1.3fr)_minmax(0,1.4fr)_88px_118px_32px]";
+  "md:grid-cols-[minmax(0,1fr)_150px_110px_72px_32px] lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1.3fr)_minmax(0,1.4fr)_88px_118px_72px_32px]";
 
 const CHANNEL_ICONS: Readonly<Record<MainChannelName, { Icon: typeof Instagram; label: string }>> = {
   instagram: { Icon: Instagram, label: "Instagram" },
@@ -209,26 +214,23 @@ function PostRow({
   const channels = sharedOn(post);
   const title = titleOf(post);
   return (
-    <li className={`flex items-center gap-3 px-4 py-3 transition-colors duration-300 ease-out hover:bg-white-5 md:grid md:gap-4 ${COLUMNS}`}>
-      <Link href={`/dashboard/outreach/${row.slug}`} className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg md:gap-4 ${FOCUS}`}>
+    <li className={`relative flex items-center gap-3 px-4 py-3 transition-colors duration-300 ease-out hover:bg-white-5 md:grid md:gap-4 ${COLUMNS}`}>
+      <span className="flex min-w-0 flex-1 items-center gap-3 md:gap-4">
         <Thumb photo={post.photos[0]} />
         <span className="min-w-0">
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-[14px] font-medium text-prt-text">{title}</span>
-            {featured && (
-              <span className="inline-flex h-[20px] shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2 text-[11px] font-medium text-accent">
-                <Star aria-hidden className="h-3 w-3" strokeWidth={2} />
-                Featured
-              </span>
-            )}
+            {featured && <FeaturedMark className="hidden md:inline-flex" />}
           </span>
           <span className="block truncate text-[13px] text-prt-muted md:line-clamp-2 md:whitespace-normal">{post.summary.text}</span>
           <span className="mt-0.5 block truncate text-[12px] text-prt-muted md:hidden">
             {rowDate(post.date)}
             {post.place && ` · ${post.place}`}
           </span>
+          {/* On phones the title and the date each keep their whole line, so the Featured mark takes a line of its own. */}
+          {featured && <FeaturedMark className="mt-1 flex w-fit md:hidden" />}
         </span>
-      </Link>
+      </span>
       <span className="hidden min-w-0 text-[13px] md:block">
         <span className="block truncate text-prt-text">{rowDate(post.date)}</span>
         <span className="block truncate text-prt-muted">{post.place ?? "No place"}</span>
@@ -252,7 +254,8 @@ function PostRow({
       <span className="shrink-0">
         <StatusPill status={status} short />
       </span>
-      <span className="shrink-0">
+      <EditChip label={`Edit ${title}`} target={{ href: `/dashboard/outreach/${row.slug}` }} />
+      <span className="relative z-10 shrink-0">
         <RowMenu label={`More for ${title}`}>
           <MenuItem
             icon={<ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />}
@@ -293,6 +296,16 @@ function PostRow({
         </RowMenu>
       </span>
     </li>
+  );
+}
+
+/** The Featured mark on a featured post's row (issue #496); the caller picks where it shows. */
+function FeaturedMark({ className }: { className: string }) {
+  return (
+    <span className={`h-[20px] shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2 text-[11px] font-medium text-accent ${className}`}>
+      <Star aria-hidden className="h-3 w-3" strokeWidth={2} />
+      Featured
+    </span>
   );
 }
 

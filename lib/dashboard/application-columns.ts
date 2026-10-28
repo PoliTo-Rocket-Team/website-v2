@@ -1,4 +1,5 @@
-import { STAGE_LABELS, studiesLevel, studiesProgram, type ApplicationStage } from "./application-flow";
+import { STATUS_NAMES, studiesLevel, studiesProgram } from "./application-flow";
+import type { BuiltInStatusKey } from "./application-status";
 import { clearPicksIn, optionsOf, rowsWithPicks, togglePickIn, type ColumnFilters, type ColumnOption, type ColumnPicks } from "./column-filters";
 import { shortUnitName } from "./division-access";
 import { documentsLine, type ApplicationDocument } from "./recruitment";
@@ -28,7 +29,7 @@ export const NO_APPLICATION_PICKS: ApplicationPicks = {};
 
 /** The fields of a row the column filters read. */
 export type ApplicationColumnsRow = {
-  readonly state: { readonly stage: ApplicationStage };
+  readonly state: { readonly status: BuiltInStatusKey };
   readonly applicant: { readonly degree: string | null; readonly year: string | null };
   readonly position: { readonly title: string; readonly division: string };
   readonly documents: readonly ApplicationDocument[];
@@ -54,7 +55,7 @@ export function applicationColumnValues(row: ApplicationColumnsRow, column: Appl
     case "level":
       return one(studiesLevel(row.applicant.year));
     case "stage":
-      return [STAGE_LABELS[row.state.stage]];
+      return [STATUS_NAMES[row.state.status]];
     case "documents":
       return [documentsLine(row.documents) || NO_DOCUMENTS];
     case "applied":

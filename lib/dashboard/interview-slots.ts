@@ -3,7 +3,7 @@
 // lead's Overview (./database.ts) both ask this module, so the two never read
 // `interview_slots` differently.
 
-import type { ApplicationState, OfferedSlots, SlotTime } from "./application-flow";
+import type { ApplicationState, SlotTime } from "./application-flow";
 import { interviewOrder, type UpcomingInterview } from "./overview";
 
 /** One `interview_slots` row as the database sources read it. */
@@ -16,25 +16,27 @@ export type SlotRow = {
   created_at: string;
 };
 
-/** What an application at status `interview` reads as: In review until times are offered. */
-export type InterviewReading = Extract<ApplicationState, { stage: "in-review" | "interview" }>;
+/** A stored time as the database sources read it, with the name of who offered it (issue #652); null for a time stored before that was recorded. */
+export type OfferedSlotRow = SlotRow & { offered_by: string | null };
+
+/** What an application at status `interview` reads as. */
+export type InterviewReading = Extract<ApplicationState, { status: "interview" }>;
 
 function slotOf(row: SlotRow): SlotTime {
   return { start: new Date(row.starts_at).toISOString(), end: new Date(row.ends_at).toISOString() };
 }
 
 /**
- * An interview row with no times left reads as In review, the step before
- * times are offered. With times, the one marked chosen is the booking; with
- * none chosen, the applicant has yet to pick.
+ * An interview row with no times is an interview being arranged. With times,
+ * the one marked chosen is the booking; with none chosen, the applicant has
+ * yet to pick.
  */
 export function interviewStateOf(slots: readonly SlotRow[]): InterviewReading {
-  if (slots.length === 0) return { stage: "in-review" };
   const sorted = [...slots].sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at));
-  const offered = sorted.map(slotOf) as unknown as OfferedSlots;
+  const offered = sorted.map(slotOf);
   const chosen = sorted.find((s) => s.chosen);
   return {
-    stage: "interview",
+    status: "interview",
     offered,
     booked: chosen ? { slot: slotOf(chosen), at: new Date(chosen.chosen_at ?? chosen.created_at).toISOString() } : null,
   };
@@ -44,20 +46,25 @@ export function interviewStateOf(slots: readonly SlotRow[]): InterviewReading {
 export type InterviewCandidate = {
   readonly applicant: string;
   readonly position: string;
-  readonly slots: readonly SlotRow[];
+  readonly slots: readonly OfferedSlotRow[];
 };
 
-/** Board 56's upcoming interviews: those with times offered, booked first and soonest first. */
+/**
+ * Board 56's upcoming interviews: those with times offered, booked first and
+ * soonest first, each with who offered its times (board 99b). One offer
+ * writes every time of an application at once, so any of them names the setter.
+ */
 export function upcomingInterviews(candidates: readonly InterviewCandidate[]): UpcomingInterview[] {
   return interviewOrder(
     candidates.flatMap(({ applicant, position, slots }): UpcomingInterview[] => {
       const state = interviewStateOf(slots);
-      if (state.stage !== "interview") return [];
+      if (state.offered.length === 0) return [];
       const booked = state.booked;
+      const setBy = slots.find((s) => s.offered_by !== null)?.offered_by ?? null;
       return [
         booked === null
-          ? { applicant, position, state: "waiting" }
-          : { applicant, position, state: "booked", start: new Date(booked.slot.start), end: new Date(booked.slot.end) },
+          ? { applicant, position, setBy, state: "waiting" }
+          : { applicant, position, setBy, state: "booked", start: new Date(booked.slot.start), end: new Date(booked.slot.end) },
       ];
     }),
   );

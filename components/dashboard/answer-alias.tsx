@@ -4,14 +4,17 @@ import { useState, useTransition } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { toast } from "sonner";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { answerAlias } from "@/app/dashboard/actions";
 import { ALIAS_FORM_HINT, checkAliasAddress } from "@/lib/dashboard/alias-request";
 import type { AnswerAlias as AnswerAliasAction } from "@/lib/dashboard/overview";
 import { SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber } from "./confirm-dialog";
-import { Field, inputClass } from "./field";
+import { CopyButton } from "./copy-button";
+import { Field, inputClass, LOCKED_INPUT } from "./field";
 import { rowActionClass } from "./panel";
 
-const PAPER =
+/** The paper pill of boards 94c and 94d: Mark created, on the row and in its dialog. */
+export const PAPER =
   "inline-flex shrink-0 items-center justify-center rounded-full bg-prt-text font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60";
 
 /**
@@ -27,10 +30,10 @@ export function AnswerAlias({ action, chip = false }: { action: AnswerAliasActio
     startTransition(async () => {
       const result = await answerAlias(action.answerAlias, { kind: "decline" });
       if (!result.ok) {
-        toast.error("Could not decline the alias request", { description: result.error });
+        toast.error("Could not decline the PRT email request", { description: result.error });
         return;
       }
-      toast.success("Alias request declined");
+      toast.success("PRT email request declined");
     });
   return (
     <span className="flex shrink-0 items-center gap-2" aria-busy={pending}>
@@ -51,9 +54,33 @@ export function AnswerAlias({ action, chip = false }: { action: AnswerAliasActio
 }
 
 /**
+ * Board 94d's "Forwards to" row (issue #586): the member's sign-in email an
+ * address forwards to, read-only with a copy button, for Google Workspace's
+ * recipient address map. The approvers' dialogs alone show it: the alias and
+ * team address Mark created, and a team address routing item's Mark done.
+ */
+export function ForwardsTo({ signInEmail, className }: { signInEmail: string; className?: string }) {
+  return (
+    <Field label="Forwards to" hint="their sign-in email" className={className}>
+      {(id) => (
+        <span id={id} className={cn(LOCKED_INPUT, "pr-2")}>
+          <span className="min-w-0 flex-1 truncate text-prt-text">{signInEmail}</span>
+          <CopyButton value={signInEmail} what="Sign-in email" />
+        </span>
+      )}
+    </Field>
+  );
+}
+
+/**
  * Board 94d: the alias address, prefilled as firstname.lastname on the team
  * domain from the member's name and checked before it is sent; the server
- * checks it again and saves it on the member's record.
+ * checks it again and saves it as the member's PRT email. The form skips the
+ * browser's own email check, so an address `checkAliasAddress` refuses shows
+ * its reason under the field rather than a browser bubble. Above it, the
+ * member's sign-in email the alias forwards to, read-only with a copy button,
+ * for Google Workspace's recipient address map (issue #586). 440px wide with
+ * a 24px pad and the row's 32px pills, as the board draws it.
  */
 function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOpenChange: (open: boolean) => void; action: AnswerAliasAction }) {
   const [address, setAddress] = useState(action.prefill);
@@ -71,7 +98,7 @@ function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOp
         setError(result.error);
         return;
       }
-      toast.success(`Alias saved for ${action.member}`);
+      toast.success(`PRT email saved for ${action.member}`);
       onOpenChange(false);
     });
   };
@@ -80,20 +107,22 @@ function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOp
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
         <DialogOverlay className={SHEET_OVERLAY} />
-        <DialogPrimitive.Content aria-describedby={undefined} className={`${SHEET_CONTENT} sm:w-[560px]`}>
+        <DialogPrimitive.Content aria-describedby={undefined} className={cn(SHEET_CONTENT, "sm:w-[440px] sm:p-6")}>
           <SheetGrabber />
           <form
+            noValidate
             onSubmit={(event) => {
               event.preventDefault();
               save();
             }}
           >
-            <DialogTitle className="text-[20px] font-bold leading-snug">Email alias for {action.member}</DialogTitle>
-            <p className="mt-2 text-[14px] leading-relaxed text-text-2">
+            <DialogTitle className="text-[20px] font-bold leading-snug">PRT email for {action.member}</DialogTitle>
+            <p className="mt-2 text-[14px] leading-relaxed text-prt-muted">
               Create it in Google Workspace first (recipient address map), then type it here. It is saved to {first}&apos;s details and {first} gets the
               setup steps.
             </p>
-            <Field label="Alias address" error={error} className="mt-6">
+            <ForwardsTo signInEmail={action.signInEmail} className="mt-6" />
+            <Field label="Address" error={error} className="mt-5">
               {(id, describedBy) => (
                 <>
                   <input
@@ -116,11 +145,11 @@ function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOp
                 </>
               )}
             </Field>
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <DialogClose className="inline-flex h-10 items-center justify-center rounded-full border border-white-10 px-5 text-[14px] font-medium transition-colors duration-300 ease-out hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:mt-5 sm:flex-row sm:justify-end sm:gap-2.5">
+              <DialogClose className="inline-flex h-10 items-center justify-center rounded-full border border-white-10 px-5 text-[14px] font-medium transition-colors duration-300 ease-out hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:h-8 sm:px-3.5">
                 Cancel
               </DialogClose>
-              <button type="submit" disabled={pending} className={`${PAPER} h-10 px-5 text-[14px]`}>
+              <button type="submit" disabled={pending} className={`${PAPER} h-10 px-5 text-[14px] sm:h-8 sm:px-3.5`}>
                 Mark created
               </button>
             </div>

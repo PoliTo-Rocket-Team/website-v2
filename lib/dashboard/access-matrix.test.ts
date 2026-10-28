@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, test } from "node:test";
-import type { ScopeInfo } from "@/app/actions/get-member-scopes";
 import { canSwitchRecruitment } from "@/lib/apply/recruitment-switch";
 import { maySiteContent } from "@/lib/content/gate";
 import { canReach, DASHBOARD_PAGES, NAV_GROUPS, sidebarFor, type DashboardPageKey } from "./access";
@@ -10,9 +9,9 @@ import { overviewAreasOf } from "./division-overview";
 import { opensWholeTeam } from "./members-view";
 import { ordersScopeOf, type OrdersScopeRow } from "./orders";
 import { mayChangePositionIn } from "./position-access";
-import { GRANT_AREAS, isOffTeam, mayChange, readsArea, readsAreaIn } from "./viewer";
+import { GRANT_AREAS, isOffTeam, ledDivisionIds, mayChange, readsArea, readsAreaIn } from "./viewer";
 import { ALL, CHANGE_AREAS, CONTENT, ORG, PAGE_OF_AREA, SCOPES, SIGNED_OUT, TEAM_BASE, UNITS, unitsWhere, VIEWERS, type Unit, type Viewer } from "./access-matrix/matrix";
-import { aliasAttentionFor, answersAliasRequests, managesMember, type AliasRequest } from "./alias-request";
+import { aliasAttentionFor, answersAliasRequests, managesMember, planAliasRequest, type AliasRequest, type AliasTeamPerson } from "./alias-request";
 import { ownAliasOf, planAliasSetUp, showsAliasCard } from "./alias-setup";
 import type { TeamPerson } from "./division-edit";
 import { membershipsOf, type OrgChart } from "./team";
@@ -21,21 +20,6 @@ import { membershipsOf, type OrgChart } from "./team";
 // rules. The matrix itself is data in ./access-matrix/matrix.ts; the server
 // side, every loader, action and file route called for real as each viewer,
 // is ./access-matrix-server.test.ts.
-
-/** What the recruitment switch reads: the viewer's `positions` rows as a ScopeInfo (`getScopeInfoForMember`). */
-function scopeInfoOf(v: Viewer): ScopeInfo {
-  const rows = v.rawRows.filter((r) => r.target === "positions" || r.target === "all");
-  return {
-    hasAdminAccess: rows.some((r) => r.scope === "admin"),
-    hasOrgAccess: rows.some((r) => r.scope === "org"),
-    hasAdminEdit: rows.some((r) => r.scope === "admin" && r.level === "edit"),
-    hasOrgEdit: rows.some((r) => r.scope === "org" && r.level === "edit"),
-    departmentIds: new Set(),
-    divisionIds: new Set(),
-    editableDepartmentIds: new Set(),
-    editableDivisionIds: new Set(),
-  };
-}
 
 const PAGE_KEYS = DASHBOARD_PAGES.map((p) => p.key);
 
@@ -96,11 +80,16 @@ describe("site content, the recruitment switch, Orders and the whole-team Member
   for (const { name, viewer, expect } of VIEWERS) {
     test(name, () => {
       assert.equal(maySiteContent(viewer), expect.siteContent, `${name}: site content`);
-      assert.equal(canSwitchRecruitment(viewer, scopeInfoOf(viewer)), expect.switchesRecruitment, `${name}: recruitment switch`);
+      assert.equal(canSwitchRecruitment(viewer), expect.switchesRecruitment, `${name}: recruitment switch`);
       const scope = isOffTeam(viewer.kind)
         ? null
         : ordersScopeOf(
-            { fullAccess: viewer.kind === "operations-lead", teamLeader: viewer.roles.some((r) => r.type === "president"), headDepartment: viewer.headDepartment },
+            {
+              fullAccess: viewer.kind === "operations-lead",
+              teamLeader: viewer.roles.some((r) => r.type === "president"),
+              headDepartment: viewer.headDepartment,
+              ledDivisionIds: ledDivisionIds({ scopes: [], activeRoles: viewer.heldRoles }),
+            },
             viewer.rawRows as readonly OrdersScopeRow[],
             ORG,
           );
@@ -146,19 +135,25 @@ describe("grants are independent (issue #477)", () => {
     }
   });
 
-  test("a Content grant reaches the five content editors and the site-content gate, and nothing else (issue #504)", () => {
+  test("a Content grant reaches the six content editors, Alumni among them, and the site-content gate, and nothing else (issues #504, #589)", () => {
     const { viewer } = VIEWERS.find((v) => v.name === "member with a Content grant")!;
     assert.equal(maySiteContent(viewer), true);
     assert.deepEqual(PAGE_KEYS.filter((page) => canReach(viewer, page)), [...TEAM_BASE, ...CONTENT].sort((a, b) => PAGE_KEYS.indexOf(a) - PAGE_KEYS.indexOf(b)));
-    assert.equal(canReach(viewer, "alumni"), false);
+    assert.equal(canReach(viewer, "alumni"), true);
     for (const area of GRANT_AREAS) assert.equal(readsArea(viewer, area), false, area);
   });
 
-  test("no other grant reaches the content editors or the site-content gate: Positions, Applications, Members, Alumni, Orders, Approve orders (issue #504)", () => {
+  test("no other grant reaches the content editors or the site-content gate: Positions, Applications, Members, Orders, Approve orders, and no Can view or old Alumni website row (issues #504, #589)", () => {
     const others = VIEWERS.filter((v) => v.viewer.kind === "member" && v.name !== "member with a Content grant" && v.viewer.rawRows.length > 0);
     const names = others.map((v) => v.name);
     for (const area of GRANT_AREAS) assert.ok(names.some((n) => n.startsWith(`member with a ${area} grant`)), area);
-    for (const name of ["member with an Alumni grant", "member with Approve orders"]) assert.ok(names.includes(name), name);
+    for (const name of [
+      "member with a Can view website row on content",
+      "member with a Can view website row on all",
+      "member with a Can edit website row on all",
+      "member with Approve orders",
+    ])
+      assert.ok(names.includes(name), name);
     for (const { name, viewer } of others) {
       assert.equal(maySiteContent(viewer), false, `${name}: site content`);
       for (const page of CONTENT) assert.equal(canReach(viewer, page), false, `${name}: ${page}`);
@@ -177,11 +172,14 @@ describe("grants are independent (issue #477)", () => {
 
 // Email alias requests (epic #538) ------------------------------------------
 //
-// Who may ask is read from the viewer's roles on the team (`managesMember`):
-// a lead for their division, a head for their department, the team leader for
-// anyone; a grant makes nobody a requester. Who answers is the viewer's seat
-// (`answersAliasRequests`): the team leader, the operations lead and the IT
-// lead, never the board seats or full access from a scope row.
+// Who may ask is Request alias itself (`planAliasRequest`): full access asks
+// for anyone on the team (Owner decision, 2026-10-25, issue #721), and anyone
+// else for the members they lead or head. Who leads or heads whom is read from
+// the viewer's roles on the team (`managesMember`): a lead for their division,
+// a head for their department, the team leader for anyone; a grant makes
+// nobody a manager. Who answers is the viewer's seat (`answersAliasRequests`):
+// the team leader, the operations lead and the IT lead, never the board seats
+// or full access from a scope row.
 
 const ALIAS_ORG: OrgChart = {
   departments: ORG.map((d) => ({ id: d.id, name: d.name, code: null, kind: "technical" as const })),
@@ -191,36 +189,44 @@ const VIEWER_ID = 100;
 const personIn = (u: Unit) => 200 + ALL.indexOf(u);
 
 /** The viewer as the alias rules read them: their active roles on the team, none once off it. */
-function aliasPersonOf(viewer: Viewer): TeamPerson {
+function aliasPersonOf(viewer: Viewer): AliasTeamPerson {
   const memberships = membershipsOf(
     viewer.roles.flatMap((r) =>
       r.divisionId !== null && r.type !== "head" && r.type !== "president" ? [{ divisionId: r.divisionId, role: r.type === "lead" ? "lead" : "member", since: "2025-10-01" } as const] : [],
     ),
   );
   const beyond = viewer.roles.flatMap((r): TeamPerson["beyond"] =>
-    r.type === "president" ? [{ kind: "team-leader" }] : r.type === "head" ? [{ kind: "head", departmentId: r.departmentId }] : [],
+    r.type === "president" ? [{ kind: "team-leader", title: "" }] : r.type === "head" ? [{ kind: "head", departmentId: r.departmentId, title: "Head" }] : [],
   );
-  return { id: VIEWER_ID, name: "Viewer", emails: [], memberships, beyond };
+  return { id: VIEWER_ID, name: "Viewer", emails: [], signInEmail: "viewer@mail.test", memberships, beyond };
 }
 
-const ALIAS_TEAM: readonly TeamPerson[] = ALL.map((u) => ({
+const ALIAS_TEAM: readonly AliasTeamPerson[] = ALL.map((u) => ({
   id: personIn(u),
   name: `Person ${u}`,
   emails: [],
+  signInEmail: `person-${u.toLowerCase()}@mail.test`,
   memberships: membershipsOf([{ divisionId: UNITS[u].divisionId, role: "member", since: "2025-10-01" }]),
   beyond: [],
 }));
 
-describe("email alias requests: who asks, who answers, and the approver rows (managesMember, answersAliasRequests, aliasAttentionFor)", () => {
-  const open: AliasRequest[] = ALL.map((u, i) => ({ id: i + 1, memberId: personIn(u), requesterId: null, sentAt: "2026-10-22T09:00:00Z" }));
+describe("email alias requests: who asks, who manages, who answers, and the approver rows (planAliasRequest, managesMember, answersAliasRequests, aliasAttentionFor)", () => {
+  const open: AliasRequest[] = ALL.map((u, i) => ({ id: i + 1, memberId: personIn(u), requesterId: null, address: null, sentAt: "2026-10-22T09:00:00Z" }));
   for (const { name, viewer, expect } of VIEWERS) {
     test(name, () => {
+      // The break-glass admin has no member row (`readIdentity`): no requester id, and not on the team.
       const me = aliasPersonOf(viewer);
-      const team = [...ALIAS_TEAM, me];
+      const team = viewer.breakGlass ? ALIAS_TEAM : [...ALIAS_TEAM, me];
+      const requesterId = viewer.breakGlass ? null : me.id;
       assert.deepEqual(
-        ALL.filter((u) => managesMember(me, team.find((p) => p.id === personIn(u))!, ALIAS_ORG)),
+        ALL.filter((u) => planAliasRequest({ requesterId, standing: viewer, memberId: personIn(u), team, org: ALIAS_ORG, prtEmail: null, open: [], address: "new.person@politorocketteam.it", taken: [] }).ok),
         expect.aliases.requests,
         `${name}: Request alias`,
+      );
+      assert.deepEqual(
+        ALL.filter((u) => managesMember(me, team.find((p) => p.id === personIn(u))!, ALIAS_ORG)),
+        expect.aliases.manages,
+        `${name}: leads or heads`,
       );
       assert.equal(answersAliasRequests(viewer), expect.aliases.answers, `${name}: answers`);
       const rows = aliasAttentionFor(viewer, open, team, ALIAS_ORG, new Date("2026-10-22T12:00:00Z"));
@@ -282,6 +288,7 @@ const PAGES: Readonly<Record<string, DashboardPageKey | "editor">> = {
   "app/dashboard/team-page/page.tsx": "team-page",
   "app/dashboard/access/page.tsx": "division-access",
   "app/dashboard/orders/page.tsx": "orders",
+  "app/dashboard/activity-log/page.tsx": "activity-log",
   "app/dashboard/profile/page.tsx": "my-profile",
   "app/dashboard/account/page.tsx": "my-account",
 };

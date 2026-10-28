@@ -1,14 +1,21 @@
 // Where an application stands, and the moves that change it (Dashboard v2
-// boards 58 to 58i, issue #171). This module alone decides which move is
-// legal from which stage; the pages, the server actions and both data
-// sources (lib/dummy-data/, ./database.ts) ask it and never restate it.
+// boards 58 to 58i and 97 to 97e, issues #171 and #749). This module alone
+// decides which move is legal from which status; the pages, the server
+// actions and the database side (./database-recruitment.ts) ask it and never
+// restate it.
 //
-// The order is: New, opened into In review, Interview (times offered, then
-// one booked by the applicant), Accepted (waiting for the signed NDA), Joined.
-// Rejected and Withdrawn end it. Accept only marks the application; only
-// Confirm join, once the NDA arrived, makes the person a team member. Someone
-// already on the team waits for no NDA (ADR 0014).
+// An application has one status from the status list (./application-status.ts,
+// ADR 0011, amendment of 2026-10-25). Each built-in status offers the action
+// buttons of the owner's button table (`LEAD_STEPS`), and each button sets the
+// built-in status the table names; an added status offers its parent's. Only
+// Confirm join, from NDA received, makes the person a team member, and it
+// sets their other open applications to "Accepted for another position".
+// Someone already on the team follows the same statuses (ADR 0014, amendment
+// of 2026-10-25). Any status can also be picked by hand in the drawer's Status
+// picker (issue #750): a saved pick of a built-in status runs the move of the
+// step that sets it (`moveToStatus`), and one of an added status sets it alone.
 
+import { builtInOf, BUILT_IN_STATUSES, isBuiltInStatusKey, type ApplicationStatus, type BuiltInStatusKey } from "./application-status";
 import type { InterviewSlot } from "./my-applications";
 import { divisionLabel, homeFirst, roleIn, type Memberships } from "./team";
 
@@ -31,7 +38,7 @@ export type SlotTime = Pick<InterviewSlot, "start" | "end">;
 /** The slot the applicant picked, and when they picked it. */
 export type BookedSlot = { readonly slot: SlotTime; readonly at: string };
 
-/** At least one slot: an interview with no time to offer is not a state. */
+/** At least one slot: an offer with no time in it is not an offer. */
 export type OfferedSlots = readonly [SlotTime, ...SlotTime[]];
 
 const MINUTE = 60_000;
@@ -47,70 +54,151 @@ export function slotLength(slot: SlotTime): number {
   return Math.round((Date.parse(slot.end) - Date.parse(slot.start)) / MINUTE);
 }
 
+/** The accepted statuses before Joined: each keeps the day it was accepted. */
+export type AcceptedStatus = "accepted_email_to_be_sent" | "accepted_email_sent" | "nda_received";
+
+/** The statuses that end an application without a place in this position. */
+export type EndedStatus = "rejected_email_to_be_sent" | "rejected_email_sent" | "accepted_for_another_position" | "withdrawn";
+
+/**
+ * Where an application stands: the built-in status it behaves like (an added
+ * status reads as its parent, ./stored-application.ts) and what that status
+ * keeps. An Interview being arranged has no times offered yet; a booking is
+ * always one of the offered times.
+ */
 export type ApplicationState =
-  | { readonly stage: "new" }
-  | { readonly stage: "in-review" }
-  | { readonly stage: "interview"; readonly offered: OfferedSlots; readonly booked: BookedSlot | null }
-  | { readonly stage: "accepted"; readonly acceptedAt: string; readonly ndaArrived: boolean }
-  | { readonly stage: "joined"; readonly joinedAt: string }
-  | { readonly stage: "rejected" }
-  | { readonly stage: "withdrawn" };
+  | { readonly status: "new" }
+  | { readonly status: "interview"; readonly offered: readonly SlotTime[]; readonly booked: BookedSlot | null }
+  | { readonly status: AcceptedStatus; readonly acceptedAt: string }
+  | { readonly status: "joined"; readonly joinedAt: string }
+  | { readonly status: EndedStatus };
 
-export type ApplicationStage = ApplicationState["stage"];
+/** A built-in status's name as the list ships it ("Accepted · email to be sent"). */
+export const STATUS_NAMES: Readonly<Record<BuiltInStatusKey, string>> = Object.fromEntries(BUILT_IN_STATUSES.map((s) => [s.key, s.name])) as Record<
+  BuiltInStatusKey,
+  string
+>;
 
-export const APPLICATION_STAGES = [
+/**
+ * The statuses of an application still being decided. Confirm join on one of
+ * a person's applications sets each of their others in one of these to
+ * "Accepted for another position" (`takenByJoinElsewhere`); a decided one
+ * (Joined, either Rejected status, Accepted for another position, Withdrawn)
+ * keeps its status.
+ */
+export const OPEN_STATUSES = [
   "new",
-  "in-review",
   "interview",
-  "accepted",
-  "joined",
-  "rejected",
-  "withdrawn",
-] as const satisfies readonly ApplicationStage[];
+  "accepted_email_to_be_sent",
+  "accepted_email_sent",
+  "nda_received",
+] as const satisfies readonly BuiltInStatusKey[];
 
-export function isApplicationStage(value: unknown): value is ApplicationStage {
-  return typeof value === "string" && (APPLICATION_STAGES as readonly string[]).includes(value);
+export function isOpenStatus(status: BuiltInStatusKey): boolean {
+  return (OPEN_STATUSES as readonly BuiltInStatusKey[]).includes(status);
 }
 
-export const STAGE_LABELS: Readonly<Record<ApplicationStage, string>> = {
-  new: "New",
-  "in-review": "In review",
-  interview: "Interview",
-  accepted: "Accepted",
-  joined: "Joined",
-  rejected: "Rejected",
-  withdrawn: "Withdrawn",
-};
+/** Whether Confirm join on another of the person's applications sets this one to "Accepted for another position". */
+export function takenByJoinElsewhere(status: ApplicationStatus): boolean {
+  return isOpenStatus(builtInOf(status));
+}
 
 // Moves --------------------------------------------------------------------------
 
-/** What a lead does to an application. */
+/** What a lead does to an application: one action button of the owner's table. */
 export type LeadMove =
-  /** The lead opened it in the panel. */
-  | { readonly kind: "open" }
   /** Move to interview (58c), or Change times on one already there (58d). */
   | { readonly kind: "offer-interview"; readonly slots: readonly SlotTime[] }
   | { readonly kind: "accept" }
-  /** Reject; on an accepted application this is "Withdraw acceptance". */
   | { readonly kind: "reject" }
-  /** The "The signed NDA arrived" tick (58g). */
-  | { readonly kind: "set-nda"; readonly arrived: boolean }
+  | { readonly kind: "withdraw-acceptance" }
+  /** Mark email sent: the acceptance email, or the refusal email. */
+  | { readonly kind: "mark-email-sent" }
+  | { readonly kind: "nda-received" }
   | { readonly kind: "confirm-join" };
+
+export type LeadMoveKind = LeadMove["kind"];
 
 /** What the applicant does (their My applications page, issue #169). */
 export type ApplicantMove =
   | { readonly kind: "book"; readonly start: string }
   | { readonly kind: "withdraw" };
 
-export type ApplicationMove = LeadMove | ApplicantMove;
+/**
+ * A hand pick of a built-in status in the drawer's Status picker, once saved
+ * (boards 97 to 97c, ruling R1.1 on #745, issue #750). It sets the status the
+ * way the step that sets it does, with that step's effects and checks; only
+ * which status the step is offered from does not bind it. Interview, like
+ * Move to interview, carries the offered times.
+ */
+export type BuiltInPick =
+  | { readonly kind: "pick"; readonly to: "interview"; readonly slots: readonly SlotTime[] }
+  | { readonly kind: "pick"; readonly to: Exclude<BuiltInStatusKey, "interview"> };
+
+/**
+ * A hand pick of an added status, once saved: the application's status
+ * reference becomes that status and nothing else changes (issue #750). Only
+ * the stored list knows which keys are added statuses, so the data source
+ * checks the key.
+ */
+export type AddedPick = { readonly kind: "pick-added"; readonly key: string };
+
+/** What an approver does to an application: an action button, or a saved hand pick in the Status picker. */
+export type ApproverMove = LeadMove | BuiltInPick | AddedPick;
+
+export type ApplicationMove = LeadMove | BuiltInPick | ApplicantMove;
+
+/**
+ * One action button: its words, the move it runs, the built-in status the
+ * move sets, and whether it is the bar's main button or its outlined one.
+ */
+export type LeadStep = {
+  readonly label: string;
+  readonly move: LeadMoveKind;
+  readonly sets: BuiltInStatusKey;
+  readonly emphasis: "primary" | "secondary";
+};
+
+/**
+ * The owner's button table (2026-10-25, epic #588): the buttons each built-in
+ * status offers, in the table's order, and the status each one sets. A status
+ * with no buttons is decided. This table is the one source for both the
+ * drawer's buttons and which lead move is legal (`applyMove`).
+ */
+export const LEAD_STEPS: Readonly<Record<BuiltInStatusKey, readonly LeadStep[]>> = {
+  new: [
+    { label: "Move to interview", move: "offer-interview", sets: "interview", emphasis: "primary" },
+    { label: "Reject", move: "reject", sets: "rejected_email_to_be_sent", emphasis: "secondary" },
+  ],
+  interview: [
+    { label: "Change times", move: "offer-interview", sets: "interview", emphasis: "secondary" },
+    { label: "Accept", move: "accept", sets: "accepted_email_to_be_sent", emphasis: "primary" },
+    { label: "Reject", move: "reject", sets: "rejected_email_to_be_sent", emphasis: "secondary" },
+  ],
+  accepted_email_to_be_sent: [
+    { label: "Mark email sent", move: "mark-email-sent", sets: "accepted_email_sent", emphasis: "primary" },
+    { label: "Withdraw acceptance", move: "withdraw-acceptance", sets: "new", emphasis: "secondary" },
+  ],
+  accepted_email_sent: [{ label: "NDA received", move: "nda-received", sets: "nda_received", emphasis: "primary" }],
+  nda_received: [{ label: "Confirm join", move: "confirm-join", sets: "joined", emphasis: "primary" }],
+  joined: [],
+  rejected_email_to_be_sent: [{ label: "Mark email sent", move: "mark-email-sent", sets: "rejected_email_sent", emphasis: "primary" }],
+  rejected_email_sent: [],
+  accepted_for_another_position: [],
+  withdrawn: [],
+};
+
+/** The action buttons a status offers: a built-in status's own, an added status's parent's. */
+export function leadSteps(status: ApplicationStatus | BuiltInStatusKey): readonly LeadStep[] {
+  return LEAD_STEPS[typeof status === "string" ? status : builtInOf(status)];
+}
 
 /**
  * A legal move's outcome. `joinsTeam` is true for Confirm join alone: it is
  * the one move after which the data source adds the person to the team.
- * `changed` is false when the move leaves the state as it was (opening an
- * application past New, ticking the NDA box to what it already says): a data
- * source then writes nothing, so it never rewrites an interview's times and
- * booking from a stale page.
+ * `changed` is false when the move leaves the state as it was (Change times
+ * to the same times): a data source then writes nothing, so it never rewrites
+ * an interview's booking from a stale page.
  */
 export type MoveResult =
   | { readonly ok: true; readonly state: ApplicationState; readonly joinsTeam: boolean; readonly changed: boolean }
@@ -133,22 +221,17 @@ function sameSlot(a: SlotTime, b: SlotTime): boolean {
   return Date.parse(a.start) === Date.parse(b.start) && Date.parse(a.end) === Date.parse(b.end);
 }
 
-/** Whether two states say the same thing: same stage, same times, same booking, same dates. */
+/** Whether two states say the same thing: same status, same times, same booking, same dates. */
 export function sameState(a: ApplicationState, b: ApplicationState): boolean {
-  switch (a.stage) {
-    case "interview": {
-      if (b.stage !== "interview") return false;
-      if (a.offered.length !== b.offered.length || !a.offered.every((s, i) => sameSlot(s, b.offered[i]))) return false;
-      if (a.booked === null || b.booked === null) return a.booked === b.booked;
-      return sameSlot(a.booked.slot, b.booked.slot) && Date.parse(a.booked.at) === Date.parse(b.booked.at);
-    }
-    case "accepted":
-      return b.stage === "accepted" && Date.parse(a.acceptedAt) === Date.parse(b.acceptedAt) && a.ndaArrived === b.ndaArrived;
-    case "joined":
-      return b.stage === "joined" && Date.parse(a.joinedAt) === Date.parse(b.joinedAt);
-    default:
-      return a.stage === b.stage;
+  if (a.status !== b.status) return false;
+  if (a.status === "interview" && b.status === "interview") {
+    if (a.offered.length !== b.offered.length || !a.offered.every((s, i) => sameSlot(s, b.offered[i]))) return false;
+    if (a.booked === null || b.booked === null) return a.booked === b.booked;
+    return sameSlot(a.booked.slot, b.booked.slot) && Date.parse(a.booked.at) === Date.parse(b.booked.at);
   }
+  if ("acceptedAt" in a && "acceptedAt" in b) return Date.parse(a.acceptedAt) === Date.parse(b.acceptedAt);
+  if (a.status === "joined" && b.status === "joined") return Date.parse(a.joinedAt) === Date.parse(b.joinedAt);
+  return true;
 }
 
 /** The offered slots, checked: some, not too many, one length, each in the future, none twice. */
@@ -168,66 +251,141 @@ export function checkOffer(slots: readonly SlotTime[], now: Date): { ok: true; o
   return { ok: true, offered: offered as unknown as OfferedSlots };
 }
 
-/**
- * The state after `move`, or why the move is not allowed from here. `standing`
- * is where the applicant stands with the team: someone already on it signed
- * the team's one NDA, so their join waits for none and records none.
- */
-export function applyMove(state: ApplicationState, move: ApplicationMove, now: Date, standing: ApplicantStanding): MoveResult {
-  const next = nextState(state, move, now, standing);
+/** The state after `move`, or why the move is not allowed from here. */
+export function applyMove(state: ApplicationState, move: ApplicationMove, now: Date): MoveResult {
+  const next =
+    move.kind === "book" || move.kind === "withdraw"
+      ? applicantNext(state, move, now)
+      : move.kind === "pick"
+        ? pickNext(state, move, now)
+        : leadNext(state, move, now);
   return next.ok ? { ...next, changed: !sameState(state, next.state) } : next;
 }
 
-function nextState(state: ApplicationState, move: ApplicationMove, now: Date, standing: ApplicantStanding): Next {
-  const at = now.toISOString();
-  switch (move.kind) {
-    case "open":
-      // Opening a New application is the first look; opening any other changes nothing.
-      return moved(state.stage === "new" ? { stage: "in-review" } : state);
+/** The built-in status a hand pick sets, with the times its confirm offered when it is Interview. */
+export type PickTarget =
+  | { readonly to: "interview"; readonly slots: readonly SlotTime[] }
+  | { readonly to: Exclude<BuiltInStatusKey, "interview"> };
 
-    case "offer-interview": {
-      if (state.stage !== "new" && state.stage !== "in-review" && state.stage !== "interview") {
-        return illegal(`An application that is ${STAGE_LABELS[state.stage].toLowerCase()} cannot move to interview.`);
-      }
-      const offer = checkOffer(move.slots, now);
+/**
+ * The move a confirm runs for `target` (ruling R1.1 on #745). From a button,
+ * that button's own move. From a saved hand pick, a `pick` of the status: it
+ * runs the move of the current status's button that sets it where there is
+ * one (`pickNext`), so its checks and effects are that button's, and only
+ * the status it leaves differs. Interview picked from Second interview runs
+ * Change times' move and lands on Interview, where Change times itself keeps
+ * Second interview (`statusAfter`).
+ */
+export function moveToStatus(state: ApplicationState, target: PickTarget, via: "button" | "pick"): LeadMove | BuiltInPick {
+  const step = via === "button" ? LEAD_STEPS[state.status].find((s) => s.sets === target.to) : undefined;
+  if (!step) return target.to === "interview" ? { kind: "pick", to: "interview", slots: target.slots } : { kind: "pick", to: target.to };
+  return buttonMove(step, target);
+}
+
+/** The move `step`'s button runs, with the times its confirm offered when it moves to Interview. */
+function buttonMove(step: LeadStep, target: PickTarget): LeadMove {
+  if (step.move === "offer-interview") return { kind: "offer-interview", slots: target.to === "interview" ? target.slots : [] };
+  return { kind: step.move };
+}
+
+/**
+ * A saved hand pick: the state the step that sets the status reaches, with
+ * that step's checks and effects. Where a button of the current status sets
+ * it, the pick runs that button's move. Otherwise the step is the button of
+ * the owner's table that sets the status, the applicant's Withdraw for
+ * Withdrawn, and Confirm join on another of the person's applications for
+ * "Accepted for another position". Interview's times are
+ * checked as Move to interview's; Confirm join needs the signed NDA, so
+ * Joined is picked only from NDA received, and only it adds the person to
+ * the team; Withdrawn and "Accepted for another position" are set, as the
+ * applicant's Withdraw and Confirm join elsewhere set them, only on an
+ * application still open.
+ */
+function pickNext(state: ApplicationState, pick: BuiltInPick, now: Date): Next {
+  const step = LEAD_STEPS[state.status].find((s) => s.sets === pick.to);
+  if (step) return leadNext(state, buttonMove(step, pick), now);
+  switch (pick.to) {
+    case "interview": {
+      const offer = checkOffer(pick.slots, now);
       if (!offer.ok) return illegal(offer.reason);
-      return moved({ stage: "interview", offered: offer.offered, booked: null });
+      return moved({ status: "interview", offered: offer.offered, booked: null });
     }
+    case "joined":
+      if (state.status !== "nda_received") return illegal("Confirm join needs the signed NDA. Save NDA received first.");
+      return moved(arrival("joined", state, now.toISOString()), true);
+    case "withdrawn":
+    case "accepted_for_another_position":
+      if (!isOpenStatus(state.status)) return illegal("This application is already decided.");
+      return moved({ status: pick.to });
+    default:
+      return moved(arrival(pick.to, state, now.toISOString()));
+  }
+}
 
+/**
+ * The status an application carries once a move reached `next`: after a
+ * hand pick, the picked status; after a button, the built-in status it set,
+ * or the current status when the button keeps the built-in status it behaves
+ * like, so Change times on an added status under Interview keeps it.
+ */
+export function statusAfter(current: ApplicationStatus, next: ApplicationState, via: "button" | "pick"): ApplicationStatus {
+  if (via === "button" && next.status === builtInOf(current)) return current;
+  return { kind: "built-in", key: next.status };
+}
+
+/** A lead move: legal only where the button table offers it from this status, and it sets the status the table names. */
+function leadNext(state: ApplicationState, move: LeadMove, now: Date): Next {
+  const step = LEAD_STEPS[state.status].find((s) => s.move === move.kind);
+  if (!step) return illegal(`An application that is ${STATUS_NAMES[state.status]} has no ${moveName(move.kind)} step.`);
+  if (move.kind === "offer-interview") {
+    const offer = checkOffer(move.slots, now);
+    if (!offer.ok) return illegal(offer.reason);
+    return moved({ status: "interview", offered: offer.offered, booked: null });
+  }
+  return moved(arrival(step.sets, state, now.toISOString()), move.kind === "confirm-join");
+}
+
+/**
+ * The state a move that sets `status` reaches from `from` at `at`. Accept
+ * records the day; the email and NDA statuses after it keep that day.
+ */
+function arrival(status: BuiltInStatusKey, from: ApplicationState, at: string): ApplicationState {
+  switch (status) {
+    case "interview":
+      return { status, offered: [], booked: null };
+    case "accepted_email_to_be_sent":
+      return { status, acceptedAt: at };
+    case "accepted_email_sent":
+    case "nda_received":
+      return { status, acceptedAt: "acceptedAt" in from ? from.acceptedAt : at };
+    case "joined":
+      return { status, joinedAt: at };
+    default:
+      return { status };
+  }
+}
+
+/** The applicant's own moves: book an offered time, or withdraw while the application is still open. */
+function applicantNext(state: ApplicationState, move: ApplicantMove, now: Date): Next {
+  switch (move.kind) {
     case "book": {
-      if (state.stage !== "interview") return illegal("Only an application at interview takes a booking.");
+      if (state.status !== "interview") return illegal("Only an application at interview takes a booking.");
       const slot = state.offered.find((s) => Date.parse(s.start) === Date.parse(move.start));
       if (!slot) return illegal("That time was not offered.");
-      return moved({ ...state, booked: { slot, at } });
+      return moved({ ...state, booked: { slot, at: now.toISOString() } });
     }
-
-    case "accept":
-      // Every application goes Received, In review, Interview, then Decision: Accept never skips the interview.
-      if (state.stage !== "interview") return illegal("Only an application at interview can be accepted.");
-      return moved({ stage: "accepted", acceptedAt: at, ndaArrived: false });
-
-    case "reject":
-      if (state.stage === "joined" || state.stage === "rejected" || state.stage === "withdrawn") {
-        return illegal(`An application that is ${STAGE_LABELS[state.stage].toLowerCase()} cannot be rejected.`);
-      }
-      return moved({ stage: "rejected" });
-
-    case "set-nda":
-      if (state.stage !== "accepted") return illegal("Only an accepted application waits for the NDA.");
-      if (!needsNda(standing)) return illegal("They signed the team's NDA when they joined. There is no second one.");
-      return moved({ ...state, ndaArrived: move.arrived });
-
-    case "confirm-join":
-      if (state.stage !== "accepted") return illegal("Only an accepted application can join the team.");
-      if (needsNda(standing) && !state.ndaArrived) return illegal("Tick that the signed NDA arrived first.");
-      return moved({ stage: "joined", joinedAt: at }, true);
-
     case "withdraw":
-      if (state.stage === "joined" || state.stage === "rejected" || state.stage === "withdrawn") {
-        return illegal("This application is already decided.");
-      }
-      return moved({ stage: "withdrawn" });
+      if (!isOpenStatus(state.status)) return illegal("This application is already decided.");
+      return moved({ status: "withdrawn" });
   }
+}
+
+/** "accept" as a refusal names it: the button's words where a status offers it, else the move's own. */
+function moveName(kind: LeadMoveKind): string {
+  const step = Object.values(LEAD_STEPS)
+    .flat()
+    .find((s) => s.move === kind);
+  return step ? `"${step.label}"` : kind;
 }
 
 // Joining the team ---------------------------------------------------------------
@@ -235,8 +393,10 @@ function nextState(state: ApplicationState, move: ApplicationMove, now: Date, st
 /**
  * Where the applicant stands with the team: not on it yet, on it before and
  * left (a member row with no active role), or on it now. Someone on it now
- * signed the team's one NDA when they joined, and never signs a second one
- * (Owner decision, 2026-10-11).
+ * signed the team's one NDA when they joined and never signs a second one
+ * (Owner decision, 2026-10-11), yet follows the same statuses as anyone else
+ * (ADR 0014, amendment of 2026-10-25). The standing says only what Confirm
+ * join adds (`joinChange`) and how its confirm reads.
  */
 export type ApplicantStanding = { readonly kind: "applicant" } | { readonly kind: "alumnus" } | MemberStanding;
 
@@ -288,11 +448,6 @@ export function memberDivisionNames(standing: MemberStanding): string[] {
   return homeFirst(standing.memberships).flatMap((m) => standing.divisionNames[m.divisionId] ?? []);
 }
 
-/** Whether their join waits for a signed NDA: everyone's but a member's. */
-export function needsNda(standing: ApplicantStanding): boolean {
-  return standing.kind !== "member";
-}
-
 /**
  * What Confirm join adds to the team: a member row and their role for a new
  * person, a role for someone coming back, a membership of the new division
@@ -314,172 +469,107 @@ export function joinChange(standing: ApplicantStanding): JoinChange {
   }
 }
 
-/** A lead's move as the browser sent it, checked for shape; null when it is not one. */
+/** An approver's move as the browser sent it, a button's or a saved hand pick, checked for shape; null when it is not one. */
+export function parseApproverMove(value: unknown): ApproverMove | null {
+  if (typeof value !== "object" || value === null) return null;
+  const v = value as Record<string, unknown>;
+  switch (v.kind) {
+    case "pick-added":
+      return typeof v.key === "string" && v.key.length > 0 && !isBuiltInStatusKey(v.key) ? { kind: "pick-added", key: v.key } : null;
+    case "pick": {
+      if (!isBuiltInStatusKey(v.to)) return null;
+      if (v.to !== "interview") return { kind: "pick", to: v.to };
+      const slots = parseSlots(v.slots);
+      return slots === null ? null : { kind: "pick", to: "interview", slots };
+    }
+    default:
+      return parseLeadMove(value);
+  }
+}
+
+/** Offered times as the browser sent them, each one of INTERVIEW_LENGTHS long; null when they are not. */
+function parseSlots(value: unknown): SlotTime[] | null {
+  if (!Array.isArray(value) || value.length > MAX_OFFERED_SLOTS) return null;
+  const slots: SlotTime[] = [];
+  for (const raw of value) {
+    if (typeof raw !== "object" || raw === null) return null;
+    const { start, end } = raw as Record<string, unknown>;
+    if (typeof start !== "string" || typeof end !== "string") return null;
+    if (!Number.isFinite(Date.parse(start)) || !Number.isFinite(Date.parse(end))) return null;
+    const slot = { start: new Date(start).toISOString(), end: new Date(end).toISOString() };
+    if (!isInterviewLength(slotLength(slot))) return null;
+    slots.push(slot);
+  }
+  return slots;
+}
+
+/** A lead's button move as the browser sent it, checked for shape; null when it is not one. */
 export function parseLeadMove(value: unknown): LeadMove | null {
   if (typeof value !== "object" || value === null) return null;
   const v = value as Record<string, unknown>;
   switch (v.kind) {
-    case "open":
     case "accept":
     case "reject":
+    case "withdraw-acceptance":
+    case "mark-email-sent":
+    case "nda-received":
     case "confirm-join":
       return { kind: v.kind };
-    case "set-nda":
-      return typeof v.arrived === "boolean" ? { kind: "set-nda", arrived: v.arrived } : null;
     case "offer-interview": {
-      if (!Array.isArray(v.slots) || v.slots.length > MAX_OFFERED_SLOTS) return null;
-      const slots: SlotTime[] = [];
-      for (const raw of v.slots) {
-        if (typeof raw !== "object" || raw === null) return null;
-        const { start, end } = raw as Record<string, unknown>;
-        if (typeof start !== "string" || typeof end !== "string") return null;
-        if (!Number.isFinite(Date.parse(start)) || !Number.isFinite(Date.parse(end))) return null;
-        const slot = { start: new Date(start).toISOString(), end: new Date(end).toISOString() };
-        if (!isInterviewLength(slotLength(slot))) return null;
-        slots.push(slot);
-      }
-      return { kind: "offer-interview", slots };
+      const slots = parseSlots(v.slots);
+      return slots === null ? null : { kind: "offer-interview", slots };
     }
     default:
       return null;
   }
 }
 
-// What the lead can do next --------------------------------------------------------
-
-export type LeadStep = { readonly label: string; readonly move: LeadMove["kind"] };
+// How a status reads --------------------------------------------------------------
 
 /**
- * The two buttons at the foot of the detail panel: the outlined one on the
- * left and the main one on the right. `ready` is false while the main one
- * waits on something (Confirm join waits for the NDA tick). Someone already on
- * the team waits for nothing: the main button adds them to `division` (board
- * 58h2). A decided application has none.
+ * The words of the status pill in the list and the panel (58b, 58i), and its
+ * phone words (58m), in the name the status list gives the application's
+ * status (issue #752): renaming a status renames every pill of it. An
+ * interview names its booked time. The pill's colour is the list's too.
  */
-export function footerSteps(
-  state: ApplicationState,
-  standing: ApplicantStanding,
-  division: string,
-): { readonly secondary: LeadStep; readonly primary: LeadStep & { readonly ready: boolean } } | null {
-  if (state.stage === "accepted" && !needsNda(standing)) {
-    return {
-      secondary: { label: "Withdraw acceptance", move: "reject" },
-      primary: { label: `Add to ${division}`, move: "confirm-join", ready: true },
-    };
-  }
-  switch (state.stage) {
-    case "new":
-    case "in-review":
-      return { secondary: { label: "Reject", move: "reject" }, primary: { label: "Move to interview", move: "offer-interview", ready: true } };
+export function statusPill(state: ApplicationState, name: string = STATUS_NAMES[state.status]): { readonly label: string; readonly short: string } {
+  switch (state.status) {
     case "interview":
-      return { secondary: { label: "Reject", move: "reject" }, primary: { label: "Accept", move: "accept", ready: true } };
-    case "accepted":
-      return {
-        secondary: { label: "Withdraw acceptance", move: "reject" },
-        primary: { label: "Confirm join", move: "confirm-join", ready: state.ndaArrived },
-      };
-    case "joined":
-    case "rejected":
-    case "withdrawn":
-      return null;
+      if (state.booked) return { label: `${name} · ${slotDayTime(state.booked.slot)}`, short: `${name} · ${slotDay(state.booked.slot)}` };
+      return { label: `${name} · no time yet`, short: `${name} · no time` };
+    default:
+      // The phone words shorten a built-in status's own name; a name the list changed shows as it is.
+      return { label: name, short: name === STATUS_NAMES[state.status] ? (SHORT_NAMES[state.status] ?? name) : name };
   }
 }
 
-/** Every step the stage menu offers from here, in the order the flow runs. */
-export function menuSteps(state: ApplicationState): readonly LeadStep[] {
-  switch (state.stage) {
-    case "new":
-    case "in-review":
-      return [{ label: "Move to interview", move: "offer-interview" }, { label: "Reject", move: "reject" }];
-    case "interview":
-      return [
-        { label: "Change times", move: "offer-interview" },
-        { label: "Accept", move: "accept" },
-        { label: "Reject", move: "reject" },
-      ];
-    case "accepted":
-      return [{ label: "Withdraw acceptance", move: "reject" }];
-    case "joined":
-    case "rejected":
-    case "withdrawn":
-      return [];
-  }
-}
-
-// How a stage reads --------------------------------------------------------------
-
-export type PillTone = "neutral" | "info" | "accent" | "success" | "muted";
-
-/**
- * The stage pill in the list and the panel (58b, 58i): its words, its phone
- * words (58m), its colour. An accepted member waits for no NDA, so their pill
- * names none.
- */
-export function stagePill(
-  state: ApplicationState,
-  standing: ApplicantStanding,
-): { readonly label: string; readonly short: string; readonly tone: PillTone } {
-  if (state.stage === "accepted" && !needsNda(standing)) return { label: "Accepted", short: "Accepted", tone: "success" };
-  switch (state.stage) {
-    case "new":
-      return { label: "New", short: "New", tone: "neutral" };
-    case "in-review":
-      return { label: "In review", short: "In review", tone: "info" };
-    case "interview":
-      return state.booked
-        ? {
-            label: `Interview · ${slotDayTime(state.booked.slot)}`,
-            short: `Interview · ${slotDay(state.booked.slot)}`,
-            tone: "accent",
-          }
-        : { label: "Interview · no time yet", short: "Interview · no time", tone: "neutral" };
-    case "accepted":
-      return state.ndaArrived
-        ? { label: "Accepted · NDA arrived", short: "Accepted · NDA in", tone: "success" }
-        : { label: "Accepted · waiting for NDA", short: "Accepted · NDA", tone: "success" };
-    case "joined":
-      return { label: "Joined", short: "Joined", tone: "success" };
-    case "rejected":
-      return { label: "Rejected", short: "Rejected", tone: "muted" };
-    case "withdrawn":
-      return { label: "Withdrawn", short: "Withdrawn", tone: "muted" };
-  }
-}
-
-/** The tone of a stage on its own, as the Other applications rows show it (board 58). */
-export function stageTone(stage: ApplicationStage): PillTone {
-  switch (stage) {
-    case "new":
-      return "neutral";
-    case "in-review":
-      return "info";
-    case "interview":
-      return "accent";
-    case "accepted":
-    case "joined":
-      return "success";
-    case "rejected":
-    case "withdrawn":
-      return "muted";
-  }
-}
+/** The phone pill's words where the status's name is too long for a list row (58m). */
+const SHORT_NAMES: Partial<Record<BuiltInStatusKey, string>> = {
+  accepted_email_to_be_sent: "Accepted · to email",
+  accepted_email_sent: "Accepted · emailed",
+  rejected_email_to_be_sent: "Rejected · to email",
+  rejected_email_sent: "Rejected · emailed",
+  accepted_for_another_position: "Other position",
+};
 
 /** The four steps the progress bar under an Other application counts: applied, review, interview, accepted. */
 export const PROGRESS_STEPS = 4;
 
 /** How many of the four steps an application has reached; null once it ended without a place. */
-export function progressOf(stage: ApplicationStage): number | null {
-  switch (stage) {
+export function progressOf(status: BuiltInStatusKey): number | null {
+  switch (status) {
     case "new":
       return 1;
-    case "in-review":
-      return 2;
     case "interview":
       return 3;
-    case "accepted":
+    case "accepted_email_to_be_sent":
+    case "accepted_email_sent":
+    case "nda_received":
     case "joined":
       return 4;
-    case "rejected":
+    case "rejected_email_to_be_sent":
+    case "rejected_email_sent":
+    case "accepted_for_another_position":
     case "withdrawn":
       return null;
   }
@@ -487,36 +577,48 @@ export function progressOf(stage: ApplicationStage): number | null {
 
 // Tabs -----------------------------------------------------------------------------
 
-export type ApplicationTab = "all" | "new" | "in-review" | "interview" | "accepted" | "rejected";
+/**
+ * The list's tabs follow the status list (ruling R1.2 on #745): New,
+ * Interview, the accepted statuses with Joined, and the statuses that ended
+ * without a place. There is no In review tab.
+ */
+export type ApplicationTab = "all" | "new" | "interview" | "accepted" | "rejected";
 
 export const APPLICATION_TABS: readonly { readonly tab: ApplicationTab; readonly label: string }[] = [
   { tab: "all", label: "All" },
   { tab: "new", label: "New" },
-  { tab: "in-review", label: "In review" },
   { tab: "interview", label: "Interview" },
   { tab: "accepted", label: "Accepted" },
   { tab: "rejected", label: "Rejected" },
 ];
 
-/** The tab a stage sits under: joined people stay under Accepted, withdrawn ones under Rejected. */
-export function tabOf(stage: ApplicationStage): Exclude<ApplicationTab, "all"> {
-  switch (stage) {
+/** The tab a status sits under. */
+export function tabOf(status: BuiltInStatusKey): Exclude<ApplicationTab, "all"> {
+  switch (status) {
+    case "new":
+      return "new";
+    case "interview":
+      return "interview";
+    case "accepted_email_to_be_sent":
+    case "accepted_email_sent":
+    case "nda_received":
     case "joined":
       return "accepted";
+    case "rejected_email_to_be_sent":
+    case "rejected_email_sent":
+    case "accepted_for_another_position":
     case "withdrawn":
       return "rejected";
-    default:
-      return stage;
   }
 }
 
-export function inTab(stage: ApplicationStage, tab: ApplicationTab): boolean {
-  return tab === "all" || tabOf(stage) === tab;
+export function inTab(status: BuiltInStatusKey, tab: ApplicationTab): boolean {
+  return tab === "all" || tabOf(status) === tab;
 }
 
-export function tabCounts(stages: readonly ApplicationStage[]): Record<ApplicationTab, number> {
-  const counts: Record<ApplicationTab, number> = { all: stages.length, new: 0, "in-review": 0, interview: 0, accepted: 0, rejected: 0 };
-  for (const stage of stages) counts[tabOf(stage)] += 1;
+export function tabCounts(statuses: readonly BuiltInStatusKey[]): Record<ApplicationTab, number> {
+  const counts: Record<ApplicationTab, number> = { all: statuses.length, new: 0, interview: 0, accepted: 0, rejected: 0 };
+  for (const status of statuses) counts[tabOf(status)] += 1;
   return counts;
 }
 

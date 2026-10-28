@@ -4,8 +4,6 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import type { GalleryBlock, TextBlock } from "@/lib/project-pages/types";
-import { storedProjectRecord as storedBeforeBlocks } from "./before-blocks/check";
-import * as beforeBlocks from "./before-blocks/record";
 import { isProjectRecord } from "./check";
 import { firstImport, legacyRecords } from "./import";
 import { blocksRecordOf, LAUNCH_PHOTOS_GALLERY_TITLE, type LegacyProjectRecord, type LegacyVehicleRecord } from "./legacy";
@@ -19,10 +17,10 @@ import { rowRecordOf } from "./row";
 // from: the same sections as blocks, in today's page order, with the same
 // content, the texture and the model kept. `blocksRecordOf` must give the
 // same records, so the code that reads the import and the database agree.
-// The migration is additive (Owner decision, 2026-10-22, on #522): each
-// row's `content` is left byte for byte, and the code from before page blocks
-// (./before-blocks/, as on huey/landing-page) reads every migrated row and
-// draws the same page, home card and /projects entry as it did before.
+// The migration is additive: each row's `content` is left byte for byte.
+// Migrations 0072 and 0073 (issue #535) later fill the rows still without a
+// `page` by this same statement and drop `content`
+// (./page-only-migration.test.ts).
 
 const root = join(__dirname, "..", "..");
 const migration = readFileSync(join(root, "drizzle", "0050_project_page_blocks.sql"), "utf8");
@@ -223,41 +221,6 @@ test("each project keeps its texture as its background and its model as its visu
     assert.equal("texture" in record, false);
   }
   assert.equal("teaser" in migrated.get(key(3, "draft"))!, false, "the page record leaves the retired key out");
-});
-
-test("the code from before page blocks reads every migrated row and draws the same page, home card and /projects entry", async () => {
-  // Read as huey/landing-page reads it: its Drizzle table names only these columns.
-  const trunkRows = await readRows(`"id", "project_id", "version", "content"`);
-  const published: { was: beforeBlocks.ProjectRecord; now: beforeBlocks.ProjectRecord }[] = [];
-  for (const [id, version, stored] of STORED) {
-    const row = [...trunkRows.values()].find((r) => r.project_id === id && r.version === version)!;
-    assert.equal("page" in row, false);
-    const was = storedBeforeBlocks(plain(stored));
-    const now = storedBeforeBlocks(row.content);
-    assert.ok(was !== null, `${stored.slug} ${version}: a record before the migration`);
-    assert.ok(now !== null, `${stored.slug} ${version}: still a record after it`);
-    assert.deepEqual(now, was, `${stored.slug} ${version}: the same record`);
-    assert.deepEqual(beforeBlocks.pageRecordOf(now), beforeBlocks.pageRecordOf(was), `${stored.slug} ${version}: its page`);
-    assert.deepEqual(beforeBlocks.homeCardOf(now, id - 1), beforeBlocks.homeCardOf(was, id - 1), `${stored.slug} ${version}: its home card`);
-    assert.deepEqual(beforeBlocks.landingCardOf(now, id - 1), beforeBlocks.landingCardOf(was, id - 1), `${stored.slug} ${version}: its Home card`);
-    assert.deepEqual(beforeBlocks.listingOf(now, id - 1), beforeBlocks.listingOf(was, id - 1), `${stored.slug} ${version}: its /projects entry`);
-    if (version === "published") published.push({ was, now });
-  }
-  assert.equal(published.length, 3);
-  assert.deepEqual(
-    beforeBlocks.listingsNewestFirst(published.map((p) => p.now)),
-    beforeBlocks.listingsNewestFirst(published.map((p) => p.was)),
-    "the /projects list, in its order",
-  );
-});
-
-test("a row the code from before page blocks writes after the migration is read from its content, as the migration reads it", async () => {
-  const written = { ...ves, hero: { ...ves.hero, intro: { text: "Saved by a deployment built before page blocks." } } };
-  await db.query(`INSERT INTO "project_versions" ("project_id", "version", "content") VALUES ($1, $2, $3::jsonb)`, [5, "draft", JSON.stringify(written)]);
-  const { rows } = await db.query<{ content: unknown; page: unknown }>(`SELECT "content", "page" FROM "project_versions" WHERE "project_id" = 5`);
-  assert.equal(rows[0].page, null);
-  assert.deepEqual(rowRecordOf(rows[0]), plain(blocksRecordOf(written)));
-  await db.query(`DELETE FROM "project_versions" WHERE "project_id" = 5`);
 });
 
 test("migration 0050 run again changes nothing", async () => {

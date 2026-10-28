@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { inDivisions, NO_MEMBERSHIPS, type BoardSeat, type Placement } from "@/lib/dashboard/team";
+import { BOARD_FLAG_TITLES, BOARD_FLAGS, inDivisions, NO_MEMBERSHIPS, type BoardFlag, type Placement } from "@/lib/dashboard/team";
 import {
   addLeader,
   applyLayer,
@@ -30,8 +30,12 @@ function person(id: number, name: string, placement: Placement, over: Partial<Te
 }
 
 const leader = (): Placement => ({ role: "team-leader", memberships: NO_MEMBERSHIPS });
-const seat = (s: BoardSeat): Placement => ({ role: "board", seat: s, memberships: NO_MEMBERSHIPS });
-const head = (departmentId: number): Placement => ({ role: "head", departmentId, memberships: NO_MEMBERSHIPS });
+const seat = (s: BoardFlag): Placement => ({
+  role: "board",
+  seat: { roleId: BOARD_FLAGS.indexOf(s) + 1, title: BOARD_FLAG_TITLES[s], flag: s, since },
+  memberships: NO_MEMBERSHIPS,
+});
+const head = (departmentId: number): Placement => ({ role: "head", departmentId, title: "", memberships: NO_MEMBERSHIPS });
 const lead = (divisionId: number) => inDivisions([{ divisionId, role: "lead", since }]);
 const member = (divisionId: number) => inDivisions([{ divisionId, role: "member", since }]);
 
@@ -173,6 +177,22 @@ test("added leaders land at their place in OrgChart.leaders reading order: eithe
   // A neighbour gone from the team sends the leader to the end; a leader who left is skipped and kept.
   const gone = people.filter((p) => p.id !== 3 && p.id !== 4);
   assert.deepEqual(names(layer, gone), ["Federica Moretti", "Simone Testa", "Marco Bianchi", "Irene Galli", "Pietro Ricci"]);
+});
+
+test("someone the editor added to the arc whose role then becomes a team-level seat shows once, where the editor put them", () => {
+  const rd: Placement = { role: "board", seat: { roleId: 27, title: "Head of R&D", flag: null, since }, memberships: NO_MEMBERSHIPS };
+  const withSeat = [...people, person(12, "Marco Dona", rd)];
+  const layer: TeamPageLayer = { ...NO_TEAM_LAYER, addedLeaders: [added(1, 12, { at: "start" }, "Head of R&D")] };
+  assert.deepEqual(
+    shownWith(layer, withSeat).leaders.map((l) => [l.at, l.shown.name, l.shown.role]),
+    [
+      ["added:1", "Marco Dona", "Head of R&D"],
+      ["arc:project-manager:0", "Lorenzo Gallo", "Project Manager"],
+      ["arc:chief-engineer:0", "Federica Moretti", "Chief Engineer"],
+    ],
+  );
+  // With no such entry the roles seat them after the flagged seats.
+  assert.deepEqual(names(NO_TEAM_LAYER, withSeat), ["Lorenzo Gallo", "Federica Moretti", "Marco Dona"]);
 });
 
 test("the arc holds at most eight: Add leader refuses the ninth, and the page draws only the first eight", () => {

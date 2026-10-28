@@ -2,17 +2,18 @@
 
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { CONTENT_FOCUS } from "./content-parts";
 import { PANEL_PRIMARY_BUTTON } from "./drawer";
+import { EditorPanel } from "./editor-panel";
 
-// The edit panel beside a page under the edit shell (boards 74c and 75c):
-// 480px wide, a header with the panel's name and a close button, one card
-// per section, any of them open at once, and Done at the foot. Every content
+// The edit panel beside a page under the edit shell (boards 74c and 75c),
+// drawn on the shared EditorPanel frame: one card per section, any of them
+// open at once, and Done at the foot. Every content
 // type that edits on the page brings its own sections; Save draft and
 // Publish sit on the edit bar, not here.
 
-/** A section card's frame; a closed card that opens its panel in the cards' place wears it too. */
+/** A section card's frame. */
 export const SECTION_CARD =
   "scroll-mt-4 rounded-xl border border-hairline bg-ground/40 transition-colors duration-300 ease-out data-[state=open]:border-accent/40";
 
@@ -37,40 +38,26 @@ export function EditPanel<Section extends string>({
   children: ReactNode;
 }) {
   return (
-    <aside
-      aria-label={label}
-      className="flex flex-col border-l border-hairline bg-panel max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:top-[60px] max-md:z-50 md:w-[480px] md:shrink-0"
-    >
-      <header className="flex shrink-0 items-center justify-between border-b border-hairline px-6 py-[18px]">
-        <div className="min-w-0">
-          {eyebrow !== undefined && <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent">{eyebrow}</p>}
-          <h2 className={`truncate text-[18px] font-bold ${eyebrow === undefined ? "" : "mt-1"}`}>{title}</h2>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close the panel"
-          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-prt-muted transition-colors duration-300 ease-out hover:bg-white-5 hover:text-prt-text ${CONTENT_FOCUS}`}
-        >
-          <X aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+    <EditorPanel
+      label={label}
+      eyebrow={eyebrow}
+      title={title}
+      onClose={onClose}
+      foot={
+        <button type="button" onClick={onClose} className={PANEL_PRIMARY_BUTTON}>
+          Done
         </button>
-      </header>
-
+      }
+    >
       <AccordionPrimitive.Root
         type="multiple"
         value={[...expanded]}
         onValueChange={(value) => onExpandedChange(value as Section[])}
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto px-[18px] py-4"
+        className="space-y-3"
       >
         {children}
       </AccordionPrimitive.Root>
-
-      <footer className="flex shrink-0 justify-end border-t border-hairline px-6 py-4">
-        <button type="button" onClick={onClose} className={PANEL_PRIMARY_BUTTON}>
-          Done
-        </button>
-      </footer>
-    </aside>
+    </EditorPanel>
   );
 }
 
@@ -95,19 +82,25 @@ export function usePanelScroll<Section extends string>(scrollTo: { readonly sect
 /**
  * One section card: its title and a one-line summary while closed, the
  * fields while open. `control` sits in the header beside the chevron, outside
- * the toggle, as an optional section's show-on-page switch does (board 75c).
+ * the toggle, as an optional section's show-on-page switch does (board 75c);
+ * `lead` sits before the title, outside the toggle too, as a page block's
+ * drag grip does. `tag` follows the title, open or closed.
  */
 export function PanelSection({
   value,
   title,
+  tag,
   summary,
+  lead,
   control,
   cardRef,
   children,
 }: {
   value: string;
   title: string;
+  tag?: ReactNode;
   summary: string;
+  lead?: ReactNode;
   control?: ReactNode;
   cardRef?: (node: HTMLDivElement | null) => void;
   children: ReactNode;
@@ -116,11 +109,15 @@ export function PanelSection({
     <AccordionPrimitive.Item ref={cardRef} value={value} className={SECTION_CARD}>
       <AccordionPrimitive.Header asChild>
         <h3 className="relative">
+          {lead !== undefined && <span className="absolute left-3 top-1/2 flex -translate-y-1/2">{lead}</span>}
           <AccordionPrimitive.Trigger
-            className={`group/section flex w-full items-center justify-between gap-4 rounded-xl px-4 py-3.5 text-left ${CONTENT_FOCUS}`}
+            className={`group/section flex w-full items-center justify-between gap-4 rounded-xl py-3.5 pr-4 text-left ${lead === undefined ? "pl-4" : "pl-8"} ${CONTENT_FOCUS}`}
           >
             <span className={`min-w-0 ${control === undefined ? "" : "pr-14"}`}>
-              <span className="block text-[14px] font-semibold leading-snug">{title}</span>
+              <span className="flex items-center gap-2">
+                <span className="text-[14px] font-semibold leading-snug">{title}</span>
+                {tag}
+              </span>
               <span className="mt-0.5 block truncate text-[12px] text-prt-muted group-data-[state=open]/section:hidden">{summary}</span>
             </span>
             <ChevronDown

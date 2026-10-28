@@ -12,7 +12,7 @@ tags: [hosting, database, neon, vercel, launch]
 
 ## Context
 
-Decided 2026-10-22 by the project owner in chat, while the v2 launch was set up. His words are quoted verbatim, with the questions they answered, at https://github.com/PoliTo-Rocket-Team/website-v2/issues/555#issuecomment-6338589217, recorded as [ADR 0006](0006-pitch-approval-from-chat-ruling.md) says. The settings below were already applied when this record was written; it records them and changes none of them.
+Decided 2026-10-22 by the project owner in chat, while the v2 launch was set up. The decisions are recorded as neutral owner-decision statements at https://github.com/PoliTo-Rocket-Team/website-v2/issues/555#issuecomment-6340615126, as [ADR 0006](0006-pitch-approval-from-chat-ruling.md) says. The settings below were already applied when this record was written; it records them and changes none of them.
 
 Two records described the old setup. [ADR 0003](0003-neon-direct-pooled.md) ruled out a database managed through the host, and [ADR 0016](0016-previews-read-their-own-seeded-branch.md) Decision 9 allowed the Neon integration only in the form that links the project's own Neon account, with a connection that covered Production and Development alike. An agent reading them could move the hosting back. This record amends both in part; the lines it replaces are listed below.
 
@@ -47,6 +47,8 @@ These lines of 0003 still stand: the pooled `DATABASE_URL`, with the direct stri
 - the first amendment's "which connects Production and Development only", where it says one integration connection covers Production and Development on the same database setup. Production now reads `main` and Development reads `development`.
 
 Everything else in 0016 still stands: Decisions 1 to 8, the `preview` branch and its endpoint `PREVIEW_ENDPOINT` in [lib/seed/target.ts](../lib/seed/target.ts), the seed guard, the other binding constraints and every later amendment. The `preview` branch is the same one 0016 describes (created 2026-10-16 from `main` in this project), so its endpoint is unchanged.
+
+Because production now has its own branch, [ADR 0016's amendment of 2026-10-24](0016-previews-read-their-own-seeded-branch.md#amendment-2026-10-24-agents-write-to-preview-for-checks-and-the-owner-asks-for-a-re-seed) treats `preview` as a test database again: agents may write to it for checks, the owner asks for a re-seed with `PREVIEW_RESEED_REQUEST`, production is never written to or seeded by agents, and `preview` is never reset from its parent.
 
 **Binding constraints.**
 - Production reads only the Neon `main` branch, and its connection strings are set for the Vercel Production environment only.

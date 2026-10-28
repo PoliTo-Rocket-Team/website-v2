@@ -1,3 +1,4 @@
+import { attributedName } from "./acting-account";
 import type { AttentionItem } from "./overview";
 import { isPromoteMode, type PromoteMode } from "./team";
 import { shortDate } from "./write";
@@ -10,7 +11,18 @@ import { shortDate } from "./write";
 // entry here, not a new mechanism: "promoted" (#188), the department head
 // told about a promotion, is the second.
 
-export const NOTICE_KINDS = ["member-left", "promoted", "hand-over-answered", "alias-created", "alias-ready", "alias-declined"] as const;
+// The member's own "alias ready" news is the board 94f card on their Overview,
+// never a notice row (owner ruling on #550, 2026-10-22): an `alias-ready` row
+// an earlier answer wrote is a kind this code no longer knows, so it is not shown.
+export const NOTICE_KINDS = [
+  "member-left",
+  "promoted",
+  "hand-over-answered",
+  "alias-created",
+  "alias-declined",
+  "team-address-created",
+  "team-address-declined",
+] as const;
 
 /** How the next level up answered a hand-over (issue #262). */
 export type HandOverAnswered = "confirmed" | "declined";
@@ -19,7 +31,11 @@ export type NoticeKind = (typeof NOTICE_KINDS)[number];
 
 /** What each kind stores in `dashboard_notices.data`. */
 type NoticeData = {
-  /** A member left the team from My profile: the divisions they left that the recipient leads, and the reason they gave. */
+  /**
+   * A member left the team from My profile: the divisions they left that the
+   * recipient leads (every one of them for the recruitment manager, #705), and
+   * the reason they gave.
+   */
   readonly "member-left": { readonly divisions: readonly string[]; readonly reason: string | null };
   /** A division lead promoted the subject (#188): the division they now lead, how, and the lead who did it. */
   readonly promoted: { readonly division: string; readonly mode: PromoteMode; readonly lead: string };
@@ -31,10 +47,12 @@ type NoticeData = {
   readonly "hand-over-answered": { readonly role: string; readonly successor: string; readonly answer: HandOverAnswered };
   /** The alias the recipient asked for was marked created (epic #538): the subject is the member, with the address saved. */
   readonly "alias-created": { readonly address: string };
-  /** The recipient's own alias was marked created (epic #538): the subject is the recipient, with the address saved. */
-  readonly "alias-ready": { readonly address: string };
   /** The alias the recipient asked for was declined (epic #538): the subject is the member, `by` who declined it. */
   readonly "alias-declined": { readonly by: string };
+  /** The team address the recipient asked for was marked created (epic #578): the subject is the holder, with the address saved. */
+  readonly "team-address-created": { readonly address: string };
+  /** The team address the recipient asked for was declined (epic #578): the subject is the member, with the address asked for and `by` who declined it. */
+  readonly "team-address-declined": { readonly address: string; readonly by: string };
 };
 
 /** A notice to write: its kind and what it stores. */
@@ -49,16 +67,22 @@ export type Notice = {
     readonly subject: string;
     /** When it was written, an ISO timestamp. */
     readonly createdAt: string;
+    /**
+     * The title of the acting account behind the View as session that wrote
+     * it (`actingTitleOf`, issue #628); null for one written outside View as.
+     */
+    readonly actingTitle: string | null;
     readonly data: NoticeData[K];
   };
 }[NoticeKind];
 
-/** A `dashboard_notices` row as read, with the subject's name. */
+/** A `dashboard_notices` row as read, with the subject's name and its acting account's title, absent or null when it records none. */
 export type StoredNotice = {
   readonly id: number;
   readonly kind: string;
   readonly subject: string;
   readonly createdAt: string;
+  readonly actingTitle?: string | null;
   readonly data: unknown;
 };
 
@@ -88,8 +112,10 @@ const READ: { readonly [K in NoticeKind]: (data: unknown) => NoticeData[K] | nul
     return { role, successor, answer };
   },
   "alias-created": readAddress,
-  "alias-ready": readAddress,
   "alias-declined": (data) => (isRecord(data) && typeof data.by === "string" ? { by: data.by } : null),
+  "team-address-created": readAddress,
+  "team-address-declined": (data) =>
+    isRecord(data) && typeof data.address === "string" && typeof data.by === "string" ? { address: data.address, by: data.by } : null,
 };
 
 function readAddress(data: unknown): { readonly address: string } | null {
@@ -105,7 +131,7 @@ export function noticeOf(row: StoredNotice): Notice | null {
   if (!isNoticeKind(row.kind)) return null;
   const read = <K extends NoticeKind>(kind: K) => {
     const data = READ[kind](row.data);
-    return data === null ? null : { id: row.id, kind, subject: row.subject, createdAt: row.createdAt, data };
+    return data === null ? null : { id: row.id, kind, subject: row.subject, createdAt: row.createdAt, actingTitle: row.actingTitle ?? null, data };
   };
   switch (row.kind) {
     case "member-left":
@@ -116,9 +142,11 @@ export function noticeOf(row: StoredNotice): Notice | null {
       return read(row.kind);
     case "alias-created":
       return read(row.kind);
-    case "alias-ready":
-      return read(row.kind);
     case "alias-declined":
+      return read(row.kind);
+    case "team-address-created":
+      return read(row.kind);
+    case "team-address-declined":
       return read(row.kind);
   }
 }
@@ -161,7 +189,7 @@ export function attentionOf(notice: Notice, now: Date): AttentionItem {
       const { role, successor, answer } = notice.data;
       return {
         kind: "notice",
-        title: `${notice.subject} ${answer} your hand-over`,
+        title: `${attributedName(notice.subject, notice.actingTitle)} ${answer} your hand-over`,
         detail: [`${role} to ${successor}`, shortDate(notice.createdAt, now.getUTCFullYear()), answer === "declined" ? "you keep the role" : null]
           .filter(Boolean)
           .join(" · "),
@@ -171,23 +199,34 @@ export function attentionOf(notice: Notice, now: Date): AttentionItem {
     case "alias-created":
       return {
         kind: "notice",
-        title: `${notice.subject}'s email alias is ready`,
+        title: `${notice.subject}'s PRT email is ready`,
         detail: [notice.data.address, shortDate(notice.createdAt, now.getUTCFullYear())].join(" · "),
         action,
-      };
-    case "alias-ready":
-      return {
-        kind: "notice",
-        title: "Your email alias is ready",
-        detail: [notice.data.address, shortDate(notice.createdAt, now.getUTCFullYear())].join(" · "),
-        action,
+        iconKind: "prt-email-request",
       };
     case "alias-declined":
       return {
         kind: "notice",
-        title: `${notice.data.by} declined the email alias for ${notice.subject}`,
+        title: `${attributedName(notice.data.by, notice.actingTitle)} declined the PRT email for ${notice.subject}`,
+        detail: [shortDate(notice.createdAt, now.getUTCFullYear()), "to ask again, use Request PRT email on their panel in Members"].join(" · "),
+        action,
+        iconKind: "prt-email-request",
+      };
+    case "team-address-created":
+      return {
+        kind: "notice",
+        title: `${notice.data.address} is ready for ${notice.subject}`,
+        detail: shortDate(notice.createdAt, now.getUTCFullYear()),
+        action,
+        iconKind: "prt-email-request",
+      };
+    case "team-address-declined":
+      return {
+        kind: "notice",
+        title: `${attributedName(notice.data.by, notice.actingTitle)} declined ${notice.data.address} for ${notice.subject}`,
         detail: [shortDate(notice.createdAt, now.getUTCFullYear()), "you can ask again"].join(" · "),
         action,
+        iconKind: "prt-email-request",
       };
   }
 }
@@ -209,6 +248,9 @@ export function handOverAnsweredNotice(
 /** A division the leaver had an active role in. */
 export type LeftDivision = { readonly id: number; readonly name: string };
 
+/** A division of the team as the recruitment manager rule reads it: its code and whether it is closed. */
+export type TeamDivision = { readonly id: number; readonly code: string | null; readonly closedAt: string | null };
+
 /** Someone who leads a division: an active lead role in it, or a division scope on it. */
 export type DivisionLead = { readonly memberId: number; readonly divisionId: number };
 
@@ -216,16 +258,36 @@ export type DivisionLead = { readonly memberId: number; readonly divisionId: num
 export type AddressedNotice = { readonly recipientId: number; readonly notice: NewNotice };
 
 /**
- * The notices a member leaving writes: one per lead of a division they had an
- * active role in, naming the divisions of theirs that lead leads. A lead of
- * two of those divisions gets one notice naming both; the leaver is never
- * told about themselves, and a division with no lead tells nobody. This is
- * the one place that decides who is told: the recruitment manager joins here
- * once #194 says who that is.
+ * The code of the division whose leads are the recruitment manager: Logistics,
+ * in the Operations department (owner ruling on #194,
+ * https://github.com/PoliTo-Rocket-Team/website-v2/issues/194#issuecomment-6341780484).
+ */
+export const RECRUITMENT_MANAGER_DIVISION_CODE = "LGS";
+
+/**
+ * The division whose leads are the recruitment manager: the open division
+ * with the Logistics code. Null when that division is closed or the team has
+ * none, and then nobody is the recruitment manager. This is the one rule that
+ * finds it.
+ */
+export function recruitmentManagerDivision<D extends TeamDivision>(team: readonly D[]): D | null {
+  return team.find((d) => d.code === RECRUITMENT_MANAGER_DIVISION_CODE && d.closedAt === null) ?? null;
+}
+
+/**
+ * The notices a member leaving writes. Each lead of a division they had an
+ * active role in gets one, naming the divisions of theirs that lead leads; a
+ * lead of two of those divisions gets one notice naming both. Each lead of
+ * the recruitment manager's division (`recruitmentManagerDivision`, #705) is
+ * told too, with every division the leaver was in, in one notice even when
+ * they also lead one of those divisions. The leaver is never told about
+ * themselves, and a division with no lead tells nobody. This is the one place
+ * that decides who is told.
  */
 export function memberLeftNotices(
   leaverId: number,
   divisions: readonly LeftDivision[],
+  team: readonly TeamDivision[],
   leads: readonly DivisionLead[],
   reason: string | null,
 ): AddressedNotice[] {
@@ -236,6 +298,13 @@ export function memberLeftNotices(
       const names = led.get(lead.memberId) ?? [];
       if (!names.includes(division.name)) names.push(division.name);
       led.set(lead.memberId, names);
+    }
+  }
+  const manager = recruitmentManagerDivision(team);
+  if (manager !== null) {
+    const all = [...new Set(divisions.map((d) => d.name))];
+    for (const lead of leads) {
+      if (lead.divisionId === manager.id && lead.memberId !== leaverId) led.set(lead.memberId, all);
     }
   }
   return [...led].map(([recipientId, names]) => ({

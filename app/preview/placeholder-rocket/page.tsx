@@ -52,7 +52,7 @@ export default function PlaceholderRocketPreview() {
     <div className="relative bg-ground">
       <LandingNavbar />
       <PageSky>
-        <main className="pb-section">
+        <main>
           <ProjectHero project={{ index: "04", name: card.name, texture: card.texture }} hero={hero} />
           <section className="px-5 pt-section md:px-16">
             <div className="mx-auto grid max-w-[1312px] md:gap-8 lg:grid-cols-3 lg:gap-4">

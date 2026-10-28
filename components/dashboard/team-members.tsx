@@ -2,14 +2,15 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { FileSpreadsheet, List, Lock, MoreHorizontal, Pencil, Plus, Table2, UserMinus, UserX } from "lucide-react";
+import { FileSpreadsheet, List, Lock, Pencil, Plus, Table2, UserMinus, UserX } from "lucide-react";
 import type { MemberAliases } from "@/lib/dashboard/alias-request";
+import type { MemberTeamAddresses } from "@/lib/dashboard/team-address";
 import { memberDetailText } from "@/lib/dashboard/details";
-import type { DivisionHeader, WaitingPerson } from "@/lib/dashboard/division-members";
+import { mayNotKnowTheyWereAdded, type DivisionHeader, type WaitingPerson } from "@/lib/dashboard/division-members";
 import {
   divisionOptions,
   shownMembers,
-  type DivisionActions,
+  type MemberActions,
   type MemberEntry,
   type MembersModel,
   type MembersTool,
@@ -31,7 +32,7 @@ import {
 import { shortDate } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
 import { ColumnFilter } from "./column-filter";
-import { DepartmentFilter, Pager, SearchField, TH } from "./directory";
+import { DepartmentFilter, Pager, TH } from "./directory";
 import { Chips } from "./division-chips";
 import {
   ConfirmNdaButton,
@@ -46,10 +47,11 @@ import {
   type Asking,
 } from "./division-members";
 import { DrawerPage } from "./drawer";
-import { TeamPageDrawer, type TeamPageTarget } from "./member-drawer";
 import { AddMemberDrawer, EditDetailsDrawer, PersonDrawer, type AddTarget, type EditTarget } from "./member-panels";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
+import { RowOpen } from "./row-open";
+import { SearchField } from "./search-field";
 
 // The Members page, one view for every role that opens it (Owner decision,
 // 2026-10-19, issue #408): the team leader, a department head and a division
@@ -58,9 +60,10 @@ import { PANEL } from "./panel";
 // Only the rows (./lib/dashboard/members-view.ts) and the actions the data
 // allows differ: a row's ⋯ menu removes someone from a division or records
 // that they leave the team, a waiting row confirms their NDA, Edit details
-// opens the Team page panel (board 46b) on every full-access seat's whole
-// team, the team leader's included (issues #418, #444), and Add member adds where the viewer may. Phone, date of birth and gender stay blurred
-// until hover.
+// opens the one Edit details panel (board 61g with board 46b's position part,
+// issue #584) for everyone the viewer may edit, on the whole team, a
+// department and a division alike, and Add member adds where the viewer may.
+// Phone, date of birth and gender stay blurred until hover.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -74,32 +77,35 @@ type Waiting = ShownMembers["waiting"][number];
 export function ScopedMembersView({
   page,
   aliases,
+  teamAddresses,
   editable: writes,
   exportable,
 }: {
   page: MembersModel;
   aliases: MemberAliases;
+  teamAddresses: MemberTeamAddresses;
   editable: boolean;
   exportable: boolean;
 }) {
   const [department, setDepartment] = useState<string | null>(null);
   const [divisionId, setDivisionId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<View>("list");
+  // Table first wherever the page offers it (Owner decision, 2026-10-24).
+  const [view, setView] = useState<View>(() => (page.tools.includes("table-view") ? "table" : "list"));
   const [listPage, setListPage] = useState(1);
   const [picks, setPicks] = useState<ColumnPicks>(NO_PICKS);
   const [openId, setOpenId] = useState<number | null>(null);
   const [editing, setEditing] = useState<EditTarget | null>(null);
-  // The division whose role Edit details edits; kept while the drawer closes.
-  const [editDivision, setEditDivision] = useState<DivisionHeader | null>(null);
   const [adding, setAdding] = useState(false);
   const [asking, setAsking] = useState<Asking | null>(null);
-  const [teamPage, setTeamPage] = useState<TeamPageTarget | null>(null);
 
   const has = (tool: MembersTool) => page.tools.includes(tool);
   const divisions = divisionOptions(page.units, department);
   const shownDivision = divisions.some((d) => d.id === divisionId) ? divisionId : null;
-  const shown = useMemo(() => shownMembers(page, { department, divisionId, query }), [page, department, divisionId, query]);
+  const shown = useMemo(
+    () => shownMembers(page, { department, divisionId, query }, teamAddresses),
+    [page, department, divisionId, query, teamAddresses],
+  );
   const last = pageCount(shown.people.length);
   const current = Math.min(listPage, last);
   const paged = pageOf(shown.people, current);
@@ -112,25 +118,16 @@ export function ScopedMembersView({
 
   const editPerson = (entry: MemberEntry) => {
     setOpenId(null);
-    const { actions } = entry;
-    if (actions === null) return;
-    if (actions.kind === "team-page") {
-      setTeamPage({ person: entry, edit: actions.edit });
-      return;
-    }
-    setEditDivision(actions.division);
-    setEditing({ kind: "person", person: actions.person });
+    if (entry.actions !== null) setEditing({ kind: "person", actions: entry.actions });
   };
-  const fillDetails = (w: Waiting) => {
-    setEditDivision(w.division);
-    setEditing({ kind: "waiting", waiting: w.waiting });
-  };
+  const fillDetails = (w: Waiting) => setEditing({ kind: "waiting", waiting: w.waiting, division: w.division });
   const add = writes ? addTarget(page, shownDivision) : null;
   const rowActions = (entry: MemberEntry) => (writes && !entry.self ? entry.actions : null);
-  const drawerOpen = open !== null || editing !== null || adding || teamPage !== null;
-
+  // The member panel and Edit details lie over the page, which keeps its width
+  // dimmed behind them (boards 94b and 61g, issues #564 and #598); Add member
+  // still moves the page left of it from xl.
   return (
-    <DrawerPage drawerOpen={drawerOpen}>
+    <DrawerPage drawerOpen={adding}>
       <PageHeader
         title="Members"
         intro={page.intro}
@@ -173,8 +170,9 @@ export function ScopedMembersView({
 
       {shown.joining.length > 0 && (
         <ul className="mt-6 flex flex-col gap-2.5">
-          {shown.joining.map(({ joining, division, editable }) => (
-            <JoiningBanner key={joining.applicationId} joining={joining} division={division} editable={writes && editable} />
+          {/* Confirm join and Mark NDA received are the Applications area's (issues #584, #601): the banner offers them where `canConfirm` says the server takes them. */}
+          {shown.joining.map(({ joining, division }) => (
+            <JoiningBanner key={joining.applicationId} joining={joining} division={division} editable={writes && joining.canConfirm} />
           ))}
         </ul>
       )}
@@ -250,19 +248,22 @@ export function ScopedMembersView({
         <Pager page={current} last={last} onPage={setListPage} />
       </div>
 
-      {shown.waiting.map((w) => (
-        <NoEmailNote key={w.waiting.joinId} waiting={w.waiting} editable={writes && w.editable} onFill={() => fillDetails(w)} />
-      ))}
+      {shown.waiting
+        .filter((w) => mayNotKnowTheyWereAdded(w.waiting))
+        .map((w) => (
+          <NoEmailNote key={w.waiting.joinId} waiting={w.waiting} unit={w.division.name} editable={writes && w.editable} onFill={() => fillDetails(w)} />
+        ))}
 
       <PersonDrawer
         person={open}
         alias={open === null ? null : (aliases[open.id] ?? null)}
+        teamAddresses={open === null ? null : (teamAddresses.rows[open.id] ?? null)}
+        movesWith={teamAddresses.movesWith}
         editable={writes && page.panelEdits && open?.actions != null}
         onClose={() => setOpenId(null)}
         onEdit={editPerson}
       />
-      {editDivision && <EditDetailsDrawer target={editing} division={editDivision} onClose={() => setEditing(null)} />}
-      <TeamPageDrawer target={teamPage} onClose={() => setTeamPage(null)} />
+      <EditDetailsDrawer target={editing} onClose={() => setEditing(null)} />
       {add !== null && <AddMemberDrawer open={adding} onOpenChange={setAdding} target={add} />}
       <MemberDialogs asking={asking} onClose={() => setAsking(null)} />
     </DrawerPage>
@@ -342,7 +343,7 @@ function DivisionBar({ division, people }: { division: MembersUnit["divisions"][
             <span className={EYEBROW}>Leads</span>
             {leads.map((lead) => (
               <span key={lead.id} className="flex items-center gap-2 text-[14px] text-prt-text">
-                <Avatar size="xs" photoUrl={lead.photoUrl} />
+                <Avatar size="xs" person={lead} />
                 {lead.name}
               </span>
             ))}
@@ -356,22 +357,6 @@ function DivisionBar({ division, people }: { division: MembersUnit["divisions"][
 /** Role in accent for the team leader, a board seat, a head or a division lead (board 73). */
 function roleClass(person: TeamMember): string {
   return person.role === "member" ? "text-prt-text" : "text-accent";
-}
-
-function OpenButton({ person, onOpen }: { person: TeamMember; onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        event.stopPropagation();
-        onOpen();
-      }}
-      aria-label={`Open ${person.name}`}
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-prt-muted transition-colors duration-300 ease-out hover:bg-white-5 hover:text-prt-text ${FOCUS}`}
-    >
-      <MoreHorizontal aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-    </button>
-  );
 }
 
 // Board 73: member, divisions and role; no Phone or Discord column, those
@@ -467,9 +452,11 @@ function PersonRow({
     <tr onClick={onOpen} className={`cursor-pointer transition-colors duration-300 ease-out ${selected ? "bg-accent/[0.08]" : "hover:bg-white-5"}`}>
       <td className="px-5 py-2.5">
         <span className="flex min-w-0 items-center gap-3.5">
-          <Avatar photoUrl={person.photoUrl} />
+          <Avatar person={person} />
           <span className="min-w-0">
-            <span className="block truncate text-[14px] text-prt-text">{person.name}</span>
+            <RowOpen label={`Open ${person.name}`} onOpen={onOpen} className="block truncate text-[14px] text-prt-text">
+              {person.name}
+            </RowOpen>
             <span className="block truncate text-[12px] text-prt-muted">{person.details.prtEmail || person.signInEmail}</span>
           </span>
         </span>
@@ -479,17 +466,21 @@ function PersonRow({
       </td>
       <td className={`truncate px-5 py-2.5 text-[14px] ${roleClass(person)}`}>{person.roleLabel}</td>
       <td className="pr-4 text-right" onClick={(e) => e.stopPropagation()}>
-        {actions?.kind === "division" ? <PersonMenu actions={actions} onAsk={onAsk} /> : <OpenButton person={person} onOpen={onOpen} />}
+        {actions && <PersonMenu actions={actions} onAsk={onAsk} />}
       </td>
     </tr>
   );
 }
 
-/** A row's ⋯ menu: Remove from each division it may, then Leaves the team; a locked item says why (Owner decision, 2026-10-11). */
-function PersonMenu({ actions, onAsk }: { actions: DivisionActions; onAsk: (asking: Asking) => void }) {
-  const { person } = actions;
+/**
+ * A row's ⋯ menu, on every page: Remove from each division it may, then
+ * Leaves the team; a locked item says why (Owner decision, 2026-10-11). Edit
+ * details' Leaving the team offers the same, from the same position.
+ */
+function PersonMenu({ actions, onAsk }: { actions: MemberActions; onAsk: (asking: Asking) => void }) {
+  const { person, position } = actions;
   // Not offered where it is their only division: the menu then holds only "Leaves the team".
-  const offered = actions.removals.filter((r) => r.removal.kind === "offered" || r.removal.kind === "locked");
+  const offered = position.removals.filter((r) => r.removal.kind === "offered" || r.removal.kind === "locked");
   return (
     <RowMenu label={`Actions for ${person.name}`}>
       {offered.map((r) => (
@@ -502,7 +493,7 @@ function PersonMenu({ actions, onAsk }: { actions: DivisionActions; onAsk: (aski
           Remove from {r.short}
         </MenuItem>
       ))}
-      <MenuItem onSelect={() => onAsk({ kind: "leave", person })} danger locked={person.leave.allowed ? null : person.leave.reason}>
+      <MenuItem onSelect={() => onAsk({ kind: "leave", person })} danger locked={position.leave.allowed ? null : position.leave.reason}>
         Leaves the team
       </MenuItem>
     </RowMenu>
@@ -587,7 +578,7 @@ function PhoneCards({
             onClick={() => onOpen(p.id)}
             className={`${PANEL} flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`}
           >
-            <Avatar size="ml" photoUrl={p.photoUrl} />
+            <Avatar size="ml" person={p} />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[16px] font-semibold">{p.name}</span>
               <span className={`block truncate text-[13px] ${p.role === "member" ? "text-prt-muted" : "text-accent"}`}>{p.roleLabel}</span>
@@ -615,6 +606,8 @@ function text(value: string | null): ReactNode {
 
 /** Board 73b's columns, after the pinned name: every member field. Phone, date of birth and gender are blurred until hover. */
 const COLUMNS: readonly Column[] = [
+  // Issue #767: a head shows the department they head; a team-level seat holds none and reads the dash.
+  { key: "department", label: "Department", width: "w-[170px]", filter: "department", cell: (p) => (p.departments.length === 0 ? DASH : p.departments.join(", ")) },
   { key: "divisions", label: "Divisions", width: "w-[150px]", filter: "divisions", cell: (p) => (p.chips.length === 0 ? DASH : <Chips chips={p.chips} />) },
   { key: "role", label: "Role", width: "w-[180px]", filter: "role", cell: (p) => <span className={roleClass(p)}>{p.roleLabel}</span> },
   { key: "prt-email", label: "PRT email", width: "w-[240px]", cell: (p) => text(memberDetailText(p.details, "prtEmail")) },
@@ -717,8 +710,10 @@ function TableView({
                   }`}
                 >
                   <span className="flex min-w-0 items-center gap-2.5">
-                    <Avatar size="xs" photoUrl={p.photoUrl} />
-                    <span className="truncate text-[13px] text-prt-text">{p.name}</span>
+                    <Avatar size="xs" person={p} />
+                    <RowOpen label={`Open ${p.name}`} onOpen={() => onOpen(p.id)} className="min-w-0 truncate text-[13px] text-prt-text">
+                      {p.name}
+                    </RowOpen>
                   </span>
                 </td>
                 {COLUMNS.map((column) => (

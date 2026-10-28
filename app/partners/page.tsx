@@ -25,7 +25,7 @@ export default async function PartnersPage() {
     <div className="relative bg-ground">
       <LandingNavbar />
       <PageSky>
-        <main className="pb-section pt-16 md:pt-[72px]">
+        <main className="pt-16 md:pt-[72px]">
           <PageHeader {...partnersPage.header} stats={partnerStats(partners)} statsOnPhone="two-by-two" />
           <PartnerGroup title={partnersPage.mainTitle} partners={partnersOf(partners, "main")} />
           <PartnerGroup title={partnersPage.mediaTitle} partners={partnersOf(partners, "media")} />

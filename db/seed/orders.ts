@@ -3,12 +3,11 @@
 // Each requester holds a role in the division the order is for; every answer
 // is the team leader's, except one approval by the member who holds
 // "Approve orders" alone (issue #270). Orders are private, so every one is
-// invented (issue #326); each requester is someone on the public team or a
-// local tester.
+// invented (issue #326); each requester is someone on the public team.
 
 import { orders } from "@/db/schema";
 import { APPROVE_ORDERS_ONLY } from "./access";
-import { TESTER_MEMBER, TEAM_LEADER } from "./people";
+import { TEAM_LEADER, TEST_BENCH_LEAD } from "./people";
 import { publicMember } from "./public-team";
 import { rowsOf, tableSeedModule } from "./rows";
 import { DIVISION } from "./structure";
@@ -30,7 +29,7 @@ export const ORDER_ROWS = rowsOf(orders, [
   {
     id: 2,
     status: "pending",
-    requester: TESTER_MEMBER["division-lead"],
+    requester: TEST_BENCH_LEAD,
     divisionId: DIVISION.testBench,
     name: "Load cell",
     description: "https://shop.example.com/load-cell",

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { addMemberDivisions, ALL_TAB, departmentMembers, departmentTabs } from "./department-members";
+import { NO_NAME } from "./person-name";
 import { NO_MEMBER_DETAILS } from "./details";
 import type { PersonRecord } from "./division-members";
 import { membershipsOf, type OrgChart } from "./team";
@@ -23,6 +24,7 @@ function record(id: number, name: string, list: [divisionId: number, role: "lead
   return {
     id,
     name,
+    storedName: NO_NAME,
     signInEmail: `${id}@gmail.com`,
     photoUrl: null,
     since: 2024,
@@ -49,7 +51,7 @@ const page = departmentMembers({
   departmentId: 1,
   actor: { kind: "head", departmentIds: [1] },
   selfId: null,
-  waiting: { 1: [{ joinId: 9, email: "elena@x.it", name: null, title: null, details: NO_MEMBER_DETAILS }] },
+  waiting: { 1: [{ joinId: 9, email: "elena@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS, addedOn: "2026-10-20", signedIn: false, addedBy: { kind: "viewer" } }] },
   joining: {},
 })!;
 

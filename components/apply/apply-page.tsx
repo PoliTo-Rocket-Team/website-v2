@@ -11,8 +11,7 @@ import type { ApplyListing } from "@/lib/apply/positions";
 // Boards 34 (one or more positions open) and 34b (none), with 34m and 34bm
 // on phones: the header and its figures (2 x 2 on phones), the positions
 // in the state the listing picks (applyListing), then the
-// questions. The footer sits in the sky, as on the About pages. Both /apply
-// routes draw it: the prerendered page and its dummy-state twin.
+// questions. The footer sits in the sky, as on the About pages.
 
 /** The navbar, the sky and the footer around the page's content. */
 export function ApplyFrame({ children }: { children: ReactNode }) {
@@ -20,7 +19,7 @@ export function ApplyFrame({ children }: { children: ReactNode }) {
     <div className="relative bg-ground">
       <LandingNavbar />
       <PageSky>
-        <main className="pb-section pt-16 md:pt-[72px]">{children}</main>
+        <main className="pt-16 md:pt-[72px]">{children}</main>
         <SiteFooter inSky />
       </PageSky>
     </div>

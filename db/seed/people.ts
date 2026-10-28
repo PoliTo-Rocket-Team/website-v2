@@ -1,6 +1,8 @@
 // The people-and-roles seed (issues #304, #326): every person with a `users`
-// row, their member rows, every role they hold or held, and the local
-// testers' sign-in rows (issue #129).
+// row, their member rows, every role they hold or held, and a sign-in row for
+// each of them and for the admin testers (issues #129, #653). One more person
+// was added to a division by email and has not signed in (issue #746), so
+// they have a `team_joins` row and no sign-in row.
 //
 // This year's team is the one the site publishes (./public-team.ts, from
 // lib/about/team.ts): its names, roles, units, photos and LinkedIn handles.
@@ -11,15 +13,18 @@
 // team leader who now advises the whole team (issue #253), a former lead who
 // stayed as an advisor in their division, and people whose last role ended
 // in each academic year from 2021–22 to 2025–26. The alumni seed
-// (./alumni.ts) adds how they show on the Alumni page. The local testers
-// take seats lib/about/team.ts leaves empty: the Test Bench lead and the
-// head of Research and Development. The applicants' user ids keep the numbers the old SQL seed used;
-// the recruitment module names them.
+// (./alumni.ts) adds how they show on the Alumni page. No one is a dedicated
+// tester (issue #653): each plain seat of lib/seeded-accounts.ts is one of
+// these people. Two seats lib/about/team.ts leaves empty are invented on
+// public people: a Test Engineer leads Test Bench, and the head of
+// Operations holds the operations lead's full-access seat. The applicants'
+// user ids keep the numbers the old SQL seed used; the recruitment module
+// names them.
 
-import { betterAuthUsers, members, roles, users } from "@/db/schema";
+import { betterAuthUsers, members, roles, teamJoins, users } from "@/db/schema";
 import { clearedUser, CLEARED_MEMBER } from "@/lib/dashboard/anonymize";
-import { TESTERS } from "@/lib/dev-tester";
-import { SEEDED_DEPARTMENT_HEAD, SEEDED_RENAMED_ALUMNUS, SEEDED_TEAM_LEADER, seedUserId } from "@/lib/test-viewer-people";
+import type { PlainSeat } from "@/lib/dashboard/viewer";
+import { ADMIN_TESTERS, SEATS, SEED_EMAIL_DOMAIN, seatOf } from "@/lib/seeded-accounts";
 import { PUBLIC_TEAM, publicMember, type PublicTeammate } from "./public-team";
 import { rowsOf, tableSeedModule, type SeedStatement } from "./rows";
 import { DEPARTMENT, DIVISION } from "./structure";
@@ -106,8 +111,13 @@ function publicPerson(p: PublicTeammate): Person {
   };
 }
 
+/** A user id made for the seed: `5eed0000-…-0000000000NN`, NN the member id. */
+export function seedUserId(memberId: number): string {
+  return `5eed0000-0000-4000-8000-${String(memberId).padStart(12, "0")}`;
+}
+
 /** The team leader (lib/about/team.ts). */
-export const TEAM_LEADER = SEEDED_TEAM_LEADER;
+export const TEAM_LEADER = 1;
 /** Invented: team leader 2023–24 and 2024–25, then an advisor of the whole team. */
 export const FORMER_TEAM_LEADER = 40;
 /** Invented: the first head of Structures, 2021–22 and 2022–23. */
@@ -123,14 +133,14 @@ export const ANONYMIZED_ALUMNUS = 48;
 /** Invented: left in 2025–26 and asked to be removed from the Alumni page. */
 export const REMOVED_ALUMNUS = 49;
 /** Invented: left in 2024–25; an editor fixed the name the Alumni page shows. */
-export const RENAMED_ALUMNUS = SEEDED_RENAMED_ALUMNUS;
+export const RENAMED_ALUMNUS = 50;
 /** Invented: joined through an application in 2022 (./recruitment.ts) and left in 2023–24. */
 export const JOINED_MEMBER = 32;
 /** Leads Liquid System Architecture (lib/about/team.ts); took it over from the division advisor by a hand-over (./hand-overs.ts). */
 export const LSA_SUCCESSOR = publicMember("Samuele Lombardi");
 /** The day that hand-over was confirmed: the advisor's lead row ends and their Advisor role starts. */
 export const LSA_HAND_OVER_DAY = "2025-10-10";
-/** Head of Propulsion (lib/about/team.ts): confirmed that hand-over, answers the waiting one, and is the department-head test viewer. */
+/** Head of Propulsion (lib/about/team.ts): confirmed that hand-over, answers the waiting one, and is the department-head plain seat. */
 export const PROPULSION_HEAD = publicMember("Marco Delogu");
 /** Heads Structures and leads both its divisions (lib/about/team.ts): a member of two divisions at once. */
 export const TWO_DIVISION_MEMBER = publicMember("Emir Topakci");
@@ -139,8 +149,17 @@ export const IT_LEAD = publicMember("Huseyin Gulec");
 /** The two board seats beside the team leader (board 54c), which the Team page draws on its arc (issue #311). */
 export const PROJECT_MANAGER = publicMember("Riccardo Savio");
 export const CHIEF_ENGINEER = publicMember("Andrea Manzo");
+/** Head of Operations (lib/about/team.ts), who holds the operations lead's full-access seat on that role (invented: the public data flags no seat). */
+export const OPERATIONS_HEAD = publicMember("Rocco Bellon");
+/** A Test Engineer (lib/about/team.ts) who also leads Test Bench (invented: team.ts names no Test Bench lead): the division-lead plain seat. */
+export const TEST_BENCH_LEAD = publicMember("Stefano Motta");
+/** A Test Engineer in Test Bench with no grant: the member plain seat. */
+export const MEMBER_SEAT = publicMember("Filippo Prosperi");
 
-if (PROPULSION_HEAD !== SEEDED_DEPARTMENT_HEAD) throw new Error("the department-head test viewer is not the head of Propulsion");
+if (PROPULSION_HEAD !== seatOf("department-head").memberId) throw new Error("the department-head seat is not the head of Propulsion");
+if (OPERATIONS_HEAD !== seatOf("operations-lead").memberId) throw new Error("the operations-lead seat is not the head of Operations");
+if (TEST_BENCH_LEAD !== seatOf("division-lead").memberId) throw new Error("the division-lead seat is not the Test Bench lead");
+if (MEMBER_SEAT !== seatOf("member").memberId) throw new Error("the member seat is not the Test Engineer it names");
 
 /** The people the site publishes, then the invented ones, then the applicants. */
 export const PEOPLE: readonly Person[] = [
@@ -192,33 +211,51 @@ export const ANONYMIZED_ACCOUNT = {
   anonymizedAt: "2026-07-20T03:00:00.000Z",
 } as const;
 
-const TESTER_JOINED = "2026-10-09 10:00:00+02";
-const TESTER_JOINED_AT = new Date("2026-10-09T10:00:00+02:00");
+/** The day the admin testers' accounts were made (issue #607). */
+const ADMIN_TESTER_JOINED = "2026-10-09 10:00:00+02";
+/** When every seeded sign-in row was made: the day the admin testers joined. */
+const SIGN_IN_MADE_AT = new Date("2026-10-09T10:00:00+02:00");
 
-/** The local testers' member ids (issue #129): one per tester on the team. */
-export const TESTER_MEMBER = {
-  member: 901,
-  "division-lead": 902,
-  "operations-lead": 903,
-  "department-head": 904,
-} as const;
-
-const TESTER_PEOPLE = [
-  { memberId: TESTER_MEMBER.member, tester: TESTERS.member, first: "Tester", last: "Member", level: "Master", program: "Aerospace Engineering", politoId: "s900002" },
-  { memberId: TESTER_MEMBER["division-lead"], tester: TESTERS["division-lead"], first: "Tester", last: "Division Lead", level: "Master", program: "Aerospace Engineering", politoId: "s900003" },
-  { memberId: TESTER_MEMBER["operations-lead"], tester: TESTERS["operations-lead"], first: "Tester", last: "Operations Lead", level: "Master", program: "Management Engineering", politoId: "s900004" },
-  { memberId: TESTER_MEMBER["department-head"], tester: TESTERS["department-head"], first: "Tester", last: "Department Head", level: "Master", program: "Aerospace Engineering", politoId: "s900005" },
-] as const;
+/**
+ * The seeded admin testers (issue #607): Better Auth stores each as an admin,
+ * so they may use View as on a preview and under `next dev`
+ * (lib/dashboard/view-as.ts). No member row, so no team role and no grant.
+ */
+const ADMIN_TESTER_USERS = ADMIN_TESTERS.map((admin) => ({
+  id: admin.id,
+  email: admin.email,
+  firstName: "Tester",
+  lastName: admin.name.replace(/^Tester /, ""),
+  origin: "Italy",
+  levelOfStudy: "Master" as const,
+  politoId: null,
+  program: "Computer Engineering",
+  member: null,
+  createdAt: ADMIN_TESTER_JOINED,
+}));
 
 /** The domains the seed's invented emails sit on: reserved for examples, so no mail reaches anyone. */
-export const SEED_EMAIL_DOMAIN = "example.com";
+export { SEED_EMAIL_DOMAIN };
 export const SEED_TEAM_EMAIL_DOMAIN = "prt.example.com";
+
+/**
+ * The members the alias seed (./aliases.ts) asks an email alias for: their
+ * PRT email is empty, since the alias is saved there once it is created
+ * (issue #563). One request is open, one the site made by itself, one was
+ * declined.
+ */
+export const OWED_ALIAS = {
+  open: publicMember("Dimitri Mazzone"),
+  automatic: publicMember("Maria Angelica Fullone Penna"),
+  declined: publicMember("Margherita Boatto"),
+} as const;
+const OWED_ALIAS_MEMBERS: ReadonlySet<number> = new Set(Object.values(OWED_ALIAS));
 
 function memberRow(person: Person & { readonly memberId: number }) {
   const handle = handleOf(person.first, person.last);
   const row = {
     memberId: person.memberId,
-    prtEmail: `${handle}@${SEED_TEAM_EMAIL_DOMAIN}`,
+    prtEmail: OWED_ALIAS_MEMBERS.has(person.memberId) ? null : `${handle}@${SEED_TEAM_EMAIL_DOMAIN}`,
     mobileNumber: `+39 3${String(person.memberId).padStart(9, "0")}`,
     discord: handle,
     ndaSignedAt: at(person.joined),
@@ -254,50 +291,35 @@ function userRow(person: Person) {
   return { ...row, ...clearedUser(new Date(ANONYMIZED_ACCOUNT.anonymizedAt)), deletedAt: ANONYMIZED_ACCOUNT.deletedAt };
 }
 
-export const MEMBER_ROWS = rowsOf(members, [
-  ...PEOPLE.flatMap((p) => (p.memberId === null ? [] : [memberRow({ ...p, memberId: p.memberId })])),
-  ...TESTER_PEOPLE.map((t) => ({
-    memberId: t.memberId,
-    prtEmail: t.tester.email,
-    discord: t.tester.email.split("@")[0],
-    ndaSignedAt: TESTER_JOINED,
-    ndaName: `${t.tester.name} NDA`,
-    ndaConfirmedBy: TEAM_LEADER,
-  })),
-]);
+export const MEMBER_ROWS = rowsOf(members, PEOPLE.flatMap((p) => (p.memberId === null ? [] : [memberRow({ ...p, memberId: p.memberId })])));
 
-export const USER_ROWS = rowsOf(users, [
-  ...PEOPLE.map(userRow),
-  {
-    id: TESTERS.applicant.id,
-    email: TESTERS.applicant.email,
-    firstName: "Tester",
-    lastName: "Applicant",
-    origin: "Italy",
-    levelOfStudy: "Bachelor",
-    politoId: "s900001",
-    program: "Aerospace Engineering",
-    member: null,
-    createdAt: TESTER_JOINED,
-  },
-  ...TESTER_PEOPLE.map((t) => ({
-    id: t.tester.id,
-    email: t.tester.email,
-    firstName: t.first,
-    lastName: t.last,
-    origin: "Italy",
-    levelOfStudy: t.level,
-    politoId: t.politoId,
-    program: t.program,
-    member: t.memberId,
-    createdAt: TESTER_JOINED,
-  })),
-]);
+/**
+ * The member seat's team email alias (issue #550), which is their PRT email
+ * (issue #563): marked created on the alias request the `aliases` module
+ * seeds (./aliases.ts), and not yet set up, so their Overview shows "Your
+ * email alias is ready" (board 94f). Like every seeded email it is on a
+ * reserved test domain, so no mail reaches a real inbox; a real alias is on
+ * the team domain.
+ */
+export const MEMBER_SEAT_ALIAS: string = (() => {
+  const address = MEMBER_ROWS.rows.find((m) => m.memberId === MEMBER_SEAT)?.prtEmail;
+  if (typeof address !== "string") throw new Error("the member seat has no PRT email");
+  return address;
+})();
 
-const { propulsion, structures, aerodynamics, recovery, electronics, operations, research } = DEPARTMENT;
+export const USER_ROWS = rowsOf(users, [...PEOPLE.map(userRow), ...ADMIN_TESTER_USERS]);
+
+const { propulsion, structures, aerodynamics, recovery, electronics, operations } = DEPARTMENT;
 const D = DIVISION;
 
-/** Every role lib/about/team.ts gives, started on the first day of this year; the IT lead's carries their seat. */
+/** The two board seats' flags, by holder: their team-level role row carries it, as migration 0047 marked the real rows (issue #625). */
+const BOARD_SEAT_FLAG: Readonly<Record<number, "project_manager" | "chief_engineer">> = { [PROJECT_MANAGER]: "project_manager", [CHIEF_ENGINEER]: "chief_engineer" };
+
+/**
+ * Every role lib/about/team.ts gives, started on the first day of this year;
+ * the IT lead's, the two board seats' and the head of Operations' carry their
+ * seat.
+ */
 const PUBLIC_ROLE_ROWS = PUBLIC_TEAM.flatMap((p) =>
   p.roles.map((r) => ({
     memberId: p.memberId,
@@ -307,6 +329,8 @@ const PUBLIC_ROLE_ROWS = PUBLIC_TEAM.flatMap((p) =>
     startedAt: PUBLIC_ROLES_START,
     type: r.type,
     ...(p.memberId === IT_LEAD && r.divisionId === D.informationTechnology && { fullAccess: "it_lead" as const }),
+    ...(p.memberId === OPERATIONS_HEAD && r.type === "head" && r.deptId === operations && { fullAccess: "operations_lead" as const }),
+    ...(BOARD_SEAT_FLAG[p.memberId] !== undefined && r.deptId === null && r.divisionId === null && { fullAccess: BOARD_SEAT_FLAG[p.memberId] }),
   })),
 );
 
@@ -334,51 +358,156 @@ export const ROLE_ROWS = rowsOf(roles, [
   { memberId: RENAMED_ALUMNUS, deptId: operations, divisionId: D.logistics, title: "Procurement Coordinator", startedAt: "2023-10-01", leavedAt: "2025-09-30", type: "core" },
   { memberId: REMOVED_ALUMNUS, deptId: operations, divisionId: D.communications, title: "Video Editor", startedAt: "2024-10-01", leavedAt: "2026-06-30", type: "core" },
 
-  // The local testers (issue #129). The public Test Engineers work in Test
-  // Bench too (./public-team.ts), but team.ts names no Test Bench lead and no
-  // head of Research and Development, so the testers' seats take no one's place.
-  { memberId: TESTER_MEMBER.member, deptId: propulsion, divisionId: D.testBench, title: "Test Bench Engineer", startedAt: "2025-10-01", type: "core" },
-  { memberId: TESTER_MEMBER["division-lead"], deptId: propulsion, divisionId: D.testBench, title: "Test Bench Lead", startedAt: "2025-10-01", type: "lead" },
-  { memberId: TESTER_MEMBER["operations-lead"], deptId: operations, title: "Operations Lead", startedAt: "2025-10-01", type: "lead", fullAccess: "operations_lead" },
-  { memberId: TESTER_MEMBER["department-head"], deptId: research, title: "Head of Research and Development", startedAt: "2025-10-01", type: "head" },
+  // Test Bench's lead: team.ts names none, so one of its public Test
+  // Engineers leads it beside their own role (invented). They sent the
+  // waiting hand-over (./hand-overs.ts) and the manual alias requests
+  // (./aliases.ts).
+  { memberId: TEST_BENCH_LEAD, deptId: propulsion, divisionId: D.testBench, title: "Test Bench Lead", startedAt: PUBLIC_ROLES_START, type: "lead" },
 ]);
 
-/** The testers' sign-in rows; the `sync_auth_users` trigger links each to its `users` row by id. */
-export const TESTER_AUTH_ROWS = rowsOf(betterAuthUsers, [
-  ...[TESTERS.applicant, ...TESTER_PEOPLE.map((t) => t.tester)].map((tester) => ({
-    id: tester.id,
-    email: tester.email,
-    name: tester.name,
+for (const seat of SEATS) {
+  if (!PEOPLE.some((p) => p.userId === seat.id && p.memberId === seat.memberId)) throw new Error(`the ${seat.key} seat is no seeded person`);
+}
+
+/**
+ * Invented (issue #746): someone the Test Bench lead added to Test Bench by
+ * email, who has not signed in yet. Add member writes them this way
+ * (`addMember`, lib/dashboard/database-team.ts): a `users` row keyed
+ * `added:<uuid>` that holds the email and the names, and a `team_joins` row,
+ * with no member row, no role and no sign-in row. They wait until their NDA
+ * is confirmed, and no account is linked to them until they sign in, so a
+ * preview shows the screens only such a person has, like the editable
+ * personal email (issue #741). They are
+ * kept out of `PEOPLE`, so they get no sign-in row and the reset of the
+ * seed's sign-in rows never names them.
+ */
+export const ADDED_BY_EMAIL = {
+  userId: "added:5eed0000-0000-4000-8000-add000000001",
+  email: `nadia.ferrante@${SEED_EMAIL_DOMAIN}`,
+  first: "Nadia",
+  last: "Ferrante",
+  divisionId: DIVISION.testBench,
+  addedBy: TEST_BENCH_LEAD,
+  addedAt: "2026-10-20 09:00:00+00",
+} as const;
+
+/** The added person's `users` row: only what Add member writes, with the day it did. */
+export const ADDED_USER_ROWS = rowsOf(users, [
+  {
+    id: ADDED_BY_EMAIL.userId,
+    email: ADDED_BY_EMAIL.email,
+    firstName: ADDED_BY_EMAIL.first,
+    lastName: ADDED_BY_EMAIL.last,
+    member: null,
+    createdAt: ADDED_BY_EMAIL.addedAt,
+    updatedAt: null,
+  },
+]);
+
+/** Their wait in Test Bench, sent by its lead, the way Add member writes it. */
+export const TEAM_JOIN_ROWS = rowsOf(teamJoins, [
+  {
+    userId: ADDED_BY_EMAIL.userId,
+    divisionId: ADDED_BY_EMAIL.divisionId,
+    title: "Test Engineer",
+    prtEmail: null,
+    discord: null,
+    addedBy: ADDED_BY_EMAIL.addedBy,
+    addedByActingAccount: null,
+    addedAt: ADDED_BY_EMAIL.addedAt,
+  },
+]);
+
+/**
+ * Everyone the tester sign-in and View as may open a session as (issue
+ * #653): every seeded person but the anonymized alumnus, whose account is
+ * deleted, under the id and email their `users` row holds.
+ */
+const SIGN_IN_PEOPLE = PEOPLE.filter((p) => p.memberId !== ANONYMIZED_ALUMNUS).map((p) => ({
+  id: p.userId,
+  email: `${handleOf(p.first, p.last)}@${SEED_EMAIL_DOMAIN}`,
+  name: `${p.first} ${p.last}`,
+}));
+
+/**
+ * The sign-in rows: every seeded person, so a check signs in as or views as
+ * anyone (issue #653), and every admin tester. The `sync_auth_users` trigger
+ * links each to its `users` row by id. Only an admin tester carries Better
+ * Auth's stored `admin` role.
+ */
+export const SIGN_IN_ROWS = rowsOf(betterAuthUsers, [
+  ...SIGN_IN_PEOPLE.map((person) => ({
+    id: person.id,
+    email: person.email,
+    name: person.name,
     emailVerified: true,
-    createdAt: TESTER_JOINED_AT,
-    updatedAt: TESTER_JOINED_AT,
+    createdAt: SIGN_IN_MADE_AT,
+    updatedAt: SIGN_IN_MADE_AT,
+    role: null,
+  })),
+  ...ADMIN_TESTERS.map((admin) => ({
+    id: admin.id,
+    email: admin.email,
+    name: admin.name,
+    emailVerified: true,
+    createdAt: SIGN_IN_MADE_AT,
+    updatedAt: SIGN_IN_MADE_AT,
+    role: admin.storedRole,
   })),
 ]);
 
-/** Matches every tester's sign-in row, by id or email, so the reset removes stale ones too. */
-export const TESTER_AUTH_RESET: SeedStatement = {
-  sql: `DELETE FROM better_auth."user" WHERE id LIKE '7e57e500-0000-4000-8000-00000000000_' OR email LIKE '%.tester@example.com'`,
+const SIGN_IN_PEOPLE_IDS = SIGN_IN_PEOPLE.map((person) => `'${person.id}'`).join(", ");
+
+/**
+ * Matches every sign-in row the seed makes and nothing else: the admin
+ * testers' and the retired testers' (their reserved id prefix and email
+ * suffix, so a stale one goes too) and every seeded person's, by id. A
+ * developer's own account holds none of these, so it stays.
+ */
+export const SIGN_IN_RESET: SeedStatement = {
+  sql: `DELETE FROM better_auth."user" WHERE id LIKE '7e57e500-0000-4000-8000-0000000000__' OR email LIKE '%.tester@example.com' OR id IN (${SIGN_IN_PEOPLE_IDS})`,
   params: [],
 };
 
 /**
- * The `sync_auth_users` trigger set each tester's `users.updated_at` to now
- * when their sign-in row went in; this sets it back to a fixed time so a
- * second run leaves the same rows.
+ * The `sync_auth_users` trigger set each seeded account's `users.updated_at`
+ * to now when its sign-in row went in; these set it back to what the `users`
+ * row was seeded with (a fixed time for an admin tester, none for a person),
+ * so a second run leaves the same rows.
  */
-export const TESTER_UPDATED_AT_FIX: SeedStatement = {
-  sql: `UPDATE users SET updated_at = '${TESTER_JOINED}'::timestamptz WHERE id LIKE '7e57e500-0000-4000-8000-00000000000_'`,
+export const ADMIN_TESTER_UPDATED_AT_FIX: SeedStatement = {
+  sql: `UPDATE users SET updated_at = '${ADMIN_TESTER_JOINED}'::timestamptz WHERE id LIKE '7e57e500-0000-4000-8000-0000000000__'`,
+  params: [],
+};
+export const PEOPLE_UPDATED_AT_FIX: SeedStatement = {
+  sql: `UPDATE users SET updated_at = NULL WHERE id IN (${SIGN_IN_PEOPLE_IDS})`,
   params: [],
 };
 
-/** The seeded person each test viewer is (lib/test-viewer-people.ts), which the app reads too. */
-export { TEST_VIEWER_PEOPLE } from "@/lib/test-viewer-people";
+/**
+ * The seeded person each kind's plain seat is, by user id (lib/seeded-accounts.ts):
+ * the team leader, the head of Operations in the operations lead's seat, the
+ * head of Propulsion, who answers the waiting hand-over (issue #326), the
+ * Test Bench lead, a Test Engineer of Test Bench, the alumnus whose name was
+ * fixed for the Alumni page (issue #317), and an applicant. A check signs in
+ * as one, or views as one, through a real session (issues #612, #653).
+ */
+export const PLAIN_SEAT_PEOPLE: Readonly<Record<PlainSeat, string>> = {
+  "team-leader": seatOf("team-leader").id,
+  "operations-lead": seatOf("operations-lead").id,
+  "department-head": seatOf("department-head").id,
+  "division-lead": seatOf("division-lead").id,
+  member: seatOf("member").id,
+  alumni: seatOf("alumni").id,
+  "non-member": seatOf("non-member").id,
+};
 
 export const people = tableSeedModule({
   name: "people",
-  owns: [members, users, roles],
-  // Only the testers' sign-in rows: a developer's own account stays.
-  keyed: [{ table: betterAuthUsers, reset: TESTER_AUTH_RESET }],
-  rows: [MEMBER_ROWS, USER_ROWS, ROLE_ROWS, TESTER_AUTH_ROWS],
-  afterInsert: [TESTER_UPDATED_AT_FIX],
+  // `team_joins` points at `users`, so emptying `users` empties it anyway.
+  owns: [members, users, roles, teamJoins],
+  // Only the seed's own sign-in rows: a developer's own account stays.
+  keyed: [{ table: betterAuthUsers, reset: SIGN_IN_RESET }],
+  rows: [MEMBER_ROWS, USER_ROWS, ADDED_USER_ROWS, ROLE_ROWS, TEAM_JOIN_ROWS, SIGN_IN_ROWS],
+  afterInsert: [ADMIN_TESTER_UPDATED_AT_FIX, PEOPLE_UPDATED_AT_FIX],
 });

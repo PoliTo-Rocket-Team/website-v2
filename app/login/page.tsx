@@ -1,13 +1,11 @@
-import { Suspense } from "react";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { connection } from "next/server";
 import { GoogleSignInButton } from "@/components/login-form";
 import { LoginPhoto } from "@/components/login/login-photo";
 import { RocketFlame } from "@/components/login/rocket-flame";
-import { TestDeveloperSignIn, TestDeveloperSignInSpace } from "@/components/test-developer-sign-in";
 import { brand } from "@/lib/brand-colors";
+import { PAGES } from "@/lib/landing-links";
 
 export const metadata: Metadata = {
   title: "Sign in | Polito Rocket Team",
@@ -19,20 +17,16 @@ export const metadata: Metadata = {
 
 // Boards 36 (desktop) and 36m (phone): a full-height split with no navbar and
 // no footer. The image side is a 420px band on top on phones. The whole
-// sign-in panel is in the prerendered page; only the test developer entry
-// waits for the request, in a space its own size (issue #157). The two
-// background photos load behind their blurred previews and never hold up the
-// heading and the button (issue #446).
-type SearchParams = Promise<Record<string, string | string[] | undefined>>;
-
-export default function LoginPage({ searchParams }: { searchParams: SearchParams }) {
+// sign-in panel is in the prerendered page. The two background photos load
+// behind their blurred previews and never hold up the heading and the button
+// (issue #446).
+export default function LoginPage() {
   return (
     <main className="flex min-h-svh flex-col bg-ground md:flex-row">
       <ImageSide />
       {/* From md the rows split the free height 5 : 7 around the heading and
           button, which puts board 36's whole stack (y 315, 270 tall) in the
-          middle. The rest flows into the last row, so the preview-only test
-          developer section grows downward and never moves the heading up. */}
+          middle. The rest flows into the last row. */}
       <section className="relative flex flex-1 flex-col items-center overflow-hidden px-5 py-10 md:grid md:min-h-svh md:grid-rows-[5fr_auto_7fr] md:justify-items-center md:px-12 md:py-0">
         <LoginPhoto src="/login/gray.webp"sizes="(min-width: 768px) 50vw, 100vw" position="50% 59%" />
         <div aria-hidden="true" className="absolute inset-0 bg-ground/55" />
@@ -46,9 +40,6 @@ export default function LoginPage({ searchParams }: { searchParams: SearchParams
         </div>
 
         <div className="relative flex w-full max-w-[360px] flex-col items-center text-center md:row-start-3 md:self-start">
-          <Suspense fallback={<TestDeveloperSignInSpace />}>
-            <TestDeveloperEntry searchParams={searchParams} />
-          </Suspense>
           <p className="mt-7 max-w-[300px] text-[12px] leading-[1.6] text-prt-text/70 md:max-w-[320px]">
             The dashboard is available to team members only. Other accounts can apply for open
             positions.
@@ -56,11 +47,11 @@ export default function LoginPage({ searchParams }: { searchParams: SearchParams
           <p className="mt-7 text-[12px] leading-[1.6] text-prt-text/50">
             By signing in, you agree to our
             <br />
-            <Link href="/terms" className="font-medium text-prt-text transition-colors duration-300 ease-out hover:text-accent">
+            <Link href={PAGES.terms} className="font-medium text-prt-text transition-colors duration-300 ease-out hover:text-accent">
               Terms of Service
             </Link>{" "}
             and{" "}
-            <Link href="/privacy" className="font-medium text-prt-text transition-colors duration-300 ease-out hover:text-accent">
+            <Link href={PAGES.privacy} className="font-medium text-prt-text transition-colors duration-300 ease-out hover:text-accent">
               Privacy Policy
             </Link>
             .
@@ -69,14 +60,6 @@ export default function LoginPage({ searchParams }: { searchParams: SearchParams
       </section>
     </main>
   );
-}
-
-// Previews and `next dev` only (issue #141). Read at request time, never
-// prerendered, so a build promoted to production cannot carry it.
-async function TestDeveloperEntry({ searchParams }: { searchParams: SearchParams }) {
-  await connection();
-  const cb = (await searchParams).cb;
-  return <TestDeveloperSignIn cb={typeof cb === "string" ? cb : null} />;
 }
 
 // Board 36's shade over the left photo: dark at the top under the logo,

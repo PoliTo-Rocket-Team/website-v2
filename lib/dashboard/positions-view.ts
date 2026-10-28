@@ -2,6 +2,7 @@ import {
   departmentLabel,
   divisionsOf,
   filterPositions,
+  placesPhrase,
   positionTabCounts,
   type PositionRow,
   type PositionsPage,
@@ -78,8 +79,69 @@ function introOf(page: PositionsPage): string {
     case "division":
       return `Roles in ${page.division ? `the ${page.division}` : "your division"}. ${after}`;
     case "granted":
-      return `Roles in ${page.places.map((p) => `the ${p.kind === "department" ? departmentLabel(p.name) : p.name}`).join(" and ")}. ${after}`;
+      // The grant's reach, named once (issue #577).
+      return page.reach.kind === "team" ? `Every role in the team. ${after}` : `Roles in ${placesPhrase(page.reach.places)}. ${after}`;
   }
+}
+
+/**
+ * The recruitment notice's line for everyone but full access, who get the
+ * switch (boards 57 and 63). A head reads their department's roles from md
+ * and "Your" on a phone, a lead "Your"; a grant holder owns no roles, so their
+ * line names none (issue #577).
+ */
+export function recruitmentNoticeOf(scope: PositionsPage["scope"], open: boolean): { readonly phone: string; readonly wide: string } {
+  const line = (roles: string) => `${roles} are ${open ? "public" : "hidden"} on the site.`;
+  switch (scope) {
+    case "department":
+      return { phone: line("Your open roles"), wide: line("Your department\u2019s open roles") };
+    case "division":
+      return { phone: line("Your open roles"), wide: line("Your open roles") };
+    case "team":
+    case "granted":
+      return { phone: line("Open roles"), wide: line("Open roles") };
+  }
+}
+
+/**
+ * The warning before the site-wide switch saves (Owner decision, issue #691):
+ * one per direction, saying what the public apply page does after the change.
+ * `opens` is the direction asked about, so a warning always names one.
+ */
+export type RecruitmentWarning = {
+  readonly opens: boolean;
+  readonly title: string;
+  readonly description: string;
+  readonly confirmLabel: string;
+};
+
+export function recruitmentWarningOf(opens: boolean): RecruitmentWarning {
+  return opens
+    ? {
+        opens,
+        title: "Open recruitment?",
+        description: "The apply page will show every open position, and new applications can come in.",
+        confirmLabel: "Open recruitment",
+      }
+    : {
+        opens,
+        title: "Close recruitment?",
+        description: "The apply page will hide every position and stop taking new applications.",
+        confirmLabel: "Close recruitment",
+      };
+}
+
+/**
+ * What a row opens (issues #207, #577): Edit position where the viewer may
+ * change the role, else the same drawer read-only, with no field to type in
+ * and no Save. With no row it is New position, which only a viewer who may
+ * post a role reaches.
+ */
+export type PositionDrawerMode = "new" | "edit" | "view";
+
+export function positionDrawerModeOf(row: Pick<PositionRow, "canChange"> | null): PositionDrawerMode {
+  if (row === null) return "new";
+  return row.canChange ? "edit" : "view";
 }
 
 // Narrowing the list: the same selects, switch, search and sort for every role

@@ -6,9 +6,10 @@ import { GRANT_AREAS, readsArea, type GrantArea, type ViewerStanding } from "./v
 // The division Overview (board 56), built area by area (issue #471). A
 // division lead reads every area, so their Overview is the whole board. Each
 // figure, attention row and panel belongs to one area, and an area the viewer
-// does not read adds nothing, whatever was read for it. A granted member keeps
-// their own Overview instead, with one "Your access" line per granted area
-// (issue #480, ./access-summary.ts).
+// does not read adds nothing, whatever was read for it. A member gets the
+// same board with only the areas they are granted, and none when they hold
+// no grant (issue #593); "Your access" lists the grants beside it
+// (./access-summary.ts).
 
 /** A live position as the division Overview's Positions figure counts it: no figure about its applications. */
 export type OverviewPosition = {
@@ -25,6 +26,63 @@ export type UnreadOverviewPosition = OverviewPosition & {
 };
 
 /**
+ * The units the Members figure counts (issue #593), as it names them: one
+ * division (the viewer's own, or another), one whole department, the whole
+ * team, or some divisions that are none of these.
+ */
+export type MembersScope =
+  | { readonly kind: "division"; readonly name: string; readonly own: boolean }
+  | { readonly kind: "department"; readonly name: string }
+  | { readonly kind: "team" }
+  | { readonly kind: "divisions"; readonly count: number };
+
+/** A division as `membersScopeOf` reads the org. */
+export type ScopeDivision = { readonly id: number; readonly name: string; readonly departmentId: number | null };
+
+/**
+ * The scope the Members figure counts: `covered` (the division ids the
+ * viewer reads Members in) against the open org. Every open division is the
+ * team, every division of one department that department, one division
+ * that division, its own when the viewer holds a role in it.
+ */
+export function membersScopeOf(
+  covered: readonly number[],
+  org: { readonly divisions: readonly ScopeDivision[]; readonly departments: readonly { readonly id: number; readonly name: string }[] },
+  ownDivisionIds: readonly number[],
+): MembersScope {
+  const ids = new Set(covered);
+  const inScope = org.divisions.filter((d) => ids.has(d.id));
+  if (inScope.length > 1 && inScope.length === org.divisions.length) return { kind: "team" };
+  const department = org.departments.find((dep) => {
+    const own = org.divisions.filter((d) => d.departmentId === dep.id);
+    return own.length > 0 && own.length === inScope.length && own.every((d) => ids.has(d.id));
+  });
+  if (department && inScope.length > 1) return { kind: "department", name: department.name };
+  const [only] = inScope;
+  if (inScope.length === 1 && only) return { kind: "division", name: only.name, own: ownDivisionIds.includes(only.id) };
+  return { kind: "divisions", count: inScope.length };
+}
+
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** The Members figure: "My division · 6 people in Mission Analysis", "Department · 16 people in Aerodynamics", "Team · 112 people on the team". */
+export function membersStat(count: number, scope: MembersScope): Stat {
+  const people = count === 1 ? "person" : "people";
+  switch (scope.kind) {
+    case "division":
+      return { label: scope.own ? "My division" : "Division", value: String(count), detail: `${people} in ${divisionShortName(scope.name)}` };
+    case "department":
+      return { label: "Department", value: String(count), detail: `${people} in ${scope.name}` };
+    case "team":
+      return { label: "Team", value: String(count), detail: `${people} on the team` };
+    case "divisions":
+      return { label: "Divisions", value: String(count), detail: `${people} in ${plural(scope.count, "division", "divisions")}` };
+  }
+}
+
+/**
  * What the Overview was read from, one field per area: absent when the
  * viewer does not read that area, so nothing was read for it.
  */
@@ -38,8 +96,8 @@ export type DivisionFigures = {
   readonly applications?: { readonly positions: readonly UnreadOverviewPosition[]; readonly interviews: readonly UpcomingInterview[] };
   /** Orders: the orders waiting in the units they read Orders in. */
   readonly orders?: { readonly count: number; readonly total: Cents };
-  /** Members: how many people are in their division, its name, and who has no photo. */
-  readonly members?: { readonly count: number; readonly divisionName: string; readonly withoutPhoto: readonly string[] };
+  /** Members: how many people are in the units they read Members in, the scope those units make, and who there has no photo. */
+  readonly members?: { readonly count: number; readonly scope: MembersScope; readonly withoutPhoto: readonly string[] };
 };
 
 /** The areas the viewer's division Overview shows, in board order: every one for a lead, the granted ones for a member. */
@@ -47,15 +105,12 @@ export function overviewAreasOf(viewer: ViewerStanding): GrantArea[] {
   return GRANT_AREAS.filter((area) => readsArea(viewer, area));
 }
 
-function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
 /**
  * The division Overview from the areas the viewer reads: New applications,
  * the new-application rows and the interviews with Applications; Open
- * positions with Positions; Orders with Orders; My division and the no-photo
- * row with Members. A figure read for an area outside `areas` is dropped.
+ * positions with Positions; Orders with Orders; the Members figure and the
+ * no-photo row with Members. A figure read for an area outside `areas` is
+ * dropped.
  */
 export function divisionOverviewOf(areas: readonly GrantArea[], figures: DivisionFigures): DivisionOverview {
   const applications = areas.includes("applications") ? figures.applications : undefined;
@@ -84,13 +139,7 @@ export function divisionOverviewOf(areas: readonly GrantArea[], figures: Divisio
       live: orders.count > 0,
     });
   }
-  if (members) {
-    stats.push({
-      label: "My division",
-      value: String(members.count),
-      detail: `${members.count === 1 ? "person" : "people"} in ${divisionShortName(members.divisionName)}`,
-    });
-  }
+  if (members) stats.push(membersStat(members.count, members.scope));
 
   const noPhoto = members ? noPhotoItem(members.withoutPhoto) : null;
   const attention: AttentionItem[] = [

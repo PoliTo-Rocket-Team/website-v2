@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
-import { GripVertical, Plus, Trash2, TriangleAlert, Upload } from "lucide-react";
+import { Plus, Trash2, TriangleAlert, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { measurePartnerLogo, removePartner, reorderPartners, savePartner } from "@/app/dashboard/actions";
 import { moveTo } from "@/lib/content/order";
@@ -10,11 +10,14 @@ import { PARTNER_TEXT_LIMITS, type Partner, type PartnerLogo, type PartnerTier }
 import { fieldsOf, partnerFieldErrors, websiteLabel, type PartnerFieldErrors, type PartnerFields } from "@/lib/partners-fields";
 import type { MeasuredLogo } from "@/lib/partners-editor";
 import { ConfirmDialog } from "./confirm-dialog";
-import { CONTENT_FOCUS as FOCUS, PublishFooter, RowMenu, StatusPill, TextField, useDragOrder, type DragRow } from "./content-parts";
+import { CONTENT_FOCUS as FOCUS, DragGrip, PublishFooter, RowMenu, StatusPill, TextField, useDragOrder, type DragRow } from "./content-parts";
 import { Toggle } from "./controls";
-import { DrawerPage, PanelBody, SidePanel } from "./drawer";
+import { DrawerPage } from "./drawer";
+import { EditorPanelModal } from "./editor-panel";
+import { GroupLabel } from "./field";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
+import { EditChip } from "./row-open";
 
 // The Partners page (boards 76 and 76b, issue #256): the partners in site
 // order, Main then Media, each row dragged to its place in its tier; a row or
@@ -195,11 +198,11 @@ function PartnerRow({
       onDragOver={drag.onDragOver}
       onDragEnd={drag.onDragEnd}
       onClick={onOpen}
-      className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors duration-300 ease-out md:gap-4 md:px-5 ${
+      className={`group/row flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors duration-300 ease-out md:gap-4 md:px-5 ${
         selected ? "bg-accent/[0.08]" : "hover:bg-white-5"
       } ${drag.dragged ? "opacity-50" : ""}`}
     >
-      <GripVertical aria-hidden className={`hidden h-4 w-4 shrink-0 cursor-grab text-dim md:block ${squeezed}`} strokeWidth={1.75} />
+      <DragGrip className={squeezed} />
       <LogoBox logo={partner.logo} name={partner.name} size={panelOpen ? "row-narrow" : "row"} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[15px] text-prt-text">{partner.name}</span>
@@ -211,9 +214,9 @@ function PartnerRow({
       <span className="w-[86px] shrink-0">
         <StatusPill status={statusOf(item.version)} short />
       </span>
+      <EditChip label={`Edit ${partner.name}`} target={{ onOpen }} />
       <RowMenu
         name={partner.name}
-        onEdit={onOpen}
         onUp={onMove && index > 0 ? () => onMove(index - 1) : null}
         onDown={onMove && index < last ? () => onMove(index + 1) : null}
         onRemove={onRemove}
@@ -224,8 +227,8 @@ function PartnerRow({
 
 /**
  * A logo on the dark ground, drawn white when it is too dark for the page, as
- * the public pages draw it. A logo a preview did not keep (lib/dummy-data/
- * partners.ts) shows the partner's name, as the boards draw every logo.
+ * the public pages draw it. A logo the store did not keep shows the
+ * partner's name, as the boards draw every logo.
  */
 function LogoBox({
   logo,
@@ -309,7 +312,10 @@ type PickedLogo = { file: File; preview: string; measured: MeasuredLogo };
 // the editor may flip (issue #394), and a warning, not a block, when the
 // picked file sits on a solid box; Name and Tier, Website, then the three
 // texts with their counters; Remove, Save draft and Publish at the foot. New
-// partner is the same panel, empty, with no Remove.
+// partner is the same panel, empty, with no Remove. It opens over the list on
+// the shared editor panel frame (EditorPanelModal, issue #734), so its header,
+// spacing, fields and buttons are the outreach post editor's; it has no page
+// preview.
 function PartnerPanel({
   open,
   item,
@@ -389,109 +395,102 @@ function PartnerPanel({
   const tierLabel = TIERS.find((t) => t.tier === (current?.tier ?? fields.tier))!.label;
 
   return (
-    <SidePanel
+    <EditorPanelModal
       open={open}
       onOpenChange={(next) => !next && onClose()}
+      eyebrow={tierLabel}
       title={item === null ? "New partner" : current!.name}
-      wide
-      below={
-        status !== null && (
-          <span className="mt-1.5 flex items-center gap-2.5 text-[13px] text-text-2">
-            <StatusPill status={status} />
-            {tierLabel}
-          </span>
-        )
+      foot={
+        // Remove on the left, Save draft and Publish on the right (board 76b).
+        <div className="flex w-full items-center justify-between gap-3">
+          <PublishFooter onRemove={item === null ? null : () => setConfirming(true)} pending={pending} onSubmit={submit} />
+        </div>
       }
-      footerLayout="spread"
-      footer={<PublishFooter onRemove={item === null ? null : () => setConfirming(true)} pending={pending} onSubmit={submit} />}
     >
-      <form id={formId} noValidate onSubmit={(e) => e.preventDefault()} className="flex min-h-0 flex-1 flex-col">
-        <PanelBody className="flex flex-col gap-5">
-          <div>
-            <p className="mb-2 text-[13px] leading-snug text-prt-text">
-              Logo <span className="ml-1.5 text-prt-muted">PNG, transparent background</span>
-            </p>
-            <div className="flex items-center gap-4">
-              {logo !== undefined ? (
-                <LogoBox logo={logo} name={fields.name || current?.name || ""} size="panel" />
-              ) : (
-                <span className="flex h-[72px] w-[180px] shrink-0 items-center justify-center rounded-lg border border-dashed border-white-10 text-[13px] text-dim">
-                  No logo yet
-                </span>
-              )}
-              <div className="min-w-0 space-y-1 text-[12px] leading-snug">
-                {size !== undefined && (
-                  <p className="truncate text-text-2">
-                    {picked !== null && `${picked.file.name} · `}
-                    {size.width} × {size.height}
-                  </p>
-                )}
-                {logo !== undefined && (
-                  <label className="flex w-fit cursor-pointer items-center gap-2 text-text-2">
-                    <Toggle checked={darkLogo} onCheckedChange={setDarkLogo} label="Draw it white" />
-                    Draw it white
-                  </label>
-                )}
-                {picked?.measured.logo.darkLogo && <p className="text-prt-muted">Measured too dark for the page.</p>}
-                <input
-                  ref={fileInput}
-                  type="file"
-                  accept="image/png,.png"
-                  aria-label="Logo file"
-                  className="sr-only"
-                  onChange={(e) => {
-                    pick(e.target.files?.[0] ?? null);
-                    e.target.value = "";
-                  }}
-                />
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => fileInput.current?.click()}
-                  className={`inline-flex items-center gap-1.5 rounded text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:text-accent-hover ${FOCUS}`}
-                >
-                  <Upload aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
-                  {logo === undefined ? "Add logo" : "Replace logo"}
-                </button>
-              </div>
-            </div>
-            {picked?.measured.solidBackground && (
-              <p role="status" className="mt-2 flex items-start gap-2 text-[13px] leading-snug text-warning">
-                <TriangleAlert aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-                This logo has a solid background, so the page shows a box around it. Use a PNG with a transparent background if you can.
-              </p>
+      <form id={formId} noValidate onSubmit={(e) => e.preventDefault()} className="space-y-4">
+        {status !== null && <StatusPill status={status} />}
+        <div role="group" aria-labelledby={`${formId}-logo`}>
+          <GroupLabel id={`${formId}-logo`} label="Logo" hint="PNG, transparent background" />
+          <div className="flex items-center gap-4">
+            {logo !== undefined ? (
+              <LogoBox logo={logo} name={fields.name || current?.name || ""} size="panel" />
+            ) : (
+              <span className="flex h-[72px] w-[180px] shrink-0 items-center justify-center rounded-lg border border-dashed border-white-10 text-[13px] text-dim">
+                No logo yet
+              </span>
             )}
-            {logoError !== undefined && <p className="mt-1.5 text-[12px] text-danger">{logoError}</p>}
+            <div className="min-w-0 space-y-1 text-[12px] leading-snug">
+              {size !== undefined && (
+                <p className="truncate text-text-2">
+                  {picked !== null && `${picked.file.name} · `}
+                  {size.width} × {size.height}
+                </p>
+              )}
+              {logo !== undefined && (
+                <label className="flex w-fit cursor-pointer items-center gap-2 text-text-2">
+                  <Toggle checked={darkLogo} onCheckedChange={setDarkLogo} label="Draw it white" />
+                  Draw it white
+                </label>
+              )}
+              {picked?.measured.logo.darkLogo && <p className="text-prt-muted">Measured too dark for the page.</p>}
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/png,.png"
+                aria-label="Logo file"
+                className="sr-only"
+                onChange={(e) => {
+                  pick(e.target.files?.[0] ?? null);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => fileInput.current?.click()}
+                className={`inline-flex items-center gap-1.5 rounded text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:text-accent-hover ${FOCUS}`}
+              >
+                <Upload aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
+                {logo === undefined ? "Add logo" : "Replace logo"}
+              </button>
+            </div>
           </div>
+          {picked?.measured.solidBackground && (
+            <p role="status" className="mt-2 flex items-start gap-2 text-[13px] leading-snug text-warning">
+              <TriangleAlert aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+              This logo has a solid background, so the page shows a box around it. Use a PNG with a transparent background if you can.
+            </p>
+          )}
+          {logoError !== undefined && <p className="mt-1.5 text-[12px] text-danger">{logoError}</p>}
+        </div>
 
-          <div className="grid gap-5 sm:grid-cols-[1fr_200px]">
-            <TextField label="Name" value={fields.name} error={errors.name} onChange={(v) => set("name", v)} />
-            <TierField value={fields.tier} onChange={(v) => set("tier", v)} />
-          </div>
-          <TextField
-            label="Website"
-            hint="optional"
-            value={fields.website}
-            error={errors.website}
-            placeholder="https://"
-            type="url"
-            onChange={(v) => set("website", v)}
-          />
-          <TextField label="One line" value={fields.oneLiner} limit={PARTNER_TEXT_LIMITS.oneLiner} error={errors.oneLiner} onChange={(v) => set("oneLiner", v)} />
-          <TextField label="About them" hint="optional" rows={3} value={fields.about} limit={PARTNER_TEXT_LIMITS.about} error={errors.about} onChange={(v) => set("about", v)} />
-          <TextField
-            label="What they do for us"
-            hint="optional"
-            rows={3}
-            value={fields.support}
-            limit={PARTNER_TEXT_LIMITS.support}
-            error={errors.support}
-            onChange={(v) => set("support", v)}
-          />
-        </PanelBody>
+        <div className="grid gap-x-2.5 gap-y-4 sm:grid-cols-[1fr_200px]">
+          <TextField label="Name" value={fields.name} error={errors.name} onChange={(v) => set("name", v)} />
+          <TierField value={fields.tier} onChange={(v) => set("tier", v)} />
+        </div>
+        <TextField
+          label="Website"
+          hint="optional"
+          value={fields.website}
+          error={errors.website}
+          placeholder="https://"
+          type="url"
+          onChange={(v) => set("website", v)}
+        />
+        <TextField label="One line" value={fields.oneLiner} limit={PARTNER_TEXT_LIMITS.oneLiner} error={errors.oneLiner} onChange={(v) => set("oneLiner", v)} />
+        <TextField label="About them" hint="optional" rows={3} value={fields.about} limit={PARTNER_TEXT_LIMITS.about} error={errors.about} onChange={(v) => set("about", v)} />
+        <TextField
+          label="What they do for us"
+          hint="optional"
+          rows={3}
+          value={fields.support}
+          limit={PARTNER_TEXT_LIMITS.support}
+          error={errors.support}
+          onChange={(v) => set("support", v)}
+        />
       </form>
       {item !== null && <RemoveDialog open={confirming} onOpenChange={setConfirming} item={item} onRemoved={() => onRemoved(item.id)} />}
-    </SidePanel>
+    </EditorPanelModal>
   );
 }
 
@@ -500,9 +499,7 @@ function TierField({ value, onChange }: { value: string; onChange: (tier: Partne
   const labelId = useId();
   return (
     <div>
-      <p id={labelId} className="mb-2 text-[13px] leading-snug text-prt-text">
-        Tier
-      </p>
+      <GroupLabel id={labelId} label="Tier" />
       <div role="radiogroup" aria-labelledby={labelId} className="grid h-11 grid-cols-2 gap-1 rounded-[10px] border border-white-10 bg-white-5 p-1">
         {TIERS.map(({ tier }) => (
           <TierOption key={tier} checked={value === tier} onSelect={() => onChange(tier)}>

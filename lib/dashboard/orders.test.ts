@@ -15,6 +15,7 @@ import {
   ORDER_STATUSES,
   orderActions,
   orderBreakdown,
+  orderEditControls,
   orderFormFields,
   orderingDivisions,
   orderPage,
@@ -22,7 +23,6 @@ import {
   ordersPageFor,
   ordersScopeOf,
   orgUnitsOf,
-  pagerSlots,
   parseEuros,
   sortOrders,
   stateAfterDecision,
@@ -197,8 +197,8 @@ test("by default only the team leader decides; Approve orders lets someone else 
   assert.equal(decideRightOf({ teamLeader: false, approveOrders: false }), null);
 });
 
-/** A member: no full access, not the team leader, no department to head. */
-const memberViewer: OrdersViewer = { fullAccess: false, teamLeader: false, headDepartment: null };
+/** A member: no full access, not the team leader, no department to head, no division to lead. */
+const memberViewer: OrdersViewer = { fullAccess: false, teamLeader: false, headDepartment: null, ledDivisionIds: [] };
 const approveOrdersRow: OrdersScopeRow = { scope: "team", target: "approve_orders", level: "edit", divisionId: null, deptId: null };
 
 test("\"Approve orders\" alone is Orders access: the page opens, the holder decides, and edits nothing (issue #270)", () => {
@@ -211,6 +211,47 @@ test("\"Approve orders\" alone is Orders access: the page opens, the holder deci
   assert.deepEqual(orderActions(scope, order(approved)), { ...NOTHING, markOrdered: true });
   for (const status of ORDER_STATUSES) assert.equal(orderActions(scope, order(STATES[status])).edit, null, status);
   assert.deepEqual(orderingDivisions(scope, org), []);
+});
+
+/** A holder of "Approve orders" who also heads Aerodynamics. */
+const headHolderScope: OrdersScope = { edits: [{ kind: "department", department: aerodynamics }], decides: "approve-orders" };
+/** Every viewer who may edit an order in Mission Analysis, with whether they also decide it. */
+const EDITORS: readonly (readonly [string, OrdersScope])[] = [
+  ["the team leader", teamLeaderScope],
+  ["an Approve orders holder with an edit scope", headHolderScope],
+  ["full access", operationsLeadScope],
+  ["a department head", head],
+  ["a division lead", lead],
+];
+
+test("every viewer who may edit a waiting order gets Edit order and Cancel request, whether they decide it or not (issue #675)", () => {
+  const waiting = order({ status: "waiting" });
+  for (const [who, scope] of EDITORS) {
+    assert.deepEqual(
+      orderEditControls(orderActions(scope, waiting)).buttons,
+      [
+        { kind: "cancel", label: "Cancel request" },
+        { kind: "edit", label: "Edit order" },
+      ],
+      who,
+    );
+  }
+  // Beside the decide buttons they sit at the panel's head (board 70b); with no decide buttons, in the footer.
+  assert.equal(orderEditControls(orderActions(teamLeaderScope, waiting)).place, "head");
+  assert.equal(orderEditControls(orderActions(headHolderScope, waiting)).place, "head");
+  assert.equal(orderEditControls(orderActions(head, waiting)).place, "footer");
+  assert.equal(orderEditControls(orderActions(lead, waiting)).place, "footer");
+});
+
+test("a sent-back request offers Edit and send again alone, an order outside scope offers nothing, and no edit control reads only Edit", () => {
+  for (const [who, scope] of EDITORS) {
+    assert.deepEqual(orderEditControls(orderActions(scope, order(sentBack))).buttons, [{ kind: "edit", label: "Edit and send again" }], who);
+    for (const status of ["approved", "ordered", "rejected"] as const) {
+      assert.deepEqual(orderEditControls(orderActions(scope, order(STATES[status]))).buttons, [], `${who}, ${status}`);
+    }
+  }
+  assert.deepEqual(orderEditControls(orderActions(lead, order({ status: "waiting" }, "2026-10-01", inHardware))).buttons, []);
+  assert.deepEqual(orderEditControls(orderActions(holderScope, order({ status: "waiting" }))).buttons, []);
 });
 
 test("a member with no \"Approve orders\" and no Orders access gets no Orders page (issue #270)", () => {
@@ -231,6 +272,28 @@ test("Orders access from scope rows, a head's role and full access keeps its edi
   assert.deepEqual(ordersScopeOf({ ...memberViewer, fullAccess: true }, [], org), operationsLeadScope);
   assert.deepEqual(ordersScopeOf({ ...memberViewer, fullAccess: true, teamLeader: true }, [], org), teamLeaderScope);
   assert.deepEqual(ordersScopeOf(memberViewer, [divisionView, approveOrdersRow], org), holderScope);
+});
+
+test("a lead's role edits each open division they lead, with no scope row, and decides nothing (issue #590)", () => {
+  const leadOf = (...ledDivisionIds: number[]): OrdersViewer => ({ ...memberViewer, ledDivisionIds });
+  assert.deepEqual(ordersScopeOf(leadOf(missionAnalysis.id), [], org), lead);
+  // Two led divisions, in two departments: each one, in the team's order. A closed division (not in `org`) adds nothing.
+  assert.deepEqual(ordersScopeOf(leadOf(hardware.id, missionAnalysis.id, 42), [], org), {
+    edits: [
+      { kind: "division", division: missionAnalysis },
+      { kind: "division", division: hardware },
+    ],
+    decides: null,
+  });
+  assert.equal(ordersScopeOf(leadOf(42), [], org), null);
+  // A grant elsewhere adds only what it gives: a whole-team Can view row keeps the lead's own division and edits nothing more.
+  const teamView: OrdersScopeRow = { scope: "team", target: "orders", level: "view", divisionId: null, deptId: null };
+  assert.deepEqual(ordersScopeOf(leadOf(missionAnalysis.id), [teamView], org), lead);
+  // Deciding still comes only from the team leader's role or "Approve orders".
+  assert.deepEqual(ordersScopeOf(leadOf(missionAnalysis.id), [approveOrdersRow], org), { ...lead, decides: "approve-orders" });
+  assert.deepEqual(ordersScopeOf({ ...leadOf(missionAnalysis.id), teamLeader: true }, [], org), { ...lead, decides: "team-leader" });
+  // A head who also holds a role in a division of their own department edits the department, once.
+  assert.deepEqual(ordersScopeOf({ ...leadOf(missionAnalysis.id), headDepartment: aerodynamics }, [], org), head);
 });
 
 test("a decision is refused to anyone without the right, and on a request that is not waiting", () => {
@@ -306,14 +369,6 @@ test("a page holds 12 orders, newest first, and a page past the end shows the la
   assert.deepEqual(orderPage(orders, 3).orders.map((o) => o.requestedOn), ["2026-09-06", "2026-09-05", "2026-09-04", "2026-09-03", "2026-09-02", "2026-09-01"]);
   assert.equal(orderPage(orders, 9).page, 3);
   assert.deepEqual(orderPage([], 1), { orders: [], page: 1, pages: 1 });
-});
-
-test("the pager shows the first, the last and the pages around the current one (board 61)", () => {
-  assert.deepEqual(pagerSlots(1, 6), [1, 2, 3, "gap", 6]);
-  assert.deepEqual(pagerSlots(4, 6), [1, "gap", 3, 4, 5, 6]);
-  assert.deepEqual(pagerSlots(6, 6), [1, "gap", 4, 5, 6]);
-  assert.deepEqual(pagerSlots(5, 9), [1, "gap", 4, 5, 6, "gap", 9]);
-  assert.deepEqual(pagerSlots(2, 4), [1, 2, 3, 4]);
 });
 
 test("orders sort newest first, whatever their state", () => {

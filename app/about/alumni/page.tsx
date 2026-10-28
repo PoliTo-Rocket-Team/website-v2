@@ -41,8 +41,10 @@ export default async function AlumniPage({ searchParams }: { searchParams: Searc
   return (
     <div className="relative bg-ground">
       <LandingNavbar />
-      <PageSky>
-        <main className="pb-section pt-16 md:pt-[72px]">
+      {/* The sky's bottom pad is the one section pad between the year list and
+          the apply band (issue #718); <main> has none (issue #582). */}
+      <PageSky className="pb-section">
+        <main className="pt-16 md:pt-[72px]">
           <PageHeader {...alumni.header} stats={headerStats(page)} />
           {page.founders.length > 0 && (
             <Founders {...alumni.founders} intro={foundersIntro(page.founders)} people={page.founders} />

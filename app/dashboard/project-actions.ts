@@ -12,8 +12,7 @@ import type { ProjectRecord, UploadedSrc } from "@/lib/project-content/record";
 
 // The project editor's writes (boards 75 and 75c, issues #297 and #298). Each opens the
 // dashboard as the page did; the projects editor checks the site-content gate
-// and the fields again, and writes to the database or, for a test developer,
-// to their cookie. The database write refreshes the cached public read; every
+// and the fields again, and writes to the database. The write refreshes the cached public read; every
 // page that shows a project renders again.
 
 /** The pages a project shows on: its own page and /projects (both under the /projects layout), and Home. */
@@ -47,6 +46,24 @@ export async function createProject(input: unknown): Promise<WriteResult<{ slug:
   if (opening.kind !== "open") return refused("Sign in again to make changes.");
   const result = await opening.data.projects.create(project);
   return result.ok ? written({ slug: editorVersion(result.value.version).slug }) : result;
+}
+
+/**
+ * Delete project in the project editor (issue #768): the project goes with
+ * every version, a draft, a published one or one with draft changes, and the
+ * uploaded files only it showed. The public pages and the dashboard Projects
+ * list, which the editor goes back to, render again without it.
+ */
+export async function deleteProject(projectId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(projectId)) return refused("Unknown project.");
+  const opening = await openDashboard();
+  if (opening.kind !== "open") return refused("Sign in again to make changes.");
+  const result = await opening.data.projects.remove(projectId);
+  if (result.ok) {
+    refreshPublicProjects();
+    revalidatePath("/dashboard/projects");
+  }
+  return result;
 }
 
 /**

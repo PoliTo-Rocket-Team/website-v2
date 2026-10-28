@@ -22,8 +22,9 @@ import {
   seasonAt,
   roleBeyondDivisions,
   standingOfRoles,
-  teamPageEditOf,
+  titledSeatOf,
   type Memberships,
+  type RoleBeyondDivisions,
   type OrgChart,
   type RoleSeat,
   type RosterEntry,
@@ -41,8 +42,14 @@ const org: OrgChart = {
   ],
 };
 
+/** An active role row as the data sources read it; no full-access flag unless one is given. */
+let rowIds = 0;
+function row(r: Omit<RoleSeat, "id" | "fullAccess"> & Partial<Pick<RoleSeat, "fullAccess">>): RoleSeat {
+  return { id: ++rowIds, fullAccess: null, ...r };
+}
+
 function person(id: number, name: string, placement: RosterEntry["placement"]): RosterEntry {
-  return { id, name, email: `${name.split(" ")[0].toLowerCase()}@prt.it`, placement, pageTitle: null, joined: 2024, program: null, study: null, access: [] };
+  return { id, name, email: `${name.split(" ")[0].toLowerCase()}@prt.it`, photoUrl: null, placement, pageTitle: null, joined: 2024, program: null, study: null, access: [] };
 }
 
 const lead = (divisionId: number, since = "2024-10-01") => inDivisions([{ divisionId, role: "lead", since }]);
@@ -50,7 +57,7 @@ const member = (divisionId: number | null, since = "2024-10-01") => inDivisions(
 
 const roster: RosterEntry[] = [
   person(1, "Alessandro Greco", { role: "team-leader", memberships: NO_MEMBERSHIPS }),
-  person(2, "Chiara Rinaldi", { role: "head", departmentId: 1, memberships: NO_MEMBERSHIPS }),
+  person(2, "Chiara Rinaldi", { role: "head", departmentId: 1, title: "Head of Aerodynamics", memberships: NO_MEMBERSHIPS }),
   person(3, "Marco Bianchi", lead(10)),
   person(4, "Elif Kaya", member(10)),
   person(5, "Bruno Valli", lead(20)),
@@ -119,17 +126,32 @@ test("the tree is built from the roster: a person added to it is a node", () => 
   assert.equal(after.leader?.name, "Alessandro Greco");
 });
 
-test("the Team page panel sets the title for everyone and the lead choice only for someone placed in a division (#418)", () => {
-  const edits = roster.map((entry) => teamPageEditOf(entry.id === 4 ? { ...entry, pageTitle: "Mission Analyst" } : entry, org));
+test("every place on the tree carries that person's own stored photo, and null where none is stored (issue #622)", () => {
+  const photo = (id: number) => `https://blob.example/members/${id}.jpg`;
+  const pictured = [
+    ...roster.map((p) => ({ ...p, photoUrl: photo(p.id) })),
+    {
+      ...person(7, "Sara Conti", { role: "board", seat: { roleId: 70, title: "", flag: "project-manager", since: "2024-10-01" }, memberships: NO_MEMBERSHIPS }),
+      photoUrl: photo(7),
+    },
+    person(8, "Anna Villa", member(10)),
+  ];
+  const tree = buildTeamTree(pictured, org, "2026–27", null);
+  const [aerodynamics] = tree.departments;
+  const [missionAnalysis] = aerodynamics.divisions;
+  assert.equal(tree.leader?.photoUrl, photo(1));
   assert.deepEqual(
-    edits.map((e) => [e.id, e.role, e.pageTitle]),
+    tree.board.map((b) => [b.person.id, b.person.photoUrl]),
+    [[7, photo(7)]],
+  );
+  assert.equal(aerodynamics.head?.photoUrl, photo(2));
+  assert.equal(missionAnalysis.lead?.photoUrl, photo(3));
+  assert.equal(tree.departments[1].divisions[0].lead?.photoUrl, photo(5));
+  assert.deepEqual(
+    missionAnalysis.members.map((m) => [m.id, m.photoUrl]),
     [
-      [1, null, null],
-      [2, null, null],
-      [3, "division-lead", null],
-      [4, "member", "Mission Analyst"],
-      [5, "division-lead", null],
-      [6, null, null],
+      [8, null],
+      [4, photo(4)],
     ],
   );
 });
@@ -160,7 +182,9 @@ const twoDepartments: OrgChart = {
   departments: org.departments,
   divisions: [...org.divisions, { id: 30, name: "Optimization and Analysis Division", departmentId: 1 }],
 };
-const missionLead: TeamActor = { kind: "lead", divisionIds: [10] };
+const missionLead: TeamActor = { kind: "lead", divisionIds: [10], ledDivisionIds: [10] };
+/** A member a Members (Can edit) grant over Mission Analysis makes an actor there: they lead nothing (#342, #594). */
+const missionGrant: TeamActor = { kind: "lead", divisionIds: [10], ledDivisionIds: [] };
 const aeroHead: TeamActor = { kind: "head", departmentIds: [1] };
 const teamLeader: TeamActor = { kind: "team" };
 const inMission = membershipsOf([{ divisionId: 10, role: "member", since: "2024-10-01" }]);
@@ -184,11 +208,14 @@ test('"Leaves the team" follows the permission rule for lead, head and team lead
 
 test('"Leaves the team" counts every active role: a role in no division is only the team leader\'s to end (#231)', () => {
   // Rows as the server reads them: each person's one division role is in Mission Analysis.
-  const missionRole: RoleSeat = { type: "core", divisionId: 10, departmentId: 1, title: "Mission Analyst", since: "2024-10-01" };
+  const missionRole = row({ type: "core", divisionId: 10, departmentId: 1, title: "Mission Analyst", since: "2024-10-01" });
   const people: [RoleSeat, string][] = [
-    [{ type: "president", divisionId: null, departmentId: null, title: "Team Leader", since: "2025-10-01" }, "the team leader"],
-    [{ type: "head", divisionId: null, departmentId: 1, title: "Head", since: "2025-10-01" }, "Head of Aerodynamics"],
-    [{ type: null, divisionId: null, departmentId: null, title: "Chief Engineer", since: "2025-10-01" }, "Chief Engineer"],
+    [row({ type: "president", divisionId: null, departmentId: null, title: "Team Leader", since: "2025-10-01" }), "the team leader"],
+    [row({ type: "head", divisionId: null, departmentId: 1, title: "Head of Aerodynamics", since: "2025-10-01" }), "Head of Aerodynamics"],
+    [row({ type: null, divisionId: null, departmentId: null, title: "Chief Engineer", since: "2025-10-01", fullAccess: "chief-engineer" }), "Chief Engineer"],
+    // A renamed seat or head is named by its stored title (issue #625).
+    [row({ type: "head", divisionId: null, departmentId: 1, title: "Chief of Aerodynamics", since: "2025-10-01" }), "Chief of Aerodynamics"],
+    [row({ type: "core", divisionId: null, departmentId: null, title: "Chief of Propulsion", since: "2025-10-01", fullAccess: "chief-engineer" }), "Chief of Propulsion"],
   ];
   for (const [beyond, label] of people) {
     const standing = standingOfRoles([missionRole, beyond], twoDepartments);
@@ -202,7 +229,7 @@ test('"Leaves the team" counts every active role: a role in no division is only 
 
 test('"Leaves the team" reads a head role kept on a division row as head of its department (#231, review round 2)', () => {
   // The row the actor reader and the roster both read as Head of Aerodynamics: type head, kept on Mission Analysis.
-  const headOnMission: RoleSeat = { type: "head", divisionId: 10, departmentId: null, title: "Head", since: "2025-10-01" };
+  const headOnMission = row({ type: "head", divisionId: 10, departmentId: null, title: "Head of Aerodynamics", since: "2025-10-01" });
   const standing = standingOfRoles([headOnMission], twoDepartments);
   const refused = { allowed: false, reason: "Also Head of Aerodynamics, so only the team leader can do this" };
   assert.deepEqual(mayLeaveTeam(missionLead, standing, twoDepartments), refused);
@@ -210,13 +237,14 @@ test('"Leaves the team" reads a head role kept on a division row as head of its 
   assert.deepEqual(mayLeaveTeam(teamLeader, standing, twoDepartments), { allowed: true });
 });
 
-test('"Remove from <division>" is not offered for the only division, and a lead cannot take a lead out', () => {
+test('"Remove from <division>" is not offered for the only division, and only who changes its leads takes a lead out (#594)', () => {
   const only = (memberships: Memberships) => ({ memberships, beyond: [] });
   assert.deepEqual(removalFrom(missionLead, only(inMission), 10, twoDepartments), { kind: "only-division" });
   assert.deepEqual(removalFrom(missionLead, only(alsoSafety), 10, twoDepartments), { kind: "offered" });
   assert.deepEqual(removalFrom(missionLead, only(alsoSafety), 20, twoDepartments), { kind: "not-in-reach" });
   const coLead = withRoleIn(alsoSafety, 10, "lead");
-  assert.deepEqual(removalFrom(missionLead, only(coLead), 10, twoDepartments), {
+  assert.deepEqual(removalFrom(missionLead, only(coLead), 10, twoDepartments), { kind: "offered" }, "its own lead");
+  assert.deepEqual(removalFrom(missionGrant, only(coLead), 10, twoDepartments), {
     kind: "locked",
     reason: "Leads are changed by the Head of Aerodynamics",
   });
@@ -226,13 +254,13 @@ test('"Remove from <division>" is not offered for the only division, and a lead 
 
 test("a seat kept on a division row is the seat, never a lead or member role there (#232, review round 3)", () => {
   const seats: RoleSeat[] = [
-    { type: "president", divisionId: 10, departmentId: null, title: "Team Leader", since: "2025-10-01" },
-    { type: "head", divisionId: 10, departmentId: null, title: "Head", since: "2025-10-01" },
+    row({ type: "president", divisionId: 10, departmentId: null, title: "Team Leader", since: "2025-10-01" }),
+    row({ type: "head", divisionId: 10, departmentId: null, title: "Head", since: "2025-10-01" }),
   ];
   const divisionRows: RoleSeat[] = [
-    { type: "lead", divisionId: 10, departmentId: null, title: "", since: "2025-10-01" },
-    { type: "core", divisionId: 10, departmentId: null, title: "", since: "2025-10-01" },
-    { type: null, divisionId: 10, departmentId: null, title: "", since: "2025-10-01" },
+    row({ type: "lead", divisionId: 10, departmentId: null, title: "", since: "2025-10-01" }),
+    row({ type: "core", divisionId: 10, departmentId: null, title: "", since: "2025-10-01" }),
+    row({ type: null, divisionId: 10, departmentId: null, title: "", since: "2025-10-01" }),
   ];
   for (const role of seats) assert.equal(isDivisionRole(role), false);
   for (const role of divisionRows) assert.equal(isDivisionRole(role), true);
@@ -251,7 +279,7 @@ test("a seat kept on a division row is the seat, never a lead or member role the
 });
 
 test("a seat holder may leave their only division, since they keep a place on the team (#232, review round 3)", () => {
-  const head = { memberships: inMission, beyond: [{ kind: "head" as const, departmentId: 1 }] };
+  const head = { memberships: inMission, beyond: [{ kind: "head" as const, departmentId: 1, title: "" }] };
   const plain = { memberships: inMission, beyond: [] };
   assert.equal(mayLeaveDivision(head, 10), true);
   assert.equal(mayLeaveDivision(plain, 10), false);
@@ -260,8 +288,12 @@ test("a seat holder may leave their only division, since they keep a place on th
   assert.deepEqual(removalFrom(aeroHead, plain, 10, twoDepartments), { kind: "only-division" });
 });
 
-test("a lead cannot rename a division, change its code or change its leads; its head can", () => {
-  assert.deepEqual(mayChangeDivision(missionLead, 10, twoDepartments), { allowed: false, reason: "Leads are changed by the Head of Aerodynamics" });
+test("a lead renames, recodes and changes the leads of the divisions they lead and no other; a grant opens none; its head can (#594)", () => {
+  assert.deepEqual(mayChangeDivision(missionLead, 10, twoDepartments), { allowed: true });
+  assert.deepEqual(mayChangeDivision(missionLead, 30, twoDepartments), { allowed: false, reason: "Leads are changed by the Head of Aerodynamics" });
+  assert.deepEqual(mayChangeDivision(missionGrant, 10, twoDepartments), { allowed: false, reason: "Leads are changed by the Head of Aerodynamics" });
+  const twoLed: TeamActor = { kind: "lead", divisionIds: [10, 30], ledDivisionIds: [10, 30] };
+  assert.deepEqual([10, 30].map((d) => mayChangeDivision(twoLed, d, twoDepartments).allowed), [true, true]);
   assert.deepEqual(mayChangeDivision(aeroHead, 10, twoDepartments), { allowed: true });
   assert.equal(mayChangeDivision(aeroHead, 20, twoDepartments).allowed, false);
   assert.equal(leadsChangedBy(10, twoDepartments), "Leads are changed by the Head of Aerodynamics");
@@ -277,4 +309,14 @@ test("the years on the team are read as typed, in order and not after this year;
   assert.equal(checkDeparture({ years: "2024 – 2027", reason: null }, 2026).ok, false);
   assert.equal(checkDeparture({ years: "last year", reason: null }, 2026).ok, false);
   assert.equal(checkDeparture({ years: "2024 – 2026", reason: "fired" }, 2026).ok, false);
+});
+
+test("the seat whose title Edit details sets: the team leader's, else a head's, else a team-level seat's by seat order; none for an advisor (#626)", () => {
+  const board = (roleId: number, flag: "chief-engineer" | null, since: string): RoleBeyondDivisions => ({ kind: "board", seat: { roleId, title: "", flag, since } });
+  const head: RoleBeyondDivisions = { kind: "head", departmentId: 1, title: "" };
+  const pick = (roles: readonly RoleBeyondDivisions[]) => titledSeatOf(roles, (r) => r)?.seat ?? null;
+  assert.deepEqual(pick([board(1, null, "2020-10-01"), head, { kind: "team-leader", title: "" }]), { kind: "team-leader", title: "" });
+  assert.deepEqual(pick([board(1, null, "2020-10-01"), head]), head);
+  assert.deepEqual(pick([board(1, null, "2020-10-01"), board(2, "chief-engineer", "2024-10-01")]), board(2, "chief-engineer", "2024-10-01"), "a flagged seat first");
+  assert.equal(pick([{ kind: "advisor", departmentId: 1 }, { kind: "department", departmentId: 1 }]), null);
 });

@@ -36,10 +36,13 @@ Who may open which file in the dashboard is in the dashboard rules doc, [docs/da
 
 ## Gaps
 
-- No page or action lets the recruitment manager download or clear a round's application files: #197.
-- The dashboard has no recruitment manager at all: #194.
+None.
 
 Followed today: the prefixes are fixed in [lib/storage/pathname.ts](../lib/storage/pathname.ts); [lib/storage/private-store.ts](../lib/storage/private-store.ts) uses `access: "private"` and [lib/storage/public-store.ts](../lib/storage/public-store.ts) uses `access: "public"`; `MAX_PDF_BYTES = 2 * 1024 * 1024` in [lib/apply/application-form.ts](../lib/apply/application-form.ts) is checked on the server when an application is sent.
+
+## Amendment, 2026-10-25
+
+Owner decision, 2026-10-25, on issue #194 (https://github.com/PoliTo-Rocket-Team/website-v2/issues/194#issuecomment-6396512295): downloading and clearing each round's application files is not needed and is dropped. Decision 4 and the last clause of the bold summary ("the recruitment manager downloads and clears the files each round") no longer hold, and the second Consequence ("Files do not pile up across rounds, once the per-round clearing exists") is withdrawn with them; those lines stay as written. Application files are still deleted 30 days after the application is withdrawn ([0011](0011-applicant-journey-received-to-joining.md) rule 8), and when a person deletes their account with the box ticked. The recruitment manager is the Logistics lead ([0011](0011-applicant-journey-received-to-joining.md), amendment of 2026-10-25). The rest of this record is unchanged.
 
 ## Records
 

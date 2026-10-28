@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ApplicationStage } from "./application-flow";
+import type { BuiltInStatusKey } from "./application-status";
 import {
   applicationColumnOptions,
   applicationColumnValues,
@@ -26,12 +26,12 @@ function row(
   id: number,
   title: string,
   division: string,
-  stage: ApplicationStage,
+  status: BuiltInStatusKey,
   studies: { degree: string | null; year: string | null },
   documents: readonly ApplicationDocument[],
   day: string,
 ): Row {
-  return { id, state: { stage }, applicant: studies, position: { title, division }, documents, applied: { day } };
+  return { id, state: { status }, applicant: studies, position: { title, division }, documents, applied: { day } };
 }
 
 const aero = { degree: "Aerospace Engineering", year: "Year 1 Master's" };
@@ -42,7 +42,7 @@ const rows: readonly Row[] = [
   row(1, "Trajectory Engineer", "Mission Analysis Division", "new", aero, [cv, letter], "Today"),
   row(2, "CFD Analyst", "Optimization and Analysis Division", "interview", mech, [cv], "Yesterday"),
   row(3, "Trajectory Engineer", "Mission Analysis Division", "interview", mech, [], "Today"),
-  row(4, "Trajectory Engineer", "Propulsion Division", "rejected", { degree: null, year: null }, [letter], "3 days ago"),
+  row(4, "Trajectory Engineer", "Propulsion Division", "rejected_email_to_be_sent", { degree: null, year: null }, [letter], "3 days ago"),
 ];
 
 const ids = (picks: ApplicationPicks) => withApplicationPicks(rows, picks).map((r) => r.id);

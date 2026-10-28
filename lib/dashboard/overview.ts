@@ -1,20 +1,26 @@
-// What the Overview page shows. The operations lead sees the team shape
+// What the Overview page shows. Every team seat gets one Overview (issue
+// #593): the personal panels of board 52 (who they are, their page on the
+// site, their division's roster, and "Your access" for what they are
+// granted), with the figures, attention rows and panels their scope reads.
+// The shape names that scope. The operations lead reads the team shape
 // (board 40: figures, what needs attention, recent activity); the team leader
-// sees the leader shape (board 72, issue #252: the same across the team, with
-// what waits for their decision and a Departments panel); a division lead
-// sees the division shape (board 56: the same, scoped to their division, plus
-// upcoming interviews); a department head sees the department shape (board
-// 62, issue #230: the same across their department, plus a Divisions panel);
-// a member sees the personal shape (board 52: who they
-// are and what is theirs), with a grant or without one (issue #480). A non-member sees the applicant shape (boards 50e
-// and 50f, ./applicant-overview.ts) and an alumnus the alumni shape (issue
-// #317's board 56, not the division lead's board 56 above; ./my-alumni.ts),
-// which the page builds from My applications and My alumni. The components
-// in components/dashboard/ render these and fetch nothing.
+// the leader shape (board 72, issue #252: the same across the team, with what
+// waits for their decision and a Departments panel); a division lead the
+// division shape (board 56: the same, scoped to their division, plus upcoming
+// interviews); a department head the department shape (board 62, issue #230:
+// the same across their department, plus a Divisions panel); and a member the
+// division shape too, with only the areas they are granted (issue #471), so
+// none for a member who holds no grant. A non-member sees the applicant shape
+// (boards 50e and 50f, ./applicant-overview.ts) and an alumnus the alumni
+// shape (issue #317's board 56, not the division lead's board 56 above;
+// ./my-alumni.ts), which the page builds from My applications and My alumni.
+// The components in components/dashboard/ render these and fetch nothing.
 
-import type { AccessSummary } from "./access-summary";
+import type { AccessSection } from "./access-summary";
 import type { ApplicantOverview } from "./applicant-overview";
 import type { AlumniOverview } from "./my-alumni";
+import type { RoleType } from "./team";
+import { seatOf, type FlaggedSeat, type FullAccessSeat, type ViewerStanding } from "./viewer";
 
 export type Link = { readonly label: string; readonly href: string };
 
@@ -31,8 +37,18 @@ export type Stat = {
  * "hand-over": a hand-over waiting for the viewer's answer (board 62c,
  * ./hand-over-request.ts), always the top row. The team leader's rows (board 72, ./leader-overview.ts): orders waiting for
  * their decision, approved orders not ordered yet, and positions closing soon.
+ * "acceptance-emails": the team leader's count of acceptance emails to send,
+ * linking to the box on Applications (board 100, ./acceptance-emails.ts).
+ * "prt-email-request": an open PRT email request waiting for an approver's
+ * answer, personal (./alias-request.ts) or special (./team-address.ts): one
+ * kind of item to the approver (issue #798), over the two stored kinds.
+ * "team-address-reroute": a team address whose role changed hands, waiting
+ * for an approver to move it (./team-address.ts).
+ * "team-address-removal": a team address someone removed, waiting for an
+ * approver to turn its routing off (./team-address.ts, issue #797).
  */
 export type AttentionKind =
+  | "acceptance-emails"
   | "applications"
   | "quiet-position"
   | "unassigned"
@@ -41,7 +57,9 @@ export type AttentionKind =
   | "orders-to-decide"
   | "approved-orders"
   | "hand-over"
-  | "alias-request";
+  | "prt-email-request"
+  | "team-address-reroute"
+  | "team-address-removal";
 
 /** A row's button that dismisses the stored notice it shows (./notices.ts). */
 export type DismissNotice = { readonly label: string; readonly dismissNotice: number };
@@ -51,13 +69,47 @@ export type AnswerHandOver = { readonly answerHandOver: number };
 
 /**
  * A row's Decline and Mark created on an open alias request (board 94c,
- * ./alias-request.ts): the member it is for, and the address Mark created's
- * dialog starts from (board 94d).
+ * ./alias-request.ts): the member it is for, the address Mark created's
+ * dialog starts from (board 94d), and the member's sign-in email, their
+ * `users.email`, which the alias forwards to (issue #586). Only the approver
+ * seats get these rows (`aliasAttentionFor`), so nobody else is sent it.
  */
-export type AnswerAlias = { readonly answerAlias: number; readonly member: string; readonly prefill: string };
+export type AnswerAlias = { readonly answerAlias: number; readonly member: string; readonly prefill: string; readonly signInEmail: string };
+
+/**
+ * A row's Decline and Mark created on an open team address request (epic
+ * #578, issue #788, ./team-address.ts): the member it is for, and the
+ * address and purpose asked for; Mark created's dialog starts from that
+ * address and shows the member's sign-in email, which the address forwards
+ * to, as the alias dialog does (issue #586). Only the approver seats get
+ * these rows (`teamAddressAttentionFor`).
+ */
+export type AnswerTeamAddress = {
+  readonly answerTeamAddress: number;
+  readonly member: string;
+  readonly address: string;
+  readonly purpose: string;
+  readonly signInEmail: string;
+};
+
+/**
+ * A row's Mark done on an open routing item (epic #578, issue #789,
+ * ./team-address.ts): the address, the member it goes to, and their sign-in
+ * email, which the address forwards to; Mark done's dialog shows it as
+ * Forwards to. Only the approver seats get these rows
+ * (`teamAddressRerouteAttentionFor`).
+ */
+export type MarkRerouteDone = { readonly markRerouteDone: number; readonly address: string; readonly member: string; readonly signInEmail: string };
+
+/**
+ * A row's Mark done on an open team address removal (issue #797,
+ * ./team-address.ts): the address and the member it is removed from. Only
+ * the approver seats get these rows (`teamAddressRemovalAttentionFor`).
+ */
+export type MarkRemovalDone = { readonly markRemovalDone: number; readonly address: string; readonly member: string };
 
 /** Where a row's button goes, the notice it dismisses, or the request it answers. */
-export type AttentionAction = Link | DismissNotice | AnswerHandOver | AnswerAlias;
+export type AttentionAction = Link | DismissNotice | AnswerHandOver | AnswerAlias | AnswerTeamAddress | MarkRerouteDone | MarkRemovalDone;
 
 export function isDismissNotice(action: AttentionAction): action is DismissNotice {
   return "dismissNotice" in action;
@@ -71,6 +123,18 @@ export function isAnswerAlias(action: AttentionAction): action is AnswerAlias {
   return "answerAlias" in action;
 }
 
+export function isAnswerTeamAddress(action: AttentionAction): action is AnswerTeamAddress {
+  return "answerTeamAddress" in action;
+}
+
+export function isMarkRerouteDone(action: AttentionAction): action is MarkRerouteDone {
+  return "markRerouteDone" in action;
+}
+
+export function isMarkRemovalDone(action: AttentionAction): action is MarkRemovalDone {
+  return "markRemovalDone" in action;
+}
+
 export type AttentionItem = {
   readonly kind: AttentionKind;
   readonly title: string;
@@ -78,6 +142,12 @@ export type AttentionItem = {
   readonly phoneTitle?: string;
   readonly detail: string;
   readonly action: AttentionAction;
+  /**
+   * The kind whose icon the row's tile draws, when it is not its own: an alias
+   * notice is a "notice" but draws the alias request's at-sign (boards 94c and
+   * 94f, issue #565).
+   */
+  readonly iconKind?: AttentionKind;
 };
 
 export type ActivityItem = {
@@ -99,6 +169,11 @@ export type TeamOverview = {
 export type UpcomingInterview = {
   readonly applicant: string;
   readonly position: string;
+  /**
+   * Who offered its times, read "with Marco Bianchi" under the time (board
+   * 99b, issue #652); null for times stored before the setter was recorded.
+   */
+  readonly setBy: string | null;
 } & (
   | { readonly state: "booked"; readonly start: Date; readonly end: Date }
   | { readonly state: "waiting" }
@@ -133,9 +208,26 @@ export type DepartmentOverview = {
   readonly stats: readonly Stat[];
   readonly attention: readonly AttentionItem[];
   readonly divisions: readonly DivisionSummary[];
+  /** Everyone in the department once (`departmentHeadcount`): the "My department" figure and the Divisions panel's people count. */
+  readonly people: number;
   readonly interviews: readonly UpcomingInterview[];
   readonly activity: readonly ActivityItem[];
 };
+
+/**
+ * A department's people, each once: its active heads and everyone with an
+ * active role in its open divisions (issue #760). The head's own row names no
+ * division, and someone in two divisions has a row in each, so this is never
+ * the sum of the per-division counts (issue #777).
+ */
+export function departmentHeadcount(rows: readonly { readonly memberId: number }[]): number {
+  return new Set(rows.map((r) => r.memberId)).size;
+}
+
+/** "My department" on a department head's Overview (board 62): `people` from `departmentHeadcount`. */
+export function myDepartmentStat(people: number, department: string): Stat {
+  return { label: "My department", value: String(people), detail: `${people === 1 ? "person" : "people"} in ${department}` };
+}
 
 /** One department on the team leader's Overview (board 72): who heads it, how big it is, what waits. */
 export type DepartmentSummary = {
@@ -178,10 +270,13 @@ export function departmentLine(department: DepartmentSummary): string {
   return `${heads} · ${divisions} · ${rosterSize(department.people)}`;
 }
 
-/** "2 divisions · 16 people", beside the Divisions panel's title (board 62). */
-export function divisionsMeta(divisions: readonly DivisionSummary[]): string {
-  const people = divisions.reduce((sum, d) => sum + d.people, 0);
-  return `${divisions.length} ${divisions.length === 1 ? "division" : "divisions"} · ${people} ${people === 1 ? "person" : "people"}`;
+/**
+ * "2 divisions · 16 people", beside the Divisions panel's title (board 62):
+ * `people` is the department's headcount, the "My department" figure, never
+ * the sum of the rows' counts (issue #777).
+ */
+export function divisionsMeta(divisions: readonly DivisionSummary[], people: number): string {
+  return `${divisions.length} ${divisions.length === 1 ? "division" : "divisions"} · ${rosterSize(people)}`;
 }
 
 /** "Leads", "Lead", or null for a division with no lead yet. */
@@ -207,6 +302,8 @@ export type PersonHeader = {
   /** "In the team since October 2025" */
   readonly since: string | null;
   readonly edit: Link | null;
+  /** The viewer's stored photo, the one the sidebar shows (`DashboardViewer.photoUrl`); null draws the PRT mark (issue #599). */
+  readonly photoUrl: string | null;
 };
 
 export type ChecklistItem = {
@@ -222,89 +319,290 @@ export type Checklist = {
   readonly items: readonly ChecklistItem[];
 };
 
+/**
+ * Who sets someone's name and division on The Team page, from the seat they
+ * hold (issue #641): their division lead for a role in a division; the team
+ * leader for a department head (Change head) and for a team-level seat (Add
+ * seat, Change holder on the Team tree's seat row); and, for the team leader,
+ * the previous team leader, who handed the role over.
+ */
+export type PageSetter = "division-lead" | "team-leader" | "previous-team-leader";
+
+/**
+ * One active role, as "Your page on the site" reads it. `fullAccess` is the
+ * team-level seat the role is flagged as, whether or not it sits in a
+ * division: the IT lead's seat is a lead role in the IT division.
+ */
+export type PageRole = { readonly type: RoleType; readonly divisionId: number | null; readonly fullAccess: FlaggedSeat | null };
+
+/**
+ * The setter of the highest seat among someone's active roles: the team
+ * leader's seat, then a head's, a role flagged as a team-level seat or any
+ * role in no division, then a role in a division. Null for someone holding
+ * no role.
+ */
+export function pageSetterOf(roles: readonly PageRole[]): PageSetter | null {
+  if (roles.length === 0) return null;
+  if (roles.some((r) => r.type === "president")) return "previous-team-leader";
+  if (roles.some((r) => r.type === "head" || r.fullAccess !== null || r.divisionId === null)) return "team-leader";
+  return "division-lead";
+}
+
+const PAGE_SETTER_DETAIL: Readonly<Record<PageSetter, string>> = {
+  "division-lead": "Set by your division lead",
+  "team-leader": "Set by the team leader",
+  "previous-team-leader": "Handed over by the previous team leader",
+};
+
+/** What "Your page on the site" reads about the viewer. */
+export type PageProfile = {
+  readonly roles: readonly PageRole[];
+  readonly email: string;
+  /** Their stored photo; null when none is stored. */
+  readonly photoUrl: string | null;
+  readonly linkedin: string | null;
+};
+
+/**
+ * "Your page on the site" (board 52): name and division, email, photo and
+ * LinkedIn, each done or not. Null once all four are done, so the Overview
+ * shows no panel; it comes back as soon as one is undone (Owner decision,
+ * 2026-10-24, on #641).
+ */
+export function pageChecklistOf(page: PageProfile): Checklist | null {
+  const setter = pageSetterOf(page.roles);
+  const items: ChecklistItem[] = [
+    { label: "Name and division", detail: PAGE_SETTER_DETAIL[setter ?? "division-lead"], done: setter !== null, action: null },
+    { label: "Email", detail: page.email, done: true, action: null },
+    {
+      label: "Photo",
+      detail: "A clear, square photo of your face",
+      done: page.photoUrl !== null,
+      action: page.photoUrl !== null ? null : { label: "Upload", href: "/dashboard/profile" },
+    },
+    {
+      label: "LinkedIn",
+      detail: "Optional, shown as an icon on your card",
+      done: page.linkedin !== null,
+      action: page.linkedin !== null ? null : { label: "Add", href: "/dashboard/profile" },
+    },
+  ];
+  if (items.every((item) => item.done)) return null;
+  return {
+    title: "Your page on the site",
+    detail: `This is how you appear on The Team page. ${checklistProgress(items)}`,
+    items,
+  };
+}
+
 export type RosterPerson = {
   readonly name: string;
-  /** "Division lead" or "Member"; the viewer's own row reads "You" on desktop (board 52). */
+  /** "Department head", "Division lead" or "Member"; the viewer's own row reads "You" on desktop (board 52). */
   readonly role: string;
+  /** A head or a lead: their circle shows on the accent. */
   readonly lead: boolean;
   readonly self: boolean;
+  /** Their stored photo; null draws the PRT mark (issue #599). */
+  readonly photoUrl: string | null;
 };
 
 export type Roster = {
   readonly title: string;
   readonly detail: string;
-  /** Everyone in the division, not only the people listed. */
+  /** Everyone in the division or department, not only the people listed. */
   readonly size: number;
+  /** At most `ROSTER_LIMIT` of them. */
   readonly people: readonly RosterPerson[];
+  /** "See all 14 on Members", to the Members page (board 99b); null for a viewer who does not reach that page. */
+  readonly seeAll: Link | null;
 };
 
-/** One active role row in the viewer's division, as the personal roster reads it. */
+/** The most people an Overview roster lists (board 99b); everyone is on the Members page. */
+export const ROSTER_LIMIT = 6;
+
+/** One active role row in the viewer's division or department, as the personal roster reads it. */
 export type RosterRow = {
   readonly memberId: number;
   readonly name: string;
   /** The row's position type; "lead" or "head" makes the member a division lead. */
   readonly type: string | null;
+  readonly photoUrl: string | null;
 };
 
+/** A row of a department's roster: the head's own row names no division. */
+export type DepartmentRosterRow = RosterRow & { readonly divisionId: number | null };
+
+/** Where someone stands in a roster, highest first. */
+type RosterRank = "head" | "lead" | "member";
+
+const RANK_ORDER: readonly RosterRank[] = ["head", "lead", "member"];
+
+const RANK_LABELS: Readonly<Record<RosterRank, string>> = {
+  head: "Department head",
+  lead: "Division lead",
+  member: "Member",
+};
+
+/** A division roster's row: "lead" or "head" in a division makes a division lead. */
+function divisionRankOf(row: RosterRow): RosterRank {
+  return row.type === "lead" || row.type === "head" ? "lead" : "member";
+}
+
+/** A department roster's row: the head's own row names no division; in a division it reads as a division row. */
+function departmentRankOf(row: DepartmentRosterRow): RosterRank {
+  return row.type === "head" && row.divisionId === null ? "head" : divisionRankOf(row);
+}
+
+/** "See all 14 on Members", or null for a viewer who does not reach the Members page. */
+function seeAllOf(size: number, members: string | null): Link | null {
+  return members === null ? null : { label: `See all ${size} on Members`, href: members };
+}
+
 /**
- * The viewer's division on the personal Overview (board 52). One member can
- * hold more than one active role row in a division (a department head who
- * also leads it), so the rows collapse to one person per member (issue #249),
- * a lead when any of their rows is. Leads come first, then up to two other
- * members, then the viewer; `size` and the detail count distinct members.
+ * One member can hold more than one active role row in a unit (a department
+ * head who also leads a division in it), so the rows collapse to one person
+ * per member (issue #249), at the highest rank any of their rows has. Heads
+ * come first, then leads, the viewer among them when they hold one of those
+ * seats (board 99b); then the other members, and the viewer last when they
+ * are a member. At most `ROSTER_LIMIT` are listed, the viewer always among
+ * them; `size` counts everyone.
+ */
+function rosterPeople<R extends RosterRow>(rows: readonly R[], rankOf: (row: R) => RosterRank, viewerId: number | null) {
+  const byMember = new Map<number, RosterPerson & { rank: RosterRank }>();
+  for (const row of rows) {
+    const held = byMember.get(row.memberId)?.rank;
+    const own = rankOf(row);
+    const rank = held !== undefined && RANK_ORDER.indexOf(held) < RANK_ORDER.indexOf(own) ? held : own;
+    byMember.set(row.memberId, {
+      name: row.name,
+      role: RANK_LABELS[rank],
+      lead: rank !== "member",
+      self: row.memberId === viewerId,
+      photoUrl: row.photoUrl,
+      rank,
+    });
+  }
+  const everyone = [...byMember.values()];
+  const me = everyone.filter((p) => p.self && p.rank === "member");
+  const room = ROSTER_LIMIT - me.length;
+  const leads = keepingViewer(
+    RANK_ORDER.filter((rank) => rank !== "member").flatMap((rank) => everyone.filter((p) => p.rank === rank)),
+    room,
+  );
+  const others = everyone.filter((p) => !p.self && p.rank === "member").slice(0, room - leads.length);
+  return { size: everyone.length, people: [...leads, ...others, ...me].map(({ rank: _rank, ...person }) => person) };
+}
+
+/** The first `room` of `people`, the viewer kept in the last place when they would fall off. */
+function keepingViewer<T extends { readonly self: boolean }>(people: readonly T[], room: number): T[] {
+  const first = people.slice(0, room);
+  const viewer = people.find((p) => p.self);
+  return viewer === undefined || first.includes(viewer) ? first : [...first.slice(0, room - 1), viewer];
+}
+
+/**
+ * The viewer's division on the personal Overview (boards 52 and 99b): at
+ * most `ROSTER_LIMIT` people (`rosterPeople`), with "See all N on Members"
+ * to `members`, the Members page, when the viewer reaches it.
  */
 export function divisionRoster(
-  division: { readonly title: string; readonly department: string },
+  division: { readonly title: string; readonly department: string; readonly members: string | null },
   rows: readonly RosterRow[],
   viewerId: number | null,
 ): Roster {
-  const byMember = new Map<number, RosterPerson>();
-  for (const row of rows) {
-    const lead = (byMember.get(row.memberId)?.lead ?? false) || row.type === "lead" || row.type === "head";
-    byMember.set(row.memberId, {
-      name: row.name,
-      role: lead ? "Division lead" : "Member",
-      lead,
-      self: row.memberId === viewerId,
-    });
-  }
-  const people = [...byMember.values()];
-  const leads = people.filter((p) => p.lead && !p.self);
-  const others = people.filter((p) => !p.lead && !p.self).slice(0, 2);
-  const me = people.filter((p) => p.self);
-  return {
-    title: division.title,
-    detail: `${division.department} · ${rosterSize(people.length)}`,
-    size: people.length,
-    people: [...leads, ...others, ...me],
-  };
+  const { size, people } = rosterPeople(rows, divisionRankOf, viewerId);
+  return { title: division.title, detail: `${division.department} · ${rosterSize(size)}`, size, people, seeAll: seeAllOf(size, division.members) };
 }
 
-export type PersonalOverview = {
-  readonly shape: "personal";
-  /**
-   * The member's stored notices (./notices.ts), when they have any: the
-   * answer to a hand-over they sent (issue #262) reaches a sender who is now
-   * an advisor here.
-   */
-  readonly attention: readonly AttentionItem[];
+/**
+ * A department head's department on their Overview (issue #652): its head
+ * and everyone in its divisions, as a division's roster lists them.
+ */
+export function departmentRoster(
+  department: { readonly title: string; readonly divisions: number; readonly members: string | null },
+  rows: readonly DepartmentRosterRow[],
+  viewerId: number | null,
+): Roster {
+  const { size, people } = rosterPeople(rows, departmentRankOf, viewerId);
+  const divisions = `${department.divisions} ${department.divisions === 1 ? "division" : "divisions"}`;
+  return { title: department.title, detail: `${divisions} · ${rosterSize(size)}`, size, people, seeAll: seeAllOf(size, department.members) };
+}
+
+/**
+ * Board 52's panels, on every team seat's Overview (issue #593): who the
+ * viewer is, their page on the site, the roster of their own division or
+ * department (issue #652: never wider, whatever their grants reach, and none
+ * for a seat of `LEADER_SEATS`, whose whole team is on the Members page), and
+ * "Your access".
+ */
+export type PersonalPanels = {
   readonly person: PersonHeader;
+  /** Where these panels sit beside the scope board (`overviewLayoutOf`). */
+  readonly layout: OverviewLayout;
+  /** "Your page on the site" (`pageChecklistOf`); null once every step is done (issue #641). */
   readonly checklist: Checklist | null;
-  readonly roster: Roster | null;
-  /**
-   * "Your access" (issue #480): one summary per area the member is granted,
-   * in `GRANT_AREAS` order, at the grant's scope; none when they hold no
-   * grant, and then the access hint (`ACCESS_HINT`) shows in its place. A
-   * grant adds these lines and nothing else: no attention row and no panel.
-   */
-  readonly access: readonly AccessSummary[];
+  readonly rosters: readonly Roster[];
+  readonly access: AccessSection;
 };
 
-/** The one-line strip under a member's panels when they hold no grant (board 40m). */
-export const ACCESS_HINT = "Need to work on recruitment or site content? Ask your division lead or the admin team for access.";
+/**
+ * How a team seat's Overview sets its panels out. `leader-columns` is boards
+ * 99 and 99b (issue #652): what needs attention, their page on the site and
+ * the scope's own panel on the left, the roster then recent activity on the
+ * right. `board-first` is the order from before: the scope board's attention
+ * beside its activity, then their page on the site beside the roster.
+ */
+export type OverviewLayout = "leader-columns" | "board-first";
 
-/** What the dashboard data interface answers: the team's own Overviews. */
-export type TeamSideOverview = TeamOverview | TeamLeaderOverview | DepartmentOverview | DivisionOverview | PersonalOverview;
+/**
+ * The full-access seats whose Overview is boards 99 and 99b with no roster
+ * panel: the team leader (issue #652), the operations lead and the IT lead
+ * (Owner decision, 2026-10-25, issue #760). None has a division or department
+ * of their own, and the whole team is on their Members page.
+ */
+const LEADER_SEATS = ["team-leader", "operations-lead", "it-lead"] as const satisfies readonly FullAccessSeat[];
+
+/** Whether the viewer holds one of `LEADER_SEATS`. */
+export function holdsLeaderSeat(viewer: ViewerStanding): boolean {
+  const seat = seatOf(viewer);
+  return seat !== null && (LEADER_SEATS as readonly FullAccessSeat[]).includes(seat);
+}
+
+/**
+ * Boards 99 and 99b are for the leaders: a department head, a division lead
+ * and the seats of `LEADER_SEATS`. Every other team seat (a member, with or
+ * without grants, the Project Manager, the Chief Engineer, and a full-access
+ * standing that holds no seat) keeps the board-first order.
+ */
+export function overviewLayoutOf(viewer: ViewerStanding): OverviewLayout {
+  if (viewer.kind === "department-head" || viewer.kind === "division-lead" || holdsLeaderSeat(viewer)) return "leader-columns";
+  return "board-first";
+}
+
+/** The figures, rows and panels a seat's scope reads: the board its shape names. */
+export type ScopeBoard = TeamOverview | TeamLeaderOverview | DepartmentOverview | DivisionOverview;
+
+/** What the dashboard data interface answers: the one team Overview, the same for every seat but the scope it reads (issue #593). */
+export type TeamSideOverview = ScopeBoard & PersonalPanels;
+
+/**
+ * The team Overview in the sections the page streams one by one (issue
+ * #397): the person, known with the viewer, so it shows at once; the board
+ * its scope reads; and board 52's own panels. Each read starts when the
+ * sections are asked for, so they run side by side; `TeamSideOverview` is
+ * the three together (`overviewOfSections`).
+ */
+export type OverviewSections = {
+  readonly person: PersonHeader;
+  readonly board: Promise<ScopeBoard>;
+  readonly panels: Promise<Omit<PersonalPanels, "person">>;
+};
+
+/** The whole team Overview, once every section has arrived. */
+export async function overviewOfSections({ person, board, panels }: OverviewSections): Promise<TeamSideOverview> {
+  const [scope, own] = await Promise.all([board, panels]);
+  return { ...scope, ...own, person };
+}
 
 /** Someone off the team: a non-member (boards 50e, 50f) or an alumnus (board 56, issue #317), built by the page. */
 export type Overview = TeamSideOverview | ApplicantOverview | AlumniOverview;
@@ -381,7 +679,7 @@ export function noPhotoItem(names: readonly string[]): AttentionItem | null {
         ? `${names[0]} has no photo on the Team page`
         : `${names.length} members have no photo on the Team page`,
     phoneTitle: names.length === 1 ? `${names[0]} has no photo` : `${names.length} members have no photo`,
-    detail: names.length === 1 ? "Ask them to add one in My profile" : names.join(", "),
+    detail: names.length === 1 ? "Their Team page card shows no photo. Ask them to add one in My profile; this row goes away once they do." : names.join(", "),
     action: { label: "View", href: "/dashboard/members" },
   };
 }

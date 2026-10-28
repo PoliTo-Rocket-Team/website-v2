@@ -17,7 +17,7 @@ import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import type { ApplyPosition } from "@/db/types";
 import type { ApplyData } from "@/lib/apply/data";
-import { openApplyData } from "@/lib/apply/open";
+import { databaseApplyData } from "@/lib/apply/database";
 import { isPublic, positionCode, positionIdFromSlug, positionSlug } from "@/lib/apply/positions";
 import { sendApplication } from "./actions";
 
@@ -43,7 +43,7 @@ export default function PositionPage({ params }: { params: Promise<{ slug: strin
     <div className="relative bg-ground">
       <LandingNavbar />
       <PageSky>
-        <main className="min-h-svh pb-section pt-16 md:pt-[72px]">
+        <main className="min-h-svh pt-16 md:pt-[72px]">
           {/* The skeleton is part of the page's static shell (issue #395), so the
               layout shows at once and the /apply role link prefetches it. */}
           <Suspense fallback={<PositionSkeleton />}>
@@ -85,7 +85,7 @@ async function LivePosition({ params }: { params: Promise<{ slug: string }> }) {
   const id = positionIdFromSlug(slug);
   if (id === null) notFound();
 
-  const data = await openApplyData();
+  const data = databaseApplyData;
   // The position (cached) and the viewer's reads run side by side (issue #395).
   const [read, viewer] = await Promise.all([data.shownPosition(id), viewerOf(data, id)]);
   if (read === null) notFound();

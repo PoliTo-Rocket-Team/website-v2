@@ -6,7 +6,7 @@ import type { LegacyProjectRecord as ProjectRecord } from "./legacy";
 // The import (./import.ts) is frozen: migration 0037 already carried it into
 // every database, and no migration runs twice. So a later change is a
 // revision: a few values set at paths in one project's record, read the same
-// way by the code (the records without a database, the dummy data, the seed)
+// way by the code (the records without a database, the seed)
 // and by the migration that rewrites the stored versions, which holds exactly
 // what `revisionSql` writes. One list of sets feeds both, so they cannot
 // drift apart.
@@ -49,7 +49,14 @@ export function revise(record: ProjectRecord, revision: ProjectRevision): Projec
 /** A SQL string literal, its quotes doubled. */
 const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
-/** The statement that applies the revision to every stored version of its project. */
+/**
+ * The statement that applied the revision to every stored version of its
+ * project, in the `content` column of the records from before page blocks.
+ * It only reproduces migrations 0040 to 0046, which lib/project-content/
+ * content.test.ts checks byte for byte. A new revision cannot use it:
+ * migration 0073 dropped `content` (issue #535), so the statement fails, and
+ * the site reads each version's `page`.
+ */
 export function revisionSql(revision: ProjectRevision): string {
   const content = revision.sets.reduce(
     (inner, { path, value }) =>

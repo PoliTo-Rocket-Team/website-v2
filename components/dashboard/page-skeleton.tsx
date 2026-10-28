@@ -10,7 +10,7 @@ import { PANEL } from "./panel";
 // from them.
 
 export type PageSkeletonKind =
-  /** Stat cards over two columns of panels (the Overview). */
+  /** The person, then stat cards over two columns of panels (the Overview). */
   | "overview"
   /** A title, a row of filters and a table (Members, Positions, Orders and the other list pages). */
   | "list"
@@ -35,14 +35,41 @@ export function PageSkeleton({ kind }: { kind: PageSkeletonKind }) {
   );
 }
 
-const SECTIONS: Readonly<Record<PageSkeletonKind, () => ReactNode>> = {
-  overview: () => (
+/**
+ * The Overview streams in by section (issue #397): the person shows at once,
+ * and each section below it shows its own placeholder until it arrives.
+ */
+export type OverviewSkeletonSection =
+  /** Everything under the person: the figures, then the two columns of panels (boards 99 and 99b, issue #652). */
+  "board";
+
+export function OverviewSectionSkeleton({ section }: { section: OverviewSkeletonSection }) {
+  return (
+    <div role="status" aria-label="Loading">
+      <div aria-hidden>{OVERVIEW_SECTIONS[section]()}</div>
+    </div>
+  );
+}
+
+const OVERVIEW_SECTIONS: Readonly<Record<OverviewSkeletonSection, () => ReactNode>> = {
+  board: () => (
     <>
-      <StatsSection />
+      <div className="mt-5 md:mt-6">
+        <StatsSection />
+      </div>
       <div className="mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
         <PanelSection rows={3} />
         <PanelSection rows={4} />
       </div>
+    </>
+  ),
+};
+
+const SECTIONS: Readonly<Record<PageSkeletonKind, () => ReactNode>> = {
+  overview: () => (
+    <>
+      <PersonSection />
+      {OVERVIEW_SECTIONS.board()}
     </>
   ),
   list: () => (
@@ -114,6 +141,19 @@ function HeaderSection({ action = false }: { action?: boolean }) {
         <Bar className="h-3 w-80 max-w-full md:mt-3" />
       </div>
       {action && <Bar className="h-10 w-36 shrink-0 max-md:hidden" />}
+    </div>
+  );
+}
+
+/** The person at the top of an Overview: their circle and the lines beside it, framed from md. */
+function PersonSection() {
+  return (
+    <div className="flex items-center gap-4 md:gap-5 md:rounded-xl md:border md:border-hairline md:bg-panel/60 md:px-6 md:py-6">
+      <Dot className="h-14 w-14 md:h-[72px] md:w-[72px]" />
+      <div className="min-w-0 flex-1">
+        <Bar className="h-5 w-44 max-w-full md:h-6" />
+        <Bar className="mt-2.5 h-3 w-64 max-w-full" />
+      </div>
     </div>
   );
 }

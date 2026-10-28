@@ -182,6 +182,7 @@ export function SidebarPages({ chrome, userMenu }: { chrome: Promise<DashboardCh
       viewer={resolved.viewer}
       sections={resolved.sections}
       menuPage={resolved.menuPage}
+      viewAs={resolved.viewAs !== null}
       userMenu={userMenu}
       onNavigate={onNavigate}
     />
@@ -217,12 +218,14 @@ function SidebarNav({
   viewer,
   sections,
   menuPage,
+  viewAs,
   userMenu,
   onNavigate,
 }: {
   viewer: DashboardViewer;
   sections: readonly NavSection[];
   menuPage: MenuPage | null;
+  viewAs: boolean;
   userMenu: UserMenuForm;
   onNavigate?: () => void;
 }) {
@@ -272,7 +275,7 @@ function SidebarNav({
         ))}
       </nav>
 
-      <UserCard viewer={viewer} menuPage={menuPage} form={userMenu} onNavigate={onNavigate} />
+      <UserCard viewer={viewer} menuPage={menuPage} viewAs={viewAs} form={userMenu} onNavigate={onNavigate} />
     </>
   );
 }

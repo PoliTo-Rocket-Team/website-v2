@@ -130,7 +130,8 @@ const user: InferSelectModel<typeof users> = {
   anonymizedAt: null,
 };
 
-const member: InferSelectModel<typeof members> = {
+// The old `email_alias` column is gone: drizzle/0075 dropped it (issue #569).
+const member = {
   memberId: 7,
   prtEmail: "giulia.rossi@politorocketteam.it",
   mobileNumber: "+39 333 7654321",
@@ -141,9 +142,8 @@ const member: InferSelectModel<typeof members> = {
   picture: "https://store.example/photo/7-a.jpg",
   teamFrom: 2024,
   teamTo: 2025,
-  emailAlias: "giulia.rossi.alias@politorocketteam.it",
   emailAliasSetUpAt: null,
-};
+} satisfies Partial<InferSelectModel<typeof members>>;
 
 const application: InferSelectModel<typeof applications> = {
   id: 41,
@@ -155,7 +155,8 @@ const application: InferSelectModel<typeof applications> = {
   cvName: "giulia-rossi-cv.pdf",
   appliedAt: "2024-09-02T10:00:00.000Z",
   status: "joined",
-  customAnswers: [{ question: "Why?", answer: "Rockets" }],
+  statusKey: "joined",
+  customAnswers: [{ question: "Why?", answer: "I am Giulia Rossi, I led the Turin model rocket club" }],
   withdrawnAt: null,
   acceptedAt: "2024-09-20T10:00:00.000Z",
   rejectedAt: null,
@@ -174,9 +175,11 @@ const applicationAfter = { ...application, ...CLEARED_APPLICATION };
 test("anonymization clears the identifying fields", () => {
   assert.equal(userAfter.email, ANONYMIZED_EMAIL);
   for (const key of ["firstName", "lastName", "phone", "linkedin", "politoId"] as const) assert.equal(userAfter[key], null, key);
-  for (const key of ["prtEmail", "emailAlias", "mobileNumber", "discord", "ndaName", "picture"] as const) assert.equal(memberAfter[key], null, key);
+  for (const key of ["prtEmail", "mobileNumber", "discord", "ndaName", "picture"] as const) assert.equal(memberAfter[key], null, key);
   assert.equal(applicationAfter.mlName, null);
   assert.equal(applicationAfter.cvName, null);
+  // The free-text answers can name or describe the person (issue #729).
+  assert.equal(applicationAfter.customAnswers, null);
   assert.equal(userAfter.anonymizedAt, NOW.toISOString());
 });
 
@@ -191,8 +194,8 @@ test("anonymization keeps every statistics field and deletes no statistics row",
   // Each update names only the columns it clears: no other column is written.
   for (const step of plan) {
     if (step.kind === "clear-user") assert.deepEqual(Object.keys(step.set).sort(), ["anonymizedAt", "email", "firstName", "lastName", "linkedin", "phone", "politoId"]);
-    if (step.kind === "clear-member") assert.deepEqual(Object.keys(step.set).sort(), ["discord", "emailAlias", "mobileNumber", "ndaName", "picture", "prtEmail"]);
-    if (step.kind === "clear-applications") assert.deepEqual(Object.keys(step.set).sort(), ["cvName", "mlName"]);
+    if (step.kind === "clear-member") assert.deepEqual(Object.keys(step.set).sort(), ["discord", "mobileNumber", "ndaName", "picture", "prtEmail"]);
+    if (step.kind === "clear-applications") assert.deepEqual(Object.keys(step.set).sort(), ["customAnswers", "cvName", "mlName"]);
   }
   assert.ok(
     plan.every((step) =>
@@ -315,12 +318,18 @@ test("no log row about the person keeps a cleared value, the anonymizing updates
 
   const cleared = [
     user.email, user.firstName, user.lastName, user.phone, user.linkedin, user.politoId,
-    member.prtEmail, member.emailAlias, member.mobileNumber, member.discord, member.ndaName, member.picture,
+    member.prtEmail, member.mobileNumber, member.discord, member.ndaName, member.picture,
     application.mlName, application.cvName,
     "applications/giulia-rossi-cv.pdf", "Giulia Rossi", "https://lh3.example/giulia", "tok", "93.0.0.1", "google-sub-1", "at", "it",
   ];
   const text = JSON.stringify(scrubbed);
   for (const value of cleared) assert.ok(!text.includes(JSON.stringify(value)), `${value} is still in the log`);
+  // No copy of the application keeps its free-text answers (issue #729).
+  assert.ok(!text.includes("Turin model rocket club"), "a custom answer is still in the log");
+  for (const row of scrubbed.filter((r) => r.tableName === "applications")) {
+    assert.ok(row.oldData === null || !("custom_answers" in row.oldData), "custom_answers is still in old_data");
+    assert.ok(row.newData === null || !("custom_answers" in row.newData), "custom_answers is still in new_data");
+  }
   // The statistics stay in the log too.
   for (const value of [user.gender, user.program, user.dateOfBirth, member.teamFrom, application.status]) {
     assert.ok(text.includes(JSON.stringify(value)), `${value} left the log`);

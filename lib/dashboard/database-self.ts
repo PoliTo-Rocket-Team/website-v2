@@ -8,6 +8,7 @@ import { getDb } from "@/db/client";
 import {
   alumniEntries,
   applicationFiles,
+  applicationStatuses,
   applications,
   applyPositions,
   betterAuthUsers,
@@ -33,18 +34,22 @@ import { readHandOverOffer } from "./database-hand-over";
 import { memberLeftNoticesFor } from "./database-notices";
 import {
   columnsFromDetails,
+  detailsEditorOf,
   detailsFromColumns,
   firstDetailError,
   parseDetailsChange,
-  type DetailsEditor,
   type YourDetails,
 } from "./details";
+import { statusOfStored } from "./application-status";
+import { STATUS_COLUMNS, STATUS_JOIN } from "./database-recruitment";
 import {
   canWithdraw,
   isShownAt,
-  OPEN_STATUSES,
+  mayOfferInterview,
   pickableSlot,
   placeOf,
+  WITHDRAWABLE_STATUS_KEYS,
+  WITHDRAWN_STATUS_KEY,
   withdrawnOnDelete,
   type ActiveApplication,
   type ApplicationAnswer,
@@ -68,7 +73,8 @@ import {
   type MyProfile,
 } from "./self";
 import { refreshAfter } from "@/lib/cache-tags";
-import { isOffTeam } from "./viewer";
+import { namesThemselves } from "./person-name";
+import { hasOwnProfile, isOffTeam } from "./viewer";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
 // The viewer's own pages read from and written to the database (boards 50 to
@@ -101,8 +107,8 @@ async function readLeaveState(memberId: number): Promise<LeaveState> {
 }
 
 async function readProfile(identity: DashboardIdentity): Promise<MyProfile | null> {
+  if (!hasOwnProfile(identity)) return null;
   const memberId = identity.memberId;
-  if (isOffTeam(identity.kind) || memberId === null) return null;
   const [[member], details, leave, handOver] = await Promise.all([
     getDb().select({ prt_email: members.prtEmail }).from(members).where(eq(members.memberId, memberId)).limit(1),
     readDetails(identity.userId),
@@ -112,6 +118,7 @@ async function readProfile(identity: DashboardIdentity): Promise<MyProfile | nul
   const linkedin = identity.linkedin === null ? null : normalizeLinkedin(identity.linkedin);
   return {
     name: identity.name,
+    detailsEditor: namesThemselves(identity.kind) ? "lead" : "member",
     // Every division they are in, not only the one a single-division page names (issue #185).
     roles: profileRolesOf(identity.role, identity.roles),
     teamEmail: member?.prt_email ?? null,
@@ -209,6 +216,20 @@ async function leaveTeam(identity: DashboardIdentity, reason: string, removeFrom
   return written(null);
 }
 
+/**
+ * The built-in status an `applications` row's status behaves like, in SQL: its
+ * own key or its added status's parent, and New for no reference
+ * (./application-status.ts).
+ */
+const BUILT_IN_STATUS_OF_ROW = sql<string>`coalesce((select coalesce(${applicationStatuses.parentKey}, ${applicationStatuses.key}) from ${applicationStatuses} where ${applicationStatuses.key} = ${applications.statusKey}), 'new')`;
+
+/**
+ * An application its applicant can still withdraw, in SQL: not withdrawn, at a
+ * status that behaves like one of `WITHDRAWABLE_STATUS_KEYS`. My account's
+ * count, Delete account and the Withdraw button all ask this (issue #759).
+ */
+const WITHDRAWABLE_ROW = and(inArray(BUILT_IN_STATUS_OF_ROW, [...WITHDRAWABLE_STATUS_KEYS]), isNull(applications.withdrawnAt));
+
 async function readAccount(identity: DashboardIdentity): Promise<MyAccount | null> {
   if (!isOffTeam(identity.kind)) return null;
   const [details, open] = await Promise.all([
@@ -216,29 +237,24 @@ async function readAccount(identity: DashboardIdentity): Promise<MyAccount | nul
     getDb()
       .select({ id: applications.id })
       .from(applications)
-      .where(
-        and(
-          eq(applications.userId, identity.userId),
-          inArray(applications.status, [...OPEN_STATUSES]),
-          isNull(applications.withdrawnAt),
-        ),
-      ),
+      .where(and(eq(applications.userId, identity.userId), WITHDRAWABLE_ROW)),
   ]);
   return {
     name: identity.name,
+    photoUrl: identity.picture,
     signIn: { provider: "google", email: identity.email },
     details,
     openApplications: open.length,
   };
 }
 
-/** Someone off the team edits every field on My account; anyone on the team edits only My profile's. */
-function detailsEditorOf(identity: DashboardIdentity): DetailsEditor {
-  return isOffTeam(identity.kind) ? "applicant" : "member";
-}
-
+/**
+ * Someone off the team edits every field on My account; anyone on the team
+ * only My profile's, their own name only when they rename themselves
+ * (`detailsEditorOf`, issue #668): a member's name sent here is dropped.
+ */
 async function saveDetails(identity: DashboardIdentity, input: unknown): Promise<WriteResult<YourDetails>> {
-  const parsed = parseDetailsChange(input, detailsEditorOf(identity));
+  const parsed = parseDetailsChange(input, detailsEditorOf(identity.kind));
   if (!parsed.ok) return refused(firstDetailError(parsed.errors));
   await runAuditQuery((db) =>
     db
@@ -246,6 +262,8 @@ async function saveDetails(identity: DashboardIdentity, input: unknown): Promise
       .set({ ...columnsFromDetails(parsed.value), updatedAt: sql`now()` })
       .where(eq(users.id, identity.userId)),
   );
+  // A team member's name is on the Team page and every roster, which read the cached team.
+  if (!isOffTeam(identity.kind) && parsed.value.firstName !== undefined) refreshAfter("team", updateTag);
   return written(await readDetails(identity.userId));
 }
 
@@ -266,13 +284,20 @@ async function deleteAccount(identity: DashboardIdentity, options: DeleteAccount
         await getDb()
           .select({
             id: applications.id,
-            status: applications.status,
+            ...STATUS_COLUMNS,
             withdrawnAt: applications.withdrawnAt,
             cvFileId: applications.cvFileId,
             coverLetterFileId: applications.coverLetterFileId,
           })
           .from(applications)
-          .where(eq(applications.userId, userId)),
+          .leftJoin(applicationStatuses, STATUS_JOIN)
+          .where(eq(applications.userId, userId))
+          .then((rows) =>
+            rows.map(({ status_key, status_parent_key, ...r }) => ({
+              ...r,
+              status: statusOfStored({ key: status_key, parentKey: status_parent_key }),
+            })),
+          ),
       )
     : { applicationIds: [], fileIds: [] };
   const files =
@@ -295,15 +320,8 @@ async function deleteAccount(identity: DashboardIdentity, options: DeleteAccount
       : [
           db
             .update(applications)
-            .set({ withdrawnAt: sql`now()` })
-            .where(
-              and(
-                inArray(applications.id, [...applicationIds]),
-                eq(applications.userId, userId),
-                inArray(applications.status, [...OPEN_STATUSES]),
-                isNull(applications.withdrawnAt),
-              ),
-            ),
+            .set({ withdrawnAt: sql`now()`, statusKey: WITHDRAWN_STATUS_KEY })
+            .where(and(inArray(applications.id, [...applicationIds]), eq(applications.userId, userId), WITHDRAWABLE_ROW)),
         ]),
     ...(fileIds.length === 0
       ? []
@@ -355,8 +373,10 @@ async function leadsOf(divisionIds: readonly number[]): Promise<Map<number, stri
   );
 }
 
+/** The columns of one application `storedOf` reads, with its status reference and that status's parent (`STATUS_COLUMNS`). */
 type StoredColumns = {
-  status: StoredApplication["status"];
+  status_key: string | null;
+  status_parent_key: string | null;
   applied_at: string;
   withdrawn_at: string | null;
   accepted_at: string | null;
@@ -364,9 +384,10 @@ type StoredColumns = {
   joined_at: string | null;
 };
 
+/** One application as My applications reads it: its status through the status list (issue #748), never the old status column. */
 function storedOf(r: StoredColumns): StoredApplication {
   return {
-    status: r.status,
+    status: statusOfStored({ key: r.status_key, parentKey: r.status_parent_key }),
     appliedAt: r.applied_at,
     withdrawnAt: r.withdrawn_at,
     acceptedAt: r.accepted_at,
@@ -392,7 +413,7 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
         dept_name: departments.name,
         dept_code: departments.code,
         applied_at: applications.appliedAt,
-        status: applications.status,
+        ...STATUS_COLUMNS,
         withdrawn_at: applications.withdrawnAt,
         accepted_at: applications.acceptedAt,
         rejected_at: applications.rejectedAt,
@@ -407,6 +428,7 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
       })
       .from(applications)
       .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
+      .leftJoin(applicationStatuses, STATUS_JOIN)
       .leftJoin(divisions, eq(applyPositions.divisionId, divisions.id))
       .leftJoin(departments, eq(divisions.deptId, departments.id))
       .leftJoin(cvFiles, eq(applications.cvFileId, cvFiles.id))
@@ -420,7 +442,7 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
   const rows = stored.filter((r) => isShownAt(storedOf(r), now));
   if (rows.length === 0) return { firstName: me?.first_name ?? identity.name, email: identity.email, active: [], past: [] };
 
-  const interviewing = rows.filter((r) => (r.status === "pending" || r.status === "interview") && r.withdrawn_at === null);
+  const interviewing = rows.filter((r) => mayOfferInterview(storedOf(r)));
   const [slotRows, leads] = await Promise.all([
     interviewing.length === 0
       ? Promise.resolve([])
@@ -476,7 +498,7 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
   return { firstName: me?.first_name ?? identity.name, email: identity.email, active, past };
 }
 
-/** Board 50b: marks it withdrawn; the lead's list leaves it out from then on (./database.ts). */
+/** Board 50b: marks it withdrawn, with the Withdrawn status (issue #749); the lead's list leaves it out from then on (./database.ts). */
 async function withdrawApplication(identity: DashboardIdentity, applicationId: number): Promise<WriteResult<null>> {
   const mine = await readMyApplications(identity);
   const application = mine?.active.find((a) => a.id === applicationId);
@@ -485,15 +507,8 @@ async function withdrawApplication(identity: DashboardIdentity, applicationId: n
   const changed = await runAuditQuery((db) =>
     db
       .update(applications)
-      .set({ withdrawnAt: sql`now()` })
-      .where(
-        and(
-          eq(applications.id, applicationId),
-          eq(applications.userId, identity.userId),
-          inArray(applications.status, [...OPEN_STATUSES]),
-          isNull(applications.withdrawnAt),
-        ),
-      )
+      .set({ withdrawnAt: sql`now()`, statusKey: WITHDRAWN_STATUS_KEY })
+      .where(and(eq(applications.id, applicationId), eq(applications.userId, identity.userId), WITHDRAWABLE_ROW))
       .returning({ id: applications.id }),
   );
   // A lead accepted or closed it between the read and the write.

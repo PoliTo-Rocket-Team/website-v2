@@ -7,16 +7,19 @@ import type { OutreachEditor } from "@/lib/outreach-editor";
 import type { PartnerEditor } from "@/lib/partners-editor";
 import type { ProjectEditor } from "@/lib/project-content/editor";
 import type { DashboardLanding, NavCounts } from "./access";
+import type { ActivityLogPage } from "./activity-log";
 import type { AccessGrant, AccessPage } from "./division-access";
 import type { Order, OrdersPage } from "./orders";
-import type { TeamSideOverview } from "./overview";
-import type { LeadMove } from "./application-flow";
+import type { OverviewSections, TeamSideOverview } from "./overview";
+import type { ApproverMove } from "./application-flow";
+import type { StatusListChange } from "./application-status";
 import type { DocumentKind, StoredDocument } from "./application-documents";
 import type { CreatedPosition } from "./new-position";
 import type { ApplicationsPage, PositionsPage } from "./recruitment";
 import type { YourDetails } from "./details";
 import type { AddLookup, DetailsTarget } from "./division-members";
 import type { TeamSearch } from "./division-edit";
+import type { MoveLookup } from "./member-move";
 import type { TeamStructure } from "./team-structure";
 import type { InterviewSlot, MyApplications } from "./my-applications";
 import type { MyAlumni } from "./my-alumni";
@@ -25,26 +28,27 @@ import type { AlumnusKey } from "@/lib/about/alumni-record";
 import type { AlumniDirectory } from "./alumni";
 import type { HandOverAnswer } from "./hand-over-request";
 import type { MemberAliases } from "./alias-request";
+import type { MemberTeamAddresses, OwnTeamAddress } from "./team-address";
 import type { OwnAlias } from "./alias-setup";
 import type { Departure, MemberDirectory, MemberEdit, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
 import type { Upload, WriteResult } from "./write";
 
 /**
- * The one way dashboard pages read and write data (issue #141). A test
- * developer gets the dummy arrays (lib/dummy-data/), everyone else the
- * database (./database.ts); ./open.ts picks which and answers a
- * DashboardOpening (./opening.ts). A later page adds one method here and to
- * both implementations.
+ * The one way dashboard pages read and write data (issue #141). Every page
+ * reads the database (./database.ts) as the signed-in account; ./open.ts
+ * opens it and answers a DashboardOpening
+ * (./opening.ts). It is the one implementation (issue #613); a later page
+ * adds one method here and to it.
  *
  * Positions and Applications (issue #142) answer only what the viewer
  * reaches, and a read or write there the viewer does not reach rejects with
- * DashboardRefused, so a server action needs no check of its own; a test
- * developer's write there changes only a cookie. The other pages' reads answer
- * null when the viewer has nothing on that page (an applicant has no
- * division), and their writes take what the browser sent as it came, check
- * it, and answer a WriteResult (./write.ts); a test developer's write there
- * lands nowhere and answers what the page shows next.
+ * DashboardRefused, so a server action needs no check of its own. The other
+ * pages' reads answer null when the viewer has nothing on that page (an
+ * applicant has no division), and their writes take what the browser sent as
+ * it came, check it, and answer a WriteResult (./write.ts). A test
+ * developer's write is saved to the shared preview database as their seeded
+ * person on a preview, and refused anywhere else (lib/db-audit.ts, ADR 0016).
  */
 export interface DashboardData {
   readonly viewer: DashboardViewer;
@@ -63,6 +67,12 @@ export interface DashboardData {
    * rejects them with DashboardRefused.
    */
   overview(): Promise<TeamSideOverview>;
+  /**
+   * The same team Overview in the sections the page streams one by one
+   * (issue #397); `overview()` is these together. Throws DashboardRefused
+   * for someone off the team, as `overview()` rejects them.
+   */
+  overviewSections(): OverviewSections;
   /** Board 56b (issue #317): how the Alumni page shows the viewer; null for anyone but an alumnus. */
   myAlumni(): Promise<MyAlumni | null>;
   /**
@@ -97,6 +107,13 @@ export interface DashboardData {
    * manages no division.
    */
   findPeople(query: string): Promise<TeamSearch>;
+  /**
+   * Where Edit details and the Team tree may move `personId` (issue #647):
+   * every division the viewer may add to, and for the team leader and full
+   * access every department with its head (`moveTargetsOf`). Nothing for
+   * someone the viewer may not edit.
+   */
+  findMoveTargets(personId: number): Promise<MoveLookup>;
   /** The Alumni page (board 78, #257): everyone the public Alumni page can list, for a viewer who reaches it. */
   alumni(): Promise<AlumniDirectory>;
   /** The Team tree (#143), built from this year's roster. */
@@ -142,11 +159,28 @@ export interface DashboardData {
    */
   editPosition(positionId: number, input: unknown): Promise<WriteResult<null>>;
   /**
-   * One step on an application (boards 58 to 58i). Which steps are legal is
-   * ./application-flow.ts's; an illegal one answers why and writes nothing.
-   * Only Confirm join adds the person to the team.
+   * Delete position (issue #772): a soft delete, by the rule Edit position
+   * asks. The position leaves the Positions page, /apply and the submit; its
+   * applications stay on the Applications page under its title. A position
+   * the viewer does not reach rejects with DashboardRefused.
    */
-  moveApplication(applicationId: number, move: LeadMove): Promise<WriteResult<null>>;
+  deletePosition(positionId: number): Promise<void>;
+  /**
+   * One step on an application (boards 58 to 58i and 97 to 97c): an action
+   * button, or a saved hand pick in the Status picker, which runs the same
+   * write (issue #750). Which steps are legal is ./application-flow.ts's; an
+   * illegal one answers why and writes nothing. Only Confirm join adds the
+   * person to the team.
+   */
+  moveApplication(applicationId: number, move: ApproverMove): Promise<WriteResult<null>>;
+  /**
+   * One change in the Statuses editor (board 97d, issue #752): add, rename,
+   * recolour, or delete an added status no application uses. Someone who may
+   * move no application rejects with DashboardRefused; a built-in status, or
+   * an added one in use, answers why it stays (`deleteRefusal`,
+   * ./application-status.ts) and writes nothing.
+   */
+  changeStatusList(change: StatusListChange): Promise<WriteResult<null>>;
 
   /** Boards 60 to 60m (a division lead) and 65 to 65m (a department head): the Access page, the only place access is given, changed or removed. */
   divisionAccess(): Promise<AccessPage | null>;
@@ -165,6 +199,13 @@ export interface DashboardData {
    * nothing else changes. Answers all the person's grants as the table shows them.
    */
   removeGrant(input: unknown): Promise<WriteResult<readonly AccessGrant[]>>;
+
+  /**
+   * Board 101 (issue #642): the Activity log, every stored change of the last
+   * 12 months newest first; null for a viewer the `activity-log` row of
+   * ./access.ts does not admit.
+   */
+  activityLog(): Promise<ActivityLogPage | null>;
 
   /**
    * Boards 61 to 61d, 61m, 67 and 67b (issue #233): every order in the team,
@@ -211,16 +252,13 @@ export interface DashboardData {
 
   /**
    * Boards 76 and 76b (issue #256): the partners and their writes, behind the
-   * site-content gate (lib/content/gate.ts). Each side brings its own store:
-   * the database, or a test developer's cookie over the dummy partners.
+   * site-content gate (lib/content/gate.ts), over the database's store.
    */
   readonly partners: PartnerEditor;
 
   /**
    * Boards 79 and 79b (issue #258): the questions on /apply and their writes,
-   * behind the same gate. Each side brings its own store and clock: the
-   * database and the time now, or a test developer's cookie over the dummy
-   * questions, seen from the dummy team's moment.
+   * behind the same gate, over the database's store and the time now.
    */
   readonly faqs: FaqEditor;
 
@@ -229,8 +267,7 @@ export interface DashboardData {
    * to team, behind the same gate. Save draft and Publish write the layer and
    * the advisor list together, in one step (issue #321); Reset to team writes
    * the layer alone. None writes a role, division, department, scope or
-   * member. Each side brings its own store and its own roles: the database's,
-   * or a test developer's cookies laid on the dummy team.
+   * member. Its store and its roles are the database's.
    */
   readonly teamPage: TeamPageEditor;
 
@@ -238,22 +275,20 @@ export interface DashboardData {
    * The Team page's advisors (issue #286): added by hand, never from roles,
    * behind the same gate. The editor saves them with the layer (`teamPage`);
    * End advising also adds the advisor to the Alumni page's Advisors group. Reset to team never reaches them. Each side brings its own store:
-   * the database's, or a test developer's cookie over today's advisors.
+   * the database's, or, in tests, a cookie over today's advisors.
    */
   readonly teamAdvisors: AdvisorEditor;
 
   /**
    * Boards 74 to 74h (issue #287): the Outreach posts, which of them are
-   * featured (issue #496), the tag list, and their writes, behind the same gate. Each side brings its
-   * own store: the database, or a test developer's cookie over the dummy
-   * content.
+   * featured (issue #496), the tag list, and their writes, behind the same
+   * gate, over the database's store.
    */
   readonly outreach: OutreachEditor;
 
   /**
    * Boards 75 to 75d (issues #255 and #298): the projects and their writes,
-   * behind the same gate. Each side brings its own store: the database, or a
-   * test developer's cookie over the dummy projects.
+   * behind the same gate, over the database's store.
    */
   readonly projects: ProjectEditor;
 
@@ -284,23 +319,88 @@ export interface DashboardData {
 
   /**
    * Epic #538 (boards 94, 94b, 94e): the email alias of each of `memberIds`
-   * on the team, as the member drawer shows it to the viewer, with whether
-   * they may request one or cancel the open request (`memberAliasesFor`,
+   * on the team, which is their PRT email (issue #563), as the member
+   * drawer's PRT email row shows it to the viewer, with whether they may
+   * request one or cancel the open request (`memberAliasesFor`,
    * ./alias-request.ts). Someone not on the team is left out.
    */
   memberAliases(memberIds: readonly number[]): Promise<MemberAliases>;
   /**
-   * Request alias (board 94): checked by `planAliasRequest`; refused for
-   * anyone but a lead, head or the team leader who may manage the member,
-   * and while the member has an alias or an open request.
+   * Epic #578 (boards 102 and 102b, issues #786 and #787): the shared team
+   * addresses each of `memberIds` on the team holds, as the member drawer's
+   * Team addresses row lists them, sorted by address with the role each
+   * moves with, and whether the viewer may request one for them, with the
+   * roles the request dialog offers (`memberTeamAddressesFor`,
+   * ./team-address.ts). It reaches every viewer of the PRT email row; a
+   * member holding none whom the viewer may not ask for, or not on the
+   * team, is left out.
    */
-  requestAlias(memberId: number): Promise<WriteResult<null>>;
+  memberTeamAddresses(memberIds: readonly number[]): Promise<MemberTeamAddresses>;
+  /**
+   * Request team address (board 102b, issue #787): checked by
+   * `checkTeamAddressRequest` and `planTeamAddressRequest`; refused for
+   * anyone but a full-access holder (any member, themselves included) or a
+   * lead or head who manages the member, and while the address is a team
+   * address or has an open request.
+   */
+  requestTeamAddress(input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Decline or Mark created on an open team address request (issue #788),
+   * checked by `planTeamAddressAnswer`: only the team leader, the operations
+   * lead and the IT lead. Mark created stores the confirmed address under
+   * the member; either answer writes the notice `teamAddressAnswerNotices`
+   * names.
+   */
+  answerTeamAddress(requestId: number, answer: unknown): Promise<WriteResult<null>>;
+  /**
+   * Mark done on an open team address routing item (issue #789), checked by
+   * `planRerouteDone`: only the team leader, the operations lead and the IT
+   * lead. It moves the address to the member the item names; a second Mark
+   * done is refused.
+   */
+  markTeamAddressRerouteDone(rerouteId: number): Promise<WriteResult<null>>;
+  /**
+   * Remove on a team address in the member side view (issue #797), checked
+   * by `planTeamAddressRemoval`: refused for anyone who may not request a
+   * team address for its holder, and while its removal waits. It stores one
+   * open removal for the approvers.
+   */
+  removeTeamAddress(addressId: number): Promise<WriteResult<null>>;
+  /**
+   * Mark done on an open team address removal (issue #797), checked by
+   * `planRemovalDone`: only the team leader, the operations lead and the IT
+   * lead. It deletes the address, so it can be requested again, and keeps
+   * the removal as history; a second Mark done is refused.
+   */
+  markTeamAddressRemovalDone(removalId: number): Promise<WriteResult<null>>;
+  /**
+   * The team addresses the viewer holds and whether they set each up
+   * (`ownTeamAddressesOf`, ./team-address.ts), for the Overview's ready
+   * cards (board 94f's, for a team address); none off the team. It reads the
+   * viewer's own rows and nobody else's.
+   */
+  myTeamAddresses(): Promise<OwnTeamAddress[]>;
+  /**
+   * "I've set it up" on a team address the viewer holds, checked by
+   * `planTeamAddressSetUp`: stored on that address only, and refused for one
+   * they do not hold or once set up.
+   */
+  confirmTeamAddressSetUp(addressId: number): Promise<WriteResult<null>>;
+  /**
+   * Request PRT email's Personal choice (board 94, issue #798): the member
+   * and the address the requester confirmed, checked by `checkAliasRequest`
+   * and `planAliasRequest`; refused for anyone but a full-access holder (any
+   * member, themselves included) or a lead or head who manages the member
+   * (issue #721), while the member's PRT email is set or a request is open,
+   * and for an address someone already holds.
+   */
+  requestAlias(input: unknown): Promise<WriteResult<null>>;
   /** Cancel request (board 94b): checked by `planAliasCancel`. */
   cancelAliasRequest(requestId: number): Promise<WriteResult<null>>;
   /**
    * Decline or Mark created on an open request (boards 94c, 94d), checked by
    * `planAliasAnswer`: only the team leader, the operations lead and the IT
-   * lead. Mark created saves the address on the member's record; the answer
+   * lead. Mark created saves the address as the member's PRT email; the answer
    * writes the notices `aliasAnswerNotices` names.
    */
   answerAlias(requestId: number, answer: unknown): Promise<WriteResult<null>>;
@@ -357,9 +457,10 @@ export interface TeamWrites {
   /** Board 78c: an external advisor, always in the Advisors group (`checkAdvisor`, ./alumni.ts). */
   addAdvisor(input: unknown, photo: Upload | null): Promise<WriteResult<null>>;
   /**
-   * The operations lead's member panel (board 46b): the Team page title, and
-   * the role where the panel sets one. A division lead never changes a lead
-   * (Owner decision on #231), so their role change is refused.
+   * Lead or member in one division, from Edit details' position part (issue
+   * #584): for someone the viewer may edit, where `mayChangeDivision` lets
+   * them change that division's leads. A division lead never changes a lead
+   * (Owner decision on #231), so their change is refused.
    */
   saveMember(personId: number, edit: MemberEdit): Promise<boolean>;
   /**
@@ -368,7 +469,11 @@ export interface TeamWrites {
    * Refused unless `mayLeaveTeam` (./team.ts) allows it.
    */
   moveToAlumni(personId: number, departure: Departure): Promise<boolean>;
-  /** Board 59: the accepted applicant joins the division the position belongs to. */
+  /**
+   * Board 59: the accepted applicant joins the division the position belongs
+   * to. It is the Applications page's Confirm join, decided by the same rule
+   * (`moveApplication`), never by the Members area (issue #584).
+   */
   confirmJoin(applicationId: number): Promise<boolean>;
   /**
    * Add member (boards 61h, 61h2): someone on the team joins the division at
@@ -382,10 +487,22 @@ export interface TeamWrites {
   cancelAdd(joinId: number): Promise<boolean>;
   /** "Remove from <division>": only that division's role ends. Refused for someone whose only division it is. */
   removeFromDivision(personId: number, divisionId: number): Promise<boolean>;
-  /** Edit details or Fill details (board 61g): the title in `divisionId`, and the details. */
-  saveMemberDetails(target: DetailsTarget, divisionId: number, input: unknown): Promise<WriteResult<null>>;
-  /** The photo in Edit details: a square JPEG under 500 KB, or null to remove it. */
-  setMemberPhoto(personId: number, divisionId: number, photo: Upload | null): Promise<WriteResult<null>>;
+  /**
+   * Move to another unit (issue #647), from Edit details and the Team tree:
+   * one batch ends the person's place and starts the new one, with the head
+   * it replaces and the head picked for a department they leave, checked by
+   * `planMove` (./member-move.ts). A refused move writes nothing.
+   */
+  moveMember(input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Edit details or Fill details (board 61g, issue #584): the details of
+   * anyone the viewer may edit, and the title in `divisionId`, which they
+   * must reach and the person be in; null for someone in no division the
+   * viewer reaches (a seat), whose title is not set here.
+   */
+  saveMemberDetails(target: DetailsTarget, divisionId: number | null, input: unknown): Promise<WriteResult<null>>;
+  /** The photo in Edit details, for anyone the viewer may edit: a square JPEG under 500 KB, or null to remove it. */
+  setMemberPhoto(personId: number, photo: Upload | null): Promise<WriteResult<null>>;
   /**
    * New division (board 69d, #232): a division in the department with its
    * name, code, leads and members, checked by `planDivisionSave`
@@ -426,6 +543,27 @@ export interface TeamWrites {
    * current team leader; everyone else is refused.
    */
   handOverTeamLeader(input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Change holder on a seat box of Edit team tree (issue #627): the holder's
+   * seat role ends and the successor's starts with the same title and the
+   * same full-access flag; the holder becomes an advisor to the team or
+   * leaves the team, checked by `planSeatHolderChange` (./team-seats.ts). The
+   * team leader and full access only.
+   */
+  changeSeatHolder(roleId: number, input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Add seat (issue #627): an active role in no department and no division,
+   * with the title given and no full-access flag, checked by `planNewSeat`.
+   * The team leader and full access only.
+   */
+  addSeat(input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Remove seat (issue #643): the seat row `roleId` ends and no successor's
+   * starts, so its full access ends with it; the holder stays on the team,
+   * checked by `planSeatRemoval` (./team-seats.ts). The team leader and full
+   * access only.
+   */
+  removeSeat(roleId: number): Promise<WriteResult<null>>;
 }
 
 /** A read or write the viewer does not reach. */
