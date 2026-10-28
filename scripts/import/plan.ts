@@ -243,11 +243,24 @@ type Stint = { readonly year: number; readonly cells: YearCells; readonly starte
 /** The key a row has across the sources: file, sheet and row. */
 const atKey = (at: At) => `${at.file}\u0000${at.sheet ?? ""}\u0000${at.row}`;
 
-/** The key of the seat a role holds while active, or null for a seat any number may hold: a second active holder of one is refused, as the unique indexes of migration 0062 would. */
-const seatKeyOf = (type: PositionType | null, fullAccess: FullAccessSeat | null, dept: string | null): string | null =>
-  type === "president" ? "president" : fullAccess !== null ? `full:${fullAccess}` : type === "head" && dept !== null ? `head:${dept}` : null;
+/**
+ * The keys of the seats a role holds while active: one per unique index of
+ * migration 0062 that counts it (the team leader's, its full-access seat's,
+ * its department's head seat), none for a seat any number may hold. A role
+ * one of whose seats already has an active holder is refused, as the database
+ * would refuse it (issue #824): the Chief Operating Officer holds both the
+ * operations_lead seat and the head seat of Operations. A department is keyed
+ * by its ref, so one this run creates is keyed too.
+ */
+const seatKeysOf = (type: PositionType | null, fullAccess: FullAccessSeat | null, dept: string | null): string[] => [
+  ...(type === "president" ? ["president"] : []),
+  ...(fullAccess !== null ? [`full:${fullAccess}`] : []),
+  ...(type === "head" && dept !== null ? [`head:${dept}`] : []),
+];
 
 const ADVISOR_SEAT: Seat = { type: "advisor", fullAccess: null, unit: "member-unit" };
+/** The seat a "Head of <division>" title holds (owner decision, issue #824). */
+const DIVISION_LEAD: Seat = { type: "lead", fullAccess: null, unit: "division" };
 const NO_PLACE: Placement = { dept: null, division: null };
 /** The role that keeps a seat's earlier holder on the team when the seat they handed over was their only role: a plain member's, as the dashboard titles one. */
 const MEMBERSHIP: Extract<SeatReading, { kind: "seat" }> = {
@@ -257,6 +270,7 @@ const MEMBERSHIP: Extract<SeatReading, { kind: "seat" }> = {
   acting: false,
   project: null,
   division: null,
+  headed: null,
 };
 
 /** Each place once. */
@@ -390,9 +404,9 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
   };
 
   const heldSeats = new Set(
-    snapshot.roles.filter((r) => r.leavedAt === null).flatMap((r) => seatKeyOf(r.type, r.fullAccess, r.deptId === null ? null : String(r.deptId)) ?? []),
+    snapshot.roles.filter((r) => r.leavedAt === null).flatMap((r) => seatKeysOf(r.type, r.fullAccess, r.deptId === null ? null : String(r.deptId))),
   );
-  const roleSeatKey = (role: Pick<NewRole, "type" | "fullAccess" | "dept">) => seatKeyOf(role.type, role.fullAccess, role.dept === null ? null : refKey(role.dept));
+  const roleSeatKeys = (role: Pick<NewRole, "type" | "fullAccess" | "dept">) => seatKeysOf(role.type, role.fullAccess, role.dept === null ? null : refKey(role.dept));
 
   /** Whether a stored role is this one. A handed-over role ends on the day a run plans, so any end day matches it. */
   const sameRole = (a: ExistingRole, b: Omit<NewRole, "who">, handedOver: boolean) =>
@@ -423,20 +437,20 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
   // Handovers ----------------------------------------------------------------
 
   /** The seat keys a current-year row's title gives, its departments resolved as its roles will be (a unit the run creates included). */
-  const seatKeysOf = (person: Person): Set<string> => {
+  const currentSeatKeys = (person: Person): Set<string> => {
     const c = cellsOf(person, currentYear!);
     const names = unitNamesOf(c);
-    const depts = names.departments.flatMap((d) => book?.department(d.value, currentYear!) ?? []);
+    const paired = names.departments.map((d) => ({ value: d.value, ref: book?.department(d.value, currentYear!) ?? null }));
+    const depts = paired.flatMap((d) => (d.ref === null ? [] : [d.ref]));
     const keys = new Set<string>();
     for (const reading of seatsOf(c.title)) {
       if (reading.kind !== "seat") continue;
+      // A "Head of <division>" seat is that division's lead seat (issue #824): no seat any index counts.
+      if (reading.headed !== null && book?.headsDivision(reading.headed, currentYear!, paired)) continue;
       const { type, fullAccess, unit } = reading.seat;
       // A head seat with no department of its row still holds its full-access seat (the Chief Operating Officer's, issue #822).
-      if (type === "head" && unit === "department" && depts.length > 0) for (const d of depts) keys.add(seatKeyOf(type, fullAccess, refKey(d))!);
-      else {
-        const key = seatKeyOf(type, fullAccess, null);
-        if (key !== null) keys.add(key);
-      }
+      const places = type === "head" && unit === "department" && depts.length > 0 ? depts.map(refKey) : [null];
+      for (const dept of places) for (const key of seatKeysOf(type, fullAccess, dept)) keys.add(key);
     }
     return keys;
   };
@@ -450,7 +464,7 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     const onSheet = currentSheet !== undefined && h.sheet === currentSheet.sheet;
     const giver = onSheet ? personAt.get(h.fromRow) : undefined;
     const taker = onSheet ? personAt.get(h.toRow) : undefined;
-    const shared = giver === undefined || taker === undefined || giver === taker ? [] : [...seatKeysOf(giver)].filter((k) => seatKeysOf(taker).has(k));
+    const shared = giver === undefined || taker === undefined || giver === taker ? [] : [...currentSeatKeys(giver)].filter((k) => currentSeatKeys(taker).has(k));
     if (shared.length === 0) {
       conflicts.push({ kind: "override-unmatched", at: h.at, field: onSheet ? "row" : "sheet" });
       continue;
@@ -630,7 +644,7 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
       let kept = 0;
       let handedSeats = 0;
       /** Plans one role of the row: present when the database has it, refused when its seat already has an active holder, else inserted. */
-      const planRole = (role: Omit<NewRole, "who">, seatKey: string | null, handedOverSeat: boolean): void => {
+      const planRole = (role: Omit<NewRole, "who">, seatKeys: readonly string[], handedOverSeat: boolean): void => {
         if (role.division !== null) {
           const byYear = divisionsByYear.get(person.id) ?? new Map<number, Map<string, UnitRef>>();
           byYear.set(year, (byYear.get(year) ?? new Map()).set(refKey(role.division), role.division));
@@ -639,13 +653,13 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
         if (existingRoles.some((r) => sameRole(r, role, handedOverSeat))) {
           counter.add("roles", "present");
         } else {
-          const key = active && !handedOverSeat ? seatKey : null;
-          if (key !== null && heldSeats.has(key)) {
+          const keys = active && !handedOverSeat ? seatKeys : [];
+          if (keys.some((k) => heldSeats.has(k))) {
             conflicts.push({ kind: "seat-taken", at: row.at, field: "title" });
             counter.add("roles", "refused");
             return;
           }
-          if (key !== null) heldSeats.add(key);
+          for (const k of keys) heldSeats.add(k);
           newRoles.push({ who: ref, ...role });
           counter.add("roles", "insert");
         }
@@ -662,18 +676,21 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
         const marked = cells.advisor !== null && reading.seat.type === "core" && reading.seat.fullAccess === null;
         // A bare "Lead" on a row that names a department and no division is a member of that department (issue #822).
         const member = reading.seat.fallback?.kind === "member" && cells.divisions.length === 0 && cells.departments.length > 0;
-        const seat = marked ? ADVISOR_SEAT : member ? MEMBERSHIP.seat : reading.seat;
+        // A "Head of <X>" whose X names a division and no department leads that division, keeping its title (owner decision, issue #824).
+        const headed =
+          book === null || reading.headed === null || cells.departments.some((d) => d.ref === null) ? null : book.headedDivision(reading.headed, year, cells.departments);
+        const seat = headed !== null ? DIVISION_LEAD : marked ? ADVISOR_SEAT : member ? MEMBERSHIP.seat : reading.seat;
         const storedTitle = marked && title.trim() === "" ? (cells.advisor!.senior ? "Senior Advisor" : "Advisor") : reading.title;
-        const placed = placements(reading, seat, cells);
+        const placed = headed !== null ? [{ dept: headed.dept, division: headed.ref }] : placements(reading, seat, cells);
         if (!Array.isArray(placed)) {
           if (!placed.reported) conflicts.push({ kind: placed.kind, at: row.at, field: placed.field });
           counter.add("roles", "refused");
           continue;
         }
         for (const place of placed) {
-          const seatKey = roleSeatKey({ type: seat.type, fullAccess: seat.fullAccess, dept: place.dept });
+          const seatKeys = roleSeatKeys({ type: seat.type, fullAccess: seat.fullAccess, dept: place.dept });
           // A seat this row handed over this year ends on the import day: the row keeps its membership, the seat goes to its new holder.
-          const handedOverSeat = handed !== undefined && seatKey !== null && handed.has(seatKey);
+          const handedOverSeat = handed !== undefined && seatKeys.some((k) => handed.has(k));
           const role: Omit<NewRole, "who"> = {
             ...place,
             title: storedTitle,
@@ -682,14 +699,14 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
             startedAt,
             leavedAt: handedOverSeat ? today : leavedAt,
           };
-          planRole(role, seatKey, handedOverSeat);
+          planRole(role, seatKeys, handedOverSeat);
         }
       }
       // A row that handed over every seat it held keeps an active membership: a plain member's role in the row's units (none when it names none), from its stint's start.
       if (handedSeats > 0 && kept === 0) {
         const places = placements(MEMBERSHIP, MEMBERSHIP.seat, cells);
         for (const place of Array.isArray(places) ? places : [NO_PLACE]) {
-          planRole({ ...place, title: MEMBERSHIP.title, type: "core", fullAccess: null, startedAt, leavedAt: null }, null, false);
+          planRole({ ...place, title: MEMBERSHIP.title, type: "core", fullAccess: null, startedAt, leavedAt: null }, [], false);
         }
       }
     }

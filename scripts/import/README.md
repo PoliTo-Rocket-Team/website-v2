@@ -24,7 +24,13 @@ pnpm db:import <source-dir> [--mode dry-run|import] [--year YYYY-YYYY] [--report
 - `--mode dry-run` (the default): prints the report. It writes nothing and uploads nothing. With a
   database it reads the units, the projects, the rows already there and the seat holders from it.
   Without one it checks the files only.
-- `--mode import`: reads, plans and writes in one transaction. A failure writes nothing.
+- `--mode import`: reads, plans and writes in one transaction. A failure writes nothing. It prints
+  "Import failed; nothing was written." and then the error's cause chain, one line per error,
+  outermost first (issue #824, `failure.ts`): the first line of its message, and the Postgres
+  code, constraint, table and column when the error carries them. A failed insert prints as
+  `Failed query: insert into "roles" …` and then `caused by: duplicate key value violates unique
+  constraint … (code 23505, constraint roles_one_active_department_head, table roles)`. It never
+  prints the query's parameters or the Postgres detail, since both may hold roster values.
 - `--year 2026-2027`: the current academic year's sheet. By default it is the newest `YYYY-YYYY`
   sheet. Newer sheets are skipped.
 - `--report <file>`: also writes the report to this file.
@@ -159,6 +165,16 @@ the person running the import writes. See **The override input** below.
   - A title the workbook does not carry right ("???") can be given by a `title` line of the
     override input (see **The override input**). An advisor title with "N/A" units imports as an
     advisor with no unit, as any advisor may.
+  - **"Head of <division>"** (owner decision, issue #824). A "Head of <X>" or "<X> Head" seat whose
+    X matches a division and no department is that division's lead seat (type `lead`), placed in
+    that division and under its department. "Head of Safety" on a row whose Subteam is
+    "Operations (OPS)" is the Safety division's lead, not a second head of Operations. X is matched
+    as any unit value is (name, code, plural "s"; see **Units**): a division matches when the
+    database holds it or another row of this run names it, under one of the row's departments
+    first, else under any department; a department matches when the database holds it or a row
+    names it. The stored title keeps the cell text ("Head of Safety"). When X matches a department,
+    or no single division, the seat stays the head seat of the row's department, as before. "Head
+    of Department" and "<Dept> Head of Department" name no X.
 - **Units** (`units.ts`, `unit-book.ts`): a subteam or division cell is split on " - ", ",", ";",
   "/" and line breaks; the slash of "N/A" does not split, and neither does a separator inside
   parentheses (issue #820): "ADVISOR (VES, AMV)" is one advisor marker, and no unit is made from
@@ -265,8 +281,13 @@ the person running the import writes. See **The override input** below.
   `joined-date-unreadable` and the row's roles start on `2022-10-01`. A quitter-only alumnus's
   roles run as **Quitters** says.
 - **Seats**: a second active holder of the team leader seat, a department head seat or a
-  full-access seat this year is refused and reported. Rows already in the database count. A seat
-  handed over this year (see **The override input**) is the exception.
+  full-access seat this year is refused and reported as `seat-taken` on the later row. These are
+  the seats the unique indexes of migration 0062 guard, so a dry run refuses what the database
+  would refuse. Rows already in the database count. A role is checked against every seat it holds
+  (issue #824): the Chief Operating Officer holds both the `operations_lead` seat and the head
+  seat of Operations, so a "Head of Department" in Operations beside it is refused. A department
+  or division this run creates is checked like one the database holds. A seat handed over this
+  year (see **The override input**) is the exception.
 - **Alumni**: anyone not on the current sheet. They get `team_from` / `team_to` (the academic
   years of their first and last role), one `team_leaves` row and ended roles only. They get no
   active role and no access. A year-sheet alumnus left on their Quitters day, if they have one,
@@ -398,4 +419,9 @@ database holds a division of that name and the run creates another under a diffe
 a bare "Lead", and `title` lines of the override input. `import.test.ts` checks that
 `positions_rows.csv` is left out, that an account with no member row is linked to its person's new member row with no
 other field written, and that a run whose linked account gained a member row after the plan was
-read fails and writes nothing.
+read fails and writes nothing. `seats.test.ts` covers issue #824 over a fake roster built in
+memory: "Head of <division>" and "<division> Head" seats (a division the database holds or the run
+creates, a plural spelling, an X that names a department or no unit), `seat-taken` for every
+seat migration 0062 guards in created and existing units, a Chief Operating Officer and a "Head of
+<division>" in one created department written to the in-memory Postgres with no constraint
+error, and the cause chain a failed write prints.

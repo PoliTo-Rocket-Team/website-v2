@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "@/db/schema";
+import { failureLines } from "./failure";
 import { blobPhotoStore } from "./photos";
 import { runImport } from "./run";
 import type { ImportDb } from "./snapshot";
@@ -90,7 +91,7 @@ async function main(): Promise<number> {
 main().then(
   (code) => process.exit(code),
   (error: unknown) => {
-    console.error(`Import failed; nothing was written. ${error instanceof Error ? error.message : String(error)}`);
+    console.error(["Import failed; nothing was written.", ...failureLines(error).map((line) => `  ${line}`)].join("\n"));
     process.exit(1);
   },
 );
