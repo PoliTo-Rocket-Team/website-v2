@@ -1,5 +1,14 @@
 import { planImport, type Plan } from "./plan";
 import { photoUploads, preparePhotos, type PhotoStore } from "./photos";
+import {
+  planPositions,
+  readPositionSnapshot,
+  readPositionSources,
+  renderPositionsReport,
+  writePositions,
+  type PositionPlan,
+  type PositionSources,
+} from "./positions";
 import { renderReport } from "./report";
 import { NO_DATABASE, readSnapshot, type ImportDb } from "./snapshot";
 import { readSources, type Sources } from "./sources";
@@ -41,4 +50,28 @@ export async function runImport(options: RunOptions): Promise<RunResult> {
     return { plan, ...(await writePlan(tx, plan, uploads)) };
   });
   return { sources, plan, written, uploaded, report: renderReport({ mode: "import", database: true, sources, plan, written, uploaded }) };
+}
+
+/** A positions-only run (issue #834; ./positions.ts). It maps to the database's divisions, so a dry run needs the database too. */
+export type PositionsRunOptions = { readonly mode: "dry-run" | "import"; readonly directory: string; readonly db: ImportDb };
+
+export type PositionsRunResult = {
+  readonly sources: PositionSources;
+  readonly plan: PositionPlan;
+  /** How many positions an import inserted; absent on a dry run. */
+  readonly written?: number;
+  readonly report: string;
+};
+
+export async function runPositionsImport(options: PositionsRunOptions): Promise<PositionsRunResult> {
+  const sources = readPositionSources(options.directory);
+  if (options.mode === "dry-run") {
+    const plan = planPositions(sources, await readPositionSnapshot(options.db));
+    return { sources, plan, report: renderPositionsReport({ mode: "dry-run", sources, plan }) };
+  }
+  const { plan, written } = await options.db.transaction(async (tx) => {
+    const plan = planPositions(sources, await readPositionSnapshot(tx as unknown as ImportDb));
+    return { plan, written: await writePositions(tx, plan) };
+  });
+  return { sources, plan, written, report: renderPositionsReport({ mode: "import", sources, plan, written }) };
 }
