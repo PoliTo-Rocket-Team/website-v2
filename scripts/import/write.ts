@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
-  applyPositions,
+  departments,
+  divisions,
   faqs,
   faqVersions,
   members,
@@ -11,14 +12,20 @@ import {
   teamPageAdvisorVersions,
   users,
 } from "@/db/schema";
-import { sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Plan, PersonRef, Table } from "./plan";
 import type { PhotoUploads } from "./photos";
 import type { ImportDb } from "./snapshot";
+import type { UnitRef } from "./unit-book";
 
-// Writes a plan (issue #677): inserts only, never an update or a delete, in the
-// caller's transaction. A new person is a `members` row and a `users` row keyed
-// `imported:<uuid>` that holds their sign-in email: the `sync_auth_users`
+// Writes a plan (issues #677, #816) in the caller's transaction: inserts, one
+// kind of update (an account's link, below) and never a delete. The closed
+// past units go in first, so a role or an order can name them. A new person is a `members` row and a `users` row keyed
+// `imported:<uuid>` that holds their sign-in email. When the database already
+// has the account of that email and it holds no member row, no `users` row is
+// inserted: the account's `member` column is set to the new member row, the
+// one update a run makes, and none of its other fields is written (owner
+// decision, issue #820). The `sync_auth_users`
 // trigger (drizzle/0001) finds a users row by id or by email when a Better
 // Auth account is created, and gives the row the account's id, so their first
 // Google sign-in with that email lands on this row and its member. A photo
@@ -43,15 +50,69 @@ async function reserveMemberId(tx: Tx): Promise<number> {
 }
 
 /**
+ * Links an account that holds no member row to the member row just inserted
+ * for its person (issue #820): its `member` column only, and only while it is
+ * still empty. An account that gained a member since the plan was made fails
+ * the run, so the transaction writes nothing.
+ */
+async function linkAccount(tx: Tx, userId: string, memberId: number): Promise<void> {
+  const linked = await tx
+    .update(users)
+    .set({ member: memberId })
+    .where(and(eq(users.id, userId), isNull(users.member)))
+    .returning({ id: users.id });
+  if (linked.length !== 1) throw new Error("an account the plan links to a new member row no longer holds no member row");
+}
+
+/**
  * Writes the plan. With `uploads`, each photo the plan links is uploaded as
  * its row is inserted: a member's URL goes into the new `members` row's
  * `picture`, an advisor's into the new version's `photo`. No row is written
- * twice, so nothing is ever updated. Without `uploads` no photo is uploaded,
+ * twice, so no photo is ever written by an update. Without `uploads` no photo is uploaded,
  * and the rows go in without one.
  */
 export async function writePlan(tx: Tx, plan: Plan, uploads: PhotoUploads | null): Promise<{ written: Written; uploaded: Uploaded }> {
-  const written = { users: 0, members: 0, roles: 0, team_leaves: 0, team_page_advisors: 0, team_page_advisor_versions: 0, apply_positions: 0, faqs: 0, faq_versions: 0, orders: 0 };
+  const written = {
+    departments: 0,
+    divisions: 0,
+    users: 0,
+    members: 0,
+    roles: 0,
+    team_leaves: 0,
+    team_page_advisors: 0,
+    team_page_advisor_versions: 0,
+    faqs: 0,
+    faq_versions: 0,
+    orders: 0,
+  };
   const uploaded = { members: 0, advisors: 0, skipped: 0 };
+
+  const departmentIds: number[] = [];
+  // A unit's roster spellings are for the report only: no column holds them.
+  for (const { spellings: _, ...d } of plan.departments) {
+    const [row] = await tx.insert(departments).values(d).returning({ id: departments.id });
+    departmentIds.push(row.id);
+    written.departments++;
+  }
+  const idIn = (ids: readonly number[]) => (ref: UnitRef | null): number | null => {
+    if (ref === null) return null;
+    if (ref.kind === "existing") return ref.id;
+    const id = ids[ref.index];
+    if (id === undefined) throw new Error("a planned row names a unit the plan does not create");
+    return id;
+  };
+  const departmentId = idIn(departmentIds);
+  const divisionIds: number[] = [];
+  for (const { dept, spellings: _, ...d } of plan.divisions) {
+    const [row] = await tx
+      .insert(divisions)
+      .values({ ...d, deptId: departmentId(dept) })
+      .returning({ id: divisions.id });
+    divisionIds.push(row.id);
+    written.divisions++;
+  }
+  const divisionId = idIn(divisionIds);
+
   const memberOf = new Map<number, number>();
   for (const person of plan.people) {
     let values: typeof members.$inferInsert = person.member;
@@ -62,10 +123,14 @@ export async function writePlan(tx: Tx, plan: Plan, uploads: PhotoUploads | null
       uploaded.members++;
     }
     const [member] = await tx.insert(members).values(values).returning({ id: members.memberId });
-    await tx.insert(users).values({ id: `${IMPORTED_USER_PREFIX}${randomUUID()}`, ...person.user, member: member.id });
+    if (person.account.kind === "new") {
+      await tx.insert(users).values({ id: `${IMPORTED_USER_PREFIX}${randomUUID()}`, ...person.account.user, member: member.id });
+      written.users++;
+    } else {
+      await linkAccount(tx, person.account.userId, member.id);
+    }
     memberOf.set(person.person, member.id);
     written.members++;
-    written.users++;
   }
   const idOf = (ref: PersonRef): number => {
     if (ref.kind === "existing") return ref.memberId;
@@ -77,7 +142,7 @@ export async function writePlan(tx: Tx, plan: Plan, uploads: PhotoUploads | null
   if (plan.roles.length > 0) {
     const rows = await tx
       .insert(roles)
-      .values(plan.roles.map(({ who, ...role }) => ({ ...role, memberId: idOf(who) })))
+      .values(plan.roles.map(({ who, dept, division, ...role }) => ({ ...role, deptId: departmentId(dept), divisionId: divisionId(division), memberId: idOf(who) })))
       .returning({ id: roles.id });
     written.roles = rows.length;
   }
@@ -100,13 +165,6 @@ export async function writePlan(tx: Tx, plan: Plan, uploads: PhotoUploads | null
     written.team_page_advisors++;
     written.team_page_advisor_versions++;
   }
-  if (plan.positions.length > 0) {
-    const rows = await tx
-      .insert(applyPositions)
-      .values(plan.positions.map((p) => ({ ...p, requiredSkills: [...p.requiredSkills], desirableSkills: [...p.desirableSkills] })))
-      .returning({ id: applyPositions.id });
-    written.apply_positions = rows.length;
-  }
   for (const f of plan.faqs) {
     const [row] = await tx.insert(faqs).values({ siteOrder: f.siteOrder }).returning({ id: faqs.id });
     await tx.insert(faqVersions).values({ faqId: row.id, version: "published", question: f.question, answer: [...f.answer] });
@@ -116,7 +174,7 @@ export async function writePlan(tx: Tx, plan: Plan, uploads: PhotoUploads | null
   if (plan.orders.length > 0) {
     const rows = await tx
       .insert(orders)
-      .values(plan.orders.map(({ requester, ...o }) => ({ ...o, requester: idOf(requester) })))
+      .values(plan.orders.map(({ requester, division, ...o }) => ({ ...o, divisionId: divisionId(division), requester: idOf(requester) })))
       .returning({ id: orders.id });
     written.orders = rows.length;
   }

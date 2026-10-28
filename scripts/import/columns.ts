@@ -89,11 +89,32 @@ const PERSON_FIELDS = {
 
 export type PersonField = keyof typeof PERSON_FIELDS;
 
-/** A `YYYY-YYYY` year sheet. */
-export const YEAR_SHEET: SourceSpec<PersonField> = PERSON_FIELDS;
+/** A year sheet's fields: a person's, and the day their role that year started, which only the 2022-2023 sheet gives. */
+export type YearField = PersonField | "joinedOn";
 
-/** The `Quitters` sheet: a title above the header, and the day each person left. */
-export const QUITTERS_SHEET: SourceSpec<PersonField | "leftOn"> = { ...PERSON_FIELDS, leftOn: { aliases: ["Left the Team on"] } };
+/** A `YYYY-YYYY` year sheet: its roles start on the academic year's first day. */
+export const YEAR_SHEET: SourceSpec<YearField> = { ...PERSON_FIELDS, joinedOn: { aliases: [] } };
+
+/**
+ * The `2022-2023` sheet (owner decision, issue #816): its Division column is
+ * headed "A", and its "Date of joining" column, where filled, is the day each
+ * role that year started.
+ */
+const YEAR_2022_SHEET: SourceSpec<YearField> = {
+  ...PERSON_FIELDS,
+  division: { aliases: ["Division", "A"] },
+  joinedOn: { aliases: ["Date of joining"] },
+};
+
+/** The columns of the year sheet for the academic year starting in `year`. */
+export const yearSheetOf = (year: number): SourceSpec<YearField> => (year === 2022 ? YEAR_2022_SHEET : YEAR_SHEET);
+
+/** The `Quitters` sheet: a title above the header, the day each person left and the day they joined. */
+export const QUITTERS_SHEET: SourceSpec<PersonField | "leftOn" | "joinedOn"> = {
+  ...PERSON_FIELDS,
+  leftOn: { aliases: ["Left the Team on"] },
+  joinedOn: { aliases: ["Joined the Team on"] },
+};
 
 /** A `Roles YY-YY` sheet: the year's seats with the division and group that year's own sheet lacks. */
 export const ROLES_SHEET: SourceSpec<"firstName" | "lastName" | "subteam" | "division" | "title"> = {
@@ -148,15 +169,6 @@ export const ADVISORS_CSV = {
   hasPhoto: { aliases: ["has_pp"] },
 } as const satisfies SourceSpec<string>;
 
-export const POSITIONS_CSV = {
-  division: { aliases: ["division"], required: true },
-  name: { aliases: ["name"], required: true },
-  description: { aliases: ["description"] },
-  desirable: { aliases: ["desirable"] },
-  required: { aliases: ["required"] },
-  open: { aliases: ["open"] },
-} as const satisfies SourceSpec<string>;
-
 export const ORDERS_CSV = {
   requester: { aliases: ["requester"], required: true },
   description: { aliases: ["description"] },
@@ -167,6 +179,21 @@ export const ORDERS_CSV = {
   createdAt: { aliases: ["createdAt", "created_at"] },
   name: { aliases: ["name"] },
   quoteName: { aliases: ["quoteName", "quote_name"] },
+} as const satisfies SourceSpec<string>;
+
+// The import's own override input (issue #816) ---------------------------------
+
+/**
+ * `overrides.csv`: one line per owner decision the workbook cannot carry. `kind` says which:
+ * `handover` (row `row` of `sheet` handed its seat over to row `value` within the current year),
+ * `quitter-year` (Quitters row `row` is an alumnus of academic year `value`, "YYYY-YYYY") or
+ * `title` (row `row` of `sheet` has the title `value`, issue #822).
+ */
+export const OVERRIDES_CSV = {
+  kind: { aliases: ["kind"], required: true },
+  sheet: { aliases: ["sheet"], required: true },
+  row: { aliases: ["row"], required: true },
+  value: { aliases: ["value"], required: true },
 } as const satisfies SourceSpec<string>;
 
 export const FAQS_CSV = {

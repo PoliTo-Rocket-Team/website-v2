@@ -90,10 +90,11 @@ export function readWorkbook(file: Buffer): Sheet[] {
   });
 }
 
-/** The day (YYYY-MM-DD) an Excel day serial names, counted from 1899-12-30 as Excel does; null when the text is no serial. */
+/** The day (YYYY-MM-DD) an Excel day serial names, counted from 1899-12-30 as Excel does; null when the text is no serial, or one too large to be any day. */
 export function excelDay(text: string): string | null {
   if (!/^\d+(\.\d+)?$/.test(text.trim())) return null;
   const serial = Math.floor(Number(text));
   if (serial < 1) return null;
-  return new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000).toISOString().slice(0, 10);
+  const day = new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000);
+  return Number.isFinite(day.getTime()) ? day.toISOString().slice(0, 10) : null;
 }

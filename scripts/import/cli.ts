@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "@/db/schema";
+import { failureLines } from "./failure";
 import { blobPhotoStore } from "./photos";
 import { runImport } from "./run";
 import type { ImportDb } from "./snapshot";
@@ -17,7 +18,8 @@ import type { ImportDb } from "./snapshot";
 
 const USAGE = `Usage: pnpm db:import <source-dir> [--mode dry-run|import] [--year YYYY-YYYY] [--report <file>] [--database-url <url>] [--blob-token <token>]
 
-  <source-dir>      The directory holding the roster workbook (.xlsx), the CSV exports and, if any, the photos/ folder.
+  <source-dir>      The directory holding the roster workbook (.xlsx), the CSV exports and, if any, the photos/ folder
+                    and the overrides.csv input (README.md, "The override input").
   --mode            dry-run (the default) prints the report and writes and uploads nothing; import writes.
   --year            The current academic year's sheet, e.g. 2026-2027; by default the newest one.
   --report          Also write the report to this file.
@@ -89,7 +91,7 @@ async function main(): Promise<number> {
 main().then(
   (code) => process.exit(code),
   (error: unknown) => {
-    console.error(`Import failed; nothing was written. ${error instanceof Error ? error.message : String(error)}`);
+    console.error(["Import failed; nothing was written.", ...failureLines(error).map((line) => `  ${line}`)].join("\n"));
     process.exit(1);
   },
 );

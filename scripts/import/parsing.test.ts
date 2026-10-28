@@ -1,15 +1,17 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { test } from "node:test";
-import { cell, locate, QUITTERS_SHEET, ROLES_SHEET, TEAM_MEMBERS_CSV, YEAR_SHEET } from "./columns";
+import { cell, locate, QUITTERS_SHEET, ROLES_SHEET, TEAM_MEMBERS_CSV, YEAR_SHEET, yearSheetOf } from "./columns";
 import { parseCsv } from "./csv";
-import { listOf, linkedinLink } from "./plan";
-import { readSources, yearOfSheet } from "./sources";
+import { readOverrides } from "./overrides";
+import { linkedinLink } from "./plan";
+import { quitterStint } from "./quitters";
+import { dateCellOf, dayMonthSwapped, dayOf, readSources, yearOfSheet } from "./sources";
 import sharp from "sharp";
 import { checkMemberPhoto } from "@/lib/dashboard/division-members";
 import { matchPhotos, shapeMemberPhoto, surnameKey, type PhotoFile } from "./photos";
 import { seatOf, seatsOf, TITLE_RULES } from "./titles";
-import { departmentOf, divisionOf, readUnitValue, unitKey, unitNames, unitValues, type Units } from "./units";
+import { departmentOf, divisionOf, readUnitValue, rowUnitNames, subteamReadingOf, unitKey, unitNames, unitValues, type Units } from "./units";
 
 // The import's readers and tables (issue #677): the header alias table, the
 // title mapping table, the CSV parser and the small value readers.
@@ -38,6 +40,16 @@ test("the header row is found below title rows and beside stray cells, not assum
   assert.equal(locate([["Roles"], ["First Name", "Last Name", "Subteam", "Division", "Group", "Team Role"]], ROLES_SHEET)?.headerRow, 2);
   assert.equal(locate([["first_name", "last_name", "poli_email"]], TEAM_MEMBERS_CSV)?.headerRow, 1);
   assert.equal(locate([["no", "header", "here"]], YEAR_SHEET), null);
+});
+
+test("only the 2022-2023 sheet reads an 'A' column as Division and 'Date of joining' as the role start", () => {
+  const header = [["Number", "First Name", "Last Name", "Subteam", "A", "Team Role", "Date of joining"]];
+  const of2022 = locate(header, yearSheetOf(2022));
+  assert.deepEqual([of2022?.columns.division, of2022?.columns.joinedOn], [[4], [6]]);
+  const of2023 = locate(header, yearSheetOf(2023));
+  assert.deepEqual([of2023?.columns.division, of2023?.columns.joinedOn], [[], []]);
+  // The 2022-2023 sheet still reads a column headed "Division".
+  assert.deepEqual(locate([["First Name", "Last Name", "Division"]], yearSheetOf(2022))?.columns.division, [2]);
 });
 
 test("year sheets are named YYYY-YYYY with consecutive years, and the current one is the newest unless the run names another", () => {
@@ -72,8 +84,65 @@ test("the title table gives each seat its type, full-access flag and unit", () =
   assert.deepEqual(read("Valve Engineer"), ["core", null, "member-unit"]);
   assert.deepEqual(read(""), ["core", null, "member-unit"]);
   assert.equal(read("Vice Team Leader"), null);
-  assert.equal(read("Safety Officer"), null);
+  // "Safety Officer" is a core member's seat (#816); any other officer is still not guessed.
+  assert.deepEqual(read("Safety Officer"), ["core", null, "member-unit"]);
+  assert.equal(read("Press Officer"), null);
   assert.ok(TITLE_RULES.length > 0);
+});
+
+test("the #816 title readings: AMV prefix, Safety Officer, '<Dept> Head of Department', '&' between seats and President-Advisor", () => {
+  const seats = (cell: string) =>
+    seatsOf(cell).map((s) => (s.kind === "seat" ? [s.title, s.seat.type, s.seat.fullAccess, s.seat.unit, s.project] : ["unknown", s.title]));
+  assert.deepEqual(seats("AMV Chief Engineer"), [["Chief Engineer", "core", "chief_engineer", "board", null]]);
+  assert.deepEqual(seats("Safety Officer"), [["Safety Officer", "core", null, "member-unit", null]]);
+  assert.deepEqual(seats("Electronics Head of Department - Hardware Lead Engineer"), [
+    ["Electronics Head of Department", "head", null, "department", null],
+    ["Hardware Lead Engineer", "lead", null, "division", null],
+  ]);
+  assert.deepEqual(seats("President & Chief Engineer"), [
+    ["President", "president", null, "board", null],
+    ["Chief Engineer", "core", "chief_engineer", "board", null],
+  ]);
+  // "&" parts seats only where the table reads every part: a unit name with "&" in it stays one seat.
+  assert.deepEqual(seats("Design & Manufacturing Lead"), [["Design & Manufacturing Lead", "lead", null, "division", null]]);
+  assert.deepEqual(seats("President-Advisor (Project Cavour)"), [
+    ["President", "president", null, "board", null],
+    ["Advisor (Project Cavour)", "advisor", null, "noted-department", "Project Cavour"],
+  ]);
+  assert.deepEqual(seats("Co-Lead"), [["unknown", "Co-Lead"]]);
+});
+
+test("the #816 unit readings: past subteams are departments, AMV is no unit, '/' splits, and '<Dept> Department - <Division>' is both", () => {
+  const projects = new Set([unitKey("Cavour"), unitKey("Efesto"), unitKey("VES")]);
+  // Before 2024-2025, and on the Quitters and Roles sheets, a subteam that names a project is a department.
+  assert.equal(subteamReadingOf({ kind: "year", year: 2023 }), "past");
+  assert.equal(subteamReadingOf({ kind: "year", year: 2024 }), "present");
+  assert.equal(subteamReadingOf({ kind: "quitters" }), "past");
+  assert.equal(subteamReadingOf({ kind: "roles" }), "past");
+  const past = rowUnitNames("Cavour - Liquid Propulsion", "", projects, "past");
+  assert.deepEqual(past.departments.map((d) => d.value.name), ["Cavour", "Liquid Propulsion"]);
+  assert.equal(past.projectOnly, false);
+  const present = rowUnitNames("Cavour", "", projects, "present");
+  assert.deepEqual([present.departments.length, present.projectOnly], [0, true]);
+
+  assert.deepEqual(unitValues("AMV - Amerigo Vespucci (AMV) - Propulsion", projects), [{ kind: "none" }, { kind: "none" }, { kind: "unit", name: "Propulsion", code: null }]);
+
+  assert.deepEqual(unitNames("Hybrid Motors (HYB) / Information Technology (IT), Logistics (LGS)"), ["Hybrid Motors (HYB)", "Information Technology (IT)", "Logistics (LGS)"]);
+  assert.deepEqual(unitNames("IT/Logistics"), ["IT", "Logistics"]);
+  assert.deepEqual(unitNames("N/A"), ["N/A"]);
+  assert.deepEqual(unitNames("n/a - Propulsion"), ["n/a", "Propulsion"]);
+
+  const both = rowUnitNames("", "Electronics (ELT) Department - Hardware (HDW)", projects, "present");
+  assert.deepEqual(
+    both.departments.map((d) => [d.value.name, d.value.code, d.cell]),
+    [["Electronics Department", "ELT", "division"]],
+  );
+  assert.deepEqual(
+    both.divisions.map((d) => [d.value.name, d.value.code, d.department?.name ?? null]),
+    [["Hardware", "HDW", "Electronics Department"]],
+  );
+  // A department named in both cells is one department.
+  assert.equal(rowUnitNames("Electronics (ELT)", "Electronics Department - Hardware", projects, "present").departments.length, 1);
 });
 
 test("the title table reads each named form by an explicit rule", () => {
@@ -143,16 +212,165 @@ test("unit cells split on ' - ', ',' and ';', read a code in parentheses, N/A, a
   assert.equal(departmentOf(units, unit("Underwater Basket Weaving", "UBW")), null, "reported as unresolved");
 });
 
-test("a photo file matches on its id first, exactly; the surname only cross-checks", () => {
+test("a photo '<id>-<surname>' is always a people_rows.csv id; a surname-only photo is the one advisor with that surname", () => {
   const file = (row: number, id: string | null, surname: string): PhotoFile => ({ row, id, surname, bytes: Buffer.alloc(0) });
-  const row = (id: string, lastName: string) => ({ at: { file: "x.csv", row: 2 }, value: { id, firstName: "A", lastName, linkedin: "", user: "", title: "T", hasPhoto: "" } });
-  const sources = { csv: { people: [row("1", "Rossi"), row("3", "De Luca"), row("4", "Verdi")], advisors: [row("3", "Neri"), row("4", "Bianchi")] } } as never;
-  const kinds = matchPhotos(
-    [file(1, "1", "rossi"), file(2, "1", "bianchi"), file(3, "2", "rossi"), file(4, null, "rossi"), file(5, "3", "deluca"), file(6, "3", "neri"), file(7, "4", "gialli"), file(8, "01", "rossi")],
+  const csvRow = (line: number, id: string, firstName: string, lastName: string) => ({
+    at: { file: "x.csv", row: line },
+    value: { id, firstName, lastName, linkedin: "", user: "", title: "Advisor", hasPhoto: "" },
+  });
+  const sheetRow = (row: number, firstName: string, lastName: string, subteam: string, title: string) => ({
+    at: { file: "roster.xlsx", sheet: "2025-2026", row },
+    value: { firstName, lastName, subteam, division: "", title },
+  });
+  const sources = {
+    csv: {
+      people: [csvRow(2, "1", "A", "Rossi"), csvRow(3, "3", "B", "De Luca"), csvRow(4, "4", "C", "Verdi")],
+      advisors: [csvRow(2, "3", "Ada", "Neri"), csvRow(3, "4", "Bea", "Bianchi"), csvRow(4, "9", "Cora", "Gallo"), csvRow(5, "10", "Cora", "Gallo")],
+    },
+    years: [
+      {
+        rows: [
+          sheetRow(2, "Dino", "Marchi", "SENIOR ADVISOR (Cavour)", ""),
+          sheetRow(3, "Elio", "Bianchi", "Propulsion", "Advisor"),
+          sheetRow(4, "Fabio", "Sala", "Propulsion", "Engineer"),
+        ],
+      },
+    ],
+    quitters: [],
+  } as never;
+  const matches = matchPhotos(
+    [
+      file(1, "1", "rossi"),
+      file(2, "1", "bianchi"),
+      file(3, "2", "rossi"),
+      file(4, "3", "deluca"),
+      file(5, "3", "neri"),
+      file(6, "01", "rossi"),
+      file(7, null, "neri"),
+      file(8, null, "marchi"),
+      file(9, null, "gallo"),
+      file(10, null, "bianchi"),
+      file(11, null, "sala"),
+      file(12, null, "verdi"),
+    ],
     sources,
-  ).map((m) => m.kind);
-  assert.deepEqual(kinds, ["member", "surname-differs", "no-id-match", "no-id-match", "member", "advisor", "shared-id", "no-id-match"]);
+  );
+  assert.deepEqual(
+    matches.map((m) => [m.kind, "id" in m ? m.id : "line" in m ? m.line : "at" in m ? m.at.row : null]),
+    [
+      ["member", "1"],
+      ["surname-differs", null],
+      ["no-id-match", null],
+      // Id 3 is a person's and an advisor's: it is the person's, never the advisor's.
+      ["member", "3"],
+      ["surname-differs", null],
+      ["no-id-match", null],
+      ["advisor", 2],
+      // An advisor row of the workbook.
+      ["workbook-advisor", 2],
+      // Two rows of one advisor name are one advisor: the first row.
+      ["advisor", 4],
+      // Bea Bianchi in the CSV and Elio Bianchi on the sheet: two advisors share the surname.
+      ["surname-ambiguous", null],
+      // Fabio Sala is no advisor; a person's surname alone never matches.
+      ["no-surname-match", null],
+      ["no-surname-match", null],
+    ],
+  );
   assert.equal(surnameKey("De Luca"), surnameKey("de-luca"));
+});
+
+test("a roster day reads from a date cell's serial and from dd/mm/yyyy, d/m/yyyy, dd.mm.yyyy and ISO text; anything else is no day", () => {
+  assert.equal(dayOf("45488"), "2024-07-15");
+  assert.equal(dayOf("30/06/2022"), "2022-06-30");
+  assert.equal(dayOf("5/3/2024"), "2024-03-05");
+  assert.equal(dayOf("30.06.2022"), "2022-06-30");
+  assert.equal(dayOf("2024-06-30"), "2024-06-30");
+  for (const text of ["", "sometime in 2023", "31/02/2024", "30/06.2022", "2024", "13/13/2024", "06/30/2022"]) assert.equal(dayOf(text), null, `"${text}" is no day`);
+  // A serial too large for any day is no day, not a crash.
+  for (const text of ["999999999", "9".repeat(400)]) assert.equal(dayOf(text), null, `"${text.slice(0, 12)}" is no day`);
+});
+
+test("a quitter-only row's stint: its leave year, its join day or the year's start; an override year wins; no date or an unreadable one is unclear", () => {
+  const row = (leftOn: string, joinedOn: string) => ({ at: { file: "r.xlsx", sheet: "Quitters", row: 2 }, value: { leftOn, joinedOn } }) as never;
+  assert.deepEqual(quitterStint(row("15/02/2023", "10/11/2021"), null), { kind: "stint", year: 2022, startedAt: "2021-11-10", leftAt: "2023-02-15", swapped: null });
+  assert.deepEqual(quitterStint(row("15/10/2023", ""), null), { kind: "stint", year: 2023, startedAt: "2023-10-01", leftAt: "2023-10-15", swapped: null });
+  assert.deepEqual(quitterStint(row("", ""), 2022), { kind: "stint", year: 2022, startedAt: "2022-10-01", leftAt: "2023-09-30", swapped: null });
+  assert.deepEqual(quitterStint(row("15/02/2023", ""), 2020), { kind: "stint", year: 2020, startedAt: "2020-10-01", leftAt: "2021-09-30", swapped: null });
+  assert.deepEqual(quitterStint(row("", "10/11/2021"), null), { kind: "unclear", conflict: "quitter-no-date", field: "leftOn" });
+  assert.deepEqual(quitterStint(row("not a day", ""), null), { kind: "unclear", conflict: "quitter-date-unreadable", field: "leftOn" });
+  assert.deepEqual(quitterStint(row("15/02/2023", "1/1/2024"), null), { kind: "unclear", conflict: "quitter-date-unreadable", field: "joinedOn" });
+  assert.deepEqual(quitterStint(row("999999999", ""), null), { kind: "unclear", conflict: "quitter-date-unreadable", field: "leftOn" });
+});
+
+/** The Excel day serial a date cell stores for a day. */
+const serialOf = (day: string) => String((Date.parse(day) - Date.UTC(1899, 11, 30)) / 86_400_000);
+
+test("a date cell says whether it is a serial; a day of 12 or less swaps with its month, and a day that would not change does not", () => {
+  assert.deepEqual(dateCellOf(serialOf("2023-01-05")), { day: "2023-01-05", serial: true });
+  assert.deepEqual(dateCellOf("5/1/2023"), { day: "2023-01-05", serial: false });
+  assert.deepEqual(dateCellOf("2023-01-05"), { day: "2023-01-05", serial: false });
+  assert.equal(dateCellOf("31/02/2024"), null);
+  assert.equal(dayMonthSwapped("2023-01-05"), "2023-05-01");
+  assert.equal(dayMonthSwapped("2022-01-12"), "2022-12-01");
+  assert.equal(dayMonthSwapped("2023-07-12"), "2023-12-07");
+  assert.equal(dayMonthSwapped("2023-01-13"), null, "no 13th month");
+  assert.equal(dayMonthSwapped("2023-04-04"), null, "the swap changes nothing");
+});
+
+test("a quitter row whose join is after its leave swaps one date cell's day and month: the leave first, then the join; typed text never", () => {
+  const row = (leftOn: string, joinedOn: string) => ({ at: { file: "r.xlsx", sheet: "Quitters", row: 2 }, value: { leftOn, joinedOn } }) as never;
+  // A join of 1 April with a leave read as 5 January: the leave is 1 May.
+  assert.deepEqual(quitterStint(row(serialOf("2023-01-05"), serialOf("2023-04-01")), null), {
+    kind: "stint",
+    year: 2022,
+    startedAt: "2023-04-01",
+    leftAt: "2023-05-01",
+    swapped: "leftOn",
+  });
+  // A leave read as 12 January is 1 December; the swapped leave gives the academic year.
+  assert.deepEqual(quitterStint(row(serialOf("2022-01-12"), serialOf("2022-03-01")), null), {
+    kind: "stint",
+    year: 2022,
+    startedAt: "2022-03-01",
+    leftAt: "2022-12-01",
+    swapped: "leftOn",
+  });
+  // The leave's day is over 12, so the join is swapped: 4 January, before the leave.
+  assert.deepEqual(quitterStint(row(serialOf("2023-01-20"), serialOf("2023-04-01")), null), {
+    kind: "stint",
+    year: 2022,
+    startedAt: "2023-01-04",
+    leftAt: "2023-01-20",
+    swapped: "joinedOn",
+  });
+  // The leave swap is tried first and wins even when the join swap would also fix the row.
+  assert.equal((quitterStint(row(serialOf("2023-01-05"), serialOf("2023-03-01")), null) as { swapped: unknown }).swapped, "leftOn");
+  const unclear = { kind: "unclear", conflict: "quitter-date-unreadable", field: "joinedOn" };
+  // Neither day is 12 or less.
+  assert.deepEqual(quitterStint(row(serialOf("2023-01-25"), serialOf("2023-04-20")), null), unclear);
+  // Typed text is already day/month: never swapped.
+  assert.deepEqual(quitterStint(row("5/1/2023", "1/4/2023"), null), unclear);
+  // The swapped leave is still before the join, and the join is typed text.
+  assert.deepEqual(quitterStint(row(serialOf("2023-03-02"), "15/11/2023"), null), unclear);
+});
+
+test("an override line reads as a handover or a quitter year; an unknown kind or an unreadable row or value is reported on its field", () => {
+  const line = (kind: string, sheet: string, row: string, value: string, at = 2) => ({ at: { file: "overrides.csv", row: at }, value: { kind, sheet, row, value } });
+  const read = readOverrides([
+    line("handover", "2026-2027", "113", "50", 2),
+    line("Quitter-Year", "Quitters", "7", "2022-2023", 3),
+    line("swap", "2026-2027", "1", "2", 4),
+    line("handover", "2026-2027", "x", "2", 5),
+    line("quitter-year", "Quitters", "7", "2022-2024", 6),
+  ]);
+  assert.deepEqual(read.handovers.map((h) => [h.sheet, h.fromRow, h.toRow]), [["2026-2027", 113, 50]]);
+  assert.deepEqual(read.quitterYears.map((q) => [q.sheet, q.row, q.year]), [["Quitters", 7, 2022]]);
+  assert.deepEqual(read.conflicts.map((c) => [c.kind, c.at.row, c.field]), [
+    ["override-unmatched", 4, "kind"],
+    ["override-unmatched", 5, "row"],
+    ["override-unmatched", 6, "value"],
+  ]);
 });
 
 test("a member photo is shaped as the crop dialog makes one: a centred square of at most 800 px, a JPEG that passes checkMemberPhoto", async () => {
@@ -179,10 +397,7 @@ test("the CSV parser keeps quoted commas, doubled quotes and line breaks in one 
   );
 });
 
-test("list cells, LinkedIn handles and unit names read the old export's shapes", () => {
-  assert.deepEqual(listOf('["CAD", "Python"]'), ["CAD", "Python"]);
-  assert.deepEqual(listOf('{"Fluid dynamics",Teamwork}'), ["Fluid dynamics", "Teamwork"]);
-  assert.deepEqual(listOf("- TypeScript\n- SQL\n"), ["TypeScript", "SQL"]);
+test("LinkedIn handles and unit names read the old export's shapes", () => {
   assert.equal(linkedinLink("someone-example"), "https://www.linkedin.com/in/someone-example");
   assert.equal(linkedinLink("https://it.linkedin.com/in/someone-example/"), "https://www.linkedin.com/in/someone-example");
   assert.equal(linkedinLink("not a handle"), null);
