@@ -674,16 +674,18 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
     holder**, and the row ends in **+ Add seat**, in the Add department style. For a head the
     boxes open nothing and there is no Add seat. The server refuses both writes to everyone
     but the team leader and full access.
-  - **Change holder** picks who holds the seat from the team. As in Change head, someone who
-    already holds a seat, or the holder themself, cannot be picked, and the successor keeps
-    their divisions. The holder gets "What happens to {name}?": Become an advisor (on the whole
+  - **Change holder** picks who holds the seat from the team. As in Change head, a person who
+    holds another seat may be picked and keeps it; their seat shows on the row as information.
+    Only the holder themself cannot be picked ("Holds it now"). The successor keeps their
+    divisions. The holder gets "What happens to {name}?": Become an advisor (on the whole
     team, their access ends) or Leave the team, with neither picked at first. On save the
     holder's seat role ends and the successor's starts with the same title and the same
     `roles.full_access` flag, so the Project Manager's and the Chief Engineer's full access
     moves with the seat.
   - A seat box changes who holds the seat, never its title: the title is changed on Members,
     in Edit details (#626).
-  - **Add seat** takes a title and one person from the team who holds no seat yet. It starts an
+  - **Add seat** takes a title and one person from the team. A person who holds another seat may
+    be picked and keeps it; the new seat has no holder yet, so nobody is refused. It starts an
     active role in no department and no division with that title and no full-access flag, so a
     new seat gives no access of its own. It shows on the Team tree's seat row, this row and the
     public Team page's arc. Ending a seat with no successor is not offered.
@@ -695,15 +697,16 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
 - **New department** (board 77d) needs a name, a code of 2 or 3 letters no other open department
   uses, a kind (Technical, picked first, or Operations; #325), and exactly one head, picked from
   the team. The kind picks the slide of the public Team page's departments carousel the head sits
-  on (ADR 0015). The head keeps their divisions. Someone who
-  already holds a seat (the team leader, a board seat, another department's head) cannot be
-  picked. Divisions are added after, with Add division.
+  on (ADR 0015). The head keeps their divisions. A person who holds another seat (the team
+  leader, a board seat, an advisor role, another department's head) may be picked and keeps it;
+  their seat shows on the row as information. The department is new, so nobody is refused.
+  Divisions are added after, with Add division.
 - **Edit department** (board 77e) shows the name, the code, the kind, the head, and the divisions
   as rows that open to list their people, lead first, read-only. Save changes stores a new name,
   code or kind, after an "are you sure" that lists each change.
 - **Change head** (board 77e, #253), under the head in Edit department, picks the new head from
-  the team. As in New department, someone who already holds a seat cannot be picked, and the
-  new head keeps their divisions. The head they replace gets "What happens to {name}?":
+  the team. As in New department, a person who holds another seat may be picked and keeps it.
+  Only the current head cannot be picked ("Heads it now"). The new head keeps their divisions. The head they replace gets "What happens to {name}?":
   Become an advisor (in this department) or Leave the team, with neither picked at first. The
   change is saved with Save changes, after the same "are you sure".
 - **Close department** (board 77f), from Edit department's footer:
