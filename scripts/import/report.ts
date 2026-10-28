@@ -74,6 +74,7 @@ export function renderReport({ mode, database, sources, plan, written, uploaded 
   lines.push(`Sheet rows with no name, skipped: ${sources.namelessRows}`);
   lines.push(`Seat handovers applied (overrides.csv): ${plan.handovers}`);
   lines.push(`Quitter years applied (overrides.csv): ${plan.quitterYears}`);
+  lines.push(`Overridden titles applied (overrides.csv): ${sources.titleOverrides}`);
   lines.push(
     `Distinct unresolved unit names (subteam and division cells): ${plan.unresolvedUnits === null ? "not checked (no database given)" : plan.unresolvedUnits}`,
   );

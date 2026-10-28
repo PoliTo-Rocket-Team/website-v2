@@ -43,7 +43,7 @@ each department and division to create by name and code, marked `open, from <day
 the number of existing accounts with no member row linked to a new member row (see **Sign-in**),
 of alumni, of people in more than one year sheet, of unclear quitters, of Quitters dates
 read with day and month swapped, of sheet rows skipped for having no name, of override lines
-applied (handovers and quitter years) and of distinct unresolved unit names; the photo counts; then
+applied (handovers, quitter years and titles) and of distinct unresolved unit names; the photo counts; then
 each conflict with its file, sheet, row and field. Unclear quitters are listed by their Quitters
 row, and so are the swapped Quitters dates, each with the cell swapped (`leftOn` or `joinedOn`). It prints no person's name, email, phone, ID or photo
 file name. A photo is named by its row: its place in the sorted file list of `photos/`.
@@ -132,6 +132,33 @@ the person running the import writes. See **The override input** below.
     "President" and "Advisor (Project Cavour)", the advisor placed in the Cavour department. The
     note is read as a Subteam value of that row (see **Units**): on a sheet from 2024-2025 on,
     Cavour is a project, so the advisor has no unit.
+
+  A seat whose row names no unit of the seat's level can still have a place. These readings were
+  added by issue #822:
+  - **Chief Operating Officer** (owner decision). A "Chief Operating Officer" or "Head of
+    Operations" seat whose row's unit cells give no department ("N/A") is the head seat of the
+    Operations department. Operations is found by its name or by the code `OPS`: a department the
+    database holds, or one this run creates because another row names it. No department is made
+    for the seat alone: with no Operations anywhere, the seat is refused as `unknown-unit`. The seat
+    keeps its `operations_lead` full access when active. A row that names a department places the
+    seat there, as before.
+  - **A lead seat whose title names its division.** A lead seat ("<Division> Lead", "<Division>
+    Lead Engineer") on a row that gives no division, or only a department, sits in the division its
+    title names: "Firmware Lead Engineer" on a row whose Division cell is "Electronics (ELT)
+    Department" is the Firmware lead seat. The name is matched as any unit value is (name, code,
+    plural "s"; see **Units**) against the divisions the database holds and the ones this run
+    creates from other rows. Only divisions of the row's department count, or of any department
+    when the row names none. A division this run creates counts under the department its own rows
+    give it, so a database division and a same-named one created under another department are two
+    matches. Exactly one match places the seat there. Zero or several matches leave it
+    `unknown-unit`, and no division is made from a title.
+  - **A bare "Lead".** A seat titled only "Lead" or "Lead Engineer" on a row with a department and
+    no division is a core member's role in that department. The stored title stays "Lead" (or
+    "Lead Engineer"). With a division on the row it is that division's lead seat. With no unit at
+    all it is refused as `unknown-unit`.
+  - A title the workbook does not carry right ("???") can be given by a `title` line of the
+    override input (see **The override input**). An advisor title with "N/A" units imports as an
+    advisor with no unit, as any advisor may.
 - **Units** (`units.ts`, `unit-book.ts`): a subteam or division cell is split on " - ", ",", ";",
   "/" and line breaks; the slash of "N/A" does not split, and neither does a separator inside
   parentheses (issue #820): "ADVISOR (VES, AMV)" is one advisor marker, and no unit is made from
@@ -315,13 +342,14 @@ run, dry or not. Each line names rows, never people. Row numbers are the ones th
 kind,sheet,row,value
 handover,2026-2027,113,50
 quitter-year,Quitters,7,2022-2023
+title,2026-2027,33,Advisor
 ```
 
-- `kind`: `handover` or `quitter-year`.
+- `kind`: `handover`, `quitter-year` or `title`.
 - `sheet`: the workbook sheet the row is on, exactly as the workbook names it.
 - `row`: the row number on that sheet.
 - `value`: for `handover`, the row number of the new holder; for `quitter-year`, the academic
-  year as `YYYY-YYYY`.
+  year as `YYYY-YYYY`; for `title`, the row's title text (quote it if it holds a comma).
 
 **`handover`**: a seat that changed holder within the current year. `sheet` is the current year's
 sheet, `row` the holder who handed the seat over, `value` the holder who took it. The seats handed
@@ -338,11 +366,18 @@ finds the ended role and the member's role present whatever day it runs.
 **`quitter-year`**: a Quitters row of a person on no year sheet, placed in the academic year
 `value` (see **Quitters**).
 
+**`title`** (issue #822): `value` replaces the title cell of row `row` on `sheet`, a year,
+`Quitters` or `Roles YY-YY` sheet the run reads. It is applied as the sheets are read, before any
+title rule runs, so the row is read in every way as if the workbook held that title: its seats,
+its photo match as an advisor, its handovers. Spacing in `value` does not count. The report counts
+the title lines applied.
+
 A line is not applied, and is reported as `override-unmatched` on the field at fault, when its
-kind is neither of these, its row is no number, its value is no row number or academic year, a
+kind is none of these, its row is no number, its value is no row number, academic year or title, a
 `handover` names a sheet other than the current year's, a row that is no person's row there, or
-two rows with no seat in common, or a `quitter-year` names a row that is not the Quitters row of a
-person on no year sheet.
+two rows with no seat in common, a `quitter-year` names a row that is not the Quitters row of a
+person on no year sheet, or a `title` names a sheet the run does not read (`sheet`), a row with no
+name on it, or a row an earlier `title` line already gave a title (`row`).
 
 ## Fixtures
 
@@ -351,13 +386,16 @@ invented, every email is on `example.com`, and the photos are tiny generated JPE
 `import.test.ts` runs the tool over `files/`; `rules.test.ts` runs it over `rules/`, a roster that
 plants each reading rule of issue #816, with an `overrides.csv`. `parsing.test.ts` covers the
 readers: the date forms, the override lines, a quitter's stint (a swapped date cell included) and
-the photo matching. `roster-shapes.test.ts` plans the shapes of issues #818 and #820 over a fake
-roster built in memory: swapped Quitters dates, a shorter first name in `people_rows.csv`, one unit
-spelt several ways, a separator inside parentheses, a note naming a department, one division name
-under two departments, a newest-sheet pairing on a refused row, a database department spelt by
-name and by code, a job title in the Division cell, a plural spelling (one-word names included),
-two codes that differ by an "s", and the accounts a person's emails may already have
-(no member row, a member row, another email's). `import.test.ts` checks that `positions_rows.csv`
-is left out, that an account with no member row is linked to its person's new member row with no
+the photo matching. `roster-shapes.test.ts` plans the shapes of issues #818, #820 and #822 over a
+fake roster built in memory: swapped Quitters dates, a shorter first name in `people_rows.csv`, one
+unit spelt several ways, a separator inside parentheses, a note naming a department, one division
+name under two departments, a newest-sheet pairing on a refused row, a database department spelt
+by name and by code, a job title in the Division cell, a plural spelling (one-word names
+included), two codes that differ by an "s", the accounts a person's emails may already have (no
+member row, a member row, another email's), a Chief Operating Officer with no unit, a lead seat
+whose title names its division, a title-only lead seat that stays `unknown-unit` because the
+database holds a division of that name and the run creates another under a different department,
+a bare "Lead", and `title` lines of the override input. `import.test.ts` checks that
+`positions_rows.csv` is left out, that an account with no member row is linked to its person's new member row with no
 other field written, and that a run whose linked account gained a member row after the plan was
 read fails and writes nothing.

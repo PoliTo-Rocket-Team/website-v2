@@ -11,7 +11,7 @@ import type { ExistingRole, Snapshot } from "./snapshot";
 import { dayOf, type PersonRow, type QuitterRow, type Sources } from "./sources";
 import { seatsOf, type FullAccessSeat, type PositionType, type Seat, type SeatReading } from "./titles";
 import { holds, refKey, UnitBook, UnitFold, type NewDepartment, type NewDivision, type PlacedDivision, type Sighting, type UnitRef } from "./unit-book";
-import { DepartmentIndex, notedDepartment, rowUnitNames, subteamReadingOf, unitKey, type UnitValue } from "./units";
+import { DepartmentIndex, notedDepartment, rowUnitNames, subteamReadingOf, unitKey, type UnitName, type UnitValue } from "./units";
 
 // What an import would write (issues #677, #816), worked out from the sources
 // and a snapshot of the database before anything is written. The plan is the
@@ -188,8 +188,8 @@ class Counter {
 /** A role's place: the units it is stored with. */
 type Placement = { readonly dept: UnitRef | null; readonly division: UnitRef | null };
 
-/** A department of a row: the cell that names it, and the unit it is (null when it resolved to none). */
-type RowDepartment = { readonly cell: "subteam" | "division"; readonly ref: UnitRef | null };
+/** A department of a row: the cell that names it, its value, and the unit it is (null when it resolved to none). */
+type RowDepartment = { readonly cell: "subteam" | "division"; readonly value: UnitName; readonly ref: UnitRef | null };
 
 /** What a row's subteam and division cells give its seats; with no database to resolve against, both unit lists are empty and nothing is placed. */
 type RowUnits = {
@@ -256,6 +256,7 @@ const MEMBERSHIP: Extract<SeatReading, { kind: "seat" }> = {
   title: "Member",
   acting: false,
   project: null,
+  division: null,
 };
 
 /** Each place once. */
@@ -317,7 +318,7 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     const names = unitNamesOf(c);
     const base = { year, reading: c.reading, advisor: names.advisor, projectOnly: names.projectOnly };
     if (book === null) return { ...base, departments: [], divisions: [] };
-    const departments = names.departments.map((d) => ({ cell: d.cell, ref: book.department(d.value, year) }));
+    const departments = names.departments.map((d) => ({ cell: d.cell, value: d.value, ref: book.department(d.value, year) }));
     const departmentNamed = (name: string) => departments[names.departments.findIndex((d) => unitKey(d.value.name) === unitKey(name))]?.ref ?? null;
     const divisions = names.divisions.map((d) => {
       const paired = d.department === null ? null : { value: d.department, ref: departmentNamed(d.department.name) };
@@ -332,10 +333,31 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
   };
 
   /**
+   * The division a division seat's title names, for a row that names no
+   * division (issue #822): under the row's departments, or any when it names
+   * none. Null when the title names none, a department of the row resolved to
+   * none, or the name matches no division the run knows, or several.
+   */
+  const titledDivision = (reading: Extract<SeatReading, { kind: "seat" }>, row: RowUnits): Placement[] | null => {
+    if (book === null || reading.division === null || row.departments.some((d) => d.ref === null)) return null;
+    const placed = book.titledDivision(reading.division, row.year, row.departments);
+    return placed === null ? null : [{ dept: placed.dept, division: placed.ref }];
+  };
+
+  /** The department a department seat's rule names for a row that names none (issue #822): the Chief Operating Officer's Operations. */
+  const fallbackDepartment = (seat: Seat, row: RowUnits): Placement[] | null => {
+    if (book === null || seat.fallback?.kind !== "department") return null;
+    const dept = book.namedDepartment([seat.fallback.name, seat.fallback.code], row.year);
+    return dept === null ? null : [{ dept, division: null }];
+  };
+
+  /**
    * The places a seat takes from its row's units, or why it has none. A
    * division seat sits in each division, a department seat in each
    * department. A member's seat sits in each division, and in each department
-   * no division of the row belongs to.
+   * no division of the row belongs to. A row that names no unit of a seat's
+   * level may still place it (issue #822): in the division its title names, or
+   * the department its rule names.
    */
   const placements = (reading: Extract<SeatReading, { kind: "seat" }>, seat: Seat, row: RowUnits): Placement[] | Unplaced => {
     if (seat.unit === "board" || book === null) return [NO_PLACE];
@@ -351,9 +373,13 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     const inDepartments = (list: readonly RowDepartment[]) => list.flatMap((d) => (d.ref === null ? [] : [{ dept: d.ref, division: null }]));
     const divisionMissing = row.divisions.some((d) => d === null);
     const departmentMissing = row.departments.find((d) => d.ref === null);
-    if (seat.unit === "division") return row.divisions.length === 0 ? none("division") : divisionMissing ? unresolved("division") : unique(inDivisions);
+    if (seat.unit === "division") {
+      if (row.divisions.length === 0) return titledDivision(reading, row) ?? none("division");
+      return divisionMissing ? unresolved("division") : unique(inDivisions);
+    }
     if (seat.unit === "department") {
-      return row.departments.length === 0 ? none("subteam") : departmentMissing !== undefined ? unresolved(departmentMissing.cell) : unique(inDepartments(row.departments));
+      if (row.departments.length === 0) return fallbackDepartment(seat, row) ?? none("subteam");
+      return departmentMissing !== undefined ? unresolved(departmentMissing.cell) : unique(inDepartments(row.departments));
     }
     if (row.divisions.length === 0 && row.departments.length === 0) return seat.type === "advisor" ? [NO_PLACE] : none("subteam");
     if (divisionMissing) return unresolved("division");
@@ -405,7 +431,8 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
     for (const reading of seatsOf(c.title)) {
       if (reading.kind !== "seat") continue;
       const { type, fullAccess, unit } = reading.seat;
-      if (type === "head" && unit === "department") for (const d of depts) keys.add(seatKeyOf(type, fullAccess, refKey(d))!);
+      // A head seat with no department of its row still holds its full-access seat (the Chief Operating Officer's, issue #822).
+      if (type === "head" && unit === "department" && depts.length > 0) for (const d of depts) keys.add(seatKeyOf(type, fullAccess, refKey(d))!);
       else {
         const key = seatKeyOf(type, fullAccess, null);
         if (key !== null) keys.add(key);
@@ -633,7 +660,9 @@ export function planImport(sources: Sources, snapshot: Snapshot, photoFolder: Ph
         }
         // An advisor marker in the unit cells makes a plain member's seat an advisor's; a seat with its own type keeps it.
         const marked = cells.advisor !== null && reading.seat.type === "core" && reading.seat.fullAccess === null;
-        const seat = marked ? ADVISOR_SEAT : reading.seat;
+        // A bare "Lead" on a row that names a department and no division is a member of that department (issue #822).
+        const member = reading.seat.fallback?.kind === "member" && cells.divisions.length === 0 && cells.departments.length > 0;
+        const seat = marked ? ADVISOR_SEAT : member ? MEMBERSHIP.seat : reading.seat;
         const storedTitle = marked && title.trim() === "" ? (cells.advisor!.senior ? "Senior Advisor" : "Advisor") : reading.title;
         const placed = placements(reading, seat, cells);
         if (!Array.isArray(placed)) {

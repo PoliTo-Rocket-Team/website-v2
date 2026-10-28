@@ -20,6 +20,7 @@ import {
 } from "./columns";
 import { parseCsv } from "./csv";
 import type { Conflict, At } from "./conflicts";
+import { withTitleOverrides } from "./overrides";
 import { excelDay, readWorkbook, type Sheet } from "./xlsx";
 
 // Reads the source directory (issue #677): the roster workbook, the source of
@@ -84,9 +85,11 @@ export type Sources = {
     readonly advisors: readonly Row<keyof typeof ADVISORS_CSV>[];
     readonly orders: readonly Row<keyof typeof ORDERS_CSV>[];
     readonly faqs: readonly Row<keyof typeof FAQS_CSV>[];
-    /** The import's override input, not an export: seats handed over this year, and Quitters rows given an academic year. */
+    /** The import's override input, not an export: seats handed over this year, Quitters rows given an academic year, and rows given a title. */
     readonly overrides: readonly Row<keyof typeof OVERRIDES_CSV>[];
   };
+  /** How many `title` lines of the override input replaced a title cell (issue #822): the rows above already carry their text. */
+  readonly titleOverrides: number;
   /** Sheets and files whose header could not be found. */
   readonly conflicts: readonly Conflict[];
 };
@@ -275,7 +278,7 @@ export function readSources(directory: string, year?: number): Sources {
   };
   for (const [fileName, why] of Object.entries(UNREAD_CSV_FILES)) if (names.includes(fileName)) skipped.push(`${fileName}: ${why}`);
 
-  return {
+  return withTitleOverrides({
     read,
     skipped,
     currentYear,
@@ -284,6 +287,7 @@ export function readSources(directory: string, year?: number): Sources {
     rolesSheets,
     namelessRows: nameless.count,
     csv: csvRows,
+    titleOverrides: 0,
     conflicts,
-  };
+  });
 }
