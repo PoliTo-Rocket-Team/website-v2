@@ -148,8 +148,10 @@ the person running the import writes. See **The override input** below.
     Department" is the Firmware lead seat. The name is matched as any unit value is (name, code,
     plural "s"; see **Units**) against the divisions the database holds and the ones this run
     creates from other rows. Only divisions of the row's department count, or of any department
-    when the row names none. Exactly one match places the seat there. Zero or several matches
-    leave it `unknown-unit`, and no division is made from a title.
+    when the row names none. A division this run creates counts under the department its own rows
+    give it, so a database division and a same-named one created under another department are two
+    matches. Exactly one match places the seat there. Zero or several matches leave it
+    `unknown-unit`, and no division is made from a title.
   - **A bare "Lead".** A seat titled only "Lead" or "Lead Engineer" on a row with a department and
     no division is a core member's role in that department. The stored title stays "Lead" (or
     "Lead Engineer"). With a division on the row it is that division's lead seat. With no unit at
@@ -391,7 +393,9 @@ name under two departments, a newest-sheet pairing on a refused row, a database 
 by name and by code, a job title in the Division cell, a plural spelling (one-word names
 included), two codes that differ by an "s", the accounts a person's emails may already have (no
 member row, a member row, another email's), a Chief Operating Officer with no unit, a lead seat
-whose title names its division, a bare "Lead", and `title` lines of the override input. `import.test.ts` checks that `positions_rows.csv`
-is left out, that an account with no member row is linked to its person's new member row with no
+whose title names its division, a title-only lead seat that stays `unknown-unit` because the
+database holds a division of that name and the run creates another under a different department,
+a bare "Lead", and `title` lines of the override input. `import.test.ts` checks that
+`positions_rows.csv` is left out, that an account with no member row is linked to its person's new member row with no
 other field written, and that a run whose linked account gained a member row after the plan was
 read fails and writes nothing.

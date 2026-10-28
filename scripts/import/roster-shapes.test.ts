@@ -825,6 +825,35 @@ test("issue #822: a lead seat on a row with no division sits in the one division
   assert.deepEqual([stored.departments, stored.divisions], [[], []]);
 });
 
+test("issue #822: a database division and a same-named one this run creates under another department are two matches for a lead seat on a row with no unit", () => {
+  const database = databaseWith({
+    departments: [
+      { id: 1, name: "Structures", code: null },
+      { id: 2, name: "Propulsion", code: null },
+    ],
+    divisions: [{ id: 10, name: "Valves", code: null, deptId: 1 }],
+  });
+  // Department B is held by the database, or created by this run.
+  for (const department of ["Propulsion", "Fluids"]) {
+    const plan = planImport(
+      sourcesOf({
+        years: {
+          2025: [
+            person("Ada", "Bini", { subteam: department, division: "Valves" }),
+            person("Ben", "Cori", { subteam: "N/A", division: "N/A", title: "Valves Lead" }),
+          ],
+        },
+      }),
+      database,
+      null,
+      TODAY,
+    );
+    assert.deepEqual(unknownUnits(plan), [["2025-2026", 3, "division"]], department);
+    assert.deepEqual(plan.divisions.map((d) => d.name), ["Valves"], department);
+    assert.deepEqual(rolesOf(plan), [`Engineer | core - | Valves / ${department === "Propulsion" ? "#2" : "Fluids"} | active`], department);
+  }
+});
+
 test("issue #822: a seat titled only 'Lead' or 'Lead Engineer' on a row with a department and no division is a core member there, keeping its title", () => {
   const sources = sourcesOf({
     years: {

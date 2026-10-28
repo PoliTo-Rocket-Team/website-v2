@@ -373,22 +373,32 @@ export class UnitBook {
    * The division a lead seat's title names (issue #822), on a row of `year`
    * that names no division: one the database holds or the rows name, matched
    * by name or code as any value is, under one of the row's departments
-   * (`departments`), or under any department when the row names none. Never
-   * one made from the title alone. Null when none matches, or more than one.
+   * (`departments`), or of any department when the row names none. A group
+   * the rows give is matched as its own rows place it, so a database division
+   * and a same-named one the run creates under another department are two
+   * matches. Never one made from the title alone. Null when none matches, or
+   * more than one.
    */
   titledDivision(name: string, year: number, departments: readonly PairedDepartment[]): PlacedDivision | null {
     const anywhere = departments.length === 0;
     const deptIds = new Set(departments.flatMap((d) => (d.ref?.kind === "existing" ? [d.ref.id] : [])));
     const stored = unitsNamed(this.units.divisions, name).filter((d) => anywhere || (d.deptId !== null && deptIds.has(d.deptId)));
-    /** Each group the name finds, and the department of the row's that the group's rows pair it with (null: any). */
-    const groups = this.folds.divisions.groupsNamed(name).flatMap((group): { group: string; paired: PairedDepartment | null }[] => {
-      if (anywhere) return [{ group, paired: null }];
+    /**
+     * Each group the name finds, with where its name is looked up: under the
+     * row's department its rows pair it with, or, on a row that names none,
+     * under each department its own rows pair it with, as `division` looks
+     * each of those rows up. Never under any department for a paired group,
+     * so a group created under one department is not taken for a database
+     * division of its name under another.
+     */
+    const groups = this.folds.divisions.groupsNamed(name).flatMap((group): { group: string; under: Under }[] => {
       const parents = new Set(this.folds.divisions.sightings(group).map((s) => s.parent));
+      if (anywhere) return [...parents].map((parent) => ({ group, under: this.underGroup(parent) }));
       const paired = departments.find((d) => {
         const parent = this.folds.departments.group(d.value);
         return parent !== null && parents.has(parent);
       });
-      return paired === undefined ? [] : [{ group, paired }];
+      return paired === undefined ? [] : [{ group, under: underOf(paired) }];
     });
     // What each match is, read without placing anything: a database unit by its id, a group the run creates by the group.
     const matches = new Map<string, () => PlacedDivision | null>();
@@ -398,14 +408,30 @@ export class UnitBook {
         return { ref: { kind: "existing", id: unit.id }, dept: unit.deptId === null ? null : { kind: "existing", id: unit.deptId } };
       });
     }
-    for (const { group, paired } of groups) {
+    for (const { group, under } of groups) {
       const value = this.folds.divisions.values(group)[0];
-      const under = underOf(paired);
       const lookup = this.lookup(this.folds.divisions, value, group, (v) => lookupDivision(this.units, v, under));
       if (lookup.kind === "ambiguous") return null;
       matches.set(lookup.kind === "found" ? `existing:${lookup.unit.id}` : `group:${group}`, () => this.placeDivision(value, group, under, year));
     }
     return matches.size === 1 ? [...matches.values()][0]() : null;
+  }
+
+  /**
+   * Where `division` looks up the name of a value its row pairs with the
+   * department group `parent`, read without placing anything: under the unit
+   * that group stands for (`deptId` null when it is one the run creates), or
+   * under any department when `parent` is null or two units share it.
+   */
+  private underGroup(parent: string | null): Under {
+    if (parent === null) return undefined;
+    const known = this.departmentRefs.get(parent);
+    if (known !== undefined) return { deptId: known.kind === "existing" ? known.id : null };
+    const seen = this.folds.departments.sightings(parent);
+    if (seen.length === 0) return undefined;
+    const lookup = this.lookup(this.folds.departments, seen[0].value, parent, (v) => lookupDepartment(this.units, v));
+    if (lookup.kind === "found") return { deptId: lookup.unit.id };
+    return lookup.kind === "absent" ? { deptId: null } : undefined;
   }
 
   /** The departments the plan creates, open or closed. Read once every row is placed. */
