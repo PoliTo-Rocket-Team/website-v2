@@ -293,9 +293,16 @@ const PAGES: Readonly<Record<string, DashboardPageKey | "editor">> = {
   "app/dashboard/account/page.tsx": "my-account",
 };
 
+/**
+ * Dashboard page files that read nothing and only call `notFound()`, so they
+ * have no reach to check: the catch-all that sends an unknown dashboard
+ * address to the dashboard not-found page (issue #807).
+ */
+const READS_NOTHING: readonly string[] = ["app/dashboard/[...slug]/page.tsx"];
+
 describe("every page under app/dashboard checks its reach before it reads", () => {
   test("the table lists every page file", () => {
-    const listed = Object.keys(PAGES).sort();
+    const listed = [...Object.keys(PAGES), ...READS_NOTHING].sort();
     const pages = (dir: string): string[] =>
       readdirSync(new URL(dir, root), { withFileTypes: true }).flatMap((e) =>
         e.isDirectory() ? pages(`${dir}/${e.name}`) : e.name === "page.tsx" ? [`${dir}/page.tsx`] : [],
@@ -316,6 +323,16 @@ describe("every page under app/dashboard checks its reach before it reads", () =
       assert.notEqual(check, -1, `${file} checks ${key}`);
       assert.match(text.slice(check - 60, check), /canReach\((data|opening\.data)\.viewer$/);
       assert.ok(!/await data\.\w+\(/.test(text.slice(0, check)), `${file} reads before it checks`);
+    });
+  }
+
+  for (const file of READS_NOTHING) {
+    test(`${file} reads nothing and calls notFound()`, () => {
+      const text = source(file);
+      const imports = [...text.matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
+      assert.deepEqual(imports, ["next/navigation"], `${file} imports only next/navigation`);
+      assert.ok(!/\bawait\b/.test(text), `${file} awaits nothing`);
+      assert.match(text, /\bnotFound\(\);/);
     });
   }
 });
