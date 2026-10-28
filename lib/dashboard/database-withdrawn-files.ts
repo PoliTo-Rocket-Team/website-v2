@@ -1,9 +1,8 @@
 import "server-only";
 
-import { and, eq, inArray, isNotNull, lte, ne, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lte, ne, notExists, or } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { applicationFiles, applications } from "@/db/schema";
-import { runAuditQuery } from "@/lib/db-audit";
 import { deletePrivateFile } from "@/lib/storage/private-store";
 import { heldFileIds, type CleanupApplication, type HeldFile, type WithdrawnFilesStore } from "./withdrawn-files";
 
@@ -61,13 +60,38 @@ async function heldFiles(application: CleanupApplication): Promise<HeldFile[]> {
   }));
 }
 
-async function deleteFileRow(fileId: number): Promise<void> {
-  await runAuditQuery((db) => db.delete(applicationFiles).where(eq(applicationFiles.id, fileId)));
+/**
+ * One batch, which the neon-http driver runs as one read-committed
+ * transaction. The first statement locks the row; a submission's insert that
+ * links it takes a key-share lock on it, so the lock waits for a submission
+ * in flight to land, and one that starts later waits for this batch and then
+ * fails on the missing row. The delete then reads the holders with a fresh
+ * snapshot, after the lock, so it sees every link that landed.
+ */
+async function deleteUnheldFileRow(fileId: number, cutoff: Date): Promise<"deleted" | "held"> {
+  const db = getDb();
+  const stillNeeded = db
+    .select({ id: applications.id })
+    .from(applications)
+    .where(
+      and(
+        or(eq(applications.cvFileId, fileId), eq(applications.coverLetterFileId, fileId)),
+        or(isNull(applications.withdrawnAt), gt(applications.withdrawnAt, cutoff.toISOString())),
+      ),
+    );
+  const [, gone] = await db.batch([
+    db.select({ id: applicationFiles.id }).from(applicationFiles).where(eq(applicationFiles.id, fileId)).for("update"),
+    db
+      .delete(applicationFiles)
+      .where(and(eq(applicationFiles.id, fileId), notExists(stillNeeded)))
+      .returning({ id: applicationFiles.id }),
+  ]);
+  return gone.length === 0 ? "held" : "deleted";
 }
 
 export const databaseWithdrawnFilesStore: WithdrawnFilesStore = {
   withdrawnApplications,
   heldFiles,
   deleteStoredFile: deletePrivateFile,
-  deleteFileRow,
+  deleteUnheldFileRow,
 };

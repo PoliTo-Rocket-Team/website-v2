@@ -7,7 +7,7 @@ import { IDS, seedFixture } from "@/lib/dashboard/access-matrix/fixture";
 import { signInAs } from "@/lib/dashboard/access-matrix/session";
 import { changeRows, databaseWrites, tableRows } from "@/lib/dashboard/access-matrix/test-database";
 import { databaseWithdrawnFilesStore } from "@/lib/dashboard/database-withdrawn-files";
-import { deleteWithdrawnFiles } from "@/lib/dashboard/withdrawn-files";
+import { deleteWithdrawnFiles, type WithdrawnFilesStore } from "@/lib/dashboard/withdrawn-files";
 import { setPdfField, type PdfPick } from "./application-form";
 import { submitDepsOf } from "./data";
 import { databaseApplyData } from "./database";
@@ -155,5 +155,30 @@ describe("Stored files are reused, on the real database (issue #826)", () => {
       assert.equal(row?.cvFileId, null);
       assert.equal(row?.coverLetterFileId, null);
     }
+  });
+
+  test("a file an application links after the cleanup read its holders keeps its row, its blob and the new link", async () => {
+    await seedFixture();
+    const longAgo = new Date(Date.now() - 40 * 86_400_000).toISOString();
+    await changeRows(applications, { id: FIRST }, { withdrawnAt: longAgo });
+
+    // The cleanup reads no other holder; the applicant then sends the stored files to a new position.
+    const store: WithdrawnFilesStore = {
+      ...databaseWithdrawnFilesStore,
+      heldFiles: async (application) => {
+        const files = await databaseWithdrawnFilesStore.heldFiles(application);
+        assert.ok(files.every((f) => f.otherHolders.length === 0), "no other holder when the cleanup read");
+        signInAs(APPLICANT);
+        assert.deepEqual(await send(OA, form(previous(CV), previous(LETTER))), { ok: true });
+        return files;
+      },
+    };
+
+    assert.deepEqual(await deleteWithdrawnFiles(new Date(), store), { deleted: [], failed: [] });
+    assert.ok((await fileRows()).includes(CV) && (await fileRows()).includes(LETTER));
+    assert.deepEqual((await databaseWrites()).filter((w) => w.kind === "delete-file"), []);
+    const linked = await applicationOn(OA);
+    assert.equal(linked.cvFileId, CV);
+    assert.equal(linked.coverLetterFileId, LETTER);
   });
 });

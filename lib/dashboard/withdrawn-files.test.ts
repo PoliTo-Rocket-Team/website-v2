@@ -44,8 +44,9 @@ function fakeStore(applications: CleanupApplication[], files: HeldFile[], failin
       if (failingObjects.includes(pathname)) throw new Error("store unavailable");
       objects.delete(pathname);
     },
-    deleteFileRow: async (fileId) => {
+    deleteUnheldFileRow: async (fileId) => {
       rows.delete(fileId);
+      return "deleted";
     },
   };
   const fileIdsAfter = (a: CleanupApplication) => ({
@@ -121,11 +122,30 @@ test("a row another application still needs is kept", () => {
   assert.equal(fileDeletion(file(10, { otherHolders: [daysAgo(31)] }), NOW).kind, "store-and-row");
 });
 
-test("a store delete that throws keeps that file's row and counts it as failed; the other file still goes", async () => {
+test("a store delete that throws after its row went counts the file as failed; the other file still goes", async () => {
   const { store, rows, objects } = fakeStore([application()], [file(10), file(11)], ["applications/10.pdf"]);
-  assert.deepEqual(await deleteWithdrawnFiles(NOW, store), { deleted: [11], failed: [10] });
+  assert.deepEqual(await deleteWithdrawnFiles(NOW, store), { deleted: [10, 11], failed: [10] });
+  assert.equal(rows.size, 0);
+  assert.deepEqual([...objects], ["applications/10.pdf"]);
+});
+
+test("a row the atomic delete finds held keeps its row and its object, and is neither deleted nor failed", async () => {
+  const { store, rows, objects, storeCalls } = fakeStore([application({ coverLetterFileId: null })], [file(10)]);
+  store.deleteUnheldFileRow = async () => "held";
+  assert.deepEqual(await deleteWithdrawnFiles(NOW, store), { deleted: [], failed: [] });
   assert.deepEqual([...rows.keys()], [10]);
   assert.deepEqual([...objects], ["applications/10.pdf"]);
+  assert.deepEqual(storeCalls, []);
+});
+
+test("a failed row delete keeps the object and counts the file as failed", async () => {
+  const { store, objects, storeCalls } = fakeStore([application({ coverLetterFileId: null })], [file(10)]);
+  store.deleteUnheldFileRow = async () => {
+    throw new Error("database unavailable");
+  };
+  assert.deepEqual(await deleteWithdrawnFiles(NOW, store), { deleted: [], failed: [10] });
+  assert.deepEqual([...objects], ["applications/10.pdf"]);
+  assert.deepEqual(storeCalls, []);
 });
 
 test("a stored pathname outside the private store's folders loses its row with no store call", async () => {

@@ -78,27 +78,40 @@ export interface WithdrawnFilesStore {
   heldFiles(application: CleanupApplication): Promise<readonly HeldFile[]>;
   /** Deletes one object from the private store; deleting one already gone is not an error. */
   deleteStoredFile(pathname: PrivatePathname): Promise<void>;
-  /** Deletes one `application_files` row; the foreign keys clear the application's file id. */
-  deleteFileRow(fileId: number): Promise<void>;
+  /**
+   * Deletes one `application_files` row unless an application withdrawn after
+   * `cutoff`, or not withdrawn, links it. The check and the delete are one
+   * atomic step: a submission that links the row while it runs either lands
+   * first, and the row is `"held"`, or fails on the missing row. The foreign
+   * keys clear the due applications' file ids.
+   */
+  deleteUnheldFileRow(fileId: number, cutoff: Date): Promise<"deleted" | "held">;
 }
 
 export type WithdrawnFilesRun = {
   /** File ids whose row is gone, with their stored object when they had one. */
   readonly deleted: readonly number[];
-  /** File ids left for the next run: their row stays, because a delete failed. */
+  /**
+   * File ids the run could not finish. Most keep their row for the next run;
+   * one whose row went but whose stored object could not be deleted is also
+   * in `deleted`, and its object stays in the store with no row.
+   */
   readonly failed: readonly number[];
 };
 
 /**
- * Deletes the files of every application due at `now`. For each file the
- * stored object goes first and the row second: when the object cannot be
- * deleted the row stays, so the next run finds the file again and no object is
- * left with no row pointing at it.
+ * Deletes the files of every application due at `now`. For each file the row
+ * goes first, through the store's atomic check that no application still
+ * needs it, and the stored object second. A file an application linked after
+ * its holders were read keeps both (issue #826). An object goes only once no
+ * row can point at it, so no saved application ever links a file whose object
+ * is gone.
  */
 export async function deleteWithdrawnFiles(now: Date, store: WithdrawnFilesStore): Promise<WithdrawnFilesRun> {
   const deleted: number[] = [];
   const failed: number[] = [];
-  const applications = await store.withdrawnApplications(withdrawnFilesCutoff(now));
+  const cutoff = withdrawnFilesCutoff(now);
+  const applications = await store.withdrawnApplications(cutoff);
   for (const application of applications) {
     if (!dueForFileDeletion(application, now)) continue;
     let files: readonly HeldFile[];
@@ -113,11 +126,18 @@ export async function deleteWithdrawnFiles(now: Date, store: WithdrawnFilesStore
       const deletion = fileDeletion(file, now);
       if (deletion.kind === "keep") continue;
       try {
-        if (deletion.kind === "store-and-row") await store.deleteStoredFile(deletion.pathname);
-        await store.deleteFileRow(deletion.fileId);
-        deleted.push(deletion.fileId);
+        if ((await store.deleteUnheldFileRow(deletion.fileId, cutoff)) === "held") continue;
       } catch (error) {
         console.error(`Deleting file ${deletion.fileId} of withdrawn application ${application.id} failed; the next run retries it.`, error);
+        failed.push(deletion.fileId);
+        continue;
+      }
+      deleted.push(deletion.fileId);
+      if (deletion.kind === "row-only") continue;
+      try {
+        await store.deleteStoredFile(deletion.pathname);
+      } catch (error) {
+        console.error(`The stored object of file ${deletion.fileId} could not be deleted; its row is gone, so the object stays.`, error);
         failed.push(deletion.fileId);
       }
     }
