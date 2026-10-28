@@ -14,7 +14,7 @@ import { applicationFiles, applications, applicationStatuses, applyPositions, in
 import { BUILT_IN_STATUSES } from "@/lib/dashboard/application-status";
 import { seatOf } from "@/lib/seeded-accounts";
 import { samplePdf } from "@/lib/seed/sample-pdf";
-import { privatePathname } from "@/lib/storage/pathname";
+import { privatePathname, type PrivatePathname } from "@/lib/storage/pathname";
 import { rowsOf, tableSeedModule } from "./rows";
 import { DIVISION as D } from "./structure";
 
@@ -330,17 +330,41 @@ const APPLICATIONS: readonly Application[] = [
 // applications share the row rather than each holding a copy of it. The row
 // has no owner, so deleting one applicant's account never deletes it; the
 // withdrawn-files cleanup keeps a row another live application still holds.
+//
+// One exception (issue #833): the applicant plain seat owns one stored CV of
+// its own, which application 24 sends as its CV, so the apply form offers that
+// seat a stored file to send again (issue #826). Deleting that seat's account
+// deletes this file with it, as for any applicant's own file.
+
+/** A document the preview build stores in the private store: where, and its bytes. */
+export type SeedDocument = { readonly pathname: PrivatePathname; readonly bytes: Uint8Array };
 
 /** The shared sample document: where the preview build stores it, and its bytes. */
-export const SEED_SAMPLE_DOCUMENT = {
+export const SEED_SAMPLE_DOCUMENT: SeedDocument = {
   pathname: privatePathname("application", "seed-sample.pdf"),
   bytes: samplePdf("Sample document", [
     "Every seeded application opens this file as its CV and its motivation letter.",
     "It is preview data only: no applicant sent it.",
   ]),
-} as const;
+};
 
-const SAMPLE_FILE_ID = 1;
+/** The applicant plain seat's own stored CV (issue #833). */
+export const SEED_APPLICANT_CV: SeedDocument = {
+  pathname: privatePathname("application", "seed-applicant-cv.pdf"),
+  bytes: samplePdf("Curriculum vitae", [
+    "The applicant test seat's own CV, sent with application 24.",
+    "It is preview data only: no applicant sent it.",
+  ]),
+};
+
+/** Every document the preview build stores, in the order it stores them. */
+export const SEED_DOCUMENTS: readonly SeedDocument[] = [SEED_SAMPLE_DOCUMENT, SEED_APPLICANT_CV];
+
+export const SAMPLE_FILE_ID = 1;
+export const APPLICANT_CV_FILE_ID = 2;
+
+/** The applicant plain seat's application that sends its own stored CV. */
+export const APPLICATION_WITH_OWN_CV = APPLICATION.applicantSeatTimesOffered;
 
 export const APPLICATION_FILE_ROWS = rowsOf(applicationFiles, [
   {
@@ -352,11 +376,24 @@ export const APPLICATION_FILE_ROWS = rowsOf(applicationFiles, [
     uploadedAt: "2026-09-01 09:00:00+02",
     userId: null,
   },
+  {
+    id: APPLICANT_CV_FILE_ID,
+    pathname: SEED_APPLICANT_CV.pathname,
+    originalFilename: "cv.pdf",
+    mimeType: "application/pdf",
+    fileSize: SEED_APPLICANT_CV.bytes.length,
+    uploadedAt: "2026-09-20 17:55:00+02",
+    userId: APPLICANT_SEAT,
+  },
 ]);
 
 export const APPLICATION_ROWS = rowsOf(
   applications,
-  APPLICATIONS.map((app) => ({ ...app, cvFileId: SAMPLE_FILE_ID, coverLetterFileId: SAMPLE_FILE_ID })),
+  APPLICATIONS.map((app) => ({
+    ...app,
+    cvFileId: app.id === APPLICATION_WITH_OWN_CV ? APPLICANT_CV_FILE_ID : SAMPLE_FILE_ID,
+    coverLetterFileId: SAMPLE_FILE_ID,
+  })),
 );
 
 /**
