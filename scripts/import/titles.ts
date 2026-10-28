@@ -21,6 +21,11 @@
 // #822): the Chief Operating Officer heads Operations, a lead seat sits in the
 // division its title names, and a bare "Lead" is a member of the row's
 // department. A rule says so in its seat's `fallback`; the plan finds the unit.
+//
+// A "Head of <X>" or "<X> Head" seat whose X names a division and no
+// department is that division's lead seat (owner decision, issue #824): "Head
+// of Safety" leads the Safety division. Whether X names one is a fact about the
+// units, so the reading carries X (`headed`) and the plan decides.
 
 export type PositionType = "president" | "head" | "lead" | "core" | "advisor";
 export type FullAccessSeat = "operations_lead" | "it_lead" | "project_manager" | "chief_engineer";
@@ -114,6 +119,8 @@ export type SeatReading =
       readonly project: string | null;
       /** The division a division seat's title names (issue #822): "Firmware" for "Firmware Lead Engineer". Null for a bare "Lead" and for any other seat. */
       readonly division: string | null;
+      /** The unit a "Head of <X>" or "<X> Head" seat's title names (issue #824): "Safety" for "Head of Safety". Null for "Head of Department" and for any other seat. */
+      readonly headed: string | null;
     }
   | { readonly kind: "unknown"; readonly title: string };
 
@@ -161,15 +168,28 @@ function divisionNamed(bare: string): string | null {
   return name === "" ? null : name;
 }
 
+/** The unit a head seat's title names: X of "Head of X" or "X Head"; null when there is none, or it is only "Department". */
+function headedNamed(bare: string): string | null {
+  const m = /^head\s+of\s+(.+)$/i.exec(bare) ?? /^(.+?)\s+head$/i.exec(bare);
+  const name = m === null ? "" : spaced(m[1]);
+  return name === "" || /^department$/i.test(name) ? null : name;
+}
+
 /** The seat one seat text gives. */
 export function readSeat(text: string): SeatReading {
   const title = withoutAmv(text);
   const { bare, acting, project } = notesOf(title);
   const key = titleKey(bare);
   const rule = key === "" ? undefined : TITLE_RULES.find((r) => r.pattern.test(key));
-  if (rule !== undefined) return { kind: "seat", seat: rule.seat, title, acting, project, division: rule.seat.unit === "division" ? divisionNamed(bare) : null };
+  if (rule !== undefined) {
+    const { seat } = rule;
+    const division = seat.unit === "division" ? divisionNamed(bare) : null;
+    // Only a plain head seat: the Chief Operating Officer's rule reads its own titles.
+    const headed = seat.type === "head" && seat.fullAccess === null ? headedNamed(bare) : null;
+    return { kind: "seat", seat, title, acting, project, division, headed };
+  }
   if (SEAT_WORDS.test(key)) return { kind: "unknown", title };
-  return { kind: "seat", seat: CORE, title: title || "Member", acting, project, division: null };
+  return { kind: "seat", seat: CORE, title: title || "Member", acting, project, division: null, headed: null };
 }
 
 /** The seats one " - " part gives: a compound title's parts, the " & " parts when the table reads each, else the part itself. */

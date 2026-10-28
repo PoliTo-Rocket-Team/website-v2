@@ -380,6 +380,33 @@ export class UnitBook {
    * more than one.
    */
   titledDivision(name: string, year: number, departments: readonly PairedDepartment[]): PlacedDivision | null {
+    return this.divisionMatch(name, year, departments)?.() ?? null;
+  }
+
+  /**
+   * The division a "Head of <X>" seat leads (owner decision, issue #824): X
+   * matches no department the database holds or the rows name, and matches
+   * one division as a lead seat's title does (`titledDivision`), under one of
+   * the row's departments (`departments`), else under any. Null when X
+   * matches a department, or no one division: the seat stays a department
+   * head's.
+   */
+  headedDivision(name: string, year: number, departments: readonly PairedDepartment[]): PlacedDivision | null {
+    return this.headedMatch(name, year, departments)?.() ?? null;
+  }
+
+  /** Whether `headedDivision` finds a division, read without placing anything. */
+  headsDivision(name: string, year: number, departments: readonly PairedDepartment[]): boolean {
+    return this.headedMatch(name, year, departments) !== null;
+  }
+
+  private headedMatch(name: string, year: number, departments: readonly PairedDepartment[]): (() => PlacedDivision | null) | null {
+    if (unitsNamed(this.units.departments, name).length > 0 || this.folds.departments.groupsNamed(name).length > 0) return null;
+    return this.divisionMatch(name, year, departments) ?? (departments.length === 0 ? null : this.divisionMatch(name, year, []));
+  }
+
+  /** The one division a title's name matches (see `titledDivision`), as a step that places it; null when none matches, or more than one. Nothing is placed until the step runs. */
+  private divisionMatch(name: string, year: number, departments: readonly PairedDepartment[]): (() => PlacedDivision | null) | null {
     const anywhere = departments.length === 0;
     const deptIds = new Set(departments.flatMap((d) => (d.ref?.kind === "existing" ? [d.ref.id] : [])));
     const stored = unitsNamed(this.units.divisions, name).filter((d) => anywhere || (d.deptId !== null && deptIds.has(d.deptId)));
@@ -414,7 +441,7 @@ export class UnitBook {
       if (lookup.kind === "ambiguous") return null;
       matches.set(lookup.kind === "found" ? `existing:${lookup.unit.id}` : `group:${group}`, () => this.placeDivision(value, group, under, year));
     }
-    return matches.size === 1 ? [...matches.values()][0]() : null;
+    return matches.size === 1 ? [...matches.values()][0] : null;
   }
 
   /**
