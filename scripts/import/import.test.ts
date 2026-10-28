@@ -141,9 +141,12 @@ test("a dry run reports every planted conflict and unclear quitter, and writes n
   // "Underwater Basket Weaving" and "Avionics Legacy" are on the current sheet: units to create, open (issue #816), so none is unresolved.
   assert.equal(plan.unresolvedUnits, 0);
   assert.match(report, /^Distinct unresolved unit names \(subteam and division cells\): 0$/m);
-  // The old open positions are not imported at all (issue #820): the file is listed as left out, and raises no conflict.
+  // A full run imports no old position (issue #820): the file is listed as left out, and raises no conflict. Only `--only positions` reads it (issue #834).
   assert.ok(!plan.conflicts.some((c) => c.at.file === "positions_rows.csv"));
-  assert.match(report, /^Skipped:\n(?: {2}.*\n)* {2}positions_rows\.csv: not imported \(owner decision\); recruitment creates new positions$/m);
+  assert.match(
+    report,
+    /^Skipped:\n(?: {2}.*\n)* {2}positions_rows\.csv: not imported \(owner decision\); only the positions-only run \(--only positions\) imports them$/m,
+  );
 });
 
 test("a dry run given no database says the units were not checked", async () => {

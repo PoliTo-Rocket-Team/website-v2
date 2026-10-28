@@ -1,0 +1,5 @@
+id,name,end,code,title_name,chief,coordinator1,coordinator2,project_manager,coordinator3
+st-1,Propulsion,,PRP,,,,,,
+st-2,Operations,,OPS,,,,,,
+st-3,Avionics,,AVI,,,,,,
+st-4,Recovery,,RCV,,,,,,

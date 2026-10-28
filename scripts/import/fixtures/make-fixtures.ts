@@ -88,8 +88,22 @@ import writeXlsxFile from "write-excel-file/node";
 //   kind; line 7 hands the 2025-2026 row 10 head seat to row 11. Lines 3, 5
 //   and 6 are not applied.
 
+//
+// It also writes ./positions: the old exports the positions-only run reads
+// (issue #834), which ../positions.test.ts runs over, plus a people and an FAQ
+// export it must leave alone. Each positions_rows.csv line plants one case,
+// against the divisions that test lays: line 2 maps by code under another
+// name and carries a form id and `open` true; line 3 by a plural spelling of
+// the name; line 4 by code; line 5 repeats line 4's title in other case and
+// spacing (a duplicate); line 6 has line 4's title in another division (no
+// duplicate); line 7's name finds two divisions, line 8's code two; line 9
+// finds none; line 10 is the test division; line 11's id is a subteam's,
+// mapped by name; line 12's id is on no row; line 13 has no title; line 14,
+// over three lines, maps to a closed division.
+
 const OUT = join(__dirname, "files");
 const RULES_OUT = join(__dirname, "rules");
+const POSITIONS_OUT = join(__dirname, "positions");
 
 type Cell = string | number | Date | null;
 const text = (rows: readonly (readonly Cell[])[]) =>
@@ -398,7 +412,61 @@ async function writeRules() {
   for (const [name, rows] of Object.entries(RULES_FILES)) writeFileSync(join(RULES_OUT, name), csv(rows));
 }
 
+// The positions-only run of issue #834 -------------------------------------------
+
+const POSITIONS_FILES: Record<string, string[][]> = {
+  "positions_rows.csv": [
+    ["id", "division", "number", "name", "description", "desirable", "required", "form", "open"],
+    ["p-1", "d-1", "2", "Feed Systems Engineer", "Design the feed system.", '["CAD","Python"]', '{"Fluid dynamics",Teamwork}', "fake-form-1", "true"],
+    ["p-2", "d-2", "1", "Test Bench Operator", "", "", "", "", "false"],
+    ["p-3", "d-3", "1", "Web Developer", "Build the site.", "", "", "fake-form-3", "true"],
+    ["p-4", "d-3", "1", " web  developer ", "Build it again.", "", "", "", "true"],
+    ["p-5", "d-1", "1", "Web Developer", "Build the bench software.", "", "", "", "true"],
+    ["p-6", "d-4", "1", "Safety Officer", "", "", "", "", "true"],
+    ["p-7", "d-5", "1", "Flight Software Engineer", "", "", "", "", "true"],
+    ["p-8", "d-6", "1", "Bay Technician", "", "", "", "", "true"],
+    ["p-9", "d-7", "1", "Test Position", "", "", "", "", "true"],
+    ["p-10", "st-4", "1", "Recovery Engineer", "Pack the parachutes.", "", "", "", "false"],
+    ["p-11", "d-404", "1", "Ghost Position", "", "", "", "", "true"],
+    ["p-12", "d-1", "1", "", "A row with no title.", "", "", "", "true"],
+    ["p-13", "d-8", "1", "Mission Analyst", "Plan the flight.\nCheck the margins.", "", "- Orbital mechanics\n- MATLAB", "", "true"],
+  ],
+  "divisions_rows.csv": [
+    ["id", "subteam", "name", "code", "end", "lead", "lead_acting"],
+    ["d-1", "st-1", "Liquid Propulsion Systems", "LQS", "", "", ""],
+    ["d-2", "st-1", "Ground System", "", "", "", ""],
+    ["d-3", "st-2", "IT & Communication", "ITC", "", "", ""],
+    ["d-4", "st-2", "Safety", "", "", "", ""],
+    ["d-5", "st-3", "Flight Software", "FSW", "", "", ""],
+    ["d-6", "st-3", "Avionics Bay", "AVB", "", "", ""],
+    ["d-7", "st-9", "test-division-website", "TDW", "", "", ""],
+    ["d-8", "st-3", "Mission Analysis", "MSA", "2024-09-30", "", ""],
+  ],
+  "subteams_rows.csv": [
+    ["id", "name", "end", "code", "title_name", "chief", "coordinator1", "coordinator2", "project_manager", "coordinator3"],
+    ["st-1", "Propulsion", "", "PRP", "", "", "", "", "", ""],
+    ["st-2", "Operations", "", "OPS", "", "", "", "", "", ""],
+    ["st-3", "Avionics", "", "AVI", "", "", "", "", "", ""],
+    ["st-4", "Recovery", "", "RCV", "", "", "", "", "", ""],
+  ],
+  // Not read by the positions-only run: were they read, a person and an FAQ would be inserted.
+  "people_rows.csv": [
+    ["id", "first_name", "last_name", "linkedin", "user", "has_pp"],
+    ["1", "Pino", "Example", "", "", "false"],
+  ],
+  "faqs_rows.csv": [
+    ["id", "question", "answer", "visible"],
+    ["f-1", "Is this read by the positions run?", "No.", "true"],
+  ],
+};
+
+function writePositions() {
+  mkdirSync(POSITIONS_OUT, { recursive: true });
+  for (const [name, rows] of Object.entries(POSITIONS_FILES)) writeFileSync(join(POSITIONS_OUT, name), csv(rows));
+}
+
 async function main() {
+  writePositions();
   await writeRules();
   mkdirSync(OUT, { recursive: true });
   const sheets = [

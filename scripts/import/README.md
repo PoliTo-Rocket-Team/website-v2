@@ -9,14 +9,16 @@ It never deletes a row. It updates one column only: an existing account that hol
 gets its person's new member row in `users.member` (see **Sign-in**).
 
 Running it on a real database (preview or production) is an owner step. The tests run it only on
-the fake files in `fixtures/files/` and `fixtures/rules/`, an in-memory database and a fake photo
-store.
+the fake files in `fixtures/files/`, `fixtures/rules/` and `fixtures/positions/`, an in-memory
+database and a fake photo store.
 
 ## Usage
 
 ```sh
-pnpm db:import <source-dir> [--mode dry-run|import] [--year YYYY-YYYY] [--report <file>] [--database-url <url>] [--blob-token <token>]
+pnpm db:import <source-dir> [--mode dry-run|import] [--only positions] [--year YYYY-YYYY] [--report <file>] [--database-url <url>] [--blob-token <token>]
 ```
+
+`--only positions` is a separate, positions-only run: see **Positions-only run** below.
 
 - `<source-dir>`: the directory with the roster workbook (one `.xlsx`), the CSV exports, a
   `photos/` folder if there are photos, and an `overrides.csv` if the owner made a decision the
@@ -85,9 +87,9 @@ From the CSVs (any may be missing): `people_rows.csv`, `team_members_rows.csv`,
 `faqs_rows.csv`. The workbook wins on any field both carry. A CSV fills only a field the workbook
 left empty, and reports a field where it disagrees.
 
-`positions_rows.csv`, the old open positions, is not imported at all (owner decision, issue #820):
-recruitment creates new positions. When the directory has it, the report lists it under the files
-left out, and none of its rows raises a conflict.
+`positions_rows.csv`, the old positions, is not read by a full run (owner decision, issue #820).
+When the directory has it, the report lists it under the files left out, and none of its rows
+raises a conflict. Only the positions-only run reads it (see **Positions-only run** below).
 
 From `photos/` (it may be missing): JPEG files named `<id>-<surname>.jpeg` (a member's) or
 `<surname>.jpeg` (an advisor's or a professor's). See **Photos** below.
@@ -353,6 +355,53 @@ the person running the import writes. See **The override input** below.
   title and dates (a handed-over role: with any end day), an advisor or FAQ with the same name or
   question, an order with the same requester, name and time. A second run creates no unit, inserts nothing and uploads nothing.
 
+## Positions-only run
+
+`--only positions` imports the old positions from `positions_rows.csv` as closed positions, kept
+for history, in the divisions the database already has (owner decision, issue #834). It is a
+separate run from the full import and imports nothing else: no person, role, unit, advisor, FAQ,
+order or photo. It never creates a department or a division. The full run is unchanged and still
+reads no position.
+
+```sh
+pnpm db:import <source-dir> --only positions --database-url <url>                 # dry run first
+pnpm db:import <source-dir> --only positions --mode import --database-url <url>   # then the import
+```
+
+It reads three files from `<source-dir>`: `positions_rows.csv`, `divisions_rows.csv` and
+`subteams_rows.csv`. The report lists every other file there as not read. It needs the database
+for a dry run too, since it maps each position to the database's divisions: `--database-url` or
+`IMPORT_DATABASE_URL`, as above. `--report` works as in the full run; `--year` and `--blob-token`
+do not apply and are refused.
+
+Rules (`positions.ts`):
+
+- **The old division.** A position's `division` is an id of the old export: a row of
+  `divisions_rows.csv`, else a row of `subteams_rows.csv`. That row gives the old unit's name and
+  code. An id on neither file is not imported.
+- **The production division.** The old unit maps to a division the database holds, closed ones
+  included, by its **code first**: the one division with that code. When no division has the code,
+  or the old unit has none, it maps by **name**, compared as any unit name is (see **Units**: case,
+  accents, punctuation, a level word and a plural "s" do not count, and a bare name equal to a
+  division's code finds it). A code that finds several divisions, or a name that does, is not
+  imported: the run never picks one. A name that finds none is not imported either.
+- **The test division** (`test-division-website`, code `TDW`, matched by name or code) is skipped.
+- **Closed.** Every imported position has `status` false, whatever its old `open` value.
+- **Fields.** `name` is the title; `description`, `desirable` and `required` carry over, the two
+  lists read as a JSON array, a Postgres array literal or one item per line. `form` (an old external
+  form id), `number` and `open` are not imported.
+- **Duplicates.** Two rows with the same division and title (case and spacing do not count) import
+  once: the later row is reported as a duplicate of the first. A row with no title is not imported.
+- **Insert-only and idempotent.** A position whose division and title the database already holds
+  is counted as present and left alone, so a second run inserts nothing. An import plans and writes
+  in one transaction, so a failure writes nothing.
+
+The report gives the counts (to insert or inserted, present, duplicates, the test division, and
+each reason a row is not imported), then every row of `positions_rows.csv` by its file line:
+the title, the production division it maps to by name and code, whether by code or by name, and the
+old division's name and code; or why it is not imported, with the old division's name and code
+(and, for several matches, the divisions found). Check this list in the dry run before the import.
+
 ## The override input
 
 `overrides.csv` holds the owner decisions the workbook cannot carry (issue #816). The person
@@ -402,8 +451,11 @@ name on it, or a row an earlier `title` line already gave a title (`row`).
 
 ## Fixtures
 
-`fixtures/make-fixtures.ts` writes `fixtures/files/` and `fixtures/rules/`. Every name in them is
-invented, every email is on `example.com`, and the photos are tiny generated JPEGs.
+`fixtures/make-fixtures.ts` writes `fixtures/files/`, `fixtures/rules/` and `fixtures/positions/`.
+Every name in them is invented, every email is on `example.com`, and the photos are tiny generated
+JPEGs. `positions.test.ts` runs the positions-only run over `positions/`: the mapping by code and
+by name, the test division, no match and several matches, an id on no row, duplicates, closed
+status, that nothing but positions is written, and that a second run inserts nothing.
 `import.test.ts` runs the tool over `files/`; `rules.test.ts` runs it over `rules/`, a roster that
 plants each reading rule of issue #816, with an `overrides.csv`. `parsing.test.ts` covers the
 readers: the date forms, the override lines, a quitter's stint (a swapped date cell included) and
