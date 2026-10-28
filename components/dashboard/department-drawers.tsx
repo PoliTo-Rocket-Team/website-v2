@@ -288,7 +288,7 @@ function NewDepartment({ open, structure, onClose }: { open: boolean; structure:
               <PeoplePicker
                 mode="head"
                 short={stored === "" ? "the new department" : stored}
-                taken={(p) => (p.seated ? `Already ${p.role}` : null)}
+                taken={() => null}
                 onPick={(p) => {
                   setHead(p);
                   setPicking(false);
@@ -487,7 +487,7 @@ function EditDepartment({
               <PeoplePicker
                 mode="head"
                 short={stored}
-                taken={(p) => (p.id === head?.id ? "Heads it now" : p.seated ? `Already ${p.role}` : null)}
+                taken={(p) => (p.id === head?.id ? "Heads it now" : null)}
                 onPick={(p) => {
                   setNewHead(p);
                   setPicking(false);

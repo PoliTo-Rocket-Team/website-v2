@@ -703,7 +703,7 @@ export function PeoplePicker({
       <div className="min-w-0 flex-1">
         <PersonCombobox
           id={id}
-          people={people.map((p) => ({ id: p.id, name: p.name, photoUrl: p.photoUrl, aside: p.place, line: p.role, taken: taken(p) }))}
+          people={people.map((p) => ({ id: p.id, name: p.name, photoUrl: p.photoUrl, aside: p.place, line: pickLine(mode, p), taken: taken(p) }))}
           value={null}
           onChoose={choose}
           placeholder={mode === "member" ? "Name or email" : "Search the team"}
@@ -727,6 +727,11 @@ export function PeoplePicker({
       </button>
     </div>
   );
+}
+
+/** A picker row's line: their role, and in a head or seat picker a seat they keep reads "Already Head of Propulsion" (issue #837). */
+function pickLine(mode: "lead" | "member" | "head" | "leader" | "seat", pick: TeamPick): string {
+  return pick.seated && (mode === "head" || mode === "seat") ? `Already ${pick.role}` : pick.role;
 }
 
 /** "Also in Structures · Design & Manufacturing", else their title here (board 68b). */

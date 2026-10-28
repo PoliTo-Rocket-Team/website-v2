@@ -1793,7 +1793,7 @@ async function changeSeatHolder(identity: DashboardIdentity, roleId: number, inp
   if (!checked.ok) return refused(checked.error);
   const snapshot = await readTeamSnapshot();
   const actor = await readActor(identity, snapshot.org);
-  const planned = planSeatHolderChange({ actor, org: snapshot.org, roleId, change: checked.value, team: teamPeopleOf(snapshot) });
+  const planned = planSeatHolderChange({ actor, roleId, change: checked.value, team: teamPeopleOf(snapshot) });
   if (!planned.ok) return refused(planned.error);
   const { from, to, steppingDown: step } = planned.value;
   const row = snapshot.roles.find((r) => r.id === roleId && r.leaved_at === null && r.member_id === from);
@@ -1820,7 +1820,7 @@ async function addSeat(identity: DashboardIdentity, input: unknown): Promise<Wri
   if (!checked.ok) return refused(checked.error);
   const snapshot = await readTeamSnapshot();
   const actor = await readActor(identity, snapshot.org);
-  const planned = planNewSeat({ actor, org: snapshot.org, add: checked.value, team: teamPeopleOf(snapshot) });
+  const planned = planNewSeat({ actor, add: checked.value, team: teamPeopleOf(snapshot) });
   if (!planned.ok) return refused(planned.error);
   const { personId, title } = planned.value;
   await runAuditBatch((db) => [db.insert(roles).values({ memberId: personId, deptId: null, divisionId: null, title, type: "core", startedAt: today(), fullAccess: null })]);
