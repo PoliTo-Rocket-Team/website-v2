@@ -25,9 +25,11 @@ import {
 import { positionCode } from "@/lib/apply/positions";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
-import { parsePrivatePathname, parsePublicPathname, publicPathname } from "@/lib/storage/pathname";
+import { parsePrivatePathname, parsePublicPathname, publicPathname, type PublicPathname } from "@/lib/storage/pathname";
 import { deletePrivateFile } from "@/lib/storage/private-store";
-import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
+import { referencedPublicFiles } from "@/lib/storage/public-references";
+import { uploadPublicFile } from "@/lib/storage/public-store";
+import { deleteUnreferencedAfter } from "@/lib/storage/unreferenced-delete";
 import { canReach } from "./access";
 import type { DashboardIdentity } from "./database";
 import { readHandOverOffer } from "./database-hand-over";
@@ -61,8 +63,8 @@ import {
   type StoredApplication,
 } from "./my-applications";
 import { fileSize } from "./recruitment";
+import { checkedPhoto } from "./upload-bytes";
 import {
-  checkPhoto,
   HAND_OVER_FIRST,
   leaveReason,
   normalizeLinkedin,
@@ -140,7 +142,11 @@ async function saveLinkedin(identity: DashboardIdentity, text: string): Promise<
   return written(checked.value);
 }
 
-/** The photo's pathname in the public store, when the stored URL points there. */
+/**
+ * The photo's pathname in the public store, when the stored URL points there.
+ * Another row may name the same file, so a delete asks `referencedPublicFiles`
+ * first (lib/storage/unreferenced-delete.ts).
+ */
 export function storedPhotoPathname(url: string | null) {
   if (url === null) return null;
   try {
@@ -150,21 +156,29 @@ export function storedPhotoPathname(url: string | null) {
   }
 }
 
+/** `storedPhotoPathname` as a list: the one pathname, or none. */
+export function photoPathnames(url: string | null): PublicPathname[] {
+  const pathname = storedPhotoPathname(url);
+  return pathname === null ? [] : [pathname];
+}
+
 async function setPhoto(identity: DashboardIdentity, photo: Upload | null): Promise<WriteResult<null>> {
   const memberId = identity.memberId;
   if (memberId === null) return refused("This page is for team members.");
-  if (photo !== null) {
-    const error = checkPhoto({ type: photo.contentType, size: photo.bytes.byteLength });
-    if (error !== null) return refused(error);
-  }
-  const old = storedPhotoPathname(identity.picture);
+  const checked = photo === null ? written(null) : checkedPhoto(photo);
+  if (!checked.ok) return checked;
+  const old = photoPathnames(identity.picture);
   let url: string | null = null;
-  if (photo !== null) {
-    const ext = photo.contentType === "image/png" ? "png" : "jpg";
-    ({ url } = await uploadPublicFile(publicPathname("photo", `${memberId}-${randomUUID()}.${ext}`), photo.bytes, photo.contentType));
+  if (checked.value !== null) {
+    const { bytes, contentType, extension } = checked.value;
+    ({ url } = await uploadPublicFile(publicPathname("photo", `${memberId}-${randomUUID()}.${extension}`), bytes, contentType));
   }
-  await runAuditQuery((db) => db.update(members).set({ picture: url }).where(eq(members.memberId, memberId)));
-  if (old !== null) await deleteBestEffort({ store: "public", area: "member-photo", pathname: old, remove: deletePublicFile });
+  // The old file goes only when no row names it once the new picture is in (issue #831).
+  const [, referenced] = await runAuditBatch((db) => [
+    db.update(members).set({ picture: url }).where(eq(members.memberId, memberId)),
+    referencedPublicFiles(db, old),
+  ]);
+  await deleteUnreferencedAfter("member-photo", old, referenced);
   return written(null);
 }
 
@@ -230,6 +244,9 @@ const BUILT_IN_STATUS_OF_ROW = sql<string>`coalesce((select coalesce(${applicati
  */
 const WITHDRAWABLE_ROW = and(inArray(BUILT_IN_STATUS_OF_ROW, [...WITHDRAWABLE_STATUS_KEYS]), isNull(applications.withdrawnAt));
 
+/** No application left unwithdrawn names the file as its CV or letter: the only file Delete account deletes (issue #831). */
+const NO_APPLICATION_IN_PROGRESS_USES_FILE = sql`not exists (select 1 from ${applications} where ${applications.withdrawnAt} is null and (${applications.cvFileId} = ${applicationFiles.id} or ${applications.coverLetterFileId} = ${applicationFiles.id}))`;
+
 async function readAccount(identity: DashboardIdentity): Promise<MyAccount | null> {
   if (!isOffTeam(identity.kind)) return null;
   const [details, open] = await Promise.all([
@@ -284,31 +301,20 @@ async function deleteAccount(identity: DashboardIdentity, options: DeleteAccount
         await getDb()
           .select({
             id: applications.id,
-            ...STATUS_COLUMNS,
             withdrawnAt: applications.withdrawnAt,
             cvFileId: applications.cvFileId,
             coverLetterFileId: applications.coverLetterFileId,
           })
           .from(applications)
-          .leftJoin(applicationStatuses, STATUS_JOIN)
-          .where(eq(applications.userId, userId))
-          .then((rows) =>
-            rows.map(({ status_key, status_parent_key, ...r }) => ({
-              ...r,
-              status: statusOfStored({ key: status_key, parentKey: status_parent_key }),
-            })),
-          ),
+          .where(eq(applications.userId, userId)),
       )
     : { applicationIds: [], fileIds: [] };
-  const files =
-    fileIds.length === 0
-      ? []
-      : await getDb()
-          .select({ pathname: applicationFiles.pathname })
-          .from(applicationFiles)
-          .where(and(inArray(applicationFiles.id, [...fileIds]), eq(applicationFiles.userId, userId)));
 
-  await runAuditBatch((db) => [
+  // The withdraw reads no status (Owner decision, issue #831), and the files
+  // go in the same batch, after it: a file is deleted only while no
+  // application left unwithdrawn uses it, so one sent between the read and
+  // this batch keeps its files. The rows deleted name the files to remove.
+  const results = await runAuditBatch((db) => [
     db.delete(betterAuthUsers).where(eq(betterAuthUsers.id, userId)),
     db.update(users).set({ deletedAt: sql`now()` }).where(eq(users.id, userId)),
     ...(memberId === null
@@ -321,15 +327,21 @@ async function deleteAccount(identity: DashboardIdentity, options: DeleteAccount
           db
             .update(applications)
             .set({ withdrawnAt: sql`now()`, statusKey: WITHDRAWN_STATUS_KEY })
-            .where(and(inArray(applications.id, [...applicationIds]), eq(applications.userId, userId), WITHDRAWABLE_ROW)),
+            .where(and(inArray(applications.id, [...applicationIds]), eq(applications.userId, userId), isNull(applications.withdrawnAt))),
         ]),
     ...(fileIds.length === 0
       ? []
-      : [db.delete(applicationFiles).where(and(inArray(applicationFiles.id, [...fileIds]), eq(applicationFiles.userId, userId)))]),
+      : [
+          db
+            .delete(applicationFiles)
+            .where(and(inArray(applicationFiles.id, [...fileIds]), eq(applicationFiles.userId, userId), NO_APPLICATION_IN_PROGRESS_USES_FILE))
+            .returning({ pathname: applicationFiles.pathname }),
+        ]),
   ]);
   if (memberId !== null) refreshAfter("team", updateTag);
 
-  for (const file of files) {
+  const deleted = fileIds.length === 0 ? [] : (results.at(-1) as { pathname: string }[]);
+  for (const file of deleted) {
     const pathname = parsePrivatePathname(file.pathname);
     if (pathname !== null) await deleteBestEffort({ store: "private", area: "delete-account", pathname, remove: deletePrivateFile });
   }

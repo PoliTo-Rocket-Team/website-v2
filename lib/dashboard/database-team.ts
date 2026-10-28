@@ -22,9 +22,10 @@ import {
   users,
 } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
-import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
 import { publicPathname } from "@/lib/storage/pathname";
-import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
+import { referencedPublicFiles } from "@/lib/storage/public-references";
+import { uploadPublicFile } from "@/lib/storage/public-store";
+import { deleteUnreferencedAfter } from "@/lib/storage/unreferenced-delete";
 import { alumniMove } from "./alumni-move";
 import { DashboardRefused, type TeamWrites } from "./data";
 import { automaticAliasRequests } from "./database-alias";
@@ -33,14 +34,14 @@ import { automaticTeamAddressReroutes } from "./database-team-address";
 import { handedTo, seatHandedTo, type TiedRoleChange } from "./team-address";
 import { moveApplication } from "./database-recruitment";
 import { answerNoticeOf, HAND_OVER_NEEDS_MEMBER, planHandOverAnswer, type HandOverAnswer, type HandOverAnswerPlan } from "./hand-over-request";
-import { storedPhotoPathname } from "./database-self";
+import { photoPathnames } from "./database-self";
+import { checkedMemberPhoto } from "./upload-bytes";
 import type { DashboardIdentity } from "./database";
 import { columnsFromMemberDetails, NO_MEMBER_DETAILS, type MemberDetails } from "./details";
 import {
   addOutcome,
   checkAddMember,
   checkMemberEdit,
-  checkMemberPhoto,
   divisionMembers,
   lookupForAdd,
   positionsOf,
@@ -1204,16 +1205,20 @@ async function saveMemberDetails(
 async function setMemberPhoto(identity: DashboardIdentity, personId: number, photo: Upload | null): Promise<WriteResult<null>> {
   const { org } = await readTeamSnapshot();
   if ((await rolesTheViewerChanges(identity, await readActor(identity, org), personId)) === null) return refused(NOT_IN_SCOPE);
-  if (photo !== null) {
-    const error = checkMemberPhoto({ type: photo.contentType, size: photo.bytes.byteLength });
-    if (error !== null) return refused(error);
-  }
+  const checked = photo === null ? written(null) : checkedMemberPhoto(photo);
+  if (!checked.ok) return refused(checked.error);
   const [member] = await getDb().select({ picture: members.picture }).from(members).where(eq(members.memberId, personId)).limit(1);
-  const old = storedPhotoPathname(member?.picture ?? null);
+  const old = photoPathnames(member?.picture ?? null);
   const url =
-    photo === null ? null : (await uploadPublicFile(publicPathname("photo", `${personId}-${randomUUID()}.jpg`), photo.bytes, photo.contentType)).url;
-  await runAuditQuery((db) => db.update(members).set({ picture: url }).where(eq(members.memberId, personId)));
-  if (old !== null) await deleteBestEffort({ store: "public", area: "member-photo", pathname: old, remove: deletePublicFile });
+    checked.value === null
+      ? null
+      : (await uploadPublicFile(publicPathname("photo", `${personId}-${randomUUID()}.${checked.value.extension}`), checked.value.bytes, checked.value.contentType)).url;
+  // The old file goes only when no row names it once the new picture is in (issue #831).
+  const [, referenced] = await runAuditBatch((db) => [
+    db.update(members).set({ picture: url }).where(eq(members.memberId, personId)),
+    referencedPublicFiles(db, old),
+  ]);
+  await deleteUnreferencedAfter("member-photo", old, referenced);
   done();
   return written(null);
 }

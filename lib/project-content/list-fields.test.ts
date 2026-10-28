@@ -42,7 +42,7 @@ const [cavour, ves, efesto] = importedRecords as [VehicleRecord, VehicleRecord, 
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 
 const UPLOADED = "https://abc.public.blob.vercel-storage.com/project-photos/new.jpg" as const;
-const files: PhotoFiles = { put: async () => UPLOADED, owns: (src): src is typeof UPLOADED => src === UPLOADED, drop: async () => {} };
+const files: PhotoFiles = { put: async () => UPLOADED, owns: (src): src is typeof UPLOADED => src === UPLOADED, drop: async () => {}, gone: async () => [] };
 
 type Of<K extends BlockFields["kind"]> = Extract<BlockFields, { kind: K }>;
 

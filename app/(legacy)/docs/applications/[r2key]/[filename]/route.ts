@@ -2,7 +2,7 @@ import { eq, or } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { applicationFiles, applications } from "@/db/schema";
-import type { DocumentKind, StoredDocument } from "@/lib/dashboard/application-documents";
+import { documentHeaders, type DocumentKind, type StoredDocument } from "@/lib/dashboard/application-documents";
 import { DashboardRefused } from "@/lib/dashboard/data";
 import { openDashboard } from "@/lib/dashboard/open";
 import { getCurrentUserId } from "@/lib/current-user";
@@ -88,17 +88,8 @@ export async function GET(
       return new NextResponse("File not found", { status: 404 });
     }
 
-    const headers = new Headers();
-    headers.set("Content-Type", file.contentType || "application/pdf");
-    headers.set("Content-Length", file.size.toString());
-    headers.set(
-      "Content-Disposition",
-      download ? `attachment; filename="${filename}"` : "inline",
-    );
-    headers.set("Cache-Control", "private, max-age=3600");
-    headers.set("ETag", file.etag);
-
-    return new NextResponse(file.stream, { status: 200, headers });
+    // The dashboard document route's headers (issue #831): never cached, a PDF the browser may not re-type, and an escaped name.
+    return new NextResponse(file.stream, { status: 200, headers: documentHeaders(filename, file.size, download ? "attachment" : "inline") });
   } catch (error) {
     console.error("File serving error:", error);
     return new NextResponse("Internal server error", { status: 500 });

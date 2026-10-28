@@ -18,6 +18,26 @@ export type StoredDocument = { readonly pathname: PrivatePathname; readonly name
 
 const DOCUMENT_KINDS: readonly DocumentKind[] = ["cv", "motivation-letter"];
 
+/** A document response is never kept by a browser or a cache: each opening checks access again. */
+export const DOCUMENT_NO_STORE = { "Cache-Control": "private, no-store" } as const;
+
+/**
+ * The headers a stored application document is sent with, by both routes
+ * that send one (issues #406, #831). Every application file was checked to be
+ * a PDF on upload, so the type is named and the browser told not to guess
+ * another; the uploaded name is percent-escaped, so no character of it can
+ * end the header's value.
+ */
+export function documentHeaders(name: string, size: number, disposition: "inline" | "attachment" = "inline"): Record<string, string> {
+  return {
+    ...DOCUMENT_NO_STORE,
+    "Content-Type": "application/pdf",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Length": String(size),
+    "Content-Disposition": `${disposition}; filename*=UTF-8''${encodeURIComponent(name)}`,
+  };
+}
+
 /** Where an application's document opens: the access-checked route, never a Blob URL. */
 export function documentHref(applicationId: number, kind: DocumentKind): string {
   return `/dashboard/applications/${applicationId}/${kind}`;

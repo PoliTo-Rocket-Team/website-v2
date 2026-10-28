@@ -103,7 +103,19 @@ data-modifying `WITH` statement through `runAuditQuery` (`db.execute` with a `sq
 new `members` row's id must reach the `users` link and the `roles` row in the same write. Several
 writes that must land together go through `runAuditBatch` instead: one `db.batch` with the audit
 setup first. A batch cannot pass one insert's id to the next, so a later write finds an earlier row
-by a unique value (the application finds its file rows by their unique Blob pathname). Better Auth
+by a unique value (the application finds its file rows by their unique Blob pathname). A batch
+cannot read and then decide either, so a write that must not land on rows changed since it read
+them opens its batch with a guard statement (`failUnless` and `unchangedRows` in
+[lib/db-guard.ts](../lib/db-guard.ts), issue #831) that fails the whole transaction; the caller
+reads that failure back with `isGuardFailure` and answers a refusal. The content stores do this
+through `writeOverExpected` in
+[lib/dashboard/database-guarded-write.ts](../lib/dashboard/database-guarded-write.ts), and
+anonymization through `failUnless`. A write that drops a reference to a public-store file ends
+its batch with `referencedPublicFiles`
+([lib/storage/public-references.ts](../lib/storage/public-references.ts)) and deletes only the
+files no row names (`deleteUnreferencedAfter` in
+[lib/storage/unreferenced-delete.ts](../lib/storage/unreferenced-delete.ts)), as `setPhoto` in
+[lib/dashboard/database-self.ts](../lib/dashboard/database-self.ts) does. Better Auth
 writes its own tables through its adapter and does not use `runAuditQuery`. The application submit's
 rules live in [lib/apply/submit.ts](../lib/apply/submit.ts), with its database and private file
 store passed in, so [submit.test.ts](../lib/apply/submit.test.ts) tests them with fakes. The

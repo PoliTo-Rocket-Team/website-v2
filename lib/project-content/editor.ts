@@ -9,7 +9,7 @@ import { editedLine, type EditStamp } from "./edited";
 import { checkProjectFields, heldPhotos, type ProjectFields } from "./fields";
 import { listPhotos } from "./list-fields";
 import { checkNewProject, takenSlugs, type NewProject } from "./new-project";
-import { BACKGROUND_MAX_BYTES, backgroundUploads, isUploadedSrc, type ProjectRecord, type UploadedSrc } from "./record";
+import { BACKGROUND_CROP_MAX_BYTES, backgroundUploads, isUploadedSrc, type ProjectRecord, type UploadedSrc } from "./record";
 
 // The projects' editor (issues #255, #297 and #298): the shared content
 // editor (lib/content/editor.ts), so the site-content gate, the draft and
@@ -40,24 +40,28 @@ export const NO_PHOTO_FILES: PhotoFiles = {
   },
   owns: (src): src is PhotoSrc => false,
   drop: async () => {},
+  gone: async () => [],
 };
 
 /** The uploaded files a project's version holds: its visual's and its blocks' photos, a hidden block's included, and its uploaded background's crops. */
 const photosIn = (record: ProjectRecord): PhotoSrc[] => [...listPhotos(record).filter(isPhotoSrc), ...backgroundUploads(record.background)];
 
+type FileUpkeep = Pick<PhotoFiles, "owns" | "drop" | "gone">;
+
 /** `files`, never deleting the photos in `held`. */
-function keeping(files: Pick<PhotoFiles, "drop">, held: readonly string[]): Pick<PhotoFiles, "drop"> {
+function keeping(files: FileUpkeep, held: readonly string[]): FileUpkeep {
   const kept = new Set(held);
-  return { drop: (srcs) => files.drop(srcs.filter((src) => !kept.has(src))) };
+  return { ...files, drop: (srcs) => files.drop(srcs.filter((src) => !kept.has(src))) };
 }
 
 /** Photo files and background files as one: a file is this side's when either stored it, and each deletes only its own. */
-function eitherFiles(photos: PhotoFiles, backgrounds: PhotoFiles): Pick<PhotoFiles, "owns" | "drop"> {
+function eitherFiles(photos: PhotoFiles, backgrounds: PhotoFiles): FileUpkeep {
   return {
     owns: (src): src is PhotoSrc => photos.owns(src) || backgrounds.owns(src),
     drop: async (srcs) => {
       await Promise.all([photos.drop(srcs), backgrounds.drop(srcs)]);
     },
+    gone: async (srcs) => [...(await photos.gone(srcs)), ...(await backgrounds.gone(srcs))],
   };
 }
 
@@ -117,7 +121,7 @@ export interface ProjectEditor extends ContentEditor<ProjectRecord> {
   discardPhoto(src: string): Promise<WriteResult<null>>;
   /**
    * One crop of a background picked in the panel (board 93f, issue #529):
-   * a JPEG, PNG or WebP file of at most 10 MB, read from its own bytes,
+   * a JPEG, PNG or WebP file of at most 4 MB (`BACKGROUND_CROP_MAX_BYTES`), read from its own bytes,
    * stored under the backgrounds' own folder once the gate admits the
    * viewer; answers its src.
    */
@@ -181,7 +185,7 @@ export function projectEditor(
 
     async uploadBackground(upload) {
       if (!allowed) return refused(SITE_CONTENT_REFUSAL);
-      const crop = checkImageUpload(upload, BACKGROUND_MAX_BYTES, "background");
+      const crop = checkImageUpload(upload, BACKGROUND_CROP_MAX_BYTES, "background");
       if (!crop.ok) return crop;
       const src = await backgrounds.put(crop.value);
       return isUploadedSrc(src) ? written(src) : refused("The background could not be stored. Try again.");

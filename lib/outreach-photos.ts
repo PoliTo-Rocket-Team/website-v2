@@ -1,7 +1,7 @@
 import type { ContentStore } from "@/lib/content/editor";
 import { versionRows, type ContentItem } from "@/lib/content/versioned";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
-import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
+import { deleteBestEffort, type DeleteArea } from "@/lib/storage/best-effort-delete";
 import { publicFolderOf, publicPathname, publicPathnameOfUrl, type PublicFileKind, type PublicPathname, type PublicStoreHost } from "@/lib/storage/pathname";
 import type { OutreachDraft, PhotoSrc, PostItem, PostStore } from "./outreach-types";
 
@@ -64,9 +64,22 @@ export interface PhotoFiles {
   put(photo: CheckedPhoto): Promise<PhotoSrc>;
   /** Whether `src` names a file this side stored, so a save may carry it. */
   owns(src: string): src is PhotoSrc;
-  /** Deletes the files of these photos that this side stored; any other src is left alone. A file already gone is not an error. */
+  /**
+   * Deletes the files of these photos that this side stored and no row names
+   * any more (lib/storage/public-references.ts); any other src is left
+   * alone. A file already gone is not an error.
+   */
   drop(srcs: readonly PhotoSrc[]): Promise<void>;
+  /**
+   * Of these photos, the files this side stored that are no longer in the
+   * store: a save carrying one was made in a panel opened before another
+   * save deleted it, and is refused (issue #831).
+   */
+  gone(srcs: readonly PhotoSrc[]): Promise<PhotoSrc[]>;
 }
+
+/** Why a save carrying a photo whose file another save deleted is refused. */
+export const PHOTO_GONE = "A photo in this panel was removed by another save. Reload the page and add it again.";
 
 /** The photos a content editor's panel uploads: Outreach post photos, project photos, and the crops of a project's uploaded background. */
 export type PanelPhotoKind = Extract<PublicFileKind, "post-photo" | "project-photo" | "project-background">;
@@ -89,6 +102,35 @@ export interface PublicFileWrites {
   remove(pathname: PublicPathname): Promise<void>;
 }
 
+/** What an editor's photos need of a public store: its writes, and two reads. */
+export interface PublicFiles extends PublicFileWrites {
+  /** Whether the store still holds the file. */
+  stored(pathname: PublicPathname): Promise<boolean>;
+  /**
+   * Of these files, the ones no row names now (lib/storage/public-references.ts):
+   * the only ones a drop deletes. A side that keeps no other rows answers them all.
+   */
+  unreferenced(pathnames: readonly PublicPathname[]): Promise<readonly PublicPathname[]>;
+}
+
+/** Of `srcs`, those whose file `pathnameOf` names and the store no longer holds. */
+export async function goneFiles<S extends string>(srcs: readonly S[], pathnameOf: (src: string) => PublicPathname | null, writes: Pick<PublicFiles, "stored">): Promise<S[]> {
+  const checked = await Promise.all(
+    [...new Set(srcs)].map(async (src) => {
+      const pathname = pathnameOf(src);
+      return pathname !== null && !(await writes.stored(pathname)) ? [src] : [];
+    }),
+  );
+  return checked.flat();
+}
+
+/** Deletes each of `pathnames` that no row names, best-effort: the write before it has landed. */
+export async function dropUnreferenced(area: DeleteArea, pathnames: readonly PublicPathname[], writes: Pick<PublicFiles, "remove" | "unreferenced">): Promise<void> {
+  if (pathnames.length === 0) return;
+  const free = await writes.unreferenced(pathnames);
+  await Promise.all(free.map((pathname) => deleteBestEffort({ store: "public", area, pathname, remove: writes.remove })));
+}
+
 /**
  * Photos of one kind kept in the public store whose files `host` serves;
  * `host` is null while no store is configured, and then no URL is this
@@ -98,7 +140,7 @@ export interface PublicFileWrites {
 export function publicStorePanelPhotos(
   kind: PanelPhotoKind,
   host: PublicStoreHost | null,
-  writes: PublicFileWrites,
+  writes: PublicFiles,
   newName: () => string,
 ): PhotoFiles {
   const pathnameOf = (src: string) => (host === null ? null : storedPhotoPathname(src, host, kind));
@@ -111,14 +153,14 @@ export function publicStorePanelPhotos(
     owns: (src): src is `https://${string}` => pathnameOf(src) !== null,
     async drop(srcs) {
       // A file left behind costs storage only; the write already landed.
-      const pathnames = srcs.flatMap((src) => pathnameOf(src) ?? []);
-      await Promise.all(pathnames.map((pathname) => deleteBestEffort({ store: "public", area: "post-photo", pathname, remove: writes.remove })));
+      await dropUnreferenced("post-photo", srcs.flatMap((src) => pathnameOf(src) ?? []), writes);
     },
+    gone: (srcs) => goneFiles(srcs, pathnameOf, writes),
   };
 }
 
 /** Post photos in the public store, under `post-photos/`. */
-export function publicStorePhotoFiles(host: PublicStoreHost | null, writes: PublicFileWrites, newName: () => string): PhotoFiles {
+export function publicStorePhotoFiles(host: PublicStoreHost | null, writes: PublicFiles, newName: () => string): PhotoFiles {
   return publicStorePanelPhotos("post-photo", host, writes, newName);
 }
 
@@ -130,21 +172,28 @@ export function publicStorePhotoFiles(host: PublicStoreHost | null, writes: Publ
  */
 export function freeingFiles<T extends D, D>(
   store: ContentStore<T, D>,
-  files: Pick<PhotoFiles, "drop">,
+  files: Pick<PhotoFiles, "drop" | "gone">,
   photosIn: (content: D) => readonly PhotoSrc[],
 ): ContentStore<T, D> {
+  const photosOf = (item: ContentItem<T, D> | null) => (item === null ? [] : versionRows(item.version).flatMap((row) => photosIn(row.content)));
   async function thenFree<R>(id: number, write: () => Promise<WriteResult<R>>): Promise<WriteResult<R>> {
     const before = (await store.list()).find((item) => item.id === id) ?? null;
     const result = await write();
-    if (result.ok) {
-      const had = before === null ? [] : versionRows(before.version).flatMap((row) => photosIn(row.content));
-      await files.drop(filesNoLongerShown(had, await store.list(), photosIn));
-    }
+    if (result.ok) await files.drop(filesNoLongerShown(photosOf(before), await store.list(), photosIn));
     return result;
   }
   return {
     ...store,
-    update: (id, version) => thenFree(id, () => store.update(id, version)),
+    // The store refuses a write made on versions another save has replaced
+    // since; a photo the item did not have must still be stored, or the
+    // panel was opened before another save deleted it (issue #831).
+    update: (id, version, expected) =>
+      thenFree(id, async () => {
+        const had = new Set(photosOf({ id, siteOrder: 0, version: expected }));
+        const added = photosOf({ id, siteOrder: 0, version }).filter((src) => !had.has(src));
+        if ((await files.gone(added)).length > 0) return refused(PHOTO_GONE);
+        return store.update(id, version, expected);
+      }),
     remove: (id) => thenFree(id, () => store.remove(id)),
   };
 }
@@ -171,7 +220,7 @@ export const postPhotos = (post: OutreachDraft): PhotoSrc[] => [...post.photos, 
  * or a delete lands, each photo the post had before goes to `files.drop` when
  * no version of any post shows it any more (`photosNoLongerShown`).
  */
-export function freeingPhotoFiles(store: PostStore, files: Pick<PhotoFiles, "drop">): PostStore {
+export function freeingPhotoFiles(store: PostStore, files: Pick<PhotoFiles, "drop" | "gone">): PostStore {
   return freeingFiles(store, files, postPhotos);
 }
 

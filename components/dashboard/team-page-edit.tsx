@@ -423,6 +423,8 @@ export function TeamPageEdit({
         return;
       }
       setLayerStatus(statusOf(result.value.layer));
+      // The layer as saved: a photo picked from a member is its copy now (issue #831).
+      setLayer(editorVersion(result.value.layer));
       setAdvisorItems(result.value.advisors);
       setAdvisorRows(advisorRowsOf(result.value.advisors));
       toast.success(step === "publish" ? "The Team page is published." : "Draft saved. The live Team page stays as it is.");

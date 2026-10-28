@@ -12,9 +12,19 @@ import { advisorRowsOf, publicAdvisors, withAdvisors, type AdvisorRow, type Advi
 import { importedAdvisors } from "./advisors-import";
 import { addLeader, applyLayer, NO_TEAM_LAYER, NO_UPLOADS, type AddedDepartment, type TeamPageLayer } from "./team-layer";
 import { hideHead } from "./team-page-add";
-import { HEADS_FULL, publishedLayer, publicTeamPage, SECTION_EMPTY, teamPageEditor, type TeamPagePhotos, type TeamPageStore } from "./team-page-editor";
+import {
+  HEADS_FULL,
+  PICKED_PHOTO_GONE,
+  publishedLayer,
+  publicTeamPage,
+  SECTION_EMPTY,
+  teamPageEditor,
+  type TeamPagePhotos,
+  type TeamPageStore,
+} from "./team-page-editor";
 import { memoryTeamPageStore } from "./team-page-memory";
-import { publicStoreTeamPagePhotos } from "./team-page-photos";
+import { publicStoreTeamPagePhotos, type TeamPageFileWrites } from "./team-page-photos";
+import { CHANGED_SINCE_READ } from "@/lib/content/editor";
 import { team } from "./team";
 import { HEADS_SHOWN_MAX, headsShown, teamBuildOf, teamPageFromRoles } from "./team-roles";
 import type { PersonPhoto } from "./types";
@@ -28,7 +38,7 @@ import type { PersonPhoto } from "./types";
 
 const roles = teamRolesOf(SEED_DATA);
 /** Photos that store nothing: the tests below that upload bring their own. */
-const NO_PHOTOS: TeamPagePhotos = { put: async () => "/team/stand-in.webp", owns: NO_UPLOADS, drop: async () => {} };
+const NO_PHOTOS: TeamPagePhotos = { put: async () => "/team/stand-in.webp", owns: NO_UPLOADS, adopt: async (photo) => photo, drop: async () => {}, gone: async () => [] };
 const build = teamBuildOf(roles);
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 const siteContent: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false };
@@ -248,7 +258,8 @@ test("the database side of Save draft and Publish sends the layer and the adviso
   const source = readFileSync(new URL("../dashboard/database-team-page-store.ts", import.meta.url), "utf8");
   assert.doesNotMatch(source, /@\/db\/schema|\bsql`|from "drizzle-orm"/);
   assert.equal([...source.matchAll(/runAuditBatch\(/g)].length, 1);
-  assert.match(source, /runAuditBatch\(\(db\) => \[\.\.\.layerVersionWrites\(db, layer\), \.\.\.advisorWriteQueries\(db, advisors\)\]\)/);
+  // Behind the guards that refuse a save made on rows another save replaced (issue #831).
+  assert.match(source, /runAuditBatch\(\(db\) => \[\.\.\.unchanged\(db\), \.\.\.layerVersionWrites\(db, layer\), \.\.\.advisorWriteQueries\(db, advisors\)\]\)/);
 });
 
 // Replace photo's upload (issue #323): stored only past the site-content
@@ -267,7 +278,9 @@ function recordingPhotos() {
         return STORED as `https://${string}`;
       },
       owns: (src: string) => src === STORED,
+      adopt: async (photo: PersonPhoto) => photo,
       drop: async () => {},
+      gone: async () => [],
     },
   };
 }
@@ -312,9 +325,32 @@ const OWN_HOST = publicStoreHost("store_Own123");
 const ownUrl = (pathname: string) => `https://own123.public.blob.vercel-storage.com/${pathname}` as `https://${string}`;
 const MEMBER_PICTURE = ownUrl("photos/member-7.jpg");
 
-function storePhotos(remove: (pathname: string) => Promise<void>) {
+/** A store that keeps nothing, where every file is stored and no other row names one. */
+const noWrites: TeamPageFileWrites = {
+  upload: async (pathname) => ({ url: ownUrl(pathname) }),
+  remove: async () => {},
+  copy: async (_from, to) => ({ url: ownUrl(to) }),
+  stored: async () => true,
+  unreferenced: async (pathnames) => pathnames,
+};
+
+/** The Team page's photos over a store that keeps nothing; `copied` records each copy, and `named` are files other rows name. */
+function storePhotos(remove: (pathname: string) => Promise<void>, copied: string[] = [], named: readonly string[] = []) {
   let n = 0;
-  return publicStoreTeamPagePhotos(OWN_HOST, { upload: async (pathname) => ({ url: ownUrl(pathname) }), remove }, () => String(++n));
+  return publicStoreTeamPagePhotos(
+    OWN_HOST,
+    {
+      upload: async (pathname) => ({ url: ownUrl(pathname) }),
+      remove,
+      copy: async (from, to) => {
+        copied.push(`${from} -> ${to}`);
+        return { url: ownUrl(to) };
+      },
+      stored: async () => true,
+      unreferenced: async (pathnames) => pathnames.filter((p) => !named.includes(p)),
+    },
+    () => String(++n),
+  );
 }
 
 async function uploaded(editor: ReturnType<typeof teamPageEditor>) {
@@ -325,33 +361,76 @@ async function uploaded(editor: ReturnType<typeof teamPageEditor>) {
 
 test("a replaced uploaded photo's file is deleted after the write lands, once no stored version or advisor row uses it", async () => {
   const removed: string[] = [];
+  const copied: string[] = [];
   const { store } = editorOver(siteContent);
-  const editor = teamPageEditor(siteContent, store, async () => roles, team, storePhotos(async (pathname) => {
-    removed.push(pathname);
-    assert.notEqual(publishedLayer(await store.layer.list()).leader.photo, ownUrl(pathname), "deleted only after the write landed");
-  }));
+  const editor = teamPageEditor(
+    siteContent,
+    store,
+    async () => roles,
+    team,
+    storePhotos(async (pathname) => {
+      removed.push(pathname);
+      assert.notEqual(publishedLayer(await store.layer.list()).leader.photo, ownUrl(pathname), "deleted only after the write landed");
+    }, copied),
+  );
   const [a, b, c, d] = [await uploaded(editor), await uploaded(editor), await uploaded(editor), await uploaded(editor)];
   const withAdvisorPhoto = async (photo: PersonPhoto) => {
     const [first, ...rest] = await rowsOf(store);
     return [{ ...first, fields: { ...first.fields, photo } }, ...rest];
   };
 
+  // The member's own picture is kept as a copy of its own (Owner decision, issue #831).
   assert.ok((await editor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: a } }, await withAdvisorPhoto(MEMBER_PICTURE))).ok);
+  assert.deepEqual(copied, ["photos/member-7.jpg -> photos/team-page-5.jpg"]);
+  assert.equal(publicAdvisors(await store.advisors())[0]?.photo, ownUrl("photos/team-page-5.jpg"), "the advisor row names the copy, not the member's file");
   assert.deepEqual(removed, []);
 
   // A draft replaces both, but the published version still shows them.
   assert.ok((await editor.save("save-draft", { ...NO_TEAM_LAYER, leader: { photo: b } }, await withAdvisorPhoto(c))).ok);
   assert.deepEqual(removed, [], "the published version still uses them");
 
-  // Publish: the leader's upload goes; the member's own picture is never this editor's to delete.
+  // Publish: the leader's upload and the copy go; the member's own picture is never this editor's to delete.
   assert.ok((await editor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: b } }, await withAdvisorPhoto(c))).ok);
-  assert.deepEqual(removed, ["photos/team-page-1.jpg"]);
+  assert.deepEqual(removed, ["photos/team-page-1.jpg", "photos/team-page-5.jpg"]);
 
   // Reset to team drops a draft's upload the published version never showed.
   assert.ok((await editor.save("save-draft", { ...NO_TEAM_LAYER, leader: { photo: d } }, await rowsOf(store))).ok);
-  assert.deepEqual(removed, ["photos/team-page-1.jpg"], "the published version still shows b");
+  assert.deepEqual(removed, ["photos/team-page-1.jpg", "photos/team-page-5.jpg"], "the published version still shows b");
   assert.ok((await editor.reset()).ok);
-  assert.deepEqual(removed, ["photos/team-page-1.jpg", "photos/team-page-4.jpg"]);
+  assert.deepEqual(removed, ["photos/team-page-1.jpg", "photos/team-page-5.jpg", "photos/team-page-4.jpg"]);
+});
+
+test("a photo picked from a member is copied once wherever the page shows it, and a save is refused when its file is gone", async () => {
+  const copied: string[] = [];
+  const { store } = editorOver(siteContent);
+  const editor = teamPageEditor(siteContent, store, async () => roles, team, storePhotos(async () => {}, copied));
+  const [first, ...rest] = await rowsOf(store);
+  const rows = [{ ...first, fields: { ...first.fields, photo: MEMBER_PICTURE } }, ...rest];
+  assert.ok((await editor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: MEMBER_PICTURE } }, rows)).ok);
+  assert.deepEqual(copied, ["photos/member-7.jpg -> photos/team-page-1.jpg"], "one copy for the leader and the advisor");
+  assert.equal(publishedLayer(await store.layer.list()).leader.photo, ownUrl("photos/team-page-1.jpg"));
+
+  const gone = publicStoreTeamPagePhotos(OWN_HOST, { ...noWrites, copy: async () => null }, () => "x");
+  const refusedEditor = teamPageEditor(siteContent, store, async () => roles, team, gone);
+  assert.deepEqual(
+    await refusedEditor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: ownUrl("photos/member-8.jpg") } }, await rowsOf(store)),
+    refused(PICKED_PHOTO_GONE),
+  );
+});
+
+test("a Team page save made on a layer another save replaced in the meantime is refused", async () => {
+  const { store } = editorOver(siteContent);
+  const racing: TeamPageStore = {
+    ...store,
+    async save(layer, advisors, expected) {
+      // Another save lands between this one's read and its write.
+      await store.save({ state: "published", published: { ...NO_TEAM_LAYER, intro: "Theirs" }, draft: null }, [], expected);
+      return store.save(layer, advisors, expected);
+    },
+  };
+  const editor = teamPageEditor(siteContent, racing, async () => roles, team, NO_PHOTOS);
+  assert.deepEqual(await editor.save("publish", { ...NO_TEAM_LAYER, intro: "Mine" }, await rowsOf(store)), refused(CHANGED_SINCE_READ));
+  assert.equal(publishedLayer(await store.layer.list()).intro, "Theirs");
 });
 
 test("an uploaded group photo is in use while any stored version shows it, and its file goes once none does", async () => {

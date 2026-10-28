@@ -12,9 +12,11 @@ import type { EditStamp } from "@/lib/project-content/edited";
 import type { ProjectRecord } from "@/lib/project-content/record";
 import { rowRecordOf } from "@/lib/project-content/row";
 import { publicStorePanelPhotos, type PhotoFiles } from "@/lib/outreach-photos";
-import { deletePublicFile, ownPublicStoreHost, uploadPublicFile } from "@/lib/storage/public-store";
+import { ownPublicStoreHost } from "@/lib/storage/public-store";
 import { attributedName } from "./acting-account";
 import { actingTitleIn, readActingTitles } from "./database-acting-account";
+import { writeOverExpected } from "./database-guarded-write";
+import { databasePublicFiles } from "./database-public-files";
 import { written } from "./write";
 
 // The database side of the projects (issue #295): the store a projects editor
@@ -142,14 +144,16 @@ export const databaseProjectStore: ContentStore<ProjectRecord> = {
     return written({ id: Number(created.rows[0].project_id), siteOrder, version });
   },
 
-  async update(id, version) {
-    const before = (await readProjectItems()).find((item) => item.id === id) ?? null;
-    await runAuditBatch((db) => [
-      db.delete(projectVersions).where(eq(projectVersions.projectId, id)),
-      db.insert(projectVersions).values(versionValues(id, version)),
-    ]);
+  async update(id, version, expected) {
+    const landed = await writeOverExpected(
+      { table: projectVersions, id: projectVersions.id, where: eq(projectVersions.projectId, id) },
+      async () => (await readProjectItems()).find((item) => item.id === id) ?? null,
+      expected,
+      (db) => [db.delete(projectVersions).where(eq(projectVersions.projectId, id)), db.insert(projectVersions).values(versionValues(id, version))],
+    );
+    if (!landed.ok) return landed;
     updateTag(PROJECTS_CACHE_TAG);
-    return written({ id, siteOrder: before?.siteOrder ?? 0, version });
+    return written({ id, siteOrder: landed.value.before?.siteOrder ?? 0, version });
   },
 
   async remove(id) {
@@ -172,10 +176,10 @@ export const databaseProjectStore: ContentStore<ProjectRecord> = {
 
 /** Uploaded launch and gallery photos in this deployment's public Blob store, under `project-photos/`, each under a new name (issue #299). */
 export function blobProjectPhotoFiles(): PhotoFiles {
-  return publicStorePanelPhotos("project-photo", ownPublicStoreHost(), { upload: uploadPublicFile, remove: deletePublicFile }, randomUUID);
+  return publicStorePanelPhotos("project-photo", ownPublicStoreHost(), databasePublicFiles, randomUUID);
 }
 
 /** The Tall and Wide crops of uploaded project backgrounds in this deployment's public Blob store, under `project-backgrounds/`, each under a new name (issue #529). */
 export function blobProjectBackgroundFiles(): PhotoFiles {
-  return publicStorePanelPhotos("project-background", ownPublicStoreHost(), { upload: uploadPublicFile, remove: deletePublicFile }, randomUUID);
+  return publicStorePanelPhotos("project-background", ownPublicStoreHost(), databasePublicFiles, randomUUID);
 }

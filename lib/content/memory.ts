@@ -1,6 +1,6 @@
-import { written, type WriteResult } from "@/lib/dashboard/write";
-import type { ContentStore } from "./editor";
-import type { ContentItem } from "./versioned";
+import { refused, written, type WriteResult } from "@/lib/dashboard/write";
+import { CHANGED_SINCE_READ, type ContentStore } from "./editor";
+import { sameVersions, type ContentItem } from "./versioned";
 
 export interface MemoryContentStore<T extends D, D = T> extends ContentStore<T, D> {
   /** Every item becomes `next` in one write: `keep` takes the whole list or refuses it, and a refusal changes nothing. */
@@ -37,8 +37,10 @@ export function memoryContentStore<T extends D, D = T>(
       if (result.ok) lastId = item.id;
       return result;
     },
-    async update(id, version) {
-      const updated = { ...items.find((item) => item.id === id)!, version };
+    async update(id, version, expected) {
+      const stored = items.find((item) => item.id === id);
+      if (stored === undefined || !sameVersions(stored.version, expected)) return refused(CHANGED_SINCE_READ);
+      const updated = { ...stored, version };
       return apply(
         items.map((item) => (item.id === id ? updated : item)),
         updated,

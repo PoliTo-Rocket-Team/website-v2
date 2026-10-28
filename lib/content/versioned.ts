@@ -53,6 +53,31 @@ export function publicVersion<T extends D, D = T>(version: Versioned<T, D>): T |
   return version.state === "published" ? version.published : null;
 }
 
+/** `value` as JSON with every object's keys in order, so two reads of one content give one text. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    typeof v === "object" && v !== null && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
+}
+
+/**
+ * Whether two reads of an item's versions hold the same content: what a
+ * store compares before a write, so a save made on a version another save
+ * has since replaced is refused (issue #831).
+ */
+export function sameVersions<T extends D, D = T>(a: Versioned<T, D> | null, b: Versioned<T, D> | null): boolean {
+  return canonicalJson(a) === canonicalJson(b);
+}
+
+/** The same versions with each one's content put through `f`. */
+export function mapVersions<T>(version: Versioned<T>, f: (content: T) => T): Versioned<T> {
+  return version.state === "draft"
+    ? { state: "draft", draft: f(version.draft) }
+    : { state: "published", published: f(version.published), draft: version.draft === null ? null : f(version.draft) };
+}
+
 /** What the edit panel opens on: the working draft when there is one, else the published version. */
 export function editorVersion<T extends D, D = T>(version: Versioned<T, D>): D {
   return version.state === "draft" ? version.draft : (version.draft ?? version.published);

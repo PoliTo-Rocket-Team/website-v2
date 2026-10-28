@@ -37,8 +37,12 @@ function account(overrides: Partial<DeletedAccount> = {}): DeletedAccount {
   };
 }
 
-/** A store over fixed accounts: it returns every one, so the rule under test is the domain's own. */
-function fakeStore(accounts: DeletedAccount[], files: PersonalFile[] = []) {
+/**
+ * A store over fixed accounts: it returns every one, so the rule under test
+ * is the domain's own. `stillDue` is what the batch's own check finds, and
+ * `named` the files another row still names, which the run keeps.
+ */
+function fakeStore(accounts: DeletedAccount[], files: PersonalFile[] = [], stillDue = true, named: readonly string[] = []) {
   const runs: AnonymizationStep[][] = [];
   const deleted: PersonalFile[] = [];
   const store: AnonymizationStore = {
@@ -47,8 +51,10 @@ function fakeStore(accounts: DeletedAccount[], files: PersonalFile[] = []) {
     deleteFile: async (file) => {
       deleted.push(file);
     },
-    run: async (plan) => {
+    run: async (_userId, plan, sent) => {
+      if (!stillDue) return null;
       runs.push([...plan]);
+      return sent.filter((file) => !named.includes(file.pathname));
     },
   };
   return { store, runs, deleted };
@@ -79,7 +85,7 @@ test("an account whose person signed in again is left alone", async () => {
   assert.equal(runs.length, 0);
 });
 
-test("the person's application files and member photo are deleted before the rows are cleared", async () => {
+test("the person's application files and member photo are deleted once the rows are cleared", async () => {
   const files: PersonalFile[] = [
     { store: "private", pathname: "applications/cv.pdf" },
     { store: "public", pathname: "photo/7-a.jpg" },
@@ -90,7 +96,44 @@ test("the person's application files and member photo are deleted before the row
   assert.ok(runs[0]?.some((step) => step.kind === "delete-application-files"));
 });
 
-test("when a file cannot be deleted, the account's rows stay for the next run", async () => {
+test("someone who signs in again during the run keeps their data and their files (#831)", async () => {
+  const files: PersonalFile[] = [
+    { store: "private", pathname: "applications/cv.pdf" },
+    { store: "public", pathname: "photo/7-a.jpg" },
+  ];
+  // The accounts were read as due; the batch's own check then finds a sign-in.
+  const { store, deleted, runs } = fakeStore([account()], files, false);
+  assert.deepEqual(await anonymizeDeletedAccounts(NOW, store), { anonymized: [], failed: [] });
+  assert.equal(runs.length, 0, "nothing was written");
+  assert.deepEqual(deleted, [], "no file was deleted");
+});
+
+test("a photo another row still names stays in the store (#831)", async () => {
+  const files: PersonalFile[] = [
+    { store: "private", pathname: "applications/cv.pdf" },
+    { store: "public", pathname: "photo/7-a.jpg" },
+  ];
+  const { store, deleted } = fakeStore([account()], files, true, ["photo/7-a.jpg"]);
+  await anonymizeDeletedAccounts(NOW, store);
+  assert.deepEqual(deleted, [files[0]]);
+});
+
+test("when the write fails, no file is deleted and the next run retries the account", async () => {
+  const { store, deleted } = fakeStore([account()], [{ store: "private", pathname: "applications/cv.pdf" }]);
+  store.run = async () => {
+    throw new Error("database down");
+  };
+  const original = console.error;
+  console.error = () => undefined;
+  try {
+    assert.deepEqual(await anonymizeDeletedAccounts(NOW, store), { anonymized: [], failed: ["u-1"] });
+  } finally {
+    console.error = original;
+  }
+  assert.deepEqual(deleted, []);
+});
+
+test("when a file cannot be deleted after the rows are cleared, the run reports the account as failed", async () => {
   const { store, runs } = fakeStore([account()], [{ store: "private", pathname: "applications/cv.pdf" }]);
   store.deleteFile = async () => {
     throw new Error("store down");
@@ -102,7 +145,7 @@ test("when a file cannot be deleted, the account's rows stay for the next run", 
   } finally {
     console.error = original;
   }
-  assert.equal(runs.length, 0);
+  assert.equal(runs.length, 1, "the rows were cleared first");
 });
 
 // The rows before and after -------------------------------------------------

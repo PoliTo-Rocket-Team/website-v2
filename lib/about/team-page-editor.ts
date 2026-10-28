@@ -3,7 +3,9 @@ import { maySiteContent, SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import {
   afterStep,
   editorVersion,
+  mapVersions,
   publicItems,
+  sameVersions,
   statusOf,
   type ContentItem,
   type ContentStatus,
@@ -13,10 +15,11 @@ import {
 } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
-import { checkPhotoUpload, type CheckedPhoto } from "@/lib/outreach-photos";
-import { advisorWritesOf, type AdvisorItem, type AdvisorWrite } from "./advisors";
+import { checkPhotoUpload, PHOTO_GONE, type CheckedPhoto } from "@/lib/outreach-photos";
+import { advisorsAfter, advisorWritesOf, type AdvisorItem, type AdvisorWrite } from "./advisors";
 import {
   applyLayer,
+  withLayerPhotos,
   ARC_FULL,
   ARC_LEADERS,
   isTeamPageLayer,
@@ -53,9 +56,13 @@ import type { PersonPhoto, TeamPage } from "./types";
 // picked with Replace photo (issue #323), or uploaded as the group photo
 // (issue #510), is stored the moment it is picked,
 // behind the same gate, and reaches the page only when Save draft or Publish
-// carries its src. Once a write lands, each uploaded photo it left unused by
-// every stored layer version and advisor row is deleted, best-effort, so a
-// failed delete never fails the write. Both sides of the dashboard data
+// carries its src. A photo picked from another row's file, a member's own
+// picture say, is copied when a save keeps it, so no two rows share one file
+// (Owner decision, issue #831). A save made on a layer or advisors another
+// save has replaced since is refused. Once a write lands, each uploaded
+// photo it left unused by every stored layer version and advisor row, and
+// named by no other row, is deleted, best-effort, so a failed delete never
+// fails the write. Both sides of the dashboard data
 // interface build it, each with its own store, its own roles and its own
 // photo files.
 
@@ -101,9 +108,26 @@ export interface TeamPageStore {
   /**
    * The layer document's versions become `layer` and every advisor write
    * lands, in one step: on a refusal or a failure nothing is written, and
-   * the layer and the advisors stay as they were.
+   * the layer and the advisors stay as they were. `expected` is the layer
+   * and the advisors the save was made on: when another save has replaced
+   * either since, it is refused with `CHANGED_SINCE_READ` (issue #831).
    */
-  save(layer: Versioned<TeamPageLayer>, advisors: readonly AdvisorWrite[]): Promise<WriteResult<null>>;
+  save(layer: Versioned<TeamPageLayer>, advisors: readonly AdvisorWrite[], expected: TeamPageRead): Promise<WriteResult<null>>;
+}
+
+/** The layer's versions (none before the first save) and every advisor, as one save read them. */
+export type TeamPageRead = { readonly layer: Versioned<TeamPageLayer> | null; readonly advisors: readonly AdvisorItem[] };
+
+/** Whether two reads of the layer and the advisors hold the same content. */
+export function sameTeamPageRead(a: TeamPageRead, b: TeamPageRead): boolean {
+  const byId = (items: readonly AdvisorItem[]) => [...items].sort((x, y) => x.id - y.id);
+  const advisorsMatch =
+    a.advisors.length === b.advisors.length &&
+    byId(a.advisors).every((item, i) => {
+      const other = byId(b.advisors)[i];
+      return item.id === other.id && item.siteOrder === other.siteOrder && sameVersions(item.version, other.version);
+    });
+  return advisorsMatch && sameVersions(a.layer, b.layer);
 }
 
 /**
@@ -116,18 +140,56 @@ export interface TeamPagePhotos {
   /** Whether a remote URL is a file `put` stored, so a layer may keep it as the group photo (issue #510). */
   readonly owns: OwnsUpload;
   /**
-   * Deletes the files of these photos that `put` stored; any other photo (a
-   * `/team/` path, a member's own picture) is left alone. A failed delete is
-   * logged, never thrown: the write it follows has already landed.
+   * The photo as a saved layer or advisor row keeps it (Owner decision,
+   * issue #831): a `/team/` path, a file `put` stored or a URL off this
+   * store stay as they are; any other file of this store, a member's own
+   * picture say, is copied under a new name, so no two rows share one file.
+   * Null when that file is gone.
+   */
+  adopt(photo: PersonPhoto): Promise<PersonPhoto | null>;
+  /**
+   * Deletes the files of these photos that `put` or `adopt` stored and no
+   * row names any more; any other photo (a `/team/` path, a member's own
+   * picture) is left alone. A failed delete is logged, never thrown: the
+   * write it follows has already landed.
    */
   drop(photos: readonly PersonPhoto[]): Promise<void>;
+  /** Of these photos, the files `put` or `adopt` stored that are no longer in the store. */
+  gone(photos: readonly PersonPhoto[]): Promise<PersonPhoto[]>;
 }
+
+/** Why a save is refused when a photo it picked from another row is no longer stored. */
+export const PICKED_PHOTO_GONE = "A photo you picked is no longer stored. Reload the page and pick it again.";
 
 /** Every photo the stored layer versions and advisor versions show. */
 export function photosInUse(layer: readonly ContentItem<TeamPageLayer>[], advisors: readonly AdvisorItem[]): Set<PersonPhoto> {
   const layers = layer.flatMap((item) => versionRows(item.version).flatMap((row) => layerPhotos(row.content)));
   const rows = advisors.flatMap((item) => versionRows(item.version).flatMap((row) => row.content.photo ?? []));
   return new Set([...layers, ...rows]);
+}
+
+/**
+ * The layer and the advisor writes with every photo as a save keeps it
+ * (`TeamPagePhotos.adopt`): another row's file is copied once, however many
+ * places show it. Refused when one of those files is gone.
+ */
+export async function adoptedPhotos(
+  layer: TeamPageLayer,
+  writes: readonly AdvisorWrite[],
+  photos: Pick<TeamPagePhotos, "adopt">,
+): Promise<WriteResult<{ readonly layer: TeamPageLayer; readonly advisors: AdvisorWrite[] }>> {
+  const shown = new Set([...layerPhotos(layer), ...writes.flatMap((w) => versionRows(w.version).flatMap((row) => row.content.photo ?? []))]);
+  const kept = new Map<PersonPhoto, PersonPhoto>();
+  for (const photo of shown) {
+    const adopted = await photos.adopt(photo);
+    if (adopted === null) return refused(PICKED_PHOTO_GONE);
+    kept.set(photo, adopted);
+  }
+  const swap = (photo: PersonPhoto) => kept.get(photo) ?? photo;
+  return written({
+    layer: withLayerPhotos(layer, swap),
+    advisors: writes.map((w) => ({ ...w, version: mapVersions(w.version, (a) => (a.photo === undefined ? a : { ...a, photo: swap(a.photo) })) })),
+  });
 }
 
 /** Of the photos in use before a write, those no stored version uses after it, so their files may go. */
@@ -209,12 +271,18 @@ export function teamPageEditor(
       if (!isTeamPageLayer(layer, photos.owns)) return refused(NOT_A_LAYER);
       const refusal = layerRefusal(teamBuildOf(await roles()), base, layer);
       if (refusal !== null) return refused(refusal);
-      const writes = advisorWritesOf(await store.advisors(), step, advisors);
+      const [items, advisorItems] = await Promise.all([store.layer.list(), store.advisors()]);
+      const writes = advisorWritesOf(advisorItems, step, advisors);
       if (!writes.ok) return writes;
-      const items = await store.layer.list();
-      const before = photosInUse(items, await store.advisors());
-      const version = afterStep(items[0]?.version ?? null, layer, step);
-      const saved = await store.save(version, writes.value);
+      const adopted = await adoptedPhotos(layer, writes.value, photos);
+      if (!adopted.ok) return adopted;
+      const before = photosInUse(items, advisorItems);
+      const version = afterStep(items[0]?.version ?? null, adopted.value.layer, step);
+      // A Team page upload the stored versions did not show must still be
+      // stored: else the panel was opened before another save deleted it.
+      const after = photosInUse([{ id: 1, siteOrder: 1, version }], advisorsAfter(advisorItems, adopted.value.advisors));
+      if ((await photos.gone([...after].filter((photo) => !before.has(photo)))).length > 0) return refused(PHOTO_GONE);
+      const saved = await store.save(version, adopted.value.advisors, { layer: items[0]?.version ?? null, advisors: advisorItems });
       if (!saved.ok) return saved;
       const advisorsNow = await store.advisors();
       await photos.drop(photosNoLongerUsed(before, photosInUse(await store.layer.list(), advisorsNow)));

@@ -273,24 +273,25 @@ export function canWithdraw(stage: ActiveStage): boolean {
 /** One of the person's own applications, as Delete account reads it. */
 export type OwnApplication = {
   readonly id: number;
-  readonly status: ApplicationStatus;
   readonly withdrawnAt: string | null;
   readonly cvFileId: number | null;
   readonly coverLetterFileId: number | null;
 };
 
 /**
- * What "Also withdraw my open applications" on Delete account withdraws: the
- * open applications, the ones the Withdraw button could still withdraw
- * (`isWithdrawable`, issue #759), and the files only they use. The files of
- * the person's other applications stay with those applications, kept like the
- * rest of the data until the account is anonymized (issue #191).
+ * What "Also withdraw my open applications" on Delete account withdraws:
+ * every application of the account not withdrawn yet, whatever its status
+ * (Owner decision, issue #831), and the files only they use. The status is
+ * not read, so an application a lead moves on between this read and the
+ * write is withdrawn with the rest, and none still in progress keeps a link
+ * to a deleted file. The files of the applications withdrawn before stay
+ * with them.
  */
 export function withdrawnOnDelete(applications: readonly OwnApplication[]): {
   readonly applicationIds: readonly number[];
   readonly fileIds: readonly number[];
 } {
-  const open = (a: OwnApplication) => a.withdrawnAt === null && isWithdrawable(a.status);
+  const open = (a: OwnApplication) => a.withdrawnAt === null;
   const filesOf = (a: OwnApplication) => [a.cvFileId, a.coverLetterFileId].filter((id): id is number => id !== null);
   const withdrawn = applications.filter(open);
   const kept = new Set(applications.filter((a) => !open(a)).flatMap(filesOf));

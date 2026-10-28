@@ -1,9 +1,10 @@
+import { CHANGED_SINCE_READ } from "@/lib/content/editor";
 import type { MemoryContentStore } from "@/lib/content/memory";
 import type { ContentItem } from "@/lib/content/versioned";
 import { refused } from "@/lib/dashboard/write";
 import { advisorsAfter, type AdvisorItem, type AdvisorVersion } from "./advisors";
 import type { TeamPageLayer } from "./team-layer";
-import type { TeamPageStore } from "./team-page-editor";
+import { sameTeamPageRead, type TeamPageStore } from "./team-page-editor";
 
 // The Team page's store held in memory (issue #321): the layer document and
 // the advisors, each in its own memory content store (lib/content/memory.ts),
@@ -23,8 +24,9 @@ export function memoryTeamPageStore(
   return {
     layer,
     advisors: () => advisors.list(),
-    async save(version, writes) {
+    async save(version, writes, expected) {
       const [current] = await layer.list();
+      if (!sameTeamPageRead({ layer: current?.version ?? null, advisors: await advisors.list() }, expected)) return refused(CHANGED_SINCE_READ);
       const nextLayer = [{ id: current?.id ?? 1, siteOrder: current?.siteOrder ?? 1, version }];
       const nextAdvisors = advisorsAfter(await advisors.list(), writes);
       const why = refusal(nextLayer, nextAdvisors);

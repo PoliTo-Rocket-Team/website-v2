@@ -8,7 +8,8 @@ import { outreachEditor, publicOutreach } from "./outreach-editor";
 import { importedOutreach } from "./outreach-import";
 import { memoryOutreachStore, memoryPhotoFiles } from "./outreach-memory";
 import { postFieldsOf } from "./outreach-post-fields";
-import { publicStorePhotoFiles, type CheckedPhoto, type PhotoFiles, type PublicFileWrites } from "./outreach-photos";
+import { PHOTO_GONE, publicStorePhotoFiles, type CheckedPhoto, type PhotoFiles, type PublicFiles } from "./outreach-photos";
+import { CHANGED_SINCE_READ } from "@/lib/content/editor";
 import type { OutreachPost, PhotoSrc } from "./outreach-types";
 import { publicStoreHost } from "@/lib/storage/pathname";
 
@@ -79,6 +80,7 @@ test("a photo is uploaded only once the site-content gate admits the viewer, and
     },
     owns: (src): src is PhotoSrc => src === "https://store.public.blob.vercel-storage.com/post-photos/new.png",
     drop: async () => {},
+    gone: async () => [],
   };
 
   const refused = outreachEditor(member, memoryOutreachStore(), files);
@@ -103,14 +105,20 @@ test("a photo is uploaded only once the site-content gate admits the viewer, and
 const OWN = publicStoreHost("store_Own123");
 const ownFile = (name: string) => `https://own123.public.blob.vercel-storage.com/post-photos/${name}` as PhotoSrc;
 
-/** The public store's writes, recorded: what was uploaded and which pathnames were deleted. */
-function recordedWrites() {
+/**
+ * The public store's writes, recorded: what was uploaded and which pathnames
+ * were deleted. A deleted file is no longer stored; a file in `named` is one
+ * another row names, so no drop deletes it.
+ */
+function recordedWrites(named: readonly string[] = []) {
   const removed: string[] = [];
-  const writes: PublicFileWrites = {
+  const writes: PublicFiles = {
     upload: async (pathname) => ({ url: `https://own123.public.blob.vercel-storage.com/${pathname}` }),
     remove: async (pathname) => {
       removed.push(pathname);
     },
+    stored: async (pathname) => !removed.includes(pathname),
+    unreferenced: async (pathnames) => pathnames.filter((p) => !named.includes(p)),
   };
   return { removed, writes };
 }
@@ -176,4 +184,51 @@ test("Save, Delete and Remove photo free a stored file only when no version of a
   // Deleting B leaves a shown nowhere, so its file goes.
   assert.ok((await editor.posts.remove(second.id)).ok);
   assert.deepEqual(removed, ["post-photos/b.jpg", "post-photos/a.jpg"]);
+});
+
+// Issue #831: a stored file goes only when no row names it, and a stale save
+// never puts back a photo another save deleted.
+
+/** Post A shows the site photo, a and b, in an editor over the public store's recorded writes. */
+function twoPhotoPost(named: readonly string[] = []) {
+  const [first] = importedOutreach().posts;
+  const base = editorVersion(first.version) as OutreachPost;
+  const site = base.photos[0].src;
+  const withPhotos = (...photos: PhotoSrc[]): OutreachPost => {
+    const [one, ...rest] = photos.map((src) => ({ src, alt: "A photo." }));
+    return { ...base, photos: [one, ...rest] };
+  };
+  const seed = [{ ...first, version: { state: "published", published: withPhotos(site, ownFile("a.jpg"), ownFile("b.jpg")), draft: null } as Versioned<OutreachPost> }];
+  const { removed, writes } = recordedWrites(named);
+  const editor = outreachEditor(admin, { ...memoryOutreachStore(), posts: memoryContentStore(seed) }, publicStorePhotoFiles(OWN, writes, () => "new"));
+  const save = (post: OutreachPost, during?: () => Promise<unknown>) =>
+    editor.posts.save(first.id, "publish", async () => {
+      await during?.();
+      return { ok: true, value: post };
+    });
+  return { site, withPhotos, removed, save };
+}
+
+test("a save leaves a stored file another row still names, such as a member's or a Team page's", async () => {
+  const { site, withPhotos, removed, save } = twoPhotoPost(["post-photos/b.jpg"]);
+  assert.ok((await save(withPhotos(site))).ok);
+  assert.deepEqual(removed, ["post-photos/a.jpg"], "b is named by another row, so only a goes");
+});
+
+test("a save made on a version another save replaced in the meantime is refused, and puts back no deleted photo", async () => {
+  const { site, withPhotos, removed, save } = twoPhotoPost();
+  // The second save lands while the first is still being made: it drops b, whose file goes.
+  const stale = await save(withPhotos(site, ownFile("a.jpg"), ownFile("b.jpg")), async () => {
+    assert.ok((await save(withPhotos(site, ownFile("a.jpg")))).ok);
+  });
+  assert.deepEqual(stale, { ok: false, error: CHANGED_SINCE_READ });
+  assert.deepEqual(removed, ["post-photos/b.jpg"]);
+});
+
+test("a panel opened before another save deleted a photo cannot save that photo back", async () => {
+  const { site, withPhotos, removed, save } = twoPhotoPost();
+  assert.ok((await save(withPhotos(site, ownFile("a.jpg")))).ok);
+  assert.deepEqual(removed, ["post-photos/b.jpg"]);
+  // The older panel still holds b: its save reads the post fresh, but b's file is gone.
+  assert.deepEqual(await save(withPhotos(site, ownFile("a.jpg"), ownFile("b.jpg"))), { ok: false, error: PHOTO_GONE });
 });

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
-import { publicStoreTeamPagePhotos } from "@/lib/about/team-page-photos";
+import { putTeamPagePhoto } from "@/lib/about/team-page-photos";
 import type { PersonPhoto } from "@/lib/about/types";
 import { checkMemberPhoto } from "@/lib/dashboard/division-members";
 import { centredCrop, sourceSquare } from "@/lib/dashboard/photo-crop";
@@ -28,7 +28,7 @@ import { unitValues } from "./units";
 // 0.9; it must then pass Edit details' `checkMemberPhoto`, and it is stored
 // under `publicPathname("photo", "<memberId>-<uuid>.jpg")`, as My profile and
 // Edit details store one. An advisor photo is stored as the Team page editor
-// stores one: `checkPhotoUpload`, then `publicStoreTeamPagePhotos(...).put`.
+// stores one: `checkPhotoUpload`, then `putTeamPagePhoto`.
 // A photo file is named in the report by its row only: its place in the
 // sorted file list, never its name, which holds a surname.
 
@@ -190,7 +190,6 @@ export type PhotoUploads = {
 };
 
 export function photoUploads({ host, writes }: PhotoStore): PhotoUploads {
-  const teamPage = publicStoreTeamPagePhotos(host, writes, randomUUID);
   return {
     async member(memberId, photo) {
       const pathname = publicPathname("photo", `${memberId}-${randomUUID()}.jpg`);
@@ -198,7 +197,7 @@ export function photoUploads({ host, writes }: PhotoStore): PhotoUploads {
       if (publicPathnameOfUrl(url, host) !== pathname) throw new Error("The public store answered a URL off its own host or pathname.");
       return url;
     },
-    advisor: (photo) => teamPage.put(photo),
+    advisor: (photo) => putTeamPagePhoto(host, writes, randomUUID, photo),
   };
 }
 

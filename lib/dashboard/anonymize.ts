@@ -267,20 +267,28 @@ export interface AnonymizationStore {
   personalFiles(account: DeletedAccount): Promise<readonly PersonalFile[]>;
   /** Deletes one stored file; deleting one already gone is not an error. */
   deleteFile(file: PersonalFile): Promise<void>;
-  /** Runs the plan's writes as one transaction. */
-  run(plan: readonly AnonymizationStep[]): Promise<void>;
+  /**
+   * Runs the plan's writes as one transaction, which first checks again that
+   * the account `userId` is still deleted, not anonymized, and has no sign-in
+   * (issue #831). Answers the files of `files` no row names once the writes
+   * landed; null when the check failed, and then nothing was written.
+   */
+  run(userId: string, plan: readonly AnonymizationStep[], files: readonly PersonalFile[]): Promise<readonly PersonalFile[] | null>;
 }
 
 export type AnonymizationRun = {
   readonly anonymized: readonly string[];
-  /** Accounts left for the next run: a file or the write failed. */
+  /** Accounts the run did not finish: the write failed, so the next run retries it, or a file was left in a store. */
   readonly failed: readonly string[];
 };
 
 /**
- * Anonymizes every account due at `now`. The files go first: when one cannot
- * be deleted, the account's rows stay as they are, so the next run finds it
- * again and nothing is left behind with no row pointing at it.
+ * Anonymizes every account due at `now`. The rows go first, in one batch
+ * that checks again that the person is still due: someone who signed in
+ * again after the accounts were read keeps their data and their files
+ * (issue #831). Then their files go. A file that cannot be deleted then is
+ * logged and the account counted as failed; its rows are already cleared, so
+ * the next run does not find it again.
  */
 export async function anonymizeDeletedAccounts(now: Date, store: AnonymizationStore): Promise<AnonymizationRun> {
   const anonymized: string[] = [];
@@ -288,12 +296,21 @@ export async function anonymizeDeletedAccounts(now: Date, store: AnonymizationSt
   const accounts = await store.deletedAccounts(anonymizationCutoff(now));
   for (const account of accounts) {
     if (!dueForAnonymization(account, now)) continue;
+    let freed: readonly PersonalFile[] | null;
     try {
-      for (const file of await store.personalFiles(account)) await store.deleteFile(file);
-      await store.run(anonymizationPlan(account, now));
-      anonymized.push(account.userId);
+      freed = await store.run(account.userId, anonymizationPlan(account, now), await store.personalFiles(account));
     } catch (error) {
       console.error(`Anonymizing deleted account ${account.userId} failed; the next run retries it.`, error);
+      failed.push(account.userId);
+      continue;
+    }
+    // They signed in again, or another run anonymized them, since the accounts were read.
+    if (freed === null) continue;
+    try {
+      for (const file of freed) await store.deleteFile(file);
+      anonymized.push(account.userId);
+    } catch (error) {
+      console.error(`Deleted account ${account.userId} is anonymized, but one of its files could not be deleted and stays in the store.`, error);
       failed.push(account.userId);
     }
   }
