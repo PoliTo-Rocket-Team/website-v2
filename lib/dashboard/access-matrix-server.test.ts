@@ -2868,6 +2868,15 @@ describe("a renamed role title changes no access, no seat and no headship (issue
     const row = (await tableRows(roles)).find((r) => r.memberId === EXTRA.mover && r.type === "head");
     assert.equal(row?.title, "Head of Avionics");
   });
+
+  test("another department's head may head a new department too, and keeps the head seat they hold (issue #837)", async () => {
+    await seedFixture();
+    signInAs(accountOf("team leader").userId);
+    const created = await teamActions.createDepartment({ name: "Avionics", code: "AVI", kind: "technical", heads: [EXTRA.head] });
+    assert.ok(created.ok, JSON.stringify(created));
+    const heads = (await tableRows(roles)).filter((r) => r.memberId === EXTRA.head && r.type === "head" && r.leavedAt == null);
+    assert.deepEqual(heads.map((r) => r.deptId).sort(), [IDS.department(DM), created.ok ? created.value : null].sort(), "Structures' head row stays beside the new one");
+  });
 });
 
 // The seat row of Edit team tree (issue #627) ---------------------------------
@@ -2933,16 +2942,26 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
     assert.ok((await active(EXTRA.mover)).some((r) => r.fullAccess === "chief_engineer"));
   });
 
-  test("Change holder refuses no outcome, the holder themself and someone who already holds a seat, and writes nothing", async () => {
+  test("Change holder refuses no outcome and the holder themself, and writes nothing", async () => {
     for (const change of [
       { to: EXTRA.mover, outcome: null },
       { to: accountOf("Project Manager").memberId, outcome: "advisor" },
-      { to: EXTRA.head, outcome: "advisor" },
     ]) {
       const { answer, writes } = await attempt(accountOf("team leader").userId, async () => teamActions.changeSeatHolder(await seatRowOf("Project Manager"), change));
       assert.ok(isRefusal(answer), JSON.stringify(change));
       assert.deepEqual(writes, [], JSON.stringify(change));
     }
+  });
+
+  test("Change holder gives the seat to someone who already holds a seat, and they keep it (issue #837)", async () => {
+    await seedFixture();
+    const seatId = await seatRowOf("Project Manager");
+    signInAs(accountOf("team leader").userId);
+    assert.deepEqual(await teamActions.changeSeatHolder(seatId, { to: EXTRA.head, outcome: "advisor" }), { ok: true });
+    const held = (await active(EXTRA.head)).map((r) => [r.type, r.deptId ?? null, r.fullAccess ?? null]);
+    assert.ok(held.some(([type, deptId]) => type === "head" && deptId === IDS.department(DM)), "Structures' head row stays");
+    assert.ok(held.some(([, deptId, flag]) => deptId === null && flag === "project_manager"), "and the seat is theirs");
+    assert.equal((await tableRows(roles)).filter((r) => r.fullAccess === "project_manager" && r.leavedAt == null).length, 1, "one active holder of the seat");
   });
 
   test("Add seat starts a role in no department and no division with no full access, on both tree rows and the public Team page's arc", async () => {
@@ -2965,15 +2984,19 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
     assert.notEqual((await openAs(MOVER)).viewer.kind, "operations-lead");
   });
 
-  test("Add seat refuses a blank title and someone who already holds a seat, and writes nothing", async () => {
-    for (const add of [
-      { personId: EXTRA.mover, title: "   " },
-      { personId: EXTRA.head, title: "Safety Officer" },
-    ]) {
-      const { answer, writes } = await attempt(accountOf("team leader").userId, () => teamActions.addSeat(add));
-      assert.ok(isRefusal(answer), JSON.stringify(add));
-      assert.deepEqual(writes, [], JSON.stringify(add));
-    }
+  test("Add seat refuses a blank title and writes nothing", async () => {
+    const { answer, writes } = await attempt(accountOf("team leader").userId, () => teamActions.addSeat({ personId: EXTRA.mover, title: "   " }));
+    assert.ok(isRefusal(answer));
+    assert.deepEqual(writes, []);
+  });
+
+  test("Add seat gives a new seat to someone who already holds a seat, and they keep it (issue #837)", async () => {
+    await seedFixture();
+    signInAs(accountOf("team leader").userId);
+    assert.deepEqual(await teamActions.addSeat({ personId: EXTRA.head, title: "Safety Officer" }), { ok: true });
+    const held = (await active(EXTRA.head)).map((r) => [r.type, r.deptId ?? null, r.title]);
+    assert.ok(held.some(([type, deptId]) => type === "head" && deptId === IDS.department(DM)), "Structures' head row stays");
+    assert.ok(held.some(([type, deptId, title]) => type === "core" && deptId === null && title === "Safety Officer"), "and the new seat is theirs");
   });
 
   // Remove seat (issue #643): the holder's seat role ends with no successor,

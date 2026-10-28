@@ -144,9 +144,11 @@ export type DepartmentCreatePlan = { readonly name: string; readonly code: strin
 /**
  * New department as the rules allow it (board 77d), or the first reason it is
  * refused: only the team leader or full access; a name; a code of 2 or 3
- * letters no other open department uses; exactly one head, on the team, who
- * holds no seat yet (a team leader, a board seat or another department's
- * head stays where they are). The head keeps their divisions.
+ * letters no other open department uses; exactly one head, on the team.
+ * Anyone on the team may head it, whatever other seats they hold (Owner
+ * decision, issue #837): a team leader, a board seat, another department's
+ * head or an advisor keeps that seat too. The head keeps every role and
+ * division they hold.
  */
 export function planDepartmentCreate(input: {
   readonly actor: TeamActor | null;
@@ -164,8 +166,6 @@ export function planDepartmentCreate(input: {
   if (heads.length !== 1) return no("A department needs exactly one head.");
   const head = team.find((p) => p.id === heads[0]);
   if (!head) return no("They are not on the team.");
-  const [seat] = head.beyond;
-  if (seat !== undefined) return no(`${head.name} is already ${beyondTitle(seat, org)}.`);
   return yes({ name: storedDepartmentName(save.name), code: save.code, kind: save.kind, headId: head.id });
 }
 
@@ -189,8 +189,9 @@ export type DepartmentSavePlan = {
 /**
  * Edit department's Save changes (board 77e): the same name and code rules
  * as New department, for an open department. Change head (issue #253) hands
- * the head role over: the new head is on the team, holds no seat yet (as in
- * New department) and keeps their divisions; the head they replace becomes an
+ * the head role over: the new head is on the team and does not head this
+ * department already; any other seat they hold stays (as in New department),
+ * and they keep every role and division they hold; the head they replace becomes an
  * advisor in this department or leaves the team, as the editor picked, and
  * nothing is picked for them (`steppingDown`). `headIds` are the people who
  * head it now.
@@ -212,7 +213,7 @@ export function planDepartmentSave(input: {
   const codeError = departmentCodeError(save.code, org.departments, departmentId);
   if (codeError !== null) return no(codeError);
   const stored = storedDepartmentName(save.name);
-  const head = save.head === null ? null : planHeadChange(save.head, departmentId, [...new Set(input.headIds)], team, org);
+  const head = save.head === null ? null : planHeadChange(save.head, departmentId, [...new Set(input.headIds)], team);
   if (head !== null && !head.ok) return no(head.error);
   return yes({
     name: stored,
@@ -224,12 +225,10 @@ export function planDepartmentSave(input: {
   });
 }
 
-function planHeadChange(change: HeadChange, departmentId: number, from: readonly number[], team: readonly TeamPerson[], org: OrgChart): Checked<HeadChangePlan> {
+function planHeadChange(change: HeadChange, departmentId: number, from: readonly number[], team: readonly TeamPerson[]): Checked<HeadChangePlan> {
   const next = team.find((p) => p.id === change.to);
   if (!next) return no("They are not on the team.");
   if (from.includes(next.id)) return no(`${next.name} already heads this department.`);
-  const [seat] = next.beyond;
-  if (seat !== undefined) return no(`${next.name} is already ${beyondTitle(seat, org)}.`);
   if (from.length === 0) return yes({ to: next.id, from, steppingDown: null });
   if (change.outcome === null) return no("Choose what happens to the head: Become an advisor or Leave the team.");
   return yes({ to: next.id, from, steppingDown: steppingDown({ kind: "head", departmentId }, change.outcome) });
