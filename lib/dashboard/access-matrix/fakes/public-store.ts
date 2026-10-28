@@ -12,6 +12,9 @@ const HOST = publicStoreHost("teststore");
 
 const deleted = new Set<string>();
 
+/** When a file was uploaded, for a test that sets it; any other stored file counts as uploaded now. */
+const uploadedAt = new Map<string, Date>();
+
 /** The URL the fake store answers for a pathname. */
 export function publicUrlOf(pathname: string): string {
   return `https://${HOST}/${pathname}`;
@@ -20,6 +23,7 @@ export function publicUrlOf(pathname: string): string {
 /** Every file counts as stored again: for a test that starts afresh. */
 export function resetPublicFiles(): void {
   deleted.clear();
+  uploadedAt.clear();
 }
 
 export function ownPublicStoreHost(): PublicStoreHost | null {
@@ -48,8 +52,13 @@ export async function copyPublicFile(from: PublicPathname, to: PublicPathname): 
   return { url: publicUrlOf(to) };
 }
 
-export async function publicFileStored(pathname: PublicPathname): Promise<boolean> {
-  return !deleted.has(pathname);
+/** The fake store took `pathname` at `at`: for a test of an upload old enough for the sweep. */
+export function uploadedOn(pathname: string, at: Date): void {
+  uploadedAt.set(pathname, at);
+}
+
+export async function publicFileUploadedAt(pathname: PublicPathname): Promise<Date | null> {
+  return deleted.has(pathname) ? null : (uploadedAt.get(pathname) ?? new Date());
 }
 
 /** The store's listing: the tests list no file (lib/storage/upload-sweep.test.ts tests the sweep over a listing of its own). */

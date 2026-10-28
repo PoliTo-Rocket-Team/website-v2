@@ -12,12 +12,10 @@ import {
   publicStepOf,
   WITHDRAWABLE_STATUS_KEYS,
   WITHDRAWN_STATUS_KEY,
-  withdrawnOnDelete,
   type ActiveApplication,
   type ActiveStage,
   type ApplicationPlace,
   type Interview,
-  type OwnApplication,
   type PublicStep,
   type StoredApplication,
 } from "./my-applications";
@@ -196,29 +194,11 @@ test("an application at Interview shows In review until times are offered, then 
   assert.deepEqual(placeOf(sent("interview"), OFFERED, null), { kind: "active", stage: { kind: "interview", interview: OFFERED } });
 });
 
-const application = (overrides: Partial<OwnApplication> & Pick<OwnApplication, "id">): OwnApplication => ({
-  withdrawnAt: null,
-  cvFileId: null,
-  coverLetterFileId: null,
-  ...overrides,
-});
-
 const added = (key: string, parent: BuiltInStatusKey): ApplicationStatus => ({ kind: "added", key, parent });
 
-// Owner decision (issue #831): Delete account withdraws every application of
-// the account, whatever its status, so it reads none; only one withdrawn
-// before stays as it is, with its files.
-
-test("Delete account withdraws every application not withdrawn yet, whatever its status, and deletes their files", () => {
-  const result = withdrawnOnDelete([
-    application({ id: 1, cvFileId: 10, coverLetterFileId: 11 }),
-    application({ id: 2, cvFileId: 20 }),
-    application({ id: 4, cvFileId: 40 }),
-    application({ id: 5, withdrawnAt: "2026-01-01T00:00:00Z", cvFileId: 50 }),
-  ]);
-  assert.deepEqual(result.applicationIds, [1, 2, 4]);
-  assert.deepEqual(result.fileIds, [10, 11, 20, 40]);
-});
+// Delete account withdraws every application not withdrawn yet, whatever its
+// status (Owner decision, issue #831), in the batch that writes:
+// ./file-references-server.test.ts covers it on the database.
 
 test("an open application is one the Withdraw button could withdraw, built-in or added", () => {
   for (const key of BUILT_IN_STATUS_KEYS) {
@@ -231,22 +211,6 @@ test("both ways to withdraw end at the Withdrawn status, which is no longer open
   assert.equal(WITHDRAWN_STATUS_KEY, "withdrawn");
   assert.equal(publicStepOf(builtIn(WITHDRAWN_STATUS_KEY)), "withdrawn");
   assert.equal(isWithdrawable(builtIn(WITHDRAWN_STATUS_KEY)), false);
-});
-
-test("a file an application withdrawn before still uses stays", () => {
-  const result = withdrawnOnDelete([
-    application({ id: 1, cvFileId: 10 }),
-    application({ id: 2, withdrawnAt: "2026-01-01T00:00:00Z", cvFileId: 10 }),
-  ]);
-  assert.deepEqual(result.applicationIds, [1]);
-  assert.deepEqual(result.fileIds, []);
-});
-
-test("with every application withdrawn before, nothing is withdrawn or deleted", () => {
-  assert.deepEqual(withdrawnOnDelete([application({ id: 3, withdrawnAt: "2026-01-01T00:00:00Z", cvFileId: 30 })]), {
-    applicationIds: [],
-    fileIds: [],
-  });
 });
 
 // Withdraw and the interview time on My applications (issues #171, #183): the

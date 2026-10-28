@@ -3,6 +3,7 @@ import { versionRows, type ContentItem } from "@/lib/content/versioned";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { deleteBestEffort, type DeleteArea } from "@/lib/storage/best-effort-delete";
 import { publicFolderOf, publicPathname, publicPathnameOfUrl, type PublicFileKind, type PublicPathname, type PublicStoreHost } from "@/lib/storage/pathname";
+import { keepableUpload } from "@/lib/storage/upload-sweep";
 import type { OutreachDraft, PhotoSrc, PostItem, PostStore } from "./outreach-types";
 
 // A post's photos as files (issue #291). The Edit post panel uploads a photo
@@ -71,15 +72,17 @@ export interface PhotoFiles {
    */
   drop(srcs: readonly PhotoSrc[]): Promise<void>;
   /**
-   * Of these photos, the files this side stored that are no longer in the
-   * store: a save carrying one was made in a panel opened before another
-   * save deleted it, and is refused (issue #831).
+   * Of these photos, the files this side stored that a save may no longer
+   * put on a row (`goneFiles`): no longer in the store, since another save
+   * deleted it after the panel opened, or so old that the daily sweep may
+   * delete it (lib/storage/upload-sweep.ts). A save that newly carries one is
+   * refused (issue #831).
    */
   gone(srcs: readonly PhotoSrc[]): Promise<PhotoSrc[]>;
 }
 
-/** Why a save carrying a photo whose file another save deleted is refused. */
-export const PHOTO_GONE = "A photo in this panel was removed by another save. Reload the page and add it again.";
+/** Why a save carrying a photo whose file is gone, or soon will be, is refused. */
+export const PHOTO_GONE = "A photo in this panel is no longer stored. Reload the page and add it again.";
 
 /** The photos a content editor's panel uploads: Outreach post photos, project photos, and the crops of a project's uploaded background. */
 export type PanelPhotoKind = Extract<PublicFileKind, "post-photo" | "project-photo" | "project-background">;
@@ -104,8 +107,8 @@ export interface PublicFileWrites {
 
 /** What an editor's photos need of a public store: its writes, and two reads. */
 export interface PublicFiles extends PublicFileWrites {
-  /** Whether the store still holds the file. */
-  stored(pathname: PublicPathname): Promise<boolean>;
+  /** When the store took the file; null when it no longer holds it. */
+  uploadedAt(pathname: PublicPathname): Promise<Date | null>;
   /**
    * Of these files, the ones no row names now (lib/storage/public-references.ts):
    * the only ones a drop deletes. A side that keeps no other rows answers them all.
@@ -113,12 +116,21 @@ export interface PublicFiles extends PublicFileWrites {
   unreferenced(pathnames: readonly PublicPathname[]): Promise<readonly PublicPathname[]>;
 }
 
-/** Of `srcs`, those whose file `pathnameOf` names and the store no longer holds. */
-export async function goneFiles<S extends string>(srcs: readonly S[], pathnameOf: (src: string) => PublicPathname | null, writes: Pick<PublicFiles, "stored">): Promise<S[]> {
+/**
+ * Of `srcs`, those whose file `pathnameOf` names and a save may no longer put
+ * on a row (`keepableUpload`): the store no longer holds it, or it is so old
+ * that the daily sweep may delete it while the save is under way.
+ */
+export async function goneFiles<S extends string>(
+  srcs: readonly S[],
+  pathnameOf: (src: string) => PublicPathname | null,
+  writes: Pick<PublicFiles, "uploadedAt">,
+  now: Date = new Date(),
+): Promise<S[]> {
   const checked = await Promise.all(
     [...new Set(srcs)].map(async (src) => {
       const pathname = pathnameOf(src);
-      return pathname !== null && !(await writes.stored(pathname)) ? [src] : [];
+      return pathname !== null && !keepableUpload(await writes.uploadedAt(pathname), now) ? [src] : [];
     }),
   );
   return checked.flat();
@@ -182,17 +194,21 @@ export function freeingFiles<T extends D, D>(
     if (result.ok) await files.drop(filesNoLongerShown(photosOf(before), await store.list(), photosIn));
     return result;
   }
+  /** Refused when a photo the write adds is gone or past the age a save may keep (`files.gone`, issue #831); else `write`. */
+  async function keepingOnly<R>(added: readonly PhotoSrc[], write: () => Promise<WriteResult<R>>): Promise<WriteResult<R>> {
+    return (await files.gone(added)).length > 0 ? refused(PHOTO_GONE) : write();
+  }
   return {
     ...store,
+    // A new item's photos are all added by its save.
+    create: (version, siteOrder) => keepingOnly(photosOf({ id: 0, siteOrder, version }), () => store.create(version, siteOrder)),
     // The store refuses a write made on versions another save has replaced
-    // since; a photo the item did not have must still be stored, or the
-    // panel was opened before another save deleted it (issue #831).
+    // since; a photo the item did not have is checked like a new item's.
     update: (id, version, expected) =>
-      thenFree(id, async () => {
+      thenFree(id, () => {
         const had = new Set(photosOf({ id, siteOrder: 0, version: expected }));
         const added = photosOf({ id, siteOrder: 0, version }).filter((src) => !had.has(src));
-        if ((await files.gone(added)).length > 0) return refused(PHOTO_GONE);
-        return store.update(id, version, expected);
+        return keepingOnly(added, () => store.update(id, version, expected));
       }),
     remove: (id) => thenFree(id, () => store.remove(id)),
   };

@@ -31,8 +31,9 @@ export const databaseTeamPageStore: TeamPageStore = {
     // write replaced either set of rows since (issue #831).
     const [layerIds, advisorIds] = await Promise.all([rowIds(LAYER_ROWS), rowIds(ADVISOR_ROWS)]);
     if (!sameTeamPageRead(await readTeamPage(), expected)) return refused(CHANGED_SINCE_READ);
+    // The layer's lock before the advisors': every guarded write takes them in this order, so two never deadlock.
     const unchanged = (db: Parameters<Parameters<typeof runAuditBatch>[0]>[0]) =>
-      [unchangedRows(db, LAYER_ROWS, layerIds), unchangedRows(db, ADVISOR_ROWS, advisorIds)] as const;
+      [...unchangedRows(db, LAYER_ROWS, layerIds), ...unchangedRows(db, ADVISOR_ROWS, advisorIds)] as const;
     try {
       await runAuditBatch((db) => [...unchanged(db), ...layerVersionWrites(db, layer), ...advisorWriteQueries(db, advisors)]);
     } catch (error) {

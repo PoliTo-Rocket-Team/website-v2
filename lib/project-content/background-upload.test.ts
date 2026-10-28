@@ -33,7 +33,7 @@ function recordingStore() {
       return { url: `https://${HOST}/${pathname}` };
     },
     remove: async (pathname: PublicPathname) => void removed.push(pathname),
-    stored: async (pathname) => !removed.includes(pathname),
+    uploadedAt: async (pathname) => (removed.includes(pathname) ? null : new Date()),
     unreferenced: async (pathnames) => pathnames,
   };
   let n = 0;

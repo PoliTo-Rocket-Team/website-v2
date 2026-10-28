@@ -52,7 +52,6 @@ import {
   placeOf,
   WITHDRAWABLE_STATUS_KEYS,
   WITHDRAWN_STATUS_KEY,
-  withdrawnOnDelete,
   type ActiveApplication,
   type ApplicationAnswer,
   type ApplicationFile,
@@ -239,29 +238,40 @@ const BUILT_IN_STATUS_OF_ROW = sql<string>`coalesce((select coalesce(${applicati
 
 /**
  * An application its applicant can still withdraw, in SQL: not withdrawn, at a
- * status that behaves like one of `WITHDRAWABLE_STATUS_KEYS`. My account's
- * count, Delete account and the Withdraw button all ask this (issue #759).
+ * status that behaves like one of `WITHDRAWABLE_STATUS_KEYS`: what the
+ * Withdraw button asks (issue #759). Delete account withdraws every
+ * application not withdrawn yet instead (issue #831).
  */
 const WITHDRAWABLE_ROW = and(inArray(BUILT_IN_STATUS_OF_ROW, [...WITHDRAWABLE_STATUS_KEYS]), isNull(applications.withdrawnAt));
 
-/** No application left unwithdrawn names the file as its CV or letter: the only file Delete account deletes (issue #831). */
-const NO_APPLICATION_IN_PROGRESS_USES_FILE = sql`not exists (select 1 from ${applications} where ${applications.withdrawnAt} is null and (${applications.cvFileId} = ${applicationFiles.id} or ${applications.coverLetterFileId} = ${applicationFiles.id}))`;
+/** An `applications` row that names the `application_files` row as its CV or letter. */
+const USES_FILE = sql`(${applications.cvFileId} = ${applicationFiles.id} or ${applications.coverLetterFileId} = ${applicationFiles.id})`;
+
+/**
+ * The files Delete account deletes (issue #831): those an application this
+ * transaction withdrew uses (its `withdrawn_at` is the transaction's `now()`),
+ * and no other application does. A file an application withdrawn before
+ * still uses stays with it, and so does one an application sent after the
+ * withdraw uses.
+ */
+const USED_ONLY_BY_APPLICATIONS_WITHDRAWN_NOW = sql`exists (select 1 from ${applications} where ${applications.withdrawnAt} = now() and ${USES_FILE})
+  and not exists (select 1 from ${applications} where ${applications.withdrawnAt} is distinct from now() and ${USES_FILE})`;
 
 async function readAccount(identity: DashboardIdentity): Promise<MyAccount | null> {
   if (!isOffTeam(identity.kind)) return null;
-  const [details, open] = await Promise.all([
+  const [details, unwithdrawn] = await Promise.all([
     readDetails(identity.userId),
     getDb()
       .select({ id: applications.id })
       .from(applications)
-      .where(and(eq(applications.userId, identity.userId), WITHDRAWABLE_ROW)),
+      .where(and(eq(applications.userId, identity.userId), isNull(applications.withdrawnAt))),
   ]);
   return {
     name: identity.name,
     photoUrl: identity.picture,
     signIn: { provider: "google", email: identity.email },
     details,
-    openApplications: open.length,
+    unwithdrawnApplications: unwithdrawn.length,
   };
 }
 
@@ -289,31 +299,19 @@ async function saveDetails(identity: DashboardIdentity, input: unknown): Promise
  * and linked Google account, and `users.deleted_at` records when. A member
  * leaves the team with it. The `users` row and the applications stay with the
  * team for at least a year, until the daily job anonymizes them
- * (./anonymize.ts), unless the person ticked the box: then their open
- * applications are withdrawn and those applications' files are deleted.
+ * (./anonymize.ts), unless the person ticked the box: then every application
+ * not withdrawn yet is withdrawn, and the files only those use are deleted.
  */
 async function deleteAccount(identity: DashboardIdentity, options: DeleteAccount): Promise<WriteResult<null>> {
   if (typeof options.withdrawOpenApplications !== "boolean" || typeof options.removeFromAlumni !== "boolean") return refused("Check the form.");
   const { userId, memberId } = identity;
   const withdraw = options.withdrawOpenApplications && isOffTeam(identity.kind);
-  const { applicationIds, fileIds } = withdraw
-    ? withdrawnOnDelete(
-        await getDb()
-          .select({
-            id: applications.id,
-            withdrawnAt: applications.withdrawnAt,
-            cvFileId: applications.cvFileId,
-            coverLetterFileId: applications.coverLetterFileId,
-          })
-          .from(applications)
-          .where(eq(applications.userId, userId)),
-      )
-    : { applicationIds: [], fileIds: [] };
 
-  // The withdraw reads no status (Owner decision, issue #831), and the files
-  // go in the same batch, after it: a file is deleted only while no
-  // application left unwithdrawn uses it, so one sent between the read and
-  // this batch keeps its files. The rows deleted name the files to remove.
+  // Ticked, the batch withdraws every application of the account not
+  // withdrawn yet, whatever its status (Owner decision, issue #831): it
+  // reads none before, so one sent or moved on in the meantime is withdrawn
+  // too. Then, in the same batch, it deletes the files only the applications
+  // it withdrew use. The rows deleted name the files to remove.
   const results = await runAuditBatch((db) => [
     db.delete(betterAuthUsers).where(eq(betterAuthUsers.id, userId)),
     db.update(users).set({ deletedAt: sql`now()` }).where(eq(users.id, userId)),
@@ -321,26 +319,22 @@ async function deleteAccount(identity: DashboardIdentity, options: DeleteAccount
       ? []
       : [db.update(roles).set({ leavedAt: today() }).where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt)))]),
     ...(memberId !== null && options.removeFromAlumni ? [removeFromAlumni(db, memberId)] : []),
-    ...(applicationIds.length === 0
-      ? []
-      : [
+    ...(withdraw
+      ? [
           db
             .update(applications)
             .set({ withdrawnAt: sql`now()`, statusKey: WITHDRAWN_STATUS_KEY })
-            .where(and(inArray(applications.id, [...applicationIds]), eq(applications.userId, userId), isNull(applications.withdrawnAt))),
-        ]),
-    ...(fileIds.length === 0
-      ? []
-      : [
+            .where(and(eq(applications.userId, userId), isNull(applications.withdrawnAt))),
           db
             .delete(applicationFiles)
-            .where(and(inArray(applicationFiles.id, [...fileIds]), eq(applicationFiles.userId, userId), NO_APPLICATION_IN_PROGRESS_USES_FILE))
+            .where(and(eq(applicationFiles.userId, userId), USED_ONLY_BY_APPLICATIONS_WITHDRAWN_NOW))
             .returning({ pathname: applicationFiles.pathname }),
-        ]),
+        ]
+      : []),
   ]);
   if (memberId !== null) refreshAfter("team", updateTag);
 
-  const deleted = fileIds.length === 0 ? [] : (results.at(-1) as { pathname: string }[]);
+  const deleted = withdraw ? (results.at(-1) as { pathname: string }[]) : [];
   for (const file of deleted) {
     const pathname = parsePrivatePathname(file.pathname);
     if (pathname !== null) await deleteBestEffort({ store: "private", area: "delete-account", pathname, remove: deletePrivateFile });

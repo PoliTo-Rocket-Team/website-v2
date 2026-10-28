@@ -13,9 +13,10 @@ import { refused, written, type WriteResult } from "./write";
 // it, and the second write would then put back a photo whose file the first
 // one had just deleted. Each version write replaces the item's version rows,
 // which gives them new ids: the ids are read first, then the item, which
-// must still hold `expected`, and the batch opens with a guard that fails it
-// when the rows are no longer those ids. So exactly one of two such saves
-// lands, and the other is refused with `CHANGED_SINCE_READ`.
+// must still hold `expected`, and the batch opens with the table's guard lock
+// and a guard that fails it when the rows are no longer those ids. Under the
+// lock two such batches run one after the other, so exactly one of two such
+// saves lands, and the other is refused with `CHANGED_SINCE_READ`.
 
 type Db = ReturnType<typeof getDb>;
 
@@ -40,7 +41,8 @@ export async function writeOverExpected<T extends D, D>(
   const before = await read();
   if (!sameVersions(before?.version ?? null, expected)) return refused(CHANGED_SINCE_READ);
   try {
-    const [, ...results] = await runAuditBatch((db) => [unchangedRows(db, rows, ids), ...writes(db)]);
+    // The guard's two statements, the lock and the check, answer nothing the caller reads.
+    const [, , ...results] = await runAuditBatch((db) => [...unchangedRows(db, rows, ids), ...writes(db)]);
     return written({ before, results });
   } catch (error) {
     if (isGuardFailure(error)) return refused(CHANGED_SINCE_READ);

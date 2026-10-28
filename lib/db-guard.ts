@@ -1,4 +1,4 @@
-import { sql, type SQL } from "drizzle-orm";
+import { getTableName, sql, type SQL } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { getDb } from "@/db/client";
 
@@ -45,11 +45,25 @@ export async function rowIds(rows: RowSet): Promise<number[]> {
 }
 
 /**
- * A guard that fails the batch unless the rows are still exactly `ids`. A
- * write that replaces rows gives them new ids, so any write that landed on
- * them since `rowIds` read them fails it.
+ * A batch statement that holds the table's guard lock until the batch ends.
+ * Two batches that take it run one after the other, so a statement after it
+ * reads what the batch before committed (Read Committed takes a new snapshot
+ * for each statement). It is a transaction-level advisory lock, so it also
+ * holds when the table has no rows yet to lock.
+ */
+function guardLock(db: Db, table: PgTable) {
+  return db.execute(sql`select pg_advisory_xact_lock(hashtext(${`row-guard:${getTableName(table)}`}))`);
+}
+
+/**
+ * The two statements that open a batch which must find the rows still exactly
+ * `ids`: the table's guard lock, then the guard. A write that replaces rows
+ * gives them new ids, so any write that landed on them since `rowIds` read
+ * them fails it. Under the lock, a second batch waits until the first one
+ * commits, and its guard then sees the first one's new ids, so of two
+ * overlapping saves only one lands.
  */
 export function unchangedRows(db: Db, rows: RowSet, ids: readonly number[]) {
   const then = sql`array[${sql.join(ids.map((i) => sql`${i}`), sql`, `)}]::integer[]`;
-  return failUnless(db, sql`array(${idsOf(rows)}) = ${then}`);
+  return [guardLock(db, rows.table), failUnless(db, sql`array(${idsOf(rows)}) = ${then}`)] as const;
 }

@@ -63,13 +63,12 @@ export async function copyPublicFile(from: PublicPathname, to: PublicPathname): 
   }
 }
 
-/** Whether the store still holds a file at this pathname. */
-export async function publicFileStored(pathname: PublicPathname): Promise<boolean> {
+/** When the store took the file at this pathname; null when it holds none. */
+export async function publicFileUploadedAt(pathname: PublicPathname): Promise<Date | null> {
   try {
-    await head(pathname, await credentials());
-    return true;
+    return (await head(pathname, await credentials())).uploadedAt;
   } catch (error) {
-    if (error instanceof BlobNotFoundError) return false;
+    if (error instanceof BlobNotFoundError) return null;
     throw error;
   }
 }

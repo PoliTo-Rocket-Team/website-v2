@@ -159,16 +159,33 @@ function stillDue(userId: string): SQL {
 }
 
 /**
+ * The person's `users` row, locked until the batch ends. A sign-in writes
+ * that row (the users sync of drizzle/0001), so one under way is waited for
+ * and one that starts later waits for the batch: the guard after this
+ * statement reads a sign-in that committed, and none commits between the
+ * guard and the writes.
+ */
+function lockUser(db: Db, userId: string) {
+  return db.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("update");
+}
+
+/**
  * The plan's writes as one `db.batch`, which the neon-http driver runs as one
- * transaction, behind a guard that fails it when the account is no longer
- * due (issue #831). Last, the batch reads which of the public photos some
- * row still names: a member photo a Team page or alumni row also shows stays.
+ * transaction, behind the person's row lock and a guard that fails it when
+ * the account is no longer due (issue #831). Last, the batch reads which of
+ * the public photos some row still names: a member photo a Team page or
+ * alumni row also shows stays.
  */
 async function run(userId: string, plan: readonly AnonymizationStep[], files: readonly PersonalFile[]): Promise<readonly PersonalFile[] | null> {
   const db = getDb();
   const photos = files.flatMap((file) => (file.store === "public" ? (parsePublicPathname(file.pathname) ?? []) : []));
   try {
-    const results = await db.batch([failUnless(db, stillDue(userId)), ...plan.flatMap((step) => stepQueries(db, step)), referencedPublicFiles(db, photos)]);
+    const results = await db.batch([
+      lockUser(db, userId),
+      failUnless(db, stillDue(userId)),
+      ...plan.flatMap((step) => stepQueries(db, step)),
+      referencedPublicFiles(db, photos),
+    ]);
     const free = new Set<string>(unreferenced(photos, results[results.length - 1] as { rows: { pathname: string }[] }));
     return files.filter((file) => file.store === "private" || free.has(file.pathname));
   } catch (error) {

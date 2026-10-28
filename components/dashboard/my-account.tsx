@@ -35,7 +35,7 @@ export function MyAccountView({ account, ...actions }: { account: MyAccount } & 
       <DeleteAccountDialog
         open={deleting}
         onOpenChange={setDeleting}
-        openApplications={account.openApplications}
+        unwithdrawnApplications={account.unwithdrawnApplications}
         member={false}
         deleteAccount={actions.deleteAccount}
       />

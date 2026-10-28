@@ -330,7 +330,7 @@ const noWrites: TeamPageFileWrites = {
   upload: async (pathname) => ({ url: ownUrl(pathname) }),
   remove: async () => {},
   copy: async (_from, to) => ({ url: ownUrl(to) }),
-  stored: async () => true,
+  uploadedAt: async () => new Date(),
   unreferenced: async (pathnames) => pathnames,
 };
 
@@ -346,7 +346,7 @@ function storePhotos(remove: (pathname: string) => Promise<void>, copied: string
         copied.push(`${from} -> ${to}`);
         return { url: ownUrl(to) };
       },
-      stored: async () => true,
+      uploadedAt: async () => new Date(),
       unreferenced: async (pathnames) => pathnames.filter((p) => !named.includes(p)),
     },
     () => String(++n),
@@ -400,15 +400,21 @@ test("a replaced uploaded photo's file is deleted after the write lands, once no
   assert.deepEqual(removed, ["photos/team-page-1.jpg", "photos/team-page-5.jpg", "photos/team-page-4.jpg"]);
 });
 
-test("a photo picked from a member is copied once wherever the page shows it, and a save is refused when its file is gone", async () => {
+test("a photo picked from a member is copied once for each row that shows it, and a save is refused when its file is gone", async () => {
   const copied: string[] = [];
   const { store } = editorOver(siteContent);
   const editor = teamPageEditor(siteContent, store, async () => roles, team, storePhotos(async () => {}, copied));
   const [first, ...rest] = await rowsOf(store);
   const rows = [{ ...first, fields: { ...first.fields, photo: MEMBER_PICTURE } }, ...rest];
   assert.ok((await editor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: MEMBER_PICTURE } }, rows)).ok);
-  assert.deepEqual(copied, ["photos/member-7.jpg -> photos/team-page-1.jpg"], "one copy for the leader and the advisor");
-  assert.equal(publishedLayer(await store.layer.list()).leader.photo, ownUrl("photos/team-page-1.jpg"));
+  assert.deepEqual(
+    copied,
+    ["photos/member-7.jpg -> photos/team-page-1.jpg", "photos/member-7.jpg -> photos/team-page-2.jpg"],
+    "one copy for the layer and one for the advisor row",
+  );
+  const published = publishedLayer(await store.layer.list());
+  assert.equal(published.leader.photo, ownUrl("photos/team-page-1.jpg"));
+  assert.equal(publicAdvisors(await store.advisors())[0]?.photo, ownUrl("photos/team-page-2.jpg"), "the advisor row has a copy of its own");
 
   const gone = publicStoreTeamPagePhotos(OWN_HOST, { ...noWrites, copy: async () => null }, () => "x");
   const refusedEditor = teamPageEditor(siteContent, store, async () => roles, team, gone);

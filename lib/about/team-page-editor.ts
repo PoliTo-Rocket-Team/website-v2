@@ -154,7 +154,7 @@ export interface TeamPagePhotos {
    * write it follows has already landed.
    */
   drop(photos: readonly PersonPhoto[]): Promise<void>;
-  /** Of these photos, the files `put` or `adopt` stored that are no longer in the store. */
+  /** Of these photos, the files `put` or `adopt` stored that a save may no longer keep: gone, or old enough for the daily sweep (lib/outreach-photos.ts `goneFiles`). */
   gone(photos: readonly PersonPhoto[]): Promise<PersonPhoto[]>;
 }
 
@@ -168,28 +168,38 @@ export function photosInUse(layer: readonly ContentItem<TeamPageLayer>[], adviso
   return new Set([...layers, ...rows]);
 }
 
+/** Each of `shown` as one row keeps it (`TeamPagePhotos.adopt`), as a swap; null when the file of one is gone. */
+async function adoptedFor(shown: readonly PersonPhoto[], photos: Pick<TeamPagePhotos, "adopt">): Promise<((photo: PersonPhoto) => PersonPhoto) | null> {
+  const kept = new Map<PersonPhoto, PersonPhoto>();
+  for (const photo of new Set(shown)) {
+    const adopted = await photos.adopt(photo);
+    if (adopted === null) return null;
+    kept.set(photo, adopted);
+  }
+  return (photo) => kept.get(photo) ?? photo;
+}
+
 /**
  * The layer and the advisor writes with every photo as a save keeps it
- * (`TeamPagePhotos.adopt`): another row's file is copied once, however many
- * places show it. Refused when one of those files is gone.
+ * (`TeamPagePhotos.adopt`): another row's file is copied once for each row
+ * that shows it, the layer and every advisor row apart, so no two rows share
+ * one copy. The layer's own spots and versions share its one copy. Refused
+ * when one of those files is gone.
  */
 export async function adoptedPhotos(
   layer: TeamPageLayer,
   writes: readonly AdvisorWrite[],
   photos: Pick<TeamPagePhotos, "adopt">,
 ): Promise<WriteResult<{ readonly layer: TeamPageLayer; readonly advisors: AdvisorWrite[] }>> {
-  const shown = new Set([...layerPhotos(layer), ...writes.flatMap((w) => versionRows(w.version).flatMap((row) => row.content.photo ?? []))]);
-  const kept = new Map<PersonPhoto, PersonPhoto>();
-  for (const photo of shown) {
-    const adopted = await photos.adopt(photo);
-    if (adopted === null) return refused(PICKED_PHOTO_GONE);
-    kept.set(photo, adopted);
+  const layerSwap = await adoptedFor(layerPhotos(layer), photos);
+  if (layerSwap === null) return refused(PICKED_PHOTO_GONE);
+  const advisors: AdvisorWrite[] = [];
+  for (const w of writes) {
+    const swap = await adoptedFor(versionRows(w.version).flatMap((row) => row.content.photo ?? []), photos);
+    if (swap === null) return refused(PICKED_PHOTO_GONE);
+    advisors.push({ ...w, version: mapVersions(w.version, (a) => (a.photo === undefined ? a : { ...a, photo: swap(a.photo) })) });
   }
-  const swap = (photo: PersonPhoto) => kept.get(photo) ?? photo;
-  return written({
-    layer: withLayerPhotos(layer, swap),
-    advisors: writes.map((w) => ({ ...w, version: mapVersions(w.version, (a) => (a.photo === undefined ? a : { ...a, photo: swap(a.photo) })) })),
-  });
+  return written({ layer: withLayerPhotos(layer, layerSwap), advisors });
 }
 
 /** Of the photos in use before a write, those no stored version uses after it, so their files may go. */
@@ -279,7 +289,8 @@ export function teamPageEditor(
       const before = photosInUse(items, advisorItems);
       const version = afterStep(items[0]?.version ?? null, adopted.value.layer, step);
       // A Team page upload the stored versions did not show must still be
-      // stored: else the panel was opened before another save deleted it.
+      // stored, and young enough that the daily sweep cannot delete it
+      // while this save is under way (`TeamPagePhotos.gone`).
       const after = photosInUse([{ id: 1, siteOrder: 1, version }], advisorsAfter(advisorItems, adopted.value.advisors));
       if ((await photos.gone([...after].filter((photo) => !before.has(photo)))).length > 0) return refused(PHOTO_GONE);
       const saved = await store.save(version, adopted.value.advisors, { layer: items[0]?.version ?? null, advisors: advisorItems });

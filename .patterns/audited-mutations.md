@@ -107,10 +107,13 @@ by a unique value (the application finds its file rows by their unique Blob path
 cannot read and then decide either, so a write that must not land on rows changed since it read
 them opens its batch with a guard statement (`failUnless` and `unchangedRows` in
 [lib/db-guard.ts](../lib/db-guard.ts), issue #831) that fails the whole transaction; the caller
-reads that failure back with `isGuardFailure` and answers a refusal. The content stores do this
-through `writeOverExpected` in
+reads that failure back with `isGuardFailure` and answers a refusal. A guard alone does not stop
+two batches that both pass it before either commits, so a batch first takes a lock the other
+waits on: `unchangedRows` opens with the table's transaction-level advisory lock, and the next
+statement, under Read Committed, reads what the batch before committed. The content stores do
+this through `writeOverExpected` in
 [lib/dashboard/database-guarded-write.ts](../lib/dashboard/database-guarded-write.ts), and
-anonymization through `failUnless`. A write that drops a reference to a public-store file ends
+anonymization locks the person's `users` row (`for update`) before its `failUnless`. A write that drops a reference to a public-store file ends
 its batch with `referencedPublicFiles`
 ([lib/storage/public-references.ts](../lib/storage/public-references.ts)) and deletes only the
 files no row names (`deleteUnreferencedAfter` in

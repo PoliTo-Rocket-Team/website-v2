@@ -145,20 +145,21 @@ export function RemoveFromAlumniBox({ checked, onChange }: { checked: boolean; o
 
 /**
  * Boards 51c and 55c: type DELETE, then the account closes and the page signs
- * out. An applicant may also withdraw their open applications; a member
- * leaves the team with it, and may ask to be removed from the Alumni page.
+ * out. An applicant may also withdraw every application not withdrawn yet,
+ * whatever its status (issue #831); a member leaves the team with it, and
+ * may ask to be removed from the Alumni page.
  */
 export function DeleteAccountDialog({
   open,
   onOpenChange,
-  openApplications,
+  unwithdrawnApplications,
   member,
   deleteAccount,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** How many open applications an applicant has; null for a member. */
-  openApplications: number | null;
+  /** How many applications an applicant has not withdrawn yet; null for a member. */
+  unwithdrawnApplications: number | null;
   member: boolean;
   deleteAccount: (withdrawOpenApplications: boolean, removeFromAlumni: boolean) => Promise<WriteResult<null>>;
 }) {
@@ -209,11 +210,13 @@ export function DeleteAccountDialog({
       confirmDisabled={!deleteConfirmed(typed)}
       onConfirm={confirm}
     >
-      {openApplications !== null && openApplications > 0 && (
+      {unwithdrawnApplications !== null && unwithdrawnApplications > 0 && (
         <div className="mt-5 flex flex-col gap-3 rounded-xl border border-hairline bg-white-5 px-4 py-3.5 text-[13px] text-text-2">
           <p className="flex items-center gap-2.5">
             <Info aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
-            {openApplications === 1 ? "Your sent application stays with the team" : `Your ${openApplications} sent applications stay with the team`}
+            {unwithdrawnApplications === 1
+              ? "Your sent application stays with the team"
+              : `Your ${unwithdrawnApplications} sent applications stay with the team`}
           </p>
           <label htmlFor={boxId} className="flex cursor-pointer items-center gap-2.5">
             <input id={boxId} type="checkbox" checked={alsoWithdraw} onChange={(e) => setAlsoWithdraw(e.target.checked)} className="peer sr-only" />
@@ -225,7 +228,7 @@ export function DeleteAccountDialog({
             >
               {alsoWithdraw && <Check className="h-3 w-3" strokeWidth={2.5} />}
             </span>
-            Also withdraw my open applications
+            {unwithdrawnApplications === 1 ? "Also withdraw my application" : "Also withdraw all my applications"}
           </label>
         </div>
       )}

@@ -2,7 +2,7 @@ import "./access-matrix/install";
 
 import assert from "node:assert/strict";
 import { beforeEach, test, type TestContext } from "node:test";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { getDb } from "@/db/client";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
@@ -246,17 +246,35 @@ test("Delete account withdraws an application accepted between its read and its 
   assert.deepEqual((await filesWritten("delete-file")).sort(), [cvPathname(MA), "applications/letter-ma.pdf"].sort());
 });
 
-test("Delete account keeps a file an application sent between its read and its write uses", async (t) => {
+/** A second application of applicant-ma on the same CV, withdrawn at `withdrawnAt`, or not withdrawn when null. */
+const secondApplication = (withdrawnAt: string | null) => ({
+  id: 990,
+  applyPositionId: IDS.position("OA"),
+  userId: "applicant-ma",
+  cvFileId: IDS.cvFile(MA),
+  appliedAt: new Date().toISOString(),
+  status: "received" as const,
+  statusKey: withdrawnAt === null ? "new" : "withdrawn",
+  withdrawnAt,
+});
+
+test("Delete account withdraws an application sent while it is on its way too, and deletes the files only the applications it withdrew use", async (t) => {
   await seedFixture();
   const applicant = await dataAs("applicant-ma");
-  aroundNextBatch(t, {
-    before: () =>
-      addRows(applications, [
-        { id: 990, applyPositionId: IDS.position("OA"), userId: "applicant-ma", cvFileId: IDS.cvFile(MA), appliedAt: new Date().toISOString(), status: "received", statusKey: "new" },
-      ]),
-  });
+  aroundNextBatch(t, { before: () => addRows(applications, [secondApplication(null)]) });
   assert.ok((await applicant.deleteAccount({ withdrawOpenApplications: true, removeFromAlumni: false })).ok);
-  assert.deepEqual(await filesWritten("delete-file"), ["applications/letter-ma.pdf"], "the CV the new application uses stays");
+  const mine = (await tableRows(applications)).filter((a) => a.userId === "applicant-ma");
+  assert.ok(mine.some((a) => a.id === 990));
+  for (const a of mine) assert.ok(a.statusKey === "withdrawn" && a.withdrawnAt !== null, `application ${a.id} is withdrawn`);
+  assert.deepEqual((await filesWritten("delete-file")).sort(), [cvPathname(MA), "applications/letter-ma.pdf"].sort());
+});
+
+test("Delete account keeps a file an application withdrawn before still uses", async () => {
+  await seedFixture();
+  await addRows(applications, [secondApplication("2026-01-01T00:00:00.000Z")]);
+  const applicant = await dataAs("applicant-ma");
+  assert.ok((await applicant.deleteAccount({ withdrawOpenApplications: true, removeFromAlumni: false })).ok);
+  assert.deepEqual(await filesWritten("delete-file"), ["applications/letter-ma.pdf"], "the CV stays with the application withdrawn before");
   assert.ok((await tableRows(applicationFiles)).some((f) => f.id === IDS.cvFile(MA)));
 });
 
@@ -287,6 +305,25 @@ test("someone who signs in again while the run is on keeps their data and their 
   const [user] = (await tableRows(users)).filter((u) => u.id === userId);
   assert.equal(user.anonymizedAt, null);
   assert.deepEqual(await filesWritten("delete-public"), []);
+});
+
+test("anonymization locks the person's row before its guard reads it, so a sign-in waits for the run or the guard sees it", async (t) => {
+  await seedFixture();
+  const userId = await deletedMember();
+  // Run in the batch right after its first statement: whether this
+  // transaction holds the row lock a sign-in's users sync (drizzle/0001) waits on.
+  const lockedHere = sql`select ${users.id} as "id", xmax = pg_current_xact_id()::xid as "locked" from ${users} where ${users.id} = ${userId}`;
+  let seen: unknown;
+  const batch = testDb.batch;
+  t.mock.method(testDb, "batch", async (queries: readonly PromiseLike<unknown>[]) => {
+    const results = await batch([queries[0], testDb.execute(lockedHere), ...queries.slice(1)]);
+    seen = results[1];
+    return [results[0], ...results.slice(2)];
+  });
+  const run = await anonymizeDeletedAccounts(new Date(), databaseAnonymizationStore);
+  t.mock.restoreAll();
+  assert.ok(run.anonymized.includes(userId));
+  assert.deepEqual((seen as { rows: unknown[] }).rows, [{ id: userId, locked: true }]);
 });
 
 test("anonymization keeps a photo another row still names", async () => {
@@ -343,6 +380,24 @@ test("a content write is refused when another write replaced the item's rows aft
   const stored = (await tableRows(projectVersions)).filter((row) => row.projectId === item.id);
   assert.equal(stored.length, theirs.length, "the refused write deleted nothing: the other save's rows stand");
   assert.notDeepEqual(stored.map((r) => r.id), theirs.map((r) => r.id), "they are the other save's new rows");
+});
+
+test("a content write holds its table's guard lock from before its guard to its last write, and lets go at commit", async () => {
+  await seedFixture();
+  signInAs(accountOf("team leader").userId);
+  const [item] = await databaseProjectStore.list();
+  // Two overlapping saves of one item: the second one's guard waits on this
+  // lock until the first commits, then reads the first one's new rows.
+  const held = sql`select count(*)::int as "held" from pg_locks where locktype = 'advisory' and granted`;
+  const landed = await writeOverExpected(
+    { table: projectVersions, id: projectVersions.id, where: eq(projectVersions.projectId, item.id) },
+    async () => item,
+    item.version,
+    (db) => [db.execute(held)],
+  );
+  assert.ok(landed.ok, JSON.stringify(landed));
+  assert.deepEqual((landed.value.results[0] as { rows: unknown[] }).rows, [{ held: 1 }], "held while the writes run");
+  assert.deepEqual((await testDb.execute(held)).rows, [{ held: 0 }], "let go at commit");
 });
 
 test("a project save made on a version the store no longer holds is refused before any write", async () => {
