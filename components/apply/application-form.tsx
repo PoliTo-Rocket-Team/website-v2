@@ -14,9 +14,14 @@ import {
   STUDY_PROGRAMMES,
   parseApplicationForm,
   pdfProblem,
+  setPdfField,
   type FieldErrors,
   type FormDefaults,
+  type PdfFieldName,
+  type PdfPick,
   type PositionAsks,
+  type PreviousFile,
+  type PreviousFiles,
 } from "@/lib/apply/application-form";
 import { positionPage } from "@/lib/apply/page";
 import { SUBMIT_MESSAGES, type SubmitResult } from "@/lib/apply/submit-result";
@@ -29,22 +34,28 @@ import { SUBMIT_MESSAGES, type SubmitResult } from "@/lib/apply/submit-result";
 
 const copy = positionPage.form;
 
+/** A field starts on the file the applicant sent before, when there is one (issue #826). */
+const previousPick = (file: PreviousFile | null): PdfPick => (file === null ? null : { kind: "previous", file });
+
 export function ApplicationForm({
   email,
   defaults,
+  previous,
   asks,
   send,
 }: {
   /** The Google account's email: shown, locked, never sent. */
   email: string;
   defaults: FormDefaults;
+  /** The CV and letter the applicant sent before: each field starts on its own, and a new upload replaces it. */
+  previous: PreviousFiles;
   asks: PositionAsks;
   send: (form: FormData) => Promise<SubmitResult>;
 }) {
   const router = useRouter();
   const [errors, setErrors] = useState<FieldErrors>({});
-  const [cv, setCv] = useState<File | null>(null);
-  const [letter, setLetter] = useState<File | null>(null);
+  const [cv, setCv] = useState<PdfPick>(() => previousPick(previous.cv));
+  const [letter, setLetter] = useState<PdfPick>(() => previousPick(previous.motivationLetter));
   const [sending, setSending] = useState(false);
 
   const clear = (field: string) =>
@@ -54,9 +65,12 @@ export function ApplicationForm({
       return rest;
     });
 
-  /** Keeps a picked or dropped PDF, and flags it on its field at once when it cannot be sent. */
-  const pickPdf = (field: "cv" | "motivationLetter", keep: (file: File | null) => void) => (file: File | null) => {
-    keep(file);
+  /**
+   * Keeps a picked or dropped PDF, and flags it on its field at once when it
+   * cannot be sent. Removing it goes back to the file sent before, if any.
+   */
+  const pickPdf = (field: PdfFieldName, before: PreviousFile | null, keep: (pick: PdfPick) => void) => (file: File | null) => {
+    keep(file === null ? previousPick(before) : { kind: "upload", file });
     const problem = file === null ? null : pdfProblem(file);
     if (problem === null) clear(field);
     else setErrors((e) => ({ ...e, [field]: problem }));
@@ -65,10 +79,8 @@ export function ApplicationForm({
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    form.delete("cv");
-    form.delete("motivationLetter");
-    if (cv) form.set("cv", cv);
-    if (letter && asks.requiresMotivationLetter) form.set("motivationLetter", letter);
+    setPdfField(form, "cv", cv);
+    setPdfField(form, "motivationLetter", asks.requiresMotivationLetter ? letter : null);
 
     const checked = parseApplicationForm(form, asks);
     if (!checked.ok) {
@@ -203,16 +215,16 @@ export function ApplicationForm({
           <PdfField
             label="CV / Résumé"
             hint={`PDF, up to ${MAX_PDF_LABEL}`}
-            file={cv}
-            onFile={pickPdf("cv", setCv)}
+            pick={cv}
+            onFile={pickPdf("cv", previous.cv, setCv)}
             error={errors.cv}
           />
           {asks.requiresMotivationLetter && (
             <PdfField
               label="Motivation letter"
               hint={`PDF, 1 page, up to ${MAX_PDF_LABEL}`}
-              file={letter}
-              onFile={pickPdf("motivationLetter", setLetter)}
+              pick={letter}
+              onFile={pickPdf("motivationLetter", previous.motivationLetter, setLetter)}
               error={errors.motivationLetter}
             />
           )}
@@ -414,21 +426,29 @@ function Segmented({
   );
 }
 
+/** The line under a file sent before, beside its size. */
+const PREVIOUS_NOTE = "From your last application";
+
 function formatSize(bytes: number): string {
   return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-/** A PDF drop zone (board 35): drop or browse; once chosen, the file's name and size with a remove button. */
+/**
+ * A PDF drop zone (board 35): drop or browse; once chosen, the file's name and
+ * size with a remove button. A file sent before shows the same way, marked as
+ * such, with a Change button that browses for another (issue #826); dropping a
+ * PDF on it replaces it too.
+ */
 function PdfField({
   label,
   hint,
-  file,
+  pick,
   onFile,
   error,
 }: {
   label: string;
   hint: string;
-  file: File | null;
+  pick: PdfPick;
   onFile: (file: File | null) => void;
   error?: string;
 }) {
@@ -466,7 +486,7 @@ function PdfField({
               e.target.value = "";
             }}
           />
-          {file === null ? (
+          {pick === null ? (
             <button
               type="button"
               onClick={() => input.current?.click()}
@@ -483,17 +503,33 @@ function PdfField({
                 <FileText className="h-4 w-4" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[14px] text-prt-text">{file.name}</span>
-                <span className="block text-[11px] text-prt-muted">{formatSize(file.size)}</span>
+                <span className="block truncate text-[14px] text-prt-text">{pick.file.name}</span>
+                <span className="block truncate text-[11px] text-prt-muted">
+                  {pick.kind === "previous"
+                    ? [PREVIOUS_NOTE, pick.file.size === null ? null : formatSize(pick.file.size)].filter(Boolean).join(" · ")
+                    : formatSize(pick.file.size)}
+                </span>
               </span>
-              <button
-                type="button"
-                onClick={() => onFile(null)}
-                aria-label={`Remove ${file.name}`}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-2 transition-colors duration-300 ease-out hover:text-prt-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-              >
-                <X aria-hidden className="h-4 w-4" />
-              </button>
+              {pick.kind === "previous" ? (
+                <button
+                  type="button"
+                  onClick={() => input.current?.click()}
+                  aria-label={`Change ${pick.file.name}: upload a different PDF`}
+                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-semibold text-prt-text transition-colors duration-300 ease-out hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                >
+                  <Upload aria-hidden className="h-4 w-4" />
+                  Change
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onFile(null)}
+                  aria-label={`Remove ${pick.file.name}`}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-2 transition-colors duration-300 ease-out hover:text-prt-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                >
+                  <X aria-hidden className="h-4 w-4" />
+                </button>
+              )}
             </div>
           )}
         </div>

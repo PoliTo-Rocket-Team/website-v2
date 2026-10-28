@@ -47,8 +47,8 @@ export type HeldFile = {
   readonly pathname: string;
   /**
    * When each other application that points at this same row was withdrawn,
-   * null for one that is not. Each application uploads its own files, so this
-   * is empty unless older data shares a row.
+   * null for one that is not. An applicant's later applications link the
+   * files they already stored (issue #826), so a row is often shared.
    */
   readonly otherHolders: readonly (Date | null)[];
 };
