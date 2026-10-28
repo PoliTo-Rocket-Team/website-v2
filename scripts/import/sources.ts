@@ -42,13 +42,17 @@ export const CSV_FILES = {
 
 type CsvName = keyof typeof CSV_FILES;
 
+/** The old positions export: only the positions-only run reads it (issue #834; ./positions.ts). */
+export const POSITIONS_FILE = "positions_rows.csv";
+
 /**
- * The exports a run leaves out whatever they hold (owner decision, issue
- * #820): the old open positions, since recruitment creates new ones. A file
- * here is listed as left out when the directory has it, and never read.
+ * The exports a full run leaves out whatever they hold (owner decision, issue
+ * #820): the old positions, which only the positions-only run imports (issue
+ * #834). A file here is listed as left out when the directory has it, and
+ * never read.
  */
 const UNREAD_CSV_FILES: Readonly<Record<string, string>> = {
-  "positions_rows.csv": "not imported (owner decision); recruitment creates new positions",
+  [POSITIONS_FILE]: "not imported (owner decision); only the positions-only run (--only positions) imports them",
 };
 
 /** One located row: where it sits and each field's value ("" when the source has none). */
@@ -187,6 +191,29 @@ function named<R extends Row<"firstName" | "lastName">>(rows: readonly R[], name
   });
 }
 
+/** Where a reader notes what it read, what it left out and why, and a file whose header it could not find. */
+export type ReadLog = { readonly read: string[]; readonly skipped: string[]; readonly conflicts: Conflict[] };
+
+/** One CSV export of `directory`, each row located by its file line. None when the file is missing or has no header, as `log` notes. */
+export function readCsv<F extends string>(directory: string, fileName: string, spec: SourceSpec<F>, log: ReadLog): Row<F>[] {
+  const path = join(directory, fileName);
+  if (!existsSync(path)) {
+    log.skipped.push(`${fileName}: not found`);
+    return [];
+  }
+  const records = parseCsv(readFileSync(path, "utf8"));
+  const rows = rowsBelow(
+    records.map((r) => r.cells),
+    spec,
+    { file: fileName },
+    log.conflicts,
+    (i) => records[i]?.line ?? i + 1,
+  );
+  if (rows === null) return [];
+  log.read.push(fileName);
+  return rows;
+}
+
 /** Reads every source in `directory`. `year` names the current academic year's sheet; by default it is the newest. */
 export function readSources(directory: string, year?: number): Sources {
   const read: string[] = [];
@@ -247,25 +274,8 @@ export function readSources(directory: string, year?: number): Sources {
     years = years.sort((a, b) => b.year - a.year);
   }
 
-  const csv = <N extends CsvName, F extends string>(name: N, spec: SourceSpec<F>): Row<F>[] => {
-    const fileName = CSV_FILES[name];
-    const path = join(directory, fileName);
-    if (!existsSync(path)) {
-      skipped.push(`${fileName}: not found`);
-      return [];
-    }
-    const records = parseCsv(readFileSync(path, "utf8"));
-    const rows = rowsBelow(
-      records.map((r) => r.cells),
-      spec,
-      { file: fileName },
-      conflicts,
-      (i) => records[i]?.line ?? i + 1,
-    );
-    if (rows === null) return [];
-    read.push(fileName);
-    return rows;
-  };
+  const csv = <N extends CsvName, F extends string>(name: N, spec: SourceSpec<F>): Row<F>[] =>
+    readCsv(directory, CSV_FILES[name], spec, { read, skipped, conflicts });
   const csvRows = {
     people: csv("people", PEOPLE_CSV),
     teamMembers: csv("teamMembers", TEAM_MEMBERS_CSV),
