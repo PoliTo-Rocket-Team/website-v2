@@ -10,7 +10,7 @@ import type { DashboardChrome } from "@/lib/dashboard/chrome";
 import { AccountUnresolved } from "./account-unresolved";
 import { Avatar } from "./avatar";
 import { Sidebar, SidebarNavigate } from "./sidebar";
-import { TopBarSlot } from "./top-bar-slot";
+import { TopBarSlot, TopBarTitleSlot } from "./top-bar-slot";
 import { UserSheet } from "./user-card";
 import { ViewAsBanner, ViewAsBannerChrome } from "./view-as-banner";
 
@@ -53,9 +53,12 @@ export function DashboardShell({
 }) {
   const [open, setOpen] = useState(false);
   const [actionSlot, setActionSlot] = useState<HTMLDivElement | null>(null);
-  // The address is request data on a page with a dynamic segment, so the
-  // title reading it sits in its own Suspense and never holds the frame back.
-  const title = (
+  // A route may set its own title (TopBarTitle); otherwise the title is the
+  // name of the page the address points at. The address is request data on a
+  // page with a dynamic segment, so the title reading it sits in its own
+  // Suspense and never holds the frame back.
+  const [ownTitle, setOwnTitle] = useState<string | null>(null);
+  const title = ownTitle ?? (
     <Suspense fallback={null}>
       <PageTitle />
     </Suspense>
@@ -102,7 +105,9 @@ export function DashboardShell({
       <main className="px-4 pb-12 pt-4 md:ml-[248px] md:px-10 md:pb-16 md:pt-8">
         <ViewAsBannerChrome.Provider value={chrome}>
           <ViewAsBanner placement="page" />
-          <TopBarSlot.Provider value={actionSlot}>{children}</TopBarSlot.Provider>
+          <TopBarTitleSlot.Provider value={setOwnTitle}>
+            <TopBarSlot.Provider value={actionSlot}>{children}</TopBarSlot.Provider>
+          </TopBarTitleSlot.Provider>
         </ViewAsBannerChrome.Provider>
       </main>
 

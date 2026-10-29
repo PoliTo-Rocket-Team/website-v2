@@ -12,7 +12,9 @@ import { featuredIdsOf, featuring, freeFeaturedSlot, holdsFeature, isFeatured, t
 import { publicStorePhotoFiles, type PhotoFiles } from "@/lib/outreach-photos";
 import { draftFromColumns, postColumns, postFromColumns } from "@/lib/outreach-rows";
 import type { OutreachContent, OutreachDraft, OutreachTag, PostItem, PostStore, PostVersions } from "@/lib/outreach-types";
-import { deletePublicFile, ownPublicStoreHost, uploadPublicFile } from "@/lib/storage/public-store";
+import { ownPublicStoreHost } from "@/lib/storage/public-store";
+import { writeOverExpected } from "./database-guarded-write";
+import { databasePublicFiles } from "./database-public-files";
 import { written } from "./write";
 
 // The database side of the Outreach content (issue #287): the editor's store
@@ -191,21 +193,29 @@ const databasePostStore: PostStore = {
     return written({ id: Number(created.rows[0].post_id), siteOrder, version });
   },
 
-  async update(id, version) {
-    const stored = await readStoredOutreach();
-    const before = stored.posts.find((item) => item.id === id) ?? null;
+  async update(id, version, expected) {
     const { versions, tags } = versionsValues(id, version);
-    // A featured post taken off the site gives up its slot in the same batch (issue #502).
-    const unfeature = isFeatured(stored.featured, id) && !holdsFeature(version);
-    // The old versions' tags go with them (ON DELETE CASCADE). A draft may have no tag yet.
-    await runAuditBatch((db) => [
-      db.delete(outreachPostVersions).where(eq(outreachPostVersions.postId, id)),
-      db.insert(outreachPostVersions).values(versions),
-      ...(tags.length === 0 ? [] : [db.insert(outreachPostTags).values(tags)]),
-      ...(unfeature ? [db.update(outreachPosts).set({ featuredSlot: null }).where(eq(outreachPosts.id, id))] : []),
-    ]);
+    let featured: FeaturedIds = [];
+    const landed = await writeOverExpected(
+      { table: outreachPostVersions, id: outreachPostVersions.id, where: eq(outreachPostVersions.postId, id) },
+      async () => {
+        const stored = await readStoredOutreach();
+        featured = stored.featured;
+        return stored.posts.find((item) => item.id === id) ?? null;
+      },
+      expected,
+      // The old versions' tags go with them (ON DELETE CASCADE). A draft may have no tag yet.
+      // A featured post taken off the site gives up its slot in the same batch (issue #502).
+      (db) => [
+        db.delete(outreachPostVersions).where(eq(outreachPostVersions.postId, id)),
+        db.insert(outreachPostVersions).values(versions),
+        ...(tags.length === 0 ? [] : [db.insert(outreachPostTags).values(tags)]),
+        ...(isFeatured(featured, id) && !holdsFeature(version) ? [db.update(outreachPosts).set({ featuredSlot: null }).where(eq(outreachPosts.id, id))] : []),
+      ],
+    );
+    if (!landed.ok) return landed;
     updateTag(OUTREACH_CACHE_TAG);
-    return written({ id, siteOrder: before?.siteOrder ?? 0, version });
+    return written({ id, siteOrder: landed.value.before?.siteOrder ?? 0, version });
   },
 
   async remove(id) {
@@ -274,5 +284,5 @@ export const databaseOutreachStore: OutreachStore = {
 
 /** Uploaded post photos in this deployment's public Blob store, under `post-photos/`, each under a new name. */
 export function blobPhotoFiles(): PhotoFiles {
-  return publicStorePhotoFiles(ownPublicStoreHost(), { upload: uploadPublicFile, remove: deletePublicFile }, randomUUID);
+  return publicStorePhotoFiles(ownPublicStoreHost(), databasePublicFiles, randomUUID);
 }

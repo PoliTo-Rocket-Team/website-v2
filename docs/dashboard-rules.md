@@ -600,7 +600,14 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   their Overview.
 - Delete account: the person types DELETE. It closes the sign-in. The data is kept at least one
   year, then anonymized for statistics. The Privacy Policy must say so (#122). A non-member may
-  also withdraw their open applications in the same dialog.
+  also withdraw their applications in the same dialog ("Also withdraw all my applications").
+  Ticked, it withdraws every application of the account not withdrawn yet, whatever its status,
+  in the same write that deletes their files, so an application sent or moved on meanwhile never
+  keeps a link to a deleted file (Owner decision, #831). A file an application withdrawn before
+  still uses is kept.
+- Anonymization locks the person's row and checks again, in the write itself, that the person is
+  still deleted, not anonymized and not signed in again; a sign-in that starts meanwhile waits for
+  it. Only then are their files deleted (#831).
 - Anonymization also clears the person's free-text answers to a position's questions, on the
   application and in the audit log copies (#729). The role, dates and outcome stay for statistics.
 - Alumni entries survive anonymization (#257). Anonymizing a deleted account clears the private
@@ -674,16 +681,18 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
     holder**, and the row ends in **+ Add seat**, in the Add department style. For a head the
     boxes open nothing and there is no Add seat. The server refuses both writes to everyone
     but the team leader and full access.
-  - **Change holder** picks who holds the seat from the team. As in Change head, someone who
-    already holds a seat, or the holder themself, cannot be picked, and the successor keeps
-    their divisions. The holder gets "What happens to {name}?": Become an advisor (on the whole
+  - **Change holder** picks who holds the seat from the team. As in Change head, a person who
+    holds another seat may be picked and keeps it; their seat shows on the row as information.
+    Only the holder themself cannot be picked ("Holds it now"). The successor keeps their
+    divisions. The holder gets "What happens to {name}?": Become an advisor (on the whole
     team, their access ends) or Leave the team, with neither picked at first. On save the
     holder's seat role ends and the successor's starts with the same title and the same
     `roles.full_access` flag, so the Project Manager's and the Chief Engineer's full access
     moves with the seat.
   - A seat box changes who holds the seat, never its title: the title is changed on Members,
     in Edit details (#626).
-  - **Add seat** takes a title and one person from the team who holds no seat yet. It starts an
+  - **Add seat** takes a title and one person from the team. A person who holds another seat may
+    be picked and keeps it; the new seat has no holder yet, so nobody is refused. It starts an
     active role in no department and no division with that title and no full-access flag, so a
     new seat gives no access of its own. It shows on the Team tree's seat row, this row and the
     public Team page's arc. Ending a seat with no successor is not offered.
@@ -695,15 +704,16 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
 - **New department** (board 77d) needs a name, a code of 2 or 3 letters no other open department
   uses, a kind (Technical, picked first, or Operations; #325), and exactly one head, picked from
   the team. The kind picks the slide of the public Team page's departments carousel the head sits
-  on (ADR 0015). The head keeps their divisions. Someone who
-  already holds a seat (the team leader, a board seat, another department's head) cannot be
-  picked. Divisions are added after, with Add division.
+  on (ADR 0015). The head keeps their divisions. A person who holds another seat (the team
+  leader, a board seat, an advisor role, another department's head) may be picked and keeps it;
+  their seat shows on the row as information. The department is new, so nobody is refused.
+  Divisions are added after, with Add division.
 - **Edit department** (board 77e) shows the name, the code, the kind, the head, and the divisions
   as rows that open to list their people, lead first, read-only. Save changes stores a new name,
   code or kind, after an "are you sure" that lists each change.
 - **Change head** (board 77e, #253), under the head in Edit department, picks the new head from
-  the team. As in New department, someone who already holds a seat cannot be picked, and the
-  new head keeps their divisions. The head they replace gets "What happens to {name}?":
+  the team. As in New department, a person who holds another seat may be picked and keeps it.
+  Only the current head cannot be picked ("Heads it now"). The new head keeps their divisions. The head they replace gets "What happens to {name}?":
   Become an advisor (in this department) or Leave the team, with neither picked at first. The
   change is saved with Save changes, after the same "are you sure".
 - **Close department** (board 77f), from Edit department's footer:
@@ -1300,7 +1310,10 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   shows it, and a save with Launch history or Gallery off keeps the files of the photos still in
   the panel, so switching the section back on brings them back. Leaving the editor with photos
   that are only in the panel (a section that is off, or an upload not yet saved) leaves their
-  files in the store, as Outreach does.
+  files in the store, as Outreach does, until the daily sweep deletes each one a day old that no
+  saved content shows (#831). A save refuses an upload more than half a day old that the item did
+  not show yet ("Reload the page and add it again"), so the sweep never deletes a file a save is
+  keeping.
 - Desktop edits the desktop text. Phone edits the phone text of the fields that have one; an empty
   phone field shows the desktop text, except the story texts, which always have their own.
 - An optional section (Versions, Launch history, Plan, Why, Gallery) has a show-on-page switch in its header. Off, the section
@@ -1360,10 +1373,13 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   dragged into its order, and one advisor open at a time (full name, role on the page, Principal
   / Specialist, LinkedIn, email, photo). Add advisor adds one. Add, edit, reorder and Principal /
   Specialist changes are drafts that the edit bar's Save draft keeps and Publish puts on
-  `/about/the-team`. Replace photo picks a photo the site already holds.
+  `/about/the-team`. Replace photo picks a photo the site already holds. A photo picked from a
+  member's own picture is saved as a copy, one for the page's layer and one for each advisor row
+  that shows it, so no two rows share one file and replacing the picture never takes the Team
+  page's photo with it (Owner decision, #831).
 - End advising is the one advisor change made at once, after the editor picks the academic years
   they advised: the advisor leaves the Team page and an Alumni entry in the Advisors group takes
-  their name, role, years and photo. It writes the advisor tables and that one `alumni_entries`
+  their name, role, years and a copy of their photo (#831). It writes the advisor tables and that one `alumni_entries`
   row, never a role, division, department, scope or member. Reset to team never changes the
   advisors. On a preview with the seeded `preview` branch, advisor changes and End advising are
   saved there and kept across preview builds (ADR 0016).

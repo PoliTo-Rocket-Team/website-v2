@@ -36,6 +36,8 @@ const team: TeamPerson[] = [
   { id: 1, name: "Marco Bianchi", emails: ["marco@prt.it"], memberships: membershipsOf([{ divisionId: 1, role: "lead", since: "2023-10-01" }]), beyond: [] },
   { id: 6, name: "Chiara Rinaldi", emails: ["chiara@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "head", departmentId: 1, title: "Head of Aerodynamics" }] },
   { id: 7, name: "Alessandro Greco", emails: ["alessandro@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "team-leader", title: "" }] },
+  { id: 8, name: "Giulia Ferri", emails: ["giulia@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "advisor", departmentId: 1 }] },
+  { id: 9, name: "Luca Moretti", emails: ["luca@prt.it"], memberships: membershipsOf([{ divisionId: 3, role: "member", since: "2024-10-01" }]), beyond: [] },
 ];
 
 const fullAccess: TeamActor = { kind: "team" };
@@ -68,9 +70,10 @@ test("New department needs a name, a 2 or 3 letter code no open department uses,
   assert.equal(checkDepartmentCreate({ name: "Propulsion", code: "PR", kind: "technical" }).ok, false, "no head list at all is refused in its shape");
 });
 
-test("a head is someone with no seat yet: another department's head or the team leader stays where they are", () => {
-  assert.deepEqual(create({ heads: [6] }), { ok: false, error: "Chiara Rinaldi is already Head of Aerodynamics." });
-  assert.deepEqual(create({ heads: [7] }), { ok: false, error: "Alessandro Greco is already Team Leader." });
+test("New department's head may hold other seats (issue #837): another department's head, the team leader, an advisor or a division member", () => {
+  for (const headId of [6, 7, 8, 9]) {
+    assert.deepEqual(create({ heads: [headId] }), { ok: true, value: { name: "Propulsion", code: "PR", kind: "technical", headId } }, `person ${headId}`);
+  }
 });
 
 test("Edit department saves a new name or code under the same rules, for an open department", () => {
@@ -206,10 +209,16 @@ test("Change head: the replaced head becomes an advisor in the department or lea
   assert.equal(checkDepartmentSave({ name: "Aerodynamics", code: "AE", kind: "technical", head: { to: 1, outcome: "member" } }).ok, false, "only advisor or leave");
 });
 
-test("Change head picks someone on the team with no seat; a department with no head needs no outcome", () => {
+test("Change head picks anyone on the team but the head it has now (issue #837); a department with no head needs no outcome", () => {
   assert.deepEqual(changeHead({ to: 6, outcome: "advisor" }), { ok: false, error: "Chiara Rinaldi already heads this department." });
-  assert.deepEqual(changeHead({ to: 7, outcome: "advisor" }), { ok: false, error: "Alessandro Greco is already Team Leader." });
   assert.deepEqual(changeHead({ to: 99, outcome: "advisor" }), { ok: false, error: "They are not on the team." });
+  // Chiara heads Aerodynamics; she takes Structures over from Marco and keeps her head seat there.
+  const otherHead = planDepartmentSave({ actor: fullAccess, org, departmentId: 2, team, headIds: [1], save: { name: "Structures", code: "ST", head: { to: 6, outcome: "advisor" }, kind: "technical" } });
+  assert.ok(otherHead.ok && otherHead.value.head?.to === 6, "another department's head");
+  for (const to of [7, 8, 9]) {
+    const changed = changeHead({ to, outcome: "advisor" });
+    assert.ok(changed.ok && changed.value.head?.to === to && changed.value.head.from.includes(6), `person ${to}: the team leader, an advisor, a division member`);
+  }
   const first = changeHead({ to: 1, outcome: null }, []);
   assert.ok(first.ok);
   assert.deepEqual(first.value.head, { to: 1, from: [], steppingDown: null });

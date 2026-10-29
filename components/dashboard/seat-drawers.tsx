@@ -173,7 +173,7 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
               <PeoplePicker
                 mode="seat"
                 short={seat.title}
-                taken={(p) => (p.id === holder.id ? "Holds it now" : p.seated ? `Already ${p.role}` : null)}
+                taken={(p) => (p.id === holder.id ? "Holds it now" : null)}
                 onPick={(p) => {
                   setNext(p);
                   setPicking(false);
@@ -332,7 +332,7 @@ function NewSeatPanel({ open, onClose }: { open: boolean; onClose: () => void })
               <PeoplePicker
                 mode="seat"
                 short={stored === "" ? "the new seat" : stored}
-                taken={(p) => (p.seated ? `Already ${p.role}` : null)}
+                taken={() => null}
                 onPick={(p) => {
                   setHolder(p);
                   setPicking(false);

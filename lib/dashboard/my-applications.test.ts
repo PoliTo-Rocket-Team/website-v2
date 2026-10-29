@@ -12,12 +12,10 @@ import {
   publicStepOf,
   WITHDRAWABLE_STATUS_KEYS,
   WITHDRAWN_STATUS_KEY,
-  withdrawnOnDelete,
   type ActiveApplication,
   type ActiveStage,
   type ApplicationPlace,
   type Interview,
-  type OwnApplication,
   type PublicStep,
   type StoredApplication,
 } from "./my-applications";
@@ -196,55 +194,11 @@ test("an application at Interview shows In review until times are offered, then 
   assert.deepEqual(placeOf(sent("interview"), OFFERED, null), { kind: "active", stage: { kind: "interview", interview: OFFERED } });
 });
 
-type OwnApplicationInput = Omit<Partial<OwnApplication>, "status"> &
-  Pick<OwnApplication, "id"> & { readonly status?: BuiltInStatusKey | ApplicationStatus };
-
-const application = ({ status = "new", ...overrides }: OwnApplicationInput): OwnApplication => ({
-  withdrawnAt: null,
-  cvFileId: null,
-  coverLetterFileId: null,
-  ...overrides,
-  status: typeof status === "string" ? builtIn(status) : status,
-});
-
 const added = (key: string, parent: BuiltInStatusKey): ApplicationStatus => ({ kind: "added", key, parent });
 
-test("Delete account withdraws only the open applications and deletes only their files", () => {
-  const result = withdrawnOnDelete([
-    application({ id: 1, status: "new", cvFileId: 10, coverLetterFileId: 11 }),
-    application({ id: 2, status: "interview", cvFileId: 20 }),
-    application({ id: 3, status: "rejected_email_sent", cvFileId: 30, coverLetterFileId: 31 }),
-    application({ id: 4, status: "accepted_email_sent", cvFileId: 40 }),
-    application({ id: 5, status: "new", withdrawnAt: "2026-01-01T00:00:00Z", cvFileId: 50 }),
-  ]);
-  assert.deepEqual(result.applicationIds, [1, 2]);
-  assert.deepEqual(result.fileIds, [10, 11, 20]);
-});
-
-test("Delete account withdraws an application at an email-to-be-sent status and deletes its own files (#759)", () => {
-  const result = withdrawnOnDelete([
-    application({ id: 1, status: "accepted_email_to_be_sent", cvFileId: 10, coverLetterFileId: 11 }),
-    application({ id: 2, status: "rejected_email_to_be_sent", cvFileId: 20 }),
-  ]);
-  assert.deepEqual(result.applicationIds, [1, 2]);
-  assert.deepEqual(result.fileIds, [10, 11, 20]);
-});
-
-test("Delete account withdraws at an added status under a withdrawable parent, and keeps a decided one and its files (#759)", () => {
-  const result = withdrawnOnDelete([
-    application({ id: 1, status: added("second_look", "new"), cvFileId: 10 }),
-    application({ id: 2, status: added("tech_call", "interview"), cvFileId: 20 }),
-    application({ id: 3, status: added("offer_drafted", "accepted_email_to_be_sent"), cvFileId: 30 }),
-    application({ id: 4, status: "accepted_email_sent", cvFileId: 40 }),
-    application({ id: 5, status: "rejected_email_sent", cvFileId: 50 }),
-    application({ id: 6, status: "joined", cvFileId: 60 }),
-    application({ id: 7, status: "withdrawn", cvFileId: 70 }),
-    application({ id: 8, status: added("archived", "rejected_email_sent"), cvFileId: 80 }),
-    application({ id: 9, status: added("onboarding", "joined"), cvFileId: 90 }),
-  ]);
-  assert.deepEqual(result.applicationIds, [1, 2, 3]);
-  assert.deepEqual(result.fileIds, [10, 20, 30]);
-});
+// Delete account withdraws every application not withdrawn yet, whatever its
+// status (Owner decision, issue #831), in the batch that writes:
+// ./file-references-server.test.ts covers it on the database.
 
 test("an open application is one the Withdraw button could withdraw, built-in or added", () => {
   for (const key of BUILT_IN_STATUS_KEYS) {
@@ -257,22 +211,6 @@ test("both ways to withdraw end at the Withdrawn status, which is no longer open
   assert.equal(WITHDRAWN_STATUS_KEY, "withdrawn");
   assert.equal(publicStepOf(builtIn(WITHDRAWN_STATUS_KEY)), "withdrawn");
   assert.equal(isWithdrawable(builtIn(WITHDRAWN_STATUS_KEY)), false);
-});
-
-test("a file another application still uses stays", () => {
-  const result = withdrawnOnDelete([
-    application({ id: 1, status: "new", cvFileId: 10 }),
-    application({ id: 2, status: "joined", cvFileId: 10 }),
-  ]);
-  assert.deepEqual(result.applicationIds, [1]);
-  assert.deepEqual(result.fileIds, []);
-});
-
-test("with no open application, nothing is withdrawn or deleted", () => {
-  assert.deepEqual(withdrawnOnDelete([application({ id: 3, status: "rejected_email_sent", cvFileId: 30 })]), {
-    applicationIds: [],
-    fileIds: [],
-  });
 });
 
 // Withdraw and the interview time on My applications (issues #171, #183): the

@@ -1,4 +1,0 @@
-requester,description,quantity,price,status,reason,createdAt,name,quoteName,id
-tm-2,Two routers,2,120.50,accepted,Lab network,2025-11-03T10:00:00Z,Router,,o-1
-zz-unknown,Bolts,100,5,pending,,2025-11-04T10:00:00Z,Bolts,,o-2
-tm-2,Cables,3,9,shipped,,2025-11-05T10:00:00Z,Cables,,o-3

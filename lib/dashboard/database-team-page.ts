@@ -8,8 +8,9 @@ import { ownsTeamPageUpload } from "@/lib/about/team-page-photos";
 import { ownPublicStoreHost } from "@/lib/storage/public-store";
 import type { ContentStore } from "@/lib/content/editor";
 import { versionedFromRows, versionRows, type ContentItem, type Versioned, type VersionKind } from "@/lib/content/versioned";
-import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
-import { written } from "./write";
+import { runAuditQuery } from "@/lib/db-audit";
+import { writeOverExpected, type VersionRows } from "./database-guarded-write";
+import { written, type WriteResult } from "./write";
 
 // The database side of the Team page's visual layer (issue #283): the
 // editor's store and the public read /about/the-team makes. The layer is one
@@ -74,17 +75,21 @@ export function layerVersionWrites(db: ReturnType<typeof getDb>, version: Versio
   return [db.delete(teamPageLayerVersions), db.insert(teamPageLayerVersions).values(values)] as const;
 }
 
-/** The document's rows become exactly `version`'s. */
-async function writeVersions(version: Versioned<TeamPageLayer>): Promise<ContentItem<TeamPageLayer>> {
-  await runAuditBatch((db) => [...layerVersionWrites(db, version)]);
+/** The document's rows, for a write that must find them as it read them (./database-guarded-write.ts). */
+export const LAYER_ROWS: VersionRows = { table: teamPageLayerVersions, id: teamPageLayerVersions.id, where: undefined };
+
+/** The document's rows become exactly `version`'s, while they still hold `expected` (none before the first save). */
+async function writeVersions(version: Versioned<TeamPageLayer>, expected: Versioned<TeamPageLayer> | null): Promise<WriteResult<ContentItem<TeamPageLayer>>> {
+  const landed = await writeOverExpected(LAYER_ROWS, async () => (await readTeamPageLayer())[0] ?? null, expected, (db) => layerVersionWrites(db, version));
+  if (!landed.ok) return landed;
   updateTag(TEAM_PAGE_LAYER_CACHE_TAG);
-  return { ...DOCUMENT, version };
+  return written({ ...DOCUMENT, version });
 }
 
 export const databaseTeamPageLayerStore: ContentStore<TeamPageLayer> = {
   list: readTeamPageLayer,
-  create: async (version) => written(await writeVersions(version)),
-  update: async (_id, version) => written(await writeVersions(version)),
+  create: (version) => writeVersions(version, null),
+  update: (_id, version, expected) => writeVersions(version, expected),
   async remove() {
     await runAuditQuery((db) => db.delete(teamPageLayerVersions));
     updateTag(TEAM_PAGE_LAYER_CACHE_TAG);

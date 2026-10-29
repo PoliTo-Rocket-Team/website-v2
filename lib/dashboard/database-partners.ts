@@ -11,9 +11,11 @@ import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import type { Partner } from "@/lib/partners";
 import type { LogoFiles } from "@/lib/partners-editor";
 import { partnerColumns, partnerFromColumns } from "@/lib/partners-rows";
-import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
-import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
+import { referencedPublicFiles, type ReferencedFiles } from "@/lib/storage/public-references";
+import { uploadPublicFile } from "@/lib/storage/public-store";
 import { parsePublicPathname, publicPathname } from "@/lib/storage/pathname";
+import { deleteUnreferencedAfter } from "@/lib/storage/unreferenced-delete";
+import { writeOverExpected } from "./database-guarded-write";
 import { written } from "./write";
 
 // The database side of the partners (issue #256): the editor's store, the
@@ -101,10 +103,8 @@ function storedLogoPathname(src: string) {
   }
 }
 
-async function dropFiles(pathnames: readonly ReturnType<typeof unusedLogoFiles>[number][]): Promise<void> {
-  // A file left behind costs storage only; the write already landed.
-  await Promise.all(pathnames.map((p) => deleteBestEffort({ store: "public", area: "partner-logo", pathname: p, remove: deletePublicFile })));
-}
+/** The rows of a partner's versions, for a write that must find them as it read them (./database-guarded-write.ts). */
+const partnerRows = (id: number) => ({ table: partnerVersions, id: partnerVersions.id, where: eq(partnerVersions.partnerId, id) });
 
 function versionValues(partnerId: number, version: Versioned<Partner>) {
   return versionRows(version).map((row) => ({ partnerId, version: row.kind, ...partnerColumns(row.content) }));
@@ -131,23 +131,32 @@ export const databasePartnerStore: ContentStore<Partner> = {
     return written({ id: Number(created.rows[0].partner_id), siteOrder, version });
   },
 
-  async update(id, version) {
-    const before = (await readPartnerItems()).find((item) => item.id === id) ?? null;
-    await runAuditBatch((db) => [
-      db.delete(partnerVersions).where(eq(partnerVersions.partnerId, id)),
-      db.insert(partnerVersions).values(versionValues(id, version)),
-    ]);
+  async update(id, version, expected) {
+    // A logo the write leaves unused goes only when no row names it once the write is in (issue #831).
+    const unused = unusedLogoFiles(expected, version);
+    const landed = await writeOverExpected(
+      partnerRows(id),
+      async () => (await readPartnerItems()).find((item) => item.id === id) ?? null,
+      expected,
+      (db) => [
+        db.delete(partnerVersions).where(eq(partnerVersions.partnerId, id)),
+        db.insert(partnerVersions).values(versionValues(id, version)),
+        referencedPublicFiles(db, unused),
+      ],
+    );
+    if (!landed.ok) return landed;
     updateTag(PARTNERS_CACHE_TAG);
-    await dropFiles(unusedLogoFiles(before?.version ?? null, version));
-    return written({ id, siteOrder: before?.siteOrder ?? 0, version });
+    await deleteUnreferencedAfter("partner-logo", unused, landed.value.results.at(-1) as ReferencedFiles);
+    return written({ id, siteOrder: landed.value.before?.siteOrder ?? 0, version });
   },
 
   async remove(id) {
     const before = (await readPartnerItems()).find((item) => item.id === id) ?? null;
+    const unused = unusedLogoFiles(before?.version ?? null, null);
     // Its versions go with it (ON DELETE CASCADE).
-    await runAuditQuery((db) => db.delete(partners).where(eq(partners.id, id)));
+    const [, referenced] = await runAuditBatch((db) => [db.delete(partners).where(eq(partners.id, id)), referencedPublicFiles(db, unused)]);
     updateTag(PARTNERS_CACHE_TAG);
-    await dropFiles(unusedLogoFiles(before?.version ?? null, null));
+    await deleteUnreferencedAfter("partner-logo", unused, referenced);
     return written(null);
   },
 

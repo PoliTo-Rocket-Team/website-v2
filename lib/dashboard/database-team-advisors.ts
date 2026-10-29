@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import { asc, eq, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
@@ -9,6 +10,11 @@ import { isAdvisorVersion, publicAdvisors, type AdvisorItem, type AdvisorStore, 
 import type { Advisor } from "@/lib/about/types";
 import { versionedFromRows, versionRows, type Versioned, type VersionKind } from "@/lib/content/versioned";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
+import type { RowSet } from "@/lib/db-guard";
+import { publicFolderOf, publicPathname, publicPathnameOfUrl, type PublicPathname } from "@/lib/storage/pathname";
+import { referencedPublicFiles } from "@/lib/storage/public-references";
+import { copyPublicFile, ownPublicStoreHost } from "@/lib/storage/public-store";
+import { deleteUnreferencedAfter } from "@/lib/storage/unreferenced-delete";
 import { ALUMNI_CACHE_TAG } from "./database-alumni";
 import { written } from "./write";
 
@@ -32,6 +38,9 @@ function isUndefinedTable(error: unknown): boolean {
   }
   return false;
 }
+
+/** Every advisor's version rows, for a write that must find them as it read them (lib/db-guard.ts, issue #831). */
+export const ADVISOR_ROWS: RowSet = { table: teamPageAdvisorVersions, id: teamPageAdvisorVersions.id, where: undefined };
 
 /** Every advisor with their versions; a version no write of this code leaves is skipped. */
 export async function readAdvisorItems(): Promise<AdvisorItem[]> {
@@ -151,13 +160,36 @@ export const databaseAdvisorStore: AdvisorStore = {
   },
 
   async endAdvising(id, { name, role, from, to, photo }) {
-    // Off the Team page and onto the Alumni page in one batch, so neither page shows them twice or not at all.
-    await runAuditBatch((db) => [
+    // The Alumni entry keeps a copy of a photo in this site's store, never the
+    // Team page's own file (Owner decision, issue #831); a photo whose file is
+    // gone is not carried over.
+    const source = photo === null ? null : ownPhotoPathname(photo);
+    const kept = source === null ? photo : await copyPhoto(source);
+    // Off the Team page and onto the Alumni page in one batch, so neither page
+    // shows them twice or not at all. The Team page's file goes once no row names it.
+    const sources = source === null ? [] : [source];
+    const [, , referenced] = await runAuditBatch((db) => [
       db.delete(teamPageAdvisors).where(eq(teamPageAdvisors.id, id)),
-      db.insert(alumniEntries).values({ kind: "advisor", recordName: name, advisorRole: role, advisorFrom: from, advisorTo: to, photo }),
+      db.insert(alumniEntries).values({ kind: "advisor", recordName: name, advisorRole: role, advisorFrom: from, advisorTo: to, photo: kept }),
+      referencedPublicFiles(db, sources),
     ]);
     updateTag(TEAM_ADVISORS_CACHE_TAG);
     updateTag(ALUMNI_CACHE_TAG);
+    await deleteUnreferencedAfter("team-photo", sources, referenced);
     return written(null);
   },
 };
+
+/** The pathname of a photo file in this deployment's public store, under `photos/`; null for any other photo. */
+function ownPhotoPathname(src: string): PublicPathname | null {
+  const host = ownPublicStoreHost();
+  const pathname = host === null ? null : publicPathnameOfUrl(src, host);
+  return pathname !== null && pathname.startsWith(publicFolderOf("photo")) ? pathname : null;
+}
+
+/** A copy of the photo file under a new Alumni name, as its URL; null when the file is gone. */
+async function copyPhoto(source: PublicPathname): Promise<`https://${string}` | null> {
+  const extension = /\.([A-Za-z0-9]{1,5})$/.exec(source)?.[0].toLowerCase() ?? "";
+  const copied = await copyPublicFile(source, publicPathname("photo", `alumni-${randomUUID()}${extension}`));
+  return copied === null ? null : (copied.url as `https://${string}`);
+}

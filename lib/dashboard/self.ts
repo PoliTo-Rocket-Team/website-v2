@@ -86,12 +86,13 @@ export type MyAccount = {
   readonly photoUrl: string | null;
   readonly signIn: SignIn;
   readonly details: YourDetails;
-  /** Applications still in progress: what "Also withdraw my open applications" would withdraw. */
-  readonly openApplications: number;
+  /** Applications not withdrawn yet, whatever their status: what "Also withdraw all my applications" withdraws (issue #831). */
+  readonly unwithdrawnApplications: number;
 };
 
 /** What Delete account does beyond closing the account: only what the person ticked. */
 export type DeleteAccount = {
+  /** An applicant ticked "Also withdraw all my applications": every one not withdrawn yet, whatever its status (issue #831). */
   readonly withdrawOpenApplications: boolean;
   /** A member ticked "Remove my name from the Alumni page" (board 55c). */
   readonly removeFromAlumni: boolean;

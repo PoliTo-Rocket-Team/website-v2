@@ -22,7 +22,7 @@ import { runSeed } from "@/lib/seed/runner";
 import { guardSeedTarget } from "@/lib/seed/target";
 import { readPrivateFile, uploadPrivateFile } from "@/lib/storage/private-blob";
 import { seedConnection } from "./seed/connection";
-import { SEED_SAMPLE_DOCUMENT } from "./seed/recruitment";
+import { SEED_DOCUMENTS } from "./seed/recruitment";
 import { SEED_MODULES } from "./seed/registry";
 import { runStatement } from "./seed/rows";
 
@@ -67,11 +67,11 @@ const steps: PreviewBuildSteps = {
       await client.end();
     }
   },
-  // The sample document is stored inside the lock too, so two preview builds
-  // never both find it missing and both upload it.
+  // The sample documents are stored inside the lock too, so two preview builds
+  // never both find one missing and both upload it.
   async seed(target) {
     const report = await runSeed(target, SEED_MODULES, seedConnection);
-    await storeSampleDocument();
+    await storeSampleDocuments();
     return report;
   },
   // Reads the re-seed ledger on its own direct connection and writes nothing.
@@ -86,31 +86,33 @@ const steps: PreviewBuildSteps = {
   },
   async reseed(target, request) {
     const report = await runReseed(target, request, SEED_MODULES, runStatement, seedConnection);
-    await storeSampleDocument();
+    await storeSampleDocuments();
     return report;
   },
 };
 
 /**
- * Uploads the one sample PDF every seeded application document points at
- * (issue #406) to the private store, at its fixed pathname, unless it is
- * already there. It writes nothing else. A preview with no store token stores
+ * Uploads the seeded application documents to the private store, each at its
+ * fixed pathname, unless it is already there: the one sample PDF every seeded
+ * application document points at (issue #406), and the applicant seat's own CV
+ * (issue #833). It writes nothing else. A preview with no store token stores
  * nothing, and says so.
  */
-async function storeSampleDocument(): Promise<void> {
+async function storeSampleDocuments(): Promise<void> {
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    console.log("Sample document skipped: this preview has no BLOB_READ_WRITE_TOKEN, so its document cards answer that no file is stored.");
+    console.log("Sample documents skipped: this preview has no BLOB_READ_WRITE_TOKEN, so its document cards answer that no file is stored.");
     return;
   }
-  const { pathname, bytes } = SEED_SAMPLE_DOCUMENT;
-  const stored = await readPrivateFile(pathname);
-  if (stored !== null) {
-    await stored.stream.cancel();
-    console.log(`Sample document already stored at ${pathname}.`);
-    return;
+  for (const { pathname, bytes } of SEED_DOCUMENTS) {
+    const stored = await readPrivateFile(pathname);
+    if (stored !== null) {
+      await stored.stream.cancel();
+      console.log(`Sample document already stored at ${pathname}.`);
+      continue;
+    }
+    await uploadPrivateFile(pathname, bytes, "application/pdf");
+    console.log(`Stored the sample document at ${pathname}.`);
   }
-  await uploadPrivateFile(pathname, bytes, "application/pdf");
-  console.log(`Stored the sample document at ${pathname}.`);
 }
 
 async function main() {

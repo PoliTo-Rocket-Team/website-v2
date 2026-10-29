@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { MAX_PDF_BYTES, parseApplicationForm, pdfProblem } from "./application-form";
+import { MAX_PDF_BYTES, parseApplicationForm, pdfProblem, setPdfField } from "./application-form";
 
 const asks = { questions: [], requiresMotivationLetter: false };
 
@@ -44,5 +44,41 @@ describe("the PDF size limit", () => {
   test("a picked file gets the same answer the submit gives", () => {
     assert.equal(pdfProblem(pdfOf(MAX_PDF_BYTES)), null);
     assert.equal(pdfProblem(pdfOf(MAX_PDF_BYTES + 1)), "The file is over 2 MB.");
+  });
+});
+
+describe("a file sent before (issue #826)", () => {
+  const before = { id: 401, name: "cv-old.pdf", size: 1024 };
+  const letterAsks = { questions: [], requiresMotivationLetter: true };
+
+  test("the pre-selected file is sent as a reference to the stored file, and the schema takes it", () => {
+    const fd = formWith(pdfOf(10));
+    setPdfField(fd, "cv", { kind: "previous", file: before });
+    setPdfField(fd, "motivationLetter", { kind: "previous", file: { ...before, id: 501 } });
+    const result = parseApplicationForm(fd, letterAsks);
+    assert.ok(result.ok);
+    assert.deepEqual(result.fields.cv, { storedFileId: 401 });
+    assert.deepEqual(result.fields.motivationLetter, { storedFileId: 501 });
+  });
+
+  test("a new upload replaces the pre-selection, even when a reference travels beside it", () => {
+    const upload = pdfOf(10);
+    const fd = formWith(upload);
+    setPdfField(fd, "cv", { kind: "upload", file: upload });
+    fd.set("cvStored", "401");
+    const result = parseApplicationForm(fd, asks);
+    assert.ok(result.ok);
+    assert.ok(result.fields.cv instanceof File);
+  });
+
+  test("a reference that names no file id is no document: the field asks for a PDF", () => {
+    for (const ref of ["0", "-3", "abc", "1.5", "9999999999", "99999999999"]) {
+      const fd = formWith(pdfOf(10));
+      setPdfField(fd, "cv", null);
+      fd.set("cvStored", ref);
+      const result = parseApplicationForm(fd, asks);
+      assert.ok(!result.ok, ref);
+      assert.equal(result.errors.cv, "Add a PDF.", ref);
+    }
   });
 });

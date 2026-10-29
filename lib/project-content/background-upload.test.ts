@@ -3,16 +3,16 @@ import { test } from "node:test";
 import { memoryContentStore } from "@/lib/content/memory";
 import { publicItems } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import { publicStorePanelPhotos, type PhotoFiles, type PublicFileWrites } from "@/lib/outreach-photos";
+import { publicStorePanelPhotos, type PhotoFiles, type PublicFiles } from "@/lib/outreach-photos";
 import { publicStoreHost, type PublicPathname } from "@/lib/storage/pathname";
 import { projectEditor } from "./editor";
 import { fieldsOf, readProjectFields } from "./fields";
 import { importedProjects, importedRecords } from "./import";
-import { homeCardOf, landingCardOf, listingOf, type UploadedSrc } from "./record";
+import { BACKGROUND_CROP_MAX_BYTES, homeCardOf, landingCardOf, listingOf, type UploadedSrc } from "./record";
 
 // An uploaded project background (board 93f, issue #529): its Tall and Wide
 // crops go to the public store under the backgrounds' own folder and nowhere
-// else, the server takes only a JPEG, PNG or WebP of at most 10 MB, a save
+// else, the server takes only a JPEG, PNG or WebP crop of at most 4 MB, a save
 // takes only crops this side stored, and once published the Home card draws
 // the Tall crop and the page and the Projects list the Wide one.
 
@@ -27,12 +27,14 @@ const crop = (bytes: Uint8Array) => ({ name: "crop.png", contentType: "image/png
 function recordingStore() {
   const written: string[] = [];
   const removed: string[] = [];
-  const writes: PublicFileWrites = {
+  const writes: PublicFiles = {
     upload: async (pathname: PublicPathname) => {
       written.push(pathname);
       return { url: `https://${HOST}/${pathname}` };
     },
     remove: async (pathname: PublicPathname) => void removed.push(pathname),
+    uploadedAt: async (pathname) => (removed.includes(pathname) ? null : new Date()),
+    unreferenced: async (pathnames) => pathnames,
   };
   let n = 0;
   return { written, removed, files: publicStorePanelPhotos("project-background", HOST, writes, () => `bg${++n}`) };
@@ -68,17 +70,19 @@ test("the background files own no path-traversal name, private-store folder, for
   }
 });
 
-test("the server refuses a crop of another type or over 10 MB, and a viewer the site-content gate refuses", async () => {
+test("the server refuses a crop of another type or over 4 MB, and a viewer the site-content gate refuses", async () => {
+  // 4 MB fits one request under the 4.5 MB body limit, so the limit can be reached (issue #831).
+  assert.equal(BACKGROUND_CROP_MAX_BYTES, 4 * 1024 * 1024);
   const store = recordingStore();
   const editor = projectEditor(admin, memoryContentStore(importedProjects()), undefined, undefined, store.files);
   const pdf = new Uint8Array(Buffer.from("%PDF-1.7 a CV"));
   assert.deepEqual(await editor.uploadBackground(crop(pdf)), { ok: false, error: "The background must be a JPEG, PNG or WebP file." });
-  const big = new Uint8Array(10 * 1024 * 1024 + 1);
+  const big = new Uint8Array(BACKGROUND_CROP_MAX_BYTES + 1);
   big.set(PNG);
-  assert.deepEqual(await editor.uploadBackground(crop(big)), { ok: false, error: "The background must be at most 10 MB." });
-  const atLimit = new Uint8Array(10 * 1024 * 1024);
+  assert.deepEqual(await editor.uploadBackground(crop(big)), { ok: false, error: "The background must be at most 4 MB." });
+  const atLimit = new Uint8Array(BACKGROUND_CROP_MAX_BYTES);
   atLimit.set(PNG);
-  assert.ok((await editor.uploadBackground(crop(atLimit))).ok, "10 MB itself is taken");
+  assert.ok((await editor.uploadBackground(crop(atLimit))).ok, "4 MB itself is taken");
   assert.equal((await projectEditor(member, memoryContentStore(importedProjects()), undefined, undefined, store.files).uploadBackground(crop(PNG))).ok, false);
   assert.deepEqual(store.written, ["project-backgrounds/bg1.png"], "only the one accepted crop was written");
 });
@@ -104,7 +108,7 @@ test("a published upload shows its Tall crop on the Home card and its Wide crop 
 
 test("a save takes only crops this side stored as backgrounds; never a project photo, a site file or a file elsewhere", async () => {
   const photo = `https://${HOST}/project-photos/p1.jpg` as UploadedSrc;
-  const photos: PhotoFiles = { put: async () => photo, owns: (src): src is UploadedSrc => src === photo, drop: async () => {} };
+  const photos: PhotoFiles = { put: async () => photo, owns: (src): src is UploadedSrc => src === photo, drop: async () => {}, gone: async () => [] };
   const { files } = recordingStore();
   const ves = importedRecords[1];
   for (const src of [photo, "https://example.com/x.jpg", "data:image/png;base64,AAAA"] as UploadedSrc[]) {

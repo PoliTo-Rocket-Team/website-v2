@@ -27,6 +27,7 @@ function backgroundFiles(owned: readonly UploadedSrc[]) {
     },
     owns,
     drop: async (srcs) => void dropped.push(...srcs.filter(owns)),
+    gone: async () => [],
   };
   return { dropped, files };
 }

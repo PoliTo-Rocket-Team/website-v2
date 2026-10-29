@@ -362,6 +362,22 @@ export function layerPhotos(layer: TeamPageLayer): PersonPhoto[] {
   return [...people.flatMap((person) => person.photo ?? []), ...(layer.groupPhoto === null ? [] : [layer.groupPhoto.src])];
 }
 
+/** The layer with each photo `layerPhotos` reads put through `swap`, everything else as it was. */
+export function withLayerPhotos(layer: TeamPageLayer, swap: (photo: PersonPhoto) => PersonPhoto): TeamPageLayer {
+  const on = <P extends { readonly photo?: PersonPhoto }>(person: P): P => (person.photo === undefined ? person : { ...person, photo: swap(person.photo) });
+  const each = <K extends string, V>(record: Readonly<Partial<Record<K, V>>>, f: (value: V) => V) =>
+    Object.fromEntries(Object.entries(record).map(([key, value]) => [key, value === undefined ? value : f(value as V)])) as Partial<Record<K, V>>;
+  return {
+    ...layer,
+    leader: on(layer.leader),
+    spots: each(layer.spots, on),
+    addedLeaders: layer.addedLeaders.map(on),
+    departments: each(layer.departments, (edit) => (edit.addedLeads === undefined ? edit : { ...edit, addedLeads: edit.addedLeads.map(on) })),
+    addedDepartments: layer.addedDepartments.map((d) => ({ ...d, head: on(d.head), leads: d.leads.map(on) })),
+    groupPhoto: layer.groupPhoto === null ? null : { ...layer.groupPhoto, src: swap(layer.groupPhoto.src) },
+  };
+}
+
 /** Every id the things the editor added hold, in one list: one id names one thing. */
 function addedIds(layer: TeamPageLayer): number[] {
   return [

@@ -8,9 +8,11 @@ import { outreachEditor, publicOutreach } from "./outreach-editor";
 import { importedOutreach } from "./outreach-import";
 import { memoryOutreachStore, memoryPhotoFiles } from "./outreach-memory";
 import { postFieldsOf } from "./outreach-post-fields";
-import { publicStorePhotoFiles, type CheckedPhoto, type PhotoFiles, type PublicFileWrites } from "./outreach-photos";
+import { PHOTO_GONE, publicStorePhotoFiles, type CheckedPhoto, type PhotoFiles, type PublicFiles } from "./outreach-photos";
+import { CHANGED_SINCE_READ } from "@/lib/content/editor";
 import type { OutreachPost, PhotoSrc } from "./outreach-types";
 import { publicStoreHost } from "@/lib/storage/pathname";
+import { sweepUnusedUploads, UPLOAD_KEPT_MS } from "@/lib/storage/upload-sweep";
 
 // Post photos (issue #291): a post needs a photo, whose description is
 // optional (issue #430), the first photo is the cover, a gallery's photos
@@ -79,6 +81,7 @@ test("a photo is uploaded only once the site-content gate admits the viewer, and
     },
     owns: (src): src is PhotoSrc => src === "https://store.public.blob.vercel-storage.com/post-photos/new.png",
     drop: async () => {},
+    gone: async () => [],
   };
 
   const refused = outreachEditor(member, memoryOutreachStore(), files);
@@ -103,14 +106,21 @@ test("a photo is uploaded only once the site-content gate admits the viewer, and
 const OWN = publicStoreHost("store_Own123");
 const ownFile = (name: string) => `https://own123.public.blob.vercel-storage.com/post-photos/${name}` as PhotoSrc;
 
-/** The public store's writes, recorded: what was uploaded and which pathnames were deleted. */
-function recordedWrites() {
+/**
+ * The public store's writes, recorded: what was uploaded and which pathnames
+ * were deleted. A deleted file is no longer stored; a file in `named` is one
+ * another row names, so no drop deletes it. A file counts as uploaded now,
+ * unless `uploadedOn` dates it.
+ */
+function recordedWrites(named: readonly string[] = [], uploadedOn: ReadonlyMap<string, Date> = new Map()) {
   const removed: string[] = [];
-  const writes: PublicFileWrites = {
+  const writes: PublicFiles = {
     upload: async (pathname) => ({ url: `https://own123.public.blob.vercel-storage.com/${pathname}` }),
     remove: async (pathname) => {
       removed.push(pathname);
     },
+    uploadedAt: async (pathname) => (removed.includes(pathname) ? null : (uploadedOn.get(pathname) ?? new Date())),
+    unreferenced: async (pathnames) => pathnames.filter((p) => !named.includes(p)),
   };
   return { removed, writes };
 }
@@ -176,4 +186,82 @@ test("Save, Delete and Remove photo free a stored file only when no version of a
   // Deleting B leaves a shown nowhere, so its file goes.
   assert.ok((await editor.posts.remove(second.id)).ok);
   assert.deepEqual(removed, ["post-photos/b.jpg", "post-photos/a.jpg"]);
+});
+
+// Issue #831: a stored file goes only when no row names it, and a stale save
+// never puts back a photo another save deleted.
+
+/** Post A shows the site photo, a and b, in an editor over the public store's recorded writes. */
+function twoPhotoPost(named: readonly string[] = []) {
+  const [first] = importedOutreach().posts;
+  const base = editorVersion(first.version) as OutreachPost;
+  const site = base.photos[0].src;
+  const withPhotos = (...photos: PhotoSrc[]): OutreachPost => {
+    const [one, ...rest] = photos.map((src) => ({ src, alt: "A photo." }));
+    return { ...base, photos: [one, ...rest] };
+  };
+  const seed = [{ ...first, version: { state: "published", published: withPhotos(site, ownFile("a.jpg"), ownFile("b.jpg")), draft: null } as Versioned<OutreachPost> }];
+  const { removed, writes } = recordedWrites(named);
+  const editor = outreachEditor(admin, { ...memoryOutreachStore(), posts: memoryContentStore(seed) }, publicStorePhotoFiles(OWN, writes, () => "new"));
+  const save = (post: OutreachPost, during?: () => Promise<unknown>) =>
+    editor.posts.save(first.id, "publish", async () => {
+      await during?.();
+      return { ok: true, value: post };
+    });
+  return { site, withPhotos, removed, save };
+}
+
+test("a save leaves a stored file another row still names, such as a member's or a Team page's", async () => {
+  const { site, withPhotos, removed, save } = twoPhotoPost(["post-photos/b.jpg"]);
+  assert.ok((await save(withPhotos(site))).ok);
+  assert.deepEqual(removed, ["post-photos/a.jpg"], "b is named by another row, so only a goes");
+});
+
+test("a save made on a version another save replaced in the meantime is refused, and puts back no deleted photo", async () => {
+  const { site, withPhotos, removed, save } = twoPhotoPost();
+  // The second save lands while the first is still being made: it drops b, whose file goes.
+  const stale = await save(withPhotos(site, ownFile("a.jpg"), ownFile("b.jpg")), async () => {
+    assert.ok((await save(withPhotos(site, ownFile("a.jpg")))).ok);
+  });
+  assert.deepEqual(stale, { ok: false, error: CHANGED_SINCE_READ });
+  assert.deepEqual(removed, ["post-photos/b.jpg"]);
+});
+
+test("a panel opened before another save deleted a photo cannot save that photo back", async () => {
+  const { site, withPhotos, removed, save } = twoPhotoPost();
+  assert.ok((await save(withPhotos(site, ownFile("a.jpg")))).ok);
+  assert.deepEqual(removed, ["post-photos/b.jpg"]);
+  // The older panel still holds b: its save reads the post fresh, but b's file is gone.
+  assert.deepEqual(await save(withPhotos(site, ownFile("a.jpg"), ownFile("b.jpg"))), { ok: false, error: PHOTO_GONE });
+});
+
+test("a save landing between the daily sweep's read and its delete cannot keep the file the sweep deletes, on a new post or an old one", async () => {
+  const now = new Date();
+  const HOUR = 60 * 60 * 1000;
+  const old = "post-photos/old.jpg";
+  const posts = memoryContentStore(importedOutreach().posts.slice(0, 1));
+  const [first] = await posts.list();
+  const base = editorVersion(first.version) as OutreachPost;
+  const withPhoto = (src: PhotoSrc): OutreachPost => ({ ...base, photos: [{ src, alt: "A photo." }] });
+  const { removed, writes } = recordedWrites([], new Map([[old, new Date(now.getTime() - UPLOAD_KEPT_MS - HOUR)]]));
+  const editor = outreachEditor(admin, { ...memoryOutreachStore(), posts }, publicStorePhotoFiles(OWN, writes, () => "new"));
+  const keep = (id: number | null, src: PhotoSrc) => editor.posts.save(id, "publish", async () => ({ ok: true, value: withPhoto(src) }));
+
+  const during: unknown[] = [];
+  const swept = await sweepUnusedUploads(now, {
+    list: async (prefix) => (prefix === "post-photos/" ? [{ pathname: old, uploadedAt: new Date(now.getTime() - UPLOAD_KEPT_MS - HOUR) }] : []),
+    unreferenced: async (pathnames) => {
+      // A panel opened a day ago saves the photo after the sweep read that no row names it.
+      during.push(await keep(null, ownFile("old.jpg")), await keep(first.id, ownFile("old.jpg")));
+      return pathnames;
+    },
+    remove: writes.remove,
+  });
+  assert.deepEqual(during, [{ ok: false, error: PHOTO_GONE }, { ok: false, error: PHOTO_GONE }], "both saves are refused");
+  assert.deepEqual(swept, { deleted: 1, failed: 0 });
+  assert.deepEqual(removed, [old]);
+  assert.ok(!JSON.stringify(await posts.list()).includes(old), "no post names the deleted file");
+
+  // An upload younger than half the sweep's day is still the panel's to save, on a new post too.
+  assert.ok((await keep(null, ownFile("new.jpg"))).ok);
 });

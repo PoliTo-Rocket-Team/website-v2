@@ -4,8 +4,10 @@ import { and, eq, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch";
 import { getDb } from "@/db/client";
 import { alumniEntries, alumniRoleFixes, applicationFiles, applications, betterAuthUsers, logs, members, users } from "@/db/schema";
+import { failUnless, isGuardFailure } from "@/lib/db-guard";
 import { parsePrivatePathname, parsePublicPathname } from "@/lib/storage/pathname";
 import { deletePrivateFile } from "@/lib/storage/private-store";
+import { referencedPublicFiles, unreferenced } from "@/lib/storage/public-references";
 import { deletePublicFile } from "@/lib/storage/public-store";
 import type { AnonymizationStep, AnonymizationStore, DeletedAccount, LogScrub, PersonalFile } from "./anonymize";
 import { storedPhotoPathname } from "./database-self";
@@ -75,7 +77,7 @@ async function personalFiles(account: DeletedAccount): Promise<PersonalFile[]> {
 /**
  * Deletes one stored file. A pathname outside the store's own folders names no file of ours.
  * It deletes directly, not through `deleteBestEffort`: a failed delete must throw, so
- * `anonymizeDeletedAccounts` leaves the account's rows as they are and the next run retries it.
+ * `anonymizeDeletedAccounts` counts the account as failed and the cron run reports it.
  */
 async function deleteFile(file: PersonalFile): Promise<void> {
   if (file.store === "private") {
@@ -150,12 +152,46 @@ function stepQueries(db: Db, step: AnonymizationStep): BatchItem<"pg">[] {
   }
 }
 
-/** The plan's writes as one `db.batch`, which the neon-http driver runs as one transaction. */
-async function run(plan: readonly AnonymizationStep[]): Promise<void> {
+/** The account is still deleted, not anonymized, and has no sign-in: what the batch checks before it writes. */
+function stillDue(userId: string): SQL {
+  return sql`exists (select 1 from ${users} where ${users.id} = ${userId} and ${users.deletedAt} is not null and ${users.anonymizedAt} is null)
+    and not exists (select 1 from ${betterAuthUsers} where ${betterAuthUsers.id} = ${userId})`;
+}
+
+/**
+ * The person's `users` row, locked until the batch ends. A sign-in writes
+ * that row (the users sync of drizzle/0001), so one under way is waited for
+ * and one that starts later waits for the batch: the guard after this
+ * statement reads a sign-in that committed, and none commits between the
+ * guard and the writes.
+ */
+function lockUser(db: Db, userId: string) {
+  return db.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("update");
+}
+
+/**
+ * The plan's writes as one `db.batch`, which the neon-http driver runs as one
+ * transaction, behind the person's row lock and a guard that fails it when
+ * the account is no longer due (issue #831). Last, the batch reads which of
+ * the public photos some row still names: a member photo a Team page or
+ * alumni row also shows stays.
+ */
+async function run(userId: string, plan: readonly AnonymizationStep[], files: readonly PersonalFile[]): Promise<readonly PersonalFile[] | null> {
   const db = getDb();
-  const [first, ...rest] = plan.flatMap((step) => stepQueries(db, step));
-  if (first === undefined) return;
-  await db.batch([first, ...rest]);
+  const photos = files.flatMap((file) => (file.store === "public" ? (parsePublicPathname(file.pathname) ?? []) : []));
+  try {
+    const results = await db.batch([
+      lockUser(db, userId),
+      failUnless(db, stillDue(userId)),
+      ...plan.flatMap((step) => stepQueries(db, step)),
+      referencedPublicFiles(db, photos),
+    ]);
+    const free = new Set<string>(unreferenced(photos, results[results.length - 1] as { rows: { pathname: string }[] }));
+    return files.filter((file) => file.store === "private" || free.has(file.pathname));
+  } catch (error) {
+    if (isGuardFailure(error)) return null;
+    throw error;
+  }
 }
 
 export const databaseAnonymizationStore: AnonymizationStore = { deletedAccounts, personalFiles, deleteFile, run };

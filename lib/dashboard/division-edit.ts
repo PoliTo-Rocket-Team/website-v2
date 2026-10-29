@@ -436,7 +436,12 @@ export type TeamPick = {
   /** "Member", "Lead · Parachutes" for someone who leads a division, or their seat: "Team Leader", "Head of Recovery". */
   readonly role: string;
   readonly divisionIds: readonly number[];
-  /** They hold a role beyond every division (team leader, board seat, head): New department cannot make them a head too. */
+  /**
+   * They hold a role beyond every division (team leader, board seat, head,
+   * advisor). It never blocks a pick (Owner decision, issue #837): a head or
+   * seat picker shows it on their row as information ("Already Head of
+   * Propulsion"), and only the holder of the very seat being filled is refused.
+   */
   readonly seated: boolean;
 };
 

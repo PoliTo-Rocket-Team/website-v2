@@ -9,6 +9,10 @@
     {
       "path": "/api/cron/delete-withdrawn-files",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/delete-unused-uploads",
+      "schedule": "0 4 * * *"
     }
   ],
   "git": {

@@ -47,6 +47,9 @@ function fakes(options: { position?: SubmitPosition; recruitmentOpen?: boolean; 
         ? { position: options.position ?? openPosition, recruitment: { isOpen: options.recruitmentOpen ?? true } }
         : null,
     hasApplied: async (userId, positionId) => saved.some((a) => a.userId === userId && a.positionId === positionId),
+    // The applicant has no stored file yet; reuse runs on the real database (./reuse-files-server.test.ts).
+    ownFile: async () => null,
+    ownFileWithContent: async () => null,
     putPdf: async (key, bytes) => void files.set(key, bytes),
     deletePdf: async (key) => void files.delete(key),
     save: async (application) => {
@@ -72,10 +75,10 @@ describe("submitApplication", () => {
     assert.equal(application.userId, "user-1");
     assert.equal(application.positionId, 7);
     assert.deepEqual(application.answers, [{ question: "Why safety?", answer: "I ran the lab's waste log." }]);
-    assert.equal(application.cv.filename, "ROSSI_CV.pdf");
-    assert.ok(application.motivationLetter);
-    assert.deepEqual([...files.keys()].sort(), [application.cv.key, application.motivationLetter.key].sort());
-    assert.ok(application.cv.key.startsWith("applications/"));
+    assert.ok(application.cv.kind === "new" && application.motivationLetter?.kind === "new");
+    assert.equal(application.cv.pdf.filename, "ROSSI_CV.pdf");
+    assert.deepEqual([...files.keys()].sort(), [application.cv.pdf.key, application.motivationLetter.pdf.key].sort());
+    assert.ok(application.cv.pdf.key.startsWith("applications/"));
   });
 
   test("refuses a second application for the same position, and keeps no new file", async () => {

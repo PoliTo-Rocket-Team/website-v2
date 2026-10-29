@@ -43,7 +43,7 @@ import { teamBuildOf } from "./team-roles";
 
 const roles = teamRolesOf(SEED_DATA);
 /** Photos that store nothing: no test here uploads one. */
-const NO_PHOTOS: TeamPagePhotos = { put: async () => "/team/stand-in.webp", owns: NO_UPLOADS, drop: async () => {} };
+const NO_PHOTOS: TeamPagePhotos = { put: async () => "/team/stand-in.webp", owns: NO_UPLOADS, adopt: async (photo) => photo, drop: async () => {}, gone: async () => [] };
 const build = teamBuildOf(roles);
 const siteContent: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false };
 

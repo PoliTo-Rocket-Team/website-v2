@@ -16,15 +16,16 @@ import {
 } from "@/lib/about/alumni-record";
 import type { FounderMark } from "@/lib/about/alumni-types";
 import { runAuditBatch } from "@/lib/db-audit";
-import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
 import { publicPathname } from "@/lib/storage/pathname";
-import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
+import { referencedPublicFiles } from "@/lib/storage/public-references";
+import { uploadPublicFile } from "@/lib/storage/public-store";
+import { deleteUnreferencedAfter } from "@/lib/storage/unreferenced-delete";
 import { canReach } from "./access";
 import { alumniDirectory, checkAdvisor, checkAlumnusFix, alumnusRow, type AlumniDirectory } from "./alumni";
 import type { DashboardIdentity } from "./database";
-import { storedPhotoPathname } from "./database-self";
+import { photoPathnames } from "./database-self";
 import { myAlumniOf, type MyAlumni } from "./my-alumni";
-import { checkPhoto } from "./self";
+import { checkedPhoto } from "./upload-bytes";
 import type { ViewerStanding } from "./viewer";
 import { TEAM_ROSTER_CACHE_TAG } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
@@ -202,11 +203,23 @@ async function fixAlumnus(viewer: ViewerStanding, key: AlumnusKey, input: unknow
 }
 
 async function uploadAlumniPhoto(photo: Upload): Promise<WriteResult<string>> {
-  const error = checkPhoto({ type: photo.contentType, size: photo.bytes.byteLength });
-  if (error !== null) return refused(error);
-  const ext = photo.contentType === "image/png" ? "png" : "jpg";
-  const { url } = await uploadPublicFile(publicPathname("photo", `alumni-${randomUUID()}.${ext}`), photo.bytes, photo.contentType);
+  const checked = checkedPhoto(photo);
+  if (!checked.ok) return checked;
+  const { bytes, contentType, extension } = checked.value;
+  const { url } = await uploadPublicFile(publicPathname("photo", `alumni-${randomUUID()}.${extension}`), bytes, contentType);
   return written(url);
+}
+
+/**
+ * The entry's photo becomes `photo`, in one batch with the read of which
+ * file the photo shown before is still named by some row. The page may show
+ * a member's own picture where the entry has none, and another row may name
+ * the same file, so that file goes only when no row names it (issue #831).
+ */
+async function replaceEntryPhoto(key: AlumnusKey, shownBefore: string | null, photo: string | null): Promise<void> {
+  const old = photoPathnames(shownBefore);
+  const [, referenced] = await runAuditBatch((db) => [upsertEntry(db, key, { photo }), referencedPublicFiles(db, old)]);
+  await deleteUnreferencedAfter("alumni-photo", old, referenced);
 }
 
 /** The fix panel's photo: a new one replaces the old, whose stored file goes; null removes it. */
@@ -216,9 +229,7 @@ async function setAlumnusPhoto(viewer: ViewerStanding, key: AlumnusKey, photo: U
   if (person === null) return refused("They are not on the Alumni page.");
   const uploaded = photo === null ? written(null) : await uploadAlumniPhoto(photo);
   if (!uploaded.ok) return uploaded;
-  await runAuditBatch((db) => [upsertEntry(db, key, { photo: uploaded.value })]);
-  const old = storedPhotoPathname(person.photo);
-  if (old !== null) await deleteBestEffort({ store: "public", area: "alumni-photo", pathname: old, remove: deletePublicFile });
+  await replaceEntryPhoto(key, person.photo, uploaded.value);
   refreshAlumni();
   return written(null);
 }
@@ -282,9 +293,7 @@ async function setOwnPhoto(identity: DashboardIdentity, photo: Upload | null): P
   const person = await findAlumnusAnyListing(key);
   const uploaded = photo === null ? written(null) : await uploadAlumniPhoto(photo);
   if (!uploaded.ok) return uploaded;
-  await runAuditBatch((db) => [upsertEntry(db, key, { photo: uploaded.value })]);
-  const old = storedPhotoPathname(person?.photo ?? null);
-  if (old !== null) await deleteBestEffort({ store: "public", area: "alumni-photo", pathname: old, remove: deletePublicFile });
+  await replaceEntryPhoto(key, person?.photo ?? null, uploaded.value);
   refreshAlumni();
   return written(null);
 }

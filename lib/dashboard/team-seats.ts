@@ -2,7 +2,7 @@ import { z } from "zod";
 import { mayManageDepartments, type Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
 import { HAND_OVER_OUTCOMES, steppingDown, type HandOverOutcome, type SteppingDown } from "./hand-over";
-import { beyondTitle, type BoardFlag, type BoardRole, type OrgChart, type TeamActor } from "./team";
+import type { BoardFlag, BoardRole, TeamActor } from "./team";
 
 // The seat row of Edit team tree (issue #627): who holds a team-level seat,
 // a new seat, and removing one (issue #643). Only the team leader and full access change them, as they
@@ -70,12 +70,6 @@ export function heldTeamSeat(team: readonly TeamPerson[], roleId: number): HeldT
   return null;
 }
 
-/** Why `person` cannot take a seat, or null: on the team and holding no seat yet (as Change head's rule). */
-function takerError(person: TeamPerson | undefined, org: OrgChart): string | null {
-  if (person === undefined) return "They are not on the team.";
-  const [seat] = person.beyond;
-  return seat === undefined ? null : `${person.name} is already ${beyondTitle(seat, org)}.`;
-}
 
 /**
  * A checked Change holder: the seat's row, who holds it now, who takes it,
@@ -87,25 +81,24 @@ export type SeatHolderPlan = { readonly seat: BoardRole; readonly from: number; 
 /**
  * Change holder as the rules allow it, or the first reason it is refused:
  * only the team leader or full access; an active team-level seat; a successor
- * on the team who is not its holder and holds no seat yet, and keeps their
- * divisions; the holder becomes an advisor to the team or leaves the team, as
+ * on the team who is not its holder. Any other seat the successor holds stays
+ * (Owner decision, issue #837), and they keep every role and division they
+ * hold; the holder becomes an advisor to the team or leaves the team, as
  * the editor picked, and nothing is picked for them (`steppingDown`).
  */
 export function planSeatHolderChange(input: {
   readonly actor: TeamActor | null;
-  readonly org: OrgChart;
   readonly roleId: number;
   readonly change: SeatHolderChange;
   readonly team: readonly TeamPerson[];
 }): Checked<SeatHolderPlan> {
-  const { actor, org, roleId, change, team } = input;
+  const { actor, roleId, change, team } = input;
   if (!mayManageDepartments(actor)) return no(ONLY_TEAM_SEATS);
   const held = heldTeamSeat(team, roleId);
   if (held === null) return no("That seat is no longer held.");
   const next = team.find((p) => p.id === change.to);
-  if (next?.id === held.holder.id) return no(`${next.name} holds this seat now.`);
-  const refusal = takerError(next, org);
-  if (refusal !== null || next === undefined) return no(refusal ?? "They are not on the team.");
+  if (next === undefined) return no("They are not on the team.");
+  if (next.id === held.holder.id) return no(`${next.name} holds this seat now.`);
   if (change.outcome === null) return no(`Choose what happens to ${held.holder.name}: Become an advisor or Leave the team.`);
   return { ok: true, value: { seat: held.seat, from: held.holder.id, to: next.id, steppingDown: steppingDown({ kind: "team-seat" }, change.outcome) } };
 }
@@ -154,22 +147,21 @@ export type NewSeatPlan = { readonly personId: number; readonly title: string };
 
 /**
  * Add seat as the rules allow it, or the first reason it is refused: only the
- * team leader or full access; a title; one person on the team who holds no
- * seat yet, and keeps their divisions. The seat carries no full-access flag:
- * only the Project Manager's and the Chief Engineer's do.
+ * team leader or full access; a title; one person on the team, whatever
+ * other seats they hold (Owner decision, issue #837); they keep every role
+ * and division they hold. The seat carries no full-access flag: only the
+ * Project Manager's and the Chief Engineer's do.
  */
 export function planNewSeat(input: {
   readonly actor: TeamActor | null;
-  readonly org: OrgChart;
   readonly add: NewSeat;
   readonly team: readonly TeamPerson[];
 }): Checked<NewSeatPlan> {
-  const { actor, org, add, team } = input;
+  const { actor, add, team } = input;
   if (!mayManageDepartments(actor)) return no(ONLY_TEAM_SEATS);
   const titleError = seatTitleError(add.title);
   if (titleError !== null) return no(titleError);
   const person = team.find((p) => p.id === add.personId);
-  const refusal = takerError(person, org);
-  if (refusal !== null || person === undefined) return no(refusal ?? "They are not on the team.");
+  if (person === undefined) return no("They are not on the team.");
   return { ok: true, value: { personId: person.id, title: storedSeatTitle(add.title) } };
 }

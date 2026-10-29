@@ -569,7 +569,7 @@ function LeaveOrDelete({
       <DeleteAccountDialog
         open={asking === "delete"}
         onOpenChange={(open) => setAsking(open ? "delete" : null)}
-        openApplications={null}
+        unwithdrawnApplications={null}
         member
         deleteAccount={deleteAccount}
       />
