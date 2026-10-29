@@ -58,6 +58,7 @@ import { visualModelOf, type ProjectRecord } from "@/lib/project-content/record"
 import { rowRecordOf } from "@/lib/project-content/row";
 import { rocketModelOf, type OwnModel } from "@/lib/rocket-model";
 import { partnerFromColumns } from "@/lib/partners-rows";
+import { parsePrivatePathname } from "@/lib/storage/pathname";
 import { aliasAttentionFor, memberAliasesFor, teamAddressOf, type AliasRequest } from "@/lib/dashboard/alias-request";
 import { ownAliasOf, showsAliasCard } from "@/lib/dashboard/alias-setup";
 import { UNIT_TARGETS } from "@/lib/dashboard/division-access";
@@ -1177,15 +1178,33 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "recruitment",
-    case: "Every application's CV and motivation letter point at the one shared sample PDF",
+    case: "Every application's motivation letter, and every CV but one, point at the one unowned shared sample PDF",
     data: "invented",
-    rows: "the one `application_files` row, named by every `applications.cv_file_id` and `cover_letter_file_id`",
-    exercisedBy: issue(406),
+    rows: "`application_files` 1, with no owner, named by every `applications.cover_letter_file_id` and every `cv_file_id` but application 24's",
+    exercisedBy: `${issue(406)}, ${issue(833)}`,
     holds: (data) => {
-      const [sample, ...others] = data.applicationFiles;
+      const unowned = data.applicationFiles.filter((f) => f.userId == null);
+      const [sample, ...others] = unowned;
       if (sample === undefined || others.length > 0) return false;
-      const isPdf = sample.mimeType === "application/pdf" && sample.pathname.startsWith("applications/");
-      return isPdf && data.applications.every((a) => a.cvFileId === sample.id && a.coverLetterFileId === sample.id);
+      const isPdf = sample.mimeType === "application/pdf" && parsePrivatePathname(sample.pathname) !== null;
+      const ownCv = data.applications.filter((a) => a.cvFileId !== sample.id);
+      return isPdf && ownCv.length === 1 && data.applications.every((a) => a.coverLetterFileId === sample.id);
+    },
+  },
+  {
+    area: "recruitment",
+    case: "The applicant plain seat owns one stored CV, sent with one of its applications",
+    data: "invented",
+    rows: "`application_files` 2, owned by the applicant plain seat, named by application 24's `cv_file_id`",
+    exercisedBy: `${issue(826)}, ${issue(833)}`,
+    holds: (data) => {
+      const seat = PLAIN_SEAT_PEOPLE["non-member"];
+      const owned = data.applicationFiles.filter((f) => f.userId != null);
+      const [own, ...others] = owned;
+      if (own === undefined || others.length > 0 || own.userId !== seat) return false;
+      const isPdf = own.mimeType === "application/pdf" && parsePrivatePathname(own.pathname) !== null;
+      const sending = data.applications.filter((a) => a.cvFileId === own.id);
+      return isPdf && sending.length === 1 && sending[0]?.userId === seat && sending[0].coverLetterFileId !== own.id;
     },
   },
   {

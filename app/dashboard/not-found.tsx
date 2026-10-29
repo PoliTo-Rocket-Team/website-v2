@@ -1,3 +1,4 @@
+import { TopBarTitle } from "@/components/dashboard/top-bar-slot";
 import { NotFoundView } from "@/components/not-found-view";
 
 // A dashboard page the viewer may not open, or whose data is missing, calls
@@ -8,12 +9,17 @@ import { NotFoundView } from "@/components/not-found-view";
 // and is as tall as the screen under the phone top bar (56px). It bleeds over
 // the top pad only when it opens the main area: in a View as session the
 // banner sits above it, and the view starts under the banner's own margin.
+// The phone top bar reads the shell's neutral "Dashboard", never the name of
+// the page the address points at (issue #807): board 103d draws no phone title.
 export default function DashboardNotFound() {
   return (
-    <NotFoundView
-      body="We couldn't find this page, or you don't have access to it."
-      back={{ label: "Back to Overview", href: "/dashboard" }}
-      className="-mx-4 -mb-12 min-h-[calc(100svh-3.5rem)] first:-mt-4 md:-mx-10 md:-mb-16 md:min-h-svh md:first:-mt-8"
-    />
+    <>
+      <TopBarTitle title="Dashboard" />
+      <NotFoundView
+        body="We couldn't find this page, or you don't have access to it."
+        back={{ label: "Back to Overview", href: "/dashboard" }}
+        className="-mx-4 -mb-12 min-h-[calc(100svh-3.5rem)] first:-mt-4 md:-mx-10 md:-mb-16 md:min-h-svh md:first:-mt-8"
+      />
+    </>
   );
 }
