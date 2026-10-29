@@ -371,6 +371,33 @@ test("an override line reads as a handover or a quitter year; an unknown kind or
     ["override-unmatched", 5, "row"],
     ["override-unmatched", 6, "value"],
   ]);
+  assert.deepEqual(read.positionDivisions, { lines: [], conflicts: [] });
+});
+
+test("a position-division line reads as a department and a division split on the first slash; the full run's conflicts never hold one", () => {
+  const line = (row: string, value: string, at: number) => ({ at: { file: "overrides.csv", row: at }, value: { kind: "Position-Division", sheet: " positions_rows.csv ", row, value } });
+  const read = readOverrides([
+    line("14", " Starling / Telemetry ", 2),
+    line("15", "STR/Radio/Links", 3),
+    line("x", "Starling/Telemetry", 4),
+    line("16", "Telemetry", 5),
+    line("17", "/Telemetry", 6),
+    line("18", "Starling/ ", 7),
+  ]);
+  assert.deepEqual(
+    read.positionDivisions.lines.map((p) => [p.kind, p.sheet, p.row, p.department, p.division]),
+    [
+      ["position-division", "positions_rows.csv", 14, "Starling", "Telemetry"],
+      ["position-division", "positions_rows.csv", 15, "STR", "Radio/Links"],
+    ],
+  );
+  assert.deepEqual(read.positionDivisions.conflicts.map((c) => [c.kind, c.at.row, c.field]), [
+    ["override-unmatched", 4, "row"],
+    ["override-unmatched", 5, "value"],
+    ["override-unmatched", 6, "value"],
+    ["override-unmatched", 7, "value"],
+  ]);
+  assert.deepEqual(read.conflicts, []);
 });
 
 test("a member photo is shaped as the crop dialog makes one: a centred square of at most 800 px, a JPEG that passes checkMemberPhoto", async () => {

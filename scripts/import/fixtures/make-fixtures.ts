@@ -86,7 +86,8 @@ import writeXlsxFile from "write-excel-file/node";
 //   names a past sheet; line 4 places Quitters row 6 in 2022-2023; line 5
 //   names Pia's Quitters row, who is on a year sheet; line 6 has an unknown
 //   kind; line 7 hands the 2025-2026 row 10 head seat to row 11. Lines 3, 5
-//   and 6 are not applied.
+//   and 6 are not applied. Lines 8 and 9 are `position-division` lines (issue
+//   #842), one that reads and one that does not: the full run reads neither.
 
 //
 // It also writes ./positions: the old exports the positions-only run reads
@@ -100,10 +101,23 @@ import writeXlsxFile from "write-excel-file/node";
 // finds none; line 10 is the test division; line 11's id is a subteam's,
 // mapped by name; line 12's id is on no row; line 13 has no title; line 14,
 // over three lines, maps to a closed division.
+//
+// It also writes ./positions-override: the `position-division` lines of
+// overrides.csv (issue #842), against two closed departments that each hold a
+// closed "Telemetry" division. Every positions_rows.csv line names the old
+// "Telemetry (TLM)" division, whose code finds nothing and whose name finds
+// both: line 2 is pinned by department and division name, line 6 by their
+// codes; line 3 has no override; line 4's override names no department,
+// line 5's two divisions (a code they share). Of overrides.csv, lines 2 and 5
+// pin; line 3 finds no division, line 4 several; line 6 repeats line 2's row,
+// line 7 names a row not on the file, line 8 another sheet; line 9's row and
+// line 10's value do not read; line 11 is a full-run kind and line 12 an
+// unknown one, which this run leaves to the full run.
 
 const OUT = join(__dirname, "files");
 const RULES_OUT = join(__dirname, "rules");
 const POSITIONS_OUT = join(__dirname, "positions");
+const POSITIONS_OVERRIDE_OUT = join(__dirname, "positions-override");
 
 type Cell = string | number | Date | null;
 const text = (rows: readonly (readonly Cell[])[]) =>
@@ -390,6 +404,8 @@ const RULES_FILES: Record<string, string[][]> = {
     ["quitter-year", "Quitters", "2", "2022-2023"],
     ["swap", "2025-2026", "1", "2"],
     ["handover", "2025-2026", "10", "11"],
+    ["position-division", "positions_rows.csv", "2", "Propulsion/Liquid Systems"],
+    ["position-division", "positions_rows.csv", "x", "Propulsion"],
   ],
 };
 
@@ -465,8 +481,49 @@ function writePositions() {
   for (const [name, rows] of Object.entries(POSITIONS_FILES)) writeFileSync(join(POSITIONS_OUT, name), csv(rows));
 }
 
+// The position-division override of issue #842 ------------------------------------
+
+const POSITIONS_OVERRIDE_FILES: Record<string, string[][]> = {
+  "positions_rows.csv": [
+    ["id", "division", "number", "name", "description", "desirable", "required", "form", "open"],
+    ["p-1", "d-1", "1", "Telemetry Engineer", "Read the downlink.", "", "", "", "false"],
+    ["p-2", "d-1", "1", "Ground Station Operator", "", "", "", "", "false"],
+    ["p-3", "d-1", "1", "Antenna Designer", "", "", "", "", "false"],
+    ["p-4", "d-1", "1", "Data Logger Engineer", "", "", "", "", "false"],
+    ["p-5", "d-1", "1", "Radio Engineer", "", "", "", "", "false"],
+  ],
+  "divisions_rows.csv": [
+    ["id", "subteam", "name", "code", "end", "lead", "lead_acting"],
+    ["d-1", "st-1", "Telemetry", "TLM", "2023-09-30", "", ""],
+  ],
+  "subteams_rows.csv": [
+    ["id", "name", "end", "code", "title_name", "chief", "coordinator1", "coordinator2", "project_manager", "coordinator3"],
+    ["st-1", "Flight Electronics", "2023-09-30", "FEL", "", "", "", "", "", ""],
+  ],
+  "overrides.csv": [
+    ["kind", "sheet", "row", "value"],
+    ["position-division", "positions_rows.csv", "2", "Starling/Telemetry"],
+    ["position-division", "positions_rows.csv", "4", "Nimbus/Telemetry"],
+    ["position-division", "positions_rows.csv", "5", "Kestrel/RFL"],
+    ["position-division", "positions_rows.csv", "6", "KST / TLK"],
+    ["position-division", "positions_rows.csv", "2", "Kestrel/Telemetry"],
+    ["position-division", "positions_rows.csv", "40", "Starling/Telemetry"],
+    ["position-division", "positions.csv", "3", "Starling/Telemetry"],
+    ["position-division", "positions_rows.csv", "x", "Starling/Telemetry"],
+    ["position-division", "positions_rows.csv", "3", "Telemetry"],
+    ["handover", "2025-2026", "4", "5"],
+    ["swap", "2025-2026", "1", "2"],
+  ],
+};
+
+function writePositionsOverride() {
+  mkdirSync(POSITIONS_OVERRIDE_OUT, { recursive: true });
+  for (const [name, rows] of Object.entries(POSITIONS_OVERRIDE_FILES)) writeFileSync(join(POSITIONS_OVERRIDE_OUT, name), csv(rows));
+}
+
 async function main() {
   writePositions();
+  writePositionsOverride();
   await writeRules();
   mkdirSync(OUT, { recursive: true });
   const sheets = [

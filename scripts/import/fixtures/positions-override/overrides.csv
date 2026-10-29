@@ -1,0 +1,12 @@
+kind,sheet,row,value
+position-division,positions_rows.csv,2,Starling/Telemetry
+position-division,positions_rows.csv,4,Nimbus/Telemetry
+position-division,positions_rows.csv,5,Kestrel/RFL
+position-division,positions_rows.csv,6,KST / TLK
+position-division,positions_rows.csv,2,Kestrel/Telemetry
+position-division,positions_rows.csv,40,Starling/Telemetry
+position-division,positions.csv,3,Starling/Telemetry
+position-division,positions_rows.csv,x,Starling/Telemetry
+position-division,positions_rows.csv,3,Telemetry
+handover,2025-2026,4,5
+swap,2025-2026,1,2

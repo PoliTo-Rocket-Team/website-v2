@@ -86,7 +86,8 @@ test("a dry run lists each unit it would create by name, open or closed, reports
   assert.match(report, /^Sheet rows with no name, skipped: 2$/m);
   assert.match(report, /^Unclear quitters: 2$/m);
   // From 2024-2025 on, a subteam that names a project is a project again. An override line on a past sheet,
-  // on a quitter who is on a year sheet, or of an unknown kind is not applied. A 2022-2023 joining day does
+  // on a quitter who is on a year sheet, or of an unknown kind is not applied. The two position-division lines
+  // (8 and 9) are the positions-only run's, so neither raises anything here, the one that does not read included. A 2022-2023 joining day does
   // not read. Two quitters have no usable date. The Roles 22-23 sheet is not read, so its unmatched row raises nothing.
   assert.deepEqual(
     plan.conflicts.map((c) => [c.kind, c.at.file, c.at.sheet ?? null, c.at.row, c.field ?? null]),

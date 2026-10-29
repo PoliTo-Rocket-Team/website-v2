@@ -200,7 +200,9 @@ export const ORDERS_CSV = {
  * `overrides.csv`: one line per owner decision the workbook cannot carry. `kind` says which:
  * `handover` (row `row` of `sheet` handed its seat over to row `value` within the current year),
  * `quitter-year` (Quitters row `row` is an alumnus of academic year `value`, "YYYY-YYYY") or
- * `title` (row `row` of `sheet` has the title `value`, issue #822).
+ * `title` (row `row` of `sheet` has the title `value`, issue #822) or `position-division` (the
+ * positions-only run maps `positions_rows.csv` line `row` to the division `value` names as
+ * "<department>/<division>", issue #842).
  */
 export const OVERRIDES_CSV = {
   kind: { aliases: ["kind"], required: true },

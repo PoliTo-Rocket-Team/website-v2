@@ -4,7 +4,16 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { applyPositions, departments, divisions, faqs, members, users } from "@/db/schema";
 import { addRows, databaseWrites, restore, tableRows, testDb } from "@/lib/dashboard/access-matrix/test-database";
-import { isTestDivision, listOf, matchDivision, type PositionOutcome } from "./positions";
+import {
+  divisionsPinnedBy,
+  isTestDivision,
+  listOf,
+  matchDivision,
+  planPositions,
+  readPositionSnapshot,
+  readPositionSources,
+  type PositionOutcome,
+} from "./positions";
 import { runPositionsImport } from "./run";
 import type { ImportDb } from "./snapshot";
 import type { Division } from "./units";
@@ -131,6 +140,114 @@ test("a second positions-only import inserts nothing and finds every position pr
   );
   assert.match(second.report, /^Positions inserted, closed: 0$/m);
   assert.match(second.report, /^Already present: 6$/m);
+});
+
+// The position-division override (issue #842) over ./fixtures/positions-override:
+// two closed departments, each with a closed division named Telemetry.
+
+const OVERRIDE_FILES = join(__dirname, "fixtures", "positions-override");
+const [STARLING_TELEMETRY, KESTREL_TELEMETRY] = [20, 21];
+
+async function overrideWorld(): Promise<void> {
+  await restore("positions-override-world", async () => {
+    await addRows(departments, [
+      { id: 10, name: "Starling", code: "STR", startedAt: "2020-10-01", closedAt: "2023-09-30" },
+      { id: 11, name: "Kestrel", code: "KST", startedAt: "2021-10-01", closedAt: "2024-09-30" },
+    ]);
+    await addRows(divisions, [
+      { id: STARLING_TELEMETRY, deptId: 10, name: "Telemetry", code: "TLS", startedAt: "2020-10-01", closedAt: "2023-09-30" },
+      { id: KESTREL_TELEMETRY, deptId: 11, name: "Telemetry", code: "TLK", startedAt: "2021-10-01", closedAt: "2024-09-30" },
+      { id: 22, deptId: 11, name: "Radio Links", code: "RFL", startedAt: "2021-10-01", closedAt: "2024-09-30" },
+      { id: 23, deptId: 11, name: "Radio Frequency", code: "RFL", startedAt: "2021-10-01", closedAt: "2024-09-30" },
+    ]);
+  });
+}
+
+const OVERRIDE_EXPECTED = [
+  [2, "insert", STARLING_TELEMETRY, "override"],
+  [3, "several-divisions", null, null],
+  [4, "several-divisions", null, null],
+  [5, "several-divisions", null, null],
+  [6, "insert", KESTREL_TELEMETRY, "override"],
+];
+
+test("a position-division line pins an ambiguous row to the one division it names; a line that cannot apply is override-unmatched on its field", async () => {
+  await overrideWorld();
+  const sources = readPositionSources(OVERRIDE_FILES);
+  const snapshot = await readPositionSnapshot(db);
+  // Without its override, the old division's name finds both Telemetry divisions.
+  assert.deepEqual(byLine(planPositions({ ...sources, overrides: [] }, snapshot).outcomes)[0], [2, "several-divisions", null, null]);
+
+  const { plan, report } = await runPositionsImport({ mode: "dry-run", directory: OVERRIDE_FILES, db });
+  assert.deepEqual(await databaseWrites(), []);
+  assert.deepEqual(byLine(plan.outcomes), OVERRIDE_EXPECTED);
+  assert.deepEqual(
+    plan.conflicts.map((c) => [c.kind, c.at.file, c.at.row, c.field]),
+    [
+      ["override-unmatched", "overrides.csv", 3, "value"],
+      ["override-unmatched", "overrides.csv", 4, "value"],
+      ["override-unmatched", "overrides.csv", 6, "row"],
+      ["override-unmatched", "overrides.csv", 7, "row"],
+      ["override-unmatched", "overrides.csv", 8, "sheet"],
+      ["override-unmatched", "overrides.csv", 9, "row"],
+      ["override-unmatched", "overrides.csv", 10, "value"],
+    ],
+    "lines 11 and 12 are not this run's kinds, so it reports neither",
+  );
+  assert.match(report, /^Read:\n {2}positions_rows\.csv\n {2}divisions_rows\.csv\n {2}subteams_rows\.csv\n {2}overrides\.csv$/m);
+  assert.match(report, /^Positions to insert, closed: 2$/m);
+  assert.match(report, /^Not imported, several production divisions: 3$/m);
+  assert.match(report, /^Rows mapped by a position-division line \(overrides\.csv\): 2$/m);
+  for (const line of [
+    'positions_rows.csv › row 2: "Telemetry Engineer" → Telemetry (TLS), by override, from old division Telemetry (TLM): to insert',
+    'positions_rows.csv › row 6: "Radio Engineer" → Telemetry (TLK), by override, from old division Telemetry (TLM): to insert',
+    "positions_rows.csv › row 4: old division Telemetry (TLM) matches 2 production divisions (Telemetry (TLS); Telemetry (TLK)): not imported",
+  ]) {
+    assert.ok(report.split("\n").includes(`  ${line}`), `the report lists: ${line}`);
+  }
+  assert.match(report, /^ {2}\[override-unmatched\] overrides\.csv › row 3 › field value: /m);
+  assert.match(report, /^ {2}\[override-unmatched\] overrides\.csv › row 8 › field sheet: /m);
+});
+
+test("a pinned position imports closed under its division, and a second run finds it present and inserts nothing", async () => {
+  await overrideWorld();
+  const first = await runPositionsImport({ mode: "import", directory: OVERRIDE_FILES, db });
+  assert.equal(first.written, 2);
+  const rows = (await tableRows(applyPositions)) as (typeof applyPositions.$inferSelect)[];
+  assert.deepEqual(
+    rows.map((p) => [p.divisionId, p.title, p.status]),
+    [
+      [STARLING_TELEMETRY, "Telemetry Engineer", false],
+      [KESTREL_TELEMETRY, "Radio Engineer", false],
+    ],
+  );
+  const second = await runPositionsImport({ mode: "import", directory: OVERRIDE_FILES, db });
+  assert.equal(second.written, 0);
+  assert.deepEqual(await tableRows(applyPositions), rows);
+  assert.deepEqual(
+    byLine(second.plan.outcomes),
+    OVERRIDE_EXPECTED.map(([row, kind, ...rest]) => [row, kind === "insert" ? "present" : kind, ...rest]),
+  );
+  assert.match(second.report, /^Already present: 2$/m);
+});
+
+test("a position-division line finds divisions by name or code, closed ones included, only under the departments it names", () => {
+  const units = {
+    departments: [
+      { id: 1, name: "Starling", code: "STR" },
+      { id: 2, name: "Kestrel", code: "KST" },
+    ],
+    divisions: [
+      { id: 10, name: "Telemetry", code: "TLS", deptId: 1 },
+      { id: 11, name: "Telemetry", code: "TLK", deptId: 2 },
+      { id: 12, name: "Telemetry", code: null, deptId: null },
+    ],
+  };
+  const pinned = (department: string, division: string) => divisionsPinnedBy(units, { department, division }).map((d) => d.id);
+  assert.deepEqual(pinned("Starling", "Telemetry"), [10]);
+  assert.deepEqual(pinned("kst", "telemetry division"), [11]);
+  assert.deepEqual(pinned("Kestrel", "TLS"), [], "a division of another department is not found by its code");
+  assert.deepEqual(pinned("Nimbus", "Telemetry"), []);
 });
 
 const division = (id: number, name: string, code: string | null): Division => ({ id, name, code, deptId: null });
