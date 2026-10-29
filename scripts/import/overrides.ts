@@ -11,9 +11,13 @@ import type { Row, Sources } from "./sources";
 //   handover,2026-2027,113,50       row 113 handed its seat over to row 50 this year
 //   quitter-year,Quitters,7,2022-2023   Quitters row 7 is an alumnus of 2022-2023
 //   title,2026-2027,33,Advisor      row 33's title cell reads "Advisor"
+//   position-division,positions_rows.csv,14,Propulsion/Liquid Systems
+//                                   that position goes to that division
 //
 // This reads each line into the decision it states. A line whose kind is
 // unknown, or whose row or value does not read, is reported, not guessed.
+// `position-division` lines (issue #842) are the positions-only run's: the
+// full run reads none of them, and the positions-only run reads only them.
 
 /** A seat the holder on row `fromRow` of `sheet` handed over to the holder on row `toRow` within the current year. */
 export type Handover = { readonly kind: "handover"; readonly at: At; readonly sheet: string; readonly fromRow: number; readonly toRow: number };
@@ -24,55 +28,95 @@ export type QuitterYear = { readonly kind: "quitter-year"; readonly at: At; read
 /** The title the owner gives row `row` of `sheet` (issue #822): it replaces the row's title cell before any title rule reads it. */
 export type TitleOverride = { readonly kind: "title"; readonly at: At; readonly sheet: string; readonly row: number; readonly title: string };
 
-export type Override = Handover | QuitterYear | TitleOverride;
+/**
+ * The production division the owner gives row `row` of `sheet` in the
+ * positions-only run (issue #842): the division named `division` under the
+ * department named `department`, each a unit's name or code.
+ */
+export type PositionDivision = {
+  readonly kind: "position-division";
+  readonly at: At;
+  readonly sheet: string;
+  readonly row: number;
+  readonly department: string;
+  readonly division: string;
+};
+
+export type Override = Handover | QuitterYear | TitleOverride | PositionDivision;
+
+/** A line that does not read: the field at fault, and the kind it was meant as when that kind is known. */
+export type Unreadable = { readonly kind: "unreadable"; readonly field: string; readonly of: Override["kind"] | null };
 
 export type Overrides = {
   readonly handovers: readonly Handover[];
   readonly quitterYears: readonly QuitterYear[];
   readonly titles: readonly TitleOverride[];
+  /** The full run's unreadable lines: an unknown kind, or a line of its kinds that does not read. */
   readonly conflicts: readonly Conflict[];
+  /** The positions-only run's lines, and those of them that do not read; the full run reads neither. */
+  readonly positionDivisions: { readonly lines: readonly PositionDivision[]; readonly conflicts: readonly Conflict[] };
 };
 
 const rowNumber = (text: string): number | null => (/^\d+$/.test(text.trim()) ? Number(text.trim()) : null);
 
+const KINDS: readonly Override["kind"][] = ["handover", "quitter-year", "title", "position-division"];
+
+/** A `position-division` value: a department and a division, split on the first "/". Null unless both parts hold text. */
+function departmentAndDivision(value: string): { readonly department: string; readonly division: string } | null {
+  const slash = value.indexOf("/");
+  if (slash === -1) return null;
+  const [department, division] = [value.slice(0, slash).trim(), value.slice(slash + 1).trim()];
+  return department === "" || division === "" ? null : { department, division };
+}
+
 /** The decision one line states, or the field that does not read. */
-export function readOverride(line: Row<keyof typeof OVERRIDES_CSV>): Override | { readonly kind: "unreadable"; readonly field: string } {
+export function readOverride(line: Row<keyof typeof OVERRIDES_CSV>): Override | Unreadable {
   const { kind, sheet, row, value } = line.value;
   const at = line.at;
+  const named = kind.trim().toLowerCase();
+  const of = KINDS.find((k) => k === named) ?? null;
+  const unreadable = (field: string): Unreadable => ({ kind: "unreadable", field, of });
   const r = rowNumber(row);
-  if (r === null) return { kind: "unreadable", field: "row" };
-  switch (kind.trim().toLowerCase()) {
+  if (r === null) return unreadable("row");
+  switch (of) {
     case "handover": {
       const to = rowNumber(value);
-      return to === null ? { kind: "unreadable", field: "value" } : { kind: "handover", at, sheet: sheet.trim(), fromRow: r, toRow: to };
+      return to === null ? unreadable("value") : { kind: "handover", at, sheet: sheet.trim(), fromRow: r, toRow: to };
     }
     case "quitter-year": {
       const year = academicYearNamed(value);
-      return year === null ? { kind: "unreadable", field: "value" } : { kind: "quitter-year", at, sheet: sheet.trim(), row: r, year };
+      return year === null ? unreadable("value") : { kind: "quitter-year", at, sheet: sheet.trim(), row: r, year };
     }
     case "title": {
       const title = value.replace(/\s+/g, " ").trim();
-      return title === "" ? { kind: "unreadable", field: "value" } : { kind: "title", at, sheet: sheet.trim(), row: r, title };
+      return title === "" ? unreadable("value") : { kind: "title", at, sheet: sheet.trim(), row: r, title };
     }
-    default:
-      return { kind: "unreadable", field: "kind" };
+    case "position-division": {
+      const parts = departmentAndDivision(value);
+      return parts === null ? unreadable("value") : { kind: "position-division", at, sheet: sheet.trim(), row: r, ...parts };
+    }
+    case null:
+      return unreadable("kind");
   }
 }
 
-/** Every line, sorted by the decision it states; an unreadable line is an `override-unmatched` conflict on its field. */
+/** Every line, sorted by the decision it states; an unreadable line is an `override-unmatched` conflict on its field, kept with its run's lines. */
 export function readOverrides(lines: readonly Row<keyof typeof OVERRIDES_CSV>[]): Overrides {
   const handovers: Handover[] = [];
   const quitterYears: QuitterYear[] = [];
   const titles: TitleOverride[] = [];
   const conflicts: Conflict[] = [];
+  const positionDivisions: PositionDivision[] = [];
+  const positionConflicts: Conflict[] = [];
   for (const line of lines) {
     const o = readOverride(line);
     if (o.kind === "handover") handovers.push(o);
     else if (o.kind === "quitter-year") quitterYears.push(o);
     else if (o.kind === "title") titles.push(o);
-    else conflicts.push({ kind: "override-unmatched", at: line.at, field: o.field });
+    else if (o.kind === "position-division") positionDivisions.push(o);
+    else (o.of === "position-division" ? positionConflicts : conflicts).push({ kind: "override-unmatched", at: line.at, field: o.field });
   }
-  return { handovers, quitterYears, titles, conflicts };
+  return { handovers, quitterYears, titles, conflicts, positionDivisions: { lines: positionDivisions, conflicts: positionConflicts } };
 }
 
 /** A row's place on its sheet, as a `title` line names it. */

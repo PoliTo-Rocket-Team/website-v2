@@ -368,8 +368,10 @@ pnpm db:import <source-dir> --only positions --database-url <url>               
 pnpm db:import <source-dir> --only positions --mode import --database-url <url>   # then the import
 ```
 
-It reads three files from `<source-dir>`: `positions_rows.csv`, `divisions_rows.csv` and
-`subteams_rows.csv`. The report lists every other file there as not read. It needs the database
+It reads four files from `<source-dir>`: `positions_rows.csv`, `divisions_rows.csv`,
+`subteams_rows.csv` and, when it is there, `overrides.csv`, of which it applies only the
+`position-division` lines (see **The override input**). The report lists every other file there
+as not read. It needs the database
 for a dry run too, since it maps each position to the database's divisions: `--database-url` or
 `IMPORT_DATABASE_URL`, as above. `--report` works as in the full run; `--year` and `--blob-token`
 do not apply and are refused.
@@ -385,6 +387,10 @@ Rules (`positions.ts`):
   accents, punctuation, a level word and a plural "s" do not count, and a bare name equal to a
   division's code finds it). A code that finds several divisions, or a name that does, is not
   imported: the run never picks one. A name that finds none is not imported either.
+- **Pinned rows** (issue #842). A `position-division` line of `overrides.csv` that applies maps
+  its row to the division it names, in place of the old unit's code and name, so a row whose old
+  division finds several divisions, or none, can still be imported. Every other rule below still
+  holds for that row.
 - **The test division** (`test-division-website`, code `TDW`, matched by name or code) is skipped.
 - **Closed.** Every imported position has `status` false, whatever its old `open` value.
 - **Fields.** `name` is the title; `description`, `desirable` and `required` carry over, the two
@@ -397,10 +403,13 @@ Rules (`positions.ts`):
   in one transaction, so a failure writes nothing.
 
 The report gives the counts (to insert or inserted, present, duplicates, the test division, and
-each reason a row is not imported), then every row of `positions_rows.csv` by its file line:
-the title, the production division it maps to by name and code, whether by code or by name, and the
-old division's name and code; or why it is not imported, with the old division's name and code
-(and, for several matches, the divisions found). Check this list in the dry run before the import.
+each reason a row is not imported, and the rows a `position-division` line mapped), then every
+row of `positions_rows.csv` by its file line: the title, the production division it maps to by
+name and code, whether by code, by name or by override, and the old division's name and code; or
+why it is not imported, with the old division's name and code (and, for several matches, the
+divisions found). Last, it lists each `position-division` line it did not apply as an
+`override-unmatched` conflict, with the field at fault. Check these lists in the dry run before the
+import.
 
 ## The override input
 
@@ -413,13 +422,20 @@ kind,sheet,row,value
 handover,2026-2027,113,50
 quitter-year,Quitters,7,2022-2023
 title,2026-2027,33,Advisor
+position-division,positions_rows.csv,14,Propulsion/Liquid Systems
 ```
 
-- `kind`: `handover`, `quitter-year` or `title`.
-- `sheet`: the workbook sheet the row is on, exactly as the workbook names it.
-- `row`: the row number on that sheet.
+- `kind`: `handover`, `quitter-year`, `title` or `position-division`.
+- `sheet`: the workbook sheet the row is on, exactly as the workbook names it; for
+  `position-division`, `positions_rows.csv`.
+- `row`: the row number on that sheet; for `position-division`, the file line the positions-only
+  report prints for the row.
 - `value`: for `handover`, the row number of the new holder; for `quitter-year`, the academic
-  year as `YYYY-YYYY`; for `title`, the row's title text (quote it if it holds a comma).
+  year as `YYYY-YYYY`; for `title`, the row's title text (quote it if it holds a comma); for
+  `position-division`, a department and a division, as `<department>/<division>`.
+
+The full run reads every kind but `position-division`, and the positions-only run reads only
+`position-division`, so one `overrides.csv` serves both runs.
 
 **`handover`**: a seat that changed holder within the current year. `sheet` is the current year's
 sheet, `row` the holder who handed the seat over, `value` the holder who took it. The seats handed
@@ -442,20 +458,39 @@ title rule runs, so the row is read in every way as if the workbook held that ti
 its photo match as an advisor, its handovers. Spacing in `value` does not count. The report counts
 the title lines applied.
 
+**`position-division`** (issue #842): the positions-only run maps the position on line `row` of
+`positions_rows.csv` to the one division `value` names (see **Positions-only run**). `value` is
+split on its first `/`: the part before it names a department, the part after it a division of
+that department. Each part is a unit's name or code, compared as any unit name is (see **Units**:
+case, accents, punctuation, a level word and a plural "s" do not count). Closed departments and
+divisions count like open ones. The line applies when it finds exactly one division under the
+departments its department part names; the run never picks among several. The report counts the
+rows these lines mapped, and shows each as mapped `by override`.
+
 A line is not applied, and is reported as `override-unmatched` on the field at fault, when its
-kind is none of these, its row is no number, its value is no row number, academic year or title, a
-`handover` names a sheet other than the current year's, a row that is no person's row there, or
-two rows with no seat in common, a `quitter-year` names a row that is not the Quitters row of a
-person on no year sheet, or a `title` names a sheet the run does not read (`sheet`), a row with no
-name on it, or a row an earlier `title` line already gave a title (`row`).
+kind is none of these, its row is no number, its value is no row number, academic year, title or
+`<department>/<division>` pair with text on both sides of the slash, a `handover` names a sheet
+other than the current year's, a row that is no person's row there, or two rows with no seat in
+common, a `quitter-year` names a row that is not the Quitters row of a person on no year sheet, a
+`title` names a sheet the run does not read (`sheet`), a row with no name on it, or a row an
+earlier `title` line already gave a title (`row`), or a `position-division` names a sheet other
+than `positions_rows.csv` (`sheet`), a line that is no row of that file or a row an earlier line
+already pinned (`row`), or a department and division that find no division or several (`value`).
+A `position-division` line that is not applied leaves its row to its old division's own match.
+The full run reports an unknown kind and its own kinds' lines; the positions-only run reports
+only `position-division` lines.
 
 ## Fixtures
 
-`fixtures/make-fixtures.ts` writes `fixtures/files/`, `fixtures/rules/` and `fixtures/positions/`.
-Every name in them is invented, every email is on `example.com`, and the photos are tiny generated
-JPEGs. `positions.test.ts` runs the positions-only run over `positions/`: the mapping by code and
-by name, the test division, no match and several matches, an id on no row, duplicates, closed
-status, that nothing but positions is written, and that a second run inserts nothing.
+`fixtures/make-fixtures.ts` writes `fixtures/files/`, `fixtures/rules/`, `fixtures/positions/`
+and `fixtures/positions-override/`. Every name in them is invented, every email is on
+`example.com`, and the photos are tiny generated JPEGs. `positions.test.ts` runs the
+positions-only run over `positions/`: the mapping by code and by name, the test division, no match
+and several matches, an id on no row, duplicates, closed status, that nothing but positions is
+written, and that a second run inserts nothing. It runs it over `positions-override/` for the
+`position-division` lines: two closed divisions of one name under two departments, a row pinned
+to one of them imported closed and found present on a second run, a row with no line left as
+several matches, and each way a line is not applied.
 `import.test.ts` runs the tool over `files/`; `rules.test.ts` runs it over `rules/`, a roster that
 plants each reading rule of issue #816, with an `overrides.csv`. `parsing.test.ts` covers the
 readers: the date forms, the override lines, a quitter's stint (a swapped date cell included) and

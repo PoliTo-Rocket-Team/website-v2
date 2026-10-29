@@ -1,11 +1,12 @@
 import { readdirSync } from "node:fs";
 import { asc } from "drizzle-orm";
-import { applyPositions, divisions as divisionsTable } from "@/db/schema";
-import { DIVISIONS_CSV, POSITIONS_CSV, SUBTEAMS_CSV } from "./columns";
+import { applyPositions, departments as departmentsTable, divisions as divisionsTable } from "@/db/schema";
+import { DIVISIONS_CSV, OVERRIDES_CSV, POSITIONS_CSV, SUBTEAMS_CSV } from "./columns";
 import { CONFLICT_TEXT, placeOf, type At, type Conflict } from "./conflicts";
+import { readOverrides, type PositionDivision } from "./overrides";
 import type { ImportDb } from "./snapshot";
 import { CSV_FILES, POSITIONS_FILE, readCsv, type ReadLog, type Row } from "./sources";
-import { codeKey, unitKey, unitsNamed, type Division } from "./units";
+import { codeKey, unitKey, unitsNamed, type Department, type Division } from "./units";
 
 // The positions-only run (owner decision, issue #834): it reads the old
 // positions export and imports each position, closed, into the production
@@ -20,6 +21,10 @@ import { codeKey, unitKey, unitsNamed, type Division } from "./units";
 // by name through the fold every unit name goes through (./units.ts). The old
 // test division is skipped; a unit that finds no division, or several, is not
 // imported, and the report lists the row with the old name and code.
+//
+// A `position-division` line of `overrides.csv` (owner decision, issue #842)
+// pins one row to the division it names by department and division: that row
+// maps to it in place of its old unit's code or name.
 
 /** The old export's unit a position's `division` id names. */
 export type OldUnit = { readonly file: string; readonly name: string; readonly code: string | null };
@@ -33,9 +38,9 @@ export type NewPosition = {
   readonly desirableSkills: readonly string[];
 };
 
-/** How an old unit found its production division. */
+/** How an old unit found its production division: by its code or name, or by a `position-division` line that pins its row. */
 export type DivisionMatch =
-  | { readonly kind: "found"; readonly division: Division; readonly by: "code" | "name" }
+  | { readonly kind: "found"; readonly division: Division; readonly by: "code" | "name" | "override" }
   | { readonly kind: "absent" }
   | { readonly kind: "several"; readonly divisions: readonly Division[] };
 
@@ -61,38 +66,88 @@ export type PositionSources = {
   readonly positions: readonly Row<keyof typeof POSITIONS_CSV>[];
   readonly divisions: readonly Row<keyof typeof DIVISIONS_CSV>[];
   readonly subteams: readonly Row<keyof typeof SUBTEAMS_CSV>[];
+  /** The `overrides.csv` lines, of every kind: the run applies only its `position-division` ones. */
+  readonly overrides: readonly Row<keyof typeof OVERRIDES_CSV>[];
 };
 
-/** What the database holds that the run reads first: every division, closed ones included, and every position's division and title. */
+/** What the database holds that the run reads first: every department and division, closed ones included, and every position's division and title. */
 export type PositionSnapshot = {
+  readonly departments: readonly Department[];
   readonly divisions: readonly Division[];
   readonly positions: readonly { readonly divisionId: number | null; readonly title: string | null }[];
 };
 
-export type PositionPlan = { readonly outcomes: readonly PositionOutcome[] };
+/** What the run does with each row, and the `position-division` lines it could not apply. */
+export type PositionPlan = { readonly outcomes: readonly PositionOutcome[]; readonly conflicts: readonly Conflict[] };
 
-/** The three files the run reads; every other file of the directory is listed as not read. */
-const READ_FILES: ReadonlySet<string> = new Set([POSITIONS_FILE, CSV_FILES.divisions, CSV_FILES.subteams]);
+/** The four files the run reads; every other file of the directory is listed as not read. */
+const READ_FILES: ReadonlySet<string> = new Set([POSITIONS_FILE, CSV_FILES.divisions, CSV_FILES.subteams, CSV_FILES.overrides]);
 
 export function readPositionSources(directory: string): PositionSources {
   const log: ReadLog = { read: [], skipped: [], conflicts: [] };
   const positions = readCsv(directory, POSITIONS_FILE, POSITIONS_CSV, log);
   const divisions = readCsv(directory, CSV_FILES.divisions, DIVISIONS_CSV, log);
   const subteams = readCsv(directory, CSV_FILES.subteams, SUBTEAMS_CSV, log);
+  const overrides = readCsv(directory, CSV_FILES.overrides, OVERRIDES_CSV, log);
   const others = readdirSync(directory)
     .filter((n) => !n.startsWith("~$") && !n.startsWith(".") && !READ_FILES.has(n))
     .sort();
   for (const name of others) log.skipped.push(`${name}: not read by the positions-only run`);
-  return { ...log, positions, divisions, subteams };
+  return { ...log, positions, divisions, subteams, overrides };
 }
 
 export async function readPositionSnapshot(db: ImportDb): Promise<PositionSnapshot> {
+  const departments = await db
+    .select({ id: departmentsTable.id, name: departmentsTable.name, code: departmentsTable.code })
+    .from(departmentsTable)
+    .orderBy(asc(departmentsTable.id));
   const divisions = await db
     .select({ id: divisionsTable.id, name: divisionsTable.name, code: divisionsTable.code, deptId: divisionsTable.deptId })
     .from(divisionsTable)
     .orderBy(asc(divisionsTable.id));
   const positions = await db.select({ divisionId: applyPositions.divisionId, title: applyPositions.title }).from(applyPositions);
-  return { divisions, positions };
+  return { departments, divisions, positions };
+}
+
+/**
+ * The production divisions a `position-division` line names: those its
+ * division part names, by name or code, under a department its department part
+ * names, by name or code. Closed units count like open ones.
+ */
+export function divisionsPinnedBy(units: Pick<PositionSnapshot, "departments" | "divisions">, line: Pick<PositionDivision, "department" | "division">): Division[] {
+  const departmentIds = new Set(unitsNamed(units.departments, line.department).map((d) => d.id));
+  return unitsNamed(
+    units.divisions.filter((d) => d.deptId !== null && departmentIds.has(d.deptId)),
+    line.division,
+  );
+}
+
+/** The division each pinned row of `positions_rows.csv` maps to, by its file line, and the lines not applied. */
+export type DivisionPins = { readonly byRow: ReadonlyMap<number, Division>; readonly conflicts: readonly Conflict[] };
+
+/**
+ * Applies the `position-division` lines (issue #842). A line pins its row when
+ * it names `positions_rows.csv`, a row on it no earlier line pinned, and
+ * exactly one production division. Any other line is not applied: it is an
+ * `override-unmatched` conflict on the field at fault (`sheet`, `row` or
+ * `value`), as is a line that does not read, and the row keeps its own match.
+ */
+export function pinDivisions(sources: Pick<PositionSources, "positions" | "overrides">, units: Pick<PositionSnapshot, "departments" | "divisions">): DivisionPins {
+  const { lines, conflicts: unreadable } = readOverrides(sources.overrides).positionDivisions;
+  const rows = new Set(sources.positions.map((p) => p.at.row));
+  const byRow = new Map<number, Division>();
+  const conflicts: Conflict[] = [...unreadable];
+  const unmatched = (line: PositionDivision, field: "sheet" | "row" | "value") => conflicts.push({ kind: "override-unmatched", at: line.at, field });
+  for (const line of lines) {
+    if (line.sheet !== POSITIONS_FILE) unmatched(line, "sheet");
+    else if (!rows.has(line.row) || byRow.has(line.row)) unmatched(line, "row");
+    else {
+      const hits = divisionsPinnedBy(units, line);
+      if (hits.length === 1) byRow.set(line.row, hits[0]);
+      else unmatched(line, "value");
+    }
+  }
+  return { byRow, conflicts: conflicts.sort((a, b) => a.at.row - b.at.row) };
 }
 
 /** The old test division, by its name or its code (owner decision, issue #834). */
@@ -142,6 +197,7 @@ export function planPositions(sources: PositionSources, snapshot: PositionSnapsh
   for (const [rows, file] of [[sources.subteams, CSV_FILES.subteams], [sources.divisions, CSV_FILES.divisions]] as const) {
     for (const r of rows) oldUnits.set(r.value.id.trim(), { file, name: r.value.name.trim(), code: orNull(r.value.code) });
   }
+  const pins = pinDivisions(sources, snapshot);
   const present = new Set(snapshot.positions.map((p) => positionKey(p.divisionId, p.title ?? "")));
   /** The first row of each division and title: a later row with both is a duplicate. */
   const firstRows = new Map<string, number>();
@@ -152,7 +208,8 @@ export function planPositions(sources: PositionSources, snapshot: PositionSnapsh
     const old = oldUnits.get(row.value.division.trim());
     if (old === undefined) return { kind: "unknown-old-division", at };
     if (isTestDivision(old)) return { kind: "test-division", at, old };
-    const match = matchDivision(snapshot.divisions, old);
+    const pinned = pins.byRow.get(at.row);
+    const match: DivisionMatch = pinned === undefined ? matchDivision(snapshot.divisions, old) : { kind: "found", division: pinned, by: "override" };
     if (match.kind === "absent") return { kind: "no-division", at, old };
     if (match.kind === "several") return { kind: "several-divisions", at, old, divisions: match.divisions };
     const position: NewPosition = {
@@ -168,7 +225,7 @@ export function planPositions(sources: PositionSources, snapshot: PositionSnapsh
     firstRows.set(key, at.row);
     return present.has(key) ? { kind: "present", at, old, match, position } : { kind: "insert", at, old, match, position };
   });
-  return { outcomes };
+  return { outcomes, conflicts: pins.conflicts };
 }
 
 /** The positions a plan inserts. */
@@ -216,6 +273,7 @@ export function renderPositionsReport({ mode, sources, plan, written }: { mode: 
   lines.push(`Not imported, several production divisions: ${count("several-divisions")}`);
   lines.push(`Not imported, old division not in the export: ${count("unknown-old-division")}`);
   lines.push(`Not imported, no title: ${count("no-title")}`);
+  lines.push(`Rows mapped by a position-division line (overrides.csv): ${plan.outcomes.filter((o) => "match" in o && o.match.by === "override").length}`);
   lines.push("");
   lines.push(`Positions, by row: ${plan.outcomes.length}`);
   const inserted = written === undefined ? "to insert" : "inserted";
@@ -247,10 +305,11 @@ export function renderPositionsReport({ mode, sources, plan, written }: { mode: 
         break;
     }
   }
-  if (sources.conflicts.length > 0) {
+  const conflicts = [...sources.conflicts, ...plan.conflicts];
+  if (conflicts.length > 0) {
     lines.push("");
-    lines.push(`Conflicts, by row: ${sources.conflicts.length}`);
-    for (const c of sources.conflicts) lines.push(`  [${c.kind}] ${placeOf(c.at)}: ${CONFLICT_TEXT[c.kind]}`);
+    lines.push(`Conflicts, by row: ${conflicts.length}`);
+    for (const c of conflicts) lines.push(`  [${c.kind}] ${placeOf(c.at)}${c.field === undefined ? "" : ` › field ${c.field}`}: ${CONFLICT_TEXT[c.kind]}`);
   }
   return `${lines.join("\n")}\n`;
 }
