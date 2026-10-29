@@ -16,6 +16,7 @@ import { SiteFooter } from "@/components/landing/site-footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import type { ApplyPosition } from "@/db/types";
+import type { PreviousFiles } from "@/lib/apply/application-form";
 import type { ApplyData } from "@/lib/apply/data";
 import { databaseApplyData } from "@/lib/apply/database";
 import { isPublic, positionCode, positionIdFromSlug, positionSlug } from "@/lib/apply/positions";
@@ -56,27 +57,35 @@ export default function PositionPage({ params }: { params: Promise<{ slug: strin
   );
 }
 
-/** Who is looking: nobody signed in, or an applicant and whether they already applied for this position. */
-type Viewer = { kind: "signed-out" } | { kind: "signed-in"; applicant: Applicant; applied: boolean };
+/**
+ * Who is looking: nobody signed in, or an applicant, whether they already
+ * applied for this position, and the files they sent before (issue #826).
+ */
+type Viewer =
+  | { kind: "signed-out" }
+  | { kind: "signed-in"; applicant: Applicant; applied: boolean; previous: PreviousFiles };
 
 /** What the page shows for the form, by its state, in this order: a popover, or the form itself. */
 type CardState =
   | { kind: "closed" }
   | { kind: "signed-out" }
   | { kind: "sent"; applicant: Applicant }
-  | { kind: "form"; applicant: Applicant };
+  | { kind: "form"; applicant: Applicant; previous: PreviousFiles };
 
 function cardState(position: ApplyPosition, recruitmentOpen: boolean, viewer: Viewer): CardState {
   if (!isPublic(position, { isOpen: recruitmentOpen })) return { kind: "closed" };
   if (viewer.kind === "signed-out") return { kind: "signed-out" };
-  return { kind: viewer.applied ? "sent" : "form", applicant: viewer.applicant };
+  return viewer.applied
+    ? { kind: "sent", applicant: viewer.applicant }
+    : { kind: "form", applicant: viewer.applicant, previous: viewer.previous };
 }
 
 /** The session and the applicant's own reads; they need only the position's id, not its row. */
 async function viewerOf(data: ApplyData, positionId: number): Promise<Viewer> {
   const applicant = await data.applicant();
   if (applicant === null) return { kind: "signed-out" };
-  return { kind: "signed-in", applicant, applied: await data.hasApplied(applicant.id, positionId) };
+  const [applied, previous] = await Promise.all([data.hasApplied(applicant.id, positionId), data.previousFiles(applicant.id)]);
+  return { kind: "signed-in", applicant, applied, previous };
 }
 
 async function LivePosition({ params }: { params: Promise<{ slug: string }> }) {
@@ -113,6 +122,7 @@ async function LivePosition({ params }: { params: Promise<{ slug: string }> }) {
           <ApplicationForm
             email={state.applicant.email}
             defaults={state.applicant.defaults}
+            previous={state.previous}
             asks={{
               questions: position.custom_questions ?? [],
               requiresMotivationLetter: position.requires_motivation_letter,
