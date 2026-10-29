@@ -6,7 +6,7 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { roles } from "@/db/schema";
 import { accountOf, EXTRA, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
-import { databaseWrites, tableRows, testDb, writesByTransaction } from "./access-matrix/test-database";
+import { addRows, databaseWrites, tableRows, testDb, writesByTransaction } from "./access-matrix/test-database";
 import { titleOnMove } from "./member-move";
 import { defaultHeadTitle } from "./team";
 
@@ -103,6 +103,33 @@ describe("moving someone to another unit in one write (issue #647)", () => {
     assert.deepEqual(await headsOf(AERODYNAMICS), [EXTRA.head]);
     assert.deepEqual(await headsOf(STRUCTURES), []);
     assert.ok((await placeOf(AERODYNAMICS_HEAD)).includes(`advisor@department:${AERODYNAMICS}`), "the head they replace stays as an advisor");
+  });
+
+  test("a head who also holds a team-level seat is made head of another department and keeps the seat (issue #841)", async () => {
+    await seedFixture();
+    signInAs(TEAM_LEADER);
+    await addRows(roles, [{ id: 9_841, memberId: EXTRA.head, title: "Safety Officer", startedAt: "2025-10-01", type: "core" }]);
+    const moved = await move({ personId: EXTRA.head, from: { kind: "head", departmentId: STRUCTURES }, to: { kind: "head", departmentId: AERODYNAMICS }, replaced: "advisor" });
+    assert.deepEqual(moved, { ok: true });
+    assert.deepEqual(await placeOf(EXTRA.head), ["core@team", `head@department:${AERODYNAMICS}`]);
+    assert.deepEqual(await headsOf(AERODYNAMICS), [EXTRA.head], "the department never has two heads");
+    assert.deepEqual(await headsOf(STRUCTURES), []);
+  });
+
+  test("a successor who holds a team-level seat takes the headship over and keeps the seat and their divisions (issue #841)", async () => {
+    await seedFixture();
+    signInAs(TEAM_LEADER);
+    await addRows(roles, [{ id: 9_842, memberId: EXTRA.mover, title: "Safety Officer", startedAt: "2025-10-01", type: "core" }]);
+    const before = await placeOf(EXTRA.mover);
+    const moved = await move({
+      personId: EXTRA.head,
+      from: { kind: "head", departmentId: STRUCTURES },
+      to: { kind: "division", divisionId: MA, as: "member" },
+      successor: EXTRA.mover,
+    });
+    assert.deepEqual(moved, { ok: true });
+    assert.deepEqual(await headsOf(STRUCTURES), [EXTRA.mover]);
+    assert.deepEqual(await placeOf(EXTRA.mover), [...before, `head@department:${STRUCTURES}`].sort());
   });
 
   test("two overlapping moves of one person: the second to land, from a place the first already ended, is refused and writes nothing", async () => {

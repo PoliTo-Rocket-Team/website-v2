@@ -13,7 +13,6 @@ import {
   mayChangeDivision,
   membershipsOfRoles,
   reachesDivision,
-  roleBeyondDivisions,
   roleIn,
   type DivisionRole,
   type OrgChart,
@@ -145,7 +144,11 @@ export type MoveDepartment = {
   /** Whether the viewer may make someone its head: the team leader and full access. */
   readonly headable: boolean;
   readonly divisions: readonly MoveDivision[];
-  /** Who may take its headship over when its head moves away: the people in its divisions holding no seat; none unless `headable`. */
+  /**
+   * Who may take its headship over when its head moves away: the people in its
+   * divisions other than its head, whatever other seat they hold, which they
+   * keep (Owner decision, issue #837); none unless `headable`.
+   */
   readonly successors: readonly MovePerson[];
 };
 
@@ -170,10 +173,11 @@ export function moveTargetsOf(records: readonly MoveRecord[], org: OrgChart, act
       .filter((d) => reachesDivision(actor, d.id, org))
       .map((d) => ({ id: d.id, name: divisionLabel(d.name), code: d.code ?? null, lead: mayChangeDivision(actor, d.id, org).allowed }));
     if (divisions.length === 0 && !headable) return [];
-    const head = records.find((r) => r.beyondDivisions.some((b) => b.kind === "head" && b.departmentId === department.id));
+    const headsHere = (r: MoveRecord) => r.beyondDivisions.some((b) => b.kind === "head" && b.departmentId === department.id);
+    const head = records.find(headsHere);
     const successors = headable
       ? records
-          .filter((r) => r.beyondDivisions.length === 0 && r.memberships.some((m) => own.some((d) => d.id === m.divisionId)))
+          .filter((r) => !headsHere(r) && r.memberships.some((m) => own.some((d) => d.id === m.divisionId)))
           .sort((a, b) => a.name.localeCompare(b.name))
           .map(person)
       : [];
@@ -310,11 +314,10 @@ export function planMove(input: {
     if (!movesHeads(actor)) return no(ONLY_TEAM_MOVES_HEADS);
     const department = departmentName(to.departmentId);
     if (department === null) return no("That department is closed.");
-    if (fromDepartment === to.departmentId) return no(`${name(personId)} already heads ${department}.`);
-    // A new head holds no seat yet (New department, Change head); the headship they leave is not one they keep.
-    const [seatHeld] = roles.filter((r) => !ending.includes(r)).flatMap((r) => roleBeyondDivisions(r, org) ?? []);
-    if (seatHeld !== undefined) return no(`${name(personId)} is already ${beyondTitle(seatHeld, org)}.`);
+    // One person may hold several seats (Owner decision, issue #837): a new head keeps every other seat they hold
+    // (an advisor role, a team-level seat, another department's headship), and only the headship being filled is refused.
     const current = headsOf(to.departmentId);
+    if (fromDepartment === to.departmentId || current.some((h) => h.memberId === personId)) return no(`${name(personId)} already heads ${department}.`);
     const seat = seatHandOver(current, [personId]);
     if (!seat.ok) return no(seat.error);
     if (current.length > 0) {
@@ -337,8 +340,10 @@ export function planMove(input: {
     if (!next || next.id === personId || !next.memberships.some((m) => departmentDivisions.includes(m.divisionId))) {
       return no(`Pick the new head from the people in ${departmentName(fromDepartment)}.`);
     }
-    const [seat] = next.beyond;
-    if (seat !== undefined) return no(`${next.name} is already ${beyondTitle(seat, org)}.`);
+    // A successor who holds another seat keeps it (issue #837). The head this move replaces cannot both leave the team and head here.
+    if (replaced !== null && replaced.memberId === next.id && replaced.steppingDown.kind === "leave") {
+      return no(`${next.name} cannot leave the team and head ${departmentName(fromDepartment)}. Pick another new head, or choose Become an advisor.`);
+    }
     successor = { memberId: next.id, departmentId: fromDepartment, title: defaultHeadTitle(departmentName(fromDepartment)!), seat: null };
   }
   // A full-access seat on a row that ends follows the role to the one who takes it over; nobody takes a division role over here.
