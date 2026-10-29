@@ -270,36 +270,6 @@ export function canWithdraw(stage: ActiveStage): boolean {
   return stage.kind !== "accepted";
 }
 
-/** One of the person's own applications, as Delete account reads it. */
-export type OwnApplication = {
-  readonly id: number;
-  readonly status: ApplicationStatus;
-  readonly withdrawnAt: string | null;
-  readonly cvFileId: number | null;
-  readonly coverLetterFileId: number | null;
-};
-
-/**
- * What "Also withdraw my open applications" on Delete account withdraws: the
- * open applications, the ones the Withdraw button could still withdraw
- * (`isWithdrawable`, issue #759), and the files only they use. The files of
- * the person's other applications stay with those applications, kept like the
- * rest of the data until the account is anonymized (issue #191).
- */
-export function withdrawnOnDelete(applications: readonly OwnApplication[]): {
-  readonly applicationIds: readonly number[];
-  readonly fileIds: readonly number[];
-} {
-  const open = (a: OwnApplication) => a.withdrawnAt === null && isWithdrawable(a.status);
-  const filesOf = (a: OwnApplication) => [a.cvFileId, a.coverLetterFileId].filter((id): id is number => id !== null);
-  const withdrawn = applications.filter(open);
-  const kept = new Set(applications.filter((a) => !open(a)).flatMap(filesOf));
-  return {
-    applicationIds: withdrawn.map((a) => a.id),
-    fileIds: [...new Set(withdrawn.flatMap(filesOf))].filter((id) => !kept.has(id)),
-  };
-}
-
 /** "Mission Analysis Division" reads "Mission Analysis"; with no division, the department. */
 export function unitName(application: Pick<ActiveApplication, "division" | "department">): string {
   return application.division === null ? application.department : application.division.replace(/ Division$/, "");

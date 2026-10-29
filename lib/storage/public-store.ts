@@ -1,6 +1,6 @@
 import "server-only";
 
-import { del, get, put } from "@vercel/blob";
+import { BlobNotFoundError, copy, del, get, head, list, put } from "@vercel/blob";
 import { getVercelOidcToken } from "@vercel/oidc";
 import { publicStoreHost, type PublicPathname, type PublicStoreHost } from "./pathname";
 
@@ -46,4 +46,44 @@ export async function readPublicFile(pathname: PublicPathname): Promise<{
 /** Deletes a stored file. Deleting one that is already gone is not an error. */
 export async function deletePublicFile(pathname: PublicPathname): Promise<void> {
   await del(pathname, await credentials());
+}
+
+/**
+ * Stores a copy of a stored file under a new pathname and returns the copy's
+ * public URL (issue #831); null when the file to copy is gone. Refuses to
+ * overwrite, as an upload does.
+ */
+export async function copyPublicFile(from: PublicPathname, to: PublicPathname): Promise<{ url: string } | null> {
+  try {
+    const { url } = await copy(from, to, await credentials());
+    return { url };
+  } catch (error) {
+    if (error instanceof BlobNotFoundError) return null;
+    throw error;
+  }
+}
+
+/** When the store took the file at this pathname; null when it holds none. */
+export async function publicFileUploadedAt(pathname: PublicPathname): Promise<Date | null> {
+  try {
+    return (await head(pathname, await credentials())).uploadedAt;
+  } catch (error) {
+    if (error instanceof BlobNotFoundError) return null;
+    throw error;
+  }
+}
+
+/** One stored file as a listing names it: its pathname and when it was uploaded. */
+export type ListedPublicFile = { readonly pathname: string; readonly uploadedAt: Date };
+
+/** Every file whose pathname starts with `prefix`, page by page. */
+export async function listPublicFiles(prefix: string): Promise<ListedPublicFile[]> {
+  const files: ListedPublicFile[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await list({ ...(await credentials()), prefix, cursor });
+    files.push(...page.blobs.map((blob) => ({ pathname: blob.pathname, uploadedAt: blob.uploadedAt })));
+    cursor = page.hasMore ? page.cursor : undefined;
+  } while (cursor !== undefined);
+  return files;
 }

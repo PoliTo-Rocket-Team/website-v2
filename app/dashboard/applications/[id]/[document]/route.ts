@@ -1,4 +1,4 @@
-import { applicationIdOf, documentKindOf, type StoredDocument } from "@/lib/dashboard/application-documents";
+import { applicationIdOf, DOCUMENT_NO_STORE, documentHeaders, documentKindOf, type StoredDocument } from "@/lib/dashboard/application-documents";
 import { DashboardRefused } from "@/lib/dashboard/data";
 import { openDashboard } from "@/lib/dashboard/open";
 import { readPrivateFile } from "@/lib/storage/private-store";
@@ -9,10 +9,8 @@ import { readPrivateFile } from "@/lib/storage/private-store";
 // the bytes from the private Blob store, so the file's store URL never leaves
 // the server.
 
-const NO_STORE = { "Cache-Control": "private, no-store" } as const;
-
 function refusal(status: 401 | 403 | 404, text: string): Response {
-  return new Response(text, { status, headers: { ...NO_STORE, "Content-Type": "text/plain; charset=utf-8" } });
+  return new Response(text, { status, headers: { ...DOCUMENT_NO_STORE, "Content-Type": "text/plain; charset=utf-8" } });
 }
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string; document: string }> }): Promise<Response> {
@@ -34,15 +32,5 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const file = stored === null ? null : await readPrivateFile(stored.pathname);
   if (stored === null || file === null) return refusal(404, "This file is not stored.");
 
-  return new Response(file.stream, {
-    status: 200,
-    headers: {
-      ...NO_STORE,
-      // Every application file was checked to be a PDF on upload; naming the type keeps the browser from guessing another.
-      "Content-Type": "application/pdf",
-      "X-Content-Type-Options": "nosniff",
-      "Content-Length": String(file.size),
-      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(stored.name)}`,
-    },
-  });
+  return new Response(file.stream, { status: 200, headers: documentHeaders(stored.name, file.size) });
 }

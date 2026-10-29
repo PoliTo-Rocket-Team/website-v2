@@ -115,8 +115,18 @@ export const BACKGROUND_FRAMES: Readonly<Record<BackgroundShape, { readonly widt
   wide: { width: 2400, height: 1200 },
 };
 
-/** The largest picture an editor may upload as a background (board 93f): 10 MB. */
+/**
+ * The largest picture an editor may pick as a background (board 93f): 10 MB.
+ * The panel crops it in the browser and sends each crop, never the picture.
+ */
 export const BACKGROUND_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * The largest crop the server takes (issue #831): 4 MB. Each crop is sent in
+ * its own request, which Vercel and `serverActions.bodySizeLimit`
+ * (next.config.ts) cap at 4.5 MB, so a larger limit could never be reached.
+ */
+export const BACKGROUND_CROP_MAX_BYTES = 4 * 1024 * 1024;
 
 /** The uploaded files a background holds: an upload's two crops, else none. */
 export const backgroundUploads = (background: Background): UploadedSrc[] => (background.kind === "upload" ? [background.tall, background.wide] : []);

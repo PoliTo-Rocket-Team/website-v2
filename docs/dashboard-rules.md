@@ -600,7 +600,14 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   their Overview.
 - Delete account: the person types DELETE. It closes the sign-in. The data is kept at least one
   year, then anonymized for statistics. The Privacy Policy must say so (#122). A non-member may
-  also withdraw their open applications in the same dialog.
+  also withdraw their applications in the same dialog ("Also withdraw all my applications").
+  Ticked, it withdraws every application of the account not withdrawn yet, whatever its status,
+  in the same write that deletes their files, so an application sent or moved on meanwhile never
+  keeps a link to a deleted file (Owner decision, #831). A file an application withdrawn before
+  still uses is kept.
+- Anonymization locks the person's row and checks again, in the write itself, that the person is
+  still deleted, not anonymized and not signed in again; a sign-in that starts meanwhile waits for
+  it. Only then are their files deleted (#831).
 - Anonymization also clears the person's free-text answers to a position's questions, on the
   application and in the audit log copies (#729). The role, dates and outcome stay for statistics.
 - Alumni entries survive anonymization (#257). Anonymizing a deleted account clears the private
@@ -1303,7 +1310,10 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   shows it, and a save with Launch history or Gallery off keeps the files of the photos still in
   the panel, so switching the section back on brings them back. Leaving the editor with photos
   that are only in the panel (a section that is off, or an upload not yet saved) leaves their
-  files in the store, as Outreach does.
+  files in the store, as Outreach does, until the daily sweep deletes each one a day old that no
+  saved content shows (#831). A save refuses an upload more than half a day old that the item did
+  not show yet ("Reload the page and add it again"), so the sweep never deletes a file a save is
+  keeping.
 - Desktop edits the desktop text. Phone edits the phone text of the fields that have one; an empty
   phone field shows the desktop text, except the story texts, which always have their own.
 - An optional section (Versions, Launch history, Plan, Why, Gallery) has a show-on-page switch in its header. Off, the section
@@ -1363,10 +1373,13 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   dragged into its order, and one advisor open at a time (full name, role on the page, Principal
   / Specialist, LinkedIn, email, photo). Add advisor adds one. Add, edit, reorder and Principal /
   Specialist changes are drafts that the edit bar's Save draft keeps and Publish puts on
-  `/about/the-team`. Replace photo picks a photo the site already holds.
+  `/about/the-team`. Replace photo picks a photo the site already holds. A photo picked from a
+  member's own picture is saved as a copy, one for the page's layer and one for each advisor row
+  that shows it, so no two rows share one file and replacing the picture never takes the Team
+  page's photo with it (Owner decision, #831).
 - End advising is the one advisor change made at once, after the editor picks the academic years
   they advised: the advisor leaves the Team page and an Alumni entry in the Advisors group takes
-  their name, role, years and photo. It writes the advisor tables and that one `alumni_entries`
+  their name, role, years and a copy of their photo (#831). It writes the advisor tables and that one `alumni_entries`
   row, never a role, division, department, scope or member. Reset to team never changes the
   advisors. On a preview with the seeded `preview` branch, advisor changes and End advising are
   saved there and kept across preview builds (ADR 0016).

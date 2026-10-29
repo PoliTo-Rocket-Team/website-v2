@@ -48,4 +48,6 @@ export const memoryPhotoFiles: PhotoFiles = {
   put: async (photo) => `data:${photo.contentType};base64,${Buffer.from(photo.bytes).toString("base64")}`,
   owns: (src): src is `data:image/${string}` => src.startsWith("data:image/"),
   drop: async () => {},
+  // A data URL is the file itself: it is never gone.
+  gone: async () => [],
 };

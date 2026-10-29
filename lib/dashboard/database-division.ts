@@ -7,7 +7,7 @@ import { getDb } from "@/db/client";
 import { departments, divisions, logs, members, orders, roles, scopes, users } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
-import { privatePathname, type PrivatePathname } from "@/lib/storage/pathname";
+import { parsePrivatePathname, privatePathname, type PrivatePathname } from "@/lib/storage/pathname";
 import { deletePrivateFile, uploadPrivateFile } from "@/lib/storage/private-store";
 import { attributedName } from "./acting-account";
 import { actingTitleIn, actingTitlesOf, readActingSeats, readActingTitles } from "./database-acting-account";
@@ -50,7 +50,6 @@ import {
   checkMarkOrdered,
   checkNewOrder,
   checkOrderDivision,
-  checkQuote,
   orderActions,
   orderingDivisions,
   ordersPageFor,
@@ -70,6 +69,7 @@ import {
   type StoredOrderStatus,
 } from "./orders";
 import type { DashboardIdentity } from "./database";
+import { checkedQuote } from "./upload-bytes";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
 // The Access pages of a division lead and a department head, and the Orders
@@ -729,8 +729,8 @@ function checkedOrder(fields: Record<string, string>, quote: Upload | null): { o
   });
   if (!checked.ok) return { ok: false, error: Object.values(checked.errors)[0] ?? "Check the form." };
   if (quote !== null) {
-    const error = checkQuote({ type: quote.contentType, size: quote.bytes.byteLength, name: quote.name });
-    if (error !== null) return { ok: false, error };
+    const pdf = checkedQuote(quote);
+    if (!pdf.ok) return pdf;
   }
   return checked;
 }
@@ -741,6 +741,12 @@ async function storeQuote(quote: Upload | null): Promise<PrivatePathname | null>
   const pathname = privatePathname("order", `${randomUUID()}.pdf`);
   await uploadPrivateFile(pathname, quote.bytes, "application/pdf");
   return pathname;
+}
+
+/** Deletes a quote no order names: one stored for a write that did not land, or one an edit replaced. */
+async function dropQuote(stored: string | null): Promise<void> {
+  const pathname = stored === null ? null : parsePrivatePathname(stored);
+  if (pathname !== null) await deleteBestEffort({ store: "private", area: "order-quote", pathname, remove: deletePrivateFile });
 }
 
 async function placeOrder(
@@ -760,8 +766,9 @@ async function placeOrder(
   const order = checked.value;
   const pathname = await storeQuote(quote);
   const requester = identity.memberId;
+  let row: { id: number };
   try {
-    const [row] = await runAuditQuery((db) =>
+    [row] = await runAuditQuery((db) =>
       db
         .insert(orders)
         .values({
@@ -776,12 +783,13 @@ async function placeOrder(
         })
         .returning({ id: orders.id }),
     );
-    const [placed] = (await readOrderRows({ orderId: row.id })).flatMap((r) => orderOf(r, identity.memberId));
-    return written(placed);
   } catch (error) {
-    if (pathname !== null) await deleteBestEffort({ store: "private", area: "order-quote", pathname, remove: deletePrivateFile });
+    // Only a failed insert frees the quote: once the order is in, it names the file (issue #831).
+    await dropQuote(pathname);
     throw error;
   }
+  const [placed] = (await readOrderRows({ orderId: row.id })).flatMap((r) => orderOf(r, identity.memberId));
+  return written(placed);
 }
 
 /** A guarded order write that changed no row: the request moved on since the page read it. */
@@ -804,11 +812,14 @@ async function editOrder(
 
   const order = checked.value;
   const pathname = await storeQuote(quote);
-  let changed: { id: number }[];
+  let changed: { id: number; oldQuote: string | null }[];
   try {
     // Back to waiting for the team leader, with their earlier answer cleared.
-    changed = await runAuditQuery((db) =>
-      db
+    // The row is locked and read in the same statement, so the quote it
+    // names before the edit is the one this edit replaces (issue #831).
+    changed = await runAuditQuery((db) => {
+      const before = db.select({ id: orders.id, quoteName: orders.quoteName }).from(orders).where(eq(orders.id, orderId)).for("update").as("before");
+      return db
         .update(orders)
         .set({
           name: order.item,
@@ -823,18 +834,21 @@ async function editOrder(
           reviewedAt: null,
           ...(pathname === null ? {} : { quoteName: pathname }),
         })
-        .where(and(eq(orders.id, orderId), inArray(orders.status, ["pending", "changes_requested"])))
-        .returning({ id: orders.id }),
-    );
+        .from(before)
+        .where(and(eq(orders.id, before.id), eq(orders.id, orderId), inArray(orders.status, ["pending", "changes_requested"])))
+        .returning({ id: orders.id, oldQuote: before.quoteName });
+    });
   } catch (error) {
-    if (pathname !== null) await deleteBestEffort({ store: "private", area: "order-quote", pathname, remove: deletePrivateFile });
+    await dropQuote(pathname);
     throw error;
   }
   // The team leader answered between the read and the write: nothing saved, so the new quote points nowhere.
   if (changed.length === 0) {
-    if (pathname !== null) await deleteBestEffort({ store: "private", area: "order-quote", pathname, remove: deletePrivateFile });
+    await dropQuote(pathname);
     return refused(ORDER_CHANGED);
   }
+  // A new quote replaced the old one, which no order names any more; each quote is one order's own file.
+  if (pathname !== null) await dropQuote(changed[0].oldQuote);
   const [edited] = (await readOrderRows({ orderId })).flatMap((r) => orderOf(r, identity.memberId));
   return edited === undefined ? refused("The team leader has answered this request.") : written(edited);
 }
