@@ -1,6 +1,0 @@
-id,division,number,name,description,desirable,required,form,open
-p-1,d-1,1,Telemetry Engineer,Read the downlink.,,,,false
-p-2,d-1,1,Ground Station Operator,,,,,false
-p-3,d-1,1,Antenna Designer,,,,,false
-p-4,d-1,1,Data Logger Engineer,,,,,false
-p-5,d-1,1,Radio Engineer,,,,,false

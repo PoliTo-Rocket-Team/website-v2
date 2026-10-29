@@ -1,9 +1,0 @@
-id,subteam,name,code,end,lead,lead_acting
-d-1,st-1,Liquid Propulsion Systems,LQS,,,
-d-2,st-1,Ground System,,,,
-d-3,st-2,IT & Communication,ITC,,,
-d-4,st-2,Safety,,,,
-d-5,st-3,Flight Software,FSW,,,
-d-6,st-3,Avionics Bay,AVB,,,
-d-7,st-9,test-division-website,TDW,,,
-d-8,st-3,Mission Analysis,MSA,2024-09-30,,

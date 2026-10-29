@@ -1,5 +1,0 @@
-id,first_name,last_name,title_name,linkedin,has_pp
-21,Prof. Ada,Example,Faculty Advisor,ada-example,true
-30,Sam,Specialist,Safety Specialist,,false
-31,Sam,Specialist,Safety Specialist,,false
-32,No,Title,,,true
