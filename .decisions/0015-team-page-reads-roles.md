@@ -1,7 +1,7 @@
 ---
 id: 0015
 title: "The public Team page is built from the team's roles; presentation changes go in a separate visual layer"
-status: amended-in-part by [0016](0016-previews-read-their-own-seeded-branch.md)
+status: amended-in-part by [0016](0016-previews-read-their-own-seeded-branch.md), [0019](0019-team-page-stored-layout.md)
 date: 2026-10-16
 tags: [team, about, dashboard, content]
 ---
@@ -9,6 +9,8 @@ tags: [team, about, dashboard, content]
 # 0015 — The public Team page is built from the team's roles; presentation changes go in a separate visual layer
 
 **What this decides:** `/about/the-team` builds who leads, the departments and the core members from the team's roles in the database, so a title saved on the member panel reaches the public page. How the page presents people beyond that is a separate visual layer (epic #259), which never writes roles.
+
+**Status:** Decisions 1, 2 and 3, the first binding constraint's department-kind exception and the second binding constraint are superseded by [ADR 0019](0019-team-page-stored-layout.md): the page renders its own stored layout of page seats bound to team seats. Decisions 4, 5 and 6 (contacts, read path, and the advisors, intro text, figures and group photo stores), the photo-backfill exception and the third binding constraint stay in force.
 
 ## Context
 
