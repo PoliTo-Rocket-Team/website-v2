@@ -3,17 +3,16 @@ import "server-only";
 import { isDatabaseConfigured } from "@/db/client";
 import { cachedPublishedAdvisors } from "@/lib/dashboard/database-team-advisors";
 import { cachedTeamPageLayer } from "@/lib/dashboard/database-team-page";
-import { readTeamSnapshot, recordsOf, rosterOf } from "@/lib/dashboard/team-database";
+import { readTeamSnapshot, teamRolesOf } from "@/lib/dashboard/team-database";
 import { publicAdvisors, withAdvisors } from "./advisors";
 import { team } from "./team";
 import { publicTeamPage } from "./team-page-editor";
-import { teamPeopleOf, type TeamRoles } from "./team-roles";
+import type { TeamRoles } from "./team-roles";
 import type { TeamPage } from "./types";
 
 /** The team as the database's cached roles hold it (tag `team-roster`, which every role write refreshes). */
 export async function databaseTeamRoles(): Promise<TeamRoles> {
-  const snapshot = await readTeamSnapshot();
-  return { org: snapshot.org, people: teamPeopleOf(rosterOf(snapshot), recordsOf(snapshot)) };
+  return teamRolesOf(await readTeamSnapshot());
 }
 
 /**

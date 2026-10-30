@@ -42,7 +42,8 @@ import type { DepartmentHead, DivisionLead, Leader, Member, Person, PersonPhoto,
 // vacant or unbound state (#846 R2.1). The core members are everyone with an
 // active role no drawn page seat shows (#846 R1.1). The intro text, the
 // figures and the group photo stay in the visual layer (./team-layer.ts).
-// Pure, and wired to nothing yet.
+// Pure. Each stored layer version keeps its layout beside it, and the public
+// page draws it (./team-page-stored.ts, issue #850).
 
 /**
  * The seat of the team record a page seat shows the holder of. It reuses the

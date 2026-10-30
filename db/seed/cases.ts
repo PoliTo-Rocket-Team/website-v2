@@ -43,8 +43,7 @@ import { isAdvisorVersion, publicAdvisors, type AdvisorItem } from "@/lib/about/
 import { academicYearOfDay, alumniOf, listed, type AlumniRecord, type Alumnus } from "@/lib/about/alumni-record";
 import { team as teamRecord } from "@/lib/about/team";
 import { applyLayer, isTeamPageLayer, NO_TEAM_LAYER, NO_UPLOADS, resetLayer, type ShownTeam, type TeamBuild, type TeamPageLayer } from "@/lib/about/team-layer";
-import type { TeamPerson as PagePerson } from "@/lib/about/team-person";
-import { teamBuildOf, teamPageFromRoles, type TeamRoles } from "@/lib/about/team-roles";
+import { teamBuildOf, teamPageFromRoles } from "@/lib/about/team-roles";
 import { publicItems, statusOf, versionedFromRows, type ContentItem, type VersionKind } from "@/lib/content/versioned";
 import { BUILT_IN_STATUS_KEYS, isBuiltInStatusKey, type BuiltInStatusKey } from "@/lib/dashboard/application-status";
 import { storedApplicationState } from "@/lib/dashboard/stored-application";
@@ -66,7 +65,7 @@ import type { TeamPerson } from "@/lib/dashboard/division-edit";
 import { steppingDown } from "@/lib/dashboard/hand-over";
 import { attentionOf, noticeOf } from "@/lib/dashboard/notices";
 import { handOverAttentionFor, hasLapsed, successorsFor, type HandOverRequest, type RequestedRole } from "@/lib/dashboard/hand-over-request";
-import { isTeamSeat, membershipsOfRoles, roleBeyondDivisions, type OrgChart, type Placement, type RoleSeat } from "@/lib/dashboard/team";
+import { membershipsOfRoles, roleBeyondDivisions, type RoleSeat } from "@/lib/dashboard/team";
 import {
   kindOfPlainSeat,
   seatOf,
@@ -106,6 +105,7 @@ import {
   TEAM_PAGE_ADVISOR_VERSION_ROWS,
   TEAM_PAGE_LAYER_ROWS,
 } from "./team-page";
+import { isActive, onTeam, orgOf, seatOfRole, teamRolesOf } from "./team-roles";
 
 /** Every row the typed modules insert, by table. */
 export type SeedData = {
@@ -188,31 +188,7 @@ export const SEED_CURRENT_YEAR = 2026;
 
 type Role = SeedData["roles"][number];
 
-/**
- * A seeded role row of `data` as `RoleSeat`, the way lib/dashboard/team-database.ts
- * reads a stored one. A row seeded with no id gets the one a fresh database
- * gives it: its place in `data.roles`, from 1.
- */
-function seatOfRole(data: SeedData, role: Role): RoleSeat {
-  return {
-    id: role.id ?? data.roles.indexOf(role) + 1,
-    type: role.type ?? null,
-    divisionId: role.divisionId ?? null,
-    since: role.startedAt!,
-    departmentId: role.deptId ?? null,
-    title: role.title,
-    fullAccess: role.fullAccess == null ? null : SEAT_OF_FLAG[role.fullAccess],
-  };
-}
-
-export function isActive(role: Role): boolean {
-  return (role.leavedAt ?? null) === null;
-}
-
-/** The member ids that hold a role now. */
-export function onTeam(data: SeedData): Set<number> {
-  return new Set(data.roles.filter(isActive).flatMap((r) => (r.memberId == null ? [] : [r.memberId])));
-}
+export { isActive, onTeam, orgOf, teamRolesOf };
 
 /**
  * The standing the dashboard reads for one seeded user, the way `readIdentity`
@@ -441,16 +417,6 @@ export function rocketsOf(record: ProjectRecord): { card: string; page: string |
 // Hand-overs (issue #308), read through the hand-over rules
 // (lib/dashboard/hand-over-request.ts) the way the database source reads them.
 
-/** The open org chart, as the team snapshot reads it (lib/dashboard/team-database.ts). */
-export function orgOf(data: SeedData): OrgChart {
-  return {
-    departments: data.departments.filter((d) => (d.closedAt ?? null) === null).map((d) => ({ id: d.id!, name: d.name, code: d.code ?? null, kind: d.kind ?? "technical" })),
-    divisions: data.divisions
-      .filter((d) => (d.closedAt ?? null) === null)
-      .flatMap((d) => (d.deptId == null ? [] : [{ id: d.id!, name: d.name, departmentId: d.deptId, code: d.code ?? null }])),
-  };
-}
-
 /**
  * Everyone on the team as the hand-over rules read them, as `teamPeopleOf`
  * builds them from the same rows: each division they hold an active role in,
@@ -674,54 +640,8 @@ function outreachVersionsOf(data: SeedData): OutreachDraft[] {
 }
 
 // The Team page (issue #311), read back the way lib/about/team-data.ts reads
-// it: the roles placed as the team snapshot places them, with the published
-// layer laid on.
-
-/** A role's rank when the roster picks where someone sits, as lib/dashboard/team-database.ts ranks it. */
-function placementRank(role: Role): number {
-  if (role.type === "president") return 0;
-  if (isTeamSeat({ type: role.type ?? null, departmentId: role.deptId ?? null, divisionId: role.divisionId ?? null })) return 1;
-  const ranks: Readonly<Record<string, number>> = { head: 2, lead: 3, core: 4, advisor: 4 };
-  return ranks[role.type ?? ""] ?? 5;
-}
-
-/** Where someone's active roles put them, highest first, as `placementOf` in lib/dashboard/team-database.ts. */
-function placementOfRoles(data: SeedData, active: readonly Role[], org: OrgChart): Placement {
-  const [top] = active;
-  const open = active.filter((r) => org.divisions.some((d) => d.id === r.divisionId)).map((r) => seatOfRole(data, r));
-  const beside = () => membershipsOfRoles(open.filter((r) => roleBeyondDivisions(r, org) === null));
-  const seat = roleBeyondDivisions(seatOfRole(data, top), org);
-  if (seat?.kind === "team-leader") return { role: "team-leader", memberships: beside() };
-  if (seat?.kind === "board") return { role: "board", seat: seat.seat, memberships: beside() };
-  if (seat?.kind === "head") {
-    const { departmentId, title } = seat;
-    if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId, title, memberships: beside() };
-  }
-  return { role: "divisions", memberships: membershipsOfRoles(open) };
-}
-
-/** The team as the Team page reads it from the seeded rows. */
-export function teamRolesOf(data: SeedData): TeamRoles {
-  const org = orgOf(data);
-  const people = [...onTeam(data)].flatMap((memberId): PagePerson[] => {
-    const active = data.roles.filter((r) => r.memberId === memberId && isActive(r)).sort((a, b) => placementRank(a) - placementRank(b));
-    const user = data.users.find((u) => u.member === memberId);
-    const member = data.members.find((m) => m.memberId === memberId);
-    if (user === undefined) return [];
-    return [
-      {
-        id: memberId,
-        name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email,
-        placement: placementOfRoles(data, active, org),
-        pageTitle: active[0].title || null,
-        photo: member?.picture ?? null,
-        linkedin: user.linkedin ?? null,
-        teamEmail: member?.prtEmail ?? null,
-      },
-    ];
-  });
-  return { org, people };
-}
+// it: the roles placed as the team snapshot places them (./team-roles.ts),
+// with the published version drawn.
 
 /** The published visual layer, or null when no row holds a layer this code could have written. */
 export function publishedTeamPageLayerOf(data: SeedData): TeamPageLayer | null {

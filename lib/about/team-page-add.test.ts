@@ -31,6 +31,7 @@ import {
 import { editedTeamPage } from "./team-page-edit";
 import { publicTeamPage, teamPageEditor, type TeamPagePhotos } from "./team-page-editor";
 import { memoryTeamPageStore } from "./team-page-memory";
+import type { StoredTeamPage } from "./team-page-stored";
 import { advisorRowsOf } from "./advisors";
 import { importedAdvisors } from "./advisors-import";
 import { teamBuildOf } from "./team-roles";
@@ -128,7 +129,7 @@ test("added departments, division leads and head-block edits show on the page, a
   // Opened again, the panel reads what it wrote.
   assert.deepEqual(headFieldsOf(build, layer, headSpot)?.leads.map((l) => l.division), edited.leads.map((l) => l.shown.division));
 
-  const store = memoryContentStore<TeamPageLayer>([]);
+  const store = memoryContentStore<StoredTeamPage>([]);
   const advisors = memoryContentStore(importedAdvisors());
   const editor = teamPageEditor(siteContent, memoryTeamPageStore(store, advisors), async () => roles, team, NO_PHOTOS);
   assert.ok((await editor.save("publish", layer, advisorRowsOf(await advisors.list()))).ok);

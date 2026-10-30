@@ -23,6 +23,7 @@ import {
   type TeamPageStore,
 } from "./team-page-editor";
 import { memoryTeamPageStore } from "./team-page-memory";
+import { storedTeamPage, type StoredTeamPage } from "./team-page-stored";
 import { publicStoreTeamPagePhotos, type TeamPageFileWrites } from "./team-page-photos";
 import { CHANGED_SINCE_READ } from "@/lib/content/editor";
 import { team } from "./team";
@@ -45,7 +46,7 @@ const siteContent: ViewerStanding = { kind: "member", grantedAreas: [], siteCont
 
 const renamed: TeamPageLayer = { ...NO_TEAM_LAYER, leader: { role: "President" }, intro: "Edited intro." };
 
-function editorOver(viewer: ViewerStanding, seed: ContentItem<TeamPageLayer>[] = []) {
+function editorOver(viewer: ViewerStanding, seed: ContentItem<StoredTeamPage>[] = []) {
   const layer = memoryContentStore(seed);
   const advisors = memoryContentStore<AdvisorVersion>(importedAdvisors());
   const store = memoryTeamPageStore(layer, advisors);
@@ -123,7 +124,7 @@ test("Reset to team is a draft with only the intro text and the group photo kept
 });
 
 test("every write path is refused without the site-content permission, and stores nothing", async () => {
-  const published: ContentItem<TeamPageLayer>[] = [{ id: 1, siteOrder: 1, version: { state: "published", published: renamed, draft: null } }];
+  const published: ContentItem<StoredTeamPage>[] = [{ id: 1, siteOrder: 1, version: { state: "published", published: storedTeamPage(roles, renamed), draft: null } }];
   const refusedViewers: ViewerStanding[] = [
     { kind: "non-member", siteContent: false, approveOrders: false },
     ...VIEWER_KINDS.filter((kind) => kind !== "operations-lead" && kind !== "non-member").map(
@@ -218,7 +219,7 @@ test("when the advisors are refused, or the store fails, the stored layer and ad
   assert.deepEqual(await store.advisors(), advisors);
 
   // Failed partway: the advisors' store refuses the second of two new advisors, after the layer and the first could have landed.
-  const layer = memoryContentStore<TeamPageLayer>([]);
+  const layer = memoryContentStore<StoredTeamPage>([]);
   const seed = importedAdvisors();
   const full = memoryContentStore<AdvisorVersion>(seed, async (items) => (items.length > seed.length + 1 ? "The store failed." : null));
   const failing = teamPageEditor(admin, memoryTeamPageStore(layer, full), async () => roles, team, NO_PHOTOS);
@@ -231,7 +232,7 @@ test("when the advisors are refused, or the store fails, the stored layer and ad
 
 test("the editor writes through the store's one save: never the layer or advisors one by one", async () => {
   const fail = async (): Promise<never> => assert.fail("written outside the one save");
-  const layer = { ...memoryContentStore<TeamPageLayer>([]), create: fail, update: fail, remove: fail, setOrder: fail };
+  const layer = { ...memoryContentStore<StoredTeamPage>([]), create: fail, update: fail, remove: fail, setOrder: fail };
   let saves = 0;
   const store: TeamPageStore = {
     layer,
@@ -430,7 +431,7 @@ test("a Team page save made on a layer another save replaced in the meantime is 
     ...store,
     async save(layer, advisors, expected) {
       // Another save lands between this one's read and its write.
-      await store.save({ state: "published", published: { ...NO_TEAM_LAYER, intro: "Theirs" }, draft: null }, [], expected);
+      await store.save({ state: "published", published: storedTeamPage(roles, { ...NO_TEAM_LAYER, intro: "Theirs" }), draft: null }, [], expected);
       return store.save(layer, advisors, expected);
     },
   };
