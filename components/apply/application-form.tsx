@@ -504,10 +504,18 @@ function PdfField({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[14px] text-prt-text">{pick.file.name}</span>
-                <span className="block truncate text-[11px] text-prt-muted">
-                  {pick.kind === "previous"
-                    ? [PREVIOUS_NOTE, pick.file.size === null ? null : formatSize(pick.file.size)].filter(Boolean).join(" · ")
-                    : formatSize(pick.file.size)}
+                {/* Only the note shortens on a narrow screen; the size always shows in full (issue #857). */}
+                <span className="flex min-w-0 text-[11px] text-prt-muted">
+                  {pick.kind === "previous" ? (
+                    <>
+                      <span className="truncate">{PREVIOUS_NOTE}</span>
+                      {pick.file.size === null ? null : (
+                        <span className="shrink-0 whitespace-pre">{` · ${formatSize(pick.file.size)}`}</span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="shrink-0">{formatSize(pick.file.size)}</span>
+                  )}
                 </span>
               </span>
               {pick.kind === "previous" ? (
