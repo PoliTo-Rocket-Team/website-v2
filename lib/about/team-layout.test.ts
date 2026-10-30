@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SEED_DATA, publishedTeamPageLayerOf, teamRolesOf } from "@/db/seed/cases";
 import { BOARD_FLAG_TITLES, BOARD_FLAGS, inDivisions, NO_MEMBERSHIPS, type BoardFlag, type Placement } from "@/lib/dashboard/team";
-import { applyLayer, layerPhotos, NO_TEAM_LAYER, type TeamPageLayer } from "./team-layer";
+import { applyLayer, isTeamPageLayer, layerPhotos, NO_TEAM_LAYER, NO_UPLOADS, TEAM_PAGE_TEXT_MAX, type TeamPageLayer } from "./team-layer";
 import {
   layoutPageOf,
   layoutPhotos,
@@ -19,7 +19,8 @@ import { teamBuildOf, teamPageOf, type TeamRoles } from "./team-roles";
 import type { TeamPage } from "./types";
 
 // The Team page layout (issue #849): the snapshot of today's page draws the
-// same seats, people follow the team record while the layout does not, a
+// same seats and names what it does not carry, people follow the team record
+// while the layout does not, a person-bound place follows its person only, a
 // seat with no holder is left out in place, a gone seat is dropped, and the
 // stored form round-trips.
 
@@ -84,6 +85,8 @@ const roles = (list: readonly TeamPerson[] = people, chart: TeamRoles["org"] = o
 
 /** `list` with `id` placed at `placement`. */
 const moved = (list: readonly TeamPerson[], id: number, placement: Placement) => list.map((p) => (p.id === id ? { ...p, placement } : p));
+/** `list` without `id`: they hold no active role any more. */
+const without = (list: readonly TeamPerson[], id: number) => list.filter((p) => p.id !== id);
 
 const layer = (edits: Partial<TeamPageLayer>): TeamPageLayer => ({ ...NO_TEAM_LAYER, ...edits });
 
@@ -122,7 +125,10 @@ const OVERRIDES: Partial<TeamPageLayer> = {
   },
 };
 
-/** One layer per kind of edit the editor makes, and all of them at once. */
+/** A name at the text limit: "Head of" it is longer than any text a layer or a layout stores. */
+const LONG_NAME = "O".repeat(TEAM_PAGE_TEXT_MAX);
+
+/** One layer per kind of edit the editor makes, all of them at once, and the people and texts that test the binding's edges. */
 const LAYERS: Readonly<Record<string, TeamPageLayer>> = {
   "no edit": NO_TEAM_LAYER,
   "a hidden arc spot": layer({ spots: { "arc:chief-engineer:0": { hidden: true } } }),
@@ -144,6 +150,23 @@ const LAYERS: Readonly<Record<string, TeamPageLayer>> = {
     ...ADDED_DEPARTMENT,
     spots: { ...OVERRIDES.spots, "arc:chief-engineer:0": { hidden: true }, "lead:20:0": { person: 6 } },
   }),
+  "people who hold no seat, swapped in and added": layer({
+    leader: { person: 10 },
+    spots: { "arc:role-27:0": { person: 11 }, "head:2:0": { person: 11 }, "lead:30:0": { person: 10 } },
+    addedLeaders: [{ id: 1, person: 9, place: { at: "end" }, role: "Ambassador" }],
+    departments: { "1": { addedLeads: [{ id: 2, person: 11, division: "Wind Tunnel" }] } },
+    addedDepartments: [{ id: 3, name: "Outreach", head: { person: 10, name: "Kenji W." }, leads: [{ id: 4, person: 9, division: "Social" }] }],
+  }),
+  "an added department at the text limit, its head's role unset": layer({
+    addedDepartments: [
+      { id: 1, name: LONG_NAME, head: { person: 12 }, leads: [] },
+      { id: 2, name: LONG_NAME, head: { person: 9 }, leads: [{ id: 3, person: 11, division: LONG_NAME }] },
+    ],
+  }),
+  "a department renamed at the text limit, its head swapped": layer({
+    departments: { "1": { name: LONG_NAME }, "3": { name: LONG_NAME } },
+    spots: { "head:1:0": { person: 12 }, "arc:chief-engineer:0": { role: LONG_NAME } },
+  }),
 };
 
 /** The seats a page draws: the leader, the arc and every department block. */
@@ -163,38 +186,84 @@ const seededLayer = publishedTeamPageLayerOf(SEED_DATA);
 
 test("the seeded roles and layer: the snapshot draws the seats the page draws today", () => {
   assert.ok(seededLayer, "the seed holds a published layer");
-  const layout = snapshot(seededRoles, seededLayer);
+  const { layout } = snapshot(seededRoles, seededLayer);
   assert.deepEqual(seatsOf(layoutPageOf(seededRoles, layout, seededLayer, team)), seatsOf(todaysPage(seededRoles, seededLayer)));
 });
 
 for (const [name, l] of Object.entries(LAYERS)) {
-  test(`${name}: the snapshot draws the seats the page draws today`, () => {
-    const layout = snapshot(roles(), l);
+  test(`${name}: the snapshot draws the seats the page draws today, and leaves out only hidden places`, () => {
+    assert.ok(isTeamPageLayer(l, NO_UPLOADS), "the editor could have saved this layer");
+    const { layout, left } = snapshot(roles(), l);
     assert.deepEqual(seatsOf(layoutPageOf(roles(), layout, l, team)), seatsOf(todaysPage(roles(), l)));
+    assert.deepEqual(
+      left.filter((gap) => gap.why !== "hidden"),
+      [],
+    );
   });
 }
 
-test("person swaps: each place is bound to the seat the person shown there holds", () => {
-  const layout = snapshot(roles(), LAYERS["person swaps"]);
-  assert.deepEqual(layout.leader?.binding, { kind: "full-access-seat", seat: "project-manager" });
-  assert.deepEqual(layout.leader?.overrides, { role: "Team Leader" }, "the leader's text is kept, as the bound seat reads another");
+test("a place the roles' holder shows keeps its own seat; a person swapped in or added is bound to that person", () => {
+  const { layout } = snapshot(roles(), LAYERS["person swaps"]);
+  assert.deepEqual(layout.leader?.binding, { kind: "person", memberId: 3 });
+  assert.deepEqual(layout.leader?.overrides, { role: "Team Leader" }, "the leader's text is kept, as the person has no title of their own");
   assert.deepEqual(
     layout.arc.map((s) => s.binding),
     [
       { kind: "full-access-seat", seat: "project-manager" },
       { kind: "full-access-seat", seat: "chief-engineer" },
-      { kind: "department-head", departmentId: 1 },
+      { kind: "person", memberId: 4 },
     ],
   );
-  assert.deepEqual(layout.departments[0].head.binding, { kind: "department-head", departmentId: 3 });
-  assert.deepEqual(layout.departments[1].leads[0].binding, { kind: "division-lead", divisionId: 11, place: 0 });
+  assert.deepEqual(layout.departments[0].head.binding, { kind: "person", memberId: 13 });
+  assert.deepEqual(layout.departments[0].head.overrides, {}, "a person on a head place reads Head of the block");
+  assert.deepEqual(layout.departments[1].leads[0].binding, { kind: "person", memberId: 6 });
+  assert.deepEqual(layout.departments[2].head.binding, { kind: "department-head", departmentId: 3 });
 });
 
-test("someone who holds no seat cannot be bound: the snapshot gives their place no page seat, and they are a core member", () => {
-  const l = layer({ addedLeaders: [{ id: 1, person: 9, place: { at: "end" }, role: "Ambassador" }] });
-  const layout = snapshot(roles(), l);
-  assert.equal(layout.arc.length, 3);
-  assert.ok(resolveLayout(layout, roles()).core.some((m) => m.name === "Sofia Neri"));
+test("a person-bound place shows that person while they hold an active role, passes to no one, and waits in place once they leave", () => {
+  const l = layer({ addedLeaders: [{ id: 1, person: 9, place: { at: "end" }, role: "Ambassador" }], spots: { "head:1:0": { person: 13 } } });
+  const { layout } = snapshot(roles(), l);
+  const sofia = layout.arc[3];
+  assert.deepEqual(sofia.binding, { kind: "person", memberId: 9 });
+  assert.deepEqual(sofia.overrides, { role: "Ambassador" });
+  const before = resolveLayout(layout, roles());
+  assert.deepEqual(before.leaders.at(-1), { at: sofia.id, shown: { name: "Sofia Neri", role: "Ambassador", linkedin: "sofia-neri", email: "sofia.neri@politorocketteam.it" } });
+  assert.ok(!before.core.some((m) => m.name === "Sofia Neri"), "a person a place shows is no core member");
+
+  const seated = resolveLayout(layout, roles(moved(people, 9, lead(11))));
+  assert.equal(seated.leaders.find((l) => l.at === sofia.id)?.shown.name, "Sofia Neri", "a seat taken changes nothing");
+
+  const handedOver = roles(moved(moved(people, 13, member(30)), 10, head(3)));
+  const after = resolveLayout(layout, handedOver);
+  assert.equal(after.departments[0].heads[0].shown.name, "Rocco Bellon", "the person's place stays theirs when they hand their seat over");
+  assert.equal(after.departments[2].heads[0].shown.name, "Kenji Watanabe", "the seat's own place passes to the successor");
+
+  const gone = roles(without(without(people, 9), 13));
+  const away = resolveLayout(layout, gone);
+  assert.ok(!away.leaders.some((l) => l.at === sofia.id), "not drawn once she holds no active role");
+  assert.deepEqual(away.departments[0].heads, []);
+  assert.deepEqual(withoutGoneSeats(layout, gone), layout, "the place keeps its spot in the layout");
+  assert.equal(resolveLayout(layout, roles()).leaders.at(-1)?.at, sofia.id, "and shows her again in place when she is back");
+});
+
+test("the snapshot names every part of the layer the layout does not carry, and why", () => {
+  const l = layer({
+    spots: { "arc:chief-engineer:0": { hidden: true }, "lead:20:0": { person: 99 }, "lead:11:5": { role: "Gone Row" } },
+    departments: { "3": { hidden: true }, "9": { name: "Closed" } },
+    addedLeaders: [{ id: 1, person: 99, place: { at: "end" }, role: "Ambassador" }],
+  });
+  const twoHeads = roles(moved(people, 10, head(1)));
+  const { layout, left } = snapshot(twoHeads, l);
+  assert.deepEqual(left, [
+    { at: "head:1:1", why: "second-head" },
+    { at: "lead:20:0", why: "left-team" },
+    { at: "arc:chief-engineer:0", why: "hidden" },
+    { at: "lead:11:5", why: "not-shown" },
+    { at: "added:1", why: "left-team" },
+    { at: "department:3", why: "hidden" },
+    { at: "department:9", why: "not-shown" },
+  ]);
+  assert.equal(resolveLayout(layout, twoHeads).departments[1].leads[0].shown.name, "Simone Testa", "a swap to someone who left shows the roles' holder, as today");
 });
 
 test("core members: everyone with an active role no page seat shows, by name, with their title", () => {
@@ -204,7 +273,7 @@ test("core members: everyone with an active role no page seat shows, by name, wi
   });
   const today = teamBuildOf(roles()).core.map((m) => m.name);
   assert.ok(today.includes("Marco Dona") && !today.includes("Marco Bianchi"), "today's list comes from the roles alone");
-  const { core } = resolveLayout(snapshot(roles(), l), roles());
+  const { core } = resolveLayout(snapshot(roles(), l).layout, roles());
   assert.deepEqual(core, [
     { name: "Anna Villa" },
     { name: "Kenji Watanabe" },
@@ -214,7 +283,7 @@ test("core members: everyone with an active role no page seat shows, by name, wi
 });
 
 test("adding, removing, moving or reordering a seat in the roles leaves the page seats and the core members unchanged", () => {
-  const layout = snapshot(roles(), layer({ spots: { "lead:11:0": { hidden: true } } }));
+  const { layout } = snapshot(roles(), layer({ spots: { "lead:11:0": { hidden: true } } }));
   const before = resolveLayout(layout, roles());
   const changes: Readonly<Record<string, TeamRoles>> = {
     "a team-level seat added": roles(moved(people, 10, teamSeat(40, "Chief of Testing"))),
@@ -237,7 +306,7 @@ test("adding, removing, moving or reordering a seat in the roles leaves the page
 });
 
 test("a hand-over of each seat kind shows the new holder in the same place", () => {
-  const layout = snapshot(roles(), NO_TEAM_LAYER);
+  const { layout } = snapshot(roles(), NO_TEAM_LAYER);
   const before = resolveLayout(layout, roles());
 
   const newLeader = resolveLayout(layout, roles(moved(moved(people, 1, member(10)), 9, leader())));
@@ -270,7 +339,7 @@ test("a hand-over of each seat kind shows the new holder in the same place", () 
 });
 
 test("a page seat whose bound seat has no holder is not drawn, stays in the layout and is drawn again in place once it has one", () => {
-  const layout = snapshot(roles(), NO_TEAM_LAYER);
+  const { layout } = snapshot(roles(), NO_TEAM_LAYER);
   const before = resolveLayout(layout, roles());
   const pmSeat = layout.arc[0].id;
 
@@ -290,7 +359,7 @@ test("a page seat whose bound seat has no holder is not drawn, stays in the layo
 });
 
 test("a page seat whose bound seat no longer exists is not drawn, and the drop returns the layout without it", () => {
-  const layout = snapshot(roles(), NO_TEAM_LAYER);
+  const { layout } = snapshot(roles(), NO_TEAM_LAYER);
   const gone = roles(moved(moved(people, 12, member(20)), 6, inDivisions([])), {
     departments: org.departments.filter((d) => d.id !== 2),
     divisions: org.divisions.filter((d) => d.id !== 11 && d.id !== 20),
@@ -313,7 +382,7 @@ test("a page seat whose bound seat no longer exists is not drawn, and the drop r
 });
 
 test("the model has no vacant or unbound state: a layout is its seats, a seat its binding and overrides", () => {
-  const layout = snapshot(roles(), LAYERS["every edit"]);
+  const { layout } = snapshot(roles(), LAYERS["every edit"]);
   assert.deepEqual(Object.keys(layout).sort(), ["arc", "departments", "leader"]);
   for (const seat of [layout.leader!, ...layout.arc, ...layout.departments.flatMap((b) => [b.head, ...b.leads])]) {
     assert.deepEqual(Object.keys(seat).sort(), ["binding", "id", "overrides"]);
@@ -323,12 +392,26 @@ test("the model has no vacant or unbound state: a layout is its seats, a seat it
 });
 
 test("the validator round-trips every layout the snapshot builds", () => {
-  const layouts = [snapshot(seededRoles, seededLayer!), ...Object.values(LAYERS).map((l) => snapshot(roles(), l))];
+  const layouts = [snapshot(seededRoles, seededLayer!).layout, ...Object.values(LAYERS).map((l) => snapshot(roles(), l).layout)];
   for (const layout of layouts) assert.deepEqual(parseTeamLayout(JSON.parse(JSON.stringify(layout))), layout);
 });
 
+test("an added department at the text limit with its head's role unset stores no role longer than the validator takes", () => {
+  const { layout } = snapshot(roles(), LAYERS["an added department at the text limit, its head's role unset"]);
+  const heads = layout.departments.slice(-2).map((b) => b.head);
+  assert.deepEqual(
+    heads.map((h) => [h.binding, h.overrides]),
+    [
+      [{ kind: "person", memberId: 12 }, {}],
+      [{ kind: "person", memberId: 9 }, {}],
+    ],
+  );
+  assert.equal(resolveLayout(layout, roles()).departments.at(-1)?.heads[0].shown.role, `Head of ${LONG_NAME}`);
+  assert.deepEqual(parseTeamLayout(JSON.parse(JSON.stringify(layout))), layout);
+});
+
 test("the validator refuses anything this code could not have written", () => {
-  const layout: TeamLayout = snapshot(roles(), LAYERS["every edit"]);
+  const { layout }: { layout: TeamLayout } = snapshot(roles(), LAYERS["every edit"]);
   const seat = layout.arc[0];
   const malformed: Readonly<Record<string, unknown>> = {
     "not an object": "layout",
@@ -337,11 +420,14 @@ test("the validator refuses anything this code could not have written", () => {
     "a part missing": { leader: layout.leader, arc: layout.arc },
     "a binding of no known kind": { ...layout, arc: [{ ...seat, binding: { kind: "member", memberId: 9 } }] },
     "a binding missing its reference": { ...layout, arc: [{ ...seat, binding: { kind: "team-seat" } }] },
+    "a person binding with no member": { ...layout, arc: [{ ...seat, binding: { kind: "person" } }] },
+    "a person binding with a seat beside it": { ...layout, arc: [{ ...seat, binding: { kind: "person", memberId: 9, roleId: 27 } }] },
     "a flag no team-level seat carries": { ...layout, arc: [{ ...seat, binding: { kind: "full-access-seat", seat: "it-lead" } }] },
     "a negative place": { ...layout, arc: [{ ...seat, binding: { kind: "division-lead", divisionId: 10, place: -1 } }] },
     "an id used twice": { ...layout, arc: [seat, seat] },
     "more than eight on the arc": { ...layout, arc: Array.from({ length: 9 }, (_, i) => ({ ...seat, id: 1000 + i })) },
     "a blank name": { ...layout, arc: [{ ...seat, overrides: { name: " " } }] },
+    "a role past the text limit": { ...layout, arc: [{ ...seat, overrides: { role: `Head of ${LONG_NAME}` } }] },
     "a photo off any store": { ...layout, arc: [{ ...seat, overrides: { photo: "http://example.com/a.jpg" } }] },
     "a LinkedIn URL for a handle": { ...layout, arc: [{ ...seat, overrides: { linkedin: "linkedin.com/in/x" } }] },
     "an override this code never sets": { ...layout, arc: [{ ...seat, overrides: { hidden: true } }] },
@@ -355,8 +441,8 @@ test("layoutPhotos lists the photos layerPhotos lists for the same edits", () =>
   const sorted = (list: readonly string[]) => [...list].sort();
   for (const name of ["name, role, photo and LinkedIn overrides", "added leaders", "an added department", "every edit"]) {
     const l = LAYERS[name];
-    assert.deepEqual(sorted(layoutPhotos(snapshot(roles(), l))), sorted(layerPhotos(l)), name);
+    assert.deepEqual(sorted(layoutPhotos(snapshot(roles(), l).layout)), sorted(layerPhotos(l)), name);
   }
   // The group photo stays in the layer's own store, beside the intro text and the figures.
-  assert.deepEqual(sorted(layoutPhotos(snapshot(seededRoles, seededLayer!))), sorted(layerPhotos({ ...seededLayer!, groupPhoto: null })));
+  assert.deepEqual(sorted(layoutPhotos(snapshot(seededRoles, seededLayer!).layout)), sorted(layerPhotos({ ...seededLayer!, groupPhoto: null })));
 });

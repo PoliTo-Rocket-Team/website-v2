@@ -19,8 +19,11 @@ import {
   isPagePhoto,
   TEAM_PAGE_TEXT_MAX,
   type AddedPerson,
+  type AddedRef,
   type PersonEdit,
   type Shown,
+  type Spot,
+  type SpotEdit,
   type TeamPageLayer,
 } from "./team-layer";
 import { byName, personOf, titleOf, type TeamPerson } from "./team-person";
@@ -28,16 +31,18 @@ import { carouselOf, coreMembersOf, teamBuildOf, teamPageOf, type TeamRoles } fr
 import type { DepartmentHead, DivisionLead, Leader, Member, Person, PersonPhoto, TeamPage } from "./types";
 
 // The Team page's own layout (epic #835, issue #849): the places the page
-// shows, each a page seat bound to a seat of the team record, never to a
-// person. Who fills a page seat follows the team record; the layout does not.
-// A seat added, removed or moved in the Team tree changes nothing here until
-// an editor changes the layout. A page seat whose bound seat has no holder is
-// not drawn and keeps its place, so it shows again once the seat has a
-// holder; one whose bound seat no longer exists is dropped
-// (`withoutGoneSeats`). There is no vacant or unbound state (Owner decision,
-// #846 R2.1). The core members are everyone with an active role no drawn page
-// seat shows (#846 R1.1). The intro text, the figures and the group photo
-// stay in the visual layer (./team-layer.ts). Pure, and wired to nothing yet.
+// shows, each a page seat bound to a seat of the team record or to one team
+// member (Owner decision, #846 R4.1). Who fills a seat-bound place follows the
+// team record; the layout does not. A seat added, removed or moved in the Team
+// tree changes nothing here until an editor changes the layout. A page seat
+// whose bound seat has no holder is not drawn and keeps its place, so it
+// shows again once the seat has a holder; one whose bound seat no longer
+// exists is dropped (`withoutGoneSeats`). A person-bound place shows that
+// person while they hold an active role and passes to no one. There is no
+// vacant or unbound state (#846 R2.1). The core members are everyone with an
+// active role no drawn page seat shows (#846 R1.1). The intro text, the
+// figures and the group photo stay in the visual layer (./team-layer.ts).
+// Pure, and wired to nothing yet.
 
 /**
  * The seat of the team record a page seat shows the holder of. It reuses the
@@ -55,6 +60,18 @@ export type SeatBinding =
   | (Extract<MovesWith, { readonly kind: "division-lead" }> & { readonly place: number });
 
 /**
+ * One team member, by member id (Owner decision, #846 R4.1): the place shows
+ * them while they hold an active role, whatever seat that is, and nothing
+ * while they hold none. It does not pass to anyone on a hand-over. Under
+ * their name it reads, unless overridden, "Head of" the block on a head
+ * place, else their own page title.
+ */
+export type PersonBinding = { readonly kind: "person"; readonly memberId: number };
+
+/** What a page seat shows: the holder of a seat of the team record, or one team member. */
+export type PlaceBinding = SeatBinding | PersonBinding;
+
+/**
  * What a page seat shows instead of what the team record says, one field
  * each. On a division lead row `role` is the division shown under the name.
  * The team email is never overridden: it is the holder's own.
@@ -67,8 +84,8 @@ export type SeatOverrides = {
   readonly linkedin?: string;
 };
 
-/** A place the Team page shows: its id in the layout, the seat it is bound to and what it overrides. */
-export type PageSeat = { readonly id: number; readonly binding: SeatBinding; readonly overrides: SeatOverrides };
+/** A place the Team page shows: its id in the layout, the seat or person it is bound to and what it overrides. */
+export type PageSeat = { readonly id: number; readonly binding: PlaceBinding; readonly overrides: SeatOverrides };
 
 /** A department block: the name it shows, the carousel slide its head sits on, its head and its division lead rows in order. */
 export type DepartmentBlock = {
@@ -94,12 +111,15 @@ const leadsOf = (roles: TeamRoles, divisionId: number): TeamPerson[] =>
 /**
  * Whether the bound seat is still on the team record: the team leader and a
  * flagged seat always are; a team-level seat while its `roles` row is active;
- * a head and a lead while their department or division is open.
+ * a head and a lead while their department or division is open. A person
+ * binding names no seat, so nothing removes it: the place waits while the
+ * person holds no active role.
  */
-function seatExists(binding: SeatBinding, roles: TeamRoles): boolean {
+function seatExists(binding: PlaceBinding, roles: TeamRoles): boolean {
   switch (binding.kind) {
     case "team-leader":
     case "full-access-seat":
+    case "person":
       return true;
     case "team-seat":
       return roles.people.some((p) => p.placement.role === "board" && p.placement.seat.roleId === binding.roleId);
@@ -117,12 +137,19 @@ type Holding = { readonly person: TeamPerson; readonly title: string };
  * The holder of a bound seat now and the seat's own text: the team leader's
  * title or "Team Leader", a team-level seat's title, a head's title or "Head
  * of" `headOf` (the block's name; the department's own by default), a
- * division's name. Null when the seat has no holder or is gone.
+ * division's name. A bound person reads "Head of" `headOf` on a head place,
+ * else their own page title. Null when the seat has no holder or is gone, or
+ * the person holds no active role.
  */
-function holdingOf(binding: SeatBinding, roles: TeamRoles, headOf?: string): Holding | null {
+function holdingOf(binding: PlaceBinding, roles: TeamRoles, headOf?: string): Holding | null {
   if (!seatExists(binding, roles)) return null;
   const first = (test: (p: TeamPerson) => boolean) => roles.people.filter(test).sort(byName)[0];
   switch (binding.kind) {
+    case "person": {
+      const person = roles.people.find((p) => p.id === binding.memberId);
+      if (person === undefined) return null;
+      return { person, title: headOf === undefined ? (titleOf(person) ?? "") : defaultHeadTitle(headOf) };
+    }
     case "team-leader": {
       const person = first((p) => p.placement.role === "team-leader");
       return person === undefined ? null : { person, title: titleOf(person) ?? "Team Leader" };
@@ -287,23 +314,27 @@ function teamLevelBinding(seat: BoardRole): SeatBinding {
   return seat.flag === null ? { kind: "team-seat", roleId: seat.roleId } : { kind: "full-access-seat", seat: seat.flag };
 }
 
-/** The seat `person` holds on the team record: their placement's seat, else the first open division they lead; null for neither. */
-function seatOf(person: TeamPerson, roles: TeamRoles): SeatBinding | null {
-  const { placement } = person;
-  switch (placement.role) {
-    case "team-leader":
-      return { kind: "team-leader" };
-    case "board":
-      return teamLevelBinding(placement.seat);
-    case "head":
-      return { kind: "department-head", departmentId: placement.departmentId };
-    case "divisions": {
-      const led = placement.memberships.find((m) => m.role === "lead" && roles.org.divisions.some((d) => d.id === m.divisionId));
-      if (led === undefined) return null;
-      return { kind: "division-lead", divisionId: led.divisionId, place: leadsOf(roles, led.divisionId).findIndex((p) => p.id === person.id) };
-    }
-  }
-}
+/**
+ * Something the layer holds that the snapshot's layout does not carry, keyed
+ * as the layer keys it: the team leader's edit, a spot, something the editor
+ * added (a leader, a lead row, a department) or a department's edit. Every
+ * place the page draws is carried except a department's heads past its
+ * first, so the rest are edits the page does not draw today.
+ */
+export type SnapshotGap = {
+  readonly at: "leader" | Spot | AddedRef | `department:${number}`;
+  /**
+   * `hidden`: a hidden spot or department. `left-team`: the person the edit
+   * shows holds no active role. `not-shown`: the page draws nothing there for
+   * another reason (a spot the roles no longer fill, past the arc's eight, a
+   * department with no head drawn, a swap on the team leader while there is
+   * none). `second-head`: a block holds one head, and this one is drawn after it.
+   */
+  readonly why: "hidden" | "left-team" | "not-shown" | "second-head";
+};
+
+/** The first layout, and every part of the layer it does not carry. */
+export type Snapshot = { readonly layout: TeamLayout; readonly left: readonly SnapshotGap[] };
 
 /** The overrides an edit or an added person sets, with no key for a field it leaves alone. */
 function overridesOf(edit: Pick<PersonEdit, "name" | "role" | "photo" | "linkedin">): SeatOverrides {
@@ -324,89 +355,119 @@ const spotPart = (spot: string, index: 1 | 2) => Number(spot.split(":")[index]);
  * The layout of what the page shows today: the roles build with `layer` laid
  * on (`applyLayer`), each place it draws as a page seat. A place keeps its
  * own seat while the roles' holder shows there; a place showing someone else
- * (a person swap, or anyone the layer added) is bound to the seat that person
- * holds. Each edit carries over as an override, and a role text the new
- * binding would not read by itself is set as one, so the page draws the same.
- * Hidden spots and departments, and a block with no head shown, draw nothing
- * and get no page seat. A place showing someone who holds no seat cannot be
- * bound and gets none: they are a core member.
+ * (a person swap, or anyone the layer added) is bound to that person (Owner
+ * decision, #846 R4.1), as the layer itself shows that person and not a seat.
+ * Each edit carries over as an override, and a role text the binding would
+ * not read by itself is set as one, so the page draws the same. `left` names
+ * every part of the layer the layout does not carry, and why: hidden spots
+ * and departments, edits the page does not draw today, and a department's
+ * heads past its first, which one block cannot hold.
  */
-export function snapshot(roles: TeamRoles, layer: TeamPageLayer): TeamLayout {
+export function snapshot(roles: TeamRoles, layer: TeamPageLayer): Snapshot {
   const build = teamBuildOf(roles);
   const shown = applyLayer(build, layer);
   let lastId = 0;
   const nextId = () => ++lastId;
   const memberOf = (id: number | undefined) => (id === undefined ? undefined : build.people.find((p) => p.id === id));
+  const carried = new Set<SnapshotGap["at"]>();
+  const left: SnapshotGap[] = [];
+  const missing = (at: string): never => {
+    throw new Error(`The page draws ${at}, which the roles and the layer do not hold.`);
+  };
 
-  /** A page seat showing `person`, bound to `own` while they hold it, else to their own seat; null when they hold none. */
-  const pageSeat = (person: TeamPerson, own: SeatBinding | null, set: SeatOverrides, shownRole: string, headOf?: string): PageSeat | null => {
-    const holdsOwn = own !== null && holdingOf(own, roles)?.person.id === person.id;
-    const binding = holdsOwn ? own : seatOf(person, roles);
-    const holding = binding === null ? null : holdingOf(binding, roles, headOf);
-    if (binding === null || holding?.person.id !== person.id) return null;
-    const role = set.role ?? (shownRole === holding.title ? undefined : shownRole);
+  /** Who the place at `at` shows: the person its edit swaps in while they hold an active role, else `fromRoles`. */
+  const shownAt = (at: SnapshotGap["at"], edit: PersonEdit | undefined, fromRoles: TeamPerson): TeamPerson => {
+    const swapped = memberOf(edit?.person);
+    if (edit?.person !== undefined && swapped === undefined) left.push({ at, why: "left-team" });
+    return swapped ?? fromRoles;
+  };
+
+  /** The page seat for the place at `at` showing `person`: bound to `own` while they hold it, else to them. */
+  const pageSeat = (at: SnapshotGap["at"], person: TeamPerson, own: SeatBinding | null, set: SeatOverrides, shownRole: string, headOf?: string): PageSeat => {
+    carried.add(at);
+    const holdsOwn = own !== null && holdingOf(own, roles, headOf)?.person.id === person.id;
+    const binding: PlaceBinding = holdsOwn ? own : { kind: "person", memberId: person.id };
+    const title = holdingOf(binding, roles, headOf)?.title;
+    const role = set.role ?? (shownRole === title ? undefined : shownRole);
     return { id: nextId(), binding, overrides: { ...set, ...(role !== undefined && { role }) } };
   };
 
-  const leaderSeat = (): PageSeat | null => {
+  const leaderSeat = (): PageSeat => {
     const own: SeatBinding = { kind: "team-leader" };
     const set = overridesOf(layer.leader);
-    if (build.leader === null || shown.leader === null) return { id: nextId(), binding: own, overrides: set };
-    const person = memberOf(layer.leader.person) ?? build.leader.person;
-    return pageSeat(person, own, set, shown.leader.role) ?? { id: nextId(), binding: own, overrides: set };
+    if (build.leader === null || shown.leader === null) {
+      if (layer.leader.person !== undefined) left.push({ at: "leader", why: "not-shown" });
+      return { id: nextId(), binding: own, overrides: set };
+    }
+    return pageSeat("leader", shownAt("leader", layer.leader, build.leader.person), own, set, shown.leader.role);
   };
   const leader = leaderSeat();
 
-  const arc = shown.leaders.flatMap(({ at, shown: drawnLeader }): PageSeat[] => {
+  const arc = shown.leaders.map(({ at, shown: drawnLeader }): PageSeat => {
     const built = build.arc.find((b) => b.spot === at);
-    if (built !== undefined && built.person.placement.role === "board") {
+    if (built !== undefined) {
       const edit = layer.spots[built.spot];
-      const seat = pageSeat(memberOf(edit?.person) ?? built.person, teamLevelBinding(built.person.placement.seat), overridesOf(edit ?? {}), drawnLeader.role);
-      return seat === null ? [] : [seat];
+      const { placement } = built.person;
+      const own = placement.role === "board" ? teamLevelBinding(placement.seat) : null;
+      return pageSeat(built.spot, shownAt(built.spot, edit, built.person), own, overridesOf(edit ?? {}), drawnLeader.role);
     }
-    const added = layer.addedLeaders.find((a) => `added:${a.id}` === at);
-    const person = memberOf(added?.person);
-    const seat = added === undefined || person === undefined ? null : pageSeat(person, null, addedOverrides(added, added.role), drawnLeader.role);
-    return seat === null ? [] : [seat];
+    const added = layer.addedLeaders.find((a) => `added:${a.id}` === at) ?? missing(at);
+    return pageSeat(at, memberOf(added.person) ?? missing(at), null, addedOverrides(added, added.role), drawnLeader.role);
   });
 
   const departments = shown.departments.flatMap((department): DepartmentBlock[] => {
-    const [head] = department.heads;
+    const [head, ...after] = department.heads;
     if (head === undefined) return [];
+    for (const extra of after) left.push({ at: extra.at, why: "second-head" });
     const id = nextId();
     const fromRoles = typeof department.at === "number" ? build.departments.find((d) => d.id === department.at) : undefined;
     const addedDepartment = layer.addedDepartments.find((d) => `added:${d.id}` === department.at);
     const addedLeads = typeof department.at === "number" ? (layer.departments[`${department.at}`]?.addedLeads ?? []) : (addedDepartment?.leads ?? []);
+    if (typeof department.at === "number") carried.add(`department:${department.at}`);
 
-    let headSeat: PageSeat | null = null;
-    const builtHead = fromRoles?.heads.find((h) => h.spot === head.at);
-    if (fromRoles !== undefined && builtHead !== undefined) {
+    let headSeat: PageSeat;
+    if (fromRoles !== undefined) {
+      const builtHead = fromRoles.heads.find((h) => h.spot === head.at) ?? missing(`${head.at}`);
       const edit = layer.spots[builtHead.spot];
       const own: SeatBinding = { kind: "department-head", departmentId: fromRoles.id };
-      headSeat = pageSeat(memberOf(edit?.person) ?? builtHead.person, own, overridesOf(edit ?? {}), head.shown.role, department.name);
-    } else if (addedDepartment !== undefined) {
-      const person = memberOf(addedDepartment.head.person);
-      headSeat = person === undefined ? null : pageSeat(person, null, addedOverrides(addedDepartment.head, addedDepartment.head.role), head.shown.role, department.name);
+      headSeat = pageSeat(builtHead.spot, shownAt(builtHead.spot, edit, builtHead.person), own, overridesOf(edit ?? {}), head.shown.role, department.name);
+    } else {
+      const added = addedDepartment ?? missing(`${department.at}`);
+      const person = memberOf(added.head.person) ?? missing(`${department.at}`);
+      headSeat = pageSeat(`added:${added.id}`, person, null, addedOverrides(added.head, added.head.role), head.shown.role, department.name);
     }
-    if (headSeat === null) return [];
 
-    const leads = department.leads.flatMap(({ at, shown: drawnLead }): PageSeat[] => {
+    const leads = department.leads.map(({ at, shown: drawnLead }): PageSeat => {
       const builtLead = fromRoles?.leads.find((l) => l.spot === at);
       if (builtLead !== undefined) {
         const edit = layer.spots[builtLead.spot];
         const own: SeatBinding = { kind: "division-lead", divisionId: spotPart(builtLead.spot, 1), place: spotPart(builtLead.spot, 2) };
-        const seat = pageSeat(memberOf(edit?.person) ?? builtLead.person, own, overridesOf(edit ?? {}), drawnLead.division);
-        return seat === null ? [] : [seat];
+        return pageSeat(builtLead.spot, shownAt(builtLead.spot, edit, builtLead.person), own, overridesOf(edit ?? {}), drawnLead.division);
       }
-      const added = addedLeads.find((a) => `added:${a.id}` === at);
-      const person = memberOf(added?.person);
-      const seat = added === undefined || person === undefined ? null : pageSeat(person, null, addedOverrides(added, added.division), drawnLead.division);
-      return seat === null ? [] : [seat];
+      const added = addedLeads.find((a) => `added:${a.id}` === at) ?? missing(at);
+      return pageSeat(at, memberOf(added.person) ?? missing(at), null, addedOverrides(added, added.division), drawnLead.division);
     });
     return [{ id, name: department.name, kind: department.kind, head: headSeat, leads }];
   });
 
-  return { leader, arc, departments };
+  // What the layer holds that no page seat carries.
+  const notCarried = (at: SnapshotGap["at"], why: SnapshotGap["why"]) => {
+    if (!carried.has(at) && !left.some((gap) => gap.at === at)) left.push({ at, why });
+  };
+  const addedGap = (added: AddedPerson & { readonly id: number }) =>
+    notCarried(`added:${added.id}`, memberOf(added.person) === undefined ? "left-team" : "not-shown");
+  for (const [spot, edit] of Object.entries(layer.spots) as [Spot, SpotEdit | undefined][]) notCarried(spot, edit?.hidden ? "hidden" : "not-shown");
+  layer.addedLeaders.forEach(addedGap);
+  for (const [key, edit] of Object.entries(layer.departments)) {
+    notCarried(`department:${Number(key)}`, edit?.hidden ? "hidden" : "not-shown");
+    (edit?.addedLeads ?? []).forEach(addedGap);
+  }
+  for (const added of layer.addedDepartments) {
+    notCarried(`added:${added.id}`, memberOf(added.head.person) === undefined ? "left-team" : "not-shown");
+    added.leads.forEach(addedGap);
+  }
+
+  return { layout: { leader, arc, departments }, left };
 }
 
 // A layout read back from storage or sent by the browser: anything this code
@@ -421,6 +482,7 @@ const bindingSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("team-seat"), roleId: id }),
   z.strictObject({ kind: z.literal("department-head"), departmentId: id }),
   z.strictObject({ kind: z.literal("division-lead"), divisionId: id, place: z.number().int().min(0).max(999) }),
+  z.strictObject({ kind: z.literal("person"), memberId: id }),
 ]);
 
 const seatSchema = z.strictObject({
