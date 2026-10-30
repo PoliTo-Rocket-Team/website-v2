@@ -50,6 +50,8 @@ export type SignInEmailRow = {
 /** Another user row that holds an address, as stored. */
 export type EmailHolderRow = {
   readonly userId: string;
+  /** The address the row holds, as stored. */
+  readonly email: string;
   /** Their first and last name on the row; null when it has none. */
   readonly name: string | null;
   readonly member: number | null;
@@ -140,22 +142,24 @@ export const LOGIN_LINK_REFUSALS = {
   changed: "Something changed since this opened. Close it and save again.",
 } as const;
 
-/** The link Link login sends back: the offer's three ids. */
-export type LoginLinkRequest = Pick<LoginLinkOffer, "memberId" | "fromUserId" | "loginUserId">;
+/** The link Link login sends back: the offer's three ids and the address the confirmation named. */
+export type LoginLinkRequest = Pick<LoginLinkOffer, "memberId" | "fromUserId" | "loginUserId" | "email">;
 
 /** The request in `input`, as Link login sends it; null for anything else. */
 export function checkLoginLink(input: unknown): LoginLinkRequest | null {
   if (typeof input !== "object" || input === null) return null;
-  const { memberId, fromUserId, loginUserId } = input as Record<string, unknown>;
+  const { memberId, fromUserId, loginUserId, email } = input as Record<string, unknown>;
   if (!Number.isInteger(memberId) || (memberId as number) <= 0) return null;
   if (typeof fromUserId !== "string" || fromUserId === "" || typeof loginUserId !== "string" || loginUserId === "" || fromUserId === loginUserId) return null;
-  return { memberId: memberId as number, fromUserId, loginUserId };
+  if (typeof email !== "string" || email.trim() === "") return null;
+  return { memberId: memberId as number, fromUserId, loginUserId, email: email.trim().toLowerCase() };
 }
 
 /**
  * Whether Link login may still land on what the database reads now: full
  * access, the member's row still `from` with no sign-in, and the login still
- * an empty one. The write checks the stored facts again inside its batch.
+ * an empty one holding the address the confirmation named. The write checks
+ * the stored facts again inside its batch.
  */
 export function planLoginLink(
   viewer: ViewerStanding,
@@ -165,6 +169,10 @@ export function planLoginLink(
 ): { readonly kind: "link"; readonly request: LoginLinkRequest } | { readonly kind: "refused"; readonly error: string } {
   if (!opensWholeTeam(viewer)) return { kind: "refused", error: LOGIN_LINK_REFUSALS.notFullAccess };
   const fromHolds = from !== null && from.id === request.fromUserId && from.member === request.memberId && !from.linked;
-  const loginEmpty = login !== null && login.userId === request.loginUserId && emptyLoginSince(login) !== null;
+  const loginEmpty =
+    login !== null &&
+    login.userId === request.loginUserId &&
+    login.email.trim().toLowerCase() === request.email &&
+    emptyLoginSince(login) !== null;
   return fromHolds && loginEmpty ? { kind: "link", request } : { kind: "refused", error: LOGIN_LINK_REFUSALS.changed };
 }

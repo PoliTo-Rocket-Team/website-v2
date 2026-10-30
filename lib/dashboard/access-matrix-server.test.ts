@@ -611,7 +611,7 @@ const ACTION_CASES: readonly ActionCase[] = [
     action: "team-actions.linkLogin",
     run: async () => (
       await addRows(betterAuthUsers, [{ id: "login-dm", name: "Person DM", email: "real.person-dm@example.com", emailVerified: true }]),
-      teamActions.linkLogin({ memberId: IDS.person(DM), fromUserId: "person-dm", loginUserId: "login-dm" })
+      teamActions.linkLogin({ memberId: IDS.person(DM), fromUserId: "person-dm", loginUserId: "login-dm", email: "real.person-dm@example.com" })
     ),
     may: fullAccess,
     control: by("team leader"),

@@ -30,6 +30,7 @@ import {
   type DivisionHeader,
   type DivisionPerson,
   type MemberPosition,
+  type OpenedSent,
   type TeamMatch,
   type WaitingPerson,
 } from "@/lib/dashboard/division-members";
@@ -1022,7 +1023,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   // An empty login already holds the corrected email: Save asks to link it, then saves again (issue #860).
   const [linkOffer, setLinkOffer] = useState<{ readonly offer: LoginLinkOffer; readonly answer: HeadMoveAnswer | null } | null>(null);
 
-  const setName =(key: keyof PersonName, value: string) => {
+  const setName = (key: keyof PersonName, value: string) => {
     setNames((n) => (n === null ? n : { ...n, [key]: value }));
     setErrors((errs) => ({ ...errs, [key]: undefined }));
   };
@@ -1034,7 +1035,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   })[0];
 
   /** The details as Save sends them: a moved place's title goes with its move, so the details keep the one it had. */
-  const checkedDetails = () => {
+  const checkedDetails = (opened?: OpenedSent) => {
     // The sign-in email is sent only when corrected, so a save that leaves it as shown asks for no correction.
     const corrected = correctsEmail && signInEmail.trim().toLowerCase() !== email.toLowerCase();
     const input = {
@@ -1042,12 +1043,13 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
       details: detailsOf(draft),
       ...names,
       ...(corrected ? { signInEmail } : {}),
+      ...(opened === undefined ? {} : { opened }),
     };
     return { input, checked: checkMemberEdit(input, title?.kind === "seat" && titledMove === null ? "required" : "optional") };
   };
 
-  const save = async (answer: HeadMoveAnswer | null) => {
-    const { input, checked } = checkedDetails();
+  const save = async (answer: HeadMoveAnswer | null, opened?: OpenedSent) => {
+    const { input, checked } = checkedDetails(opened);
     if (!checked.ok) return setErrors(checked.errors);
     setPending(true);
     try {
@@ -1108,7 +1110,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
     const { offer, answer } = linkOffer;
     setPending(true);
     try {
-      const linked = await linkLogin({ memberId: offer.memberId, fromUserId: offer.fromUserId, loginUserId: offer.loginUserId });
+      const linked = await linkLogin({ memberId: offer.memberId, fromUserId: offer.fromUserId, loginUserId: offer.loginUserId, email: offer.email });
       setLinkOffer(null);
       if (!linked.ok) {
         toast.error("Could not link the login", { description: linked.error });
@@ -1121,10 +1123,11 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
     } finally {
       setPending(false);
     }
-    await save(answer);
+    // The record now sits on the login's row: send what the form opened with, so only the fields the viewer changed overwrite that row's own.
+    await save(answer, { details: person?.details ?? NO_MEMBER_DETAILS, ...(position?.name ?? {}) });
   };
 
-  const submit = (e: FormEvent<HTMLFormElement>) => {
+  const submit =(e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (headMove !== undefined) {
       const { checked } = checkedDetails();

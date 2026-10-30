@@ -56,6 +56,7 @@ async function emailHoldersOf(where: SQL): Promise<EmailHolderRow[]> {
   const rows = await getDb()
     .select({
       userId: users.id,
+      email: users.email,
       firstName: users.firstName,
       lastName: users.lastName,
       member: users.member,
@@ -71,6 +72,7 @@ async function emailHoldersOf(where: SQL): Promise<EmailHolderRow[]> {
     const name = [row.firstName, row.lastName].filter(Boolean).join(" ");
     return {
       userId: row.userId,
+      email: row.email,
       name: name === "" ? null : name,
       member: row.member,
       firstSignIn: row.firstSignIn,
@@ -116,10 +118,15 @@ const fromValue = (column: keyof typeof users.$inferSelect, request: LoginLinkRe
 /** The text profile fields the login takes from the record's row where its own are empty. */
 const TEXT_FIELDS = ["firstName", "lastName", "origin", "levelOfStudy", "linkedin", "politoId", "program", "phone", "gender", "referralSource", "country"] as const;
 
-/** Both rows still as Link login read them: the record's row unlinked and open, the login empty. Checked inside the batch. */
+/**
+ * Both rows still as Link login read them: the record's row unlinked and
+ * open, the login empty and holding the address the confirmation named.
+ * Checked inside the batch.
+ */
 function stillLinkable(request: LoginLinkRequest): SQL {
   return sql`exists (select 1 from ${users} where ${users.id} = ${request.fromUserId} and ${users.member} = ${request.memberId} and ${users.deletedAt} is null and not ${signedIn})
-    and exists (select 1 from ${users} where ${users.id} = ${request.loginUserId} and ${users.member} is null and ${users.deletedAt} is null and ${signedIn}
+    and exists (select 1 from ${users} where ${users.id} = ${request.loginUserId} and lower(${users.email}) = ${request.email}
+      and ${users.member} is null and ${users.deletedAt} is null and ${signedIn}
       and not exists (select 1 from ${teamJoins} where ${teamJoins.userId} = ${request.loginUserId}))`;
 }
 

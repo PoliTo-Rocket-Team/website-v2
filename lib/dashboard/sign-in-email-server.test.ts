@@ -4,11 +4,11 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import * as teamActions from "@/app/dashboard/team-actions";
 import { betterAuthUsers, teamJoins, users } from "@/db/schema";
-import { addRows, changeRows, databaseWrites, logRowsSinceSeed, tableRows, writesByTransaction } from "./access-matrix/test-database";
+import { addRows, changeRows, databaseWrites, logRowsSinceSeed, tableRows, testDb, writesByTransaction } from "./access-matrix/test-database";
 import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 import type { DashboardData } from "./data";
-import type { DetailsTarget } from "./division-members";
+import type { DetailsTarget, OpenedSent } from "./division-members";
 import { membersModelOf } from "./members-view";
 import { openDashboard } from "./open";
 import { LOGIN_LINK_REFUSALS, loginLinkQuestion, SIGN_IN_EMAIL_REFUSALS, takenBy, type LoginLinkOffer } from "./sign-in-email";
@@ -190,8 +190,26 @@ describe("Edit details links an empty login to the member it belongs to (issue #
 
   async function link(viewer: string, sent: LoginLinkOffer) {
     signInAs(accountOf(viewer).userId);
-    const answer = await teamActions.linkLogin({ memberId: sent.memberId, fromUserId: sent.fromUserId, loginUserId: sent.loginUserId });
+    const answer = await teamActions.linkLogin({ memberId: sent.memberId, fromUserId: sent.fromUserId, loginUserId: sent.loginUserId, email: sent.email });
     return { answer, writes: await databaseWrites() };
+  }
+
+  /** What Edit details opens with for the person, as full access's Members page hands it: their details and name. */
+  async function opened(): Promise<OpenedSent> {
+    signInAs(accountOf("operations lead").userId);
+    const opening = await openDashboard();
+    assert.equal(opening.kind, "open");
+    const page = membersModelOf(await (opening as { data: DashboardData }).data.members(null));
+    const actions = page?.everyone.find((p) => p.id === PERSON.id)?.actions;
+    assert.ok(actions);
+    return { details: actions.person.details, ...actions.position.name };
+  }
+
+  /** The Save Link login runs next, as Edit details sends it: the form as it opened with `changed` typed over it, and what it opened with. */
+  async function followUpSave(form: OpenedSent, changed: Partial<OpenedSent["details"]>) {
+    signInAs(accountOf("operations lead").userId);
+    const { details, ...name } = form;
+    return teamActions.saveMemberDetails(PERSON, MA, { title: "Member", details: { ...details, ...changed }, ...name, signInEmail: REAL, opened: form });
   }
 
   test("Save offers the login, with the day it first signed in, and the confirmation asks to link it to the member", async () => {
@@ -224,9 +242,22 @@ describe("Edit details links an empty login to the member it belongs to (issue #
     const logged = (await logRowsSinceSeed()).filter((r) => r.tableName === "users");
     assert.deepEqual(new Set(logged.map((r) => r.recordId)), new Set([LOGIN_USER, PERSON_USER]));
     assert.ok(logged.every((r) => r.changedBy === accountOf("operations lead").userId), "in the activity log under the viewer");
-    // Save again: the address is now the record row's own, so the rest of the form saves.
-    assert.deepEqual((await save("operations lead", PERSON, REAL)).answer, { ok: true });
-    assert.equal((await userRow(LOGIN_USER))?.email, REAL);
+  });
+
+  test("the Save after Link login writes only what the viewer changed: a field the login already held survives the whole flow", async () => {
+    await seededEmptyLogin();
+    const form = await opened();
+    assert.equal(form.details.phone, "+39 333 111 1111", "the form opens with the record row's phone");
+    const sent = await offer();
+    assert.deepEqual((await link("operations lead", sent)).answer, { ok: true });
+    // The viewer typed a new country and left the phone as the form showed it.
+    assert.deepEqual(await followUpSave(form, { country: "France" }), { ok: true });
+    const login = await userRow(LOGIN_USER);
+    assert.equal(login?.member, MEMBER);
+    assert.equal(login?.email, REAL, "the address is now the record row's own");
+    assert.equal(login?.phone, "+39 333 222 2222", "the login's own phone is neither overwritten nor cleared");
+    assert.equal(login?.country, "France", "a field the viewer changed is written");
+    assert.equal(login?.firstName, "Person", "the name the viewer left stays");
   });
 
   test("an address held by an account that has a member record keeps the refusal, naming who", async () => {
@@ -237,25 +268,56 @@ describe("Edit details links an empty login to the member it belongs to (issue #
     assert.deepEqual(writes, []);
   });
 
+  /** Each change to either row that makes the confirmation stale. */
+  const STALE: readonly (readonly [string, () => Promise<void>])[] = [
+    ["the login took a record", () => changeRows(users, { id: LOGIN_USER }, { member: IDS.lead("MA") })],
+    ["the login was closed", () => changeRows(users, { id: LOGIN_USER }, { deletedAt: new Date().toISOString() })],
+    ["the login no longer holds the address the confirmation named", () => changeRows(users, { id: LOGIN_USER }, { email: "another.address@example.com" })],
+    ["the record moved off its row", () => changeRows(users, { id: PERSON_USER }, { member: null })],
+    [
+      "the record's row signed in",
+      async () => addRows(betterAuthUsers, [{ id: PERSON_USER, name: "Person MA", email: "person-ma@mail.test", emailVerified: true }]),
+    ],
+  ];
+
+  /** Asserts Link login was refused as stale and left `before` as it was, with no write and no activity-log row. */
+  async function assertRefusedUnchanged(change: string, before: readonly Record<string, unknown>[], { answer, writes }: Awaited<ReturnType<typeof link>>) {
+    assert.deepEqual(answer, { ok: false, error: LOGIN_LINK_REFUSALS.changed }, change);
+    assert.deepEqual(writes, [], `${change}: nothing written`);
+    assert.deepEqual(await tableRows(users), before, change);
+    assert.deepEqual(await logRowsSinceSeed(), [], `${change}: nothing in the activity log`);
+  }
+
   test("Link login refuses, writing nothing, when either row changed since the confirmation opened", async () => {
-    const changes: readonly (readonly [string, () => Promise<void>])[] = [
-      ["the login took a record", () => changeRows(users, { id: LOGIN_USER }, { member: IDS.lead("MA") })],
-      ["the login was closed", () => changeRows(users, { id: LOGIN_USER }, { deletedAt: new Date().toISOString() })],
-      ["the record moved off its row", () => changeRows(users, { id: PERSON_USER }, { member: null })],
-      [
-        "the record's row signed in",
-        async () => addRows(betterAuthUsers, [{ id: PERSON_USER, name: "Person MA", email: "person-ma@mail.test", emailVerified: true }]),
-      ],
-    ];
-    for (const [change, apply] of changes) {
+    for (const [change, apply] of STALE) {
       await seededEmptyLogin();
       const sent = await offer();
       await apply();
       const before = await tableRows(users);
-      const { answer, writes } = await link("operations lead", sent);
-      assert.deepEqual(answer, { ok: false, error: LOGIN_LINK_REFUSALS.changed }, change);
-      assert.deepEqual(writes, [], `${change}: nothing written`);
-      assert.deepEqual(await tableRows(users), before, change);
+      await assertRefusedUnchanged(change, before, await link("operations lead", sent));
+    }
+  });
+
+  test("the guard inside the batch refuses a change that lands after Link login's first read", async () => {
+    for (const [change, apply] of STALE) {
+      await seededEmptyLogin();
+      const sent = await offer();
+      // The change lands between the read that plans the link and the batch that writes it.
+      const batch = testDb.batch;
+      const landed: { before?: readonly Record<string, unknown>[] } = {};
+      testDb.batch = async (queries) => {
+        testDb.batch = batch;
+        await apply();
+        landed.before = await tableRows(users);
+        return batch(queries);
+      };
+      try {
+        const linked = await link("operations lead", sent);
+        assert.ok(landed.before !== undefined, `${change}: the change landed before the batch`);
+        await assertRefusedUnchanged(change, landed.before, linked);
+      } finally {
+        testDb.batch = batch;
+      }
     }
   });
 

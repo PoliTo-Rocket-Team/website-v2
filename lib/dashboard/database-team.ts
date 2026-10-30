@@ -42,6 +42,7 @@ import {
   checkAddMember,
   checkMemberEdit,
   divisionMembers,
+  editedFields,
   lookupForAdd,
   positionsOf,
   SEAT_TITLE_REQUIRED,
@@ -1093,12 +1094,14 @@ async function saveMemberDetails(
 ): Promise<WriteResult<DetailsSaved>> {
   const checked = checkMemberEdit(input);
   if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
-  const { title, details, name, signInEmail } = checked.value;
-  const columns = columnsFromMemberDetails(details);
+  const { title, name: sentName, signInEmail } = checked.value;
+  // What the viewer changed, when the form says what it opened with (Save after Link login, issue #860); else all it sent.
+  const edited = editedFields(checked.value);
+  const columns = columnsFromMemberDetails(edited.details);
 
   if (target.kind === "waiting") {
     // Someone waiting keeps the name they were added with; only Edit details renames, once they are on the team.
-    if (name !== null) return refused("Their name is set once they join.");
+    if (sentName !== null) return refused("Their name is set once they join.");
     if (divisionId === null || (await actingOn(identity, divisionId)) === null) return refused(NOT_IN_SCOPE);
     const [join] = await getDb()
       .select({ user_id: teamJoins.userId })
@@ -1140,9 +1143,9 @@ async function saveMemberDetails(
   await runAuditBatch((db) => [
     db
       .update(users)
-      .set({ ...columns.user, ...(name === null ? {} : { firstName: name.firstName, lastName: name.lastName }), updatedAt: sql`now()` })
+      .set({ ...columns.user, ...edited.name, updatedAt: sql`now()` })
       .where(eq(users.member, target.id)),
-    db.update(members).set(columns.member).where(eq(members.memberId, target.id)),
+    ...(Object.keys(columns.member).length === 0 ? [] : [db.update(members).set(columns.member).where(eq(members.memberId, target.id))]),
     ...(titled.length === 0
       ? []
       : [
