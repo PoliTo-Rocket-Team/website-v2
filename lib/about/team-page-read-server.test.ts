@@ -117,6 +117,33 @@ test("a page seat whose bound seat has no holder, or whose team seat is gone, is
   assert.deepEqual(gone.orgChart.leaders, noHolder.orgChart.leaders);
 });
 
+test("a section whose seats have no holder is drawn empty on /about/the-team, never from the hand-typed record", async () => {
+  await seeded();
+  const before = await teamPageData();
+  const roleRows = (await tableRows(roles)) as RoleRow[];
+
+  // The team leader's seat is left with no one in it.
+  const president = roleRows.find((r) => r.type === "president" && r.leavedAt === null)!;
+  assert.ok(president, "the seed seats a team leader");
+  assert.equal(before.orgChart.leader?.name, await nameOf(president.memberId!));
+  await changeRows(roles, { id: president.id }, { leavedAt: ROLE_DAY });
+  const noLeader = await teamPageData();
+  assert.equal(noLeader.orgChart.leader, null, "the page draws no team leader, and not the hand-typed one");
+  assert.deepEqual(noLeader.orgChart.leaders, before.orgChart.leaders);
+  assert.deepEqual(noLeader.departments.groups, before.departments.groups);
+  assert.deepEqual(noLeader.header, before.header);
+
+  // Every department head's seat is left with no one in it.
+  const heads = roleRows.filter((r) => r.type === "head" && r.leavedAt === null);
+  const headNames = await Promise.all(heads.map((h) => nameOf(h.memberId!)));
+  for (const head of heads) await changeRows(roles, { id: head.id }, { leavedAt: ROLE_DAY });
+  const noHeads = await teamPageData();
+  assert.deepEqual(noHeads.departments.groups, [], "the departments area is empty, not the hand-typed carousel");
+  // The layer puts some heads on the arc too: their places there go with their seats.
+  assert.deepEqual(noHeads.orgChart.leaders, before.orgChart.leaders.filter((l) => !headNames.includes(l.name)));
+  assert.equal(noHeads.orgChart.leader, null);
+});
+
 test("a save from today's editor stores the layer and its snapshot layout in one row", async () => {
   await seedFixture();
   signInAs(accountOf("team leader").userId);

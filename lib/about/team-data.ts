@@ -21,8 +21,9 @@ export async function databaseTeamRoles(): Promise<TeamRoles> {
  * database's cached roles with the published visual layer laid on (tag
  * `team-page-layer`, which every layer write refreshes). A draft never
  * reaches it. With no database, which only production may run without
- * (lib/database-required.ts), the hand-typed ./team.ts; with roles that cannot fill the page yet, the same
- * with the layer's intro text and group photo (`publicTeamPage`). The
+ * (lib/database-required.ts), the hand-typed ./team.ts whole; with a
+ * database, the published layout's seats and core members only, a section
+ * with no holder drawn empty (`publicTeamPage`, ADR 0019 Decision 9). The
  * advisors are the published hand-added list (issue #286, tag
  * `team-page-advisors`), the record's own until the advisors' migration runs.
  */

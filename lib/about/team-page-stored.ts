@@ -1,6 +1,6 @@
 import { isTeamPageLayer, NO_TEAM_LAYER, type OwnsUpload, type TeamPageLayer } from "./team-layer";
 import { layoutPageOf, parseTeamLayout, snapshot, type TeamLayout } from "./team-layout";
-import { withLayerText, type TeamRoles } from "./team-roles";
+import type { TeamRoles } from "./team-roles";
 import type { TeamPage } from "./types";
 
 // One stored version of the Team page (issue #850, ADR 0019): the visual
@@ -32,11 +32,12 @@ export function layoutOf(roles: TeamRoles, stored: StoredTeamPage): TeamLayout {
 /**
  * The Team page `stored` draws on `roles`: its layout resolved against the
  * team record, with the layer's intro text, figures and group photo, onto
- * `base` for everything else; `base` with the layer's text when a section
- * the page always draws is empty.
+ * `base` for everything else. A section whose seats have no holder is drawn
+ * empty; the seats and core members never come from `base` (ADR 0019
+ * Decision 9).
  */
 export function storedTeamPageOf(roles: TeamRoles, stored: StoredTeamPage, base: TeamPage): TeamPage {
-  return layoutPageOf(roles, layoutOf(roles, stored), stored.layer, base) ?? withLayerText(base, stored.layer);
+  return layoutPageOf(roles, layoutOf(roles, stored), stored.layer, base);
 }
 
 /**

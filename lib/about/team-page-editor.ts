@@ -252,10 +252,9 @@ export const HEADS_FULL = `The departments area shows up to ${HEADS_SHOWN_MAX} h
  * Why the page cannot be drawn as `layer` edits it; null when it can. The
  * limits bind what the layer does, not what the roles alone do: the roles may
  * put more than eight on the arc or more heads than the carousel shows (the
- * page then shows the first ones), and may leave a section empty (the page
- * then shows the hand-typed record), but the layer may not add past a limit,
- * and may not empty a section the roles fill, which would bring the
- * hand-typed record back without a word.
+ * page then shows the first ones), and may leave a section empty, but the
+ * layer may not add past a limit, and may not empty a section the roles
+ * fill, which would empty it on the page without a word.
  */
 export function layerRefusal(build: TeamBuild, base: TeamPage, layer: TeamPageLayer): string | null {
   if (leadersOnArc(build, layer) > Math.max(ARC_LEADERS, leadersOnArc(build, NO_TEAM_LAYER))) return ARC_FULL;

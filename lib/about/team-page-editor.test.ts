@@ -74,20 +74,20 @@ test("Save draft never changes the public page; Publish does; the public page re
   // The editor opens on the draft, laid on the roles build.
   const opened = await editor.open();
   assert.equal(opened?.status, "draft");
-  assert.equal(opened?.page.orgChart.leader.role, "President");
+  assert.equal(opened?.page.orgChart.leader?.role, "President");
 
   const published = await editor.save("publish", renamed, await rowsOf(store));
   assert.ok(published.ok);
   const after = await publicPage(store);
-  assert.equal(after.orgChart.leader.role, "President");
+  assert.equal(after.orgChart.leader?.role, "President");
   assert.equal(after.header.intro, "Edited intro.");
 
   // A new draft over the published layer leaves the public page on the published one.
   const again = await editor.save("save-draft", { ...renamed, leader: { role: "Chair" } }, await rowsOf(store));
   assert.ok(again.ok);
   assert.equal(statusOf(again.value.layer), "draft-changes");
-  assert.equal((await publicPage(store)).orgChart.leader.role, "President");
-  assert.equal((await editor.open())?.page.orgChart.leader.role, "Chair");
+  assert.equal((await publicPage(store)).orgChart.leader?.role, "President");
+  assert.equal((await editor.open())?.page.orgChart.leader?.role, "Chair");
 });
 
 test("Save draft and Publish write the layer and the advisors together, and answer both as stored", async () => {
@@ -99,7 +99,7 @@ test("Save draft and Publish write the layer and the advisors together, and answ
   assert.equal(statusOf(saved.value.layer), "published");
   assert.deepEqual(saved.value.advisors, await store.advisors());
   assert.ok(saved.value.advisors.some((a) => a.version.state === "published" && a.version.published.name === "Prof. Ada Rossi"));
-  assert.equal((await publicPage(store)).orgChart.leader.role, "President");
+  assert.equal((await publicPage(store)).orgChart.leader?.role, "President");
 });
 
 test("Reset to team is a draft with only the intro text and the group photo kept; the public page changes on Publish", async () => {
@@ -111,14 +111,14 @@ test("Reset to team is a draft with only the intro text and the group photo kept
   const reset = await editor.reset();
   assert.ok(reset.ok);
   assert.equal(statusOf(reset.value), "draft-changes");
-  assert.equal((await publicPage(store)).orgChart.leader.role, "President", "the live page keeps the published layer");
+  assert.equal((await publicPage(store)).orgChart.leader?.role, "President", "the live page keeps the published layer");
   assert.deepEqual(await store.advisors(), advisorsBefore, "Reset to team never reaches the advisors");
   const opened = await editor.open();
   assert.deepEqual(opened?.layer, { ...NO_TEAM_LAYER, intro: "Edited intro.", groupPhoto: layer.groupPhoto });
 
   assert.ok((await editor.save("publish", opened!.layer, await rowsOf(store))).ok);
   const live = await publicPage(store);
-  assert.equal(live.orgChart.leader.role, teamPageFromRoles(roles, team)?.orgChart.leader.role);
+  assert.equal(live.orgChart.leader?.role, teamPageFromRoles(roles, team)?.orgChart.leader.role);
   assert.equal(live.header.intro, "Edited intro.");
   assert.deepEqual(live.coreMembers.groupPhoto, layer.groupPhoto);
 });
@@ -314,7 +314,7 @@ test("an uploaded photo is stored and saved on a person and an advisor, and show
   assert.ok(published.ok, "the layer and the advisor rows take the uploaded src");
   // As /about/the-team reads it (./team-data.ts): the published layer, then the published advisors.
   const live = withAdvisors(await publicPage(store), publicAdvisors(await store.advisors()));
-  assert.equal(live.orgChart.leader.photo, STORED);
+  assert.equal(live.orgChart.leader?.photo, STORED);
   assert.equal(live.advisors.people[0]?.photo, STORED);
 });
 

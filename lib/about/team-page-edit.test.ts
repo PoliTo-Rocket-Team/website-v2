@@ -42,14 +42,14 @@ test("Back to the team record removes that spot's edits and leaves every other e
   layer = withSpotEdit(layer, "leader", editOfFields(build, "leader", { ...leaderFields, role: "President" }));
   layer = withSpotEdit(layer, arcSpot, editOfFields(build, arcSpot, withPerson(build, arcFields, someoneElse.id)));
   const edited = editedTeamPage(build, team, layer).page;
-  assert.equal(edited.orgChart.leader.role, "President");
-  assert.equal(edited.orgChart.leaders[0].name, someoneElse.name);
+  assert.equal(edited.orgChart.leader?.role, "President");
+  assert.equal(edited.orgChart.leaders[0]?.name, someoneElse.name);
 
   const back = backToTeamRecord(layer, arcSpot);
   assert.deepEqual(back.spots, {}, "the spot holds no edit");
   const page = editedTeamPage(build, team, back).page;
   assert.deepEqual(page.orgChart.leaders, fromRoles.orgChart.leaders, "the arc shows the roles again");
-  assert.equal(page.orgChart.leader.role, "President", "the leader's edit stays");
+  assert.equal(page.orgChart.leader?.role, "President", "the leader's edit stays");
   assert.equal(page.header.intro, "Edited intro.");
 
   assert.deepEqual(backToTeamRecord(back, "leader").leader, {});

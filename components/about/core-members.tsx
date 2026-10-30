@@ -99,53 +99,58 @@ export function CoreMembers({
           <div className="mt-6 md:mt-10">{photoFrame(<div className={PHOTO_BOX}>{photo}</div>)}</div>
         )}
 
-        <div className="mt-6 flex items-center justify-between gap-6 md:mt-10">
-          <div className="relative w-full md:max-w-[360px]">
-            <label htmlFor={searchId} className="sr-only">
-              Search members by name or role
-            </label>
-            <Search aria-hidden className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
-            <Input
-              id={searchId}
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by name or role"
-              autoComplete="off"
-              className="h-11 rounded-lg border-white-10 bg-white-5 pl-11 text-[15px] text-prt-text ring-offset-ground placeholder:text-prt-muted focus-visible:ring-1 focus-visible:ring-prt-text/60 focus-visible:ring-offset-0 md:text-[15px]"
-            />
-          </div>
-          <p aria-hidden className="hidden shrink-0 font-mono text-[11px] tracking-[0.2em] text-dim md:block">
-            A – Z
-          </p>
-        </div>
+        {/* With no core member (ADR 0019 Decision 9) the section is its photo alone: nothing to search or list. */}
+        {total > 0 && (
+          <>
+            <div className="mt-6 flex items-center justify-between gap-6 md:mt-10">
+              <div className="relative w-full md:max-w-[360px]">
+                <label htmlFor={searchId} className="sr-only">
+                  Search members by name or role
+                </label>
+                <Search aria-hidden className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
+                <Input
+                  id={searchId}
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search by name or role"
+                  autoComplete="off"
+                  className="h-11 rounded-lg border-white-10 bg-white-5 pl-11 text-[15px] text-prt-text ring-offset-ground placeholder:text-prt-muted focus-visible:ring-1 focus-visible:ring-prt-text/60 focus-visible:ring-offset-0 md:text-[15px]"
+                />
+              </div>
+              <p aria-hidden className="hidden shrink-0 font-mono text-[11px] tracking-[0.2em] text-dim md:block">
+                A – Z
+              </p>
+            </div>
 
-        <p aria-live="polite" className="sr-only">
-          {searching ? `${shown.length} of ${total} members match` : ""}
-        </p>
+            <p aria-live="polite" className="sr-only">
+              {searching ? `${shown.length} of ${total} members match` : ""}
+            </p>
 
-        {shown.length > 0 ? (
-          <ul className="mt-4 grid grid-cols-1 md:mt-6 md:grid-cols-2 md:gap-x-8 lg:grid-cols-4">
-            {shown.map((m, i) => (
-              <MemberRow key={m.name} member={m} hiddenClass={hiddenClassOf(i)} />
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-8 text-[15px] text-prt-muted">No member matches that search.</p>
-        )}
+            {shown.length > 0 ? (
+              <ul className="mt-4 grid grid-cols-1 md:mt-6 md:grid-cols-2 md:gap-x-8 lg:grid-cols-4">
+                {shown.map((m, i) => (
+                  <MemberRow key={m.name} member={m} hiddenClass={hiddenClassOf(i)} />
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-8 text-[15px] text-prt-muted">No member matches that search.</p>
+            )}
 
-        {!everyone && (
-          <div className="mt-8 flex justify-center md:mt-10">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowAll(true)}
-              className="h-12 w-full rounded-full border-white-10 bg-transparent px-6 text-[15px] font-medium text-prt-text hover:border-border-strong hover:bg-transparent hover:text-prt-text focus-visible:ring-1 focus-visible:ring-prt-text/60 focus-visible:ring-offset-0 md:w-auto"
-            >
-              Show all {total} members
-              <ChevronDown aria-hidden strokeWidth={1.75} />
-            </Button>
-          </div>
+            {!everyone && (
+              <div className="mt-8 flex justify-center md:mt-10">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowAll(true)}
+                  className="h-12 w-full rounded-full border-white-10 bg-transparent px-6 text-[15px] font-medium text-prt-text hover:border-border-strong hover:bg-transparent hover:text-prt-text focus-visible:ring-1 focus-visible:ring-prt-text/60 focus-visible:ring-offset-0 md:w-auto"
+                >
+                  Show all {total} members
+                  <ChevronDown aria-hidden strokeWidth={1.75} />
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </section>

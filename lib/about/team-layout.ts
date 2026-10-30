@@ -27,7 +27,7 @@ import {
   type TeamPageLayer,
 } from "./team-layer";
 import { byName, personOf, titleOf, type TeamPerson } from "./team-person";
-import { carouselOf, coreMembersOf, teamBuildOf, teamPageOf, type TeamRoles } from "./team-roles";
+import { carouselOf, coreMembersOf, drawnTeamPage, teamBuildOf, type TeamRoles } from "./team-roles";
 import type { DepartmentHead, DivisionLead, Leader, Member, Person, PersonPhoto, TeamPage } from "./types";
 
 // The Team page's own layout (epic #835, issue #849): the places the page
@@ -280,17 +280,18 @@ export function resolveLayout(layout: TeamLayout, roles: TeamRoles): ResolvedTea
 
 /**
  * The Team page `layout` draws on `roles`, with the layer's intro text,
- * figures and group photo, onto `base` for everything else (`teamPageOf`).
- * Null when a section the page always draws is empty.
+ * figures and group photo, onto `base` for everything else
+ * (`drawnTeamPage`). A section no drawn place fills is drawn empty, never
+ * from `base` (ADR 0019 Decision 9).
  */
 export function layoutPageOf(
   roles: TeamRoles,
   layout: TeamLayout,
   text: Pick<TeamPageLayer, "intro" | "figures" | "groupPhoto">,
   base: TeamPage,
-): TeamPage | null {
+): TeamPage {
   const resolved = resolveLayout(layout, roles);
-  return teamPageOf(
+  return drawnTeamPage(
     resolved,
     {
       ...resolved,
