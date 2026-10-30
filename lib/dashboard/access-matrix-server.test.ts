@@ -606,6 +606,16 @@ const ACTION_CASES: readonly ActionCase[] = [
     may: changesDM("members"),
     control: by("team leader"),
   },
+  // Link login (issue #860): DM's person's real address signed in on its own, as an empty login.
+  {
+    action: "team-actions.linkLogin",
+    run: async () => (
+      await addRows(betterAuthUsers, [{ id: "login-dm", name: "Person DM", email: "real.person-dm@example.com", emailVerified: true }]),
+      teamActions.linkLogin({ memberId: IDS.person(DM), fromUserId: "person-dm", loginUserId: "login-dm" })
+    ),
+    may: fullAccess,
+    control: by("team leader"),
+  },
   {
     action: "team-actions.setMemberPhoto",
     run: () => teamActions.setMemberPhoto(IDS.person(DM), form({ photo: PHOTO() })),

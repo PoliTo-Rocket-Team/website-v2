@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, Lock, Mail, MailX, Upload, UserMinus, UserPlus, X } from "lucide-react";
+import { AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, Link2, Lock, Mail, MailX, Upload, UserMinus, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { addMember, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
+import { addMember, findForAdd, linkLogin, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
+import { loginLinkQuestion, type LoginLinkOffer } from "@/lib/dashboard/sign-in-email";
 import { cancelAliasRequest, removeTeamAddress, requestAlias, requestTeamAddress } from "@/app/dashboard/actions";
 import { ALIAS_FORM_HINT, aliasPrefill, checkAliasAddress, personalRequestChoice, TEAM_DOMAIN, type MemberAlias } from "@/lib/dashboard/alias-request";
 import type { Permission } from "@/lib/dashboard/team";
@@ -1018,8 +1019,10 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   const [asking, setAsking] = useState<Asking | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
+  // An empty login already holds the corrected email: Save asks to link it, then saves again (issue #860).
+  const [linkOffer, setLinkOffer] = useState<{ readonly offer: LoginLinkOffer; readonly answer: HeadMoveAnswer | null } | null>(null);
 
-  const setName = (key: keyof PersonName, value: string) => {
+  const setName =(key: keyof PersonName, value: string) => {
     setNames((n) => (n === null ? n : { ...n, [key]: value }));
     setErrors((errs) => ({ ...errs, [key]: undefined }));
   };
@@ -1054,6 +1057,11 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         input,
       );
       if (!result.ok) {
+        if ("offer" in result) {
+          setConfirming(false);
+          setLinkOffer({ offer: result.offer, answer });
+          return;
+        }
         toast.error("Could not save the details", { description: result.error });
         return;
       }
@@ -1092,6 +1100,28 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
     } finally {
       setPending(false);
     }
+  };
+
+  /** Link login: the empty login takes the record, then Save runs again, now on an address that row already holds. */
+  const link = async () => {
+    if (linkOffer === null) return;
+    const { offer, answer } = linkOffer;
+    setPending(true);
+    try {
+      const linked = await linkLogin({ memberId: offer.memberId, fromUserId: offer.fromUserId, loginUserId: offer.loginUserId });
+      setLinkOffer(null);
+      if (!linked.ok) {
+        toast.error("Could not link the login", { description: linked.error });
+        return;
+      }
+    } catch (err) {
+      setLinkOffer(null);
+      toast.error("Could not link the login", { description: err instanceof Error ? err.message : "Please try again." });
+      return;
+    } finally {
+      setPending(false);
+    }
+    await save(answer);
   };
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
@@ -1291,7 +1321,49 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
           onConfirm={(answer) => void save(answer)}
         />
       )}
+      {linkOffer !== null && (
+        <LinkLoginConfirm offer={linkOffer.offer} member={name} pending={pending} onCancel={() => setLinkOffer(null)} onConfirm={() => void link()} />
+      )}
     </>
+  );
+}
+
+/**
+ * The confirmation Save opens when the corrected sign-in email is an empty
+ * login's (issue #860): that login first signed in with no team record, and
+ * Link login gives it this member's record. Cancel keeps the form as it is.
+ */
+function LinkLoginConfirm({
+  offer,
+  member,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  offer: LoginLinkOffer;
+  member: string;
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const { title, description } = loginLinkQuestion(offer, member, new Date().getFullYear());
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(next) => !next && onCancel()}
+      icon={<Link2 className="h-5 w-5" strokeWidth={1.75} />}
+      title={title}
+      description={
+        <>
+          <p>{description}</p>
+          <p className="mt-2">They see their own dashboard the next time they sign in with it. Their old account, which never signed in, is closed.</p>
+        </>
+      }
+      cancelLabel="Cancel"
+      confirmLabel="Link login"
+      pending={pending}
+      onConfirm={onConfirm}
+    />
   );
 }
 

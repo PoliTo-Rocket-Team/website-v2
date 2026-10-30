@@ -46,6 +46,7 @@ Call sites, by action:
 | Confirm join (Members banner) | `ConfirmDialog` in [members.tsx](../components/dashboard/members.tsx) |
 | Withdraw application, confirm interview time (applicant) | `ConfirmDialog` in [my-applications.tsx](../components/dashboard/my-applications.tsx) |
 | Move to alumni | `ConfirmDialog` in [member-drawer.tsx](../components/dashboard/member-drawer.tsx) |
+| Link login (Edit details, an empty login's email) | `ConfirmDialog` in [member-panels.tsx](../components/dashboard/member-panels.tsx) |
 | Leave the team | `ConfirmDialog` in [my-profile.tsx](../components/dashboard/my-profile.tsx) |
 | Delete account (type DELETE) | `ConfirmDialog` in [account-parts.tsx](../components/dashboard/account-parts.tsx) |
 | Cancel order request | `ConfirmDialog` in [division-orders.tsx](../components/dashboard/division-orders.tsx) |

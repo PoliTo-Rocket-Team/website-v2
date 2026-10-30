@@ -4,14 +4,14 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import * as teamActions from "@/app/dashboard/team-actions";
 import { betterAuthUsers, teamJoins, users } from "@/db/schema";
-import { addRows, databaseWrites, logRowsSinceSeed, tableRows } from "./access-matrix/test-database";
+import { addRows, changeRows, databaseWrites, logRowsSinceSeed, tableRows, writesByTransaction } from "./access-matrix/test-database";
 import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 import type { DashboardData } from "./data";
 import type { DetailsTarget } from "./division-members";
 import { membersModelOf } from "./members-view";
 import { openDashboard } from "./open";
-import { SIGN_IN_EMAIL_REFUSALS } from "./sign-in-email";
+import { LOGIN_LINK_REFUSALS, loginLinkQuestion, SIGN_IN_EMAIL_REFUSALS, takenBy, type LoginLinkOffer } from "./sign-in-email";
 
 // Correcting a sign-in email in Edit details (issue #741), on the migrated
 // in-memory Postgres the access matrix uses (./access-matrix/test-database.ts).
@@ -145,13 +145,138 @@ describe("a correction is checked before anything is written (issue #741)", () =
     assert.deepEqual(writes, []);
   });
 
-  test("an address another user row holds, in any case, is refused: a member, someone waiting, or an account", async () => {
-    for (const taken of ["LEAD-MA@mail.test", "join-oa@mail.test", "appl-dm@mail.test"]) {
+  test("an address another user row holds, in any case, is refused naming who: a member, someone waiting, or an account", async () => {
+    for (const [taken, holder] of [
+      ["LEAD-MA@mail.test", "Lead MA"],
+      ["join-oa@mail.test", "Joiner OA"],
+      ["appl-dm@mail.test", "Applicant appl-dm"],
+    ]) {
       await seedFixture();
       const { answer, writes } = await save("operations lead", PERSON, taken);
-      assert.deepEqual(answer, { ok: false, error: SIGN_IN_EMAIL_REFUSALS.taken }, taken);
+      assert.deepEqual(answer, { ok: false, error: takenBy(holder) }, taken);
       assert.deepEqual(writes, [], `${taken}: nothing written`);
     }
+  });
+});
+
+describe("Edit details links an empty login to the member it belongs to (issue #860)", () => {
+  const LOGIN_USER = "login-ma";
+  const REAL = "real.person@example.com";
+  const MEMBER = PERSON.id;
+
+  /**
+   * A fresh database where the person's real address signed in on its own:
+   * the sync trigger made a second user row with no member record. Their
+   * imported row carries an access grant the login lacks; the login already
+   * has a phone of its own.
+   */
+  async function seededEmptyLogin(): Promise<void> {
+    await seedFixture();
+    await changeRows(users, { id: PERSON_USER }, { phone: "+39 333 111 1111", country: "Italy", access: ["members"] });
+    await addRows(betterAuthUsers, [{ id: LOGIN_USER, name: "Person MA", email: REAL, emailVerified: true, createdAt: new Date("2026-10-20T09:00:00Z") }]);
+    await changeRows(users, { id: LOGIN_USER }, { phone: "+39 333 222 2222" });
+  }
+
+  const userRow = async (userId: string) => (await tableRows(users)).find((u) => u.id === userId);
+
+  /** Save as full access with the real address: the offer Link login confirms. */
+  async function offer(): Promise<LoginLinkOffer> {
+    const { answer, writes } = await save("operations lead", PERSON, REAL);
+    assert.deepEqual(writes, [], "Save wrote nothing");
+    assert.equal(answer.ok, false);
+    assert.ok("offer" in answer, "Save answers the offer instead of the taken refusal");
+    return answer.offer;
+  }
+
+  async function link(viewer: string, sent: LoginLinkOffer) {
+    signInAs(accountOf(viewer).userId);
+    const answer = await teamActions.linkLogin({ memberId: sent.memberId, fromUserId: sent.fromUserId, loginUserId: sent.loginUserId });
+    return { answer, writes: await databaseWrites() };
+  }
+
+  test("Save offers the login, with the day it first signed in, and the confirmation asks to link it to the member", async () => {
+    await seededEmptyLogin();
+    const sent = await offer();
+    assert.deepEqual(sent, { memberId: MEMBER, fromUserId: PERSON_USER, loginUserId: LOGIN_USER, email: REAL, firstSignIn: "2026-10-20" });
+    assert.deepEqual(loginLinkQuestion(sent, "Person MA", 2026), {
+      title: "Link that login to Person MA?",
+      description: `${REAL} already signed in on 20 Oct with no team record.`,
+    });
+  });
+
+  test("Link login moves the record onto the login in one audited batch, fills its empty fields, and closes the old row", async () => {
+    await seededEmptyLogin();
+    const sent = await offer();
+    const { answer } = await link("operations lead", sent);
+    assert.deepEqual(answer, { ok: true });
+    const login = await userRow(LOGIN_USER);
+    assert.equal(login?.member, MEMBER, "the login holds the member record");
+    assert.equal(login?.firstName, "Person", "an empty field takes the record row's value");
+    assert.equal(login?.lastName, "MA");
+    assert.equal(login?.country, "Italy");
+    assert.equal(login?.phone, "+39 333 222 2222", "a field the login already has stays its own");
+    assert.deepEqual(login?.access, ["members"], "the grant the login lacked comes with the record");
+    const old = await userRow(PERSON_USER);
+    assert.ok(old !== undefined, "the old row is not deleted");
+    assert.equal(old.member, null, "the old row no longer holds the record");
+    assert.notEqual(old.deletedAt, null, "the old row is closed");
+    assert.equal((await writesByTransaction()).length, 1, "one batch");
+    const logged = (await logRowsSinceSeed()).filter((r) => r.tableName === "users");
+    assert.deepEqual(new Set(logged.map((r) => r.recordId)), new Set([LOGIN_USER, PERSON_USER]));
+    assert.ok(logged.every((r) => r.changedBy === accountOf("operations lead").userId), "in the activity log under the viewer");
+    // Save again: the address is now the record row's own, so the rest of the form saves.
+    assert.deepEqual((await save("operations lead", PERSON, REAL)).answer, { ok: true });
+    assert.equal((await userRow(LOGIN_USER))?.email, REAL);
+  });
+
+  test("an address held by an account that has a member record keeps the refusal, naming who", async () => {
+    await seededEmptyLogin();
+    await changeRows(users, { id: LOGIN_USER }, { member: IDS.lead("MA"), firstName: "Lead", lastName: "Twice" });
+    const { answer, writes } = await save("operations lead", PERSON, REAL);
+    assert.deepEqual(answer, { ok: false, error: takenBy("Lead Twice") });
+    assert.deepEqual(writes, []);
+  });
+
+  test("Link login refuses, writing nothing, when either row changed since the confirmation opened", async () => {
+    const changes: readonly (readonly [string, () => Promise<void>])[] = [
+      ["the login took a record", () => changeRows(users, { id: LOGIN_USER }, { member: IDS.lead("MA") })],
+      ["the login was closed", () => changeRows(users, { id: LOGIN_USER }, { deletedAt: new Date().toISOString() })],
+      ["the record moved off its row", () => changeRows(users, { id: PERSON_USER }, { member: null })],
+      [
+        "the record's row signed in",
+        async () => addRows(betterAuthUsers, [{ id: PERSON_USER, name: "Person MA", email: "person-ma@mail.test", emailVerified: true }]),
+      ],
+    ];
+    for (const [change, apply] of changes) {
+      await seededEmptyLogin();
+      const sent = await offer();
+      await apply();
+      const before = await tableRows(users);
+      const { answer, writes } = await link("operations lead", sent);
+      assert.deepEqual(answer, { ok: false, error: LOGIN_LINK_REFUSALS.changed }, change);
+      assert.deepEqual(writes, [], `${change}: nothing written`);
+      assert.deepEqual(await tableRows(users), before, change);
+    }
+  });
+
+  test("only full access may link: every other viewer is refused, writing nothing", async () => {
+    for (const viewer of [...MAY_EDIT_DETAILS_ONLY, "member"]) {
+      await seededEmptyLogin();
+      const sent = await offer();
+      const { answer, writes } = await link(viewer, sent);
+      // A plain member does not reach the Members page at all; the others reach it and are refused the link.
+      if (viewer === "member") assert.equal(answer.ok, false, viewer);
+      else assert.deepEqual(answer, { ok: false, error: LOGIN_LINK_REFUSALS.notFullAccess }, viewer);
+      assert.deepEqual(writes, [], `${viewer}: nothing written`);
+      assert.equal((await userRow(LOGIN_USER))?.member, null, viewer);
+    }
+  });
+
+  test("someone waiting has no record to link, so the address stays refused", async () => {
+    await seededEmptyLogin();
+    const { answer, writes } = await save("operations lead", WAITING, REAL);
+    assert.deepEqual(answer, { ok: false, error: takenBy(null) });
+    assert.deepEqual(writes, []);
   });
 });
 
