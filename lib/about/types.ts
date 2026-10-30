@@ -114,7 +114,7 @@ export type CoreMembers = {
   title: string;
   /** A photo in public/team/, or one uploaded in the Team page editor (issue #510). */
   groupPhoto: { src: PersonPhoto; alt: string };
-  /** None while the stored layout shows everyone with an active role (ADR 0019 Decision 9): the section then draws its group photo alone. */
+  /** None while the stored layout shows everyone with an active role (ADR 0019 Decision 9): the section then draws its heading and group photo alone. */
   members: readonly Member[];
 };
 

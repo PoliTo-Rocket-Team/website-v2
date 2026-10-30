@@ -99,7 +99,7 @@ export function CoreMembers({
           <div className="mt-6 md:mt-10">{photoFrame(<div className={PHOTO_BOX}>{photo}</div>)}</div>
         )}
 
-        {/* With no core member (ADR 0019 Decision 9) the section is its photo alone: nothing to search or list. */}
+        {/* With no core member (ADR 0019 Decision 9) the section is its heading and photo alone: nothing to search or list. */}
         {total > 0 && (
           <>
             <div className="mt-6 flex items-center justify-between gap-6 md:mt-10">
