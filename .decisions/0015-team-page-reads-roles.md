@@ -10,7 +10,7 @@ tags: [team, about, dashboard, content]
 
 **What this decides:** `/about/the-team` builds who leads, the departments and the core members from the team's roles in the database, so a title saved on the member panel reaches the public page. How the page presents people beyond that is a separate visual layer (epic #259), which never writes roles.
 
-**Status:** Decisions 1, 2 and 3, the first binding constraint's department-kind exception and the second binding constraint are superseded by [ADR 0019](0019-team-page-stored-layout.md): the page renders its own stored layout of page seats bound to team seats. Decisions 4, 5 and 6 (contacts, read path, and the advisors, intro text, figures and group photo stores), the photo-backfill exception and the third binding constraint stay in force.
+**Status:** Decisions 1, 2 and 3, the first binding constraint's department-kind exception, and the second and third binding constraints are superseded by [ADR 0019](0019-team-page-stored-layout.md): the page renders its own stored layout of page seats bound to team seats. Under 0019 a seat with no holder is hidden and never swaps the page to the hand-typed record; that record is read whole only where no stored layout can be read (no database). Decisions 4, 5 and 6 (contacts, read path, and the advisors, intro text, figures and group photo stores) and the photo-backfill exception stay in force.
 
 ## Context
 
