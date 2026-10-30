@@ -674,9 +674,9 @@ export function PeoplePicker({
     mode === "leader"
       ? "Search anyone in the team. They become Team Leader when you save and keep their roles."
       : mode === "head"
-        ? `Search anyone in the team. They head ${short} and keep their divisions.`
+        ? `Search anyone in the team. They head ${short} and keep their roles and divisions.`
         : mode === "seat"
-          ? `Search anyone in the team. They hold ${short} and keep their divisions.`
+          ? `Search anyone in the team. They hold ${short} and keep their roles and divisions.`
         : mode === "lead"
           ? `Search anyone in the team. They join ${short} as a lead and keep their other divisions.`
           : newEmail !== null
@@ -729,9 +729,12 @@ export function PeoplePicker({
   );
 }
 
-/** A picker row's line: their role, and in a head or seat picker a seat they keep reads "Already Head of Propulsion" (issue #837). */
+/**
+ * A picker row's line: their role, and in a head or seat picker every seat
+ * they keep reads "Already Head of Propulsion · Advisor" (issues #837, #857).
+ */
 function pickLine(mode: "lead" | "member" | "head" | "leader" | "seat", pick: TeamPick): string {
-  return pick.seated && (mode === "head" || mode === "seat") ? `Already ${pick.role}` : pick.role;
+  return pick.seats.length > 0 && (mode === "head" || mode === "seat") ? `Already ${pick.seats.join(" · ")}` : pick.role;
 }
 
 /** "Also in Structures · Design & Manufacturing", else their title here (board 68b). */

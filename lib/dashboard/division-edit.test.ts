@@ -265,3 +265,17 @@ test("the pickers search the whole team, the team leader, board and heads includ
   assert.ok(narrowed.kind === "people" && narrowed.people.length < team.length && narrowed.people.every((p) => p.name.toLowerCase().includes("l")));
   assert.equal(plan({ name: "Flight Dynamics", code: "FD", newLeads: [3], emails: ["sara@prt.it"] }, { kind: "new", departmentId: 1 }).ok, false, "a team address is a person, not a new email");
 });
+
+test("a picked person carries every seat they hold, not only the first (#857)", () => {
+  const twoSeats = person(9, "Giulia Ferri", [[1, "member"]], [
+    { kind: "head", departmentId: 2, title: "Head of Structures" },
+    { kind: "advisor", departmentId: 1 },
+  ]);
+  const found = searchTeam("giulia", [twoSeats], org);
+  assert.ok(found.kind === "people");
+  assert.deepEqual(found.people[0].seats, ["Head of Structures", "Advisor"]);
+  assert.equal(found.people[0].role, "Head of Structures", "their role is still the first seat");
+  const unseated = searchTeam("sara", team, org);
+  assert.ok(unseated.kind === "people");
+  assert.deepEqual(unseated.people[0].seats, [], "a member with no seat carries none");
+});

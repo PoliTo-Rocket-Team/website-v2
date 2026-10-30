@@ -433,16 +433,17 @@ export type TeamPick = {
   readonly photoUrl: string | null;
   /** "Aerodynamics · Mission Analysis": their home division and its department; null when they are in none. */
   readonly place: string | null;
-  /** "Member", "Lead · Parachutes" for someone who leads a division, or their seat: "Team Leader", "Head of Recovery". */
+  /** "Member", "Lead · Parachutes" for someone who leads a division, or their first seat: "Team Leader", "Head of Recovery". */
   readonly role: string;
   readonly divisionIds: readonly number[];
   /**
-   * They hold a role beyond every division (team leader, board seat, head,
-   * advisor). It never blocks a pick (Owner decision, issue #837): a head or
-   * seat picker shows it on their row as information ("Already Head of
-   * Propulsion"), and only the holder of the very seat being filled is refused.
+   * The title of every role they hold beyond every division (team leader,
+   * board seat, head, advisor); empty when they hold none. A seat never blocks
+   * a pick (Owner decision, issue #837): a head or seat picker shows them all
+   * on their row as information ("Already Head of Propulsion · Advisor", issue
+   * #857), and only the holder of the very seat being filled is refused.
    */
-  readonly seated: boolean;
+  readonly seats: readonly string[];
 };
 
 /** What a picker's field finds as the actor types. */
@@ -460,16 +461,17 @@ function pickOf(person: FoundPerson, org: OrgChart): TeamPick {
   const department = org.departments.find((d) => d.id === org.divisions.find((v) => v.id === home)?.departmentId);
   const led = person.memberships.find((m) => m.role === "lead");
   const ledLabel = led ? label(led.divisionId) : null;
-  const [seat] = person.beyond;
+  const seats = person.beyond.map((seat) => beyondTitle(seat, org));
+  const [seat] = seats;
   return {
     id: person.id,
     name: person.name,
     email: person.emails[0] ?? "",
     photoUrl: person.photoUrl,
     place: home === null || !department ? null : `${department.name} · ${label(home)}`,
-    role: seat !== undefined ? beyondTitle(seat, org) : ledLabel === null ? "Member" : `Lead · ${ledLabel}`,
+    role: seat ?? (ledLabel === null ? "Member" : `Lead · ${ledLabel}`),
     divisionIds: person.memberships.map((m) => m.divisionId),
-    seated: seat !== undefined,
+    seats,
   };
 }
 
