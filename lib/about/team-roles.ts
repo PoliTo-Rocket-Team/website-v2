@@ -16,6 +16,8 @@ import {
   NO_TEAM_LAYER,
   type BuiltDepartment,
   type BuiltLeader,
+  type DrawnDepartment,
+  type DrawnTeam,
   type ShownDepartment,
   type ShownTeam,
   type TeamBuild,
@@ -168,8 +170,19 @@ export function teamBuildOf(roles: TeamRoles): TeamBuild {
   const carousel = carouselOf(departments).flatMap((slide) =>
     slide.places.flatMap((place) => (place.kind === "head" ? [place.head.person, ...place.leads.map((l) => l.person)] : [place.lead.person])),
   );
-  const shown = new Set([leaderPerson, ...arc.slice(0, ARC_LEADERS).map((l) => l.person), ...carousel].map((p) => p?.id));
-  const core = roles.people
+  const shown = new Set([leaderPerson, ...arc.slice(0, ARC_LEADERS).map((l) => l.person), ...carousel].flatMap((p) => p?.id ?? []));
+  return {
+    people: roles.people,
+    leader: leaderPerson === undefined ? null : { person: leaderPerson, role: titleOf(leaderPerson) ?? "Team Leader" },
+    arc,
+    departments,
+    core: coreMembersOf(roles.people, shown),
+  };
+}
+
+/** The core members: everyone in `people` whose id `shown` does not hold, by name, with their title. */
+export function coreMembersOf(people: readonly TeamPerson[], shown: ReadonlySet<number>): Member[] {
+  return people
     .filter((p) => !shown.has(p.id))
     .sort(byName)
     .map((p): Member => {
@@ -182,17 +195,10 @@ export function teamBuildOf(roles: TeamRoles): TeamBuild {
         ...(linkedin !== undefined && { linkedin }),
       };
     });
-  return {
-    people: roles.people,
-    leader: leaderPerson === undefined ? null : { person: leaderPerson, role: titleOf(leaderPerson) ?? "Team Leader" },
-    arc,
-    departments,
-    core,
-  };
 }
 
 /** The shown departments as carousel slides, each named by its kind. */
-function slidesOf(departments: readonly ShownDepartment[]): DepartmentGroup[] {
+function slidesOf(departments: readonly DrawnDepartment[]): DepartmentGroup[] {
   return carouselOf(departments).map((slide) => ({
     name: SLIDE_NAMES[slide.kind],
     members: upTo(
@@ -240,7 +246,7 @@ export function headsShown(shown: ShownTeam): number {
 export type TeamPageSection = "leader" | "arc" | "departments" | "core";
 
 /** The page `shown` lays out, or the first section the page always draws that it leaves empty. */
-function laidOut(build: TeamBuild, shown: ShownTeam, base: TeamPage): { readonly page: TeamPage } | { readonly empty: TeamPageSection } {
+function laidOut(build: Pick<TeamBuild, "core">, shown: DrawnTeam, base: TeamPage): { readonly page: TeamPage } | { readonly empty: TeamPageSection } {
   const leaders = upTo(
     shown.leaders.map((l) => l.shown),
     ARC_LEADERS,
@@ -265,7 +271,7 @@ function laidOut(build: TeamBuild, shown: ShownTeam, base: TeamPage): { readonly
  * onto `base` (the hand-typed ./team.ts) for everything else. Null when a
  * section the page always draws is empty (`emptySectionOf`).
  */
-export function teamPageOf(build: TeamBuild, shown: ShownTeam, base: TeamPage): TeamPage | null {
+export function teamPageOf(build: Pick<TeamBuild, "core">, shown: DrawnTeam, base: TeamPage): TeamPage | null {
   const laid = laidOut(build, shown, base);
   return "page" in laid ? laid.page : null;
 }

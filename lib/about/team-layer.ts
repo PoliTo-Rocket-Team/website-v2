@@ -186,7 +186,19 @@ export type ShownTeam = {
   readonly groupPhoto: GroupPhoto | null;
 };
 
-const addedRef = (id: number): AddedRef => `added:${id}`;
+/** A department block as drawn, whatever its places are keyed by: the layer's spots or a layout's page seats (./team-layout.ts). */
+export type DrawnDepartment = Pick<ShownDepartment, "name" | "kind"> & {
+  readonly heads: readonly { readonly shown: DepartmentHead }[];
+  readonly leads: readonly { readonly shown: DivisionLead }[];
+};
+
+/** The page as drawn, whatever its places are keyed by (`DrawnDepartment`). */
+export type DrawnTeam = Pick<ShownTeam, "leader" | "intro" | "figures" | "groupPhoto"> & {
+  readonly leaders: readonly { readonly shown: Leader }[];
+  readonly departments: readonly DrawnDepartment[];
+};
+
+const addedRef =(id: number): AddedRef => `added:${id}`;
 
 function memberOf(build: TeamBuild, id: number | undefined): TeamPerson | undefined {
   return id === undefined ? undefined : build.people.find((p) => p.id === id);
@@ -439,7 +451,10 @@ const isText =
   (value) =>
     typeof value === "string" && value.trim() !== "" && textLength(value) <= max;
 const isShortText = isText(TEAM_PAGE_TEXT_MAX);
-const isPhoto: Check = (value) => typeof value === "string" && textLength(value) <= 2048 && (value.startsWith("/team/") || value.startsWith("https://"));
+/** A person's photo the page takes: one of the site's own in public/team/, or a remote https URL. */
+export const isPagePhoto = (value: unknown): value is PersonPhoto =>
+  typeof value === "string" && textLength(value) <= 2048 && (value.startsWith("/team/") || value.startsWith("https://"));
+const isPhoto: Check = isPagePhoto;
 /** A LinkedIn handle the layer takes: the part after linkedin.com/in/, with no slash, query or space. */
 export const isLinkedinHandle = (value: unknown): value is string => typeof value === "string" && /^[^/?#\s]{1,100}$/.test(value);
 const isHandle: Check = isLinkedinHandle;
