@@ -113,13 +113,35 @@ test("a viewer who may change the division gets the row actions their actor allo
 });
 
 test("a corrected sign-in email is checked like the other email fields, and its error lands on its own field (issue #741)", () => {
-  const edit = (signInEmail?: string) => checkMemberEdit({ title: "", details: NO_MEMBER_DETAILS, ...(signInEmail === undefined ? {} : { signInEmail }) });
+  const edit = (signInEmail?: string) => checkMemberEdit({ title: "", details: NO_MEMBER_DETAILS, ...(signInEmail === undefined ? {} : { signInEmail }) }, "");
   assert.deepEqual(edit(), { ok: true, value: { title: null, details: NO_MEMBER_DETAILS, name: null, signInEmail: null, landed: null } });
   assert.deepEqual(edit(" New.Person@Example.com "), {
     ok: true,
     value: { title: null, details: NO_MEMBER_DETAILS, name: null, signInEmail: "new.person@example.com", landed: null },
   });
   for (const bad of ["", "not-an-email"]) assert.deepEqual(edit(bad), { ok: false, errors: { signInEmail: "Write an email address." } }, JSON.stringify(bad));
+});
+
+// Issue #887: imported phones often have no country code, and a save that leaves the phone alone must not fail on it.
+test("Edit details keeps an unchanged phone whatever its format, and checks a changed one", () => {
+  const opened = "3890247022";
+  const edit = (phone: string, landed?: string) =>
+    checkMemberEdit(
+      { title: "", details: { ...NO_MEMBER_DETAILS, phone }, ...(landed === undefined ? {} : { landed: { details: { ...NO_MEMBER_DETAILS, phone: landed } } }) },
+      opened,
+    );
+  const kept = edit(opened);
+  assert.ok(kept.ok);
+  assert.equal(kept.value.details.phone, opened);
+  assert.ok(edit(opened, opened).ok, "a retry of the same open form after an earlier Save");
+  assert.ok(edit("+39 389 024 7022").ok);
+  assert.ok(edit("").ok);
+  assert.deepEqual(edit("3890247023"), { ok: false, errors: { phone: "Start with + and the country code." } });
+  // The phone the form opened with is the only one kept: one that opened empty checks every phone.
+  assert.deepEqual(checkMemberEdit({ title: "", details: { ...NO_MEMBER_DETAILS, phone: opened } }, ""), {
+    ok: false,
+    errors: { phone: "Start with + and the country code." },
+  });
 });
 
 // Issue #799: the "hasn't signed in yet" box names who added the person.

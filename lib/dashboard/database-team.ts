@@ -367,7 +367,8 @@ function waitingDetails(row: WaitingRow): MemberDetails {
     ...filled("birthDate", row.date_of_birth),
     ...filled("gender", row.gender),
   };
-  const checked = checkMemberEdit({ title: "", details: raw });
+  // The stored phone is what Fill details opens with, so it reads whatever its format (issue #887).
+  const checked = checkMemberEdit({ title: "", details: raw }, raw.phone);
   return checked.ok ? checked.value.details : NO_MEMBER_DETAILS;
 }
 
@@ -1098,6 +1099,23 @@ function moveWrites(db: Tx, plan: MovePlan, replacedRoles: readonly ActiveRole[]
 }
 
 /**
+ * The phone Edit details opened with for `target`, read here and never taken
+ * from the form (issue #887): the person's record as the Members page reads
+ * it (`editorViewOf`), or the stored phone of someone waiting, as Fill details
+ * reads it. A save that sends it back unchanged keeps it whatever its format.
+ */
+async function openedPhoneOf(target: DetailsTarget): Promise<string> {
+  if (target.kind === "person") return editorViewOf(await readTeamSnapshot(), target.id)?.details.phone ?? "";
+  const [join] = await getDb()
+    .select({ phone: users.phone })
+    .from(teamJoins)
+    .innerJoin(users, eq(users.id, teamJoins.userId))
+    .where(eq(teamJoins.id, target.joinId))
+    .limit(1);
+  return join?.phone ?? "";
+}
+
+/**
  * Edit details (board 61g, issue #584) for anyone the viewer may edit
  * (`rolesTheViewerChanges`): the team leader, full access and the operations
  * lead reach everyone, a head their department's people, a division lead or a
@@ -1120,7 +1138,7 @@ async function saveMemberDetails(
   divisionId: number | null,
   input: unknown,
 ): Promise<WriteResult<null>> {
-  const checked = checkMemberEdit(input);
+  const checked = checkMemberEdit(input, await openedPhoneOf(target));
   if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
   const { title, details, name, signInEmail } = checked.value;
   const columns = columnsFromMemberDetails(details);

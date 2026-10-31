@@ -121,7 +121,8 @@ function DetailsDrawer({
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const checked = parseDetailsChange(draft, editor);
+    // The phone the drawer opened with saves as it is, whatever its format (issue #887).
+    const checked = parseDetailsChange(draft, editor, details.phone);
     if (!checked.ok) return setErrors(checked.errors);
     setPending(true);
     try {

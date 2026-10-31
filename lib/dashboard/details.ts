@@ -131,10 +131,28 @@ function isPastDate(iso: string): boolean {
 /** Empty, or the rule the apply form checks the same field with (lib/apply/application-form.ts). */
 const optional = <T extends z.ZodType<string>>(rule: T) => z.union([z.literal(""), rule]);
 
+const PHONE = /^\+[0-9][0-9 ]{5,18}[0-9]$/;
+
+/**
+ * A phone as a details form sends it, checked against `opened`, the phone the
+ * form opened with (issue #887). Sent back unchanged, it is kept whatever its
+ * format: phones imported from the old roster often have no country code, and
+ * a save that leaves the phone alone must not fail on it. A changed phone is
+ * empty or starts with + and the country code. A form that opened empty
+ * passes "".
+ */
+function phoneRule(opened: string) {
+  const kept = opened.trim();
+  return z
+    .string()
+    .trim()
+    .refine((phone) => phone === "" || phone === kept || PHONE.test(phone), "Start with + and the country code.");
+}
+
 const detailsSchema = z.object({
   firstName: z.string().trim().max(100, "Too long."),
   lastName: z.string().trim().max(100, "Too long."),
-  phone: z.string().trim().pipe(optional(z.string().regex(/^\+[0-9][0-9 ]{5,18}[0-9]$/, "Start with + and the country code."))),
+  phone: phoneRule(""),
   politoId: z
     .string()
     .trim()
@@ -175,16 +193,19 @@ export function parseDetails(input: unknown): { ok: true; value: YourDetails } |
  * A save of "Your details" as the edit form sent it, checked: only the
  * fields `editor` may write are read, so anything else sent is dropped
  * before it reaches a column. The browser and the server run the same check.
+ * `openedPhone` is the phone the form opened with: the browser's own, the
+ * server's the stored `users.phone`, never one the form sends.
  */
 export function parseDetailsChange(
   input: unknown,
   editor: DetailsEditor,
+  openedPhone: string,
 ): { ok: true; value: DetailsChange } | { ok: false; errors: DetailErrors } {
   const keys = editableDetailKeys(editor);
   const picked: Record<string, unknown> = {};
   const sent = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
   for (const key of keys) picked[key] = sent[key];
-  const schema = detailsSchema.pick(Object.fromEntries(keys.map((k) => [k, true] as const)));
+  const schema = detailsSchema.extend({ phone: phoneRule(openedPhone) }).pick(Object.fromEntries(keys.map((k) => [k, true] as const)));
   // An applicant's name may wait for the apply form; a lead's is on the Team page, so it is never blank.
   const result = (editor === "lead" ? schema.extend(OWN_NAME) : schema).safeParse(picked);
   if (!result.success) return { ok: false, errors: errorsOf(result.error) };
@@ -323,10 +344,11 @@ export type MemberDetailErrors = Partial<Record<MemberDetailKey, string>>;
 /**
  * The member's details as the Edit details or Add member form sent them,
  * checked: the clean values, or one message per bad field. The browser and
- * the server run the same check.
+ * the server run the same check. `openedPhone` is the phone the form opened
+ * with, as the page reads the person's record; "" for Add member.
  */
-export function parseMemberDetails(input: unknown): { ok: true; value: MemberDetails } | { ok: false; errors: MemberDetailErrors } {
-  const result = memberDetailsSchema.safeParse(input);
+export function parseMemberDetails(input: unknown, openedPhone: string): { ok: true; value: MemberDetails } | { ok: false; errors: MemberDetailErrors } {
+  const result = memberDetailsSchema.extend({ phone: phoneRule(openedPhone) }).safeParse(input);
   if (!result.success) {
     const errors: MemberDetailErrors = {};
     for (const issue of result.error.issues) errors[issue.path[0] as MemberDetailKey] ??= issue.message;
