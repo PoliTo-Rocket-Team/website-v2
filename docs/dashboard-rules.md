@@ -66,6 +66,22 @@ An admin column comes later. **Planned**, no issue yet.
   migration 0076 dropped the one-holder indexes migration 0062 had added (#667), and changed no
   row. A hand-over or Change holder ends the holder's own row by choice, not because the database
   refuses a second one.
+- **What goes to a seat goes to every holder of it** (epic #861,
+  [#870](https://github.com/PoliTo-Rocket-Team/website-v2/issues/870)). Each rule reads the
+  viewer's own seat, never "the" holder, so with several holders each one sees and may act:
+  - every team leader decides orders, sees the orders waiting for a decision, and gives and
+    removes "Approve orders"; no team leader is given "Approve orders", since each decides by the
+    seat (see "4. Orders");
+  - every holder of an alias approver seat (the team leader, the operations lead, the IT lead)
+    sees each waiting PRT email request, team address request, routing item and removal, and
+    either holder may answer it or mark it done;
+  - a head's hand-over request goes to every team leader, and a lead's to every head of the
+    lead's department; the sender is never one of them, and either approver may answer;
+  - every other "Needs your attention" row and count meant for a seat, such as the team leader's
+    count of acceptance emails to send, is read off the viewer's own seat, so each holder gets it;
+  - a routing item for a team address that moves with a seat names a current holder of it: the
+    member the item names while they still hold the seat, else the newest holder. While the
+    address's holder still holds the seat, beside any co-holder, nothing moves.
 - **Full access** comes from the role alone, with no scope row (Owner decisions, 2026-10-11,
   #238; Owner decision, 2026-10-21, #485). Five seats hold it:
   - the **team leader**: the role of type `president`;
@@ -1120,6 +1136,7 @@ These rules come from #238 and #247 (boards 71 and 71b).
   Content or an area elsewhere on the team is a grant. Full-access seats take no other grant,
   since their role holds every area, but the team leader can give them "Approve orders" and
   remove it (#635): Give access lists them for the team leader only, and only with that checkbox.
+  Another team leader is never listed and never given it: they decide by the seat (#870).
 
 ## 4. Orders
 

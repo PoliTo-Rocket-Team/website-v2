@@ -364,6 +364,23 @@ test("the server refuses Approve orders from the operations lead and the IT lead
   assert.ok(removed.ok && removed.value.some((w) => w.approveOrders?.holds === false));
 });
 
+test("with two team leaders, each refuses Approve orders for the other and lists them nowhere in Give access (epic #861)", () => {
+  const coLeader: AccessPerson = { id: 40, name: "Marta Conti", photoUrl: null, role: { kind: "full", seat: "team-leader", title: "Team Leader" }, division: null };
+  const operations: AccessPerson = { id: 41, name: "Davide Russo", photoUrl: null, role: { kind: "full", seat: "operations-lead", title: "Operations Lead" }, division: null };
+  // The page of either team leader: the other is one of `people`, as the viewer never is.
+  const page = { ...team([], teamLeaderGives), people: [...headPeople, giulio, coLeader, operations] };
+  const refusal = { ok: false, error: "The team leader already approves orders." };
+  assert.deepEqual(checkSaveAccess(page, { personId: 40, where: "team", areas: {}, approveOrders: true }), refusal);
+  // Another full-access seat still takes it from either team leader.
+  assert.deepEqual(checkSaveAccess(page, { personId: 41, where: "team", areas: {}, approveOrders: true }), {
+    ok: true,
+    value: { personId: 41, place: WHOLE_TEAM_PLACE, changes: [], approveOrders: { personId: 41, holds: true } },
+  });
+  const listed = grantablePeople(page).map((p) => p.id);
+  assert.ok(!listed.includes(40), "the other team leader is not listed");
+  assert.ok(listed.includes(41), "the operations lead is listed for Approve orders");
+});
+
 test("Give access offers the whole team, one department or one division, every area at view or edit", () => {
   for (const where of ["team", "department-2", 3] as const) {
     for (const target of ["positions", "applications", "members", "orders"] as const) {

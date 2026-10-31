@@ -359,6 +359,16 @@ test("Approve orders goes only to someone on the team, never to the team leader,
   assert.equal(checkApproveOrdersChange(facts, { personId: "2", holds: true }).ok, false);
 });
 
+test("with two team leaders, each gives Approve orders and neither is given it (epic #861)", () => {
+  const coLeader = 15;
+  const both: ApproveOrdersFacts = { ...facts, teamLeaders: [teamLeader, coLeader] };
+  // Either team leader asks: the facts read the same, as each holds the seat.
+  assert.deepEqual(checkApproveOrdersChange(both, { personId: 2, holds: true }), { ok: true, value: { personId: 2, holds: true } });
+  for (const leader of [teamLeader, coLeader]) {
+    assert.deepEqual(checkApproveOrdersChange(both, { personId: leader, holds: true }), { ok: false, error: "The team leader already approves orders." }, `leader ${leader}`);
+  }
+});
+
 test("a page holds 12 orders, newest first, and a page past the end shows the last", () => {
   const orders = Array.from({ length: 30 }, (_, i) => order({ status: "waiting" }, `2026-09-${String(i + 1).padStart(2, "0")}`));
   const first = orderPage(orders, 1);

@@ -457,6 +457,20 @@ export function canGiveApproveOrders(seat: FullAccessSeat | null): boolean {
   return seat === "team-leader";
 }
 
+/** Whether the person holds the team leader's seat: one of its holders, as each of several is (epic #861). */
+export function isTeamLeaderPerson(person: AccessPerson): boolean {
+  return person.role.kind === "full" && person.role.seat === "team-leader";
+}
+
+/**
+ * Every holder of the team leader's seat among `people` (epic #861). Each
+ * already decides orders by the seat, so none is given "Approve orders"
+ * (`checkApproveOrdersChange`, ./orders.ts).
+ */
+export function teamLeadersIn(people: readonly AccessPerson[]): number[] {
+  return people.filter(isTeamLeaderPerson).map((p) => p.id);
+}
+
 /** Someone the team leader gave "Approve orders", with who gave it and when. */
 export type ApproveOrdersHolder = {
   readonly person: AccessPerson;
@@ -608,11 +622,13 @@ export function placesFor(unit: AccessUnit, person: AccessPerson): AccessPlace[]
  * viewer, leads and heads included, to whom the viewer can give some area in
  * some place. A full-access seat, whose role holds every area, is listed
  * only to the team leader, who can give them "Approve orders" (issue #635);
- * a co-lead whose role already holds all the viewer could give is never listed.
+ * another holder of the team leader's seat, who decides orders by it, is
+ * never listed (epic #861), and neither is a co-lead whose role already holds
+ * all the viewer could give.
  */
 export function grantablePeople(access: Pick<AccessPage, "unit" | "people" | "approveOrders">): AccessPerson[] {
   return access.people.filter((person) =>
-    (person.role.kind === "full" && access.approveOrders.canGive) ||
+    (person.role.kind === "full" && !isTeamLeaderPerson(person) && access.approveOrders.canGive) ||
     placesFor(access.unit, person).some((place) => {
       const held = heldIn(access.unit, place);
       return targetsAt(place).some((t) => heldLevel(held, t) !== null && !roleCovers(person, place, t));
@@ -728,8 +744,8 @@ function checkApproveOrders(access: AccessFacts, personId: number, holds: boolea
     {
       byTeamLeader: access.approveOrders.canGive,
       team: access.people.map((p) => p.id),
-      // The team leader is the viewer, never one of `people`.
-      teamLeaders: [],
+      // The viewer is never one of `people`; every other holder of the team leader's seat is (epic #861).
+      teamLeaders: teamLeadersIn(access.people),
       holders: access.approveOrders.holders.map((h) => h.person.id),
     },
     { personId, holds },
