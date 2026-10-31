@@ -10,12 +10,13 @@
     "preview": "next build && next start",
     "deploy": "vercel --prod",
     "upload": "vercel --prod",
-    "test": "tsx --test \"lib/**/*.test.ts\"",
+    "test": "tsx --test \"lib/**/*.test.ts\" \"scripts/**/*.test.ts\"",
     "logos:check": "tsx scripts/logos-check.ts",
     "partners:check": "tsx scripts/partners-check.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx db/migrate.ts",
     "db:seed": "tsx db/seed.ts",
+    "db:alumni-repair": "tsx scripts/alumni-repair/cli.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
