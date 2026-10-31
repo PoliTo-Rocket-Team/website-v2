@@ -3,7 +3,7 @@ import { afterEach, test } from "node:test";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { GOOGLE_ACCOUNT_REFUSAL_MESSAGES, type GoogleAccountEntry } from "./dashboard/google-accounts";
 import { LOGIN_MERGE_REFUSAL_MESSAGES, MERGE_TICKET_STATE_KEY } from "./dashboard/login-merge";
-import { BASE, envRestorer, Jar, ORIGIN, SEAT_DIRECTORY, seededMemoryDb, setEnv, TEST_ENV, type MemoryDb } from "./dev-tester-fixture";
+import { BASE, envRestorer, Jar, NO_SITE_ROWS, ORIGIN, SEAT_DIRECTORY, seededMemoryDb, setEnv, TEST_ENV, type MemoryDb } from "./dev-tester-fixture";
 import { ONLY_THROUGH_GOOGLE_SIGN_IN, type GoogleAccountLog } from "./google-accounts-plugin";
 import type { LoginMerger } from "./login-merge-plugin";
 import { seatOf } from "./seeded-accounts";
@@ -91,7 +91,13 @@ async function setUp() {
   const merges: MergeRequest[] = [];
   const holdsMember = new Set<string>();
   const { createAuth } = await import("./auth");
-  const auth = createAuth(memoryAdapter(db), OPEN_GATE, SEAT_DIRECTORY, undefined, log, standInMerger(db, merges, holdsMember));
+  const auth = createAuth(memoryAdapter(db), {
+    viewAs: OPEN_GATE,
+    testers: SEAT_DIRECTORY,
+    siteRows: NO_SITE_ROWS,
+    googleAccounts: log,
+    logins: standInMerger(db, merges, holdsMember),
+  });
   return { auth, db, google, entries, merges, holdsMember };
 }
 

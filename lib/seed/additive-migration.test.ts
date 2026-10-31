@@ -822,13 +822,49 @@ test("0076_team_page_layout.sql only adds the nullable layout column, applies ag
   assert.deepEqual(column.rows, [{ data_type: "jsonb", is_nullable: "YES" }]);
 });
 
+// The sign-in sync takes over only a free, open row (issue #910): the
+// function only refuses an email match it made before, so it changes no
+// stored row, and a row it still matches is taken over as before.
+const FREE_ROWS_TAG = "0078_sync_auth_users_skip_held_and_closed_rows";
+
+test("0078_sync_auth_users_skip_held_and_closed_rows.sql drops, renames and rewrites nothing, and its header links the issue", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${FREE_ROWS_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/910/);
+});
+
+test("0078 keeps every row, applies again, and a new login takes over a free row with its email but never a held or closed one", async () => {
+  const { db, apply } = await databaseBefore(FREE_ROWS_TAG);
+  const login = (id: string, email: string) => `insert into better_auth."user" (id, name, email, "emailVerified") values ('${id}', '${id}', '${email}', true)`;
+  await db.exec(`
+    ${login("held", "held@example.com")};
+    update users set email = 'shared@example.com' where id = 'held';
+    insert into users (id, email, first_name) values ('added:free', 'free@example.com', 'Imported');
+    insert into users (id, email, first_name, deleted_at) values ('closed', 'closed@example.com', 'Closed', now());
+  `);
+  const before = await db.query(`select * from users order by id`);
+  await apply();
+  await apply();
+  assert.deepEqual((await db.query(`select * from users order by id`)).rows, before.rows, "every row is kept");
+
+  await db.exec(`${login("second", "shared@example.com")}; ${login("returning", "free@example.com")}; ${login("reopening", "closed@example.com")};`);
+  const rows = await db.query<{ id: string; email: string; first_name: string | null }>(`select id, email, first_name from users order by id`);
+  assert.deepEqual(rows.rows, [
+    { id: "closed", email: "closed@example.com", first_name: "Closed" },
+    { id: "held", email: "shared@example.com", first_name: null },
+    { id: "reopening", email: "closed@example.com", first_name: null },
+    { id: "returning", email: "free@example.com", first_name: "Imported" },
+    { id: "second", email: "shared@example.com", first_name: null },
+  ]);
+});
+
 // The Google account's email on each linked account (epic #902, issue #906):
 // one nullable column and a fill from the login's own email, with the audit
 // trigger off for the fill alone so no token is copied into `logs`. The fill
 // is the one statement that changes rows, so the file is pinned to it.
-const ACCOUNT_EMAIL_TAG = "0078_account_google_email";
+const ACCOUNT_EMAIL_TAG = "0079_account_google_email";
 
-test("0078_account_google_email.sql adds the nullable email column and fills it, and nothing else", () => {
+test("0079_account_google_email.sql adds the nullable email column and fills it, and nothing else", () => {
   const sql = readFileSync(resolve(process.cwd(), `drizzle/${ACCOUNT_EMAIL_TAG}.sql`), "utf8");
   assert.deepEqual(nonAdditiveStatements(sql), [
     `UPDATE "better_auth"."account" SET "email" = "user"."email" FROM "better_auth"."user" WHERE "user"."id" = "account"."userId" AND "account"."email" IS NULL`,
@@ -836,7 +872,7 @@ test("0078_account_google_email.sql adds the nullable email column and fills it,
   assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/902/);
 });
 
-test("0078 fills each existing account's email from its login, copies no token into logs, keeps every other value and applies again", async () => {
+test("0079 fills each existing account's email from its login, copies no token into logs, keeps every other value and applies again", async () => {
   const { db, apply } = await databaseBefore(ACCOUNT_EMAIL_TAG);
   await db.exec(`
     insert into better_auth."user" (id, name, email, "emailVerified") values ('u-1', 'Sara Conti', 'sara@example.com', true), ('u-2', 'Luca Neri', 'luca@example.com', true);
