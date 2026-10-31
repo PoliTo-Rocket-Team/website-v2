@@ -416,7 +416,7 @@ export function divisionClosing(divisionId: number, held: readonly DivisionRow[]
 
 /** The rows of the division a plan's writes end or change, by row id. */
 export type DivisionRowWrites = {
-  /** Rows that end: the old leads who leave this division, and the replaced leads whose lead role becomes an Advisor role. */
+  /** Rows that end: the old leads who leave this division, and the lead rows of old leads who become advisors (an Advisor row they hold here stays). */
   readonly end: readonly number[];
   /** Rows that become a lead's. */
   readonly toLead: readonly number[];
@@ -434,8 +434,10 @@ export type DivisionRowWrites = {
 export function divisionRowWrites(plan: DivisionPlan, divisionId: number, held: readonly DivisionRow[]): DivisionRowWrites {
   const rows = held.filter((r) => isDivisionRole({ type: r.type, divisionId }));
   const of = (people: readonly number[]) => rows.filter((r) => people.includes(r.memberId));
+  // An old lead who becomes an advisor loses the lead role here, never an Advisor role they already hold here (issue #900).
+  const advising = of(plan.advise.map((a) => a.memberId)).filter((r) => r.type !== "advisor");
   return {
-    end: of([...plan.leaveDivision, ...plan.advise.map((a) => a.memberId)]).map((r) => r.id),
+    end: [...of(plan.leaveDivision), ...advising].map((r) => r.id),
     toLead: of(plan.promote).map((r) => r.id),
     toMember: of(plan.demote)
       .filter((r) => r.type === "lead")

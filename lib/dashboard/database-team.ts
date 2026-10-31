@@ -1419,7 +1419,10 @@ async function writeDivisionPlan(
       db.delete(scopes).where(and(eq(scopes.memberId, id), eq(scopes.scope, "division"), eq(scopes.divisionId, divisionId))),
     ),
     // An old lead's lead row ends with `rows.end`; the Advisor role starts where the editor picked (issues #253, #900).
-    ...advisors.flatMap(({ memberId, step, active }) => steppingDownWrites(db, { memberId, active }, step, [], on)),
+    // They read the roles left after this batch: a row `rows.end` ends here is no Advisor role they keep.
+    ...advisors.flatMap(({ memberId, step, active }) =>
+      steppingDownWrites(db, { memberId, active: active.filter((r) => !rows.end.includes(r.id)) }, step, [], on),
+    ),
     ...aliasAsked(db),
     ...reroutesAsked(db),
   ]);

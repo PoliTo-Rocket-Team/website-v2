@@ -75,6 +75,18 @@ describe("a division lead removed or replaced stays as an advisor where the edit
     });
   }
 
+  for (const scope of ["division", "department", "team"] as const) {
+    test(`Remove lead, ${scope}, of a lead who already advises this division: they keep that Advisor role and get none twice`, async () => {
+      await addRows(roles, [{ id: 9_602, memberId: LEAD, divisionId: DM, title: ADVISOR_TITLE, startedAt: "2025-10-01", type: "advisor" }]);
+      const saved = await teamActions.saveDivision(DM, { ...division, newLeads: [SUCCESSOR], oldLeads: [{ personId: LEAD, via: "removed", outcome: "advisor", scope }] });
+      assert.deepEqual(saved, { ok: true });
+      const advisor = (await activeOf(LEAD)).filter((r) => r.type === "advisor");
+      assert.ok(advisor.some((r) => r.id === 9_602), "the Advisor role they held in this division stays");
+      assert.equal(advisor.filter((r) => at(r, PLACES[scope])).length, 1, "one active Advisor role at the picked place");
+      assert.equal(advisor.length, scope === "division" ? 1 : 2, "no Advisor role beyond the one kept and the one picked");
+    });
+  }
+
   test("Replace lead with a scope: the replaced lead advises the department", async () => {
     const saved = await teamActions.saveDivision(DM, { ...division, newLeads: [SUCCESSOR], oldLeads: [{ personId: LEAD, via: "replaced", outcome: "advisor", scope: "department" }] });
     assert.deepEqual(saved, { ok: true });
