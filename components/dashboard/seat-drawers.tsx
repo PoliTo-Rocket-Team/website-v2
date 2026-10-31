@@ -120,6 +120,8 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
     });
 
   const error = next === null ? "Pick who takes the seat." : outcome === null ? `Choose what happens to ${holder.name}: Become an advisor or Leave the team.` : null;
+  // "next" is on exactly one control (issue #927): the open picker, Replace's or Add another holder's; with none open, Change holder or the first holder's menu.
+  const pickerOpen = adding || picking;
   const { summary, showErrors, check, refuse } = useFormSummary([
     next === null
       ? { name: "next", label: "Who takes the seat", error: error ?? undefined }
@@ -201,8 +203,8 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
                     <li key={h.id} className="flex items-center gap-3 px-3.5 py-2.5">
                       <Avatar size="md" accent person={h} />
                       <span className="min-w-0 flex-1 truncate text-[14px] text-prt-text">{h.name}</span>
-                      {/* The first holder's menu holds Replace, so a Save with nobody picked focuses it (issue #927). */}
-                      <RowMenu label={`Actions for ${h.name}`} name={i === 0 ? "next" : undefined}>
+                      {/* With no picker open, the first holder's menu holds Replace, so a Save with nobody picked focuses it (issue #927). */}
+                      <RowMenu label={`Actions for ${h.name}`} name={i === 0 && !pickerOpen ? "next" : undefined}>
                         <MenuItem onSelect={() => replace(h)} icon={<RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />} detail="The others keep the seat">
                           Replace {h.name}
                         </MenuItem>
@@ -248,6 +250,7 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
             {adding ? (
               <AddHolderPicker
                 mode="seat"
+                name="next"
                 seat={seat.title}
                 short={seat.title}
                 holders={seat.holders}

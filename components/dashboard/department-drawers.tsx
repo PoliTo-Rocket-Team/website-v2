@@ -532,6 +532,8 @@ function EditDepartment({
                   </span>
                   <button
                     type="button"
+                    // With no head picked to replace there is no hand-over choice: Undo is where the Head field points (issue #927).
+                    name={head === null ? `head-${department.id}` : undefined}
                     onClick={undoHead}
                     aria-label={`Undo picking ${newHead.name}`}
                     className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-1.5 text-[13px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}

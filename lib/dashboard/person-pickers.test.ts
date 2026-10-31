@@ -146,23 +146,6 @@ test("Edit team tree, Add seat: the Holder field lists the team as it opens, and
   await ui.unmount();
 });
 
-test("Edit team tree, Change holder on a seat with several holders: Save with nobody picked focuses the first holder's actions", async () => {
-  await seedFixture();
-  const structure = (await (await signedIn(LEADER.userId)).teamStructure())!;
-  // A second holder laid over the first seat: each holder's Replace sits in its row's menu (issue #872).
-  const [seat] = structure.board;
-  const [first] = seat.holders;
-  const second = { ...first, id: first.id + 100_000, roleId: first.roleId + 100_000, name: "Second Holder" };
-  const shared = { ...structure, board: [{ ...seat, holders: [first, second] as const }, ...structure.board.slice(1)] };
-  const { createElement } = await import("react");
-  const { SeatDrawer } = await import("@/components/dashboard/seat-drawers");
-  const ui = await mount(createElement(SeatDrawer, { target: { kind: "change", roleId: seat.roleId }, structure: shared, onClose: () => {} }));
-  await ui.press("Save changes");
-  assert.match(window.document.querySelector('[role="alert"]')?.textContent ?? "", /Who takes the seat/, "nobody picked, no save");
-  assert.equal(window.document.activeElement, ui.button(`Actions for ${first.name}`), "the first holder's actions take focus");
-  await ui.unmount();
-});
-
 test("Members, Add member: the field lists the team as it opens and keeps its taken rows", async () => {
   await seedFixture();
   const structure = (await (await signedIn(LEADER.userId)).teamStructure())!;

@@ -18,13 +18,32 @@ export function ErrorSummary({ summary }: { summary: FormSummary }) {
 }
 
 /**
+ * The controls in `form` named `name` that a refused Save can focus: each
+ * enabled control, with a radio group counted once, at its first enabled
+ * radio. A form that names a field in its summary renders exactly one
+ * (issue #927).
+ */
+export function focusTargets(form: HTMLFormElement, name: string): HTMLElement[] {
+  const targets: HTMLElement[] = [];
+  let radioGroup = false;
+  for (const el of form.elements) {
+    if (!(el instanceof HTMLElement) || el.getAttribute("name") !== name) continue;
+    if ("disabled" in el && el.disabled === true) continue;
+    const radio = el instanceof HTMLInputElement && el.type === "radio";
+    if (radio && radioGroup) continue;
+    radioGroup ||= radio;
+    targets.push(el);
+  }
+  return targets;
+}
+
+/**
  * Brings the control named `name` in `form` into view and focuses it: the
  * first field in error once Save is refused.
  */
 export function focusField(form: HTMLFormElement, name: string): void {
-  const item = form.elements.namedItem(name);
-  const control = item instanceof RadioNodeList ? item[0] : item;
-  if (!(control instanceof HTMLElement)) return;
+  const [control] = focusTargets(form, name);
+  if (control === undefined) return;
   const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   control.scrollIntoView({ block: "center", behavior: smooth ? "smooth" : "auto" });
   control.focus({ preventScroll: true });
