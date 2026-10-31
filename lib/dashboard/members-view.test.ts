@@ -3,15 +3,19 @@ import { test } from "node:test";
 import { departmentMembers } from "./department-members";
 import { NO_NAME } from "./person-name";
 import { NO_MEMBER_DETAILS } from "./details";
-import { divisionMembers, positionsOf, type PersonRecord, type WaitingPerson } from "./division-members";
+import { positionsOf, reachMembers, type PersonRecord, type WaitingPerson } from "./division-members";
 import {
+  divisionOptions,
   MEMBERS_TOOLS,
+  membersHeader,
   membersModelOf,
   membersTableRows,
   NO_MEMBERS_FILTER,
   opensWholeTeam,
   shownMembers,
+  startingFilter,
   type MemberEntry,
+  type MembersFilter,
   type MembersModel,
   type MembersTableRow,
 } from "./members-view";
@@ -94,9 +98,9 @@ function headPage(): MembersModel {
   return membersModelOf({ scope: "department", ...page })!;
 }
 
-function leadPage(actor: TeamActor | null = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] }): MembersModel {
-  const page = divisionMembers({ records, org, divisionId: 1, actor, selfId: 1, reach: [1], waiting: [elena], joining: [] })!;
-  return membersModelOf({ scope: "division", ...page })!;
+function leadPage(actor: TeamActor | null = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] }, divisionIds: readonly number[] = [1]): MembersModel {
+  const page = reachMembers({ records, org, divisionIds, actor, selfId: 1, waiting: { 1: [elena] }, joining: {} });
+  return membersModelOf({ scope: "divisions", ...page })!;
 }
 
 test("the team leader, a head and a division lead get the same Members tools, the list view included", () => {
@@ -323,4 +327,76 @@ test("the Table lists the List view's waiting people first, above every member r
   // The search narrows waiting rows exactly as in the List view.
   const searched = shownMembers(leader, { ...NO_MEMBERS_FILTER, query: "nobody-matches" });
   assert.deepEqual(membersTableRows(searched, {}), []);
+});
+
+// Issue #903: the page opens on the viewer's whole scope, the selects offer
+// only what is in it, and the header line says what the table shows.
+
+/** What one viewer's page shows for one select state: the people, the select options, and the header. */
+function seen(page: MembersModel, filter: MembersFilter) {
+  const shown = shownMembers(page, filter);
+  return {
+    people: shown.people.map((p) => p.name),
+    departments: page.units.map((u) => u.name),
+    divisions: divisionOptions(page.units, filter.department).map((d) => d.code),
+    header: membersHeader(page, filter),
+    // The Table's member rows and the List's (and the phone cards') are the same people.
+    table: membersTableRows(shown, {}).flatMap((r) => (r.kind === "member" ? [r.person.name] : [])),
+  };
+}
+
+test("a division lead with a whole-team Members grant opens on every reached division at once, with no chip row (#903)", () => {
+  const page = leadPage({ kind: "lead", divisionIds: [1, 2, 3], ledDivisionIds: [1] }, [1, 2, 3]);
+  assert.ok(!("switcher" in page), "the model carries no division switch");
+  const start = startingFilter(page, null);
+  assert.deepEqual(start, NO_MEMBERS_FILTER, "both selects on All …");
+  const all = seen(page, start);
+  assert.deepEqual(all.people, ["Marco Bianchi", "Laura Greco", "Federica Leone", "Davide Russo", "Lena Fischer"], "members of more than one division");
+  assert.deepEqual(all.table, all.people);
+  assert.deepEqual(all.departments, ["Aerodynamics", "Structures"]);
+  assert.deepEqual(all.divisions, ["MA", "OA", "DM"]);
+  assert.deepEqual(all.header, { intro: "Your divisions · 5 people in 3 divisions", notice: null });
+
+  const aero = seen(page, { ...NO_MEMBERS_FILTER, department: "Aerodynamics" });
+  assert.deepEqual(aero.divisions, ["MA", "OA"]);
+  assert.equal(aero.header.intro, "Aerodynamics Department · 4 people in 2 divisions");
+  assert.deepEqual(aero.table, aero.people);
+
+  // `?division=` for a reached division opens on it; one outside the reach opens the whole scope.
+  const asked = startingFilter(page, 3);
+  assert.deepEqual(asked, { department: "Structures", divisionId: 3, query: "" });
+  const dm = seen(page, asked);
+  assert.deepEqual(dm.people, ["Federica Leone", "Davide Russo"]);
+  assert.equal(dm.header.intro, "Design & Manufacturing Division · DM · 1 lead, 2 members");
+  assert.deepEqual(startingFilter(page, 99), NO_MEMBERS_FILTER);
+  assert.deepEqual(page.add?.kind, "department", "Add member offers each division they may add to");
+});
+
+test("a department head opens on the whole department, with its divisions only in the selects (#903)", () => {
+  const page = headPage();
+  const start = startingFilter(page, null);
+  assert.deepEqual(start, NO_MEMBERS_FILTER);
+  const all = seen(page, start);
+  assert.deepEqual(all.people, ["Marco Bianchi", "Laura Greco", "Davide Russo", "Lena Fischer"]);
+  assert.deepEqual([all.departments, all.divisions], [["Aerodynamics"], ["MA", "OA"]]);
+  assert.deepEqual(all.header, { intro: "Aerodynamics Department · 4 people in 2 divisions", notice: null });
+  const oa = seen(page, startingFilter(page, 2));
+  assert.deepEqual(oa.people, ["Laura Greco", "Lena Fischer"]);
+  assert.equal(oa.header.intro, "Optimization and Analysis Division · OA · 1 lead, 2 members");
+  assert.deepEqual(startingFilter(page, 3), NO_MEMBERS_FILTER, "a division outside the department");
+});
+
+test("a one-division lead's selects name their division and department, never All … (#903)", () => {
+  const page = leadPage();
+  const start = startingFilter(page, null);
+  assert.deepEqual(start, { department: "Aerodynamics", divisionId: 1, query: "" });
+  assert.deepEqual(startingFilter(page, 3), start, "a division outside the reach opens the whole scope");
+  const own = seen(page, start);
+  assert.deepEqual(own.people, ["Marco Bianchi", "Davide Russo", "Lena Fischer"]);
+  assert.deepEqual(own.table, own.people);
+  assert.deepEqual([own.departments, own.divisions], [["Aerodynamics"], ["MA"]]);
+  assert.deepEqual(own.header, { intro: "Mission Analysis Division · MA · 1 lead, 4 members", notice: null });
+  // A Members grant on one division: the same page, with who changes its leads.
+  const granted = leadPage({ kind: "lead", divisionIds: [1], ledDivisionIds: [] });
+  assert.equal(membersHeader(granted, startingFilter(granted, null)).notice, "Leads are changed by the Head of Aerodynamics");
 });

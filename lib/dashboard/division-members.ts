@@ -269,8 +269,6 @@ export type DivisionHeader = {
 
 export type DivisionMembers = {
   readonly division: DivisionHeader;
-  /** Every division the viewer's page reaches; a switch shows when there is more than one. */
-  readonly divisions: readonly { readonly id: number; readonly name: string }[];
   readonly people: readonly DivisionPerson[];
   readonly waiting: readonly WaitingPerson[];
   /** Accepted applicants waiting for Confirm join (board 59). */
@@ -361,7 +359,6 @@ export function divisionMembers(input: {
   readonly divisionId: number;
   readonly actor: TeamActor | null;
   readonly selfId: number | null;
-  readonly reach: readonly number[];
   readonly waiting: readonly WaitingPerson[];
   readonly joining: readonly Joining[];
 }): DivisionMembers | null {
@@ -411,10 +408,6 @@ export function divisionMembers(input: {
       department: departmentNameOf(org, division.departmentId),
       leadsHint: changer !== null && mayChangeDivision(changer, division.id, org).allowed ? null : leadsChangedBy(division.id, org),
     },
-    divisions: input.reach.flatMap((id) => {
-      const d = org.divisions.find((x) => x.id === id);
-      return d ? [{ id: d.id, name: d.name }] : [];
-    }),
     people: people.sort(byRoleThenName),
     waiting: input.waiting,
     joining: input.joining,
@@ -422,10 +415,49 @@ export function divisionMembers(input: {
   };
 }
 
+/**
+ * A division lead's Members page (issue #903): every division they reach,
+ * their own and every one a grant gives them, all held at once, each as its
+ * own division page. The page opens on all of them; the selects narrow it.
+ */
+export type ReachMembers = {
+  /** One page per reached division on the chart, in the reach's order. */
+  readonly divisions: readonly DivisionMembers[];
+};
+
+/** The lead's page as `actor` sees it; `waiting` and `joining` are keyed by division id. */
+export function reachMembers(input: {
+  readonly records: readonly PersonRecord[];
+  readonly org: OrgChart;
+  readonly divisionIds: readonly number[];
+  readonly actor: TeamActor | null;
+  readonly selfId: number | null;
+  readonly waiting: Readonly<Record<number, readonly WaitingPerson[]>>;
+  readonly joining: Readonly<Record<number, readonly Joining[]>>;
+}): ReachMembers {
+  return {
+    divisions: [...new Set(input.divisionIds)].flatMap((divisionId) => {
+      const page = divisionMembers({
+        records: input.records,
+        org: input.org,
+        divisionId,
+        actor: input.actor,
+        selfId: input.selfId,
+        waiting: input.waiting[divisionId] ?? [],
+        joining: input.joining[divisionId] ?? [],
+      });
+      return page === null ? [] : [page];
+    }),
+  };
+}
+
 /** "2 leads, 7 members" under the title (board 61e): everyone listed counts as a member, those waiting included. */
 export function headcountLine(page: Pick<DivisionMembers, "people" | "waiting">): string {
-  const leads = page.people.filter((p) => p.role === "lead").length;
-  const all = page.people.length + page.waiting.length;
+  return headcount(page.people.filter((p) => p.role === "lead").length, page.people.length + page.waiting.length);
+}
+
+/** "2 leads, 7 members": `all` counts everyone listed, leads and those waiting included. */
+export function headcount(leads: number, all: number): string {
   return `${leads} ${leads === 1 ? "lead" : "leads"}, ${all} ${all === 1 ? "member" : "members"}`;
 }
 
