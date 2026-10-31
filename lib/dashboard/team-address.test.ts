@@ -8,6 +8,7 @@ import {
   checkTeamAddress,
   checkTeamAddressAnswer,
   checkTeamAddressRequest,
+  handedOver,
   holdersOf,
   memberTeamAddressesFor,
   movesWithOptions,
@@ -268,6 +269,16 @@ test("the approver's rows: one per open request, oldest first, with the address,
 });
 
 // Routing when a tied role changes hands (issue #789) ------------------------------
+
+test("one co-holder handing over owes no routing item for an address a staying co-holder holds, and one naming the successor for their own (issue #872)", () => {
+  const TIES: readonly MovesWith[] = [{ kind: "team-leader" }, { kind: "full-access-seat", seat: "operations-lead" }, { kind: "department-head", departmentId: 7 }];
+  for (const tie of TIES) {
+    const change = handedOver(tie, { from: LEAD, to: IN_LOGISTICS }, [LEAD, IN_MARKETING]);
+    const owed = (holderId: number) => owedTeamAddressReroutes({ addresses: [{ ...held("a@politorocketteam.it", tie, holderId), id: 1 }], changes: [change], open: [] });
+    assert.deepEqual(owed(IN_MARKETING), [], `${tie.kind}: the staying co-holder keeps their address`);
+    assert.deepEqual(owed(LEAD), [{ addressId: 1, toId: IN_LOGISTICS, fromId: LEAD }], `${tie.kind}: the one handing over`);
+  }
+});
 
 test("a role change owes one routing item for each tied address whose holder no longer holds the role, naming the first new holder by id", () => {
   const LOGISTICS_LEAD: MovesWith = { kind: "division-lead", divisionId: 9 };

@@ -532,9 +532,31 @@ export function addedBeside(tie: MovesWith, memberId: number, holders: readonly 
   return { tie, becoming: [memberId], staying: holders, leaving: [] };
 }
 
+/**
+ * A role one holder hands over (epic #861, issue #872): `from` holds it no
+ * more, `to` takes their place, and every other holder of it now (`holders`)
+ * keeps it. An address its staying holder holds owes nothing; one the
+ * holder handing over holds goes to `to`.
+ */
+export function handedOver(tie: MovesWith, change: { readonly from: number; readonly to: number }, holders: readonly number[]): TiedRoleChange {
+  const { from, to } = change;
+  return { tie, becoming: [to], staying: holders.filter((id) => id !== from && id !== to), leaving: [from] };
+}
+
 /** The full-access seat a hand-over moves (`seatHandOver`, ./hand-over.ts), as a change of its tie; none when no seat moves. */
 export function seatHandedTo(seat: SeatMove | null): TiedRoleChange[] {
   return seat === null ? [] : [handedTo({ kind: "full-access-seat", seat: seat.seat }, seat.to)];
+}
+
+/**
+ * The full-access seat `from` hands over (`seatHandOver`), beside the other
+ * holders of that seat now (`holdersOf`), who keep it (issue #872); none when
+ * no seat moves.
+ */
+export function seatHandedOver(seat: SeatMove | null, from: number, holders: (tie: MovesWith) => readonly number[]): TiedRoleChange[] {
+  if (seat === null) return [];
+  const tie: MovesWith = { kind: "full-access-seat", seat: seat.seat };
+  return [handedOver(tie, { from, to: seat.to }, holders(tie))];
 }
 
 /** One open routing item to write: the address, the member it goes to, and its holder now. */

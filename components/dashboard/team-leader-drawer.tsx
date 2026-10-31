@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { addTeamLeader, handOverTeamLeader } from "@/app/dashboard/team-actions";
 import type { TeamPick } from "@/lib/dashboard/division-edit";
 import { advisorOptionDetail, BECOME_AN_ADVISOR, steppingDown, type HandOverOutcome } from "@/lib/dashboard/hand-over";
-import type { StructureLeader } from "@/lib/dashboard/team-structure";
+import { holderAddRefusal } from "@/lib/dashboard/seat-holders";
+import { andList, type StructureLeader } from "@/lib/dashboard/team-structure";
 import { AddHolderLink, AddHolderPicker, HolderRows } from "./add-holder";
 import { Avatar } from "./avatar";
 import { PeoplePicker } from "./division-drawer";
@@ -18,7 +19,9 @@ import { FullAccessMoves, RadioChoice } from "./hand-over-choice";
 // another holder (issue #869): one more team leader beside the ones the team
 // has. A team leader also hands over their own role here ("Hand over your
 // role"): they pick who takes over and what they do next, Become an advisor
-// or Leave the team, and nothing is picked for them. The server checks every
+// or Leave the team, and nothing is picked for them. The hand-over is theirs
+// alone: every other team leader stays one, and none of them can take it over
+// (issue #872). The server checks every
 // rule again (`planTeamLeaderHandOver`, lib/dashboard/hand-over.ts;
 // `planTeamLeaderAdd`, lib/dashboard/team-seats.ts).
 
@@ -40,6 +43,9 @@ export function TeamLeaderDrawer({
   onClose: () => void;
 }) {
   const { holders, handsOver: you } = leader;
+  // A hand-over ends the viewer's own place only: every other team leader stays one (issue #872), and none can take it over.
+  const holderIds = holders.map((h) => h.id);
+  const staying = you === null ? [] : holders.filter((h) => h.id !== you.id).map((h) => h.name);
   const [adding, setAdding] = useState(false);
   const [next, setNext] = useState<TeamPick | null>(null);
   const [picking, setPicking] = useState(true);
@@ -55,7 +61,7 @@ export function TeamLeaderDrawer({
         toast.error("Could not hand over the role", { description: result.error });
         return;
       }
-      toast.success(`${next.name} is the Team Leader now`);
+      toast.success(`${next.name} is ${staying.length > 0 ? "a" : "the"} Team Leader now`);
       onClose();
     });
 
@@ -141,7 +147,7 @@ export function TeamLeaderDrawer({
                   <PeoplePicker
                     mode="leader"
                     short="the team"
-                    taken={(p) => (p.id === you.id ? "You hold the role now" : null)}
+                    taken={(p) => (p.id === you.id ? "You hold the role now" : holderAddRefusal(p, holderIds))}
                     onPick={(p) => {
                       setNext(p);
                       setPicking(false);
@@ -194,8 +200,9 @@ export function TeamLeaderDrawer({
             <p className="mt-6 flex gap-3 rounded-xl border border-hairline px-4 py-3.5 text-[13px] leading-relaxed text-text-2">
               <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
               <span>
-                Only you can hand over this role. {next?.name ?? "The person you pick"} becomes Team Leader when you save. From then on they approve orders, along
+                Only you can hand over your place. {next?.name ?? "The person you pick"} becomes Team Leader when you save. From then on they approve orders, along
                 with anyone they give Approve orders.
+                {staying.length > 0 && ` ${andList(staying)} ${staying.length === 1 ? "stays" : "stay"} Team Leader and keep${staying.length === 1 ? "s" : ""} full access.`}
               </span>
             </p>
           </>

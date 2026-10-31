@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { Building2, ChevronDown, Pencil, Repeat, Undo2 } from "lucide-react";
+import { Building2, ChevronDown, Pencil, RefreshCw, Repeat, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { addDepartmentHead, closeDepartment, createDepartment, saveDepartment } from "@/app/dashboard/team-actions";
 import {
@@ -9,6 +9,7 @@ import {
   departmentNameError,
   destinationName,
   normalizeDepartmentCode,
+  PICK_REPLACED_HEAD,
   planDepartmentClose,
   stepsDown,
   storedDepartmentName,
@@ -30,10 +31,11 @@ import {
 import type { TeamPick } from "@/lib/dashboard/division-edit";
 import { defaultHeadTitle, divisionLabel, type OrgChart } from "@/lib/dashboard/team";
 import { andList, type StructureDepartment, type StructureDivision, type TeamStructure } from "@/lib/dashboard/team-structure";
-import { AddHolderLink, AddHolderPicker, HolderRows } from "./add-holder";
+import { AddHolderLink, AddHolderPicker } from "./add-holder";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { PeoplePicker } from "./division-drawer";
+import { MenuItem, RowMenu } from "./division-members";
 import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
 import { HandOverChoice, RadioChoice } from "./hand-over-choice";
@@ -45,7 +47,9 @@ import { HandOverChoice, RadioChoice } from "./hand-over-choice";
 // (lib/dashboard/department-edit.ts). Change head in Edit department hands
 // the head role over (issue #253): the head replaced becomes an advisor in
 // the department or leaves the team. Add another holder beside it gives the
-// department one more head (epic #861, issue #869).
+// department one more head (epic #861, issue #869). With several heads, each
+// head's row names its own Replace, which hands over that head's role alone:
+// every other head stays (issue #872).
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const ADD_LINK = `inline-flex items-center gap-1.5 rounded-md text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:text-accent-hover ${FOCUS}`;
@@ -333,16 +337,23 @@ function EditDepartment({
   const [addingHead, setAddingHead] = useState(false);
   const [pending, startTransition] = useTransition();
   const { heads } = department;
-  // Change head replaces every head (`planDepartmentSave`); which co-head it replaces is a later child of epic #861.
-  const head = heads[0] ?? null;
-  const headNames = andList(heads.map((h) => h.name));
+  const severalHeads = heads.length > 1;
+  // Change head replaces one head (issue #872): the only one, or the one whose Replace was pressed; every other head stays.
+  const [replacingId, setReplacingId] = useState<number | null>(null);
+  const head = heads.find((h) => h.id === replacingId) ?? (severalHeads ? null : (heads[0] ?? null));
+  const staying = head === null ? [] : heads.filter((h) => h.id !== head.id).map((h) => h.name);
   // The full-access seat the head role carries moves with it on Change head (issue #501).
   const headSeat = head === null ? null : seatOfHandedRole(structure.seats, head.id, { kind: "head", departmentId: department.id });
 
   const code = normalizeDepartmentCode(rawCode);
   const nameError = departmentNameError(name);
   const codeError = rawCode.trim() === "" ? "Write a code." : departmentCodeError(code, structure.departments, department.id);
-  const headError = newHead !== null && head !== null && headOutcome === null ? `Choose what happens to ${headNames}: Become an advisor or Leave the team.` : null;
+  const headError =
+    newHead !== null && head === null && severalHeads
+      ? PICK_REPLACED_HEAD
+      : newHead !== null && head !== null && headOutcome === null
+        ? `Choose what happens to ${head.name}: Become an advisor or Leave the team.`
+        : null;
   const valid = nameError === null && codeError === null && headError === null;
   const stored = storedDepartmentName(name);
   const nameChanged = stored !== department.name;
@@ -362,11 +373,22 @@ function EditDepartment({
   const undoHead = () => {
     setNewHead(null);
     setHeadOutcome(null);
+    setReplacingId(null);
+  };
+
+  const replaceHead = (headId: number) => {
+    setReplacingId(headId);
+    setAddingHead(false);
+    setPicking(true);
   };
 
   const confirm = () =>
     startTransition(async () => {
-      const result = await saveDepartment(department.id, { name, code, head: newHead === null ? null : { to: newHead.id, outcome: headOutcome } });
+      const result = await saveDepartment(department.id, {
+        name,
+        code,
+        head: newHead === null ? null : { to: newHead.id, from: head?.id ?? null, outcome: headOutcome },
+      });
       if (!result.ok) {
         toast.error("Could not save the department", { description: result.error });
         return;
@@ -388,9 +410,10 @@ function EditDepartment({
   if (newHead !== null) lines.push(`${newHead.name} becomes Head of ${stored} and keeps their divisions.`);
   if (newHead !== null && head !== null && headOutcome !== null) {
     const step = steppingDown({ kind: "head", departmentId: department.id }, headOutcome);
-    for (const h of heads) lines.push(`${h.name} ${steppingDownLine(step, stored)}.`);
+    lines.push(`${head.name} ${steppingDownLine(step, stored)}.`);
     const access = fullAccessMovesLine({ seat: headSeat, successor: newHead.name, from: head.name, step });
     if (access !== null) lines.push(access);
+    if (staying.length > 0) lines.push(`${andList(staying)} ${staying.length === 1 ? "stays" : "stay"} head of ${stored}.`);
   }
   const leaving = newHead !== null && headOutcome === "leave";
 
@@ -420,10 +443,26 @@ function EditDepartment({
               {heads.length > 1 && <span className="ml-1.5 text-prt-muted">{heads.length}</span>}
             </h3>
             {newHead === null ? (
-              heads.length > 1 ? (
-                <div className="mt-2.5">
-                  <HolderRows holders={heads} line={(h) => alsoIn(h.divisions)} />
-                </div>
+              severalHeads ? (
+                <ul className={`${LIST} mt-2.5 divide-y divide-hairline`}>
+                  {heads.map((h) => {
+                    const also = alsoIn(h.divisions);
+                    return (
+                      <li key={h.id} className="flex items-center gap-3 px-3.5 py-2.5">
+                        <Avatar size="md" accent person={h} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[14px] text-prt-text">{h.name}</span>
+                          {also !== null && <span className="block truncate text-[12px] text-prt-muted">{also}</span>}
+                        </span>
+                        <RowMenu label={`Actions for ${h.name}`}>
+                          <MenuItem onSelect={() => replaceHead(h.id)} icon={<RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />} detail="The other heads stay">
+                            Replace {h.name}
+                          </MenuItem>
+                        </RowMenu>
+                      </li>
+                    );
+                  })}
+                </ul>
               ) : head ? (
                 <div className={`${LIST} mt-2.5 flex items-center gap-3 px-3.5 py-3`}>
                   <Avatar size="md" accent person={head} />
@@ -437,15 +476,25 @@ function EditDepartment({
               )
             ) : (
               <ul className={`${LIST} mt-2.5 divide-y divide-hairline`}>
-                {heads.map((h) => (
-                  <li key={h.id} className="flex items-center gap-3 px-3.5 py-2.5 opacity-60">
-                    <Avatar size="md" person={h} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14px] text-prt-text">{h.name}</span>
-                      <span className="block truncate text-[12px] text-prt-muted">Replaced by {newHead.name}</span>
-                    </span>
-                  </li>
-                ))}
+                {heads.map((h) =>
+                  h.id === head?.id ? (
+                    <li key={h.id} className="flex items-center gap-3 px-3.5 py-2.5 opacity-60">
+                      <Avatar size="md" person={h} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[14px] text-prt-text">{h.name}</span>
+                        <span className="block truncate text-[12px] text-prt-muted">Replaced by {newHead.name}</span>
+                      </span>
+                    </li>
+                  ) : (
+                    <li key={h.id} className="flex items-center gap-3 px-3.5 py-2.5">
+                      <Avatar size="md" accent person={h} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[14px] text-prt-text">{h.name}</span>
+                        <span className="block truncate text-[12px] text-prt-muted">Stays head</span>
+                      </span>
+                    </li>
+                  ),
+                )}
                 <li className="flex items-center gap-3 bg-accent/[0.05] px-3.5 py-2.5">
                   <Avatar size="md" person={newHead} />
                   <span className="min-w-0 flex-1">
@@ -478,24 +527,43 @@ function EditDepartment({
                 onSaved={onClose}
               />
             ) : picking ? (
-              <PeoplePicker
-                mode="head"
-                short={stored}
-                taken={(p) => (heads.some((h) => h.id === p.id) ? "Heads it now" : null)}
-                onPick={(p) => {
-                  setNewHead(p);
-                  setPicking(false);
-                }}
-                onClose={() => setPicking(false)}
-              />
+              <>
+                {severalHeads && head !== null && (
+                  <p className="mt-3 text-[13px] text-text-2">
+                    Who takes over from {head.name}? {andList(staying)} {staying.length === 1 ? "stays" : "stay"} head.
+                  </p>
+                )}
+                <PeoplePicker
+                  mode="head"
+                  short={stored}
+                  taken={(p) => (heads.some((h) => h.id === p.id) ? "Heads it now" : null)}
+                  onPick={(p) => {
+                    setNewHead(p);
+                    setPicking(false);
+                  }}
+                  onClose={() => {
+                    setPicking(false);
+                    if (newHead === null) setReplacingId(null);
+                  }}
+                />
+              </>
             ) : (
               newHead === null && (
                 <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
-                  <button type="button" onClick={() => setPicking(true)} className={ADD_LINK}>
-                    <Repeat aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
-                    {head ? "Change head" : "Pick head"}
-                  </button>
-                  {head && <AddHolderLink onClick={() => setAddingHead(true)} />}
+                  {!severalHeads && (
+                    <button type="button" onClick={() => setPicking(true)} className={ADD_LINK}>
+                      <Repeat aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
+                      {head ? "Change head" : "Pick head"}
+                    </button>
+                  )}
+                  {heads.length > 0 && (
+                    <AddHolderLink
+                      onClick={() => {
+                        setAddingHead(true);
+                        setPicking(false);
+                      }}
+                    />
+                  )}
                 </div>
               )
             )}
