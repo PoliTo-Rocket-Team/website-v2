@@ -257,6 +257,13 @@ export function mayNotKnowTheyWereAdded(waiting: Pick<WaitingPerson, "signedIn" 
   return !waiting.signedIn && noDetailsFilled(waiting.details);
 }
 
+/**
+ * The note under every field that adds a new member by email (issue #923):
+ * sign-in is Google only, so another address leaves them on an empty login.
+ * Advice only; any email is still accepted.
+ */
+export const GOOGLE_EMAIL_NOTE = "Use their Google account email. Sign-in is with Google only.";
+
 export type DivisionHeader = {
   readonly id: number;
   /** "Mission Analysis Division" */
