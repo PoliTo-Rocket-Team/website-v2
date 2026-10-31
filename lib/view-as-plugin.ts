@@ -36,7 +36,8 @@ import { impersonatorOf } from "@/lib/session-user";
 //                                            View as session. Both drop the
 //                                            acting account's kept session
 //                                            cookie, so nothing signs it back
-//                                            in after them.
+//                                            in after them, and signing out
+//                                            ends that kept session too.
 
 const IMPERSONATE = "/admin/impersonate-user";
 const STOPS: readonly string[] = ["/admin/stop-impersonating", "/sign-out"];
@@ -203,8 +204,14 @@ export function viewAsPlugin(gate: ViewAsGate) {
               if (ctx.path !== "/sign-out") logStopFailure(ctx.context.returned.message || String(ctx.context.returned.status), { path: ctx.path });
               return;
             }
-            // The acting account's kept session goes with the stop or sign-out, so /view-as/stop never signs it back in afterwards.
+            // The acting account's kept session cookie goes with the stop or sign-out, so /view-as/stop never signs it back in
+            // afterwards. Signing out ends the kept session too: nobody is left signed in behind the one that signed out.
             const kept = ctx.context.createAuthCookie(ADMIN_SESSION_COOKIE);
+            if (ctx.path === "/sign-out") {
+              const keptValue = await ctx.getSignedCookie(kept.name, ctx.context.secret);
+              const [keptToken = ""] = typeof keptValue === "string" ? keptValue.split(":") : [];
+              if (keptToken !== "") await ctx.context.internalAdapter.deleteSession(keptToken);
+            }
             ctx.setCookie(kept.name, "", { ...kept.attributes, maxAge: 0 });
             const ending = (ctx as Ending).viewAsEnding;
             if (ending !== undefined) await recordStop(gate, ending);

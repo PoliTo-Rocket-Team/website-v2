@@ -297,11 +297,12 @@ test("a Stop that fails answers its reason and logs it on the server, and signin
   assert.deepEqual(entries.map((e) => e.event), ["start", "stop"]);
 });
 
-test("after signing out of a View as session, Stop signs nobody back in", async () => {
-  const { auth } = await setUp();
+test("signing out of a View as session ends the acting account's kept session too, and Stop then signs nobody back in", async () => {
+  const { auth, db } = await setUp();
   const jar = await signIn(auth, ACTING);
   assert.equal((await post(auth, jar, "/admin/impersonate-user", { userId: PERSON.id })).status, 200);
   assert.equal((await post(auth, jar, "/sign-out")).status, 200);
+  assert.deepEqual(db.session, [], "neither the View as session nor the acting account's own session is left");
   const refused = await post(auth, jar, "/view-as/stop");
   assert.equal(refused.status, 401);
   assert.equal(((await refused.json()) as { message?: string }).message, VIEW_AS_STOP_REFUSAL_MESSAGES["signed-out"]);
