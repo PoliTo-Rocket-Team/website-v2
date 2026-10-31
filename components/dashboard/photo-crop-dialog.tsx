@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ImageIcon, X, ZoomIn, ZoomOut } from "lucide-react";
+import { ImageIcon, X } from "lucide-react";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
-import { centredCrop, moveCrop, scaleOf, sourceSquare, zoomCrop, ZOOM_MAX, ZOOM_MIN, type Crop } from "@/lib/dashboard/photo-crop";
+import { centredCrop, moveCrop, scaleOf, sourceSquare, zoomCrop, ZOOM_MIN, type Crop } from "@/lib/dashboard/photo-crop";
 import { PHOTO_TYPES } from "@/lib/dashboard/self";
 import { SHEET_BUTTONS, SHEET_CANCEL, SHEET_CONTENT, SheetGrabber, sheetConfirm } from "./confirm-dialog";
 import { EYEBROW } from "./page-header";
+import { ZoomSlider } from "./zoom-slider";
 
 /** The saved photo's side: square, so a JPEG fits well under the 2 MB limit. */
 const PHOTO_SIZE = 800;
@@ -181,20 +182,13 @@ export function PhotoCropDialog({
             </div>
           </div>
 
-          <div className="mt-5 flex items-center gap-3">
-            <ZoomOut aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-            <input
-              type="range"
-              aria-label="Zoom"
-              min={ZOOM_MIN}
-              max={ZOOM_MAX}
-              step={0.01}
-              value={crop?.zoom ?? ZOOM_MIN}
-              onChange={(e) => crop && setCrop(zoomCrop(crop, Number(e.target.value)))}
-              className="h-1 flex-1 cursor-pointer accent-accent"
-            />
-            <ZoomIn aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-          </div>
+          <ZoomSlider
+            label="Zoom"
+            zoom={crop?.zoom ?? ZOOM_MIN}
+            disabled={crop === null}
+            onZoom={(zoom) => crop && setCrop(zoomCrop(crop, zoom))}
+            className="mt-5"
+          />
           <button
             type="button"
             onClick={onChooseAnother}

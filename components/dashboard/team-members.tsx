@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { FileSpreadsheet, List, Lock, Pencil, Plus, Table2, UserMinus, UserX } from "lucide-react";
 import type { MemberAliases } from "@/lib/dashboard/alias-request";
 import type { MemberTeamAddresses } from "@/lib/dashboard/team-address";
@@ -9,13 +8,16 @@ import { memberDetailText } from "@/lib/dashboard/details";
 import { mayNotKnowTheyWereAdded, type DivisionHeader, type WaitingPerson } from "@/lib/dashboard/division-members";
 import {
   divisionOptions,
+  membersHeader,
+  membersTableRows,
   shownMembers,
+  startingFilter,
   type MemberActions,
   type MemberEntry,
   type MembersModel,
   type MembersTool,
   type MembersUnit,
-  type ShownMembers,
+  type WaitingEntry,
 } from "@/lib/dashboard/members-view";
 import { divisionLabel, pageCount, pageOf } from "@/lib/dashboard/team";
 import {
@@ -24,7 +26,6 @@ import {
   NO_PICKS,
   TABLE_FILTER_LABELS,
   togglePick,
-  withPicks,
   type ColumnPicks,
   type TableFilter,
   type TeamMember,
@@ -63,7 +64,9 @@ import { SearchField } from "./search-field";
 // opens the one Edit details panel (board 61g with board 46b's position part,
 // issue #584) for everyone the viewer may edit, on the whole team, a
 // department and a division alike, and Add member adds where the viewer may.
-// Phone, date of birth and gender stay blurred until hover.
+// Phone, date of birth and gender stay blurred until hover. The selects are the
+// page's only filters: there is no division chip row, and the header line
+// follows them (Owner decision, 2026-10-31, issue #903).
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -72,7 +75,7 @@ const DASH = <span className="text-dim">–</span>;
 
 type View = "list" | "table";
 
-type Waiting = ShownMembers["waiting"][number];
+type Waiting = WaitingEntry;
 
 export function ScopedMembersView({
   page,
@@ -80,15 +83,19 @@ export function ScopedMembersView({
   teamAddresses,
   editable: writes,
   exportable,
+  askedDivision,
 }: {
   page: MembersModel;
   aliases: MemberAliases;
   teamAddresses: MemberTeamAddresses;
   editable: boolean;
   exportable: boolean;
+  askedDivision: number | null;
 }) {
-  const [department, setDepartment] = useState<string | null>(null);
-  const [divisionId, setDivisionId] = useState<number | null>(null);
+  // The page opens on the viewer's whole scope, or on the division `?division=` names (issue #903).
+  const [start] = useState(() => startingFilter(page, askedDivision));
+  const [department, setDepartment] = useState<string | null>(start.department);
+  const [divisionId, setDivisionId] = useState<number | null>(start.divisionId);
   const [query, setQuery] = useState("");
   // Table first wherever the page offers it (Owner decision, 2026-10-24).
   const [view, setView] = useState<View>(() => (page.tools.includes("table-view") ? "table" : "list"));
@@ -115,6 +122,7 @@ export function ScopedMembersView({
     setListPage(1);
   };
   const divisionName = divisions.find((d) => d.id === shownDivision)?.name ?? null;
+  const header = membersHeader(page, { department, divisionId });
 
   const editPerson = (entry: MemberEntry) => {
     setOpenId(null);
@@ -130,7 +138,7 @@ export function ScopedMembersView({
     <DrawerPage drawerOpen={adding}>
       <PageHeader
         title="Members"
-        intro={page.intro}
+        intro={header.intro}
         phone="bar"
         action={
           add !== null || exportable ? (
@@ -147,26 +155,6 @@ export function ScopedMembersView({
           ) : undefined
         }
       />
-
-      {page.switcher && (
-        <nav aria-label="Your divisions" className="mt-6 flex flex-wrap gap-1.5">
-          {page.switcher.options.map((d) => {
-            const here = d.id === page.switcher?.current;
-            return (
-              <Link
-                key={d.id}
-                href={`/dashboard/members?division=${d.id}`}
-                aria-current={here ? "page" : undefined}
-                className={`flex h-8 items-center whitespace-nowrap rounded-full border px-3 text-[13px] transition-colors duration-300 ease-out ${FOCUS} ${
-                  here ? "border-white-10 bg-white-10 font-semibold text-prt-text" : "border-hairline text-text-2 hover:text-prt-text"
-                }`}
-              >
-                {divisionLabel(d.name)}
-              </Link>
-            );
-          })}
-        </nav>
-      )}
 
       {shown.joining.length > 0 && (
         <ul className="mt-6 flex flex-col gap-2.5">
@@ -208,17 +196,28 @@ export function ScopedMembersView({
         </div>
       </div>
 
-      {page.notice !== null && (
+      {header.notice !== null && (
         <p className="mt-3 flex items-center gap-2 text-[13px] text-prt-muted">
           <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-          {page.notice}
+          {header.notice}
         </p>
       )}
 
       {shown.division && <DivisionBar division={shown.division} people={shown.people} />}
 
       {view === "table" && has("table-view") ? (
-        <TableView people={shown.people} picks={picks} onPicks={setPicks} openId={openId} onOpen={setOpenId} withFilters={has("table-column-filters")} />
+        <TableView
+          people={shown.people}
+          waiting={shown.waiting}
+          writes={writes}
+          picks={picks}
+          onPicks={setPicks}
+          openId={openId}
+          onOpen={setOpenId}
+          withFilters={has("table-column-filters")}
+          onAsk={setAsking}
+          onFill={fillDetails}
+        />
       ) : (
         <ListView
           people={has("list-paging") ? paged : shown.people}
@@ -387,6 +386,7 @@ function ListView({
   onAsk: (asking: Asking) => void;
   onFill: (waiting: Waiting) => void;
 }) {
+  const asks = waitingAsks(onAsk, onFill);
   return (
     <section className={`${PANEL} mt-4 hidden overflow-hidden md:block`}>
       <table className="w-full table-fixed border-collapse">
@@ -414,9 +414,9 @@ function ListView({
                 waiting={w.waiting}
                 division={w.division}
                 editable={writes && w.editable}
-                onConfirm={() => onAsk({ kind: "nda", waiting: w.waiting, division: w.division.name })}
-                onFill={() => onFill(w)}
-                onCancel={() => onAsk({ kind: "cancel", waiting: w.waiting, short: divisionLabel(w.division.name) })}
+                onConfirm={() => asks.onConfirm(w)}
+                onFill={() => asks.onFill(w)}
+                onCancel={() => asks.onCancel(w)}
               />
             ))}
           {people.map((p) => (
@@ -527,23 +527,48 @@ function WaitingRow({
         </span>
       </td>
       <td className="px-5 py-2.5">
-        <Chips chips={[{ divisionId: division.id, label: division.code ?? divisionLabel(division.name), code: division.code !== null }]} />
+        <WaitingChip division={division} />
       </td>
       <td className="px-5 py-2.5">{editable ? <ConfirmNdaButton onClick={onConfirm} /> : <span className="text-[14px] text-prt-muted">Waiting</span>}</td>
       <td className="pr-4 text-right">
-        {editable && (
-          <RowMenu label={`Actions for ${waiting.email}`}>
-            <MenuItem onSelect={onFill} icon={<Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />}>
-              Fill details
-            </MenuItem>
-            <MenuItem onSelect={onCancel} danger icon={<UserX className="h-3.5 w-3.5" strokeWidth={1.75} />}>
-              Cancel add
-            </MenuItem>
-          </RowMenu>
-        )}
+        {editable && <WaitingMenu email={waiting.email} onFill={onFill} onCancel={onCancel} />}
       </td>
     </tr>
   );
+}
+
+/** The division a waiting person waits for, as one chip: its code, or its short name where it has none. */
+function WaitingChip({ division }: { division: DivisionHeader }) {
+  return <Chips chips={[{ divisionId: division.id, label: division.code ?? divisionLabel(division.name), code: division.code !== null }]} />;
+}
+
+/** A waiting row's ⋯ menu, in List and Table alike: Fill details, then Cancel add. */
+function WaitingMenu({ email, onFill, onCancel }: { email: string; onFill: () => void; onCancel: () => void }) {
+  return (
+    <RowMenu label={`Actions for ${email}`}>
+      <MenuItem onSelect={onFill} icon={<Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />}>
+        Fill details
+      </MenuItem>
+      <MenuItem onSelect={onCancel} danger icon={<UserX className="h-3.5 w-3.5" strokeWidth={1.75} />}>
+        Cancel add
+      </MenuItem>
+    </RowMenu>
+  );
+}
+
+/** What a waiting row's actions open: the same dialogs and drawer as in List. */
+type WaitingAsks = {
+  readonly onConfirm: (w: Waiting) => void;
+  readonly onFill: (w: Waiting) => void;
+  readonly onCancel: (w: Waiting) => void;
+};
+
+function waitingAsks(onAsk: (asking: Asking) => void, onFill: (w: Waiting) => void): WaitingAsks {
+  return {
+    onConfirm: (w) => onAsk({ kind: "nda", waiting: w.waiting, division: w.division.name }),
+    onFill,
+    onCancel: (w) => onAsk({ kind: "cancel", waiting: w.waiting, short: divisionLabel(w.division.name) }),
+  };
 }
 
 function PhoneCards({
@@ -652,23 +677,33 @@ const COLUMNS: readonly Column[] = [
 
 // Boards 73b and 73c: the table fills the screen under the controls and
 // scrolls both ways inside its frame, its header row and name column pinned.
+// The people waiting for Confirm NDA lead it, as in List (issue #890).
 function TableView({
   people,
+  waiting,
+  writes,
   picks,
   onPicks,
   openId,
   onOpen,
   withFilters,
+  onAsk,
+  onFill,
 }: {
   people: readonly MemberEntry[];
+  waiting: readonly Waiting[];
+  writes: boolean;
   picks: ColumnPicks;
   onPicks: (picks: ColumnPicks) => void;
   openId: number | null;
   onOpen: (id: number) => void;
   withFilters: boolean;
+  onAsk: (asking: Asking) => void;
+  onFill: (waiting: Waiting) => void;
 }) {
   const [filterOpen, setFilterOpen] = useState<TableFilter | null>(null);
-  const rows = withPicks(people, picks);
+  const rows = membersTableRows({ people, waiting }, picks);
+  const asks = waitingAsks(onAsk, onFill);
   return (
     <section
       onScroll={() => setFilterOpen(null)}
@@ -700,7 +735,12 @@ function TableView({
           </tr>
         </thead>
         <tbody>
-          {rows.map((p) => {
+          {rows.map((row) => {
+            if (row.kind === "waiting") {
+              const w = row.entry;
+              return <TableWaitingRow key={`w${w.waiting.joinId}`} entry={w} editable={writes && w.editable} asks={asks} />;
+            }
+            const p = row.person;
             const chosen = p.id === openId;
             return (
               <tr key={p.id} onClick={() => onOpen(p.id)} className="group cursor-pointer">
@@ -734,6 +774,45 @@ function TableView({
       </table>
       {rows.length === 0 && <p className="sticky left-0 px-5 py-6 text-[13px] text-prt-muted">No members match.</p>}
     </section>
+  );
+}
+
+/**
+ * A waiting row in the Table (issue #890), in the Table's cells with the List
+ * row's warning tint. The pinned name cell holds the mail mark, the email,
+ * the "Waiting for NDA" line and, for a viewer who may act, the ⋯ menu with
+ * Fill details and Cancel add; Divisions holds the division chip and Role
+ * holds Confirm NDA, or "Waiting" in muted text, where List shows them. Every
+ * other column reads the dash. A waiting person is not a member yet, so the
+ * row opens no member panel.
+ */
+function TableWaitingRow({ entry, editable, asks }: { entry: Waiting; editable: boolean; asks: WaitingAsks }) {
+  const { waiting, division } = entry;
+  const cell = (key: string): ReactNode => {
+    if (key === "divisions") return <WaitingChip division={division} />;
+    if (key === "role") return editable ? <ConfirmNdaButton onClick={() => asks.onConfirm(entry)} /> : <span className="text-prt-muted">Waiting</span>;
+    return DASH;
+  };
+  return (
+    <tr>
+      {/* The pinned cell stays opaque over the columns scrolling under it; the tint lies inside it. */}
+      <td className="sticky left-0 z-10 border-b border-r border-hairline bg-panel px-3 py-2">
+        <span aria-hidden className="absolute inset-0 bg-warning/[0.04]" />
+        <span className="relative flex min-w-0 items-center gap-2.5">
+          <MailAvatar size="xs" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] text-prt-text">{waiting.email}</span>
+            <WaitingLine waiting={waiting} />
+          </span>
+          {editable && <WaitingMenu email={waiting.email} onFill={() => asks.onFill(entry)} onCancel={() => asks.onCancel(entry)} />}
+        </span>
+      </td>
+      {COLUMNS.map((column) => (
+        <td key={column.key} className="truncate border-b border-r border-hairline bg-warning/[0.04] px-3 py-2 text-[13px] text-text-2 last:border-r-0">
+          {cell(column.key)}
+        </td>
+      ))}
+    </tr>
   );
 }
 

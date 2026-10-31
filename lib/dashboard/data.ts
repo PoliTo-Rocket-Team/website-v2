@@ -89,11 +89,11 @@ export interface DashboardData {
    */
   dismissNotice(noticeId: number): Promise<WriteResult<null>>;
   /**
-   * The Members page: the whole team (#143), or one of the lead's divisions
-   * (`divisionId`, else their first) with the people waiting for Confirm NDA
-   * and the accepted applicants joining it (boards 59 and 61e, #172, #231).
+   * The Members page: the whole team (#143), or every division the lead
+   * reaches, all at once (#903), with the people waiting for Confirm NDA and
+   * the accepted applicants joining each (boards 59 and 61e, #172, #231).
    */
-  members(divisionId?: number | null): Promise<MemberDirectory>;
+  members(): Promise<MemberDirectory>;
   /**
    * Add member's field (boards 61h, 69c): the team members whose name or
    * email matches, or whether an email is new to the team. Nothing for a

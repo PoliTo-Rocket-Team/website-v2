@@ -42,10 +42,10 @@ import {
   addOutcome,
   checkAddMember,
   checkMemberEdit,
-  divisionMembers,
   editedFields,
   lookupForAdd,
   positionsOf,
+  reachMembers,
   SEAT_TITLE_REQUIRED,
   shownEditOf,
   type AddLookup,
@@ -484,9 +484,10 @@ export async function readTeamStructure(identity: DashboardIdentity): Promise<Te
 }
 
 /**
- * The divisions `readDivisionMembers` opens when `?division=` names one: the
- * viewer's division reach on the Members page (issue #760). Empty for a page
- * that is not one division's: the whole team, a head's department, or no page.
+ * The divisions a lead's Members page holds (`readDivisionMembers`), so
+ * `?division=` opens it with one of them chosen: the viewer's division reach
+ * on the Members page (issue #760). Empty for a page that is not a lead's:
+ * the whole team, a head's department, or no page.
  */
 export async function readMembersDivisionReach(identity: DashboardIdentity): Promise<readonly number[]> {
   const snapshotRead = readTeamSnapshot();
@@ -495,39 +496,32 @@ export async function readMembersDivisionReach(identity: DashboardIdentity): Pro
 }
 
 /**
- * The Members page of a division lead (boards 61e to 61h2): one of the
- * divisions they reach, `divisionId` or the first, with everyone in it, the
- * people waiting for Confirm NDA and the accepted applicants joining. A head
- * gets their department's page instead. Which divisions it lists follows the
+ * The Members page of a division lead (boards 61e to 61h2): every division
+ * they reach, all at once (issue #903), each with everyone in it, the people
+ * waiting for Confirm NDA and the accepted applicants joining. A head gets
+ * their department's page instead. Which divisions it lists follows the
  * viewing reach; what the page offers to change follows `readActor`, so a
  * grant at Can view shows the people and no action (issue #351).
  */
-export async function readDivisionMembers(identity: DashboardIdentity, divisionId: number | null): Promise<MemberDirectory> {
+export async function readDivisionMembers(identity: DashboardIdentity): Promise<MemberDirectory> {
   const snapshotRead = readTeamSnapshot();
   const [snapshot, viewing] = await Promise.all([snapshotRead, readViewingActor(identity, snapshotRead.then((s) => s.org))]);
   if (viewing === null || viewing.kind === "team") return NO_MEMBERS;
   if (viewing.kind === "head") return readDepartmentMembers(identity, viewing, snapshot);
   const reach = reachOf(identity, viewing, snapshot.org);
-  const division = reach.find((id) => id === divisionId) ?? reach[0];
-  if (division === undefined) return NO_MEMBERS;
   // The accepted applicants joining are applications data: listed only for a
   // viewer who reads the Applications area here (issue #471, `readJoining`).
-  const [joining, waiting, actor] = await Promise.all([
-    readJoining(identity, [division], snapshot.org),
-    readWaiting(division),
-    readActor(identity, snapshot.org),
-  ]);
-  const page = divisionMembers({
+  const [perDivision, actor] = await Promise.all([readPerDivision(identity, reach, snapshot.org), readActor(identity, snapshot.org)]);
+  const page = reachMembers({
     records: recordsOf(snapshot),
     org: snapshot.org,
-    divisionId: division,
+    divisionIds: reach,
     actor,
     selfId: identity.memberId,
-    reach,
-    waiting: waiting.map((w) => waitingPerson(identity, w)),
-    joining: joining.get(division) ?? [],
+    waiting: Object.fromEntries(perDivision.map((d) => [d.id, d.waiting.map((w) => waitingPerson(identity, w))])),
+    joining: Object.fromEntries(perDivision.map((d) => [d.id, d.joining])),
   });
-  return page === null ? NO_MEMBERS : { scope: "division", ...page };
+  return page.divisions.length === 0 ? NO_MEMBERS : { scope: "divisions", ...page };
 }
 
 /**

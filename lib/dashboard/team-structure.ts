@@ -244,7 +244,6 @@ export function teamStructure(input: {
               divisionId: division.id,
               actor,
               selfId: input.selfId,
-              reach: own.map((d) => d.id),
               waiting: input.waiting[division.id] ?? [],
               joining: input.joining[division.id] ?? [],
             })
