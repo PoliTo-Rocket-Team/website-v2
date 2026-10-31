@@ -331,11 +331,20 @@ export function noDetailsFilled(details: MemberDetails): boolean {
   return Object.values(details).every((value) => value === "");
 }
 
+/** A LinkedIn link in its short form, "" when empty: checked inside the schema so its error lands beside every other field's. */
+const linkedinRule = z.string().transform((raw, ctx) => {
+  const linkedin = normalizeLinkedin(raw);
+  if (linkedin.ok) return linkedin.value ?? "";
+  ctx.addIssue({ code: "custom", message: linkedin.error });
+  return z.NEVER;
+});
+
 const memberDetailsSchema = detailsSchema
-  .pick({ phone: true, politoId: true, programme: true, level: true, country: true, birthDate: true, linkedin: true })
+  .pick({ phone: true, politoId: true, programme: true, level: true, country: true, birthDate: true })
   .extend({
     prtEmail: z.string().trim().toLowerCase().pipe(optional(z.email("Write an email address.").max(200, "Too long."))),
     discord: z.string().trim().max(40, "Too long."),
+    linkedin: linkedinRule,
     gender: z.union([z.literal(""), z.enum(GENDERS, "Pick one.")]),
   });
 
@@ -354,9 +363,7 @@ export function parseMemberDetails(input: unknown, openedPhone: string): { ok: t
     for (const issue of result.error.issues) errors[issue.path[0] as MemberDetailKey] ??= issue.message;
     return { ok: false, errors };
   }
-  const linkedin = normalizeLinkedin(result.data.linkedin);
-  if (!linkedin.ok) return { ok: false, errors: { linkedin: linkedin.error } };
-  return { ok: true, value: { ...result.data, linkedin: linkedin.value ?? "" } };
+  return { ok: true, value: result.data };
 }
 
 /** A member detail as the drawer shows it (board 61f); null for an empty one. */

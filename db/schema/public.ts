@@ -773,13 +773,13 @@ export const teamAddressRemovals = pgTable("team_address_removals", {
 export const prtEmailRemovalOutcomeEnum = pgEnum("prt_email_removal_outcome", ["removed", "kept", "cancelled"]);
 
 /**
- * A personal PRT email removal (issue #931, drizzle/0080): a member whose
+ * A personal PRT email removal (issue #931, drizzle/0084): a member whose
  * `members.prt_email` is set held no active role any more, so the alias
  * approvers delete the mailbox in Google Workspace and press Mark done, which
  * clears the PRT email, or press Keep address, which leaves it. A role other
  * than an advisor role started again before either closes it as cancelled;
  * an advisor role leaves it open. The database opens and
- * cancels these itself, when a `roles` write commits (drizzle/0080), so every
+ * cancels these itself, when a `roles` write commits (drizzle/0084), so every
  * way of leaving the team is covered. One address has at most one open
  * removal in any letter case (`prt_email_removals_one_open`).
  * lib/dashboard/prt-email-removal.ts owns the rules.

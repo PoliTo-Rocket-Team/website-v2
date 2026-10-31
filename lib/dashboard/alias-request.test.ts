@@ -12,6 +12,7 @@ import {
   planAliasAnswer,
   planAliasCancel,
   planAliasRequest,
+  planOwnAliasRequest,
   personalRequestChoice,
   type AliasRequest,
   type AliasTeamPerson,
@@ -146,6 +147,29 @@ test("full access asks for nobody who already has a PRT email or an open request
 test("a plain division lead is still refused for a member outside their division", () => {
   assert.deepEqual(ask(MARCO, LENA), { ok: false, error: "You can request a PRT email only for someone you lead or head." });
   assert.deepEqual(ask(MARCO, RICCARDO), { ok: false, error: "You can request a PRT email only for someone you lead or head." });
+});
+
+const askOwn = (memberId: number, extra: { prtEmail?: string | null; open?: AliasRequest[]; address?: string; taken?: string[] } = {}) =>
+  planOwnAliasRequest({
+    memberId,
+    team,
+    prtEmail: extra.prtEmail ?? null,
+    open: extra.open ?? [],
+    address: extra.address ?? NEW_ADDRESS,
+    taken: extra.taken ?? [],
+  });
+
+test("any member asks for their own PRT email on My profile, with no lead or full access (issue #921)", () => {
+  assert.deepEqual(askOwn(DAVIDE), { ok: true, value: { memberId: DAVIDE, requesterId: DAVIDE, address: NEW_ADDRESS } });
+  assert.ok(askOwn(MARCO).ok, "a lead, for themselves");
+  assert.equal(ask(DAVIDE, DAVIDE).ok, false, "and Request PRT email still offers a member nothing for themselves");
+  assert.deepEqual(askOwn(999), { ok: false, error: "You can request a PRT email only while you are on the team." });
+});
+
+test("their own request meets the rules every request meets: one open, none once set, no address held (issue #921)", () => {
+  assert.deepEqual(askOwn(DAVIDE, { open: [request(1, DAVIDE, null)] }), { ok: false, error: "A personal PRT email for Davide Russo is already requested." });
+  assert.deepEqual(askOwn(DAVIDE, { prtEmail: "davide.russo@politorocketteam.it" }), { ok: false, error: "Davide Russo already has a personal PRT email." });
+  assert.deepEqual(askOwn(DAVIDE, { taken: ["New.Person@politorocketteam.it"] }), { ok: false, error: `${NEW_ADDRESS} is already a PRT email.` });
 });
 
 test("a member with a PRT email or an open request gets no second one", () => {

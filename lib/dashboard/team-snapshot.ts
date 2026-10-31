@@ -9,6 +9,7 @@ import type { FoundPerson } from "./division-edit";
 import type { PersonRecord } from "./division-members";
 import type { HeldSeat } from "./hand-over";
 import type { PersonName } from "./person-name";
+import { leadsRecruitmentManagerDivision } from "./recruitment-manager";
 import { normalizeLinkedin } from "./self";
 import { viewAsSiteOf, type ViewAsSite } from "./view-as";
 import { SEAT_OF_FLAG, type SeatFlag } from "./viewer";
@@ -315,21 +316,34 @@ export function editorViewOf(snapshot: TeamSnapshot, memberId: number): { readon
 /**
  * The full-access seats on the team's active lead and head roles, as the
  * hand-over screens read them (`HeldSeat`, issue #501): a flagged lead row of
- * an open division, or a flagged head row of an open department. A seat on a
- * row no hand-over reaches (a board seat, a lead row with no division) is not
- * one of them.
+ * an open division, a flagged head row of an open department, and a lead row
+ * of the open Logistics division, which is the Logistics lead seat by its
+ * division and no flag (issue #891). A seat on a row no hand-over reaches (a
+ * board seat, a lead row with no division) is not one of them.
  */
 export function seatsOf(snapshot: TeamSnapshot): HeldSeat[] {
   return snapshot.roles.flatMap((row): HeldSeat[] => {
-    if (row.leaved_at !== null || row.full_access === null) return [];
-    const seat = SEAT_OF_FLAG[row.full_access];
-    if (row.type === "lead" && row.division_id !== null && snapshot.org.divisions.some((d) => d.id === row.division_id)) {
-      return [{ seat, personId: row.member_id, role: { kind: "lead", divisionId: row.division_id } }];
+    if (row.leaved_at !== null) return [];
+    const flagged = row.full_access === null ? null : SEAT_OF_FLAG[row.full_access];
+    const division = row.type === "lead" ? snapshot.org.divisions.find((d) => d.id === row.division_id) : undefined;
+    if (division !== undefined) {
+      const seat = flagged ?? (leadsLogistics(row, division) ? "logistics-lead" : null);
+      return seat === null ? [] : [{ seat, personId: row.member_id, role: { kind: "lead", divisionId: division.id } }];
     }
+    if (flagged === null) return [];
     const departmentId = row.type === "head" ? headDepartmentOf(roleSeat(row), snapshot.org) : null;
     if (departmentId === null || !snapshot.org.departments.some((d) => d.id === departmentId)) return [];
-    return [{ seat, personId: row.member_id, role: { kind: "head", departmentId } }];
+    return [{ seat: flagged, personId: row.member_id, role: { kind: "head", departmentId } }];
   });
+}
+
+/**
+ * Whether a lead row of `division` leads the open Logistics division, by the
+ * one rule that finds it (`leadsRecruitmentManagerDivision`). The org chart
+ * holds open divisions only, so `division` is open.
+ */
+function leadsLogistics(row: RoleRow, division: OrgChart["divisions"][number]): boolean {
+  return leadsRecruitmentManagerDivision([{ type: row.type, divisionId: division.id, divisionCode: division.code ?? null, divisionClosedAt: null }]);
 }
 
 /**

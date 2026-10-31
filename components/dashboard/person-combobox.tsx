@@ -47,6 +47,7 @@ type Row<Id extends PersonId> =
 export function PersonCombobox<Id extends PersonId = number>({
   id,
   label,
+  name,
   people,
   value,
   onChoose,
@@ -69,6 +70,8 @@ export function PersonCombobox<Id extends PersonId = number>({
   id?: string;
   /** The input's name when no Field labels it. */
   label?: string;
+  /** The input's form name: the field a refused form focuses (issue #927). */
+  name?: string;
   people: readonly ComboboxPerson<Id>[];
   /** Who is chosen; none (or nobody, with `nobody`) when null or undefined. */
   value: Id | null | undefined;
@@ -211,6 +214,7 @@ export function PersonCombobox<Id extends PersonId = number>({
         <input
           ref={inputRef}
           id={id ?? ownId}
+          name={name}
           aria-label={label}
           type="text"
           role="combobox"

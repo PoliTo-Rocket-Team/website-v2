@@ -718,6 +718,9 @@ const ACTION_CASES: readonly ActionCase[] = [
 
   // The viewer's own pages: only their own rows.
   { action: "actions.saveLinkedin", run: () => actions.saveLinkedin("https://www.linkedin.com/in/someone"), may: reaches("my-profile"), control: by("member") },
+  // The viewer's own PRT email and their own request for one (issue #921); no matrix viewer has either yet.
+  { action: "actions.savePrtEmail", run: () => actions.savePrtEmail("viewer.own@politorocketteam.it"), may: reaches("my-profile"), control: by("member") },
+  { action: "actions.requestOwnAlias", run: () => actions.requestOwnAlias("viewer.own@politorocketteam.it"), may: reaches("my-profile"), control: by("member") },
   { action: "actions.uploadPhoto", run: () => actions.uploadPhoto(form({ photo: PHOTO() })), may: reaches("my-profile"), control: by("member") },
   { action: "actions.removePhoto", run: () => actions.removePhoto(), may: reaches("my-profile"), control: by("member") },
   { action: "actions.leaveTeam", run: () => actions.leaveTeam("Moving on", false), may: reaches("my-profile"), control: by("member") },

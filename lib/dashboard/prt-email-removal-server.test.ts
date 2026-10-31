@@ -15,7 +15,7 @@ import { PRT_EMAIL_REMOVAL_ALREADY_ANSWERED } from "./prt-email-removal";
 
 // Personal PRT email removals on the migrated in-memory Postgres (issue
 // #931): every way of leaving the team opens one for the member's PRT email,
-// the database judging the roles as each write leaves them (drizzle/0080),
+// the database judging the roles as each write leaves them (drizzle/0084),
 // and cancels the member's own open PRT email request; a member who stays on
 // as an advisor keeps the address and the request until that role ends;
 // rejoining the team cancels an open removal, taking an advisor role again

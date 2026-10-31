@@ -281,6 +281,20 @@ export async function saveLinkedin(text: string): Promise<WriteResult<string | n
   return write("my-profile", (data) => data.saveLinkedin(String(text)));
 }
 
+/** The PRT email on My profile (issue #921): the Overview's alias card and the profile read it again. */
+export async function savePrtEmail(text: string): Promise<WriteResult<string | null>> {
+  const result = await write("my-profile", (data) => data.savePrtEmail(String(text ?? "")));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+/** Request my PRT email on My profile (issue #921): the profile reads again with the request waiting. */
+export async function requestOwnAlias(address: string): Promise<WriteResult<null>> {
+  const result = await write("my-profile", (data) => data.requestOwnAlias(String(address ?? "")));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
 export async function uploadPhoto(form: FormData): Promise<WriteResult<null>> {
   const photo = await uploadOf(form, "photo");
   if (photo === null) return refused("Choose a photo.");

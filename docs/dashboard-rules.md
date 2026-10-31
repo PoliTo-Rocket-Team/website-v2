@@ -989,7 +989,7 @@ personal PRT email, and the PRT emails section above sets how it reads.
   #931, `lib/dashboard/prt-email-removal.ts`, Owner decisions of 2026-10-31). Leaving is any
   write after which the member holds no active role: Leave the team, Move to alumni, a hand-over
   or a replace that ends their last role, the end of their last advisor role. The database opens
-  the removal as that write commits (`drizzle/0080`), so every way of leaving is covered, and
+  the removal as that write commits (`drizzle/0084`), so every way of leaving is covered, and
   the leave is never refused because of it. A member with no PRT email gets none.
 - The same leave cancels the member's own open PRT email request, if one is open. The
   cancellation shows in the Activity log under who made the leave.

@@ -14,7 +14,7 @@ import type { ViewerStanding } from "./viewer";
 // decision, 2026-10-31).
 //
 // The database opens and cancels the removals itself, when a `roles` write
-// commits (drizzle/0080, `settle_prt_email_removals`), so no way of leaving
+// commits (drizzle/0084,`settle_prt_email_removals`), so no way of leaving
 // can miss one: a member left holding no role, with a PRT email, gets one
 // open removal for that address, never a second while it is open, and their
 // own open PRT email request is cancelled; a member who rejoins the team

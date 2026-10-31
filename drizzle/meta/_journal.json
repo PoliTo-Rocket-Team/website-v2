@@ -552,7 +552,21 @@
       "idx": 80,
       "version": "7",
       "when": 1795886400000,
-      "tag": "0080_prt_email_removals",
+      "tag": "0080_sync_auth_users_email_case",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1795972800000,
+      "tag": "0081_audit_log_skip_auth_secrets",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1796232000000,
+      "tag": "0084_prt_email_removals",
       "breakpoints": true
     }
   ]
