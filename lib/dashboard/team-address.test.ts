@@ -8,6 +8,7 @@ import {
   checkTeamAddress,
   checkTeamAddressAnswer,
   checkTeamAddressRequest,
+  holdersOf,
   memberTeamAddressesFor,
   movesWithOptions,
   owedTeamAddressReroutes,
@@ -403,6 +404,56 @@ test("an open routing item moves its address to whoever holds the tied role now,
   });
   assert.deepEqual(rerouteMoveOf(item(B), [lead(A)], org), { ok: false, error: REROUTE_NOWHERE }, "A leads again: nothing to move");
   assert.deepEqual(rerouteMoveOf(item(B, null), [lead(C)], org), { ok: false, error: REROUTE_NOWHERE }, "no role: nothing to move");
+});
+
+test("with two holders of a tied seat, routing names a current holder, and moves nothing while the address's holder still holds the seat (epic #861)", () => {
+  const A = LEAD; // the address's holder
+  const B = IN_LOGISTICS;
+  const C = IN_MARKETING;
+  const row = (id: number, memberId: number, since: string, seat: Partial<TieRoleRow>): TieRoleRow => ({
+    id,
+    memberId,
+    since,
+    type: "core",
+    departmentId: null,
+    divisionId: null,
+    fullAccess: null,
+    ...seat,
+  });
+  const SEATS: readonly [string, MovesWith, Partial<TieRoleRow>][] = [
+    ["the team leader", { kind: "team-leader" }, { type: "president" }],
+    ["a full-access seat", { kind: "full-access-seat", seat: "operations-lead" }, { fullAccess: "operations-lead" }],
+    ["a department's head", { kind: "department-head", departmentId: 7 }, { type: "head", departmentId: 7 }],
+  ];
+  for (const [name, tie, seat] of SEATS) {
+    const item = (toId: number): StoredTeamAddressReroute => ({
+      id: 1,
+      addressId: 1,
+      address: "sponsoring@politorocketteam.it",
+      movesWith: tie,
+      holderId: A,
+      toId,
+      fromId: A,
+      createdAt: "2026-10-26T10:00:00Z",
+    });
+    const b = row(11, B, "2025-10-01", seat);
+    const c = row(12, C, "2026-10-26", seat);
+    const a = row(13, A, "2024-10-01", seat);
+    // Both holders are read, the newest first.
+    assert.deepEqual(holdersOf(tie, [b, c], org), [C, B], `${name}: both holders, newest first`);
+    // The item names a holder who still holds it: they keep it, beside a co-holder.
+    assert.equal(rerouteTargetNow(item(B), [b, c], org), B, `${name}: the member it names still holds the seat`);
+    // The member it names left: the newest of the holders now.
+    assert.equal(rerouteTargetNow(item(NO_ADDRESS), [b, c], org), C, `${name}: the newest current holder`);
+    // The address's holder holds the seat beside others: nothing moves, and Mark done refuses.
+    assert.equal(rerouteTargetNow(item(B), [a, b, c], org), null, `${name}: its holder still holds the seat`);
+    assert.deepEqual(rerouteMoveOf(item(B), [a, b, c], org), { ok: false, error: REROUTE_NOWHERE }, `${name}: Mark done moves nothing`);
+    assert.deepEqual(
+      teamAddressRerouteAttentionFor(IT_LEAD, reroutesNow([item(B)], [a, b, c], org), team, org, new Date("2026-10-27T10:00:00Z"), []),
+      [],
+      `${name}: no approver row`,
+    );
+  }
 });
 
 // The holder's ready card (owner finding on PR #794) ---------------------------------
