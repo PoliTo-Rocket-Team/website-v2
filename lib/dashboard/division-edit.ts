@@ -55,9 +55,28 @@ export function divisionNameError(typed: string): string | null {
   return name.length > MAX_NAME ? "Too long." : null;
 }
 
-/** The name as stored: "Flight Dynamics" is kept as "Flight Dynamics Division", as every division is named. */
+/**
+ * The name as stored: trimmed, inner spaces made one, and without "Division"
+ * (issue #938). The seed, the Team tree and the Apply page all read a stored
+ * name without it and add it themselves where a page wants it, so a typed
+ * "Flight Dynamics Division" is kept as "Flight Dynamics".
+ */
 export function storedDivisionName(typed: string): string {
-  return `${divisionLabel(typed.trim().replace(/\s+/g, " "))} Division`;
+  return divisionLabel(typed.trim().replace(/\s+/g, " "));
+}
+
+/** The name as typed, as the drawer says it on screen: "Flight Dynamics Division". Never stored. */
+export function divisionTitle(typed: string): string {
+  return `${storedDivisionName(typed)} Division`;
+}
+
+/**
+ * Whether the name as typed renames the division whose name is `stored`.
+ * An older stored name may still end in "Division", so both sides are read
+ * without it: retyping the same name is no rename (issue #938).
+ */
+export function renamesDivision(typed: string, stored: string): boolean {
+  return storedDivisionName(typed) !== storedDivisionName(stored);
 }
 
 /**
@@ -145,8 +164,14 @@ export type DivisionSubject = { readonly kind: "new"; readonly departmentId: num
 
 /** What a checked save changes; each data source writes it in one go. */
 export type DivisionPlan = {
-  /** As stored: "Mission Analysis Division". */
+  /** As stored, without "Division": "Mission Analysis". New division writes it; Edit division only when `nameChanged`. */
   readonly name: string;
+  /**
+   * The edit renames the division, so its name is written. An edit that keeps
+   * the name leaves the stored name exactly as it is, an older one ending in
+   * "Division" included (issue #938).
+   */
+  readonly nameChanged: boolean;
   readonly code: string;
   /** The code changed: the division's position codes read the new one from now on. */
   readonly codeChanged: boolean;
@@ -320,6 +345,7 @@ export function planDivisionSave(input: {
     ok: true,
     plan: {
       name: storedDivisionName(save.name),
+      nameChanged: subject.kind === "open" && renamesDivision(save.name, subject.division.name),
       code: save.code,
       codeChanged: subject.kind === "open" && normalizeDivisionCode(subject.division.code ?? "") !== save.code,
       promote: newLeads.filter(holdsRole),

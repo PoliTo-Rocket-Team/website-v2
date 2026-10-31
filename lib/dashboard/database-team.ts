@@ -1396,7 +1396,8 @@ async function writeDivisionPlan(
       ? db.insert(divisions).values({ id: divisionId, deptId: create.departmentId, name: plan.name, code: plan.code })
       : db
           .update(divisions)
-          .set({ name: plan.name, code: plan.code })
+          // A save that keeps the name leaves the stored one as it is (issue #938).
+          .set(plan.nameChanged ? { name: plan.name, code: plan.code } : { code: plan.code })
           .where(and(eq(divisions.id, divisionId), isNull(divisions.closedAt))),
     ...(rows.end.length === 0 ? [] : [db.update(roles).set({ leavedAt: on }).where(open(rows.end))]),
     // Old leads who leave the team end every role before a seat on one moves to a new lead. The hand-over ends their rows by

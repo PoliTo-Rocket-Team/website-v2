@@ -547,6 +547,13 @@
       "when": 1795800000000,
       "tag": "0079_sync_auth_users_fresh_row_on_refused_take_over",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1795886400000,
+      "tag": "0080_repair_division_name_suffix",
+      "breakpoints": true
     }
   ]
 }
