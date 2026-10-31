@@ -3,7 +3,7 @@ import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { ApplyPosition } from "./types";
-import type { ViewerStanding } from "@/lib/dashboard/viewer";
+import type { RecruitmentReader } from "@/lib/dashboard/application-documents";
 import { getDb, isDatabaseConfigured } from "@/db/client";
 import { PUBLIC_POSITIONS_CACHE_TAG } from "@/lib/cache-tags";
 import {
@@ -141,11 +141,11 @@ function toApplyPosition(position: PositionSnapshotRow): ApplyPosition {
 /**
  * The dashboard's recruitment switch: its stored state, read fresh, and
  * whether this member may change it. Everyone else sees it read-only. The
- * standing is the one the caller has already resolved (the dashboard's
+ * viewer is the one the caller has already resolved (the dashboard's
  * identity, issue #397), so the session is not read again; it alone decides
- * (`canSwitchRecruitment`, issue #621).
+ * (`canSwitchRecruitment`, issues #621, #875).
  */
-export async function getRecruitmentControlFor(viewer: ViewerStanding): Promise<RecruitmentControl> {
+export async function getRecruitmentControlFor(viewer: RecruitmentReader): Promise<RecruitmentControl> {
   const recruitment = await queryRecruitment();
   return { recruitment, canSwitch: canSwitchRecruitment(viewer) };
 }

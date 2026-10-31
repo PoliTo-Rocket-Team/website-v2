@@ -85,6 +85,12 @@ const fromColumn = (column: keyof typeof users.$inferSelect, fromUserId: string)
 /** The text profile fields the record's new row takes from the old one where its own are empty. */
 const TEXT_FIELDS = ["firstName", "lastName", "origin", "levelOfStudy", "linkedin", "politoId", "program", "phone", "gender", "referralSource", "country"] as const;
 
+/** The member's profile on a user row: the text fields and the date of birth. The record's new row takes it; the old row is emptied of it (issue #881). */
+const PROFILE_FIELDS = [...TEXT_FIELDS, "dateOfBirth"] as const;
+
+/** Every profile field cleared, as the row the record leaves is written. */
+const NO_PROFILE = Object.fromEntries(PROFILE_FIELDS.map((key) => [key, null])) as Record<(typeof PROFILE_FIELDS)[number], null>;
+
 /**
  * Both rows still as the plan read them, checked inside the batch: the old
  * row open, holding the record, and held by a sign-in account exactly when it
@@ -127,7 +133,11 @@ function lockRows(db: Db, ids: readonly string[]) {
  * a login on it keeps the row, and every session of it ends; a row no sign-in
  * holds is closed (`deleted_at`), never deleted. Its `member` is cleared, so
  * the yearly anonymization of closed rows (./anonymize.ts) never reaches the
- * member.
+ * member, and so is the member's profile on it (`PROFILE_FIELDS`), so the
+ * login left behind is an empty account that reads none of the member's
+ * details (issue #881); its applications and their files stay its own. That
+ * write comes after the new row's, which reads the profile off the old row
+ * (`fromColumn`) inside this batch.
  */
 function moveWrites(db: Db, move: RecordMove): BatchItem<"pg">[] {
   const toUserId = move.to.kind === "login" ? move.to.userId : `added:${randomUUID()}`;
@@ -150,7 +160,7 @@ function moveWrites(db: Db, move: RecordMove): BatchItem<"pg">[] {
     db.update(teamJoins).set({ userId: toUserId }).where(eq(teamJoins.userId, from)),
     db
       .update(users)
-      .set({ member: null, ...(move.from.linked ? {} : { deletedAt: sql`now()` }), updatedAt: sql`now()` })
+      .set({ ...NO_PROFILE, member: null, ...(move.from.linked ? {} : { deletedAt: sql`now()` }), updatedAt: sql`now()` })
       .where(and(eq(users.id, from), eq(users.member, move.memberId))),
     ...(move.from.linked ? [db.delete(betterAuthSessions).where(eq(betterAuthSessions.userId, from))] : []),
   ];

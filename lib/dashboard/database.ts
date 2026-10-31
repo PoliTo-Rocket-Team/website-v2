@@ -1123,7 +1123,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     recruitment: () => getRecruitmentControlFor(identity),
     setRecruitment: (next) =>
       switchRecruitment(next, {
-        // Read on the server, from the caller's standing: the same rule the page shows.
+        // Read on the server, from the caller's identity: the same rule the page shows.
         maySwitch: async () => canSwitchRecruitment(identity),
         save: saveRecruitment,
         refresh: () => refreshAfter("positions", updateTag),

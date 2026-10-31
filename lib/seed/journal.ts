@@ -14,7 +14,34 @@ export type TableName = string;
 /** Each table the journal creates, with the columns it ends up with. */
 export type JournaledSchema = ReadonlyMap<TableName, ReadonlySet<string>>;
 
-type Journal = { readonly entries: readonly { readonly tag: string }[] };
+/** One journaled migration: its file name, and the time drizzle records it under once applied. */
+export type JournalEntry = { readonly tag: string; readonly when: number };
+
+type Journal = { readonly entries: readonly JournalEntry[] };
+
+/** The journaled migrations in `folder`, in the order the migrator applies them. */
+export function journalEntries(folder: string = resolve(process.cwd(), "drizzle")): readonly JournalEntry[] {
+  return (JSON.parse(readFileSync(resolve(folder, "meta/_journal.json"), "utf8")) as Journal).entries;
+}
+
+/**
+ * The migrations one run of the migrator applied, by name, in journal order.
+ * Drizzle's `migrate()` names none, but it records each one it applies as a
+ * row of `drizzle.__drizzle_migrations` whose `created_at` is the entry's
+ * `when`; `before` and `after` are those values read either side of the run.
+ * A new row no journal entry matches is named by its `created_at`, so the
+ * list never hides one.
+ */
+export function appliedMigrations(
+  journal: readonly JournalEntry[],
+  before: ReadonlySet<string>,
+  after: ReadonlySet<string>,
+): readonly string[] {
+  const added = new Set([...after].filter((createdAt) => !before.has(createdAt)));
+  const named = journal.filter(({ when }) => added.has(String(when)));
+  for (const { when } of named) added.delete(String(when));
+  return [...named.map(({ tag }) => tag), ...[...added].sort().map((createdAt) => `unjournaled migration recorded at ${createdAt}`)];
+}
 
 const TABLE = String.raw`((?:"\w+"\.)?"\w+")`;
 
@@ -52,9 +79,8 @@ export function applyMigration(tables: Map<TableName, Set<string>>, sql: string)
 
 /** The schema the journaled migrations in `folder` build, read from the files. */
 export function journaledSchema(folder: string = resolve(process.cwd(), "drizzle")): JournaledSchema {
-  const journal = JSON.parse(readFileSync(resolve(folder, "meta/_journal.json"), "utf8")) as Journal;
   const tables = new Map<TableName, Set<string>>();
-  for (const { tag } of journal.entries) applyMigration(tables, readFileSync(resolve(folder, `${tag}.sql`), "utf8"));
+  for (const { tag } of journalEntries(folder)) applyMigration(tables, readFileSync(resolve(folder, `${tag}.sql`), "utf8"));
   return tables;
 }
 
