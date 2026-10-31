@@ -128,6 +128,17 @@ function refuseUnless(change: GoogleAccountChange, state: GoogleAccountsState): 
 }
 
 const ONLY_GOOGLE = "Only a Google account can be added or removed.";
+export const ONLY_THROUGH_GOOGLE_SIGN_IN = "Add a Google account through Google sign-in.";
+
+/**
+ * True when a `/link-social` body hands Better Auth an id token directly. That
+ * form links without asking whether another login already holds the Google
+ * account (the redirect callback does ask), and the section never sends it, so
+ * every such request is refused.
+ */
+function carriesIdToken(body: unknown): boolean {
+  return typeof body === "object" && body !== null && (body as { readonly idToken?: unknown }).idToken != null;
+}
 
 export function googleAccountsPlugin(log: GoogleAccountLog) {
   return {
@@ -140,6 +151,7 @@ export function googleAccountsPlugin(log: GoogleAccountLog) {
             const signedIn = await stateOf(ctx);
             if (signedIn === null) return;
             if (ctx.body?.provider !== GOOGLE) throw new APIError("BAD_REQUEST", { message: ONLY_GOOGLE });
+            if (carriesIdToken(ctx.body)) throw new APIError("BAD_REQUEST", { message: ONLY_THROUGH_GOOGLE_SIGN_IN });
             refuseUnless({ kind: "link" }, signedIn.state);
           }),
         },

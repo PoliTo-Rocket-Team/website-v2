@@ -3,7 +3,7 @@ import { afterEach, test } from "node:test";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { GOOGLE_ACCOUNT_REFUSAL_MESSAGES, type GoogleAccountEntry } from "./dashboard/google-accounts";
 import { BASE, envRestorer, Jar, ORIGIN, SEAT_DIRECTORY, seededMemoryDb, setEnv, TEST_ENV, type MemoryDb } from "./dev-tester-fixture";
-import type { GoogleAccountLog } from "./google-accounts-plugin";
+import { ONLY_THROUGH_GOOGLE_SIGN_IN, type GoogleAccountLog } from "./google-accounts-plugin";
 import { seatOf } from "./seeded-accounts";
 import type { ViewAsGate } from "./view-as-plugin";
 
@@ -151,6 +151,21 @@ test("a Google account another login already holds is not linked: Google's retur
   const { jar } = await signInWithGoogle(auth, "first");
   assert.equal(await link(auth, jar, "other"), "/dashboard/profile?error=account_already_linked_to_different_user");
   assert.deepEqual(rowsOf(db, OTHER.id).map((a) => a.accountId), ["google-other"]);
+  assert.deepEqual(rowsOf(db, MEMBER.id).map((a) => a.accountId), [FIRST.sub]);
+  assert.deepEqual(entries, []);
+});
+
+test("a link that hands over an id token is refused before Better Auth acts, so another login's Google account stays on that login only", async () => {
+  const { auth, db, google, entries } = await setUp();
+  const held: Google = { sub: "google-other", email: OTHER.email };
+  google.set("other", held);
+  await signInWithGoogle(auth, "other");
+  const { jar } = await signInWithGoogle(auth, "first");
+
+  const refused = await post(auth, jar, "/link-social", { provider: "google", callbackURL: "/dashboard/profile", idToken: { token: idTokenOf(held) } });
+  assert.equal(refused.status, 400);
+  assert.equal(((await refused.json()) as { message: string }).message, ONLY_THROUGH_GOOGLE_SIGN_IN);
+  assert.deepEqual(googleRows(db).filter((a) => a.accountId === held.sub).map((a) => a.userId), [OTHER.id], "the Google account stays on its first login only");
   assert.deepEqual(rowsOf(db, MEMBER.id).map((a) => a.accountId), [FIRST.sub]);
   assert.deepEqual(entries, []);
 });
