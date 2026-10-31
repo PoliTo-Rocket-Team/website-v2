@@ -8,8 +8,8 @@ import { storedTeamPage, storedTeamPageOfRow } from "./team-page-stored";
 // layout (issue #850, ADR 0019 Decision 7, first fill). Both migration entry
 // points run it right after the migrations (db/migrate-database.ts): the
 // layout of a row with none is the one its layer snapshots to on the roles
-// the database holds now (`storedTeamPage`), the same TypeScript the interim
-// save and the transitional read use; no SQL builds it. A row that already
+// the database holds now (`storedTeamPage`), the same TypeScript the
+// transitional read uses; no SQL builds it. A row that already
 // has a layout is left alone, and so is a row whose layer this code could not
 // have written, which the page skips anyway. Each write sets the layout only
 // while the row still has none, so a second run, or a save landing between

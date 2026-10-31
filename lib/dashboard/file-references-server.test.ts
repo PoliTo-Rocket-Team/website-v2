@@ -107,18 +107,23 @@ test("the Team page keeps a copy of a member's picture, and replacing that pictu
   await memberWithPicture();
   const leader = await dataAs("team leader");
   const rows = advisorRowsOf((await leader.teamAdvisors.list()) ?? []);
-  const saved = await leader.teamPage.save("publish", { ...NO_TEAM_LAYER, leader: { photo: publicUrlOf(MEMBER_FILE) } }, rows);
+  const opened = await leader.teamPage.open();
+  assert.ok(opened);
+  const { layout, text } = opened.content;
+  const showing: TeamLayout = { ...layout, leader: { ...layout.leader!, overrides: { photo: publicUrlOf(MEMBER_FILE) as PersonPhoto } } };
+  const saved = await leader.teamPage.save("publish", { layout: showing, text }, rows);
   assert.ok(saved.ok, JSON.stringify(saved));
   const [copy] = await filesWritten("copy-public");
   assert.match(copy, /^photos\/team-page-/, "the copy has a Team page name of its own");
-  const [layerRow] = await tableRows(teamPageLayerVersions);
-  assert.equal((layerRow.layer as { leader: { photo: string } }).leader.photo, publicUrlOf(copy), "the layer names the copy, not the member's file");
+  const leaderPhoto = (row: Record<string, unknown>) => (row.layout as TeamLayout).leader?.overrides.photo;
+  const [layoutRow] = await tableRows(teamPageLayerVersions);
+  assert.equal(leaderPhoto(layoutRow), publicUrlOf(copy), "the layout names the copy, not the member's file");
 
   const member = await dataAs("member");
   assert.ok((await member.setPhoto(photoUpload())).ok);
   assert.deepEqual(await filesWritten("delete-public"), [MEMBER_FILE], "the member's old file goes, and only it");
   const [after] = await tableRows(teamPageLayerVersions);
-  assert.equal((after.layer as { leader: { photo: string } }).leader.photo, publicUrlOf(copy), "the Team page still shows its copy");
+  assert.equal(leaderPhoto(after), publicUrlOf(copy), "the Team page still shows its copy");
 });
 
 test("End advising gives the Alumni entry a copy of the advisor's photo, and the member's file stays", async () => {
