@@ -1,5 +1,6 @@
 import { isTeamPageLayer, isTeamPageText, NO_TEAM_LAYER, textOf, withText, type OwnsUpload, type TeamPageLayer, type TeamPageText } from "./team-layer";
-import { layoutPageOf, parseTeamLayout, snapshot, type TeamLayout } from "./team-layout";
+import { mapVersions, versionRows, type Versioned } from "@/lib/content/versioned";
+import { bindsTeamSeat, layoutPageOf, parseTeamLayout, snapshot, withTeamSeatMoved, type TeamLayout } from "./team-layout";
 import type { TeamRoles } from "./team-roles";
 import type { TeamPage } from "./types";
 
@@ -50,6 +51,29 @@ export function storedTeamPageOf(roles: TeamRoles, stored: StoredTeamPage, base:
  */
 export function storedTeamPageOfRow(row: { readonly layer: unknown; readonly layout: unknown }, owns: OwnsUpload): StoredTeamPage | null {
   return isTeamPageLayer(row.layer, owns) ? { layer: row.layer, layout: parseTeamLayout(row.layout) } : null;
+}
+
+// A hand-over in the Team tree (issue #852, ADR 0019 Decision 3): a
+// team-level seat with no full-access flag is bound by its `roles` row, and
+// its hand-over ends that row and starts the successor's, so the stored page
+// seats bound to the ended row move to the new one in the same write. Every
+// other seat kind is bound by a reference the hand-over keeps, and a
+// person-bound place passes to no one (#846 R4.1), so neither moves.
+
+/** Whether a stored layout of any version binds a page seat to team-level seat row `roleId`: only then does its hand-over write to the page. */
+export function bindsStoredTeamSeat(version: Versioned<StoredTeamPage>, roleId: number): boolean {
+  return versionRows(version).some(({ content }) => content.layout !== null && bindsTeamSeat(content.layout, roleId));
+}
+
+/**
+ * The versions after team-level seat row `from` is handed over to the
+ * successor's row `to`: in each stored layout every page seat bound to `from`
+ * is bound to `to`, with its place and overrides. A version with no stored
+ * layout yet keeps none: it draws the layout its layer snapshots to on the
+ * team record after the hand-over (`layoutOf`). The layer is unchanged.
+ */
+export function teamSeatHandedOver(version: Versioned<StoredTeamPage>, from: number, to: number): Versioned<StoredTeamPage> {
+  return mapVersions(version, (stored) => (stored.layout === null ? stored : { ...stored, layout: withTeamSeatMoved(stored.layout, from, to) }));
 }
 
 /** What the Team page editor edits and saves (issue #851): the layout of page seats, and the layer's intro text, figures and group photo. */

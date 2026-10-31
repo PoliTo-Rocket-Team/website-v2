@@ -11,7 +11,16 @@ import { NO_TEAM_LAYER, NO_UPLOADS, textOf } from "./team-layer";
 import { layoutPageOf, snapshot, type TeamLayout } from "./team-layout";
 import { photosInUse, publicTeamPage, teamPageEditor, type TeamPageEditor, type TeamPagePhotos, type TeamPageStore } from "./team-page-editor";
 import { memoryTeamPageStore } from "./team-page-memory";
-import { contentOf, layoutOf, storedTeamPage, storedTeamPageOfRow, type StoredTeamPage, type TeamPageContent } from "./team-page-stored";
+import {
+  bindsStoredTeamSeat,
+  contentOf,
+  layoutOf,
+  storedTeamPage,
+  storedTeamPageOfRow,
+  teamSeatHandedOver,
+  type StoredTeamPage,
+  type TeamPageContent,
+} from "./team-page-stored";
 import { teamPageFromRoles, type TeamRoles } from "./team-roles";
 import type { TeamPage } from "./types";
 
@@ -95,6 +104,29 @@ test("a save stores the layout the editor sends and the layer's text in one writ
   const [item] = await store.layer.list();
   const draft = item.version.state === "published" ? item.version.draft : null;
   assert.deepEqual(draft, { layer: { ...layer, intro: "Edited intro." }, layout: snapshot(roles, NO_TEAM_LAYER).layout });
+});
+
+test("a hand-over of a team-level seat row binds every stored page seat on it to the successor's row, in each version, and leaves the rest", () => {
+  const layout = snapshot(roles, NO_TEAM_LAYER).layout;
+  const onSeat: TeamLayout = {
+    ...layout,
+    arc: [...layout.arc, { id: 900, binding: { kind: "team-seat", roleId: 27 }, overrides: { photo: "/team/seat.jpg" } }, { id: 901, binding: { kind: "person", memberId: 27 }, overrides: {} }],
+  };
+  const version: Versioned<StoredTeamPage> = { state: "published", published: { layer, layout: onSeat }, draft: { layer, layout: null } };
+  assert.ok(bindsStoredTeamSeat(version, 27));
+  assert.ok(!bindsStoredTeamSeat(version, 28), "no page seat is bound to another row");
+  assert.ok(!bindsStoredTeamSeat({ state: "draft", draft: { layer, layout: null } }, 27), "a version with no stored layout binds none");
+
+  const handed = teamSeatHandedOver(version, 27, 28);
+  assert.deepEqual(handed, {
+    state: "published",
+    published: {
+      layer,
+      layout: { ...onSeat, arc: [...layout.arc, { id: 900, binding: { kind: "team-seat", roleId: 28 }, overrides: { photo: "/team/seat.jpg" } }, onSeat.arc.at(-1)] },
+    },
+    draft: { layer, layout: null },
+  });
+  assert.ok(!bindsStoredTeamSeat(handed, 27));
 });
 
 test("a photo only a stored layout shows is in use", () => {

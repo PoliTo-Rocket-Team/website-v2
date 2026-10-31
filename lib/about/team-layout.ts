@@ -188,6 +188,11 @@ export function withoutGoneSeats(layout: TeamLayout, roles: TeamRoles): TeamLayo
   };
 }
 
+/** Whether a page seat of the layout is bound to the team-level seat on `roles` row `roleId`; a person-bound place never is. */
+export function bindsTeamSeat(layout: TeamLayout, roleId: number): boolean {
+  return layoutSeats(layout).some((seat) => seat.binding.kind === "team-seat" && seat.binding.roleId === roleId);
+}
+
 /**
  * The layout with every page seat bound to team-level seat `from` bound to
  * `to` instead: a hand-over of a seat with no flag ends its `roles` row and

@@ -31,6 +31,7 @@ import { DashboardRefused, type TeamWrites } from "./data";
 import { automaticAliasRequests } from "./database-alias";
 import { readWaitingHandOvers } from "./database-hand-over";
 import { automaticTeamAddressReroutes } from "./database-team-address";
+import { pageSeatsHandOver, type PageSeatsHandOver } from "./database-team-page";
 import { handedTo, seatHandedTo, type TiedRoleChange } from "./team-address";
 import { moveApplication } from "./database-recruitment";
 import { answerNoticeOf, HAND_OVER_NEEDS_MEMBER, planHandOverAnswer, type HandOverAnswer, type HandOverAnswerPlan } from "./hand-over-request";
@@ -1767,23 +1768,42 @@ function isEndGuardFailure(error: unknown): boolean {
   return false;
 }
 
+const TEAM_PAGE_SAVED_MEANWHILE = "The Team page was saved while this ran. Try again.";
+
 /**
- * Runs one seat write: `endSeatRow` first, then `after`, in one audited
- * batch. When the batch fails on `endSeatRow`'s guard and the seat row is
- * ended on re-read, the write is refused as no longer held; any other
- * failure is thrown unchanged (issue #696).
+ * Runs one seat write: `endSeatRow` first, then `after`, then the page seats'
+ * move when the hand-over carries one (`pageSeats`, issue #852), in one
+ * audited batch. When the batch fails on a guard, the write is refused as no
+ * longer held when the seat row is ended on re-read, else as the Team page
+ * saved meanwhile when the layer rows changed; any other failure is thrown
+ * unchanged (issue #696).
  */
-async function writeSeat(roleId: number, on: string, after: (db: Tx) => BatchItem<"pg">[]): Promise<WriteResult<null>> {
+async function writeSeat(
+  roleId: number,
+  on: string,
+  after: (db: Tx) => BatchItem<"pg">[],
+  pageSeats: PageSeatsHandOver | null = null,
+): Promise<WriteResult<null>> {
   try {
-    await runAuditBatch((db) => [endSeatRow(db, roleId, on), ...after(db)]);
+    await runAuditBatch((db) => [endSeatRow(db, roleId, on), ...after(db), ...(pageSeats?.writes(db) ?? [])]);
   } catch (error) {
     if (!isEndGuardFailure(error)) throw error;
     const [held] = await getDb().select({ id: roles.id }).from(roles).where(and(eq(roles.id, roleId), isNull(roles.leavedAt)));
     if (held === undefined) return refused(SEAT_NO_LONGER_HELD);
+    if (pageSeats !== null && (await pageSeats.changed())) return refused(TEAM_PAGE_SAVED_MEANWHILE);
     throw error;
   }
+  pageSeats?.landed();
   done();
   return written(null);
+}
+
+/** A new `roles` row's id, taken from the table's own sequence before the batch that inserts the row with it. */
+async function reservedRoleId(): Promise<number> {
+  const read = await getDb().execute<{ id: number }>(sql`select nextval(pg_get_serial_sequence('roles', 'id'))::int as id`);
+  const id = read.rows[0]?.id;
+  if (typeof id !== "number") throw new Error("The roles sequence gave no id.");
+  return id;
 }
 
 /**
@@ -1791,7 +1811,10 @@ async function writeSeat(roleId: number, on: string, after: (db: Tx) => BatchIte
  * successor's starts with the same type, title and full-access flag, so the
  * flag moves with the seat and one active row holds it; then the holder
  * becomes an advisor to the team, whose access rows go, or leaves the team
- * (`steppingDownWrites`). The successor keeps every role they hold.
+ * (`steppingDownWrites`). The successor keeps every role they hold. A seat
+ * with no flag is bound on the Team page by its row, so the page seats bound
+ * to the ended row move to the successor's in the same batch (issue #852);
+ * a flagged seat is bound by its flag, which moves, so the page needs no write.
  */
 async function changeSeatHolder(identity: DashboardIdentity, roleId: number, input: unknown): Promise<WriteResult<null>> {
   const checked = checkSeatHolderChange(input);
@@ -1809,14 +1832,29 @@ async function changeSeatHolder(identity: DashboardIdentity, roleId: number, inp
   const active = await activeRoles(from);
   // A team address tied to the full-access seat is owed a routing item (issue #789).
   const reroutesAsked = await automaticTeamAddressReroutes(seatHandedTo(handed.value));
+  const pageSeats = row.full_access === null ? await pageSeatsHandOver(roleId, reservedRoleId) : null;
   const on = today();
   // The holder's row ends before the successor's starts: the database keeps one active holder per seat (issue #667).
   // It ends in `writeSeat`'s first statement, so the stepping-down writes end no row of it again.
-  return writeSeat(roleId, on, (db) => [
-    ...steppingDownWrites(db, { memberId: from, active }, step, [], on),
-    db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: row.title, type: row.type, startedAt: on, ...seatFor(handed.value, to) }),
-    ...reroutesAsked(db),
-  ]);
+  return writeSeat(
+    roleId,
+    on,
+    (db) => [
+      ...steppingDownWrites(db, { memberId: from, active }, step, [], on),
+      db.insert(roles).values({
+        ...(pageSeats !== null && { id: pageSeats.to }),
+        memberId: to,
+        deptId: null,
+        divisionId: null,
+        title: row.title,
+        type: row.type,
+        startedAt: on,
+        ...seatFor(handed.value, to),
+      }),
+      ...reroutesAsked(db),
+    ],
+    pageSeats,
+  );
 }
 
 /** Add seat: one active role in no department and no division, with the title given and no full-access flag. */
