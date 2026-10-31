@@ -186,7 +186,7 @@ function DrawerForm({
     { name: "code", label: "Code", error: codeError ?? undefined },
     { name: "lead", label: "Leads", error: leadError ?? undefined },
     ...(undecided ? [{ name: `hand-over-${undecided.id}`, label: `What happens to ${undecided.name}`, error: handOverError ?? undefined }] : []),
-  ]);
+  ], { open, values: [draft] });
   // An empty code shows its error once a click was refused (issue #927); a typed one shows it at once.
   const codeShown = codeError !== null && (draft.code !== "" || showErrors);
 
@@ -353,6 +353,7 @@ function DrawerForm({
             {picking !== null ? (
               <PeoplePicker
                 mode="lead"
+                name="lead"
                 short={short}
                 taken={(p) =>
                   leads.some((l) => l.id === p.id) || draft.added.some((a) => a.pick.id === p.id) ? "Already a lead" : null
@@ -655,6 +656,7 @@ export function PeoplePicker({
   onEmail,
   onClose,
   multi = false,
+  name,
 }: {
   mode: "lead" | "member" | "head" | "leader" | "seat";
   /** The division or department the pick joins: "Mission Analysis", "the new department". */
@@ -665,6 +667,8 @@ export function PeoplePicker({
   onEmail?: (email: string) => void;
   onClose: () => void;
   multi?: boolean;
+  /** The search field's form name: the field a refused form focuses while the picker is open (issue #927). */
+  name?: string;
 }) {
   const id = useId();
   const [query, setQuery] = useState("");
@@ -715,6 +719,7 @@ export function PeoplePicker({
       <div className="min-w-0 flex-1">
         <PersonCombobox
           id={id}
+          name={name}
           people={people.map((p) => ({ id: p.id, name: p.name, photoUrl: p.photoUrl, aside: p.place, line: pickLine(mode, p), taken: taken(p) }))}
           value={null}
           onChoose={choose}

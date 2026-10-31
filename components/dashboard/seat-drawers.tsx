@@ -124,7 +124,7 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
     next === null
       ? { name: "next", label: "Who takes the seat", error: error ?? undefined }
       : { name: `seat-${seat.roleId}`, label: `What happens to ${holder.name}`, error: error ?? undefined },
-  ]);
+  ], { open, values: [next, outcome, replacing] });
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -259,6 +259,7 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
                 {several && <p className="mt-3 text-[13px] text-text-2">Who takes over from {holder.name}? {keepTheSeat(others)}</p>}
                 <PeoplePicker
                   mode="seat"
+                  name="next"
                   short={seat.title}
                   taken={(p) => holderAddRefusal(p, holderIds)}
                   onPick={(p) => {
@@ -361,7 +362,7 @@ function NewSeatPanel({ open, onClose }: { open: boolean; onClose: () => void })
   const { summary, showErrors, check, refuse } = useFormSummary([
     { name: "title", label: "Title", error: titleError ?? undefined },
     { name: "holder", label: "Holder", error: holderError ?? undefined },
-  ]);
+  ], { open, values: [title, holder] });
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -434,6 +435,7 @@ function NewSeatPanel({ open, onClose }: { open: boolean; onClose: () => void })
             {picking ? (
               <PeoplePicker
                 mode="seat"
+                name="holder"
                 short={stored === "" ? "the new seat" : stored}
                 taken={() => null}
                 onPick={(p) => {

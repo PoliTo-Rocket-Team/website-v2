@@ -57,7 +57,7 @@ export function TeamLeaderDrawer({
   const { summary, check, refuse } = useFormSummary([
     { name: "next", label: "Who takes over", error: next === null ? "Pick who takes over." : undefined },
     { name: "team-leader-next", label: "What you do next", error: outcome === null ? "Choose what you do next." : undefined },
-  ]);
+  ], { open, values: [next, outcome] });
 
   const handOver = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -134,6 +134,7 @@ export function TeamLeaderDrawer({
               {picking && (
                 <PeoplePicker
                   mode="leader"
+                  name="next"
                   short="the team"
                   taken={(p) => (p.id === you.id ? "You hold the role now" : holderAddRefusal(p, holderIds))}
                   onPick={(p) => {

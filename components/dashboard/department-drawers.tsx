@@ -206,7 +206,7 @@ function NewDepartment({ open, structure, onClose }: { open: boolean; structure:
     { name: "name", label: "Name", error: nameError ?? undefined },
     { name: "code", label: "Code", error: codeError ?? undefined },
     { name: "head", label: "Head", error: headError ?? undefined },
-  ]);
+  ], { open, values: [name, rawCode, head] });
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -279,6 +279,7 @@ function NewDepartment({ open, structure, onClose }: { open: boolean; structure:
             {picking ? (
               <PeoplePicker
                 mode="head"
+                name="head"
                 short={stored === "" ? "the new department" : stored}
                 taken={() => null}
                 onPick={(p) => {
@@ -379,7 +380,7 @@ function EditDepartment({
     { name: "name", label: "Name", error: nameError ?? undefined },
     { name: "code", label: "Code", error: codeError ?? undefined },
     { name: `head-${department.id}`, label: "Head", error: headError ?? undefined },
-  ]);
+  ], { open, values: [name, rawCode, newHead, headOutcome, replacingId] });
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
