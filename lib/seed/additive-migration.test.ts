@@ -934,3 +934,124 @@ test("after 0079 the sign-in sync still matches its own id, takes over a free un
     { id: "stranger", email: "stranger@example.com", first_name: null },
   ]);
 });
+
+// A first sign-in finds its imported record whatever the letter case or stray
+// spaces (issue #920, https://github.com/PoliTo-Rocket-Team/website-v2/issues/920):
+// the sign-in sync matches `lower(trim(email))`, as the session repair does,
+// and takes over none of several free rows that match. The function
+// replacement changes no stored row.
+const EMAIL_CASE_TAG = "0080_sync_auth_users_email_case";
+
+/** Every migration up to and including 0080 applied, with a way to add a login. */
+async function databaseWithEmailCase() {
+  const { db, apply } = await databaseBefore(EMAIL_CASE_TAG);
+  await apply();
+  const login = (id: string, email: string) => db.exec(`insert into better_auth."user" (id, name, email, "emailVerified") values ('${id}', '${id}', '${email}', true)`);
+  const rows = async () => (await db.query<{ id: string; email: string; first_name: string | null }>(`select id, email, first_name from users order by id`)).rows;
+  return { db, login, rows };
+}
+
+test("0080_sync_auth_users_email_case.sql drops, renames and rewrites nothing, and its header links the issue", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${EMAIL_CASE_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/920/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION public\.sync_auth_users\(\)/);
+});
+
+test("0080 keeps every row on a database that already holds rows, and applies again", async () => {
+  const { db, apply } = await databaseBefore(EMAIL_CASE_TAG);
+  await db.exec(`
+    insert into better_auth."user" (id, name, email, "emailVerified") values ('held', 'held', 'held@example.com', true);
+    insert into users (id, email, first_name) values ('added:free', 'Mover@mail.test', 'Imported');
+    insert into users (id, email, first_name, deleted_at) values ('closed', 'closed@example.com', 'Closed', now());
+    insert into applications (user_id) values ('added:free');
+  `);
+  const snapshot = async () => ({
+    users: (await db.query(`select * from users order by id`)).rows,
+    applications: (await db.query(`select * from applications order by id`)).rows,
+  });
+  const before = await snapshot();
+  await apply();
+  await apply();
+  assert.deepEqual(await snapshot(), before, "every row is kept");
+});
+
+test("after 0080 a first sign-in takes over a free row whose email differs only in letter case", async () => {
+  const { db, login, rows } = await databaseWithEmailCase();
+  await db.exec(`insert into users (id, email, first_name) values ('added:mover', 'Mover@mail.test', 'Imported')`);
+  await login("mover", "mover@mail.test");
+  assert.deepEqual(await rows(), [{ id: "mover", email: "mover@mail.test", first_name: "Imported" }]);
+  const withId = await db.query(`select id from users where id = 'mover'`);
+  assert.equal(withId.rows.length, 1, "no second row has the login's id");
+});
+
+test("after 0080 a first sign-in takes over a free row whose email has leading and trailing spaces", async () => {
+  const { db, login, rows } = await databaseWithEmailCase();
+  await db.exec(`insert into users (id, email, first_name) values ('added:mover', '  mover@mail.test  ', 'Imported')`);
+  await login("mover", "mover@mail.test");
+  assert.deepEqual(await rows(), [{ id: "mover", email: "mover@mail.test", first_name: "Imported" }]);
+});
+
+test("after 0080 a first sign-in matching two free rows takes over neither and gets a fresh row", async () => {
+  const { db, login, rows } = await databaseWithEmailCase();
+  await db.exec(`
+    insert into users (id, email, first_name) values ('added:upper', 'Mover@mail.test', 'Upper');
+    insert into users (id, email, first_name) values ('added:lower', 'mover@mail.test', 'Lower');
+  `);
+  await login("mover", "mover@mail.test");
+  assert.deepEqual(await rows(), [
+    { id: "added:lower", email: "mover@mail.test", first_name: "Lower" },
+    { id: "added:upper", email: "Mover@mail.test", first_name: "Upper" },
+    { id: "mover", email: "mover@mail.test", first_name: null },
+  ]);
+});
+
+test("after 0080 the sign-in sync still matches its own id first, skips held and closed rows, and makes a fresh row on no match", async () => {
+  const { db, login, rows } = await databaseWithEmailCase();
+  await login("held", "held@example.com");
+  await db.exec(`
+    update users set email = 'Shared@example.com' where id = 'held';
+    insert into users (id, email, first_name) values ('own', 'old@example.com', 'Own');
+    insert into users (id, email, first_name) values ('added:own-email', 'own@example.com', 'Other');
+    insert into users (id, email, first_name, deleted_at) values ('closed', 'Closed@example.com', 'Closed', now());
+  `);
+  await login("own", "own@example.com");
+  await login("second", "shared@example.com");
+  await login("reopening", "closed@example.com");
+  await login("stranger", "stranger@example.com");
+  assert.deepEqual(await rows(), [
+    { id: "added:own-email", email: "own@example.com", first_name: "Other" },
+    { id: "closed", email: "Closed@example.com", first_name: "Closed" },
+    { id: "held", email: "Shared@example.com", first_name: null },
+    { id: "own", email: "own@example.com", first_name: "Own" },
+    { id: "reopening", email: "closed@example.com", first_name: null },
+    { id: "second", email: "shared@example.com", first_name: null },
+    { id: "stranger", email: "stranger@example.com", first_name: null },
+  ]);
+});
+
+test("after 0080 a first sign-in on a free row that applications, files and audit rows point at gets a fresh row, leaving the matched row as it was", async () => {
+  const { db, login } = await databaseWithEmailCase();
+  await db.exec(`
+    insert into users (id, email, first_name) values ('applicant', 'Applicant@example.com', 'Imported');
+    insert into applications (user_id) values ('applicant');
+    insert into application_files (r2_key, original_filename, user_id) values ('applications/applicant/cv.pdf', 'cv.pdf', 'applicant');
+    insert into logs (schema_name, table_name, operation, record_id, changed_by) values ('public', 'users', 'UPDATE', 'applicant', 'applicant');
+  `);
+  const snapshot = async () => ({
+    users: (await db.query<{ id: string }>(`select * from users order by id`)).rows,
+    applications: (await db.query(`select * from applications order by id`)).rows,
+    files: (await db.query(`select * from application_files order by id`)).rows,
+  });
+  const before = await snapshot();
+  await login("new-login", "applicant@example.com");
+  const after = await snapshot();
+  assert.deepEqual(after.users.find((u) => u.id === "applicant"), before.users.find((u) => u.id === "applicant"), "the matched row is unchanged");
+  assert.deepEqual(
+    after.users.map((u) => u.id),
+    ["applicant", "new-login"],
+    "the login gets a fresh row",
+  );
+  assert.deepEqual(after.applications, before.applications, "every application still points at the unchanged row");
+  assert.deepEqual(after.files, before.files, "every uploaded file still points at the unchanged row");
+});

@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { nonAdditiveStatements } from "./journal";
 
-// Migration 0080 (issue #938) restores division names the dashboard's
+// Migration 0081 (issue #938) restores division names the dashboard's
 // division save renamed by adding " Division", keyed on the audit rows in
 // `logs`. Every preview build and every production build applies it, so this
 // builds the schema from the journaled migrations on an in-memory Postgres
@@ -14,7 +14,7 @@ import { nonAdditiveStatements } from "./journal";
 // every other name, and change nothing when run again.
 
 const root = join(__dirname, "..", "..");
-const TAG = "0080_repair_division_name_suffix";
+const TAG = "0081_repair_division_name_suffix";
 const journal = JSON.parse(readFileSync(join(root, "drizzle", "meta", "_journal.json"), "utf8")) as {
   entries: { tag: string }[];
 };
@@ -24,7 +24,7 @@ async function run(db: PGlite, sql: string) {
   for (const statement of sql.split("--> statement-breakpoint")) if (statement.trim()) await db.exec(statement);
 }
 
-/** A database built from every journaled migration before 0080. */
+/** A database built from every journaled migration before 0081. */
 async function schemaBefore(): Promise<PGlite> {
   const db = new PGlite();
   const tags = journal.entries.map((e) => e.tag);
@@ -76,14 +76,14 @@ async function names(db: PGlite) {
   return (await db.query<{ id: number; name: string }>("select id, name from divisions order by id")).rows.map((r) => r.name);
 }
 
-test("0080 changes one thing only: the name of a division", () => {
+test("0081 changes one thing only: the name of a division", () => {
   const changed = nonAdditiveStatements(file(TAG));
   assert.equal(changed.length, 1);
   const [update] = changed;
   assert.match(update, /^UPDATE "divisions" AS d SET "name" = left\(d\."name", length\(d\."name"\) - length\(' Division'\)\) FROM \(/);
 });
 
-test("0080 repairs an app-added suffix, leaves an unlogged or later-renamed name, and a second run changes nothing", async () => {
+test("0081 repairs an app-added suffix, leaves an unlogged or later-renamed name, and a second run changes nothing", async () => {
   const db = await schemaBefore();
   await load(db, ROWS + AUDIT);
   await run(db, file(TAG));
@@ -103,7 +103,7 @@ test("0080 repairs an app-added suffix, leaves an unlogged or later-renamed name
   assert.equal(await logged(), before, "and writes nothing");
 });
 
-test("0080 changes nothing on a database without app-write audit rows", async () => {
+test("0081 changes nothing on a database without app-write audit rows", async () => {
   const unlogged = await schemaBefore();
   await load(unlogged, ROWS);
   const before = await names(unlogged);
