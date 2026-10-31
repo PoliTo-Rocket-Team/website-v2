@@ -86,9 +86,9 @@ import {
   ADVISOR_TITLE,
   advisorAfterDivisionCloses,
   checkTeamLeaderHandOver,
+  isAdvisorRowAt,
   planTeamLeaderHandOver,
   seatHandOver,
-  steppingDown,
   type AdvisorPlace,
   type SeatMove,
   type SeatRow,
@@ -106,7 +106,7 @@ import {
   planHeadAdd,
 } from "./department-edit";
 import { editableDivisionIds, editsStructure, teamStructure, type TeamStructure } from "./team-structure";
-import { checkNewSeat, checkSeatHolderChange, planNewSeat, planSeatHolderAdd, planSeatHolderChange, planSeatRemoval, planTeamLeaderAdd, stayingOnTeam } from "./team-seats";
+import { checkNewSeat, checkSeatHolderChange, checkSeatRemoval, planNewSeat, planSeatHolderAdd, planSeatHolderChange, planSeatRemoval, planTeamLeaderAdd, stayingOnTeam } from "./team-seats";
 import { asksAlias, checkHolderAdd, tieOfSeat, type ActiveRoleRow, type HolderAddPlan } from "./seat-holders";
 import {
   checkDivisionSave,
@@ -1328,19 +1328,20 @@ function steppingDownWrites(
   on: string,
   /** Org-wide or admin rows they hold now: a former team leader who holds one keeps it, and gets no second. */
   fullAccessRows = 0,
-): [BatchItem<"pg">, ...BatchItem<"pg">[]] {
+): BatchItem<"pg">[] {
   if (step.kind === "leave") return leaveTeamWrites(db, person, on);
   const { memberId } = person;
-  const advisor = db.insert(roles).values({ memberId, ...advisorUnit(step.place), title: ADVISOR_TITLE, type: "advisor", startedAt: on });
+  // Someone who advises at the place already keeps that one Advisor role (issue #900).
+  const advisesThere = person.active.some((r) => !ending.includes(r.id) && isAdvisorRowAt({ type: r.type, departmentId: r.dept_id, divisionId: r.division_id }, step.place));
+  const advisor = advisesThere ? [] : [db.insert(roles).values({ memberId, ...advisorUnit(step.place), title: ADVISOR_TITLE, type: "advisor", startedAt: on })];
   const access =
     step.access === "ends"
       ? [db.delete(scopes).where(eq(scopes.memberId, memberId))]
       : fullAccessRows > 0
         ? []
         : [db.insert(scopes).values({ memberId, givenBy: memberId, scope: "org", target: "all", accessLevel: "edit" })];
-  return ending.length === 0
-    ? [advisor, ...access]
-    : [db.update(roles).set({ leavedAt: on }).where(and(inArray(roles.id, [...ending]), isNull(roles.leavedAt))), advisor, ...access];
+  const end = ending.length === 0 ? [] : [db.update(roles).set({ leavedAt: on }).where(and(inArray(roles.id, [...ending]), isNull(roles.leavedAt)))];
+  return [...end, ...advisor, ...access];
 }
 
 /**
@@ -1371,6 +1372,8 @@ async function writeDivisionPlan(
   if (!handed.ok) return refused(handed.error);
   const seat = handed.value;
   const leavers = await Promise.all(plan.leaveTeam.map(async (memberId) => ({ memberId, active: await activeRoles(memberId) })));
+  // Their active roles say whether they advise at the picked place already (`steppingDownWrites`).
+  const advisors = await Promise.all(plan.advise.map(async (a) => ({ ...a, active: await activeRoles(a.memberId) })));
   const newRole = (memberId: number, type: "lead" | "core") => ({ memberId, divisionId, title: "", type, startedAt: on });
   const rows = divisionRowWrites(plan, divisionId, held);
   const open = (ids: readonly number[]) => and(inArray(roles.id, [...ids]), isNull(roles.leavedAt));
@@ -1380,7 +1383,7 @@ async function writeDivisionPlan(
   // Each new lead is owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests([...plan.promote, ...plan.joinAsLead]);
   // A team address tied to this division's lead, held by a lead the save replaces or steps down, is owed a routing item (issues #789, #804).
-  const leaving = new Set([...plan.demote, ...plan.advise, ...plan.replaced, ...plan.leaveDivision, ...plan.leaveTeam]);
+  const leaving = new Set([...plan.demote, ...plan.advise.map((a) => a.memberId), ...plan.replaced, ...plan.leaveDivision, ...plan.leaveTeam]);
   const reroutesAsked = await automaticTeamAddressReroutes([
     {
       tie: { kind: "division-lead", divisionId },
@@ -1409,9 +1412,10 @@ async function writeDivisionPlan(
     ...plan.leaveDivision.map((id) =>
       db.delete(scopes).where(and(eq(scopes.memberId, id), eq(scopes.scope, "division"), eq(scopes.divisionId, divisionId))),
     ),
-    // A replaced lead's lead row ends with `rows.end`; the Advisor role starts here (issue #253).
-    ...plan.advise.flatMap((memberId) =>
-      steppingDownWrites(db, { memberId, active: [] }, steppingDown({ kind: "lead", divisionId }, "advisor"), [], on),
+    // An old lead's lead row ends with `rows.end`; the Advisor role starts where the editor picked (issues #253, #900).
+    // They read the roles left after this batch: a row `rows.end` ends here is no Advisor role they keep.
+    ...advisors.flatMap(({ memberId, step, active }) =>
+      steppingDownWrites(db, { memberId, active: active.filter((r) => !rows.end.includes(r.id)) }, step, [], on),
     ),
     ...aliasAsked(db),
     ...reroutesAsked(db),
@@ -1738,12 +1742,12 @@ async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): 
   const on = today();
   // The old role ends before the new one starts. The hand-over ends the holder's row by choice, not because the database
   // refuses a second active team leader (epic #861, drizzle/0077).
-  await runAuditBatch((db) => [
-    ...steppingDownWrites(db, { memberId: from, active }, step, seat.map((r) => r.id), on, Number(held?.count ?? 0)),
-    db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: seat[0]?.title.trim() || "Team Leader", type: "president", startedAt: on }),
-    ...aliasAsked(db),
-    ...reroutesAsked(db),
-  ]);
+  await runAuditBatch((db) => {
+    const takesOver = db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: seat[0]?.title.trim() || "Team Leader", type: "president", startedAt: on });
+    // The stepping-down writes may be none (`steppingDownWrites`), so the batch starts with whichever comes first.
+    const [first = takesOver, ...rest] = [...steppingDownWrites(db, { memberId: from, active }, step, seat.map((r) => r.id), on, Number(held?.count ?? 0)), takesOver];
+    return [first, ...rest, ...aliasAsked(db), ...reroutesAsked(db)];
+  });
   done();
   return written(null);
 }
@@ -1985,17 +1989,24 @@ async function addDepartmentHead(identity: DashboardIdentity, departmentId: numb
  * holder stays on the team (`stayingOnTeam`): they keep every other role and
  * every access row, and when the seat was their only role they become an
  * advisor to the team, so they stay on the roster and never move to Alumni.
+ * When the editor picked Stays as an advisor (issue #900), they get one
+ * Advisor role on the whole team and their access ends
+ * (`steppingDownWrites`); they keep every other role.
  */
-async function removeSeat(identity: DashboardIdentity, roleId: number): Promise<WriteResult<null>> {
+async function removeSeat(identity: DashboardIdentity, roleId: number, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkSeatRemoval(input);
+  if (!checked.ok) return refused(checked.error);
   const snapshot = await readTeamSnapshot();
   const actor = await readActor(identity, snapshot.org);
-  const planned = planSeatRemoval({ actor, roleId, team: teamPeopleOf(snapshot) });
+  const planned = planSeatRemoval({ actor, roleId, removal: checked.value, team: teamPeopleOf(snapshot) });
   if (!planned.ok) return refused(planned.error);
-  const { holder } = planned.value;
+  const { holder, advising } = planned.value;
   const active = await activeRoles(holder);
   if (!active.some((r) => r.id === roleId)) return refused(SEAT_NO_LONGER_HELD);
-  const staying = stayingOnTeam(active.filter((r) => r.id !== roleId).length);
   const on = today();
+  // The seat row ends in `writeSeat`'s first statement, so the stepping-down writes end no row of it again.
+  if (advising !== null) return writeSeat(roleId, on, (db) => steppingDownWrites(db, { memberId: holder, active: active.filter((r) => r.id !== roleId) }, advising, [], on));
+  const staying = stayingOnTeam(active.filter((r) => r.id !== roleId).length);
   return writeSeat(roleId, on, (db) =>
     staying === "advisor-to-the-team"
       ? [db.insert(roles).values({ memberId: holder, ...advisorUnit({ kind: "team" }), title: ADVISOR_TITLE, type: "advisor", startedAt: on })]
@@ -2159,7 +2170,7 @@ export function databaseTeamWrites(
     handOverTeamLeader: (input) => handOverTeamLeader(identity, input),
     changeSeatHolder: (roleId, input) => changeSeatHolder(identity, roleId, input),
     addSeat: (input) => addSeat(identity, input),
-    removeSeat: (roleId) => removeSeat(identity, roleId),
+    removeSeat: (roleId, input) => removeSeat(identity, roleId, input),
     addTeamLeader: (input) => addTeamLeader(identity, input),
     addSeatHolder: (roleId, input) => addSeatHolder(identity, roleId, input),
     addDepartmentHead: (departmentId, input) => addDepartmentHead(identity, departmentId, input),
