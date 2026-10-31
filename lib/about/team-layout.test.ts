@@ -911,6 +911,27 @@ test("the snapshot of a team with co-holders gives each co-held seat one place, 
   assert.deepEqual(parseTeamLayout(JSON.parse(JSON.stringify(layout))), layout);
 });
 
+test("the snapshot lists a co-head's own role edit as a gap, never laying it under both heads or dropping it", () => {
+  const two = roles(moved(people, 10, head(1)));
+  assert.deepEqual(snapshot(two, NO_TEAM_LAYER).left, [], "a co-head with no edit is carried by the head place");
+  // Kenji, the second of Aerodynamics' two heads, has a role edit on his own spot.
+  const { layout, left } = snapshot(two, layer({ spots: { "head:1:1": { role: "Co-head of Aerodynamics" } } }));
+  assert.deepEqual(left, [{ at: "head:1:1", why: "co-holder-edit" }]);
+  assert.deepEqual(layout.departments[0].head.overrides, {}, "the head place keeps no role written for one of its holders");
+  assert.deepEqual(namesOf(resolveLayout(layout, two).departments[0].heads[0]?.shown), [
+    ["Chiara Rinaldi", "Head of Aerodynamics"],
+    ["Kenji Watanabe", "Head of Aerodynamics"],
+  ]);
+});
+
+test("the snapshot gives the two rows of one co-held team-level seat one arc place, and lists the further holder's own edit", () => {
+  const two = roles(moved(people, 11, teamSeat(28, "Chief of Safety")));
+  const [, further] = teamBuildOf(two).arc.filter((b) => b.role === "Chief of Safety");
+  const { layout, left } = snapshot(two, layer({ spots: { [further.spot]: { linkedin: "another-handle" } } }));
+  assert.equal(layout.arc.filter((s) => s.binding.kind === "team-seat").length, 1, "one place for the seat, whichever row names it");
+  assert.deepEqual(left, [{ at: further.spot, why: "co-holder-edit" }]);
+});
+
 test("a layout stored before co-holders still parses and draws every holder in place", () => {
   const stored = readBack(firstLayout());
   assert.ok(stored !== null && isGroupedLayout(stored));

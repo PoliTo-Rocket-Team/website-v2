@@ -611,8 +611,9 @@ function teamLevelBinding(seat: BoardRole): SeatBinding {
  * as the layer keys it: the team leader's edit, a spot, something the editor
  * added (a leader, a lead row, a department) or a department's edit. Every
  * place the page draws is carried except a department's heads past its
- * first that its head place does not draw beside them, so the rest are edits
- * the page does not draw today.
+ * first that its head place does not draw beside them, and a further
+ * holder's own edit on a seat drawn side by side, so the rest are edits the
+ * page does not draw today.
  */
 export type SnapshotGap = {
   readonly at: "leader" | Spot | AddedRef | `department:${number}`;
@@ -623,8 +624,11 @@ export type SnapshotGap = {
    * department with no head drawn, a swap on the team leader while there is
    * none). `second-head`: a block holds one head place, this one is drawn
    * after it, and that place does not draw them beside its first head.
+   * `co-holder-edit`: the place shows a further holder of a seat an earlier
+   * page seat draws side by side (issue #880), and its edit sets a role,
+   * name, photo or LinkedIn that page seat cannot hold for that holder alone.
    */
-  readonly why: "hidden" | "left-team" | "not-shown" | "second-head";
+  readonly why: "hidden" | "left-team" | "not-shown" | "second-head" | "co-holder-edit";
 };
 
 /** The first layout, and every part of the layer it does not carry. */
@@ -656,8 +660,9 @@ const spotPart = (spot: string, index: 1 | 2) => Number(spot.split(":")[index]);
  * showing a further holder of a seat an earlier page seat binds gets no page
  * seat of its own: that page seat draws every holder side by side (issue
  * #880). `left` names every part of the layer the layout does not carry, and
- * why: hidden spots and departments, edits the page does not draw today, and
- * a department's heads past its first that its head place does not draw.
+ * why: hidden spots and departments, edits the page does not draw today, a
+ * department's heads past its first that its head place does not draw, and a
+ * further holder's own role, name, photo or LinkedIn edit.
  */
 export function snapshot(roles: TeamRoles, layer: TeamPageLayer): Snapshot {
   const build = teamBuildOf(roles);
@@ -684,13 +689,24 @@ export function snapshot(roles: TeamRoles, layer: TeamPageLayer): Snapshot {
 
   /**
    * Whether the place at `at` showing `person` is a further holder of a seat
-   * an earlier page seat already binds: that page seat draws them beside its
-   * first holder (issue #880), so the place is carried by it.
+   * an earlier page seat already binds (the same seat by `seatKeyOf`, whichever
+   * row names it): that page seat draws them beside its first holder (issue
+   * #880), so the place gets no page seat of its own. The place is carried by
+   * it while its edit sets no role, name, photo or LinkedIn; one that does is
+   * a `co-holder-edit` gap, as the page seat has nowhere to put it.
    */
-  const coHolderAt = (at: SnapshotGap["at"], person: TeamPerson, own: SeatBinding | null, earlier: readonly PageSeat[], headOf?: string): boolean => {
-    const binding = bindingAt(person, own, headOf);
-    if (binding.kind === "person" || !earlier.some((seat) => sameBinding(seat.binding, binding))) return false;
-    carried.add(at);
+  const coHolderAt = (
+    at: SnapshotGap["at"],
+    person: TeamPerson,
+    own: SeatBinding | null,
+    edit: PersonEdit | undefined,
+    earlier: readonly PageSeat[],
+    headOf?: string,
+  ): boolean => {
+    const key = seatKeyOf(bindingAt(person, own, headOf), roles);
+    if (key === null || !earlier.some((seat) => seatKeyOf(seat.binding, roles) === key)) return false;
+    if (Object.keys(overridesOf(edit ?? {})).length > 0) left.push({ at, why: "co-holder-edit" });
+    else carried.add(at);
     return true;
   };
 
@@ -722,7 +738,7 @@ export function snapshot(roles: TeamRoles, layer: TeamPageLayer): Snapshot {
       const { placement } = built.person;
       const own = placement.role === "board" ? teamLevelBinding(placement.seat) : null;
       const person = shownAt(built.spot, edit, built.person);
-      if (coHolderAt(built.spot, person, own, [leader, ...arc])) continue;
+      if (coHolderAt(built.spot, person, own, edit, [leader, ...arc])) continue;
       arc.push(pageSeat(built.spot, person, own, overridesOf(edit ?? {}), drawnLeader.role));
       continue;
     }
@@ -753,9 +769,10 @@ export function snapshot(roles: TeamRoles, layer: TeamPageLayer): Snapshot {
     // A further head the head's page seat draws beside them is carried by it (issue #880); any other is not.
     for (const extra of after) {
       const builtHead = fromRoles?.heads.find((h) => h.spot === extra.at);
-      const person = builtHead === undefined ? undefined : (memberOf(layer.spots[builtHead.spot]?.person) ?? builtHead.person);
+      const edit = builtHead === undefined ? undefined : layer.spots[builtHead.spot];
+      const person = builtHead === undefined ? undefined : (memberOf(edit?.person) ?? builtHead.person);
       const own: SeatBinding | null = fromRoles === undefined ? null : { kind: "department-head", departmentId: fromRoles.id };
-      if (person === undefined || !coHolderAt(extra.at, person, own, [headSeat], department.name)) left.push({ at: extra.at, why: "second-head" });
+      if (person === undefined || !coHolderAt(extra.at, person, own, edit, [headSeat], department.name)) left.push({ at: extra.at, why: "second-head" });
     }
 
     const leads = department.leads.map(({ at, shown: drawnLead }): PageSeat => {
