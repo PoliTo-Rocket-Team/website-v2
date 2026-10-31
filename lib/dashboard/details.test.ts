@@ -19,19 +19,32 @@ const applicant = {
 };
 
 test("an applicant's save keeps the PoliTo ID's digits and LinkedIn's short form, and refuses a phone with no country code", () => {
-  const saved = parseDetailsChange(applicant, "applicant");
+  const saved = parseDetailsChange(applicant, "applicant", "");
   assert.ok(saved.ok);
   assert.equal(saved.value.politoId, "298765");
   assert.equal(saved.value.linkedin, "linkedin.com/in/chiaral");
   assert.equal(saved.value.firstName, "Chiara");
 
-  const bad = parseDetailsChange({ ...applicant, phone: "333" }, "applicant");
+  const bad = parseDetailsChange({ ...applicant, phone: "333" }, "applicant", "");
   assert.equal(bad.ok, false);
   assert.ok(!bad.ok && bad.errors.phone !== undefined);
 });
 
+// Issue #887: imported phones often have no country code, and a save that leaves the phone alone must not fail on it.
+test("Your details keeps an unchanged phone whatever its format, and checks a changed one", () => {
+  const opened = "3890247022";
+  for (const editor of ["applicant", "member", "lead"] as const) {
+    const save = (phone: string) => parseDetailsChange({ ...applicant, phone }, editor, opened);
+    const kept = save(` ${opened} `);
+    assert.ok(kept.ok, editor);
+    assert.equal(kept.value.phone, opened);
+    assert.deepEqual(save("3890247023"), { ok: false, errors: { phone: "Start with + and the country code." } }, editor);
+    assert.ok(save("+39 389 024 7022").ok, editor);
+  }
+});
+
 test("a member's save never writes the name their lead set or the LinkedIn the Details card saves", () => {
-  const saved = parseDetailsChange({ ...applicant, firstName: "Someone", lastName: "Else", linkedin: "linkedin.com/in/other" }, "member");
+  const saved = parseDetailsChange({ ...applicant, firstName: "Someone", lastName: "Else", linkedin: "linkedin.com/in/other" }, "member", "");
   assert.ok(saved.ok);
   assert.deepEqual(Object.keys(saved.value).sort(), [...editableDetailKeys("member")].sort());
   for (const key of ["firstName", "lastName", "linkedin"] as const) assert.equal(key in saved.value, false, key);
@@ -39,7 +52,7 @@ test("a member's save never writes the name their lead set or the LinkedIn the D
 });
 
 test("saved details prefill the matching fields of the apply form", () => {
-  const saved = parseDetailsChange(applicant, "applicant");
+  const saved = parseDetailsChange(applicant, "applicant", "");
   assert.ok(saved.ok);
   const details: YourDetails = { ...NO_DETAILS, ...saved.value };
   const defaults = applyFormDefaults(details);
