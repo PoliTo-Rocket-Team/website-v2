@@ -24,6 +24,7 @@ import { AccountCard, Card, DANGER_GHOST_PILL, DANGER_PILL, DangerBox, DangerRow
 import { ConfirmDialog } from "./confirm-dialog";
 import { Drawer } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
+import { GoogleAccountsCard } from "./google-accounts";
 import { HandOverDialog, handOverRowText } from "./hand-over-dialog";
 import { GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PHOTO_ACCEPT, PhotoCropDialog } from "./photo-crop-dialog";
@@ -41,13 +42,20 @@ type Actions = {
 
 // Board 55 (55m on phones): a team member's own profile. The photo at the two
 // sizes the site shows it, the details their lead sets with their LinkedIn,
-// "Your details", how they sign in, and Leave or delete. Props in, nothing
+// "Your details", how they sign in and the Google accounts they sign in with
+// (issue #906), and Leave or delete. Props in, nothing
 // fetched; every change lives in this page's state once the write answers.
 export function MyProfileView({
   profile,
   alias = null,
+  linkError = null,
   ...actions
-}: { profile: MyProfile; alias?: OwnAlias | null } & Actions) {
+}: {
+  profile: MyProfile;
+  alias?: OwnAlias | null;
+  /** What went wrong adding a Google account, in words, when Google sent the person back with an error (issue #906). */
+  linkError?: string | null;
+} & Actions) {
   const router = useRouter();
   return (
     <>
@@ -71,6 +79,7 @@ export function MyProfileView({
           }}
         />
         <AccountCard signIn={profile.signIn} />
+        <GoogleAccountsCard accounts={profile.googleAccounts} returnTo="/dashboard/profile" linkError={linkError} />
         <LeaveOrDelete
           leave={profile.leave}
           handOver={profile.handOver}

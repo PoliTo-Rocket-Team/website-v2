@@ -1,3 +1,4 @@
+import { googleAccountEventOf, googleAccountSentence } from "./google-accounts";
 import { formatEuro } from "./orders";
 import { matchesQuery } from "./team";
 import { VIEW_AS_OPERATIONS } from "./view-as";
@@ -613,6 +614,12 @@ const SENTENCES: Readonly<Record<string, Sentence>> = {
       return { sentence: d.has("members", "INSERT") ? `Confirmed the NDA of ${person}` : `Cancelled adding ${person} to ${division}`, area };
     }
     return { sentence: `Updated the details of ${person}`, area };
+  },
+
+  // A Google account linked to or removed from the writer's own login (issue #906).
+  account(row, data) {
+    const event = googleAccountEventOf(row.operation);
+    return { sentence: event === null ? "Changed their sign-in accounts" : googleAccountSentence(event, text(data, "email")), area: "account" };
   },
 
   team_leaves(row, data, d) {

@@ -533,6 +533,13 @@
       "when": 1795627200000,
       "tag": "0077_roles_several_seat_holders",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1795713600000,
+      "tag": "0078_account_google_email",
+      "breakpoints": true
     }
   ]
 }
