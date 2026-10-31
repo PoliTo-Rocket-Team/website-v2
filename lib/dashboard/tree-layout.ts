@@ -1,4 +1,4 @@
-import { departmentsOnPath, divisionLabel, divisionsOnPath, type TeamTree, type TreePerson } from "./team";
+import { departmentsOnPath, divisionLabel, divisionsOnPath, type TeamTree, type TreeHead, type TreeHolders, type TreePerson } from "./team";
 
 // Where every card, row and line of the Team tree canvas sits (board 54c),
 // in canvas pixels at 100% zoom. The tree reads top-down: the team leader,
@@ -18,13 +18,40 @@ export type TreeNode =
       readonly kind: "card";
       readonly key: string;
       readonly level: CardLevel;
-      /** Null for a department with no head or a division with no lead: the card names the unit. */
-      readonly person: TreePerson | null;
+      /** Everyone on the card, in its order (issue #916); none for a department with no head or a division with no lead. */
+      readonly holders: TreeHolders;
+      /** The unit or seat the card stands for, drawn as its heading only when nobody holds it. */
       readonly title: string;
       readonly subtitle: string | null;
       readonly onPath: boolean;
     })
   | (Box & { readonly kind: "row"; readonly key: string; readonly person: TreePerson; readonly onPath: boolean });
+
+/** Everyone drawn on a node: a card's holders, or a row's one person. */
+export function peopleOn(node: TreeNode): readonly TreePerson[] {
+  return node.kind === "card" ? node.holders : [node.person];
+}
+
+/** The caption under the team leaders: "Team Leaders" when several hold the seat, as the edit view reads it. */
+export function leaderCaption(leaders: TreeHolders): string {
+  return leaders.length > 1 ? "Team Leaders" : "Team Leader";
+}
+
+/** A stored title with its role word capitalised: "head of avionics" reads "Head of avionics" (issue #916). */
+function withCapitalHead(title: string): string {
+  return title.replace(/\bhead\b/gi, "Head");
+}
+
+/** The caption under a department's heads: their stored titles, "Head" capitalised, each once; null when it has none. */
+export function headCaption(heads: TreeHolders<TreeHead>): string | null {
+  return heads.length === 0 ? null : [...new Set(heads.map((h) => withCapitalHead(h.title)))].join(", ");
+}
+
+/** The caption under a division's leads: "Safety · Lead", or "· Leads" for several; null when it has none. */
+export function leadCaption(divisionName: string, leads: TreeHolders): string | null {
+  if (leads.length === 0) return null;
+  return `${divisionLabel(divisionName)} · ${leads.length > 1 ? "Leads" : "Lead"}`;
+}
 
 export type Point = readonly [x: number, y: number];
 
@@ -105,12 +132,37 @@ function lineCount(text: string, style: TextStyle, width: number): number {
 /** The name as drawn: the viewer's carries " · you". */
 const shownName = (name: string, self: boolean) => (self ? `${name} · you` : name);
 
+/**
+ * A card with several holders (issue #916): one line per holder, their avatar
+ * beside their name, the caption under the names. Its border and padding
+ * down, the avatar's size, the gap between two holders and the caption's gap
+ * (`TreeCard` in components/dashboard/team-tree.tsx draws these).
+ */
+const HOLDER_ROWS = { down: 2 + 2 * 8, avatar: 28, gap: 6, caption: 4 } as const;
+
 /** How tall a card `width` wide is drawn: the smallest card, or taller to show its whole title and subtitle. */
 function cardHeight(title: string, subtitle: string | null, width: number, least: number): number {
   const text = width - CARD_PARTS.across;
   const titleH = lineCount(title, TITLE, text) * TITLE.line;
   const subtitleH = subtitle === null ? 0 : SUBTITLE_GAP + lineCount(subtitle, SUBTITLE, text) * SUBTITLE.line;
   return Math.max(least, Math.ceil(CARD_PARTS.down + titleH + subtitleH));
+}
+
+/**
+ * How tall a card is drawn for who holds it: as `cardHeight` for one holder
+ * or none, so such a card is as it was; for several, every holder's line
+ * (each as tall as its avatar, or its wrapped name) and the caption.
+ */
+function holdersCardHeight(holders: TreeHolders, title: string, subtitle: string | null, width: number, least: number): number {
+  if (holders.length <= 1) {
+    const only = holders.at(0);
+    return cardHeight(only ? shownName(only.name, only.self) : title, subtitle, width, least);
+  }
+  const text = width - CARD_PARTS.across;
+  const names = holders.reduce((sum, p) => sum + Math.max(HOLDER_ROWS.avatar, lineCount(shownName(p.name, p.self), TITLE, text) * TITLE.line), 0);
+  const gaps = (holders.length - 1) * HOLDER_ROWS.gap;
+  const subtitleH = subtitle === null ? 0 : HOLDER_ROWS.caption + lineCount(subtitle, SUBTITLE, text) * SUBTITLE.line;
+  return Math.max(least, Math.ceil(HOLDER_ROWS.down + names + gaps + subtitleH));
 }
 
 /** How tall a member row is drawn: one line, or taller to show the whole name. */
@@ -155,18 +207,20 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
   const width = Math.max(headsWidth, boardWidth, CARD.w);
   const centre = width / 2;
 
-  const leaderTitle = tree.leader ? shownName(tree.leader.name, tree.leader.self) : "";
-  const leaderBox: Box = { x: centre - CARD.w / 2, y: 0, w: CARD.w, h: tree.leader ? cardHeight(leaderTitle, "Team Leader", CARD.w, CARD.h) : CARD.h };
+  const { leaders } = tree;
+  const hasLeader = leaders.length > 0;
+  const leaderCaptionText = leaderCaption(leaders);
+  const leaderBox: Box = { x: centre - CARD.w / 2, y: 0, w: CARD.w, h: hasLeader ? holdersCardHeight(leaders, leaderCaptionText, leaderCaptionText, CARD.w, CARD.h) : CARD.h };
   const aboveDepartments = first?.kind === "leader" || first?.kind === "board";
-  if (tree.leader) {
+  if (hasLeader) {
     nodes.push({
       kind: "card",
-      key: `leader-${tree.leader.id}`,
+      key: `leader-${leaders[0].id}`,
       level: "leader",
       ...leaderBox,
-      person: tree.leader,
-      title: tree.leader.name,
-      subtitle: "Team Leader",
+      holders: leaders,
+      title: leaderCaptionText,
+      subtitle: leaderCaptionText,
       onPath: path !== null,
     });
   }
@@ -175,21 +229,20 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
   const boardBus = bottom(leaderBox) + BOARD_BUS_DROP;
   const boardLeft = centre - boardWidth / 2;
   let boardBottom = boardY + CARD.h;
-  tree.board.forEach(({ title, person }, i) => {
-    const h = cardHeight(shownName(person.name, person.self), title, CARD.w, CARD.h);
+  tree.board.forEach(({ title, holders }, i) => {
+    const mine = holders.some((p) => p.self);
+    const h = holdersCardHeight(holders, title, title, CARD.w, CARD.h);
     const box: Box = { x: boardLeft + i * (CARD.w + BOARD_GAP), y: boardY, w: CARD.w, h };
     boardBottom = Math.max(boardBottom, bottom(box));
-    nodes.push({ kind: "card", key: `board-${person.id}`, level: "board", ...box, person, title: person.name, subtitle: title, onPath: person.self });
-    if (tree.leader) edges.push(elbow(leaderBox, box, boardBus, person.self));
+    nodes.push({ kind: "card", key: `board-${holders[0].id}`, level: "board", ...box, holders, title, subtitle: title, onPath: mine });
+    if (hasLeader) edges.push(elbow(leaderBox, box, boardBus, mine));
   });
 
   const headY = boardBottom + BOARD_TO_HEADS;
   const headBus = headY - HEAD_BUS_RISE;
   const heads = columns.map(({ department }) => {
-    const title = department.head?.name ?? department.name;
-    const subtitle = department.head?.title ?? null;
-    const shown = department.head ? shownName(title, department.head.self) : title;
-    return { title, subtitle, h: cardHeight(shown, subtitle, CARD.w, CARD.h) };
+    const subtitle = headCaption(department.heads);
+    return { subtitle, h: holdersCardHeight(department.heads, department.name, subtitle, CARD.w, CARD.h) };
   });
   const headsBottom = headY + Math.max(CARD.h, ...heads.map((c) => c.h));
   const leadY = headsBottom + HEADS_TO_LEADS;
@@ -208,25 +261,23 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
       key: `head-${department.id}`,
       level: "head",
       ...headBox,
-      person: department.head,
-      title: head.title,
+      holders: department.heads,
+      title: department.name,
       subtitle: head.subtitle,
       onPath: onDepartment,
     });
     // The trunk runs from the leader past the board seats to every head.
-    if (tree.leader) edges.push(elbow(leaderBox, headBox, headBus, onDepartment));
+    if (hasLeader) edges.push(elbow(leaderBox, headBox, headBus, onDepartment));
 
     let columnBottom = bottom(headBox);
     let slotLeft = left + (columnWidth - leadsWidth) / 2;
     for (const division of department.divisions) {
       const onDivision = pathDivisions.has(division.id);
-      const label = divisionLabel(division.name);
-      const title = division.lead?.name ?? label;
-      const subtitle = division.lead ? `${label} · lead` : null;
-      const shown = division.lead ? shownName(title, division.lead.self) : title;
-      const leadBox: Box = { x: slotLeft, y: leadY, w: LEAD_CARD.w, h: cardHeight(shown, subtitle, LEAD_CARD.w, LEAD_CARD.h) };
+      const title = divisionLabel(division.name);
+      const subtitle = leadCaption(division.name, division.leads);
+      const leadBox: Box = { x: slotLeft, y: leadY, w: LEAD_CARD.w, h: holdersCardHeight(division.leads, title, subtitle, LEAD_CARD.w, LEAD_CARD.h) };
       slotLeft += LEAD_CARD.w + COLUMN_GAP;
-      nodes.push({ kind: "card", key: `lead-${division.id}`, level: "lead", ...leadBox, person: division.lead, title, subtitle, onPath: onDivision });
+      nodes.push({ kind: "card", key: `lead-${division.id}`, level: "lead", ...leadBox, holders: division.leads, title, subtitle, onPath: onDivision });
       edges.push(elbow(headBox, leadBox, leadBus, onDivision));
 
       // Each row sits under the one before it, so a row that grows pushes the rest down.
@@ -266,5 +317,5 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
 
 /** The box of the card or row at the person's first place, for "Find someone" and "Show me". */
 export function boxOf(layout: TreeLayout, personId: number): Box | null {
-  return layout.nodes.find((n) => n.person?.id === personId && n.person.first) ?? null;
+  return layout.nodes.find((n) => peopleOn(n).some((p) => p.id === personId && p.first)) ?? null;
 }
