@@ -45,6 +45,9 @@ class StillObserver {
 }
 globals.ResizeObserver = StillObserver;
 globals.IntersectionObserver = StillObserver;
+// A refused form scrolls to and focuses its first field in error (issue #927); JSDOM draws no layout.
+window.matchMedia = ((query: string) => ({ matches: false, media: query })) as unknown as typeof window.matchMedia;
+window.HTMLElement.prototype.scrollIntoView = () => {};
 // The test database starts its Postgres engine with Node's own globals, so it
 // starts before the page's globals take their place.
 before(async () => {
@@ -134,7 +137,9 @@ test("Edit team tree, Add seat: the Holder field lists the team as it opens, and
   const { createElement } = await import("react");
   const { SeatDrawer } = await import("@/components/dashboard/seat-drawers");
   const ui = await mount(createElement(SeatDrawer, { target: { kind: "new" }, structure, onClose: () => {} }));
-  assert.equal(ui.button("Add seat").disabled, true, "no holder, no seat");
+  // Add seat stays clickable and says what is missing beside it (issue #927): no holder, no seat.
+  await ui.press("Add seat");
+  assert.match(window.document.querySelector('[role="alert"]')?.textContent ?? "", /Holder/, "no holder, no seat");
   await ui.press("Pick holder");
   // Before #618 the open field showed only its help sentence.
   await listsOnOpenAndNarrows(ui, "a");

@@ -30,6 +30,7 @@ import {
 } from "@/lib/dashboard/hand-over";
 import type { TeamPick } from "@/lib/dashboard/division-edit";
 import { defaultHeadTitle, divisionLabel, type OrgChart } from "@/lib/dashboard/team";
+import { departmentLabel } from "@/lib/dashboard/recruitment";
 import { andList, type StructureDepartment, type StructureDivision, type TeamStructure } from "@/lib/dashboard/team-structure";
 import { AddHolderLink, AddHolderPicker } from "./add-holder";
 import { Avatar } from "./avatar";
@@ -38,6 +39,7 @@ import { PeoplePicker } from "./division-drawer";
 import { MenuItem, RowMenu } from "./division-members";
 import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
+import { FooterSummary, useFormSummary } from "./form-summary";
 import { HandOverChoice, RadioChoice } from "./hand-over-choice";
 
 // New department (board 77d), Edit department (77e) and Close department
@@ -95,11 +97,14 @@ export function DepartmentDrawer({
   structure,
   onClose,
   onTarget,
+  onAddDivision,
 }: {
   target: DepartmentDrawerTarget | null;
   structure: TeamStructure;
   onClose: () => void;
   onTarget: (target: DepartmentDrawerTarget) => void;
+  /** New division under the department: Edit department's "+ Add division" (issue #927). */
+  onAddDivision: (departmentId: number) => void;
 }) {
   // The last target stays while the panel closes, so its content does not vanish mid-close.
   const [shown, setShown] = useState(target);
@@ -111,7 +116,9 @@ export function DepartmentDrawer({
   const department = structure.departments.find((d) => d.id === shown.departmentId);
   if (!department) return null;
   return shown.kind === "edit" ? (
-    <EditDepartment key={`e${department.id}`} open={open} department={department} structure={structure} onClose={onClose} onCloseDepartment={() => onTarget({ kind: "close", departmentId: department.id })} />
+    <EditDepartment key={`e${department.id}`} open={open} department={department} structure={structure} onClose={onClose} onCloseDepartment={() => onTarget({ kind: "close", departmentId: department.id })}
+      onAddDivision={() => onAddDivision(department.id)}
+    />
   ) : (
     <CloseDepartment key={`c${department.id}`} open={open} department={department} structure={structure} onClose={onClose} />
   );
@@ -135,12 +142,15 @@ function NameAndCode({
   onName: (name: string) => void;
   onCode: (code: string) => void;
 }) {
+  // An empty code shows its error once a click was refused (issue #927); a typed one shows it at once.
+  const codeShown = codeError !== null && (code !== "" || showErrors);
   return (
     <>
       <div className="grid grid-cols-[1fr_110px] gap-3">
         <label className="min-w-0">
           <span className={`mb-2 block ${SECTION_LABEL}`}>Name</span>
           <input
+            name="name"
             value={name}
             maxLength={60}
             autoComplete="off"
@@ -153,18 +163,19 @@ function NameAndCode({
         <label className="min-w-0">
           <span className={`mb-2 block ${SECTION_LABEL}`}>Code</span>
           <input
+            name="code"
             value={code}
             maxLength={3}
             autoComplete="off"
             placeholder="PR"
             onChange={(e) => onCode(e.target.value.toUpperCase())}
-            aria-invalid={code !== "" && codeError !== null}
-            className={`${inputClass(code !== "" && codeError !== null ? codeError : undefined)} font-mono uppercase tracking-[0.15em]`}
+            aria-invalid={codeShown}
+            className={`${inputClass(codeShown ? (codeError ?? undefined) : undefined)} font-mono uppercase tracking-[0.15em]`}
           />
         </label>
       </div>
       {showErrors && nameError !== null && <p className="mt-1.5 text-[12px] text-danger">{nameError}</p>}
-      {code !== "" && codeError !== null ? (
+      {codeShown ? (
         <p className="mt-2 text-[12px] text-danger">{codeError}</p>
       ) : (
         <p className="mt-2 text-[12px] text-prt-muted">2–3 letters, like AE.</p>
@@ -183,7 +194,6 @@ function NewDepartment({ open, structure, onClose }: { open: boolean; structure:
   const [rawCode, setCode] = useState("");
   const [head, setHead] = useState<TeamPick | null>(null);
   const [picking, setPicking] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [pending, startTransition] = useTransition();
 
@@ -191,13 +201,16 @@ function NewDepartment({ open, structure, onClose }: { open: boolean; structure:
   const nameError = departmentNameError(name);
   const codeError = rawCode.trim() === "" ? "Write a code." : departmentCodeError(code, structure.departments, null);
   const headError = head === null ? "Pick the head." : null;
-  const valid = nameError === null && codeError === null && headError === null;
   const stored = storedDepartmentName(name);
+  const { summary, showErrors, check, refuse } = useFormSummary([
+    { name: "name", label: "Name", error: nameError ?? undefined },
+    { name: "code", label: "Code", error: codeError ?? undefined },
+    { name: "head", label: "Head", error: headError ?? undefined },
+  ]);
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setShowErrors(true);
-    if (valid) setConfirming(true);
+    if (check(e.currentTarget)) setConfirming(true);
   };
 
   const confirm = () =>
@@ -205,10 +218,12 @@ function NewDepartment({ open, structure, onClose }: { open: boolean; structure:
       if (!head) return;
       const result = await createDepartment({ name, code, heads: [head.id] });
       if (!result.ok) {
-        toast.error("Could not create the department", { description: result.error });
+        // Shown above Create department, where the form's own errors show (issue #927).
+        refuse(`Could not create the department. ${result.error}`);
+        setConfirming(false);
         return;
       }
-      toast.success(`${stored} Department is open`);
+      toast.success(`${departmentLabel(stored)} is open`);
       setConfirming(false);
       onClose();
     });
@@ -221,10 +236,11 @@ function NewDepartment({ open, structure, onClose }: { open: boolean; structure:
       detail="For the whole team"
       footer={
         <>
+          <FooterSummary summary={summary} />
           <button type="button" onClick={onClose} className={PANEL_GHOST_BUTTON}>
             Cancel
           </button>
-          <button type="submit" form="new-department-form" disabled={pending || !valid} className={`${PANEL_PRIMARY_BUTTON} disabled:cursor-not-allowed disabled:opacity-50`}>
+          <button type="submit" form="new-department-form" disabled={pending} className={PANEL_PRIMARY_BUTTON}>
             Create department
           </button>
         </>
@@ -273,7 +289,7 @@ function NewDepartment({ open, structure, onClose }: { open: boolean; structure:
               />
             ) : (
               head === null && (
-                <button type="button" onClick={() => setPicking(true)} className={`${ADD_LINK} mt-3`}>
+                <button type="button" name="head" onClick={() => setPicking(true)} className={`${ADD_LINK} mt-3`}>
                   <PlusIcon />
                   Pick head
                 </button>
@@ -288,7 +304,7 @@ function NewDepartment({ open, structure, onClose }: { open: boolean; structure:
         open={confirming}
         onOpenChange={setConfirming}
         icon={<Building2 className="h-5 w-5" strokeWidth={1.75} />}
-        title={`Create ${stored} Department?`}
+        title={`Create ${departmentLabel(stored)}?`}
         description={`It opens with the code ${code}. ${head?.name ?? "The head"} becomes its head and keeps their divisions.`}
         cancelLabel="Back"
         confirmLabel="Create department"
@@ -312,23 +328,25 @@ function PlusIcon() {
   );
 }
 
-/** Board 77e: name and code, the head, and the divisions as read-only rows; Close department and Save changes. */
+/** Board 77e: name and code, the head, and the divisions as read-only rows with Add division under them; Close department and Save changes. */
 function EditDepartment({
   open,
   department,
   structure,
   onClose,
   onCloseDepartment,
+  onAddDivision,
 }: {
   open: boolean;
   department: StructureDepartment;
   structure: TeamStructure;
   onClose: () => void;
   onCloseDepartment: () => void;
+  /** "+ Add division" in the Divisions section, as on the department's box in the tree: New division under it (issue #927). */
+  onAddDivision: () => void;
 }) {
   const [name, setName] = useState(department.name);
   const [rawCode, setCode] = useState(department.code ?? "");
-  const [showErrors, setShowErrors] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [openDivision, setOpenDivision] = useState<number | null>(department.divisions[0]?.id ?? null);
   const [newHead, setNewHead] = useState<TeamPick | null>(null);
@@ -354,15 +372,18 @@ function EditDepartment({
       : newHead !== null && head !== null && headOutcome === null
         ? `Choose what happens to ${head.name}: Become an advisor or Leave the team.`
         : null;
-  const valid = nameError === null && codeError === null && headError === null;
   const stored = storedDepartmentName(name);
   const nameChanged = stored !== department.name;
   const codeChanged = code !== normalizeDepartmentCode(department.code ?? "");
+  const { summary, showErrors, check, refuse } = useFormSummary([
+    { name: "name", label: "Name", error: nameError ?? undefined },
+    { name: "code", label: "Code", error: codeError ?? undefined },
+    { name: `head-${department.id}`, label: "Head", error: headError ?? undefined },
+  ]);
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setShowErrors(true);
-    if (!valid) return;
+    if (!check(e.currentTarget)) return;
     if (!nameChanged && !codeChanged && newHead === null) {
       onClose();
       return;
@@ -390,7 +411,9 @@ function EditDepartment({
         head: newHead === null ? null : { to: newHead.id, from: head?.id ?? null, outcome: headOutcome },
       });
       if (!result.ok) {
-        toast.error("Could not save the department", { description: result.error });
+        // Shown above Save changes, where the form's own errors show (issue #927).
+        refuse(`Could not save the department. ${result.error}`);
+        setConfirming(false);
         return;
       }
       toast.success("Department saved");
@@ -421,10 +444,12 @@ function EditDepartment({
     <SidePanel
       open={open}
       onOpenChange={(next) => !next && onClose()}
-      title={`${department.name} Department`}
+      title={departmentLabel(department.name)}
+      titleWraps
       detail={departmentDetail(department)}
       footer={
         <>
+          <FooterSummary summary={summary} />
           <button type="button" onClick={onCloseDepartment} className={PANEL_DANGER_BUTTON}>
             Close department
           </button>
@@ -602,6 +627,13 @@ function EditDepartment({
             {department.divisions.length > 0 && (
               <p className="mt-2.5 text-[12px] leading-relaxed text-prt-muted">Open a division to see who is in it. Edit it from its own box in the tree.</p>
             )}
+            {/* Shown under the same rule as the department box's Add division (issue #927). */}
+            {department.divisionsEditable && (
+              <button type="button" onClick={onAddDivision} className={`${ADD_LINK} mt-3`}>
+                <PlusIcon />
+                Add division
+              </button>
+            )}
           </section>
         </PanelBody>
       </form>
@@ -611,7 +643,7 @@ function EditDepartment({
         icon={<Pencil className="h-5 w-5" strokeWidth={1.75} />}
         tone={leaving ? "danger" : "accent"}
         danger={leaving}
-        title={`Save changes to ${department.name} Department?`}
+        title={`Save changes to ${departmentLabel(department.name)}?`}
         description={
           <ul className="flex list-disc flex-col gap-1.5 pl-5">
             {lines.map((line, i) => (
@@ -751,7 +783,7 @@ function CloseDepartment({
         toast.error("Could not close the department", { description: result.error });
         return;
       }
-      toast.success(`${department.name} Department is closed`);
+      toast.success(`${departmentLabel(department.name)} is closed`);
       setConfirming(false);
       onClose();
     });
@@ -778,7 +810,8 @@ function CloseDepartment({
     <SidePanel
       open={open}
       onOpenChange={(next) => !next && onClose()}
-      title={`Close ${department.name} Department`}
+      title={`Close ${departmentLabel(department.name)}`}
+      titleWraps
       detail={departmentDetail(department)}
       footer={
         <>
@@ -854,7 +887,7 @@ function CloseDepartment({
         onOpenChange={setConfirming}
         icon={<Building2 className="h-5 w-5" strokeWidth={1.75} />}
         danger
-        title={`Close ${department.name} Department?`}
+        title={`Close ${departmentLabel(department.name)}?`}
         description={
           <>
             <p>A closed department cannot be reopened.</p>
@@ -922,7 +955,7 @@ function DestinationSelect({
           {placeholder}
         </option>
         {departments.map((d) => (
-          <optgroup key={d.id} label={`${d.name} Department`} className="bg-panel text-prt-muted">
+          <optgroup key={d.id} label={departmentLabel(d.name)} className="bg-panel text-prt-muted">
             {d.divisions.map((v) => option({ kind: "division", divisionId: v.id }, divisionLabel(v.name)))}
           </optgroup>
         ))}

@@ -17,6 +17,7 @@ import {
 } from "@/lib/dashboard/division-edit";
 import { matchesPerson, mayNotKnowTheyWereAdded, type DivisionMembers, type DivisionPerson, type WaitingPerson } from "@/lib/dashboard/division-members";
 import { fullAccessMovesLine, seatOfHandedRole, steppingDown, steppingDownLine, type HandOverOutcome, type HeldSeat } from "@/lib/dashboard/hand-over";
+import { departmentLabel } from "@/lib/dashboard/recruitment";
 import { divisionLabel, type Permission } from "@/lib/dashboard/team";
 import type { FullAccessSeat } from "@/lib/dashboard/viewer";
 import { Avatar } from "./avatar";
@@ -24,6 +25,7 @@ import { ConfirmDialog } from "./confirm-dialog";
 import { ConfirmNdaButton, MailAvatar, MemberDialogs, MenuItem, NoEmailNote, RowMenu, WaitingLine, matchesWaiting, type Asking } from "./division-members";
 import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, inputClass } from "./field";
+import { FooterSummary, useFormSummary } from "./form-summary";
 import { HandOverChoice } from "./hand-over-choice";
 import { MoveDialog } from "./member-move";
 import type { MovablePlace } from "@/lib/dashboard/member-move";
@@ -159,7 +161,6 @@ function DrawerForm({
   const [draft, setDraft] = useState<Draft>(() => draftOf(target));
   const [picking, setPicking] = useState<{ readonly replaces: number | null } | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const tab = target.kind === "edit" ? target.tab : null;
@@ -180,7 +181,14 @@ function DrawerForm({
   const leadError = leadCount < 1 ? "A division needs at least one lead." : null;
   const undecided = gone.find((l) => replacedBy(l.id) !== null && draft.handOvers[l.id] === undefined);
   const handOverError = undecided ? `Choose what happens to ${undecided.name}: Become an advisor or Leave the team.` : null;
-  const valid = nameError === null && codeError === null && leadError === null && handOverError === null;
+  const { summary, showErrors, check, refuse } = useFormSummary([
+    { name: "name", label: "Name", error: nameError ?? undefined },
+    { name: "code", label: "Code", error: codeError ?? undefined },
+    { name: "lead", label: "Leads", error: leadError ?? undefined },
+    ...(undecided ? [{ name: `hand-over-${undecided.id}`, label: `What happens to ${undecided.name}`, error: handOverError ?? undefined }] : []),
+  ]);
+  // An empty code shows its error once a click was refused (issue #927); a typed one shows it at once.
+  const codeShown = codeError !== null && (draft.code !== "" || showErrors);
 
   const original = draftOf(target);
   const nameChanged = target.kind === "edit" && storedDivisionName(draft.name) !== storedDivisionName(original.name);
@@ -216,8 +224,7 @@ function DrawerForm({
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setShowErrors(true);
-    if (!valid) return;
+    if (!check(e.currentTarget)) return;
     if (target.kind === "edit" && changes === 0) {
       onClose();
       return;
@@ -230,14 +237,17 @@ function DrawerForm({
       if (target.kind === "new") {
         const result = await createDivision(target.department.id, save);
         if (!result.ok) {
-          toast.error("Could not create the division", { description: result.error });
+          // Shown above the main button, where the form's own errors show (issue #927).
+          refuse(`Could not create the division. ${result.error}`);
+          setConfirming(false);
           return;
         }
         toast.success(`${storedDivisionName(draft.name)} is open`);
       } else {
         const result = await saveDivision(divisionId!, save);
         if (!result.ok) {
-          toast.error("Could not save the division", { description: result.error });
+          refuse(`Could not save the division. ${result.error}`);
+          setConfirming(false);
           return;
         }
         toast.success("Division saved");
@@ -247,10 +257,9 @@ function DrawerForm({
     });
 
   const title = target.kind === "new" ? "New division" : "Edit division";
-  const detail = target.kind === "new" ? `In ${target.department.name} Department` : `${target.tab.division.name} · ${target.tab.division.department} Department`;
+  const detail = target.kind === "new" ? `In ${departmentLabel(target.department.name)}` : `${target.tab.division.name} · ${departmentLabel(target.tab.division.department)}`;
   const submitLabel = target.kind === "new" ? "Create division" : changes > 0 ? `Save changes · ${changes}` : "Save changes";
   const formId = `division-${divisionId ?? "new"}-form`;
-  const blocked = target.kind === "new" && !valid;
 
   return (
     <SidePanel
@@ -260,6 +269,7 @@ function DrawerForm({
       detail={detail}
       footer={
         <>
+          <FooterSummary summary={summary} />
           {tab && mayClose(tab) ? (
             <button type="button" onClick={() => onCloseDivision(tab)} className={PANEL_DANGER_BUTTON}>
               Close division
@@ -269,7 +279,7 @@ function DrawerForm({
               Cancel
             </button>
           )}
-          <button type="submit" form={formId} disabled={pending || blocked} className={`${PANEL_PRIMARY_BUTTON} disabled:cursor-not-allowed disabled:opacity-50`}>
+          <button type="submit" form={formId} disabled={pending} className={PANEL_PRIMARY_BUTTON}>
             {submitLabel}
           </button>
         </>
@@ -281,6 +291,7 @@ function DrawerForm({
             <label className="min-w-0">
               <span className={`mb-2 block ${SECTION_LABEL}`}>Name</span>
               <input
+                name="name"
                 value={draft.name}
                 maxLength={60}
                 autoComplete="off"
@@ -293,18 +304,19 @@ function DrawerForm({
             <label className="min-w-0">
               <span className={`mb-2 block ${SECTION_LABEL}`}>Code</span>
               <input
+                name="code"
                 value={draft.code}
                 maxLength={3}
                 autoComplete="off"
                 placeholder="FD"
                 onChange={(e) => set({ code: e.target.value.toUpperCase() })}
-                aria-invalid={draft.code !== "" && codeError !== null}
-                className={`${inputClass(draft.code !== "" && codeError !== null ? codeError : undefined)} font-mono uppercase tracking-[0.15em]`}
+                aria-invalid={codeShown}
+                className={`${inputClass(codeShown ? (codeError ?? undefined) : undefined)} font-mono uppercase tracking-[0.15em]`}
               />
             </label>
           </div>
           {showErrors && nameError !== null && <p className="mt-1.5 text-[12px] text-danger">{nameError}</p>}
-          {draft.code !== "" && codeError !== null ? (
+          {codeShown ? (
             <p className="mt-2 text-[12px] text-danger">{codeError}</p>
           ) : (
             <p className="mt-2 text-[12px] text-prt-muted">2–3 letters. Used in position codes, like MA-01.</p>
@@ -350,7 +362,7 @@ function DrawerForm({
                 multi={picking.replaces === null}
               />
             ) : (
-              <button type="button" onClick={() => setPicking({ replaces: null })} className={`${ADD_LINK} mt-3`}>
+              <button type="button" name="lead" onClick={() => setPicking({ replaces: null })} className={`${ADD_LINK} mt-3`}>
                 <PlusIcon />
                 Add lead
               </button>
