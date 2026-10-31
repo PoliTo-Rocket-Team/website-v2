@@ -5,10 +5,12 @@ import { customSession } from "better-auth/plugins";
 import { admin } from "better-auth/plugins/admin";
 import { getDb } from "@/db/client";
 import { breakGlassSignInOf, readBreakGlassEmails, type BreakGlassSignIn } from "@/lib/break-glass";
+import { recordGoogleAccountChange } from "@/lib/dashboard/database-google-accounts";
 import { recordBreakGlassSignIn } from "@/lib/dashboard/database-sign-in";
 import { recordViewAs, viewAsRefusal } from "@/lib/dashboard/database-view-as";
 import { devTesterPlugin, type TesterDirectory } from "@/lib/dev-tester-plugin";
 import { testerSignInOn } from "@/lib/dev-tester";
+import { googleAccountDatabaseHooks, googleAccountsPlugin, type GoogleAccountLog } from "@/lib/google-accounts-plugin";
 import { impersonatorOf } from "@/lib/session-user";
 import {
   VIEW_AS_ACCESS,
@@ -63,16 +65,20 @@ export type SignInLog = { readonly record: (signIn: BreakGlassSignIn) => Promise
 
 const databaseSignIns: SignInLog = { record: recordBreakGlassSignIn };
 
+/** Where each link and unlink of a Google account is logged (issue #906). */
+const databaseGoogleAccounts: GoogleAccountLog = { record: recordGoogleAccountChange };
+
 /**
  * getAuth() over any database adapter; tests pass an in-memory one, and may
- * pass a View as gate, a tester directory and a sign-in log that read no
- * database.
+ * pass a View as gate, a tester directory, a sign-in log and a Google account
+ * log that read no database.
  */
 export function createAuth(
   database: BetterAuthOptions["database"],
   viewAs: ViewAsGate = databaseViewAs,
   testers: TesterDirectory = databaseTesters,
   signIns: SignInLog = databaseSignIns,
+  googleAccounts: GoogleAccountLog = databaseGoogleAccounts,
 ) {
   return betterAuth({
     baseURL: authBaseUrl as string,
@@ -88,15 +94,32 @@ export function createAuth(
         clientSecret: process.env.AUTH_GOOGLE_SECRET as string,
       },
     },
+    // A person links more Google accounts to their own login from My profile
+    // or My account (issue #906), and signs in with any of them. Google is
+    // trusted and each linked account may have its own email; unlinking the
+    // last account stays refused (Better Auth's default), and
+    // lib/google-accounts-plugin.ts adds the rest of the rules. Each account
+    // row keeps its Google account's email, never shown with any token.
+    account: {
+      accountLinking: {
+        enabled: true,
+        trustedProviders: ["google"],
+        allowDifferentEmails: true,
+      },
+      additionalFields: {
+        email: { type: "string", required: false, input: false },
+      },
+    },
     session: {
       cookieCache: {
         enabled: true,
         maxAge: 10 * 60,
       },
     },
-    // Each sign-in of the break-glass admin writes one audit entry (issue
-    // #646); every other account's sessions write nothing here.
     databaseHooks: {
+      account: googleAccountDatabaseHooks(googleAccounts),
+      // Each sign-in of the break-glass admin writes one audit entry (issue
+      // #646); every other account's sessions write nothing here.
       session: {
         create: {
           after: async (session, ctx) => {
@@ -130,6 +153,7 @@ export function createAuth(
         impersonationSessionDuration: VIEW_AS_SESSION_SECONDS,
       }),
       viewAsPlugin(viewAs),
+      googleAccountsPlugin(googleAccounts),
       // Tester sign-in as any seeded person (issues #129, #608, #653): registered under `next dev` and
       // on a preview of the shared `preview` database only, so production
       // and every other environment keep the plugins above alone.

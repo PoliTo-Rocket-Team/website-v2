@@ -3,7 +3,7 @@ import "./access-matrix/install";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import * as teamActions from "@/app/dashboard/team-actions";
-import { applicationFiles, applications, betterAuthSessions, betterAuthUsers, members, teamJoins, users } from "@/db/schema";
+import { applicationFiles, applications, betterAuthAccounts, betterAuthSessions, betterAuthUsers, members, teamJoins, users } from "@/db/schema";
 import { addRows, changeRows, databaseWrites, logRowsSinceSeed, tableRows, testDb, writesByTransaction } from "./access-matrix/test-database";
 import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
@@ -336,6 +336,25 @@ describe("a stranger signed in on a member's wrong stored address loses the reco
     assert.equal(await standingOf(PERSON_USER), "non-member");
     assert.deepEqual(await yourDetailsOf(PERSON_USER), NO_DETAILS, "the stranger's Your details read none of the member's");
     assert.equal(await standingOf(LOGIN), "member", "the login reaches the member's dashboard");
+  });
+
+  test("the record moves without its Google accounts: the stranger's linked accounts stay on their login, and no other account changes (issue #906)", async () => {
+    await seededStranger();
+    const LOGIN = "applicant-ma";
+    const REAL = "appl-ma@mail.test";
+    await addRows(betterAuthUsers, [{ id: LOGIN, name: "Applicant", email: REAL, emailVerified: true }]);
+    const google = (id: string, userId: string, email: string) => ({ id, accountId: `google-${id}`, providerId: "google", userId, email, updatedAt: new Date() });
+    await addRows(betterAuthAccounts, [
+      google("stranger-1", PERSON_USER, "person-ma@mail.test"),
+      google("stranger-2", PERSON_USER, "second.stranger@mail.test"),
+      google("login-1", LOGIN, REAL),
+      google("bystander-1", "bystander", "bystander@example.com"),
+    ]);
+    const before = await tableRows(betterAuthAccounts);
+    const { answer } = await saveForm(REAL);
+    assert.deepEqual(answer, { ok: true });
+    assert.equal((await userRow(LOGIN))?.member, MEMBER, "the record moved");
+    assert.deepEqual(await tableRows(betterAuthAccounts), before, "every account row reads back as it was, on the login it was on");
   });
 });
 
