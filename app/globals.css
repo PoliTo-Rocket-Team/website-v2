@@ -176,14 +176,9 @@
     transition: background-color 600000s 0s;
   }
 
-  /* Search fields: Chromium and Safari draw their own clear button, Firefox
-     none, and no site search adds one of its own. Hidden, so every browser
-     shows the same field. */
-  input[type="search"]::-webkit-search-cancel-button,
-  input[type="search"]::-webkit-search-decoration {
-    -webkit-appearance: none;
-    appearance: none;
-  }
+  /* Search fields keep the clear button Chromium and Safari draw: no site
+     search draws one of its own, so the browser's is the only clear control
+     and hiding it would leave none. */
 }
 
 /* Hero display type: lit like the rocket (sun on the camera side, a touch
