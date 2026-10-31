@@ -46,6 +46,7 @@ import {
   lookupForAdd,
   positionsOf,
   SEAT_TITLE_REQUIRED,
+  shownEditOf,
   type AddLookup,
   type AddStanding,
   type DetailsTarget,
@@ -120,10 +121,10 @@ import {
 import { refreshAfter } from "@/lib/cache-tags";
 import { mayChangePositionIn } from "./position-access";
 import { readsRecruitmentIn } from "./application-documents";
-import { readTeamSnapshot, recordsOf, seatsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
+import { editorViewOf, readTeamSnapshot, recordsOf, seatsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
 import { correctsSignInEmail, SIGN_IN_EMAIL_REFUSALS } from "./sign-in-email";
-import { correctionWrites, detailsOnto, planCorrection, signedIn } from "./database-sign-in-email";
+import { correctionWrites, planCorrection, signedIn } from "./database-sign-in-email";
 import { isGuardFailure } from "@/lib/db-guard";
 
 // The Members page's reads and writes on the database (Dashboard v2 boards 59
@@ -1119,7 +1120,8 @@ async function saveMemberDetails(
     return written(null);
   }
 
-  const { org } = await readTeamSnapshot();
+  const snapshot = await readTeamSnapshot();
+  const { org } = snapshot;
   const actor = await readActor(identity, org);
   const active = await rolesTheViewerChanges(identity, actor, target.id);
   if (actor === null || active === null) return refused(NOT_IN_SCOPE);
@@ -1136,9 +1138,11 @@ async function saveMemberDetails(
   }
   const correction = await planCorrection(identity, signInEmail, eq(users.member, target.id));
   if (correction.kind === "refused") return refused(correction.error);
-  // The user row can change under an open form, when an earlier Save of it moved the record onto another login: a retry
-  // that says what landed writes only the user columns changed since (issue #864). The members row never moves.
-  const edited = editedFields(checked.value);
+  // The record can move onto a login whose own fields the form never showed (issue #864), so the user columns written are
+  // only those the viewer changed: on the Save that moves it, against the record's row as the form showed it; on a retry
+  // of the same open form, against what its last Save wrote. The members row never moves.
+  const opened = correction.kind === "move" ? editorViewOf(snapshot, target.id) : null;
+  const edited = editedFields(checked.value, opened === null ? checked.value.landed : shownEditOf(opened.details, opened.name));
   const userColumns = { ...columnsFromMemberDetails(edited.details).user, ...edited.name };
   try {
     // The change lands before the user row's details: after a move, they are written onto the row that now holds the record (issue #864).
@@ -1147,7 +1151,7 @@ async function saveMemberDetails(
       ...correctionWrites(db, correction),
       db
         .update(users)
-        .set({ ...detailsOnto(correction, userColumns), updatedAt: sql`now()` })
+        .set({ ...userColumns, updatedAt: sql`now()` })
         .where(eq(users.member, target.id)),
       ...(titled.length === 0
         ? []

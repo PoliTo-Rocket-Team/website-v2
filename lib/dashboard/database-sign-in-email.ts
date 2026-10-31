@@ -173,24 +173,3 @@ export function correctionWrites(db: Db, correction: SignInEmailCorrection): Bat
       .where(and(eq(users.id, correction.userId), sql`not ${signedIn}`)),
   ];
 }
-
-/** A user column Edit details writes: the person's name and the details stored on their user row. */
-type DetailColumn = "firstName" | "lastName" | "phone" | "linkedin" | "politoId" | "program" | "levelOfStudy" | "country" | "dateOfBirth" | "gender";
-
-/**
- * The user columns Save writes onto the row that holds the record once the
- * change lands. After a move, that row is one the form never showed: the
- * form showed the old row, so a field the viewer left as the old row holds it
- * keeps the new row's own value, and only a field the viewer changed is
- * written. Without a move, every field is written as sent.
- */
-export function detailsOnto(correction: SignInEmailCorrection, sent: Partial<Record<DetailColumn, string | null>>): Partial<Record<DetailColumn, string | null | SQL>> {
-  if (correction.kind !== "move") return sent;
-  const from = correction.move.from.userId;
-  return Object.fromEntries(
-    Object.entries(sent).map(([key, value]) => {
-      const column = key as DetailColumn;
-      return [column, sql`case when ${fromColumn(column, from)} is not distinct from ${value} then ${users[column]} else ${value} end`];
-    }),
-  );
-}

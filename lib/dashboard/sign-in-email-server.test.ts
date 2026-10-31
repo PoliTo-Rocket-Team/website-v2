@@ -3,7 +3,7 @@ import "./access-matrix/install";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import * as teamActions from "@/app/dashboard/team-actions";
-import { applications, betterAuthSessions, betterAuthUsers, teamJoins, users } from "@/db/schema";
+import { applications, betterAuthSessions, betterAuthUsers, members, teamJoins, users } from "@/db/schema";
 import { addRows, changeRows, databaseWrites, logRowsSinceSeed, tableRows, testDb, writesByTransaction } from "./access-matrix/test-database";
 import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
@@ -336,6 +336,25 @@ describe("an empty login takes the record off a row nobody signed in on (issues 
     const login = await userRow(LOGIN_USER);
     assert.equal(login?.country, "Italy", "the value set back is written, not dropped behind a success");
     assert.equal(login?.phone, "+39 333 222 2222", "the login's own phone still survives");
+  });
+
+  test("a field the viewer left keeps the login's own value where the form showed another than the old row stores", async () => {
+    await seededEmptyLogin();
+    // The old row has no phone of its own, a programme that is no longer an option, and an empty stored Polito ID.
+    await changeRows(users, { id: PERSON_USER }, { phone: null, program: "A programme since retired", politoId: "" });
+    await changeRows(members, { memberId: MEMBER }, { mobileNumber: "+39 333 999 9999" });
+    await changeRows(users, { id: LOGIN_USER }, { program: "The login's own programme", politoId: "123456" });
+    const { details } = await opened();
+    assert.equal(details.phone, "+39 333 999 9999", "the form shows the member record's mobile number");
+    assert.equal(details.programme, "", "a programme no longer an option reads empty");
+    assert.equal(details.politoId, "", "an empty stored text reads empty");
+    assert.deepEqual((await saveForm(REAL, { country: "France" })).answer, { ok: true });
+    const login = await userRow(LOGIN_USER);
+    assert.equal(login?.member, MEMBER, "the login holds the member record");
+    assert.equal(login?.phone, "+39 333 222 2222", "the mobile number the form showed does not replace the login's own phone");
+    assert.equal(login?.program, "The login's own programme", "a programme that read empty is not cleared");
+    assert.equal(login?.politoId, "123456", "an empty stored text does not clear the login's own");
+    assert.equal(login?.country, "France", "a field the viewer changed is written");
   });
 
   test("an address held by an account that has a member record is refused, naming who", async () => {

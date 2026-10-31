@@ -11,6 +11,7 @@ import type { MemberDetails } from "./details";
 import type { FoundPerson } from "./division-edit";
 import type { PersonRecord } from "./division-members";
 import type { HeldSeat } from "./hand-over";
+import type { PersonName } from "./person-name";
 import { normalizeLinkedin } from "./self";
 import { viewAsSiteOf, type ViewAsSite } from "./view-as";
 import { SEAT_OF_FLAG, type SeatFlag } from "./viewer";
@@ -305,6 +306,21 @@ function detailsOf(person: PersonRow): MemberDetails {
   };
 }
 
+/** A person's first and last name as Edit details opens them: what their user row stores, an empty one blank. */
+function storedNameOf(person: PersonRow): PersonName {
+  return { firstName: person.first_name ?? "", lastName: person.last_name ?? "" };
+}
+
+/**
+ * What Edit details opens with for the member `memberId`, off the snapshot
+ * the Members page hands it from (`recordsOf`): their details and stored
+ * name. Null when no user row holds the member record.
+ */
+export function editorViewOf(snapshot: TeamSnapshot, memberId: number): { readonly details: MemberDetails; readonly name: PersonName } | null {
+  const person = snapshot.people.find((p) => p.member_id === memberId);
+  return person === undefined ? null : { details: detailsOf(person), name: storedNameOf(person) };
+}
+
 /**
  * The full-access seats on the team's active lead and head roles, as the
  * hand-over screens read them (`HeldSeat`, issue #501): a flagged lead row of
@@ -383,7 +399,7 @@ export function recordsOf(snapshot: TeamSnapshot, site: ViewAsSite = viewAsSiteO
     return {
       id: entry.id,
       name: entry.name,
-      storedName: { firstName: person.first_name ?? "", lastName: person.last_name ?? "" },
+      storedName: storedNameOf(person),
       signInEmail: entry.email,
       photoUrl: person.picture,
       since: entry.joined,

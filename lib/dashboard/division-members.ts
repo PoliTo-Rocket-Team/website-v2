@@ -634,32 +634,44 @@ export type MemberEditDetails = {
   readonly details: MemberDetails;
   readonly name: PersonName | null;
   readonly signInEmail: string | null;
-  readonly landed: LandedEdit | null;
+  readonly landed: ShownEdit | null;
 };
 
 /**
- * The details and name an earlier Save of one open Edit details form wrote
- * (issue #864). A Save that changed the sign-in email can move the record
- * onto another login's row and still leave the form open, as when a
- * placement move after it fails. That row's own values never showed in the
- * form, so a retry writes only the fields that differ from what landed, and
- * a field the viewer left keeps the value that row holds.
+ * The details and name an open Edit details form stood on (issue #864): what
+ * it showed when it opened, or what an earlier Save of it wrote. When the
+ * record moves onto another login's row, that row's own values never showed
+ * in the form, so Save writes only the fields that differ from these, and a
+ * field the viewer left keeps the value the login holds. That holds on the
+ * Save that moves the record and on a retry of the same open form after it,
+ * as when a placement move after Save fails and leaves the form open.
  */
-export type LandedEdit = { readonly details: MemberDetails; readonly name: PersonName | null };
+export type ShownEdit = { readonly details: MemberDetails; readonly name: PersonName | null };
 
-/** `LandedEdit` as Edit details sends it, in its input's `landed`: the names beside the details, as the form sends its own. */
+/** What an earlier Save wrote, as Edit details sends it in its input's `landed`: the names beside the details, as the form sends its own. */
 export type LandedSent = { readonly details: MemberDetails } & Partial<PersonName>;
 
 /**
- * The details and name a checked save writes: all it sent, or with `landed`
- * only each one that differs from it. An empty object writes nothing.
+ * Details and a name as an Edit details form shows them, read as Save reads
+ * what it sends (`checkMemberEdit`), so the two compare field by field. A
+ * stored value Save would refuse stays as it reads.
  */
-export function editedFields(edit: MemberEditDetails): { readonly details: Partial<MemberDetails>; readonly name: Partial<PersonName> } {
-  const { details, name, landed } = edit;
-  if (landed === null) return { details, name: name ?? {} };
+export function shownEditOf(details: MemberDetails, name: PersonName | null): ShownEdit {
+  const parsed = parseMemberDetails(details);
+  return { details: parsed.ok ? parsed.value : details, name: name === null ? null : { firstName: name.firstName.trim(), lastName: name.lastName.trim() } };
+}
+
+/**
+ * The details and name a checked save writes: all it sent, or, against what
+ * the form `shown`, only each one that differs from it. An empty object
+ * writes nothing.
+ */
+export function editedFields(edit: MemberEditDetails, shown: ShownEdit | null): { readonly details: Partial<MemberDetails>; readonly name: Partial<PersonName> } {
+  const { details, name } = edit;
+  if (shown === null) return { details, name: name ?? {} };
   const changed = <T extends object>(sent: T, was: T | null): Partial<T> =>
     Object.fromEntries(Object.entries(sent).filter(([key, value]) => was === null || was[key as keyof T] !== value)) as Partial<T>;
-  return { details: changed(details, landed.details), name: name === null ? {} : changed(name, landed.name) };
+  return { details: changed(details, shown.details), name: name === null ? {} : changed(name, shown.name) };
 }
 
 /** A corrected sign-in email: the rule of the other email fields, never blank, keyed as Google answers it. */
@@ -712,7 +724,7 @@ export function checkMemberEdit(
 }
 
 /** What an earlier Save landed, checked as the sent values are so the two compare; null when none was sent, "bad" when it does not read. */
-function checkLanded(input: unknown): LandedEdit | null | "bad" {
+function checkLanded(input: unknown): ShownEdit | null | "bad" {
   if (input === undefined) return null;
   if (typeof input !== "object" || input === null) return "bad";
   const sent = input as Record<string, unknown>;
