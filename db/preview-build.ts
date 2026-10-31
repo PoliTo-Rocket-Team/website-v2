@@ -13,14 +13,13 @@
 // It reads the real environment only, never a .env file, so a local build
 // never seeds.
 
-import { drizzle } from "drizzle-orm/postgres-js";
-import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { preparePreviewDatabase, type PreviewBuildSteps } from "@/lib/seed/preview-build";
 import { RESEED_SERVED, runReseed } from "@/lib/seed/reseed";
 import { runSeed } from "@/lib/seed/runner";
 import { guardSeedTarget } from "@/lib/seed/target";
 import { readPrivateFile, uploadPrivateFile } from "@/lib/storage/private-blob";
+import { migrateDatabase } from "./migrate-database";
 import { seedConnection } from "./seed/connection";
 import { SEED_DOCUMENTS } from "./seed/recruitment";
 import { SEED_MODULES } from "./seed/registry";
@@ -46,10 +45,11 @@ const steps: PreviewBuildSteps = {
       await lock.end();
     }
   },
+  // The migrations and the post-migration steps (./migrate-database.ts), still inside the lock.
   async migrate(target) {
     const client = postgres(target.connectionString, { max: 1 });
     try {
-      await migrate(drizzle(client), { migrationsFolder: "./drizzle" });
+      await migrateDatabase(client);
     } finally {
       await client.end();
     }

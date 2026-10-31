@@ -179,7 +179,7 @@ export function personPhotoChoices(build: TeamBuild, base: TeamPage): PhotoChoic
     return photo === undefined ? [] : [{ src: photo, label: p.name }];
   });
   const typed = [
-    base.orgChart.leader,
+    ...(base.orgChart.leader === null ? [] : [base.orgChart.leader]),
     ...base.orgChart.leaders,
     ...base.departments.groups.flatMap((g) => g.members.flatMap((m) => [m, ...(m.kind === "head" ? m.leads : [])])),
     ...base.advisors.people,

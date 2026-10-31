@@ -31,14 +31,13 @@ import {
   type TeamBuild,
   type TeamPageLayer,
 } from "./team-layer";
-import { editedTeamPage } from "./team-page-edit";
+import { layoutPhotos } from "./team-layout";
+import { NO_STORED_TEAM_PAGE, storedTeamPage, storedTeamPageOf, type StoredTeamPage } from "./team-page-stored";
 import {
   emptySectionOf,
   headsShown,
   HEADS_SHOWN_MAX,
   teamBuildOf,
-  teamPageFromRoles,
-  withLayerText,
   type TeamPageSection,
   type TeamRoles,
 } from "./team-roles";
@@ -46,8 +45,12 @@ import type { PersonPhoto, TeamPage } from "./types";
 
 // The Team page's visual layer as the editor reads and writes it (issue
 // #283): one document in the shared content store (lib/content/), with a
-// published version /about/the-team lays on the roles build and an optional
-// draft. Save draft and Reset to team never reach the public page; Publish
+// published version /about/the-team draws and an optional draft. Each
+// version is stored with its layout of page seats (./team-page-stored.ts,
+// issue #850): the editor still sends a layer, and every write stores it
+// with the layout it snapshots to on the roles of that moment, in the same
+// write. The public page and the editor's opening page draw the stored
+// layout. Save draft and Reset to team never reach the public page; Publish
 // does. Every write passes the site-content gate (lib/content/gate.ts) first.
 // Save draft and Publish write the layer and the advisor list (./advisors.ts)
 // together, in one step of the store, so the live page never shows a new
@@ -66,26 +69,35 @@ import type { PersonPhoto, TeamPage } from "./types";
 // interface build it, each with its own store, its own roles and its own
 // photo files.
 
-/** The layer the public page lays on: the published version, or none. */
-export function publishedLayer(items: readonly ContentItem<TeamPageLayer>[]): TeamPageLayer {
-  return publicItems(items)[0] ?? NO_TEAM_LAYER;
+/** The version the public page draws: the published one, or none saved yet. */
+export function publishedTeamPage(items: readonly ContentItem<StoredTeamPage>[]): StoredTeamPage {
+  return publicItems(items)[0] ?? NO_STORED_TEAM_PAGE;
+}
+
+/** The published version's layer, or none. */
+export function publishedLayer(items: readonly ContentItem<StoredTeamPage>[]): TeamPageLayer {
+  return publishedTeamPage(items).layer;
 }
 
 /**
- * The public Team page: the roles build with the published layer laid on;
- * `base` with the layer's intro text and group photo when the roles cannot
- * fill the page. A draft never reaches it.
+ * The public Team page: the published version's layout drawn on the team
+ * record, with its layer's intro text, figures and group photo
+ * (`storedTeamPageOf`). A draft never reaches it.
  */
-export function publicTeamPage(roles: TeamRoles, base: TeamPage, items: readonly ContentItem<TeamPageLayer>[]): TeamPage {
-  const layer = publishedLayer(items);
-  return teamPageFromRoles(roles, base, layer) ?? withLayerText(base, layer);
+export function publicTeamPage(roles: TeamRoles, base: TeamPage, items: readonly ContentItem<StoredTeamPage>[]): TeamPage {
+  return storedTeamPageOf(roles, publishedTeamPage(items), base);
+}
+
+/** The layer versions of stored versions, as the editor reads and answers them. */
+function layerVersions(version: Versioned<StoredTeamPage>): Versioned<TeamPageLayer> {
+  return mapVersions(version, (stored) => stored.layer);
 }
 
 /**
  * What the editor opens on: the layer it edits (the draft, else the published
- * one) and the page with it laid on, with the roles build and the hand-typed
- * record under it, so the editor lays each change on as it is made
- * (`editedTeamPage`, ./team-page-edit.ts).
+ * one) and the page that version's stored layout draws (`storedTeamPageOf`),
+ * with the roles build and the hand-typed record under it, so the editor lays
+ * each change on as it is made (`editedTeamPage`, ./team-page-edit.ts).
  */
 export type TeamPageOpening = {
   /** Null before anything was saved. */
@@ -101,22 +113,23 @@ export type TeamPageOpening = {
  * go through `save` alone, so the layer and the advisors land together.
  */
 export interface TeamPageStore {
-  /** The layer document: one item at most, none before the first save. Reset to team writes it alone. */
-  readonly layer: ContentStore<TeamPageLayer>;
+  /** The layer document, each version with its layout: one item at most, none before the first save. Reset to team writes it alone. */
+  readonly layer: ContentStore<StoredTeamPage>;
   /** Every advisor, as ./advisors.ts keeps them. */
   advisors(): Promise<readonly AdvisorItem[]>;
   /**
-   * The layer document's versions become `layer` and every advisor write
-   * lands, in one step: on a refusal or a failure nothing is written, and
-   * the layer and the advisors stay as they were. `expected` is the layer
-   * and the advisors the save was made on: when another save has replaced
-   * either since, it is refused with `CHANGED_SINCE_READ` (issue #831).
+   * The layer document's versions become `layer`, each layer with its
+   * layout, and every advisor write lands, in one step: on a refusal or a
+   * failure nothing is written, and the layer and the advisors stay as they
+   * were. `expected` is the layer and the advisors the save was made on: when
+   * another save has replaced either since, it is refused with
+   * `CHANGED_SINCE_READ` (issue #831).
    */
-  save(layer: Versioned<TeamPageLayer>, advisors: readonly AdvisorWrite[], expected: TeamPageRead): Promise<WriteResult<null>>;
+  save(layer: Versioned<StoredTeamPage>, advisors: readonly AdvisorWrite[], expected: TeamPageRead): Promise<WriteResult<null>>;
 }
 
-/** The layer's versions (none before the first save) and every advisor, as one save read them. */
-export type TeamPageRead = { readonly layer: Versioned<TeamPageLayer> | null; readonly advisors: readonly AdvisorItem[] };
+/** The layer document's versions (none before the first save) and every advisor, as one save read them. */
+export type TeamPageRead = { readonly layer: Versioned<StoredTeamPage> | null; readonly advisors: readonly AdvisorItem[] };
 
 /** Whether two reads of the layer and the advisors hold the same content. */
 export function sameTeamPageRead(a: TeamPageRead, b: TeamPageRead): boolean {
@@ -161,9 +174,11 @@ export interface TeamPagePhotos {
 /** Why a save is refused when a photo it picked from another row is no longer stored. */
 export const PICKED_PHOTO_GONE = "A photo you picked is no longer stored. Reload the page and pick it again.";
 
-/** Every photo the stored layer versions and advisor versions show. */
-export function photosInUse(layer: readonly ContentItem<TeamPageLayer>[], advisors: readonly AdvisorItem[]): Set<PersonPhoto> {
-  const layers = layer.flatMap((item) => versionRows(item.version).flatMap((row) => layerPhotos(row.content)));
+/** Every photo the stored layer versions, their layouts and the advisor versions show. */
+export function photosInUse(layer: readonly ContentItem<StoredTeamPage>[], advisors: readonly AdvisorItem[]): Set<PersonPhoto> {
+  const layers = layer.flatMap((item) =>
+    versionRows(item.version).flatMap(({ content }) => [...layerPhotos(content.layer), ...(content.layout === null ? [] : layoutPhotos(content.layout))]),
+  );
   const rows = advisors.flatMap((item) => versionRows(item.version).flatMap((row) => row.content.photo ?? []));
   return new Set([...layers, ...rows]);
 }
@@ -237,10 +252,9 @@ export const HEADS_FULL = `The departments area shows up to ${HEADS_SHOWN_MAX} h
  * Why the page cannot be drawn as `layer` edits it; null when it can. The
  * limits bind what the layer does, not what the roles alone do: the roles may
  * put more than eight on the arc or more heads than the carousel shows (the
- * page then shows the first ones), and may leave a section empty (the page
- * then shows the hand-typed record), but the layer may not add past a limit,
- * and may not empty a section the roles fill, which would bring the
- * hand-typed record back without a word.
+ * page then shows the first ones), and may leave a section empty, but the
+ * layer may not add past a limit, and may not empty a section the roles
+ * fill, which would empty it on the page without a word.
  */
 export function layerRefusal(build: TeamBuild, base: TeamPage, layer: TeamPageLayer): string | null {
   if (leadersOnArc(build, layer) > Math.max(ARC_LEADERS, leadersOnArc(build, NO_TEAM_LAYER))) return ARC_FULL;
@@ -262,8 +276,8 @@ export function teamPageEditor(
   const editor = contentEditor(viewer, store.layer);
   /** The one document's id; null before the first save. */
   const documentId = async () => (await store.layer.list())[0]?.id ?? null;
-  const versionOf = (result: WriteResult<ContentItem<TeamPageLayer>>): WriteResult<Versioned<TeamPageLayer>> =>
-    result.ok ? written(result.value.version) : result;
+  const versionOf = (result: WriteResult<ContentItem<StoredTeamPage>>): WriteResult<Versioned<TeamPageLayer>> =>
+    result.ok ? written(layerVersions(result.value.version)) : result;
 
   return {
     async open() {
@@ -271,15 +285,16 @@ export function teamPageEditor(
       const [items, teamRoles] = await Promise.all([editor.list(), roles()]);
       if (items === null) return null;
       const version = items[0]?.version ?? null;
-      const layer = version === null ? NO_TEAM_LAYER : editorVersion(version);
+      const stored = version === null ? NO_STORED_TEAM_PAGE : editorVersion(version);
       const build = teamBuildOf(teamRoles);
-      return { status: version === null ? null : statusOf(version), layer, page: editedTeamPage(build, base, layer).page, build, base };
+      return { status: version === null ? null : statusOf(version), layer: stored.layer, page: storedTeamPageOf(teamRoles, stored, base), build, base };
     },
 
     async save(step, layer, advisors) {
       if (!maySiteContent(viewer)) return refused(SITE_CONTENT_REFUSAL);
       if (!isTeamPageLayer(layer, photos.owns)) return refused(NOT_A_LAYER);
-      const refusal = layerRefusal(teamBuildOf(await roles()), base, layer);
+      const teamRoles = await roles();
+      const refusal = layerRefusal(teamBuildOf(teamRoles), base, layer);
       if (refusal !== null) return refused(refusal);
       const [items, advisorItems] = await Promise.all([store.layer.list(), store.advisors()]);
       const writes = advisorWritesOf(advisorItems, step, advisors);
@@ -287,7 +302,7 @@ export function teamPageEditor(
       const adopted = await adoptedPhotos(layer, writes.value, photos);
       if (!adopted.ok) return adopted;
       const before = photosInUse(items, advisorItems);
-      const version = afterStep(items[0]?.version ?? null, adopted.value.layer, step);
+      const version = afterStep(items[0]?.version ?? null, storedTeamPage(teamRoles, adopted.value.layer), step);
       // A Team page upload the stored versions did not show must still be
       // stored, and young enough that the daily sweep cannot delete it
       // while this save is under way (`TeamPagePhotos.gone`).
@@ -297,13 +312,15 @@ export function teamPageEditor(
       if (!saved.ok) return saved;
       const advisorsNow = await store.advisors();
       await photos.drop(photosNoLongerUsed(before, photosInUse(await store.layer.list(), advisorsNow)));
-      return written({ layer: version, advisors: advisorsNow });
+      return written({ layer: layerVersions(version), advisors: advisorsNow });
     },
 
     async reset() {
       const advisors = await store.advisors();
       const before = photosInUse(await store.layer.list(), advisors);
-      const result = await editor.save(await documentId(), "save-draft", async (current) => written(resetLayer(current ?? NO_TEAM_LAYER)));
+      const result = await editor.save(await documentId(), "save-draft", async (current) =>
+        written(storedTeamPage(await roles(), resetLayer(current?.layer ?? NO_TEAM_LAYER))),
+      );
       if (result.ok) await photos.drop(photosNoLongerUsed(before, photosInUse(await store.layer.list(), advisors)));
       return versionOf(result);
     },

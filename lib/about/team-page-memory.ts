@@ -3,12 +3,13 @@ import type { MemoryContentStore } from "@/lib/content/memory";
 import type { ContentItem } from "@/lib/content/versioned";
 import { refused } from "@/lib/dashboard/write";
 import { advisorsAfter, type AdvisorItem, type AdvisorVersion } from "./advisors";
-import type { TeamPageLayer } from "./team-layer";
 import { sameTeamPageRead, type TeamPageStore } from "./team-page-editor";
+import type { StoredTeamPage } from "./team-page-stored";
 
-// The Team page's store held in memory (issue #321): the layer document and
-// the advisors, each in its own memory content store (lib/content/memory.ts),
-// for tests of the editor's rules.
+// The Team page's store held in memory (issue #321): the layer document, each
+// version with its layout (issue #850), and the advisors, each in its own
+// memory content store (lib/content/memory.ts), for tests of the editor's
+// rules.
 
 /**
  * A Team page store over `layer` and `advisors`. A save first asks `refusal`
@@ -17,9 +18,9 @@ import { sameTeamPageRead, type TeamPageStore } from "./team-page-editor";
  * save that passed it lands both lists.
  */
 export function memoryTeamPageStore(
-  layer: MemoryContentStore<TeamPageLayer>,
+  layer: MemoryContentStore<StoredTeamPage>,
   advisors: MemoryContentStore<AdvisorVersion>,
-  refusal: (layer: readonly ContentItem<TeamPageLayer>[], advisors: readonly AdvisorItem[]) => string | null = () => null,
+  refusal: (layer: readonly ContentItem<StoredTeamPage>[], advisors: readonly AdvisorItem[]) => string | null = () => null,
 ): TeamPageStore {
   return {
     layer,

@@ -22,6 +22,8 @@ import {
 } from "@/db/schema";
 import { advisorRowsOf } from "@/lib/about/advisors";
 import { NO_TEAM_LAYER } from "@/lib/about/team-layer";
+import { snapshot, type TeamLayout } from "@/lib/about/team-layout";
+import type { PersonPhoto } from "@/lib/about/types";
 import { CHANGED_SINCE_READ } from "@/lib/content/editor";
 import { versionRows } from "@/lib/content/versioned";
 import { referencedPublicFiles } from "@/lib/storage/public-references";
@@ -32,6 +34,7 @@ import { databaseAnonymizationStore } from "./database-anonymize";
 import { writeOverExpected } from "./database-guarded-write";
 import { databaseProjectStore } from "./database-projects";
 import { openDashboard } from "./open";
+import { queryTeamSnapshot, teamRolesOf } from "./team-snapshot";
 import { accountOf, cvHash, cvPathname, IDS, seedFixture } from "./access-matrix/fixture";
 import { publicUrlOf, resetPublicFiles } from "./access-matrix/fakes/public-store";
 import { signInAs } from "./access-matrix/session";
@@ -143,6 +146,22 @@ test("a member replacing a picture an older Team page version still shows keeps 
   const member = await dataAs("member");
   assert.ok((await member.setPhoto(photoUpload())).ok);
   assert.deepEqual(await filesWritten("delete-public"), [], "the Team page still shows it");
+});
+
+test("a photo only a stored Team page layout shows keeps its file, and the reference read finds it there (issue #850)", async () => {
+  await seedFixture();
+  await memberWithPicture();
+  const layout = snapshot(teamRolesOf(await queryTeamSnapshot(testDb)), NO_TEAM_LAYER).layout;
+  const showing = (pathname: string): TeamLayout => ({ ...layout, leader: { ...layout.leader!, overrides: { photo: publicUrlOf(pathname) as PersonPhoto } } });
+  await addRows(teamPageLayerVersions, [
+    { version: "published", layer: NO_TEAM_LAYER, layout: showing(MEMBER_FILE) },
+    { version: "draft", layer: NO_TEAM_LAYER, layout: showing("photos/layout-only.jpg") },
+  ]);
+  const referenced = await referencedPublicFiles(getDb(), ["photos/layout-only.jpg", "photos/nobody.jpg"] as PublicPathname[]);
+  assert.deepEqual(referenced.rows.map((r) => r.pathname), ["photos/layout-only.jpg"]);
+  const member = await dataAs("member");
+  assert.ok((await member.setPhoto(photoUpload())).ok);
+  assert.deepEqual(await filesWritten("delete-public"), [], "the stored layout still shows it");
 });
 
 test("an Alumni photo change keeps a file a member row still names", async () => {

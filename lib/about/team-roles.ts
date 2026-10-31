@@ -24,7 +24,7 @@ import {
   type TeamPageLayer,
 } from "./team-layer";
 import { byName, personOf, titleOf, type TeamPerson } from "./team-person";
-import type { DepartmentGroup, GroupMember, Member, TeamPage, UpTo } from "./types";
+import type { DepartmentGroup, FilledTeamPage, GroupMember, Member, TeamPage, UpTo } from "./types";
 
 // The Team page built from the team's roles (issue #282, ADR 0015): who
 // leads, every department and every core member come from the roles the
@@ -222,7 +222,7 @@ export function carouselSpotsOf(departments: readonly ShownDepartment[]): (Shown
 }
 
 /** `page` with the layer's intro text, figures and group photo, where it sets them. */
-export function withLayerText(page: TeamPage, layer: Pick<TeamPageLayer, "intro" | "figures" | "groupPhoto">): TeamPage {
+export function withLayerText<P extends TeamPage>(page: P, layer: Pick<TeamPageLayer, "intro" | "figures" | "groupPhoto">): P {
   return {
     ...page,
     header: {
@@ -245,40 +245,54 @@ export function headsShown(shown: ShownTeam): number {
 /** A section the page always draws: the team leader, the arc of leaders, the departments area, the core members. */
 export type TeamPageSection = "leader" | "arc" | "departments" | "core";
 
-/** The page `shown` lays out, or the first section the page always draws that it leaves empty. */
-function laidOut(build: Pick<TeamBuild, "core">, shown: DrawnTeam, base: TeamPage): { readonly page: TeamPage } | { readonly empty: TeamPageSection } {
-  const leaders = upTo(
-    shown.leaders.map((l) => l.shown),
-    ARC_LEADERS,
-  );
-  const groups = upTo(slidesOf(shown.departments), SLIDES);
-  const [firstCore, ...restCore] = build.core;
-  if (!shown.leader) return { empty: "leader" };
-  if (!leaders) return { empty: "arc" };
-  if (!groups) return { empty: "departments" };
-  if (!firstCore) return { empty: "core" };
+/**
+ * The Team page as `shown` lays it out, with the core members of `build`,
+ * onto `base` (the hand-typed ./team.ts) for everything else. A section
+ * `shown` fills no one in is drawn empty, never filled from `base` (ADR 0019
+ * Decision 9): the stored layout's page reads it so (./team-layout.ts).
+ */
+export function drawnTeamPage(build: Pick<TeamBuild, "core">, shown: DrawnTeam, base: TeamPage): TeamPage {
   const page: TeamPage = {
     ...base,
-    orgChart: { ...base.orgChart, leader: shown.leader, leaders },
-    departments: { ...base.departments, groups },
-    coreMembers: { ...base.coreMembers, members: [firstCore, ...restCore] },
+    orgChart: { ...base.orgChart, leader: shown.leader, leaders: upTo(shown.leaders.map((l) => l.shown), ARC_LEADERS) ?? [] },
+    departments: { ...base.departments, groups: upTo(slidesOf(shown.departments), SLIDES) ?? [] },
+    coreMembers: { ...base.coreMembers, members: build.core },
   };
-  return { page: withLayerText(page, shown) };
+  return withLayerText(page, shown);
+}
+
+/** `page` as one that fills every section the page always draws, or the first section it leaves empty. */
+function filledOrEmpty(page: TeamPage): { readonly page: FilledTeamPage } | { readonly empty: TeamPageSection } {
+  const { leader, leaders } = page.orgChart;
+  const { groups } = page.departments;
+  const [firstCore, ...restCore] = page.coreMembers.members;
+  if (leader === null) return { empty: "leader" };
+  if (leaders.length === 0) return { empty: "arc" };
+  if (groups.length === 0) return { empty: "departments" };
+  if (firstCore === undefined) return { empty: "core" };
+  return {
+    page: {
+      ...page,
+      orgChart: { ...page.orgChart, leader, leaders },
+      departments: { ...page.departments, groups },
+      coreMembers: { ...page.coreMembers, members: [firstCore, ...restCore] },
+    },
+  };
 }
 
 /**
- * The Team page as `shown` lays it out, with the core members of `build`,
- * onto `base` (the hand-typed ./team.ts) for everything else. Null when a
- * section the page always draws is empty (`emptySectionOf`).
+ * The Team page as `shown` lays it out (`drawnTeamPage`), or null when a
+ * section the page always draws is empty (`emptySectionOf`): the editor's
+ * working layer, which may not empty one.
  */
-export function teamPageOf(build: Pick<TeamBuild, "core">, shown: DrawnTeam, base: TeamPage): TeamPage | null {
-  const laid = laidOut(build, shown, base);
+export function teamPageOf(build: Pick<TeamBuild, "core">, shown: DrawnTeam, base: TeamPage): FilledTeamPage | null {
+  const laid = filledOrEmpty(drawnTeamPage(build, shown, base));
   return "page" in laid ? laid.page : null;
 }
 
 /** The first section the page always draws that `shown` leaves empty: no team leader, no one on the arc, no department head, no one left for core members; null when none is. */
 export function emptySectionOf(build: TeamBuild, shown: ShownTeam, base: TeamPage): TeamPageSection | null {
-  const laid = laidOut(build, shown, base);
+  const laid = filledOrEmpty(drawnTeamPage(build, shown, base));
   return "empty" in laid ? laid.empty : null;
 }
 
@@ -287,7 +301,7 @@ export function emptySectionOf(build: TeamBuild, shown: ShownTeam, base: TeamPag
  * onto `base` for everything else; null when the roles cannot fill a section
  * the page always draws (`teamPageOf`).
  */
-export function teamPageFromRoles(roles: TeamRoles, base: TeamPage, layer: TeamPageLayer = NO_TEAM_LAYER): TeamPage | null {
+export function teamPageFromRoles(roles: TeamRoles, base: TeamPage, layer: TeamPageLayer = NO_TEAM_LAYER): FilledTeamPage | null {
   const build = teamBuildOf(roles);
   return teamPageOf(build, applyLayer(build, layer), base);
 }
