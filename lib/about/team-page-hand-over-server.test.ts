@@ -290,6 +290,88 @@ test("a hand-over of the team leader, a full-access seat, a department head or a
   }
 });
 
+/** The name the resolved page draws at page seat `id`: on the arc, or as a block's head. */
+function nameAt(resolved: ReturnType<typeof resolveLayout>, id: number): string | undefined {
+  return (resolved.leaders.find((l) => l.at === id) ?? resolved.departments.flatMap((d) => d.heads).find((h) => h.at === id))?.shown.name;
+}
+
+/** The names the public page shows on the arc and as department heads. */
+function arcAndHeadNames(page: TeamPage): { arc: string[]; heads: string[] } {
+  return {
+    arc: page.orgChart.leaders.map((l) => l.name),
+    heads: page.departments.groups.flatMap((g) => g.members.flatMap((m) => (m.kind === "head" ? [m.name] : []))),
+  };
+}
+
+/**
+ * Runs `handOver`, which hands the seat `binding` is bound to over to
+ * `successor`, who stays drawn in `drawnIn` on the team record, and checks the
+ * page seat bound to it shows them on the public page and in the editor with
+ * no editor action and writes nothing to the layout, and that the next save
+ * keeps it.
+ */
+async function showsSuccessorDrawnElsewhere(
+  binding: PlaceBinding,
+  successor: number,
+  drawnIn: "team-leader" | "board",
+  where: "arc" | "heads",
+  handOver: () => Promise<{ ok: boolean }>,
+): Promise<void> {
+  const published = await storeLayouts();
+  const seatId = seatBoundTo(published, binding).id;
+  const stored = await tableRows(teamPageLayerVersions);
+  assert.equal((await handOver()).ok, true, "the hand-over lands");
+  assert.deepEqual(await tableRows(teamPageLayerVersions), stored, "the layout rows are as they were");
+
+  const person = (await rolesNow()).people.find((p) => p.id === successor);
+  assert.ok(person, "the successor is on the team");
+  assert.equal(person.placement.role, drawnIn, "the successor is drawn in their other role");
+
+  assert.ok(arcAndHeadNames(await teamPageData())[where].includes(person.name), "the public page shows the successor in the seat's place with no editor action");
+
+  const opening = await openDashboard();
+  assert.equal(opening.kind, "open");
+  const { teamPage, teamAdvisors } = (opening as { data: DashboardData }).data;
+  const opened = await teamPage.open();
+  assert.ok(opened);
+  assert.equal(seatBoundTo(opened.content.layout, binding).id, seatId);
+  assert.equal(nameAt(resolveLayout(opened.content.layout, opened.roles), seatId), person.name, "the editor draws the successor in the seat's place");
+
+  const saved = await teamPage.save("publish", opened.content, advisorRowsOf((await teamAdvisors.list()) ?? []));
+  assert.ok(saved.ok, JSON.stringify(saved));
+  const kept = (await storedLayouts()).published;
+  assert.ok(kept);
+  assert.equal(seatBoundTo(kept, binding).id, seatId, "the next save keeps the page seat");
+  assert.ok(arcAndHeadNames(await teamPageData())[where].includes(person.name), "and the page still shows it");
+}
+
+test("a hand-over of a full-access seat to the team leader shows them in the seat's place", async () => {
+  const leader = accountOf("team leader").memberId;
+  assert.ok(leader !== null);
+  await showsSuccessorDrawnElsewhere({ kind: "full-access-seat", seat: "project-manager" }, leader, "team-leader", "arc", async () => {
+    signInAs(TEAM_LEADER);
+    const row = (await tableRows(roles)).find((r) => r.memberId === accountOf("Project Manager").memberId && r.leavedAt === null && r.deptId === null && r.divisionId === null);
+    return teamActions.changeSeatHolder(row!.id as number, { to: leader, outcome: "advisor" });
+  });
+});
+
+test("a department head handed to someone who holds a team-level seat shows them as the block's head", async () => {
+  const STRUCTURES = IDS.department("DM");
+  // A member of the department's divisions who also holds a team-level seat, so the Team tree draws them in that seat.
+  await addRows(roles, [{ id: 9_852, memberId: EXTRA.mover, title: "Quality Officer", startedAt: SINCE, type: "core", fullAccess: null }]);
+  await showsSuccessorDrawnElsewhere({ kind: "department-head", departmentId: STRUCTURES }, EXTRA.mover, "board", "heads", () => {
+    signInAs(TEAM_LEADER);
+    return teamActions.moveMember({
+      personId: EXTRA.head,
+      from: { kind: "head", departmentId: STRUCTURES },
+      to: { kind: "division", divisionId: IDS.division("MA"), as: "member" },
+      title: "",
+      replaced: null,
+      successor: EXTRA.mover,
+    });
+  });
+});
+
 test("a team-level seat with no flag ended with no successor leaves the public page and the editor, and the next save drops its page seats", async () => {
   await storeLayouts();
   signInAs(TEAM_LEADER);
