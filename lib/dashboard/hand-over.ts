@@ -115,8 +115,16 @@ export function seatHandOver(outgoing: readonly SeatRow[], successors: readonly 
 /** A role handed over from a unit: a division's lead or a department's head. The team leader's role is the team-leader seat itself. */
 export type UnitRole = Exclude<HandedRole, { readonly kind: "team-leader" }>;
 
-/** A full-access seat as it sits on the team: the person whose role row carries it, and the role it is handed over with. */
-export type HeldSeat = { readonly seat: FlaggedSeat; readonly personId: number; readonly role: UnitRole };
+/**
+ * A full-access seat a lead or head role carries: a flagged seat (`FlaggedSeat`)
+ * or the Logistics lead, read from the lead role's division (`DivisionSeat`,
+ * issue #891). Only the wording reads it; a hand-over moves a flag alone
+ * (`SeatMove`).
+ */
+export type UnitSeat = Exclude<FullAccessSeat, "team-leader">;
+
+/** A full-access seat as it sits on the team: the person whose role carries it, and the role it is handed over with. */
+export type HeldSeat = { readonly seat: UnitSeat; readonly personId: number; readonly role: UnitRole };
 
 function sameUnitRole(a: UnitRole, b: UnitRole): boolean {
   return a.kind === "lead" ? b.kind === "lead" && a.divisionId === b.divisionId : b.kind === "head" && a.departmentId === b.departmentId;
@@ -125,7 +133,8 @@ function sameUnitRole(a: UnitRole, b: UnitRole): boolean {
 /**
  * The full-access seat `personId` hands over with `handed`: the team
  * leader's role is the team-leader seat, and a lead or head role carries the
- * seat its row is flagged as (`seats`, read off the roles), or none.
+ * seat `seats` holds for it (read off the roles: the row's flag, or the
+ * Logistics lead for a lead of the open Logistics division), or none.
  */
 export function seatOfHandedRole(seats: readonly HeldSeat[], personId: number, handed: HandedRole): FullAccessSeat | null {
   if (handed.kind === "team-leader") return "team-leader";
