@@ -28,8 +28,8 @@ import {
 // they are and add them where they go, and a lead's place is changed only by
 // whoever may change that division's leads. A department head is moved, or
 // made a head, only by the team leader and full access, who manage
-// departments; a department never has two heads, and one left with none
-// stays empty until a head is picked. A team-level seat is never moved here:
+// departments; a head's move ends only their own rows, so any other heads
+// stay, and a department left with none stays empty until a head is picked. A team-level seat is never moved here:
 // its holder changes on the Team tree.
 
 /** Where a move takes someone from: a division they are a lead or member of, or the department they head. */
@@ -151,6 +151,19 @@ export type MoveDepartment = {
    */
   readonly successors: readonly MovePerson[];
 };
+
+/**
+ * Who heads a department once `personId` stops heading it (issue #879): no
+ * one when they are its last head, so it needs a new head; or the other
+ * heads, who stay, since a move ends only the mover's rows (`planMove`).
+ */
+export type HeadsAfterMove = { readonly kind: "none" } | { readonly kind: "staying"; readonly heads: readonly [MovePerson, ...MovePerson[]] };
+
+/** `HeadsAfterMove` for the department `departmentId` of `departments`; a department not among them reads as left with no head. */
+export function headsAfterMove(departments: readonly Pick<MoveDepartment, "id" | "heads">[], departmentId: number, personId: number): HeadsAfterMove {
+  const [first, ...rest] = departments.find((d) => d.id === departmentId)?.heads.filter((h) => h.id !== personId) ?? [];
+  return first === undefined ? { kind: "none" } : { kind: "staying", heads: [first, ...rest] };
+}
 
 /** Where the viewer may move someone, as Edit details and the Team tree load it; none for a viewer who may not move them. */
 export type MoveLookup = { readonly kind: "targets"; readonly departments: readonly MoveDepartment[] } | { readonly kind: "none" };
