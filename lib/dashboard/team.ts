@@ -43,8 +43,12 @@ export type BoardRole = {
   readonly roleId: number;
   /** Its stored title, trimmed; blank when none is stored. */
   readonly title: string;
-  /** The full-access seat its row is flagged as; null for any further team-level seat. */
-  readonly flag: BoardFlag | null;
+  /**
+   * The full-access seat its row is flagged as, any of them (the operations
+   * lead's and the IT lead's included); null for any further team-level seat.
+   * The board flag the seat row draws is read from it (`boardFlagOf`).
+   */
+  readonly fullAccess: FlaggedSeat | null;
   /** The row's type: with the stored title, it tells one unflagged seat from another (epic #861). */
   readonly type: RoleType;
   /** `started_at`: further seats are drawn by it. */
@@ -53,20 +57,25 @@ export type BoardRole = {
 
 /**
  * Which seat a team-level row is, as its holders share it (epic #861): a
- * flagged row by its flag, any other by its type and stored title, as
- * `seatOfTeamRow` (./seat-holders.ts) reads the rows Add another holder writes.
+ * flagged row by its full-access flag, whichever seat it is, any other by its
+ * type and stored title, as `seatOfTeamRow` (./seat-holders.ts) reads the rows
+ * Add another holder writes. A flagged key never equals an unflagged one.
  */
 export function boardSeatKey(seat: BoardRole): string {
-  return seat.flag !== null ? `flag:${seat.flag}` : `type:${seat.type ?? ""}:${seat.title}`;
+  return seat.fullAccess !== null ? `flag:${seat.fullAccess}` : `type:${seat.type ?? ""}:${seat.title}`;
 }
 
 /** "Project Manager", "Chief of Propulsion": the seat's stored title, or its default name when none is stored. */
 export function boardTitleOf(seat: BoardRole): string {
   if (seat.title !== "") return seat.title;
-  return seat.flag === null ? BOARD_SEAT_FALLBACK : BOARD_FLAG_TITLES[seat.flag];
+  const flag = boardFlagOf(seat.fullAccess);
+  return flag === null ? BOARD_SEAT_FALLBACK : BOARD_FLAG_TITLES[flag];
 }
 
-const flagRank = (seat: BoardRole) => (seat.flag === null ? BOARD_FLAGS.length : BOARD_FLAGS.indexOf(seat.flag));
+const flagRank = (seat: BoardRole) => {
+  const flag = boardFlagOf(seat.fullAccess);
+  return flag === null ? BOARD_FLAGS.length : BOARD_FLAGS.indexOf(flag);
+};
 
 /** The seat row's order: the flagged Project Manager, the flagged Chief Engineer, then every other team-level seat by start date. */
 export function bySeatOrder(a: BoardRole, b: BoardRole): number {
@@ -592,7 +601,7 @@ export function roleBeyondDivisions(role: RoleSeat, org: OrgChart): RoleBeyondDi
   if (role.divisionId !== null) return null;
   if (role.type === "advisor") return { kind: "advisor", departmentId: role.departmentId };
   if (role.departmentId !== null) return { kind: "department", departmentId: role.departmentId };
-  return { kind: "board", seat: { roleId: role.id, title: role.title.trim(), flag: boardFlagOf(role.fullAccess), type: role.type, since: role.since } };
+  return { kind: "board", seat: { roleId: role.id, title: role.title.trim(), fullAccess: role.fullAccess, type: role.type, since: role.since } };
 }
 
 /** Whether the row is a team-level seat: what `roleBeyondDivisions` reads as `board`, by type and place alone. */
@@ -705,7 +714,7 @@ function beyondLabel(role: RoleBeyondDivisions, org: OrgChart): string {
     case "team-leader":
       return "the team leader";
     case "board":
-      return role.seat.title === "" && role.seat.flag === null ? "on the board" : boardTitleOf(role.seat);
+      return role.seat.title === "" && boardFlagOf(role.seat.fullAccess) === null ? "on the board" : boardTitleOf(role.seat);
     case "head": {
       const name = departmentNameOf(role.departmentId, org);
       return role.title === "" && name === null ? "a department head" : headTitleOf(role.title, name);

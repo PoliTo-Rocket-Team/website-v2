@@ -1,5 +1,5 @@
 import { textLength } from "@/lib/content/text";
-import { BOARD_FLAGS, type BoardFlag, type BoardRole, type DepartmentKind } from "@/lib/dashboard/team";
+import { BOARD_FLAGS, boardFlagOf, type BoardFlag, type BoardRole, type DepartmentKind } from "@/lib/dashboard/team";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { personOf, type TeamPerson } from "./team-person";
 import type { DepartmentHead, DivisionLead, HeaderStats, Leader, Member, Person, PersonPhoto } from "./types";
@@ -27,7 +27,7 @@ export type ArcSeat = BoardFlag | `role-${number}`;
 
 /** The arc key of a team-level seat (`ArcSeat`). */
 export function arcSeatOf(seat: BoardRole): ArcSeat {
-  return seat.flag ?? `role-${seat.roleId}`;
+  return boardFlagOf(seat.fullAccess) ?? `role-${seat.roleId}`;
 }
 
 /** A place on the arc the roles fill: a team-level seat, and which of its holders by name (0 is the first). */

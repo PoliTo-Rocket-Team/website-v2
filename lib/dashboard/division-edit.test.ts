@@ -51,7 +51,7 @@ const team: FoundPerson[] = [
   person(5, "Davide Russo", [[1, "member"], [3, "member"]]),
   person(6, "Chiara Rinaldi", [], [{ kind: "head", departmentId: 1, title: "Head of Aerodynamics" }]),
   person(7, "Alessandro Greco", [], [{ kind: "team-leader", title: "" }]),
-  person(8, "Federica Moretti", [[3, "member"]], [{ kind: "board", seat: { roleId: 28, title: "Chief Engineer", flag: "chief-engineer", type: "core", since: "2025-10-01" } }]),
+  person(8, "Federica Moretti", [[3, "member"]], [{ kind: "board", seat: { roleId: 28, title: "Chief Engineer", fullAccess: "chief-engineer", type: "core", since: "2025-10-01" } }]),
 ];
 
 const head: TeamActor = { kind: "head", departmentIds: [1] };

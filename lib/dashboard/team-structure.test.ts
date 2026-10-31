@@ -5,6 +5,7 @@ import { NO_NAME } from "./person-name";
 import type { PersonRecord } from "./division-members";
 import { membershipsOf, type OrgChart, type RoleBeyondDivisions, type TeamActor } from "./team";
 import { editableDivisionIds, editViewIntro, showsTreeEdit, teamStructure } from "./team-structure";
+import type { FlaggedSeat } from "./viewer";
 
 // The Team tree's edit view (#251, boards 77b and 66t-b): who gets pencils and
 // Add buttons where. Aerodynamics holds Mission Analysis (1) and Optimization
@@ -137,7 +138,7 @@ test("each box counts its people once: the head and someone in two divisions cou
 
 test("each box carries its person's stored photo: the leader, a seat holder, a head and a lead; null where none is stored (issue #622)", () => {
   const photo = (id: number) => `https://blob.example/members/${id}.jpg`;
-  const holder = record(7, "Luca Moretti", [], [{ kind: "board", seat: { roleId: 70, title: "", flag: "chief-engineer", type: "core", since: "2024-10-01" } }]);
+  const holder = record(7, "Luca Moretti", [], [{ kind: "board", seat: { roleId: 70, title: "", fullAccess: "chief-engineer", type: "core", since: "2024-10-01" } }]);
   const pictured = [...records, holder].map((r) => (r.id === 6 ? r : { ...r, photoUrl: photo(r.id) }));
   const structure = teamStructure({ records: pictured, org, actor: { kind: "team" }, selfId: null, seat: null, waiting: {}, joining: {}, openPositions: {} })!;
   const [aero, structures] = structure.departments;
@@ -159,7 +160,7 @@ test("each box carries its person's stored photo: the leader, a seat holder, a h
 test("several team leaders, several heads and a seat with two holders: each box names every holder (#869)", () => {
   const board = (roleId: number, title: string, flag: "project-manager" | null, type: "core" | "lead" = "core"): RoleBeyondDivisions => ({
     kind: "board",
-    seat: { roleId, title, flag, type, since: `2024-10-${String(roleId).padStart(2, "0")}` },
+    seat: { roleId, title, fullAccess: flag, type, since: `2024-10-${String(roleId).padStart(2, "0")}` },
   });
   const several = [
     ...records,
@@ -197,4 +198,29 @@ test("several team leaders, several heads and a seat with two holders: each box 
   assert.equal(build(9).departments[0].yours, true, "a second head's department is theirs");
   assert.deepEqual(build(13).board.map((s) => s.yours), [false, true, false], "a second holder's seat is theirs");
   assert.equal(build(13).leader?.handsOver, null, "only a team leader hands over the role");
+});
+
+// Review of #869: a seat is grouped by its full-access flag whichever seat it is, as `seatOfTeamRow` reads it.
+test("an operations-lead row and an IT-lead row of one type and title are two seats, and an unflagged row joins neither (#869)", () => {
+  const board = (roleId: number, fullAccess: FlaggedSeat | null): RoleBeyondDivisions => ({
+    kind: "board",
+    seat: { roleId, title: "Member", fullAccess, type: "core", since: `2024-10-${String(roleId).padStart(2, "0")}` },
+  });
+  const flagged = [
+    ...records,
+    record(20, "Nadia Bruno", [], [board(21, "operations-lead")]),
+    record(21, "Oscar Villa", [], [board(22, "operations-lead")]),
+    record(22, "Pietro Sala", [], [board(23, "it-lead")]),
+    record(23, "Rita Longo", [], [board(24, null)]),
+  ];
+  const structure = teamStructure({ records: flagged, org, actor: { kind: "team" }, selfId: null, seat: null, waiting: {}, joining: {}, openPositions: {} })!;
+  assert.deepEqual(
+    structure.board.map((s) => [s.roleId, s.holders.map((h) => h.name)]),
+    [
+      [21, ["Nadia Bruno", "Oscar Villa"]],
+      [23, ["Pietro Sala"]],
+      [24, ["Rita Longo"]],
+    ],
+    "the operations lead's seat names both its holders; the IT lead's seat and the unflagged seat are boxes of their own",
+  );
 });

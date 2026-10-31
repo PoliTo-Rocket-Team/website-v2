@@ -2,6 +2,7 @@ import { closingPeople, mayManageDepartments, type ClosingPerson } from "./depar
 import { mayManageDivisionsIn } from "./division-edit";
 import { divisionMembers, type DivisionMembers, type PersonRecord, type WaitingPerson } from "./division-members";
 import {
+  boardFlagOf,
   boardSeatKey,
   boardTitleOf,
   bySeatOrder,
@@ -277,7 +278,7 @@ export function teamStructure(input: {
     roleId: seat.roleId,
     title: boardTitleOf(seat),
     holders: [person(first), ...rest.map(person)],
-    flag: seat.flag,
+    flag: boardFlagOf(seat.fullAccess),
     yours: [first, ...rest].some((h) => h.id === self?.id),
   }));
 

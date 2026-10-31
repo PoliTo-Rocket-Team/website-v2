@@ -255,7 +255,7 @@ test("a seat on the whole team opens the same panel, its seat title editable, wi
 test("every team-level seat's title is an editable value as stored; only a role with no seat title stays fixed (#626)", () => {
   const seat = (roleId: number, title: string, flag: "project-manager" | "chief-engineer" | null): RoleBeyondDivisions => ({
     kind: "board",
-    seat: { roleId, title, flag, type: "core", since: "2024-10-01" },
+    seat: { roleId, title, fullAccess: flag, type: "core", since: "2024-10-01" },
   });
   const seats = [
     record(20, "Paola Marino", [], [seat(1, "", "project-manager")]),

@@ -80,7 +80,7 @@ test("heads and leads come first, then members, by name within each (board 73)",
 });
 
 test("the Role column shows a head's and a seat's stored title, and a rename moves nobody (issue #625)", () => {
-  const seat = (title: string): RoleBeyondDivisions => ({ kind: "board", seat: { roleId: 28, title, flag: "chief-engineer", type: "core", since: "2025-10-01" } });
+  const seat = (title: string): RoleBeyondDivisions => ({ kind: "board", seat: { roleId: 28, title, fullAccess: "chief-engineer", type: "core", since: "2025-10-01" } });
   const head = (title: string): RoleBeyondDivisions => ({ kind: "head", departmentId: 1, title });
   const rows = (headTitle: string, seatTitle: string) =>
     wholeTeamMembers({
