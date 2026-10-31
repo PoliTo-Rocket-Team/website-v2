@@ -8,6 +8,7 @@ import { memberDetailText } from "@/lib/dashboard/details";
 import { mayNotKnowTheyWereAdded, type DivisionHeader, type WaitingPerson } from "@/lib/dashboard/division-members";
 import {
   divisionOptions,
+  googleEmailsOf,
   membersHeader,
   membersTableRows,
   shownMembers,
@@ -126,7 +127,7 @@ export function ScopedMembersView({
 
   const editPerson = (entry: MemberEntry) => {
     setOpenId(null);
-    if (entry.actions !== null) setEditing({ kind: "person", actions: entry.actions });
+    if (entry.actions !== null) setEditing({ kind: "person", actions: entry.actions, googleEmails: googleEmailsOf(page, entry.id) });
   };
   const fillDetails = (w: Waiting) => setEditing({ kind: "waiting", waiting: w.waiting, division: w.division });
   const add = writes ? addTarget(page, shownDivision) : null;
@@ -257,6 +258,7 @@ export function ScopedMembersView({
         person={open}
         alias={open === null ? null : (aliases[open.id] ?? null)}
         teamAddresses={open === null ? null : (teamAddresses.rows[open.id] ?? null)}
+        googleEmails={open === null ? [] : googleEmailsOf(page, open.id)}
         movesWith={teamAddresses.movesWith}
         editable={writes && page.panelEdits && open?.actions != null}
         onClose={() => setOpenId(null)}
