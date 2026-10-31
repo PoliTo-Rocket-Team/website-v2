@@ -1,5 +1,6 @@
 import type { DetailsEditor, YourDetails } from "./details";
 import type { HandOverOffer } from "./hand-over-request";
+import type { OwnPrtEmail } from "./own-prt-email";
 import type { RoleType } from "./team";
 
 // The viewer's own pages (issue #145, folded from #146; Dashboard v2 in issue
@@ -59,8 +60,8 @@ export type MyProfile = {
   readonly name: string;
   /** Every role they hold, one per division they are in, the home one first (issue #185). */
   readonly roles: readonly [ProfileRole, ...ProfileRole[]];
-  /** The team address shown on the site; null when the person has none. */
-  readonly teamEmail: string | null;
+  /** Their PRT email, shown on the site, or while it is empty their request for one (issue #921). */
+  readonly prtEmail: OwnPrtEmail;
   readonly linkedin: string | null;
   /** The public URL of the photo; null shows the PRT mark. */
   readonly photoUrl: string | null;
