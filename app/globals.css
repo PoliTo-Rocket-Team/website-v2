@@ -133,6 +133,57 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Native form controls on a dark-only site (issue #895). These rules reach
+     only what the browser draws itself, so every control keeps the classes
+     its component gives it, and the landing page, which draws none of them,
+     looks the same. Utilities on an element still win over these. */
+
+  /* Chromium on Windows paints a select's open list with the select's own
+     fill and text. The fields' fill is a translucent white-5, so the list came
+     out near-white under light text. The options get an opaque surface and
+     the paper text, and the list chrome follows the dark scheme. macOS and
+     phones draw their own menus and ignore these colours. */
+  select {
+    color-scheme: dark;
+  }
+  option,
+  optgroup {
+    background-color: theme("colors.surface-2");
+    color: theme("colors.prt-text");
+  }
+
+  /* Thin scrollbars in scroll areas inside the page (menus, drawers,
+     filters, dialogs). Windows draws a wide bar with arrows by default; the
+     dark scheme on <html> already colours it. No scrollbar-color here: it
+     would also recolour the overlay scrollbars macOS draws. The page's own
+     scrollbar (html, body) is left alone, and a scroller that hides its bar
+     ([scrollbar-width:none]) still does. */
+  :where(body *) {
+    scrollbar-width: thin;
+  }
+
+  /* Autofill: Chromium and Safari paint a filled field light with dark text.
+     The long transition holds the field's own fill, and the text keeps the
+     paper colour. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-text-fill-color: theme("colors.prt-text");
+    caret-color: theme("colors.prt-text");
+    transition: background-color 600000s 0s;
+  }
+
+  /* Search fields: Chromium and Safari draw their own clear button, Firefox
+     none, and no site search adds one of its own. Hidden, so every browser
+     shows the same field. */
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+  }
 }
 
 /* Hero display type: lit like the rocket (sun on the camera side, a touch

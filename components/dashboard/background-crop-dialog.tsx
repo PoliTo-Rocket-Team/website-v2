@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Info, LoaderCircle, Move, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Info, LoaderCircle, Move, X } from "lucide-react";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
-import { brand } from "@/lib/brand-colors";
-import { centredFrameCrop, frameScaleOf, moveFrameCrop, sourceRect, zoomFrameCrop, ZOOM_MAX, ZOOM_MIN, type FrameCrop } from "@/lib/dashboard/photo-crop";
+import { centredFrameCrop, frameScaleOf, moveFrameCrop, sourceRect, zoomFrameCrop, ZOOM_MIN, type FrameCrop } from "@/lib/dashboard/photo-crop";
 import { BACKGROUND_FRAMES, type BackgroundShape } from "@/lib/project-content/record";
 import { SHEET_OVERLAY, SheetGrabber } from "./confirm-dialog";
 import { CONTENT_FOCUS } from "./content-parts";
+import { ZoomSlider } from "./zoom-slider";
 
 // Board 93f (issue #529): one uploaded picture, cropped twice. Tall (9:16)
 // is the Home card's and phones'; Wide (2:1) is the project page's and
@@ -141,8 +141,9 @@ export function BackgroundCropDialog({
                 />
                 <ZoomSlider
                   label={`Zoom the ${name.toLowerCase()} crop`}
-                  crop={crops[shape]}
-                  onCrop={(crop) => setCrops((all) => ({ ...all, [shape]: crop }))}
+                  zoom={crops[shape]?.zoom ?? ZOOM_MIN}
+                  disabled={crops[shape] === null}
+                  onZoom={(zoom) => setCrops((all) => ({ ...all, [shape]: all[shape] && zoomFrameCrop(all[shape], zoom) }))}
                 />
               </div>
             ))}
@@ -259,31 +260,6 @@ function CropFrame({
         <Move aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
         Drag to move
       </span>
-    </div>
-  );
-}
-
-/** The frame's zoom: the filled part of the track is the accent, the knob paper (board 93f). */
-function ZoomSlider({ label, crop, onCrop }: { label: string; crop: FrameCrop | null; onCrop: (crop: FrameCrop) => void }) {
-  const zoom = crop?.zoom ?? ZOOM_MIN;
-  const filled = ((zoom - ZOOM_MIN) / (ZOOM_MAX - ZOOM_MIN)) * 100;
-  return (
-    <div className="mt-3 flex items-center gap-3">
-      <ZoomOut aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-      <input
-        type="range"
-        aria-label={label}
-        min={ZOOM_MIN}
-        max={ZOOM_MAX}
-        step={0.01}
-        value={zoom}
-        disabled={crop === null}
-        onChange={(e) => crop !== null && onCrop(zoomFrameCrop(crop, Number(e.target.value)))}
-        // The filled part is a gradient with a stop at the zoom, which no class can take; the rest shows the track's white-10.
-        style={{ backgroundImage: `linear-gradient(to right, ${brand.accent} ${filled}%, transparent ${filled}%)` }}
-        className={`h-1 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-white-10 ${CONTENT_FOCUS} [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-prt-text [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-prt-text`}
-      />
-      <ZoomIn aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
     </div>
   );
 }
