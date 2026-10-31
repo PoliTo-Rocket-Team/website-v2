@@ -559,7 +559,14 @@
       "idx": 81,
       "version": "7",
       "when": 1795972800000,
-      "tag": "0081_repair_division_name_suffix",
+      "tag": "0081_audit_log_skip_auth_secrets",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1796059200000,
+      "tag": "0082_repair_division_name_suffix",
       "breakpoints": true
     }
   ]

@@ -16,6 +16,7 @@ import { PeoplePicker } from "./division-drawer";
 import { MenuItem, RowMenu } from "./division-members";
 import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
+import { FooterSummary, useFormSummary } from "./form-summary";
 import { HandOverChoice } from "./hand-over-choice";
 
 // The seat row's panels on Edit team tree (issue #627): Change holder, opened
@@ -88,7 +89,6 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
   const [next, setNext] = useState<TeamPick | null>(null);
   const [picking, setPicking] = useState(false);
   const [outcome, setOutcome] = useState<HandOverOutcome | null>(null);
-  const [showErrors, setShowErrors] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [removing, setRemoving] = useState<SeatHolder | null>(null);
   const [adding, setAdding] = useState(false);
@@ -120,11 +120,17 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
     });
 
   const error = next === null ? "Pick who takes the seat." : outcome === null ? `Choose what happens to ${holder.name}: Become an advisor or Leave the team.` : null;
+  // "next" is on exactly one control (issue #927): the open picker, Replace's or Add another holder's; with none open, Change holder or the first holder's menu.
+  const pickerOpen = adding || picking;
+  const { summary, showErrors, check, refuse } = useFormSummary([
+    next === null
+      ? { name: "next", label: "Who takes the seat", error: error ?? undefined }
+      : { name: `seat-${seat.roleId}`, label: `What happens to ${holder.name}`, error: error ?? undefined },
+  ], { open, values: [next, outcome, replacing] });
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setShowErrors(true);
-    if (error === null) setConfirming(true);
+    if (check(e.currentTarget)) setConfirming(true);
   };
 
   const undo = () => {
@@ -137,7 +143,9 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
       if (next === null) return;
       const result = await changeSeatHolder(holder.roleId, { to: next.id, outcome });
       if (!result.ok) {
-        toast.error("Could not change who holds the seat", { description: result.error });
+        // Shown above Save changes, where the form's own errors show (issue #927).
+        refuse(`Could not change who holds the seat. ${result.error}`);
+        setConfirming(false);
         return;
       }
       toast.success(`${next.name} holds ${seat.title}`);
@@ -165,6 +173,7 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
       detail={`Held by ${andList(seat.holders.map((h) => h.name))}`}
       footer={
         <>
+          <FooterSummary summary={summary} />
           {several ? (
             <button type="button" onClick={onClose} className={PANEL_GHOST_BUTTON}>
               Cancel
@@ -190,11 +199,12 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
             {next === null ? (
               several ? (
                 <ul className={`${LIST} mt-2.5 divide-y divide-hairline`}>
-                  {seat.holders.map((h) => (
+                  {seat.holders.map((h, i) => (
                     <li key={h.id} className="flex items-center gap-3 px-3.5 py-2.5">
                       <Avatar size="md" accent person={h} />
                       <span className="min-w-0 flex-1 truncate text-[14px] text-prt-text">{h.name}</span>
-                      <RowMenu label={`Actions for ${h.name}`}>
+                      {/* With no picker open, the first holder's menu holds Replace, so a Save with nobody picked focuses it (issue #927). */}
+                      <RowMenu label={`Actions for ${h.name}`} name={i === 0 && !pickerOpen ? "next" : undefined}>
                         <MenuItem onSelect={() => replace(h)} icon={<RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />} detail="The others keep the seat">
                           Replace {h.name}
                         </MenuItem>
@@ -240,6 +250,7 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
             {adding ? (
               <AddHolderPicker
                 mode="seat"
+                name="next"
                 seat={seat.title}
                 short={seat.title}
                 holders={seat.holders}
@@ -252,6 +263,7 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
                 {several && <p className="mt-3 text-[13px] text-text-2">Who takes over from {holder.name}? {keepTheSeat(others)}</p>}
                 <PeoplePicker
                   mode="seat"
+                  name="next"
                   short={seat.title}
                   taken={(p) => holderAddRefusal(p, holderIds)}
                   onPick={(p) => {
@@ -265,7 +277,7 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
               next === null && (
                 <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
                   {!several && (
-                    <button type="button" onClick={() => replace(holder)} className={ADD_LINK}>
+                    <button type="button" name="next" onClick={() => replace(holder)} className={ADD_LINK}>
                       <Repeat aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
                       Change holder
                     </button>
@@ -345,19 +357,20 @@ function NewSeatPanel({ open, onClose }: { open: boolean; onClose: () => void })
   const [title, setTitle] = useState("");
   const [holder, setHolder] = useState<TeamPick | null>(null);
   const [picking, setPicking] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const titleError = seatTitleError(title);
   const holderError = holder === null ? "Pick who holds the seat." : null;
-  const valid = titleError === null && holderError === null;
   const stored = storedSeatTitle(title);
+  const { summary, showErrors, check, refuse } = useFormSummary([
+    { name: "title", label: "Title", error: titleError ?? undefined },
+    { name: "holder", label: "Holder", error: holderError ?? undefined },
+  ], { open, values: [title, holder] });
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setShowErrors(true);
-    if (valid) setConfirming(true);
+    if (check(e.currentTarget)) setConfirming(true);
   };
 
   const confirm = () =>
@@ -365,7 +378,9 @@ function NewSeatPanel({ open, onClose }: { open: boolean; onClose: () => void })
       if (holder === null) return;
       const result = await addSeat({ personId: holder.id, title });
       if (!result.ok) {
-        toast.error("Could not add the seat", { description: result.error });
+        // Shown above Add seat, where the form's own errors show (issue #927).
+        refuse(`Could not add the seat. ${result.error}`);
+        setConfirming(false);
         return;
       }
       toast.success(`${stored} is added`);
@@ -381,10 +396,11 @@ function NewSeatPanel({ open, onClose }: { open: boolean; onClose: () => void })
       detail="Under the team leader"
       footer={
         <>
+          <FooterSummary summary={summary} />
           <button type="button" onClick={onClose} className={PANEL_GHOST_BUTTON}>
             Cancel
           </button>
-          <button type="submit" form="new-seat-form" disabled={pending || !valid} className={`${PANEL_PRIMARY_BUTTON} disabled:cursor-not-allowed disabled:opacity-50`}>
+          <button type="submit" form="new-seat-form" disabled={pending} className={PANEL_PRIMARY_BUTTON}>
             Add seat
           </button>
         </>
@@ -395,6 +411,7 @@ function NewSeatPanel({ open, onClose }: { open: boolean; onClose: () => void })
           <label className="block">
             <span className={`mb-2 block ${SECTION_LABEL}`}>Title</span>
             <input
+              name="title"
               value={title}
               maxLength={80}
               autoComplete="off"
@@ -422,6 +439,7 @@ function NewSeatPanel({ open, onClose }: { open: boolean; onClose: () => void })
             {picking ? (
               <PeoplePicker
                 mode="seat"
+                name="holder"
                 short={stored === "" ? "the new seat" : stored}
                 taken={() => null}
                 onPick={(p) => {
@@ -432,7 +450,7 @@ function NewSeatPanel({ open, onClose }: { open: boolean; onClose: () => void })
               />
             ) : (
               holder === null && (
-                <button type="button" onClick={() => setPicking(true)} className={`${ADD_LINK} mt-3`}>
+                <button type="button" name="holder" onClick={() => setPicking(true)} className={`${ADD_LINK} mt-3`}>
                   <Plus aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
                   Pick holder
                 </button>

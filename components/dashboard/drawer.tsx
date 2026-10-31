@@ -47,11 +47,14 @@ export function SidePanel({
   footer,
   footerLayout = "pair",
   wide = false,
+  titleWraps = false,
   children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
+  /** The title wraps onto a second line rather than being cut: a long department name (issue #927). */
+  titleWraps?: boolean;
   detail?: string;
   /** Beside the title, before it: the person's avatar on the member panels (boards 61f, 61g). */
   leading?: ReactNode;
@@ -89,7 +92,7 @@ export function SidePanel({
             <div className="flex min-w-0 items-center gap-3.5 md:mr-auto">
               {leading}
               <div className="min-w-0">
-                <DialogTitle className="truncate text-[18px] font-semibold leading-8 md:text-[20px] md:leading-tight">{title}</DialogTitle>
+                <DialogTitle className={`${titleWraps ? "text-balance break-words" : "truncate"} text-[18px] font-semibold leading-8 md:text-[20px] md:leading-tight`}>{title}</DialogTitle>
                 {/* Wraps rather than being cut on a narrow screen (issue #690). */}
                 {detail && <p className="mt-0.5 text-[13px] text-prt-muted">{detail}</p>}
                 {below}
