@@ -642,6 +642,15 @@ const ACTION_CASES: readonly ActionCase[] = [
   { action: "team-actions.addSeat", run: () => teamActions.addSeat({ personId: EXTRA.mover, title: "Safety Officer" }), may: fullAccess, control: by("team leader") },
   // Remove seat (issue #643): the same viewers as the rest of the seat row.
   { action: "team-actions.removeSeat", run: async () => teamActions.removeSeat(await seatRowOf("Project Manager")), may: fullAccess, control: by("team leader") },
+  // Add another holder (epic #861, issue #868): the same viewers as the rest of the seat row, on every seat kind.
+  { action: "team-actions.addTeamLeader", run: () => teamActions.addTeamLeader({ personId: EXTRA.mover }), may: fullAccess, control: by("team leader") },
+  {
+    action: "team-actions.addSeatHolder",
+    run: async () => teamActions.addSeatHolder(await seatRowOf("Project Manager"), { personId: EXTRA.mover }),
+    may: fullAccess,
+    control: by("team leader"),
+  },
+  { action: "team-actions.addDepartmentHead", run: () => teamActions.addDepartmentHead(IDS.department(DM), { personId: EXTRA.mover }), may: fullAccess, control: by("team leader") },
 
   // The Alumni page: site content under the Content grant (issue #589). The
   // control is a member holding Content at Can edit, so each write is proven
@@ -852,7 +861,7 @@ describe("the break-glass admin makes every action the matrix lets the team lead
 
   test("the cases cover the Access page, order decisions and the seats", () => {
     const covered = teamLeaderCases.map((c) => c.action);
-    for (const action of ["actions.saveAccess", "actions.removeGrant", "actions.decideOrder", "actions.markOrdered", "team-actions.changeSeatHolder", "team-actions.addSeat", "team-actions.removeSeat"]) {
+    for (const action of ["actions.saveAccess", "actions.removeGrant", "actions.decideOrder", "actions.markOrdered", "team-actions.changeSeatHolder", "team-actions.addSeat", "team-actions.removeSeat", "team-actions.addTeamLeader", "team-actions.addSeatHolder", "team-actions.addDepartmentHead"]) {
       assert.ok(covered.includes(action), action);
     }
   });

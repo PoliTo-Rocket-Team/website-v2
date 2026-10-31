@@ -2,7 +2,8 @@ import { z } from "zod";
 import { mayManageDepartments, type Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
 import { HAND_OVER_OUTCOMES, steppingDown, type HandOverOutcome, type SteppingDown } from "./hand-over";
-import type { BoardFlag, BoardRole, TeamActor } from "./team";
+import { addedHolder, holdsSeat, seatOfTeamRow, type ActiveRoleRow, type HolderAdd, type HolderAddPlan, type Seat } from "./seat-holders";
+import { isTeamSeat, type BoardFlag, type BoardRole, type OrgChart, type TeamActor } from "./team";
 
 // The seat row of Edit team tree (issue #627): who holds a team-level seat,
 // a new seat, and removing one (issue #643). Only the team leader and full access change them, as they
@@ -140,6 +141,65 @@ export function seatRemovalLines(seat: { readonly title: string; readonly flag: 
     ...(seat.flag === null ? [] : [`${holder} loses the full access ${seat.title} gives.`]),
     `${holder} stays on the team and keeps their other roles and access. With no other role, they become an advisor to the team.`,
   ];
+}
+
+// Add another holder (epic #861, issue #868): the team leader's seat and any
+// team-level seat take one more holder, beside the ones they have. The rule
+// all seats share is `addedHolder` (./seat-holders.ts); a department's head is
+// added in ./department-edit.ts.
+
+/** The title a team leader row carries when the seat has no stored one. */
+export const TEAM_LEADER_TITLE = "Team Leader";
+
+/**
+ * Add another team leader as the rules allow it, or the first reason it is
+ * refused: only the team leader or full access; a person on the team who is
+ * not a team leader already. Their row is a `president` row with the title
+ * the first team leader row stores, and no full-access flag: the type gives
+ * the team leader's rights. Every team leader now stays one.
+ */
+export function planTeamLeaderAdd(input: {
+  readonly actor: TeamActor | null;
+  readonly add: HolderAdd;
+  readonly team: readonly TeamPerson[];
+  readonly active: readonly ActiveRoleRow[];
+  readonly org: OrgChart;
+}): Checked<HolderAddPlan> {
+  const { actor, add, team, active, org } = input;
+  if (!mayManageDepartments(actor)) return no(ONLY_TEAM_SEATS);
+  const seat: Seat = { kind: "team-leader" };
+  const title = active.find((r) => holdsSeat(seat, r, org))?.title.trim() || TEAM_LEADER_TITLE;
+  return addedHolder({ seat, add, team, active, org, row: { type: "president", title, fullAccess: null, departmentId: null } });
+}
+
+/**
+ * Add another holder on a team-level seat as the rules allow it, or the first
+ * reason it is refused: only the team leader or full access; `roleId` is an
+ * active team-level seat row (`isTeamSeat`); a person on the team who does not
+ * hold that seat already. The seat is the row's full-access seat when it is
+ * flagged, else its type and stored title (`seatOfTeamRow`), and the new row
+ * copies the row's type, title and full-access flag.
+ */
+export function planSeatHolderAdd(input: {
+  readonly actor: TeamActor | null;
+  readonly roleId: number;
+  readonly add: HolderAdd;
+  readonly team: readonly TeamPerson[];
+  readonly active: readonly ActiveRoleRow[];
+  readonly org: OrgChart;
+}): Checked<HolderAddPlan> {
+  const { actor, roleId, add, team, active, org } = input;
+  if (!mayManageDepartments(actor)) return no(ONLY_TEAM_SEATS);
+  const row = active.find((r) => r.id === roleId && isTeamSeat(r));
+  if (row === undefined) return no("That seat is no longer held.");
+  return addedHolder({
+    seat: seatOfTeamRow(row),
+    add,
+    team,
+    active,
+    org,
+    row: { type: row.type, title: row.title, fullAccess: row.fullAccess, departmentId: null },
+  });
 }
 
 /** A checked Add seat: who holds the new seat, and its title as stored. */

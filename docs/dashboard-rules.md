@@ -75,8 +75,9 @@ An admin column comes later. **Planned**, no issue yet.
   - the **Project Manager** and the **Chief Engineer** (#485): each board seat's role carries the
     same flag (migration 0047, which marked the active board roles titled exactly "Project
     Manager" and "Chief Engineer" once). The code reads only the flag. Access follows the role:
-    ending the role ends it. No dashboard flow sets the flag on a new holder's role yet, as for
-    the operations lead and the IT lead.
+    ending the role ends it. A hand-over moves the flag to the successor's role, and Add another
+    holder (#868, under "Team structure") copies it onto the new holder's role; no other flow
+    sets it.
   - Someone in two seats shows as the higher one: the team leader, the IT lead, the operations
     lead, the Project Manager, then the Chief Engineer.
   - Full access reaches every page in the table, in every department and every division. On
@@ -704,6 +705,27 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
     active role in no department and no division with that title and no full-access flag, so a
     new seat gives no access of its own. It shows on the Team tree's seat row, this row and the
     public Team page's arc. Ending a seat with no successor is not offered.
+- **Add another holder** (epic #861, issue #868) gives a seat one more holder beside the ones it
+  has, on every seat kind. The server writes come first; the Team tree buttons follow in a later
+  child of #861. The rules (`lib/dashboard/seat-holders.ts`):
+  - Only the team leader and full access may add a holder; a department head, a division lead
+    and a member are refused, and a refusal writes nothing.
+  - The person is on the team and does not hold that exact seat already. Someone who holds a
+    different seat may be added and keeps it, with every role and division they hold.
+  - A seat is what its rows share: the team leader seat by the `president` type, a full-access
+    seat by its `roles.full_access` flag on whatever row carries it, a department's head seat by
+    the department (`headDepartmentOf`), and any other team-level seat by its type and stored
+    title.
+  - The new holder's role copies the seat. A new team leader gets a `president` row with the
+    title the first team leader row stores ("Team Leader" when blank). A new holder of a
+    team-level seat, flagged or not, gets that seat row's type, title and full-access flag, so a
+    second Project Manager gets full access. A new head gets a head row on the department,
+    titled as a new head's is ("Head of {department}"), with no full-access flag: a seat kept on
+    another head's row is that seat's, not the head's.
+  - Adding a holder ends no row: every holder keeps the seat, in one audited batch.
+  - A new team leader and a new head get the automatic alias request a hand-over gives (#543).
+    A team address tied to the seat gets a routing item only when its holder holds the seat no
+    more (#789): beside a holder who still holds it, nothing moves.
 
 #### Departments
 
