@@ -714,6 +714,9 @@ const ACTION_CASES: readonly ActionCase[] = [
 
   // The viewer's own pages: only their own rows.
   { action: "actions.saveLinkedin", run: () => actions.saveLinkedin("https://www.linkedin.com/in/someone"), may: reaches("my-profile"), control: by("member") },
+  // The viewer's own PRT email and their own request for one (issue #921); no matrix viewer has either yet.
+  { action: "actions.savePrtEmail", run: () => actions.savePrtEmail("viewer.own@politorocketteam.it"), may: reaches("my-profile"), control: by("member") },
+  { action: "actions.requestOwnAlias", run: () => actions.requestOwnAlias("viewer.own@politorocketteam.it"), may: reaches("my-profile"), control: by("member") },
   { action: "actions.uploadPhoto", run: () => actions.uploadPhoto(form({ photo: PHOTO() })), may: reaches("my-profile"), control: by("member") },
   { action: "actions.removePhoto", run: () => actions.removePhoto(), may: reaches("my-profile"), control: by("member") },
   { action: "actions.leaveTeam", run: () => actions.leaveTeam("Moving on", false), may: reaches("my-profile"), control: by("member") },
@@ -2763,7 +2766,7 @@ describe("a renamed role title changes no access, no seat and no headship (issue
           await rename("Chief Engineer", RENAMED);
         }
       });
-      return (await data.teamTree()).board.map((b) => [b.person.id, b.title]);
+      return (await data.teamTree()).board.map((b) => [b.holders[0].id, b.title]);
     };
     const [pm, ce] = [accountOf("Project Manager").memberId, accountOf("Chief Engineer").memberId];
     const before = await seats(false);
@@ -2786,7 +2789,7 @@ describe("a renamed role title changes no access, no seat and no headship (issue
     const data = await openAfter("team leader", () =>
       addRows(roles, [{ id: 7_000, memberId: IDS.person("MA"), title: "Head of R&D", startedAt: "2020-10-01", type: "core" }]),
     );
-    const board = (await data.teamTree()).board.map((b) => [b.person.id, b.title]);
+    const board = (await data.teamTree()).board.map((b) => [b.holders[0].id, b.title]);
     const [pm, ce] = [accountOf("Project Manager").memberId, accountOf("Chief Engineer").memberId];
     // The flagged seats first, whatever the further seat's start date.
     assert.deepEqual(board.slice(0, 2), [
@@ -2825,7 +2828,7 @@ describe("a renamed role title changes no access, no seat and no headship (issue
     const row = roster.scope === "whole-team" ? roster.people.find((p) => p.id === head) : undefined;
     assert.deepEqual([row?.role, row?.roleLabel, row?.departmentIds], ["head", "Chief of Aerodynamics", [IDS.department("MA")]]);
     const aerodynamics = (await leader.teamTree()).departments.find((d) => d.id === IDS.department("MA"));
-    assert.deepEqual([aerodynamics?.head?.id, aerodynamics?.head?.title], [head, "Chief of Aerodynamics"]);
+    assert.deepEqual(aerodynamics?.heads.map((h) => [h.id, h.title]), [[head, "Chief of Aerodynamics"]]);
   });
 
   test("the Access page's line under a renamed head and a renamed Chief Engineer, and Close department's head label, read the stored title", async () => {
@@ -2937,7 +2940,7 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
     assert.equal(successor.viewer.kind, "operations-lead", "the successor has full access");
     const former = await openAs("Project Manager");
     assert.notEqual(former.viewer.kind, "operations-lead", "the old holder has full access no more");
-    const board = (await (await openAs("team leader")).teamTree()).board.map((b) => [b.person.id, b.title]);
+    const board = (await (await openAs("team leader")).teamTree()).board.map((b) => [b.holders[0].id, b.title]);
     assert.deepEqual(board[0], [EXTRA.mover, seat.title], "the successor is on the seat row in the seat's place");
     assert.ok(!board.some(([id]) => id === pm), "the old holder holds the seat no more");
   });
@@ -2983,7 +2986,7 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
       [["Safety Officer", null, "core"]],
     );
     const leader = await openAs("team leader");
-    const tree = (await leader.teamTree()).board.map((b) => [b.person.id, b.title]);
+    const tree = (await leader.teamTree()).board.map((b) => [b.holders[0].id, b.title]);
     assert.deepEqual(tree.at(-1), [EXTRA.mover, "Safety Officer"], "after the flagged seats on the Team tree");
     const structure = (await leader.teamStructure())?.board.map((s) => [s.holders[0].id, s.title, s.flag]);
     assert.deepEqual(structure?.at(-1), [EXTRA.mover, "Safety Officer", null], "and on Edit team tree's seat row");
@@ -3015,7 +3018,7 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
   /** Whether the seat row `roleId` is on the Team tree, Edit team tree's seat row and the public Team page's arc. */
   async function seatShown(roleId: number, holder: number) {
     const leader = await openAs("team leader");
-    const tree = (await leader.teamTree()).board.some((b) => b.person.id === holder);
+    const tree = (await leader.teamTree()).board.some((b) => b.holders.some((p) => p.id === holder));
     const row = ((await leader.teamStructure())?.board ?? []).some((s) => s.roleId === roleId);
     const arc = teamBuildOf(await databaseTeamRoles()).arc.some((l) => l.person.id === holder);
     return { tree, row, arc };

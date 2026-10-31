@@ -123,7 +123,7 @@ test("the tree is built from the roster: a person added to it is a node", () => 
   assert.deepEqual(names(after), ["Anna Villa", "Elif Kaya"]);
   assert.equal(after.departments[0].size, before.departments[0].size + 1);
   assert.deepEqual(after.path, [{ kind: "division", departmentId: 1, divisionId: 10 }]);
-  assert.equal(after.leader?.name, "Alessandro Greco");
+  assert.deepEqual(after.leaders.map((l) => l.name), ["Alessandro Greco"]);
 });
 
 test("every place on the tree carries that person's own stored photo, and null where none is stored (issue #622)", () => {
@@ -139,14 +139,14 @@ test("every place on the tree carries that person's own stored photo, and null w
   const tree = buildTeamTree(pictured, org, "2026–27", null);
   const [aerodynamics] = tree.departments;
   const [missionAnalysis] = aerodynamics.divisions;
-  assert.equal(tree.leader?.photoUrl, photo(1));
+  assert.equal(tree.leaders[0]?.photoUrl, photo(1));
   assert.deepEqual(
-    tree.board.map((b) => [b.person.id, b.person.photoUrl]),
+    tree.board.flatMap((b) => b.holders.map((p) => [p.id, p.photoUrl])),
     [[7, photo(7)]],
   );
-  assert.equal(aerodynamics.head?.photoUrl, photo(2));
-  assert.equal(missionAnalysis.lead?.photoUrl, photo(3));
-  assert.equal(tree.departments[1].divisions[0].lead?.photoUrl, photo(5));
+  assert.equal(aerodynamics.heads[0]?.photoUrl, photo(2));
+  assert.equal(missionAnalysis.leads[0]?.photoUrl, photo(3));
+  assert.equal(tree.departments[1].divisions[0].leads[0]?.photoUrl, photo(5));
   assert.deepEqual(
     missionAnalysis.members.map((m) => [m.id, m.photoUrl]),
     [
@@ -154,6 +154,74 @@ test("every place on the tree carries that person's own stored photo, and null w
       [4, photo(4)],
     ],
   );
+});
+
+// Several holders on the tree (issue #916). Each co-holder sorts after the
+// one already in the roster, so the viewer can be the second holder.
+const coLead = person(7, "Sara Villa", lead(10, "2025-10-01"));
+const coHead = person(8, "Silvia Moro", { role: "head", departmentId: 1, title: "Head of Aerodynamics", memberships: NO_MEMBERSHIPS });
+const coLeader = person(9, "Zeno Russo", { role: "team-leader", memberships: NO_MEMBERSHIPS });
+const coHeld = [...roster, coLead, coHead, coLeader];
+
+test("the tree holds every lead of a division, every head of a department and every team leader, by name; a co-lead is no member too (#916)", () => {
+  const tree = buildTeamTree(coHeld, org, "2026–27", null);
+  const [aerodynamics] = tree.departments;
+  const [missionAnalysis] = aerodynamics.divisions;
+  assert.deepEqual(tree.leaders.map((p) => p.name), ["Alessandro Greco", "Zeno Russo"]);
+  assert.deepEqual(aerodynamics.heads.map((p) => [p.name, p.title]), [
+    ["Chiara Rinaldi", "Head of Aerodynamics"],
+    ["Silvia Moro", "Head of Aerodynamics"],
+  ]);
+  assert.deepEqual(missionAnalysis.leads.map((p) => p.name), ["Marco Bianchi", "Sara Villa"]);
+  assert.deepEqual(missionAnalysis.members.map((p) => p.name), ["Elif Kaya"], "a co-lead is on the card, not in the list");
+  assert.equal(missionAnalysis.size, 3);
+  assert.equal(aerodynamics.size, 5, "two heads, two leads and a member, each once");
+  // Every holder is at their first place there: Find someone and Show me go to each.
+  assert.ok([...tree.leaders, ...aerodynamics.heads, ...missionAnalysis.leads].every((p) => p.first));
+
+  // The roster in another order builds the same cards.
+  const shuffled = buildTeamTree([...coHeld].reverse(), org, "2026–27", null);
+  assert.deepEqual(shuffled.leaders, tree.leaders);
+  assert.deepEqual(shuffled.departments, tree.departments);
+});
+
+test("a co-holder's path runs to their card, the second holder's as much as the first's (#916)", () => {
+  const pathOf = (selfId: number) => buildTeamTree(coHeld, org, "2026–27", selfId).path;
+  assert.deepEqual(pathOf(9), [{ kind: "leader" }]);
+  assert.deepEqual(pathOf(8), [{ kind: "head", departmentId: 1 }]);
+  assert.deepEqual(pathOf(7), [{ kind: "division", departmentId: 1, divisionId: 10 }]);
+  const tree = buildTeamTree(coHeld, org, "2026–27", 7);
+  assert.deepEqual(tree.departments[0].divisions[0].leads.map((p) => p.self), [false, true]);
+});
+
+test("team-level rows are one seat when seatOfTeamRow says so, with every holder on it (#916)", () => {
+  const boardSeat = (roleId: number, title: string, fullAccess: "project-manager" | null, type: "core" | "lead", since = "2024-10-01"): RosterEntry["placement"] => ({
+    role: "board",
+    seat: { roleId, title, fullAccess, type, since },
+    memberships: NO_MEMBERSHIPS,
+  });
+  const seated = [
+    ...roster,
+    person(20, "Lorenzo Gallo", boardSeat(70, "Project Manager", "project-manager", "core", "2024-10-01")),
+    // The same flag under another title and type is the same seat.
+    person(21, "Ada Ferri", boardSeat(71, "Programme Lead", "project-manager", "lead", "2025-10-01")),
+    person(22, "Rita Neri", boardSeat(72, "Safety Officer", null, "core", "2024-11-01")),
+    person(23, "Dario Pace", boardSeat(73, "Safety Officer", null, "core", "2025-11-01")),
+    // The same title with another type is another seat.
+    person(24, "Ugo Testa", boardSeat(74, "Safety Officer", null, "lead", "2025-12-01")),
+  ];
+  const tree = buildTeamTree(seated, org, "2026–27", 22);
+  assert.deepEqual(
+    tree.board.map((s) => [s.title, s.holders.map((p) => p.name)]),
+    [
+      ["Project Manager", ["Ada Ferri", "Lorenzo Gallo"]],
+      ["Safety Officer", ["Dario Pace", "Rita Neri"]],
+      ["Safety Officer", ["Ugo Testa"]],
+    ],
+  );
+  assert.equal(new Set(tree.board.map((s) => s.key)).size, 3);
+  assert.deepEqual(tree.path, [{ kind: "board" }], "the viewer, the seat's second holder, is on the path");
+  assert.deepEqual(tree.board[1].holders.map((p) => p.self), [false, true]);
 });
 
 test("the pager keeps the first pages, the current one and the last", () => {

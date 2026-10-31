@@ -15,7 +15,7 @@ import {
   type TeamPick,
   type TeamSearch,
 } from "@/lib/dashboard/division-edit";
-import { matchesPerson, mayNotKnowTheyWereAdded, type DivisionMembers, type DivisionPerson, type WaitingPerson } from "@/lib/dashboard/division-members";
+import { GOOGLE_EMAIL_NOTE, matchesPerson, mayNotKnowTheyWereAdded, type DivisionMembers, type DivisionPerson, type WaitingPerson } from "@/lib/dashboard/division-members";
 import { fullAccessMovesLine, seatOfHandedRole, steppingDown, steppingDownLine, type HandOverOutcome, type HeldSeat } from "@/lib/dashboard/hand-over";
 import { departmentLabel } from "@/lib/dashboard/recruitment";
 import { divisionLabel, type Permission } from "@/lib/dashboard/team";
@@ -728,7 +728,16 @@ export function PeoplePicker({
           heading={mode === "member" ? "In the team" : undefined}
           note={found.kind === "new-email" ? "No one in the team uses this email." : null}
           extra={newEmail !== null && onEmail ? { label: `Add ${newEmail}`, detail: `New member of ${short}, after the NDA`, onChoose: () => onEmail(newEmail) } : null}
-          hint={footer}
+          hint={
+            mode === "member" ? (
+              <>
+                {footer}
+                <span className="mt-1 block">{GOOGLE_EMAIL_NOTE}</span>
+              </>
+            ) : (
+              footer
+            )
+          }
           multi={multi}
           autoFocus
           onEscape={onClose}

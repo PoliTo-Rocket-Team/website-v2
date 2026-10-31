@@ -88,7 +88,7 @@ export function PersonCombobox<Id extends PersonId = number>({
   /** Under the people: "No one in the team uses this email." */
   note?: string | null;
   /** At the list's foot: what a pick here does. */
-  hint?: string;
+  hint?: ReactNode;
   /** The box's circle drawn the place's own way, in place of the chosen person's avatar. */
   photo?: ReactNode;
   /** Each choice adds one person, so the box empties for the next. */
