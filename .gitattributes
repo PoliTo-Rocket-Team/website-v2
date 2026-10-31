@@ -1,3 +1,0 @@
-# Pencil writes a random "fileToken" into every save; the clean filter keeps it
-# out of commits. tools/install-git-hooks.sh writes the filter config.
-*.pen filter=pen-filetoken

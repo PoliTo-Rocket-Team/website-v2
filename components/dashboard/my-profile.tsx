@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { Info, Linkedin, Lock, LogOut, Mail, Upload } from "lucide-react";
+import { Info, Linkedin, Lock, LogOut, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { DashboardLanding } from "@/lib/dashboard/access";
@@ -18,7 +18,9 @@ import {
 } from "@/lib/dashboard/self";
 import type { HandOverOffer, HandOverSend } from "@/lib/dashboard/hand-over-request";
 import type { OwnAlias } from "@/lib/dashboard/alias-setup";
+import { editsPrtEmail, planOwnPrtEmailEdit, savedPrtEmail } from "@/lib/dashboard/own-prt-email";
 import { AliasSetupLink } from "./alias-setup";
+import { PrtEmailInput, PrtEmailRequest, PrtEmailWarning } from "./own-prt-email";
 import { MarkFallback } from "@/components/mark-fallback";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { AccountCard, Card, DANGER_GHOST_PILL, DANGER_PILL, DangerBox, DangerRow, DeleteAccountDialog, RemoveFromAlumniBox } from "./account-parts";
@@ -33,6 +35,8 @@ import { DetailValue, EditPill, YourDetailsCard } from "./your-details";
 
 type Actions = {
   saveLinkedin: (text: string) => Promise<WriteResult<string | null>>;
+  savePrtEmail: (text: string) => Promise<WriteResult<string | null>>;
+  requestOwnAlias: (address: string) => Promise<WriteResult<null>>;
   uploadPhoto: (form: FormData) => Promise<WriteResult<null>>;
   removePhoto: () => Promise<WriteResult<null>>;
   saveDetails: (input: unknown) => Promise<WriteResult<YourDetails>>;
@@ -69,7 +73,13 @@ export function MyProfileView({
           detail="Used on the site to show you. Make sure your face is clear even when small. Square image, JPEG or PNG, up to 2 MB; we crop and resize it for you."
           previews={PROFILE_PREVIEWS}
         />
-        <DetailsCard profile={profile} alias={alias} saveLinkedin={actions.saveLinkedin} />
+        <DetailsCard
+          profile={profile}
+          alias={alias}
+          saveLinkedin={actions.saveLinkedin}
+          savePrtEmail={actions.savePrtEmail}
+          requestOwnAlias={actions.requestOwnAlias}
+        />
         <YourDetailsCard
           details={profile.details}
           editor={profile.detailsEditor}
@@ -253,21 +263,41 @@ const NAME_HINT: Readonly<Record<MyProfile["detailsEditor"], string>> = {
 
 /** The Details panel's line on phones: what this card does not change. */
 const DETAILS_PANEL_LINE: Readonly<Record<MyProfile["detailsEditor"], string>> = {
-  member: "Your lead sets your name, role and team email.",
-  lead: "You edit your name in Your details. Your role and team email are set for you.",
+  member: "Your lead sets your name and role.",
+  lead: "You edit your name in Your details. Your role is set for you.",
 };
 
+/** The writes the Details card makes. */
+type DetailsActions = Pick<Actions, "saveLinkedin" | "savePrtEmail" | "requestOwnAlias">;
+
+/** The Details card's two fields as saved: the LinkedIn shown and the PRT email, each empty when unset. */
+type SavedDetails = { readonly linkedin: string; readonly prtEmail: string };
+
+/** Why each field did not save, under it. */
+type DetailsErrors = { readonly linkedin?: string; readonly prtEmail?: string };
+
 /**
- * Name, role and team email are set by the lead, the name by a lead
- * themselves in "Your details" (issue #668); LinkedIn is the person's.
- * From md it is board 55's form; on phones board 55m's list, whose Edit opens
- * LinkedIn on a full page. Their email alias is their team email (issue
- * #563): once it is set, the team email carries a link to the alias setup
- * steps (issue #542).
+ * Name and role are set by the lead, the name by a lead themselves in "Your
+ * details" (issue #668); the PRT email (issue #921) and LinkedIn are the
+ * person's. From md it is board 55's form; on phones board 55m's list, whose
+ * Edit opens both on a full page. Their email alias is their PRT email (issue
+ * #563): once it is set, a link to the alias setup steps (issue #542) sits
+ * under it; while it is empty, Request my PRT email, or the request waiting
+ * for IT, does.
  */
-function DetailsCard({ profile, alias, saveLinkedin }: { profile: MyProfile; alias: OwnAlias | null; saveLinkedin: Actions["saveLinkedin"] }) {
-  const [saved, setSaved] = useState(profile.linkedin ?? "");
+function DetailsCard({ profile, alias, ...actions }: { profile: MyProfile; alias: OwnAlias | null } & DetailsActions) {
+  const [saved, setSaved] = useState<SavedDetails>({ linkedin: profile.linkedin ?? "", prtEmail: savedPrtEmail(profile.prtEmail) });
+  const [own, setOwn] = useState(profile.prtEmail);
   const [editing, setEditing] = useState(false);
+  const onLanded = (landed: Partial<SavedDetails>) => {
+    setSaved((current) => ({ ...current, ...landed }));
+    // A PRT email saved here closes the member's open request (`savePrtEmail`).
+    const address = landed.prtEmail;
+    if (address !== undefined && address !== "") setOwn({ kind: "set", address });
+  };
+  const request = (className: string) => (
+    <PrtEmailRequest own={own} requestOwnAlias={actions.requestOwnAlias} onRequested={() => setOwn({ kind: "requested" })} className={className} />
+  );
   return (
     <Card title="Details" meta={<span className="md:hidden"><EditPill onClick={() => setEditing(true)} /></span>}>
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 px-5 py-5 md:hidden">
@@ -277,44 +307,97 @@ function DetailsCard({ profile, alias, saveLinkedin }: { profile: MyProfile; ali
           label={profile.roles.length === 1 ? "Role" : "Roles"}
           value={profile.roles.length === 1 ? profile.roles[0].title : profile.roles.map(profileRoleLine).join(", ")}
         />
-        <div className="min-w-0">
-          <DetailValue label="Team email" value={profile.teamEmail} />
-          {alias && (
+        {/* An empty PRT email takes the row, so its request reads whole. */}
+        <div className={own.kind === "set" ? "min-w-0" : "col-span-2 min-w-0"}>
+          <DetailValue label="Team email" value={own.kind === "set" ? own.address : null} />
+          {own.kind === "set" && alias && (
             <div className="mt-1.5">
               <AliasSetupLink alias={alias} />
             </div>
           )}
+          {request("mt-2.5")}
         </div>
-        <DetailValue label="LinkedIn" value={saved || null} />
+        <DetailValue label="LinkedIn" value={saved.linkedin || null} />
       </dl>
       <div className="hidden md:block">
-        <LinkedinForm profile={profile} alias={alias} saved={saved} onSaved={setSaved} saveLinkedin={saveLinkedin} />
+        <DetailsForm profile={profile} alias={alias} saved={saved} onLanded={onLanded} actions={actions} request={request("mt-2.5")} />
       </div>
-      <LinkedinDrawer open={editing} onOpenChange={setEditing} editor={profile.detailsEditor} saved={saved} onSaved={setSaved} saveLinkedin={saveLinkedin} />
+      <DetailsDrawer open={editing} onOpenChange={setEditing} editor={profile.detailsEditor} saved={saved} onLanded={onLanded} actions={actions} />
     </Card>
   );
 }
 
-/** Checks and saves the LinkedIn field; answers the error to show, or null once saved. */
-function useLinkedinSave(saveLinkedin: Actions["saveLinkedin"], onSaved: (value: string) => void) {
+/**
+ * Checks and saves the changed fields of the Details card: the LinkedIn
+ * (`normalizeLinkedin`) and the PRT email (`planOwnPrtEmailEdit`, with the
+ * taken addresses left to the server). Each saved field is handed to
+ * `onLanded`; answers the errors to show, or null once all saved.
+ */
+function useDetailsSave(actions: DetailsActions, saved: SavedDetails, onLanded: (landed: Partial<SavedDetails>) => void) {
   const [pending, setPending] = useState(false);
-  const save = async (text: string): Promise<string | null> => {
-    const checked = normalizeLinkedin(text);
-    if (!checked.ok) return checked.error;
+  const save = async (typed: SavedDetails): Promise<DetailsErrors | null> => {
+    const linkedinChanged = typed.linkedin.trim() !== saved.linkedin;
+    const prtEmailChanged = editsPrtEmail(saved.prtEmail, typed.prtEmail);
+    const linkedin = normalizeLinkedin(typed.linkedin);
+    const prtEmail = planOwnPrtEmailEdit({ stored: saved.prtEmail, typed: typed.prtEmail, taken: [] });
+    const refused: DetailsErrors = {
+      ...(linkedinChanged && !linkedin.ok ? { linkedin: linkedin.error } : {}),
+      ...(prtEmail.ok ? {} : { prtEmail: prtEmail.error }),
+    };
+    if (refused.linkedin !== undefined || refused.prtEmail !== undefined) return refused;
     setPending(true);
+    const landed: { linkedin?: string; prtEmail?: string } = {};
+    const failed: { linkedin?: string; prtEmail?: string } = {};
     try {
-      const result = await saveLinkedin(text);
-      if (!result.ok) return result.error;
-      onSaved(result.value ?? "");
-      toast.success("Saved");
-      return null;
+      if (linkedinChanged) {
+        const result = await actions.saveLinkedin(typed.linkedin);
+        if (result.ok) landed.linkedin = result.value ?? "";
+        else failed.linkedin = result.error;
+      }
+      if (prtEmailChanged) {
+        const result = await actions.savePrtEmail(typed.prtEmail);
+        if (result.ok) landed.prtEmail = result.value ?? "";
+        else failed.prtEmail = result.error;
+      }
     } catch (err) {
-      return err instanceof Error ? err.message : "Please try again.";
+      toast.error("Could not save your details", { description: err instanceof Error ? err.message : "Please try again." });
+      return {};
     } finally {
       setPending(false);
+      onLanded(landed);
     }
+    if (failed.linkedin !== undefined || failed.prtEmail !== undefined) return failed;
+    toast.success("Saved");
+    return null;
   };
   return { pending, save };
+}
+
+/** The PRT email field: the box, the warning while it is edited, and what sits under it. */
+function PrtEmailField({
+  saved,
+  value,
+  error,
+  onChange,
+  children,
+}: {
+  saved: string;
+  value: string;
+  error?: string;
+  onChange: (value: string) => void;
+  children?: ReactNode;
+}) {
+  return (
+    <Field label="Team email" hint="shown on the site" error={error}>
+      {(id, describedBy) => (
+        <>
+          <PrtEmailInput id={id} describedBy={describedBy} value={value} error={error} onChange={onChange} />
+          <PrtEmailWarning saved={saved} typed={value} />
+          {children}
+        </>
+      )}
+    </Field>
+  );
 }
 
 function LinkedinInput({ id, describedBy, value, error, onChange }: { id: string; describedBy: string | undefined; value: string; error?: string; onChange: (value: string) => void }) {
@@ -335,29 +418,47 @@ function LinkedinInput({ id, describedBy, value, error, onChange }: { id: string
   );
 }
 
-function LinkedinForm({
+/** The Details card's fields as typed, and why each did not save; a field's error clears as it is typed in. */
+function useDetailsFields(saved: SavedDetails) {
+  const [typed, setTyped] = useState<SavedDetails>(saved);
+  const [errors, setErrors] = useState<DetailsErrors>({});
+  const change = (key: keyof SavedDetails) => (value: string) => {
+    setTyped((current) => ({ ...current, [key]: value }));
+    setErrors((current) => ({ ...current, [key]: undefined }));
+  };
+  const reset = () => {
+    setTyped(saved);
+    setErrors({});
+  };
+  return { typed, setTyped, errors, setErrors, change, reset };
+}
+
+function DetailsForm({
   profile,
   alias,
   saved,
-  onSaved,
-  saveLinkedin,
+  onLanded,
+  actions,
+  request,
 }: {
   profile: MyProfile;
   alias: OwnAlias | null;
-  saved: string;
-  onSaved: (value: string) => void;
-  saveLinkedin: Actions["saveLinkedin"];
+  saved: SavedDetails;
+  onLanded: (landed: Partial<SavedDetails>) => void;
+  actions: DetailsActions;
+  /** Request my PRT email, or the request waiting, under an empty PRT email. */
+  request: ReactNode;
 }) {
-  const [linkedin, setLinkedin] = useState(saved);
-  const [error, setError] = useState<string>();
-  const { pending, save } = useLinkedinSave(saveLinkedin, (value) => {
-    setLinkedin(value);
-    onSaved(value);
+  const { typed, setTyped, errors, setErrors, change } = useDetailsFields(saved);
+  const { pending, save } = useDetailsSave(actions, saved, (landed) => {
+    setTyped((current) => ({ ...current, ...landed }));
+    onLanded(landed);
   });
+  const changed = typed.linkedin.trim() !== saved.linkedin || editsPrtEmail(saved.prtEmail, typed.prtEmail);
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setError((await save(linkedin)) ?? undefined);
+    setErrors((await save(typed)) ?? {});
   };
 
   return (
@@ -365,39 +466,20 @@ function LinkedinForm({
       <div className="grid grid-cols-2 gap-x-4 gap-y-5">
         <Locked label="Name" hint={NAME_HINT[profile.detailsEditor]} value={profile.name} />
         <Locked label={profile.roles.length === 1 ? "Role" : "Roles"} hint="set by your lead" value={profile.roles.map(profileRoleLine)} />
-        {profile.teamEmail && (
-          <Locked
-            label="Team email"
-            hint={
-              alias ? (
-                <>
-                  shown on the site · <AliasSetupLink alias={alias} />
-                </>
-              ) : (
-                "shown on the site"
-              )
-            }
-            value={profile.teamEmail}
-            icon={<Mail aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />}
-          />
-        )}
-        <Field label="LinkedIn" hint="optional" error={error} className={profile.teamEmail ? "" : "col-start-2"}>
-          {(id, describedBy) => (
-            <LinkedinInput
-              id={id}
-              describedBy={describedBy}
-              value={linkedin}
-              error={error}
-              onChange={(value) => {
-                setLinkedin(value);
-                setError(undefined);
-              }}
-            />
+        <PrtEmailField saved={saved.prtEmail} value={typed.prtEmail} error={errors.prtEmail} onChange={change("prtEmail")}>
+          {alias && saved.prtEmail !== "" && (
+            <div className="mt-2">
+              <AliasSetupLink alias={alias} />
+            </div>
           )}
+          {request}
+        </PrtEmailField>
+        <Field label="LinkedIn" hint="optional" error={errors.linkedin}>
+          {(id, describedBy) => <LinkedinInput id={id} describedBy={describedBy} value={typed.linkedin} error={errors.linkedin} onChange={change("linkedin")} />}
         </Field>
       </div>
       <div className="mt-5 flex justify-end">
-        <button type="submit" disabled={pending || linkedin.trim() === saved} className={`${GHOST_PILL} h-10 px-4 text-[14px] font-semibold`}>
+        <button type="submit" disabled={pending || !changed} className={`${GHOST_PILL} h-10 px-4 text-[14px] font-semibold`}>
           Save changes
         </button>
       </div>
@@ -405,35 +487,28 @@ function LinkedinForm({
   );
 }
 
-function LinkedinDrawer({
+function DetailsDrawer({
   open,
   onOpenChange,
   editor,
   saved,
-  onSaved,
-  saveLinkedin,
+  onLanded,
+  actions,
 }: {
   open: boolean;
   editor: MyProfile["detailsEditor"];
   onOpenChange: (open: boolean) => void;
-  saved: string;
-  onSaved: (value: string) => void;
-  saveLinkedin: Actions["saveLinkedin"];
+  saved: SavedDetails;
+  onLanded: (landed: Partial<SavedDetails>) => void;
+  actions: DetailsActions;
 }) {
-  const [linkedin, setLinkedin] = useState(saved);
-  const [error, setError] = useState<string>();
-  const { pending, save } = useLinkedinSave(saveLinkedin, (value) => {
-    onSaved(value);
-    onOpenChange(false);
-  });
+  const { typed, errors, setErrors, change, reset } = useDetailsFields(saved);
+  const { pending, save } = useDetailsSave(actions, saved, onLanded);
   return (
     <Drawer
       open={open}
       onOpenChange={(next) => {
-        if (next) {
-          setLinkedin(saved);
-          setError(undefined);
-        }
+        if (next) reset();
         onOpenChange(next);
       }}
       title="Details"
@@ -442,23 +517,17 @@ function LinkedinDrawer({
       submitting={pending}
       onSubmit={async (e) => {
         e.preventDefault();
-        setError((await save(linkedin)) ?? undefined);
+        const failed = await save(typed);
+        setErrors(failed ?? {});
+        if (failed === null) onOpenChange(false);
       }}
     >
-      <Field label="LinkedIn" hint="optional" error={error}>
-        {(id, describedBy) => (
-          <LinkedinInput
-            id={id}
-            describedBy={describedBy}
-            value={linkedin}
-            error={error}
-            onChange={(value) => {
-              setLinkedin(value);
-              setError(undefined);
-            }}
-          />
-        )}
-      </Field>
+      <div className="flex flex-col gap-5">
+        <PrtEmailField saved={saved.prtEmail} value={typed.prtEmail} error={errors.prtEmail} onChange={change("prtEmail")} />
+        <Field label="LinkedIn" hint="optional" error={errors.linkedin}>
+          {(id, describedBy) => <LinkedinInput id={id} describedBy={describedBy} value={typed.linkedin} error={errors.linkedin} onChange={change("linkedin")} />}
+        </Field>
+      </div>
     </Drawer>
   );
 }

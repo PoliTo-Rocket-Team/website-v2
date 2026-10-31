@@ -1,36 +1,28 @@
 import "server-only";
 
 import { headers } from "next/headers";
-import { getCookieCache, getSessionCookie } from "better-auth/cookies";
+import { getSessionCookie } from "better-auth/cookies";
 import { isDatabaseConfigured } from "@/db/client";
 import { getAuth } from "@/lib/auth";
-import { accountUserOf, impersonatorOf, type CurrentUser } from "@/lib/session-user";
+import { accountUserOf, type CurrentUser } from "@/lib/session-user";
 
 export type { CurrentUser } from "@/lib/session-user";
 
 /**
  * The signed-in person, or null: only a real Better Auth session answers
- * (issue #612). The signed cookie cache answers first; it lives 10 minutes
- * (lib/auth.ts) while the session token lives 7 days, so once it lapses a
- * request that still holds a token asks Better Auth for the session. A View
+ * (issue #612), read through Better Auth itself. Its signed cookie cache
+ * (10 minutes, lib/auth.ts) still answers first, but only while the cache
+ * and the session it holds are both unexpired; past that Better Auth reads
+ * the session from the database. Reading the cache cookie directly once
+ * skipped both checks (issue #899): a View as session's cache cookie lasts
+ * as long as the browser, so a View as session that had run out kept opening
+ * the dashboard as the person, and Stop then found no session to end. A View
  * as session answers the person viewed as, with the acting account read from
  * the session's own `impersonatedBy` (issue #604), never from anything the
  * request names.
  */
 export async function getCurrentUser(): Promise<CurrentUser | null> {
   const requestHeaders = await headers();
-
-  const sessionCookie = await getCookieCache(requestHeaders, {
-    secret: process.env.BETTER_AUTH_SECRET,
-  });
-
-  if (sessionCookie?.user) {
-    return accountUserOf({
-      userId: sessionCookie.session.userId ?? sessionCookie.user.id,
-      name: sessionCookie.user.name,
-      impersonatedBy: impersonatorOf(sessionCookie.session),
-    });
-  }
 
   if (!isDatabaseConfigured() || getSessionCookie(new Headers(requestHeaders)) === null) {
     return null;

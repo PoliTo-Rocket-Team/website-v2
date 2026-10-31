@@ -953,14 +953,24 @@ export type TreePerson = {
   readonly first: boolean;
 };
 
+/**
+ * Who holds one seat or leads one unit on the tree, drawn together on its one
+ * card (epic #861, issue #916): by name, then id, so the card never reshuffles
+ * between loads. Empty for a unit nobody holds.
+ */
+export type TreeHolders<P extends TreePerson = TreePerson> = readonly P[];
+
+/** A team-level seat always has someone in it: a seat nobody holds is not on the roster. */
+export type TreeSeatHolders = readonly [TreePerson, ...TreePerson[]];
+
 export type TreeDivision = {
   readonly id: number;
   readonly name: string;
-  /** Its lead; when several lead it, one whose first place it is, and the others are listed with the members. */
-  readonly lead: TreePerson | null;
-  /** Everyone else in it, by name, whatever other divisions or seat they hold. */
+  /** Every lead it has, all on its card; none for a division with no lead. */
+  readonly leads: TreeHolders;
+  /** Everyone else in it, by name, whatever other divisions or seat they hold. A lead is never listed here too. */
   readonly members: readonly TreePerson[];
-  /** Everyone in it, lead included. */
+  /** Everyone in it, leads included. */
   readonly size: number;
 };
 
@@ -970,21 +980,27 @@ export type TreeHead = TreePerson & { readonly title: string };
 export type TreeDepartment = {
   readonly id: number;
   readonly name: string;
-  readonly head: TreeHead | null;
+  /** Every head it has, all on its card; none for a department with no head. */
+  readonly heads: TreeHolders<TreeHead>;
   readonly divisions: readonly TreeDivision[];
-  /** Everyone in it, head included. */
+  /** Everyone in it, heads included. */
   readonly size: number;
 };
 
-/** Someone in a team-level seat, under the team leader and over the heads: the seat's role and its title (`boardTitleOf`). */
-export type TreeBoardMember = { readonly roleId: number; readonly title: string; readonly person: TreePerson };
+/**
+ * One team-level seat, under the team leader and over the heads: every holder
+ * of it on one card (issue #916), the seat told apart as `seatOfTeamRow`
+ * (./seat-holders.ts) tells it (`boardSeatKey`), and its title (`boardTitleOf`).
+ */
+export type TreeSeat = { readonly key: string; readonly title: string; readonly holders: TreeSeatHolders };
 
 export type TeamTree = {
   /** "2026–27" */
   readonly season: string;
-  readonly leader: TreePerson | null;
-  /** The team-level seats in seat order (`bySeatOrder`): the Project Manager, the Chief Engineer, then any other by start date. */
-  readonly board: readonly TreeBoardMember[];
+  /** Every team leader, all on the one card; none when nobody holds the seat. */
+  readonly leaders: TreeHolders;
+  /** The team-level seats in seat order (`bySeatOrder`, by each seat's earliest row): the Project Manager, the Chief Engineer, then any other by start date. */
+  readonly board: readonly TreeSeat[];
   readonly departments: readonly TreeDepartment[];
   /** Everyone on the roster. */
   readonly size: number;
@@ -1017,15 +1033,19 @@ export function divisionsOnPath(path: TreePath | null): ReadonlySet<number> {
 }
 
 /** Where the viewer is drawn on a built tree, their first place first; null when nowhere. */
-function pathOf(leader: TreePerson | null, board: readonly TreeBoardMember[], departments: readonly TreeDepartment[]): TreePath | null {
+function pathOf(leaders: TreeHolders, board: readonly TreeSeat[], departments: readonly TreeDepartment[]): TreePath | null {
   const places: { readonly place: TreePlace; readonly first: boolean }[] = [];
-  if (leader?.self) places.push({ place: { kind: "leader" }, first: leader.first });
-  for (const { person } of board) if (person.self) places.push({ place: { kind: "board" }, first: person.first });
+  /** Adds `place` when the viewer is any of `people` there, whichever co-holder they are. */
+  const at = (place: TreePlace, people: readonly TreePerson[]) => {
+    const me = people.find((p) => p.self);
+    if (me) places.push({ place, first: me.first });
+  };
+  at({ kind: "leader" }, leaders);
+  for (const seat of board) at({ kind: "board" }, seat.holders);
   for (const department of departments) {
-    if (department.head?.self) places.push({ place: { kind: "head", departmentId: department.id }, first: department.head.first });
+    at({ kind: "head", departmentId: department.id }, department.heads);
     for (const division of department.divisions) {
-      const me = [division.lead, ...division.members].find((p) => p?.self);
-      if (me) places.push({ place: { kind: "division", departmentId: department.id, divisionId: division.id }, first: me.first });
+      at({ kind: "division", departmentId: department.id, divisionId: division.id }, [...division.leads, ...division.members]);
     }
   }
   const [head, ...rest] = [...places.filter((p) => p.first), ...places.filter((p) => !p.first)].map((p) => p.place);
@@ -1060,49 +1080,67 @@ export function buildTeamTree(
     self: entry.id === selfId,
     first: firstDivision(entry) === divisionId,
   });
-  const byName = (a: RosterEntry, b: RosterEntry) => a.name.localeCompare(b.name);
+  /** The order co-holders sit in on one card, and members in a list: by name, then id, so nothing reshuffles between loads. */
+  const byName = (a: { readonly id: number; readonly name: string }, b: { readonly id: number; readonly name: string }) =>
+    a.name.localeCompare(b.name) || a.id - b.id;
 
   const departments = org.departments.flatMap((department): TreeDepartment[] => {
-    const head = roster.find((e) => e.placement.role === "head" && e.placement.departmentId === department.id);
+    const heads = roster
+      .flatMap((e) => (e.placement.role === "head" && e.placement.departmentId === department.id ? [{ ...node(e, null), title: headTitleOf(e.placement.title, department.name) }] : []))
+      .sort(byName);
+    const isHead = (e: RosterEntry) => heads.some((h) => h.id === e.id);
     const divisions = org.divisions
       .filter((d) => d.departmentId === department.id)
       .flatMap((division): TreeDivision[] => {
         const inDivision = roster.filter((e) => isIn(e.placement, division.id));
         if (inDivision.length === 0) return [];
-        const leads = inDivision.filter((e) => roleIn(membershipsIn(e.placement), division.id) === "lead");
-        const lead = leads.find((e) => firstDivision(e) === division.id) ?? leads[0];
-        const members = inDivision.filter((e) => e !== lead).sort(byName);
+        const leads = (e: RosterEntry) => roleIn(membershipsIn(e.placement), division.id) === "lead";
         return [
           {
             id: division.id,
             name: division.name,
-            lead: lead ? node(lead, division.id) : null,
-            members: members.map((e) => node(e, division.id)),
+            leads: inDivision.filter(leads).sort(byName).map((e) => node(e, division.id)),
+            members: inDivision.filter((e) => !leads(e)).sort(byName).map((e) => node(e, division.id)),
             size: inDivision.length,
           },
         ];
       });
-    // Someone in two of its divisions counts once, and its head once, also when they lead one of them.
-    const people = new Set(roster.filter((e) => e !== head && divisions.some((d) => isIn(e.placement, d.id))).map((e) => e.id));
-    const size = (head ? 1 : 0) + people.size;
-    const shownHead = head?.placement.role === "head" ? { ...node(head, null), title: headTitleOf(head.placement.title, department.name) } : null;
-    return size === 0 ? [] : [{ id: department.id, name: department.name, head: shownHead, divisions, size }];
+    // Someone in two of its divisions counts once, and each head once, also when they lead one of them.
+    const people = new Set(roster.filter((e) => !isHead(e) && divisions.some((d) => isIn(e.placement, d.id))).map((e) => e.id));
+    const size = heads.length + people.size;
+    return size === 0 ? [] : [{ id: department.id, name: department.name, heads, divisions, size }];
   });
 
-  const leader = roster.find((e) => e.placement.role === "team-leader");
-  const board = roster
-    .flatMap((e) => (e.placement.role === "board" ? [{ seat: e.placement.seat, entry: e }] : []))
-    .sort((a, b) => bySeatOrder(a.seat, b.seat))
-    .map(({ seat, entry }): TreeBoardMember => ({ roleId: seat.roleId, title: boardTitleOf(seat), person: node(entry, null) }));
-  const shownLeader = leader ? node(leader, null) : null;
+  const leaders = roster.filter((e) => e.placement.role === "team-leader").sort(byName).map((e) => node(e, null));
+  const board = seatsOf(roster.flatMap((e) => (e.placement.role === "board" ? [{ seat: e.placement.seat, person: node(e, null) }] : [])), byName);
   return {
     season,
-    leader: shownLeader,
+    leaders,
     board,
     departments,
     size: roster.length,
-    path: pathOf(shownLeader, board, departments),
+    path: pathOf(leaders, board, departments),
   };
+}
+
+/**
+ * The team-level seats, each once with every holder (issue #916): rows are
+ * one seat when `boardSeatKey` says so, as `seatOfTeamRow` groups them. A
+ * seat sits in seat order by its earliest row, which also gives its title.
+ */
+function seatsOf(held: readonly { readonly seat: BoardRole; readonly person: TreePerson }[], order: (a: TreePerson, b: TreePerson) => number): TreeSeat[] {
+  const seats = new Map<string, { readonly seat: BoardRole; readonly holders: TreePerson[] }>();
+  for (const { seat, person } of [...held].sort((a, b) => bySeatOrder(a.seat, b.seat))) {
+    const key = boardSeatKey(seat);
+    const known = seats.get(key);
+    if (known) known.holders.push(person);
+    else seats.set(key, { seat, holders: [person] });
+  }
+  return [...seats].map(([key, { seat, holders }]): TreeSeat => {
+    // Never empty: a seat enters the map with its first holder.
+    const [first, ...rest] = holders.sort(order);
+    return { key, title: boardTitleOf(seat), holders: [first, ...rest] };
+  });
 }
 
 /** A division as the tree names it: "Mission Analysis Division" reads "Mission Analysis" (board 54c). */

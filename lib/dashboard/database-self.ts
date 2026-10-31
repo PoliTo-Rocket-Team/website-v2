@@ -6,6 +6,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
 import {
+  aliasRequests,
   alumniEntries,
   applicationFiles,
   applicationStatuses,
@@ -32,8 +33,10 @@ import { uploadPublicFile } from "@/lib/storage/public-store";
 import { deleteUnreferencedAfter } from "@/lib/storage/unreferenced-delete";
 import { canReach } from "./access";
 import type { DashboardIdentity } from "./database";
+import { readPrtEmailsHeldByOthers, requestOwnAlias } from "./database-alias";
 import { linkedGoogleAccountsOf } from "./database-google-accounts";
 import { readHandOverOffer } from "./database-hand-over";
+import { ownPrtEmailOf, planOwnPrtEmailEdit } from "./own-prt-email";
 import { memberLeftNoticesFor } from "./database-notices";
 import {
   columnsFromDetails,
@@ -111,8 +114,13 @@ async function readLeaveState(memberId: number): Promise<LeaveState> {
 async function readProfile(identity: DashboardIdentity): Promise<MyProfile | null> {
   if (!hasOwnProfile(identity)) return null;
   const memberId = identity.memberId;
-  const [[member], details, leave, handOver, googleAccounts] = await Promise.all([
+  const [[member], openRequests, details, leave, handOver, googleAccounts] = await Promise.all([
     getDb().select({ prt_email: members.prtEmail }).from(members).where(eq(members.memberId, memberId)).limit(1),
+    getDb()
+      .select({ id: aliasRequests.id })
+      .from(aliasRequests)
+      .where(and(eq(aliasRequests.memberId, memberId), isNull(aliasRequests.outcome)))
+      .limit(1),
     readDetails(identity.userId),
     readLeaveState(memberId),
     readHandOverOffer(identity),
@@ -124,7 +132,7 @@ async function readProfile(identity: DashboardIdentity): Promise<MyProfile | nul
     detailsEditor: namesThemselves(identity.kind) ? "lead" : "member",
     // Every division they are in, not only the one a single-division page names (issue #185).
     roles: profileRolesOf(identity.role, identity.roles),
-    teamEmail: member?.prt_email ?? null,
+    prtEmail: ownPrtEmailOf({ name: identity.name, prtEmail: member?.prt_email ?? null, requested: openRequests.length > 0 }),
     linkedin: linkedin === null ? null : linkedin.ok ? linkedin.value : identity.linkedin,
     photoUrl: identity.picture,
     signIn: { provider: "google", email: identity.email },
@@ -142,6 +150,37 @@ async function saveLinkedin(identity: DashboardIdentity, text: string): Promise<
   const url = checked.value === null ? null : `https://www.${checked.value}`;
   await runAuditQuery((db) => db.update(users).set({ linkedin: url }).where(eq(users.id, identity.userId)));
   return written(checked.value);
+}
+
+/**
+ * The member's own PRT email (issue #921), checked by `planOwnPrtEmailEdit`
+ * against every address someone else holds; an unchanged one writes nothing.
+ * A request of theirs still open asked for the address they now have, so it
+ * closes as cancelled in the same batch: an open request stays one for a
+ * member with no PRT email, as the request rules read it. The PRT email is on
+ * the Team page, which reads the cached team.
+ */
+async function savePrtEmail(identity: DashboardIdentity, text: string): Promise<WriteResult<string | null>> {
+  if (!hasOwnProfile(identity)) return refused("This page is for team members.");
+  const memberId = identity.memberId;
+  const [[row], taken] = await Promise.all([
+    getDb().select({ prt_email: members.prtEmail }).from(members).where(eq(members.memberId, memberId)).limit(1),
+    readPrtEmailsHeldByOthers(memberId),
+  ]);
+  const stored = row?.prt_email ?? null;
+  const planned = planOwnPrtEmailEdit({ stored, typed: text, taken });
+  if (!planned.ok) return refused(planned.error);
+  if (planned.value.kind === "unchanged") return written(stored);
+  const { address } = planned.value;
+  await runAuditBatch((db) => [
+    db.update(members).set({ prtEmail: address }).where(eq(members.memberId, memberId)),
+    db
+      .update(aliasRequests)
+      .set({ outcome: "cancelled", answeredBy: memberId, answeredByActingAccount: identity.actingAccountId, answeredAt: new Date().toISOString() })
+      .where(and(eq(aliasRequests.memberId, memberId), isNull(aliasRequests.outcome))),
+  ]);
+  refreshAfter("team", updateTag);
+  return written(address);
 }
 
 /**
@@ -556,6 +595,8 @@ export function databaseSelfPages(identity: DashboardIdentity) {
   return {
     myProfile: () => readProfile(identity),
     saveLinkedin: (text: string) => saveLinkedin(identity, text),
+    savePrtEmail: (text: string) => savePrtEmail(identity, text),
+    requestOwnAlias: (address: string) => requestOwnAlias(identity, address),
     setPhoto: (photo: Upload | null) => setPhoto(identity, photo),
     leaveTeam: (reason: string, removeFromAlumniPage: boolean) => leaveTeam(identity, reason, removeFromAlumniPage),
     myAccount: () => readAccount(identity),

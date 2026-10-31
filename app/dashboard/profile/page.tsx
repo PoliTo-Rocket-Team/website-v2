@@ -6,7 +6,7 @@ import { MyProfileView } from "@/components/dashboard/my-profile";
 import { canReach } from "@/lib/dashboard/access";
 import { googleAccountsNoticeOf, searchValue } from "@/lib/dashboard/google-accounts";
 import { openDashboard } from "@/lib/dashboard/open";
-import { deleteAccount, leaveTeam, removePhoto, saveDetails, saveLinkedin, sendHandOver, uploadPhoto } from "../actions";
+import { deleteAccount, leaveTeam, removePhoto, requestOwnAlias, saveDetails, saveLinkedin, savePrtEmail, sendHandOver, uploadPhoto } from "../actions";
 
 export const metadata: Metadata = {
   title: "My profile · Dashboard · PoliTo Rocket Team",
@@ -40,6 +40,8 @@ async function LiveProfile({ searchParams }: { searchParams: Search }) {
       alias={alias}
       googleAccountsNotice={googleAccountsNoticeOf({ error: searchValue(query.error), merge: searchValue(query.google_merge) })}
       saveLinkedin={saveLinkedin}
+      savePrtEmail={savePrtEmail}
+      requestOwnAlias={requestOwnAlias}
       uploadPhoto={uploadPhoto}
       removePhoto={removePhoto}
       saveDetails={saveDetails}
