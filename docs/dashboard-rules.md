@@ -34,7 +34,7 @@ An admin column comes later. **Planned**, no issue yet.
 | Overview | Yes | Yes | Yes | Yes | Yes | Yes |
 | My alumni | No | Yes | No | No | No | No |
 | Team tree | No | No | Yes | Yes | Yes | Yes |
-| Positions | No | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
+| Positions | No | No | No | Own divisions; the recruitment manager also has the site-wide recruitment switch (#875) | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
 | Applications | No | No | No | Own divisions | All divisions in the department, under division tabs | All; the team leader has department and division selects |
 | Members | No | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
 | Projects | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it first under Content |
@@ -336,6 +336,10 @@ grilling session #745, recorded in the 2026-10-25 status-list amendment of
   ([Owner decision, 2026-10-25](https://github.com/PoliTo-Rocket-Team/website-v2/issues/194#issuecomment-6396490285)).
   Their Positions page and Members page stay their own division's. While the Logistics division is
   closed, nobody is the recruitment manager (#194).
+  - The recruitment manager may open and close recruitment: their Positions page shows the
+    site-wide recruitment switch, with the same warning step full access sees, and the server
+    accepts it from them (Owner decision, 2026-10-31, #875). It gives them no other full-access
+    right and no other site-wide setting.
 - Confirm join, and setting "NDA received", is the last step of the application, so the
   Applications area decides it wherever it appears (#584, Owner decision, 2026-10-22). On the
   Applications page and on the Members page's "{name} is joining" banner it shows, and the server
