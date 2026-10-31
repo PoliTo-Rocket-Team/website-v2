@@ -106,7 +106,8 @@ export function PositionsView({
         </TopBarAction>
       )}
 
-      {page.scope === "team" ? (
+      {/* The recruitment manager may flip the switch from their own division's page (issue #875). */}
+      {page.scope === "team" || recruitment.canSwitch ? (
         <RecruitmentSwitch open={recruitment.recruitment.isOpen} canSwitch={recruitment.canSwitch} />
       ) : (
         <RecruitmentNotice open={recruitment.recruitment.isOpen} scope={page.scope} />
@@ -349,7 +350,7 @@ function OpenStatus({ open }: { open: boolean }) {
   return <span className={`w-12 text-[13px] ${open ? "text-prt-text" : "text-prt-muted"}`}>{open ? "Open" : "Closed"}</span>;
 }
 
-// Board 41: the site-wide switch, for the team leader and the operations lead.
+// Board 41: the site-wide switch, for full access and the recruitment manager (issue #875).
 // A click asks first (Owner decision, issue #691): the switch keeps the saved
 // state while the warning is open and flips only on its Confirm.
 function RecruitmentSwitch({ open: saved, canSwitch }: { open: boolean; canSwitch: boolean }) {
@@ -407,7 +408,7 @@ function RecruitmentSwitch({ open: saved, canSwitch }: { open: boolean; canSwitc
   );
 }
 
-// Boards 57 and 57m: a division lead sees the switch's state, not the switch,
+// Boards 57 and 57m: a division lead who may not flip it sees the switch's state, not the switch,
 // in one sentence and nothing more. On a phone the strip takes the state's tint.
 // A department head's strip names their department's roles from md (board 63);
 // a grant holder's names no owner, as they own no roles (issue #577).

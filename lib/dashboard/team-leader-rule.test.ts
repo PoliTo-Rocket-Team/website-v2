@@ -97,8 +97,8 @@ test("pages: the team leader reaches every dashboard page a team member can, hea
 });
 
 test("positions: the team leader switches recruitment and changes positions anywhere; a head in their department, a lead in their division", () => {
-  assert.equal(canSwitchRecruitment(teamLeader.standing), true);
-  for (const other of [head, lead, member]) assert.equal(canSwitchRecruitment(other.standing), false);
+  assert.equal(canSwitchRecruitment(reader(teamLeader)), true);
+  for (const other of [head, lead, member]) assert.equal(canSwitchRecruitment(reader(other)), false);
   for (const unit of [MA, OA, DM]) assert.equal(changes(teamLeader, "positions", unit), true);
   assert.deepEqual([MA, OA, DM].map((u) => changes(head, "positions", u)), [true, true, false]);
   assert.deepEqual([MA, OA, DM].map((u) => changes(lead, "positions", u)), [true, false, false]);

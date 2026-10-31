@@ -105,6 +105,6 @@ scopes have no tests of their own.
   so the cache stays lapsed and every request reads the database until a client call refreshes it.
   With no `DATABASE_URL` the fallback is skipped and the answer is null.
 - **Writes check scope their own way.** The recruitment switch's database side
-  (`setRecruitment`) reads no scope row: it refuses unless the caller's standing is full access
-  (`canSwitchRecruitment`, issue #621), the same rule its display reads, and the position and application writes refuse a row outside the
+  (`setRecruitment`) reads no scope row: it refuses unless the caller has full access or is the
+  recruitment manager (`canSwitchRecruitment`, issues #621, #875), the same rule its display reads, and the position and application writes refuse a row outside the
   lead's scope ([lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts)).
