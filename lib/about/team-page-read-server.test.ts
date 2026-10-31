@@ -15,6 +15,7 @@ import { queryTeamSnapshot, teamRolesOf } from "@/lib/dashboard/team-snapshot";
 import { teamPageData } from "./team-data";
 import { NO_TEAM_LAYER, type TeamPageLayer } from "./team-layer";
 import { parseTeamLayout, snapshot, type TeamLayout } from "./team-layout";
+import { teamBuildOf } from "./team-roles";
 import type { TeamPage } from "./types";
 
 // The public /about/the-team read on the stored layout (issue #850), on the
@@ -36,7 +37,7 @@ async function publishedLayout(): Promise<TeamLayout> {
   return layout;
 }
 
-type RoleRow = { id: number; memberId: number | null; type: string | null; divisionId: number | null; deptId: number | null; leavedAt: string | null; fullAccess: string | null };
+type RoleRow = { id: number; memberId: number | null; title: string | null; type: string | null; divisionId: number | null; deptId: number | null; leavedAt: string | null; fullAccess: string | null };
 type DivisionRow = { id: number; deptId: number | null; closedAt: string | null };
 
 async function nameOf(memberId: number): Promise<string> {
@@ -45,7 +46,23 @@ async function nameOf(memberId: number): Promise<string> {
   return [user.firstName, user.lastName].filter(Boolean).join(" ");
 }
 
-const leadDivisions = (layout: TeamLayout) =>
+/** The page the published version draws with its stored layout set aside: the layout derived from its layer on the roles as they stand. */
+async function derivedPage(): Promise<TeamPage> {
+  const stored = (await tableRows(teamPageLayerVersions)).find((r) => r.version === "published")?.layout;
+  await changeRows(teamPageLayerVersions, { version: "published" }, { layout: null });
+  try {
+    return await teamPageData();
+  } finally {
+    await changeRows(teamPageLayerVersions, { version: "published" }, { layout: stored });
+  }
+}
+
+/** The team-level seats in the order the Team tree draws them, read from the roles as they stand now. */
+async function boardArc() {
+  return teamBuildOf(teamRolesOf(await queryTeamSnapshot(testDb))).arc.flatMap(({ person: { placement } }) => (placement.role === "board" ? [placement.seat] : []));
+}
+
+const leadDivisions =(layout: TeamLayout) =>
   layout.departments.flatMap((b) => b.leads.flatMap((l) => (l.binding.kind === "division-lead" ? [l.binding.divisionId] : [])));
 const headDepartments = (layout: TeamLayout) => layout.departments.flatMap((b) => (b.head.binding.kind === "department-head" ? [b.head.binding.departmentId] : []));
 
@@ -72,8 +89,26 @@ test("adding, removing, moving or reordering a seat in the Team tree leaves the 
   const target = drawnHeads.find((id) => id !== movedDivision.deptId)!;
   await changeRows(divisions, { id: movedDivision.id }, { deptId: target });
 
-  // Reordered: the Chief Engineer's seat now starts before the Project Manager's.
-  await changeRows(roles, { fullAccess: "chief_engineer" }, { startedAt: "2000-01-01" });
+  // Reordered: two unflagged team-level seats, which the Team tree orders by start date (the flagged two keep their place), and the later one now starts first.
+  // The seed seats none, so two division members gain one each, under the title they already show as core members.
+  const coreOnly = active.filter((r) => r.type === "core" && r.divisionId !== null && active.filter((o) => o.memberId === r.memberId).length === 1);
+  assert.ok(coreOnly.length >= 2, "the seed has two people who are only division members");
+  await addRows(roles, [
+    { memberId: coreOnly[0].memberId, title: coreOnly[0].title, startedAt: "2026-10-01", type: "core" },
+    { memberId: coreOnly[1].memberId, title: coreOnly[1].title, startedAt: ROLE_DAY, type: "core" },
+  ]);
+  const unflagged = async () => (await boardArc()).filter((seat) => seat.flag === null).map((seat) => seat.roleId);
+  const [first, second] = await unflagged();
+  assert.ok(first !== undefined && second !== undefined, "the Team tree holds two unflagged team-level seats");
+  assert.deepEqual(seatsOf(await teamPageData()), seatsOf(before));
+  const derivedBefore = await derivedPage();
+  await changeRows(roles, { id: second }, { startedAt: "2000-01-01" });
+  const [nowFirst, nowSecond] = await unflagged();
+  assert.deepEqual([nowFirst, nowSecond], [second, first], "the Team tree's own seat order reversed");
+  assert.notDeepEqual((await derivedPage()).orgChart.leaders, derivedBefore.orgChart.leaders, "without a stored layout the reorder moves the arc");
+  const reordered = await teamPageData();
+  assert.deepEqual(seatsOf(reordered), seatsOf(before));
+  assert.deepEqual(reordered.coreMembers.members, before.coreMembers.members);
 
   // Removed: a division whose lead the page does not show.
   const hidden = divisionRows.find((d) => d.closedAt === null && !drawnLeads.includes(d.id) && active.some((r) => r.type === "lead" && r.divisionId === d.id))!;
