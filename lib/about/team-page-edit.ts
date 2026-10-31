@@ -15,6 +15,7 @@ import {
   resolveLayout,
   sameBinding,
   type DepartmentBlock,
+  type LayoutGroup,
   type PageSeat,
   type PlaceBinding,
   type ResolvedTeam,
@@ -391,11 +392,14 @@ const bindingsOf = (seats: readonly PageSeat[]) => seats.map((seat) => seat.bind
  * `record`, the layout Reset to team writes. One per page seat drawn with
  * other overrides than the record's seat of its binding, or bound where the
  * record has none, one per place of the record the layout no longer draws,
- * one per department block added or gone, one per block's name, its kind
- * (which carousel section and shape it draws in) and its leads' order, and
- * one each for the arc's order and the blocks' order. Only drawn seats count: one whose seat has no holder
- * shows nothing to reset. The intro text, its figures and the group photo
- * stay, so they do not count.
+ * one per department block added or gone, one per block's name, its group,
+ * how it draws its leads and its leads' order, one per group added, gone or
+ * renamed, and one each for the arc's order, the blocks' order and the
+ * groups' order. Only drawn seats count: one whose seat has no holder shows
+ * nothing to reset. The intro text, its figures and the group photo stay, so
+ * they do not count. Reset to team keeps the stored group list and each
+ * department's group (`teamRecordLayout`), so a group counts only where the
+ * working layout moved off what is stored.
  */
 export function editCount(roles: TeamRoles, layout: TeamLayout, record: TeamLayout): number {
   const drawn = (seats: readonly PageSeat[]) => seats.filter((seat) => holdingOf(seat.binding, roles) !== null);
@@ -410,7 +414,8 @@ export function editCount(roles: TeamRoles, layout: TeamLayout, record: TeamLayo
     return (
       n +
       (block.name === own.name ? 0 : 1) +
-      (block.kind === own.kind ? 0 : 1) +
+      (block.group === own.group ? 0 : 1) +
+      (block.leadsDrawn === own.leadsDrawn ? 0 : 1) +
       (sameOverrides(block.head.overrides, own.head.overrides) ? 0 : 1) +
       seatEdits(leads, own.leads) +
       (sameOrder(bindingsOf(leads), bindingsOf(own.leads)) ? 0 : 1)
@@ -419,5 +424,15 @@ export function editCount(roles: TeamRoles, layout: TeamLayout, record: TeamLayo
   const goneBlocks = record.departments.filter((r) => !blocks.some((b) => sameBinding(b.head.binding, r.head.binding))).length;
   const heads = (of: readonly DepartmentBlock[]) => of.map((b) => b.head.binding);
   const blockOrder = sameOrder(heads(blocks), heads(drawnBlocks(record))) ? 0 : 1;
-  return leader + arc + departments + goneBlocks + blockOrder;
+  return leader + arc + departments + goneBlocks + blockOrder + groupEdits(layout.groups, record.groups);
+}
+
+/** How many of `groups` differ from `record`'s, matched by id: one per group added, gone or renamed, and one for their order. */
+function groupEdits(groups: readonly LayoutGroup[], record: readonly LayoutGroup[]): number {
+  const changed = groups.filter((g) => record.find((r) => r.id === g.id)?.name !== g.name).length;
+  const gone = record.filter((r) => !groups.some((g) => g.id === r.id)).length;
+  const ids = (list: readonly LayoutGroup[], other: readonly LayoutGroup[]) => list.filter((g) => other.some((o) => o.id === g.id)).map((g) => g.id);
+  const kept = ids(groups, record);
+  const order = kept.every((id, i) => id === ids(record, groups)[i]) ? 0 : 1;
+  return changed + gone + order;
 }

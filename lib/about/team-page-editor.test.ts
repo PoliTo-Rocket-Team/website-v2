@@ -238,7 +238,8 @@ test("a layout showing more department heads than the carousel holds is refused 
   const added: DepartmentBlock[] = Array.from({ length: 50 }, (_, i) => ({
     id: first + 2 * i,
     name: `Added ${i + 1}`,
-    kind: "technical",
+    group: record.groups[0].id,
+    leadsDrawn: "under",
     head: { id: first + 2 * i + 1, binding: { kind: "person", memberId }, overrides: {} },
     leads: [],
   }));

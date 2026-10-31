@@ -117,7 +117,7 @@ test("added departments, division leads and head-block edits show on the page, a
   let layout = layoutWithHead(roles, record, block.id, pickedHead(fields)!);
 
   // Add a department with a head and one division lead.
-  const added = withNewLead({ ...withHeadPerson(roles, newDepartmentFields(), someone), department: "Payload" });
+  const added = withNewLead({ ...withHeadPerson(roles, newDepartmentFields(), someone), department: "Payload", group: record.groups[0].id });
   assert.ok(headFieldErrors(true, added).leads, "an added lead needs a division");
   const payload: HeadFields = { ...added, leads: added.leads.map((l) => ({ ...l, person: someone, division: "Experiments" })) };
   layout = layoutWithHead(roles, layout, null, pickedHead(payload)!);
@@ -157,7 +157,12 @@ test("Hide from page takes a head block off the page or drops an added departmen
   assert.equal(isHeadEdited(roles, back, block.id), false);
   assert.deepEqual(pageOf(back), pageOf(record));
 
-  const withDepartment = layoutWithHead(roles, record, null, pickedHead({ ...withHeadPerson(roles, newDepartmentFields(), someone), department: "Payload" })!);
+  const withDepartment = layoutWithHead(
+    roles,
+    record,
+    null,
+    pickedHead({ ...withHeadPerson(roles, newDepartmentFields(), someone), department: "Payload", group: record.groups[0].id })!,
+  );
   assert.equal(resolveLayout(withDepartment, roles).departments.at(-1)?.name, "Payload");
   assert.deepEqual(hideHead(withDepartment, nextSeatId(record)), record);
 });

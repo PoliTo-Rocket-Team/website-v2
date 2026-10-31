@@ -167,7 +167,7 @@ export type BuiltLead = { readonly spot: LeadSpot; readonly person: TeamPerson; 
 export type BuiltDepartment = {
   readonly id: number;
   readonly name: string;
-  /** The carousel slide its heads sit on (issue #325). */
+  /** Its kind on the team record: today's group, which only the one-time snapshot reads (`TODAYS_GROUPS`, issue #856). */
   readonly kind: DepartmentKind;
   readonly heads: readonly BuiltHead[];
   readonly leads: readonly BuiltLead[];
@@ -192,7 +192,7 @@ export type Shown<R, T> = { readonly at: R; readonly shown: T };
 export type ShownDepartment = {
   readonly at: DepartmentRef;
   readonly name: string;
-  /** The carousel slide its heads sit on (issue #325); a department the editor added is technical. */
+  /** Today's group (`TODAYS_GROUPS`, issue #856), which the one-time snapshot reads; a department the layer added is technical. */
   readonly kind: DepartmentKind;
   readonly heads: readonly Shown<HeadSpot | AddedRef, DepartmentHead>[];
   readonly leads: readonly Shown<LeadRef, DivisionLead>[];
@@ -208,16 +208,28 @@ export type ShownTeam = {
   readonly groupPhoto: GroupPhoto | null;
 };
 
+/**
+ * How a department block draws its division leads on the carousel (issue
+ * #856): under its head, as the technical departments drew them, or beside
+ * it, each lead at a head's level, as Operations drew its divisions (board 26).
+ */
+export const LEADS_DRAWN = ["under", "beside"] as const;
+export type LeadsDrawn = (typeof LEADS_DRAWN)[number];
+
 /** A department block as drawn, whatever its places are keyed by: the layer's spots or a layout's page seats (./team-layout.ts). */
-export type DrawnDepartment = Pick<ShownDepartment, "name" | "kind"> & {
+export type DrawnDepartment = {
+  readonly leadsDrawn: LeadsDrawn;
   readonly heads: readonly { readonly shown: DepartmentHead }[];
   readonly leads: readonly { readonly shown: DivisionLead }[];
 };
 
-/** The page as drawn, whatever its places are keyed by (`DrawnDepartment`). */
+/** A department group as drawn (issue #856): the heading its slides read, and its blocks in order. */
+export type DrawnGroup = { readonly name: string; readonly departments: readonly DrawnDepartment[] };
+
+/** The page as drawn, whatever its places are keyed by (`DrawnDepartment`): the department groups in order. */
 export type DrawnTeam = Pick<ShownTeam, "leader" | "intro" | "figures" | "groupPhoto"> & {
   readonly leaders: readonly { readonly shown: Leader }[];
-  readonly departments: readonly DrawnDepartment[];
+  readonly groups: readonly DrawnGroup[];
 };
 
 const addedRef =(id: number): AddedRef => `added:${id}`;

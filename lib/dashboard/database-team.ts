@@ -1518,7 +1518,7 @@ async function createDepartment(identity: DashboardIdentity, input: unknown): Pr
   const actor = await readActor(identity, snapshot.org);
   const planned = planDepartmentCreate({ actor, org: snapshot.org, save: checked.value, team: teamPeopleOf(snapshot) });
   if (!planned.ok) return refused(planned.error);
-  const { name, code, kind, headId } = planned.value;
+  const { name, code, headId } = planned.value;
   // The batch cannot read one write's result in the next, so the department id is taken first.
   const next = await getDb().execute(sql`select nextval(pg_get_serial_sequence('departments', 'id'))::int as id`);
   const departmentId = Number((next.rows[0] as { id: number }).id);
@@ -1527,7 +1527,8 @@ async function createDepartment(identity: DashboardIdentity, input: unknown): Pr
   // Read for every role change (issue #789), though no team address can move with a department not made yet.
   const reroutesAsked = await automaticTeamAddressReroutes([handedTo({ kind: "department-head", departmentId }, headId)]);
   await runAuditBatch((db) => [
-    db.insert(departments).values({ id: departmentId, name, code, kind }),
+    // No kind (issue #856): the column keeps its default until follow-up #855 drops it.
+    db.insert(departments).values({ id: departmentId, name, code }),
     db.insert(roles).values({ memberId: headId, deptId: departmentId, divisionId: null, title: defaultHeadTitle(name), type: "head", startedAt: today() }),
     ...aliasAsked(db),
     ...reroutesAsked(db),
@@ -1537,9 +1538,10 @@ async function createDepartment(identity: DashboardIdentity, input: unknown): Pr
 }
 
 /**
- * Edit department's Save changes (board 77e): the name, the code and the
- * kind. A new name reaches each head title still at the old default ("Head
- * of <old name>"); a head title renamed by hand is kept (issue #625).
+ * Edit department's Save changes (board 77e): the name and the code; the
+ * kind is no longer written (issue #856). A new name reaches each head title
+ * still at the old default ("Head of <old name>"); a head title renamed by
+ * hand is kept (issue #625).
  */
 async function saveDepartment(identity: DashboardIdentity, departmentId: number, input: unknown): Promise<WriteResult<null>> {
   const checked = checkDepartmentSave(input);
@@ -1550,7 +1552,7 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
   const headIds = [...new Set(snapshot.roles.filter((r) => r.leaved_at === null && isHeadRow(r)).map((r) => r.member_id))];
   const planned = planDepartmentSave({ actor, org: snapshot.org, departmentId, save: checked.value, team: teamPeopleOf(snapshot), headIds });
   if (!planned.ok) return refused(planned.error);
-  const { name, code, kind, nameChanged, head } = planned.value;
+  const { name, code, nameChanged, head } = planned.value;
   const oldName = snapshot.org.departments.find((d) => d.id === departmentId)?.name ?? null;
   const on = today();
   const stepping = head?.steppingDown ?? null;
@@ -1568,7 +1570,7 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
   await runAuditBatch((db) => [
     db
       .update(departments)
-      .set({ name, code, kind })
+      .set({ name, code })
       .where(and(eq(departments.id, departmentId), isNull(departments.closedAt))),
     ...(nameChanged && oldName !== null
       ? [

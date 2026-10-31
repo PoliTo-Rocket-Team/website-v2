@@ -17,8 +17,8 @@ import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { checkPhotoUpload, PHOTO_GONE, type CheckedPhoto } from "@/lib/outreach-photos";
 import { advisorsAfter, advisorWritesOf, type AdvisorItem, type AdvisorWrite } from "./advisors";
-import { layerPhotos, NO_TEAM_LAYER, textOf, type OwnsUpload } from "./team-layer";
-import { layoutPageOf, layoutPhotos, resolveLayout, snapshot, withLayoutPhotos, withoutGoneSeats, type TeamLayout } from "./team-layout";
+import { layerPhotos, textOf, type OwnsUpload } from "./team-layer";
+import { layoutPageOf, layoutPhotos, resolveLayout, teamRecordLayout, withLayoutPhotos, withoutGoneSeats, type TeamLayout } from "./team-layout";
 import {
   contentOf,
   layoutOf,
@@ -230,7 +230,9 @@ export interface TeamPageEditor {
   /**
    * Reset to team (board 80h): a draft whose layout is rebuilt from the
    * team's roles as they are now (the snapshot function, ADR 0019 Decision
-   * 7), keeping the intro text, its figures and the group photo.
+   * 7), keeping the intro text, its figures and the group photo, and the
+   * stored group list with each department's group (`teamRecordLayout`,
+   * issue #856).
    */
   reset(): Promise<WriteResult<Versioned<TeamPageContent>>>;
   /** A photo cropped in a panel's Replace photo, stored at once; answers the src a save puts on the person or advisor. */
@@ -328,7 +330,8 @@ export function teamPageEditor(
       const before = photosInUse(await store.layer.list(), advisors);
       const result = await editor.save(await documentId(), "save-draft", async (current) => {
         const stored = current ?? NO_STORED_TEAM_PAGE;
-        return written(savedTeamPage(stored, { layout: snapshot(teamRoles, NO_TEAM_LAYER).layout, text: textOf(stored.layer) }));
+        // The stored group list and each department's group stay (issue #856).
+        return written(savedTeamPage(stored, { layout: teamRecordLayout(teamRoles, layoutOf(teamRoles, stored)), text: textOf(stored.layer) }));
       });
       if (!result.ok) return result;
       await photos.drop(photosNoLongerUsed(before, photosInUse(await store.layer.list(), advisors)));

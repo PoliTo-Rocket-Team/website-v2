@@ -9,13 +9,14 @@ import {
   parseTeamLayout,
   resolveLayout,
   snapshot,
+  teamRecordLayout,
   withoutGoneSeats,
   withTeamSeatMoved,
   type TeamLayout,
 } from "./team-layout";
 import type { TeamPerson } from "./team-person";
 import { team } from "./team";
-import { teamBuildOf, teamPageOf, type TeamRoles } from "./team-roles";
+import { teamBuildOf, teamPageOf, todaysDrawnTeam, type TeamRoles } from "./team-roles";
 import type { TeamPage } from "./types";
 
 // The Team page layout (issue #849): the snapshot of today's page draws the
@@ -178,7 +179,7 @@ function seatsOf(page: TeamPage | null) {
 /** What the page draws today: the roles build with the layer laid on. */
 function todaysPage(r: TeamRoles, l: TeamPageLayer): TeamPage | null {
   const build = teamBuildOf(r);
-  return teamPageOf(build, applyLayer(build, l), team);
+  return teamPageOf(build, todaysDrawnTeam(applyLayer(build, l)), team);
 }
 
 const seededRoles = teamRolesOf(SEED_DATA);
@@ -373,6 +374,7 @@ test("a page seat whose bound seat no longer exists is not drawn, and the drop r
   assert.deepEqual(dropped, {
     leader: layout.leader,
     arc: layout.arc.filter((s) => s.binding.kind !== "team-seat"),
+    groups: layout.groups,
     departments: layout.departments
       .filter((b) => b.head.binding.kind !== "department-head" || b.head.binding.departmentId !== 2)
       .map((b) => ({ ...b, leads: b.leads.filter((s) => s.binding.kind !== "division-lead" || s.binding.divisionId !== 11) })),
@@ -381,9 +383,9 @@ test("a page seat whose bound seat no longer exists is not drawn, and the drop r
   assert.deepEqual(resolveLayout(dropped, gone).core, resolved.core);
 });
 
-test("the model has no vacant or unbound state: a layout is its seats, a seat its binding and overrides", () => {
+test("the model has no vacant or unbound state: a layout is its seats and groups, a seat its binding and overrides", () => {
   const { layout } = snapshot(roles(), LAYERS["every edit"]);
-  assert.deepEqual(Object.keys(layout).sort(), ["arc", "departments", "leader"]);
+  assert.deepEqual(Object.keys(layout).sort(), ["arc", "departments", "groups", "leader"]);
   for (const seat of [layout.leader!, ...layout.arc, ...layout.departments.flatMap((b) => [b.head, ...b.leads])]) {
     assert.deepEqual(Object.keys(seat).sort(), ["binding", "id", "overrides"]);
   }
@@ -431,10 +433,122 @@ test("the validator refuses anything this code could not have written", () => {
     "a photo off any store": { ...layout, arc: [{ ...seat, overrides: { photo: "http://example.com/a.jpg" } }] },
     "a LinkedIn URL for a handle": { ...layout, arc: [{ ...seat, overrides: { linkedin: "linkedin.com/in/x" } }] },
     "an override this code never sets": { ...layout, arc: [{ ...seat, overrides: { hidden: true } }] },
-    "a department of no known kind": { ...layout, departments: [{ ...layout.departments[0], kind: "research" }] },
+    "a department with a kind beside its group": { ...layout, departments: [{ ...layout.departments[0], kind: "technical" }] },
     "a department with no head": { ...layout, departments: [{ ...layout.departments[0], head: null }] },
+    "a department with no group": { ...layout, departments: [{ ...layout.departments[0], group: undefined }] },
+    "a department in a group the list lacks": { ...layout, departments: [{ ...layout.departments[0], group: 99 }] },
+    "a department that draws its leads no known way": { ...layout, departments: [{ ...layout.departments[0], leadsDrawn: "around" }] },
+    "no group list": { leader: layout.leader, arc: layout.arc, departments: layout.departments },
+    "no group at all": { ...layout, groups: [], departments: [] },
+    "a group id used twice": { ...layout, groups: [layout.groups[0], { ...layout.groups[1], id: layout.groups[0].id }] },
+    "a blank group name": { ...layout, groups: [{ ...layout.groups[0], name: " " }, layout.groups[1]] },
+    "a kind on a stored block with a group list": { ...layout, departments: layout.departments.map(({ group: _g, leadsDrawn: _l, ...b }) => ({ ...b, kind: "technical" })) },
   };
   for (const [name, value] of Object.entries(malformed)) assert.equal(parseTeamLayout(value), null, name);
+});
+
+// Department groups (issue #856): the layout's own groups replace the kind.
+
+/** The slides a page draws, by heading and the names on each. */
+const slidesOf = (page: TeamPage) => page.departments.groups.map((g) => [g.name, g.members.map((m) => m.name)]);
+
+test("the snapshot of the seeded team holds two groups, Technical Departments then Operations, each department where its kind puts it, and draws the same slides", () => {
+  const { layout } = snapshot(seededRoles, seededLayer!);
+  assert.deepEqual(
+    layout.groups.map((g) => g.name),
+    ["Technical Departments", "Operations"],
+  );
+  const kindOf = new Map(seededRoles.org.departments.map((d) => [d.id, d.kind]));
+  for (const block of layout.departments) {
+    if (block.head.binding.kind !== "department-head") continue;
+    const kind = kindOf.get(block.head.binding.departmentId);
+    assert.equal(block.group, layout.groups[kind === "operations" ? 1 : 0].id, block.name);
+    assert.equal(block.leadsDrawn, kind === "operations" ? "beside" : "under", block.name);
+  }
+  assert.ok(layout.departments.some((b) => b.group === layout.groups[1].id), "the seed has an Operations department");
+  assert.deepEqual(slidesOf(layoutPageOf(seededRoles, layout, seededLayer!, team)), slidesOf(todaysPage(seededRoles, seededLayer!)!));
+});
+
+test("three or more groups draw in stored order with stored names; an empty group draws nothing", () => {
+  const { layout } = snapshot(roles(), NO_TEAM_LAYER);
+  const [aero, recovery, logistics] = layout.departments;
+  const grouped: TeamLayout = {
+    ...layout,
+    groups: [
+      { id: 7, name: "Ground" },
+      { id: 8, name: "Nobody here" },
+      { id: 9, name: "Flight" },
+      { id: 3, name: "Air" },
+    ],
+    departments: [
+      { ...aero, group: 3 },
+      { ...recovery, group: 9 },
+      { ...logistics, group: 7 },
+    ],
+  };
+  assert.deepEqual(parseTeamLayout(JSON.parse(JSON.stringify(grouped))), grouped);
+  assert.deepEqual(slidesOf(layoutPageOf(roles(), grouped, NO_TEAM_LAYER, team)), [
+    ["Ground", ["Rocco Bellon", "Elena Ferraro", "Davide Conti", "Luca Ferri"]],
+    ["Flight", ["Irene Galli"]],
+    ["Air", ["Chiara Rinaldi"]],
+  ]);
+  const flight = layoutPageOf(roles(), grouped, NO_TEAM_LAYER, team).departments.groups[1]?.members[0];
+  assert.ok(flight?.kind === "head" && flight.leads.map((l) => l.name).join() === "Simone Testa", "a block drawing its leads under its head keeps them under");
+});
+
+test("a group fills slides of up to ten places, and the carousel keeps five slides", () => {
+  const departments = Array.from({ length: 56 }, (_, i) => ({ id: 1000 + i, name: `Department ${i}`, kind: "technical" as const }));
+  const many = roles(
+    [...people, ...departments.map((d, i) => person(2000 + i, `Head ${String(i).padStart(2, "0")}`, head(d.id)))],
+    { departments: [...org.departments, ...departments], divisions: [...org.divisions, ...departments.map((d) => ({ id: d.id, name: `${d.name} Division`, departmentId: d.id }))] },
+  );
+  const { layout } = snapshot(many, NO_TEAM_LAYER);
+  const split: TeamLayout = { ...layout, groups: [...layout.groups, { id: 3, name: "Third" }], departments: layout.departments.map((b, i) => ({ ...b, group: i % 2 === 0 ? 3 : b.group })) };
+  const page = layoutPageOf(many, split, NO_TEAM_LAYER, team);
+  assert.equal(page.departments.groups.length, 5);
+  assert.ok(page.departments.groups.every((g) => g.members.length <= 10));
+});
+
+test("a layout stored before groups reads as today's two groups and saves with the group list", () => {
+  const { layout } = snapshot(roles(), LAYERS["every edit"]);
+  const kindOf = (groupId: number) => (groupId === layout.groups[1].id ? "operations" : "technical");
+  const stored = { leader: layout.leader, arc: layout.arc, departments: layout.departments.map(({ group, leadsDrawn: _l, ...b }) => ({ ...b, kind: kindOf(group) })) };
+  const read = parseTeamLayout(JSON.parse(JSON.stringify(stored)));
+  assert.deepEqual(read, layout, "the same groups and the same assignment");
+  assert.deepEqual(Object.keys(JSON.parse(JSON.stringify(read))).sort(), ["arc", "departments", "groups", "leader"], "the next save writes the group list");
+});
+
+test("apart from the snapshot, nothing on the Team page reads a department's kind: a stored layout draws, resets and counts the same whatever kind the team record gives", () => {
+  const { layout } = snapshot(roles(), LAYERS["every edit"]);
+  const flipped = roles(people, { ...org, departments: org.departments.map((d) => ({ ...d, kind: d.kind === "technical" ? ("operations" as const) : ("technical" as const) })) });
+  assert.deepEqual(layoutPageOf(flipped, layout, LAYERS["every edit"], team), layoutPageOf(roles(), layout, LAYERS["every edit"], team));
+  assert.deepEqual(resolveLayout(layout, flipped), resolveLayout(layout, roles()));
+  assert.deepEqual(teamRecordLayout(flipped, layout), teamRecordLayout(roles(), layout));
+  assert.deepEqual(withoutGoneSeats(layout, flipped), withoutGoneSeats(layout, roles()));
+});
+
+test("Reset to team keeps the group list and each department's group, and puts a department new to the page under the first group", () => {
+  const { layout } = snapshot(roles(), NO_TEAM_LAYER);
+  const [aero, recovery] = layout.departments;
+  const kept: TeamLayout = {
+    ...layout,
+    groups: [{ id: 5, name: "Flight" }, ...layout.groups],
+    departments: [
+      { ...aero, group: 5, leadsDrawn: "beside" },
+      { ...recovery, group: layout.groups[1].id },
+    ],
+  };
+  const reset = teamRecordLayout(roles(), kept);
+  assert.deepEqual(reset.groups, kept.groups);
+  assert.deepEqual(
+    reset.departments.map((b) => [b.name, b.group, b.leadsDrawn]),
+    [
+      ["Aerodynamics", 5, "beside"],
+      ["Recovery", layout.groups[1].id, "under"],
+      ["Logistics", 5, "under"],
+    ],
+  );
+  assert.deepEqual(parseTeamLayout(JSON.parse(JSON.stringify(reset))), reset);
 });
 
 test("layoutPhotos lists the photos layerPhotos lists for the same edits", () => {

@@ -18,9 +18,12 @@ import {
   ARC_LEADERS,
   isLinkedinHandle,
   isPagePhoto,
+  LEADS_DRAWN,
+  NO_TEAM_LAYER,
   TEAM_PAGE_TEXT_MAX,
   type AddedPerson,
   type AddedRef,
+  type LeadsDrawn,
   type PersonEdit,
   type Shown,
   type Spot,
@@ -29,7 +32,7 @@ import {
   type TeamPageText,
 } from "./team-layer";
 import { byName, headSeatsOf, personOf, teamSeatsOf, titleOf, type TeamPerson } from "./team-person";
-import { carouselOf, coreMembersOf, drawnTeamPage, teamBuildOf, type TeamRoles } from "./team-roles";
+import { carouselOf, coreMembersOf, drawnTeamPage, teamBuildOf, todaysGroupOf, TODAYS_GROUPS, type TeamRoles } from "./team-roles";
 import type { DepartmentHead, DivisionLead, Leader, Member, Person, PersonPhoto, TeamPage } from "./types";
 
 // The Team page's own layout (epic #835, issue #849): the places the page
@@ -46,7 +49,10 @@ import type { DepartmentHead, DivisionLead, Leader, Member, Person, PersonPhoto,
 // figures and the group photo stay in the visual layer (./team-layer.ts).
 // Pure. Each stored layer version keeps its layout beside it, and the public
 // page draws it (./team-page-stored.ts, issue #850); the Team page editor
-// edits it (./team-page-edit.ts, ./team-page-add.ts, issue #851).
+// edits it (./team-page-edit.ts, ./team-page-add.ts, issue #851). The
+// departments carousel draws the layout's own department groups, in their
+// order and by their names (issue #856, #846 R2.3 and R3.1): a department's
+// kind on the team record is read only to snapshot today's two groups.
 
 /**
  * The seat of the team record a page seat shows the holder of. It reuses the
@@ -91,19 +97,36 @@ export type SeatOverrides = {
 /** A place the Team page shows: its id in the layout, the seat or person it is bound to and what it overrides. */
 export type PageSeat = { readonly id: number; readonly binding: PlaceBinding; readonly overrides: SeatOverrides };
 
-/** A department block: the name it shows, the carousel slide its head sits on, its head and its division lead rows in order. */
+/**
+ * A department group (issue #856, #846 R2.3): a heading of the departments
+ * carousel, named by the editor. Its place in the layout's list is its
+ * position; its id is the one its blocks name, unique among the groups.
+ */
+export type LayoutGroup = { readonly id: number; readonly name: string };
+
+/**
+ * A department block: the name it shows, the group it sits in, how it draws
+ * its division leads (under its head or beside it), its head and its division
+ * lead rows in order.
+ */
 export type DepartmentBlock = {
   readonly id: number;
   readonly name: string;
-  readonly kind: DepartmentKind;
+  readonly group: number;
+  readonly leadsDrawn: LeadsDrawn;
   readonly head: PageSeat;
   readonly leads: readonly PageSeat[];
 };
 
-/** The Team page layout: the team leader's seat, the arc in reading order (at most eight seats), the department blocks in order. */
+/**
+ * The Team page layout: the team leader's seat, the arc in reading order (at
+ * most eight seats), the department groups in order (at least one), and the
+ * department blocks in order, each in one of those groups.
+ */
 export type TeamLayout = {
   readonly leader: PageSeat | null;
   readonly arc: readonly PageSeat[];
+  readonly groups: readonly LayoutGroup[];
   readonly departments: readonly DepartmentBlock[];
 };
 
@@ -218,6 +241,7 @@ export function withoutGoneSeats(layout: TeamLayout, roles: TeamRoles): TeamLayo
   return {
     leader: layout.leader !== null && keeps(layout.leader) ? layout.leader : null,
     arc: layout.arc.filter(keeps),
+    groups: layout.groups,
     departments: layout.departments.flatMap((block) => (keeps(block.head) ? [{ ...block, leads: block.leads.filter(keeps) }] : [])),
   };
 }
@@ -236,6 +260,7 @@ export function withTeamSeatMoved(layout: TeamLayout, from: number, to: number):
   const moved = (seat: PageSeat): PageSeat =>
     seat.binding.kind === "team-seat" && seat.binding.roleId === from ? { ...seat, binding: { kind: "team-seat", roleId: to } } : seat;
   return {
+    ...layout,
     leader: layout.leader === null ? null : moved(layout.leader),
     arc: layout.arc.map(moved),
     departments: layout.departments.map((block) => ({ ...block, head: moved(block.head), leads: block.leads.map(moved) })),
@@ -294,6 +319,7 @@ export function withLayoutPhotos(layout: TeamLayout, swap: (photo: PersonPhoto) 
   const on = (seat: PageSeat): PageSeat =>
     seat.overrides.photo === undefined ? seat : { ...seat, overrides: { ...seat.overrides, photo: swap(seat.overrides.photo) } };
   return {
+    ...layout,
     leader: layout.leader === null ? null : on(layout.leader),
     arc: layout.arc.map(on),
     departments: layout.departments.map((block) => ({ ...block, head: on(block.head), leads: block.leads.map(on) })),
@@ -305,19 +331,32 @@ export function withLayoutPhotos(layout: TeamLayout, swap: (photo: PersonPhoto) 
 export type ResolvedDepartment = {
   readonly at: number;
   readonly name: string;
-  readonly kind: DepartmentKind;
+  /** The id of the group it sits in. */
+  readonly group: number;
+  readonly leadsDrawn: LeadsDrawn;
   /** The head, or none while the head seat has no holder: the carousel then draws nothing for the block. */
   readonly heads: readonly Shown<number, DepartmentHead>[];
   readonly leads: readonly Shown<number, DivisionLead>[];
 };
 
+/** A department group as a layout draws it: its id, its name and its blocks in order. */
+export type ResolvedGroup = { readonly id: number; readonly name: string; readonly departments: readonly ResolvedDepartment[] };
+
 /** What a layout draws, each place keyed by its page seat's id, and the core members. */
 export type ResolvedTeam = {
   readonly leader: Leader | null;
   readonly leaders: readonly Shown<number, Leader>[];
+  /** Every block in layout order. */
   readonly departments: readonly ResolvedDepartment[];
+  /** The groups in order, each with its blocks: what the carousel draws. */
+  readonly groups: readonly ResolvedGroup[];
   readonly core: readonly Member[];
 };
+
+/** `departments` under the groups of `groups` they name, in group order; each block keeps its order. */
+function groupedOf<D extends { readonly group: number }>(groups: readonly LayoutGroup[], departments: readonly D[]) {
+  return groups.map((group) => ({ id: group.id, name: group.name, departments: departments.filter((d) => d.group === group.id) }));
+}
 
 type Placed<T> = Shown<number, T> & { readonly person: TeamPerson };
 
@@ -364,16 +403,18 @@ export function resolveLayout(layout: TeamLayout, roles: TeamRoles): ResolvedTea
       head === null
         ? []
         : [{ at: block.head.id, person: head.person, shown: { kind: "head", ...head.shown, role: head.role, leads: leads.map((l) => l.shown) } }];
-    return { at: block.id, name: block.name, kind: block.kind, heads, leads };
+    return { at: block.id, name: block.name, group: block.group, leadsDrawn: block.leadsDrawn, heads, leads };
   });
-  const carousel = carouselOf(departments).flatMap((slide) =>
+  const carousel = carouselOf(groupedOf(layout.groups, departments)).flatMap((slide) =>
     slide.places.flatMap((place) => (place.kind === "head" ? [place.head.person, ...place.leads.map((l) => l.person)] : [place.lead.person])),
   );
   const shown = new Set([...(leader === null ? [] : [leader.person]), ...arc.map((l) => l.person), ...carousel].map((p) => p.id));
+  const resolved = departments.map((d): ResolvedDepartment => ({ ...d, heads: d.heads.map(unplaced), leads: d.leads.map(unplaced) }));
   return {
     leader: leader === null ? null : { ...leader.shown, role: leader.role },
     leaders: arc.map(unplaced),
-    departments: departments.map((d) => ({ ...d, heads: d.heads.map(unplaced), leads: d.leads.map(unplaced) })),
+    departments: resolved,
+    groups: groupedOf(layout.groups, resolved),
     core: coreMembersOf(roles.people, shown),
   };
 }
@@ -543,7 +584,9 @@ export function snapshot(roles: TeamRoles, layer: TeamPageLayer): Snapshot {
       const added = addedLeads.find((a) => `added:${a.id}` === at) ?? missing(at);
       return pageSeat(at, memberOf(added.person) ?? missing(at), null, addedOverrides(added, added.division), drawnLead.division);
     });
-    return [{ id, name: department.name, kind: department.kind, head: headSeat, leads }];
+    // Today's grouping, by the department's kind: the one read of it (`TODAYS_GROUPS`, issue #856).
+    const today = todaysGroupOf(department.kind);
+    return [{ id, name: department.name, group: TODAYS_GROUP_IDS[today.kind], leadsDrawn: today.leadsDrawn, head: headSeat, leads }];
   });
 
   // What the layer holds that no page seat carries.
@@ -563,7 +606,43 @@ export function snapshot(roles: TeamRoles, layer: TeamPageLayer): Snapshot {
     added.leads.forEach(addedGap);
   }
 
-  return { layout: { leader, arc, departments }, left };
+  return { layout: { leader, arc, groups: todaysLayoutGroups(), departments }, left };
+}
+
+/** The ids today's two groups take in a first layout: their place in `TODAYS_GROUPS`, from 1. */
+const TODAYS_GROUP_IDS: Readonly<Record<DepartmentKind, number>> = Object.fromEntries(TODAYS_GROUPS.map((g, i) => [g.kind, i + 1])) as Record<
+  DepartmentKind,
+  number
+>;
+
+/** Today's two groups as a first layout names them, "Technical Departments" then "Operations" (`TODAYS_GROUPS`). */
+function todaysLayoutGroups(): LayoutGroup[] {
+  return TODAYS_GROUPS.map((g) => ({ id: TODAYS_GROUP_IDS[g.kind], name: g.name }));
+}
+
+/** Whether two blocks show the same department: their heads bound alike. */
+const sameDepartment = (a: DepartmentBlock, b: DepartmentBlock) => sameBinding(a.head.binding, b.head.binding);
+
+/**
+ * The layout Reset to team writes (board 80h; issue #856): the team record's
+ * places as the snapshot builds them with no edit, under `kept`'s group list,
+ * which it keeps. Each department `kept` shows stays in its group there and
+ * draws its leads as there; a department new to the page goes under the
+ * first group, its leads under its head. So a reset never reads a
+ * department's kind for a group.
+ */
+export function teamRecordLayout(roles: TeamRoles, kept: TeamLayout): TeamLayout {
+  const rebuilt = snapshot(roles, NO_TEAM_LAYER).layout;
+  const [first] = kept.groups;
+  if (first === undefined) return rebuilt;
+  return {
+    ...rebuilt,
+    groups: kept.groups,
+    departments: rebuilt.departments.map((block) => {
+      const own = kept.departments.find((k) => sameDepartment(k, block));
+      return { ...block, group: own?.group ?? first.id, leadsDrawn: own?.leadsDrawn ?? "under" };
+    }),
+  };
 }
 
 // A layout read back from storage or sent by the browser: anything this code
@@ -592,15 +671,36 @@ const seatSchema = z.strictObject({
   }),
 });
 
+/** The most department groups a layout holds. */
+export const LAYOUT_GROUPS_MAX = 50;
+
+const blockParts = { id, name: text, head: seatSchema, leads: z.array(seatSchema).max(200) };
+
 const layoutSchema = z.strictObject({
   leader: seatSchema.nullable(),
   arc: z.array(seatSchema).max(ARC_LEADERS),
-  departments: z
-    .array(z.strictObject({ id, name: text, kind: z.enum(DEPARTMENT_KINDS), head: seatSchema, leads: z.array(seatSchema).max(200) }))
-    .max(200),
+  groups: z.array(z.strictObject({ id, name: text })).min(1).max(LAYOUT_GROUPS_MAX),
+  departments: z.array(z.strictObject({ ...blockParts, group: id, leadsDrawn: z.enum(LEADS_DRAWN) })).max(200),
 });
 
-/** Every id the layout holds, page seats and blocks in one list: one id names one thing. */
+/** A layout stored before department groups (issue #856): each block carries today's kind, and there is no group list. */
+const kindLayoutSchema = z.strictObject({
+  leader: seatSchema.nullable(),
+  arc: z.array(seatSchema).max(ARC_LEADERS),
+  departments: z.array(z.strictObject({ ...blockParts, kind: z.enum(DEPARTMENT_KINDS) })).max(200),
+});
+
+/** A layout stored before department groups, read as today's two groups with each block where its kind put it; the next save writes the group list. */
+function groupedLayoutOf(stored: z.infer<typeof kindLayoutSchema>): TeamLayout {
+  return {
+    leader: stored.leader,
+    arc: stored.arc,
+    groups: todaysLayoutGroups(),
+    departments: stored.departments.map(({ kind, ...block }) => ({ ...block, group: TODAYS_GROUP_IDS[kind], leadsDrawn: todaysGroupOf(kind).leadsDrawn })),
+  };
+}
+
+/** Every id the layout holds, page seats and blocks in one list: one id names one thing. Group ids are a list of their own. */
 function idsOf(layout: TeamLayout): number[] {
   return [
     ...(layout.leader === null ? [] : [layout.leader.id]),
@@ -609,11 +709,25 @@ function idsOf(layout: TeamLayout): number[] {
   ];
 }
 
-/** `value` as a layout this code could have written: every part present and well formed, every id used once; null for anything else. */
+const unique = (ids: readonly number[]) => new Set(ids).size === ids.length;
+
+/**
+ * `value` as a layout this code could have written: every part present and
+ * well formed, every id used once, at least one group, and each block in a
+ * group the list holds; null for anything else. A layout stored before
+ * department groups reads as today's two groups (`groupedLayoutOf`).
+ */
 export function parseTeamLayout(value: unknown): TeamLayout | null {
   const parsed = layoutSchema.safeParse(value);
-  if (!parsed.success) return null;
-  const layout: TeamLayout = parsed.data;
-  const ids = idsOf(layout);
-  return new Set(ids).size === ids.length ? layout : null;
+  const kinded = parsed.success ? null : kindLayoutSchema.safeParse(value);
+  const layout: TeamLayout | null = parsed.success ? parsed.data : kinded?.success ? groupedLayoutOf(kinded.data) : null;
+  if (layout === null) return null;
+  const groups = new Set(layout.groups.map((g) => g.id));
+  const grouped = layout.departments.every((b) => groups.has(b.group));
+  return unique(idsOf(layout)) && groups.size === layout.groups.length && grouped ? layout : null;
+}
+
+/** The id the next group the editor adds takes: after every group id the layout holds. */
+export function nextGroupId(layout: TeamLayout): number {
+  return layout.groups.reduce((last, g) => Math.max(last, g.id), 0) + 1;
 }
