@@ -295,6 +295,20 @@ export interface DashboardData {
   /** Board 55: a team member's own profile. */
   myProfile(): Promise<MyProfile | null>;
   saveLinkedin(text: string): Promise<WriteResult<string | null>>;
+  /**
+   * The member's own PRT email on My profile (issue #921), checked by
+   * `planOwnPrtEmailEdit` (./own-prt-email.ts): a team-domain address nobody
+   * else holds, in any letter case; an unchanged one always saves. Their open
+   * request closes with it. Answers the PRT email as saved.
+   */
+  savePrtEmail(text: string): Promise<WriteResult<string | null>>;
+  /**
+   * Request my PRT email on My profile (issue #921): the member asks for
+   * themselves, checked by `checkAliasRequest` and `planOwnAliasRequest`;
+   * refused while their PRT email is set or a request is open, and for an
+   * address someone already holds. The approvers answer it as any request.
+   */
+  requestOwnAlias(address: string): Promise<WriteResult<null>>;
   /** A new photo, already cropped square by the browser, or null to remove it. */
   setPhoto(photo: Upload | null): Promise<WriteResult<null>>;
   /**

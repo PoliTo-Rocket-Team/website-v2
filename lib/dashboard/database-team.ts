@@ -9,6 +9,7 @@ import { getDb } from "@/db/client";
 import {
   applications,
   applyPositions,
+  betterAuthUsers,
   dashboardNotices,
   departments,
   divisions,
@@ -764,6 +765,30 @@ function memberRole(memberId: number, divisionId: number, title: string | null) 
   return { memberId, divisionId, title: title ?? "", type: "core" as const, startedAt: today() };
 }
 
+/** A `users` row's id, named with its table, so the subquery on the login table cannot read it as its own. */
+const userRowId = sql`${users}.${sql.identifier(users.id.name)}`;
+
+/**
+ * The open `users` row Add member attaches the join to, for an email (issue
+ * #930). Closed rows are skipped. A row with a member comes first, then a row
+ * a login holds (a `better_auth."user"` with its id), so the join lands where
+ * the person signs in when an older same-email record sits beside their
+ * login's row. The id breaks any remaining tie, so the same rows always give
+ * the same pick.
+ */
+function accountForAdd(email: string) {
+  return getDb()
+    .select({ id: users.id, member: users.member })
+    .from(users)
+    .where(and(sql`lower(${users.email}) = ${email}`, isNull(users.deletedAt)))
+    .orderBy(
+      sql`${users.member} is null`,
+      sql`not exists (select 1 from ${betterAuthUsers} as login where login.id = ${userRowId})`,
+      asc(users.id),
+    )
+    .limit(1);
+}
+
 /**
  * Add member (boards 61h, 61h2; Owner decisions on #231). Someone on the team
  * gets a role in the division at once, keeps every other role and signs no
@@ -778,15 +803,7 @@ async function addMember(identity: DashboardIdentity, input: unknown): Promise<W
   const add = checked.value;
   if ((await actingOn(identity, add.divisionId)) === null) return refused("You can add people only to a division your Members page lets you change.");
 
-  const [account] =
-    add.kind === "email"
-      ? await getDb()
-          .select({ id: users.id, member: users.member })
-          .from(users)
-          .where(sql`lower(${users.email}) = ${add.email}`)
-          .orderBy(sql`${users.member} is null`)
-          .limit(1)
-      : [];
+  const [account] = add.kind === "email" ? await accountForAdd(add.email) : [];
   const memberId = add.kind === "member" ? add.personId : (account?.member ?? null);
   const active = memberId === null ? [] : await activeRoles(memberId);
   if (add.kind === "member" && active.length === 0) return refused("They are not on the team.");
@@ -1115,7 +1132,9 @@ async function openedPhoneOf(target: DetailsTarget): Promise<string> {
  * lead reach everyone, a head their department's people, a division lead or a
  * Members grant at Can edit the people in the divisions it covers. `divisionId`
  * names the division whose role title the form sets, which the viewer must
- * reach and the person be in. Null is someone in no division the viewer
+ * reach and the person be in; each of the input's `divisionTitles` names
+ * another division of theirs, checked the same way, and its title goes to that
+ * division's rows only (issue #911). Null is someone in no division the viewer
  * reaches: only the team (the team leader, full access) edits them, and the
  * title is their seat's (`titledSeatOf`: the team leader's, a head's or a
  * team-level seat's row), never blank (issue #626). It writes `roles.title`
@@ -1134,12 +1153,14 @@ async function saveMemberDetails(
 ): Promise<WriteResult<null>> {
   const checked = checkMemberEdit(input, await openedPhoneOf(target));
   if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
-  const { title, details, name, signInEmail } = checked.value;
+  const { title, divisionTitles, details, name, signInEmail } = checked.value;
   const columns = columnsFromMemberDetails(details);
 
   if (target.kind === "waiting") {
     // Someone waiting keeps the name they were added with; only Edit details renames, once they are on the team.
     if (name !== null) return refused("Their name is set once they join.");
+    // They wait for one division, so theirs is the one title.
+    if (divisionTitles.length > 0) return refused(NOT_IN_SCOPE);
     if (divisionId === null || (await actingOn(identity, divisionId)) === null) return refused(NOT_IN_SCOPE);
     const [join] = await getDb()
       .select({ user_id: teamJoins.userId })
@@ -1174,6 +1195,13 @@ async function saveMemberDetails(
     titled = divisionRowsIn(active, divisionId).map((r) => r.id);
     if (titled.length === 0 || !reachesDivision(actor, divisionId, org)) return refused(NOT_IN_SCOPE);
   }
+  // Each other division row's title (issue #911), checked as the form's own one is: one out of reach refuses the whole save.
+  const rowTitles: { readonly ids: number[]; readonly title: string | null }[] = [];
+  for (const row of divisionTitles) {
+    const ids = divisionRowsIn(active, row.divisionId).map((r) => r.id);
+    if (row.divisionId === divisionId || ids.length === 0 || !reachesDivision(actor, row.divisionId, org)) return refused(NOT_IN_SCOPE);
+    rowTitles.push({ ids, title: row.title });
+  }
   const correction = await planCorrection(identity, signInEmail, eq(users.member, target.id));
   if (correction.kind === "refused") return refused(correction.error);
   // The record can move onto a login whose own fields the form never showed (issue #864), so the user columns written are
@@ -1199,6 +1227,12 @@ async function saveMemberDetails(
               .set({ title: title ?? "" })
               .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
           ]),
+      ...rowTitles.map((row) =>
+        db
+          .update(roles)
+          .set({ title: row.title ?? "" })
+          .where(and(inArray(roles.id, row.ids), isNull(roles.leavedAt))),
+      ),
     ]);
   } catch (error) {
     if (isGuardFailure(error)) return refused(SIGN_IN_EMAIL_REFUSALS.changed);

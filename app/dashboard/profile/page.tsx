@@ -5,7 +5,7 @@ import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { MyProfileView } from "@/components/dashboard/my-profile";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
-import { deleteAccount, leaveTeam, removePhoto, saveDetails, saveLinkedin, sendHandOver, uploadPhoto } from "../actions";
+import { deleteAccount, leaveTeam, removePhoto, requestOwnAlias, saveDetails, saveLinkedin, savePrtEmail, sendHandOver, uploadPhoto } from "../actions";
 
 export const metadata: Metadata = {
   title: "My profile · Dashboard · PoliTo Rocket Team",
@@ -34,6 +34,8 @@ async function LiveProfile() {
       profile={profile}
       alias={alias}
       saveLinkedin={saveLinkedin}
+      savePrtEmail={savePrtEmail}
+      requestOwnAlias={requestOwnAlias}
       uploadPhoto={uploadPhoto}
       removePhoto={removePhoto}
       saveDetails={saveDetails}
