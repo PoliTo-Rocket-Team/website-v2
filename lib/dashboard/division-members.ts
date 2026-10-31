@@ -529,6 +529,12 @@ const title = z
   .nullable()
   .transform((s) => (s === null || s === "" ? null : s));
 
+/** What is wrong with a role title as typed, by the rule every save checks it with; null when it saves. */
+export function roleTitleError(text: string): string | null {
+  const t = title.safeParse(text);
+  return t.success ? null : (t.error.issues[0]?.message ?? "Check the role.");
+}
+
 const id = z.number().int().positive();
 
 /** An email as both sides key a person by it: trimmed and lower case, as Google answers it. */
@@ -660,10 +666,13 @@ export function lookupForAdd(
  * someone waiting: nothing renames them. `signInEmail` is a corrected
  * sign-in email (issue #741), null when the form sent none. `landed` is what
  * an earlier Save of the same open form already wrote, when it sent that:
- * then only what changed since is written (`editedFields`).
+ * then only what changed since is written (`editedFields`). `divisionTitles`
+ * are the titles of their other division rows that Save writes (issue #911):
+ * each goes to that division's role rows only, and one division appears once.
  */
 export type MemberEditDetails = {
   readonly title: string | null;
+  readonly divisionTitles: readonly DivisionTitle[];
   readonly details: MemberDetails;
   readonly name: PersonName | null;
   readonly signInEmail: string | null;
@@ -680,6 +689,14 @@ export type MemberEditDetails = {
  * as when a placement move after Save fails and leaves the form open.
  */
 export type ShownEdit = { readonly details: MemberDetails; readonly name: PersonName | null };
+
+/** One division row's role title as Edit details sends it: blank is none. */
+export type DivisionTitle = { readonly divisionId: number; readonly title: string | null };
+
+const divisionTitlesSchema = z
+  .array(z.object({ divisionId: id, title }))
+  .max(50)
+  .refine((rows) => new Set(rows.map((r) => r.divisionId)).size === rows.length, "Check the roles.");
 
 /** What an earlier Save wrote, as Edit details sends it in its input's `landed`: the names beside the details, as the form sends its own. */
 export type LandedSent = { readonly details: MemberDetails } & Partial<PersonName>;
@@ -732,7 +749,8 @@ export const SEAT_TITLE_REQUIRED = "Enter their role.";
  * whatever its format (issue #887). The browser passes its own; the server
  * reads it, never taking it from the form. `titled` says whether the role
  * title may be blank: a division title may, a seat's is `required` (issue
- * #626).
+ * #626). A refusal names every field in error, not only the first, so the
+ * form's error summary lists them all (issue #911).
  */
 export function checkMemberEdit(
   input: unknown,
@@ -740,25 +758,34 @@ export function checkMemberEdit(
   titled: "optional" | "required" = "optional",
 ): { ok: true; value: MemberEditDetails } | { ok: false; errors: AddMemberErrors } {
   const sent = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+  const errors: AddMemberErrors = {};
   const t = title.safeParse(sent.title ?? "");
-  if (!t.success) return { ok: false, errors: { title: t.error.issues[0]?.message ?? "Check the role." } };
-  if (titled === "required" && t.data === null) return { ok: false, errors: { title: SEAT_TITLE_REQUIRED } };
+  if (!t.success) errors.title = t.error.issues[0]?.message ?? "Check the role.";
+  else if (titled === "required" && t.data === null) errors.title = SEAT_TITLE_REQUIRED;
+  const rows = divisionTitlesSchema.safeParse(sent.divisionTitles ?? []);
+  if (!rows.success) errors.title ??= rows.error.issues[0]?.message ?? "Check the roles.";
+  // A rename sends both names, each trimmed and never blank, so the Team page never shows a nameless person.
+  const renamed = sent.firstName !== undefined || sent.lastName !== undefined;
+  const name = renamed ? renameSchema.safeParse({ firstName: sent.firstName ?? "", lastName: sent.lastName ?? "" }) : null;
+  if (name !== null && !name.success) for (const issue of name.error.issues) errors[issue.path[0] as "firstName" | "lastName"] ??= issue.message;
   const details = parseMemberDetails(sent.details, openedPhone);
-  if (!details.ok) return { ok: false, errors: details.errors };
+  if (!details.ok) Object.assign(errors, details.errors);
   const email = sent.signInEmail === undefined ? null : signInEmailRule.safeParse(sent.signInEmail);
-  if (email !== null && !email.success) return { ok: false, errors: { signInEmail: email.error.issues[0]?.message ?? "Write an email address." } };
-  const signInEmail = email === null ? null : email.data;
+  if (email !== null && !email.success) errors.signInEmail = email.error.issues[0]?.message ?? "Write an email address.";
+  if (Object.keys(errors).length > 0 || !t.success || !rows.success || !details.ok || name?.success === false || email?.success === false) return { ok: false, errors };
   const landed = checkLanded(sent.landed, openedPhone);
   if (landed === "bad") return { ok: false, errors: {} };
-  if (sent.firstName === undefined && sent.lastName === undefined) return { ok: true, value: { title: t.data, details: details.value, name: null, signInEmail, landed } };
-  // A rename sends both names, each trimmed and never blank, so the Team page never shows a nameless person.
-  const name = renameSchema.safeParse({ firstName: sent.firstName ?? "", lastName: sent.lastName ?? "" });
-  if (!name.success) {
-    const errors: AddMemberErrors = {};
-    for (const issue of name.error.issues) errors[issue.path[0] as "firstName" | "lastName"] ??= issue.message;
-    return { ok: false, errors };
-  }
-  return { ok: true, value: { title: t.data, details: details.value, name: name.data, signInEmail, landed } };
+  return {
+    ok: true,
+    value: {
+      title: t.data,
+      divisionTitles: rows.data,
+      details: details.value,
+      name: name === null ? null : name.data,
+      signInEmail: email === null ? null : email.data,
+      landed,
+    },
+  };
 }
 
 /** What an earlier Save landed, checked as the sent values are so the two compare; null when none was sent, "bad" when it does not read. */

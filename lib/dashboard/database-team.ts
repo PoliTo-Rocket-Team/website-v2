@@ -1115,7 +1115,9 @@ async function openedPhoneOf(target: DetailsTarget): Promise<string> {
  * lead reach everyone, a head their department's people, a division lead or a
  * Members grant at Can edit the people in the divisions it covers. `divisionId`
  * names the division whose role title the form sets, which the viewer must
- * reach and the person be in. Null is someone in no division the viewer
+ * reach and the person be in; each of the input's `divisionTitles` names
+ * another division of theirs, checked the same way, and its title goes to that
+ * division's rows only (issue #911). Null is someone in no division the viewer
  * reaches: only the team (the team leader, full access) edits them, and the
  * title is their seat's (`titledSeatOf`: the team leader's, a head's or a
  * team-level seat's row), never blank (issue #626). It writes `roles.title`
@@ -1134,12 +1136,14 @@ async function saveMemberDetails(
 ): Promise<WriteResult<null>> {
   const checked = checkMemberEdit(input, await openedPhoneOf(target));
   if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
-  const { title, details, name, signInEmail } = checked.value;
+  const { title, divisionTitles, details, name, signInEmail } = checked.value;
   const columns = columnsFromMemberDetails(details);
 
   if (target.kind === "waiting") {
     // Someone waiting keeps the name they were added with; only Edit details renames, once they are on the team.
     if (name !== null) return refused("Their name is set once they join.");
+    // They wait for one division, so theirs is the one title.
+    if (divisionTitles.length > 0) return refused(NOT_IN_SCOPE);
     if (divisionId === null || (await actingOn(identity, divisionId)) === null) return refused(NOT_IN_SCOPE);
     const [join] = await getDb()
       .select({ user_id: teamJoins.userId })
@@ -1174,6 +1178,13 @@ async function saveMemberDetails(
     titled = divisionRowsIn(active, divisionId).map((r) => r.id);
     if (titled.length === 0 || !reachesDivision(actor, divisionId, org)) return refused(NOT_IN_SCOPE);
   }
+  // Each other division row's title (issue #911), checked as the form's own one is: one out of reach refuses the whole save.
+  const rowTitles: { readonly ids: number[]; readonly title: string | null }[] = [];
+  for (const row of divisionTitles) {
+    const ids = divisionRowsIn(active, row.divisionId).map((r) => r.id);
+    if (row.divisionId === divisionId || ids.length === 0 || !reachesDivision(actor, row.divisionId, org)) return refused(NOT_IN_SCOPE);
+    rowTitles.push({ ids, title: row.title });
+  }
   const correction = await planCorrection(identity, signInEmail, eq(users.member, target.id));
   if (correction.kind === "refused") return refused(correction.error);
   // The record can move onto a login whose own fields the form never showed (issue #864), so the user columns written are
@@ -1199,6 +1210,12 @@ async function saveMemberDetails(
               .set({ title: title ?? "" })
               .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
           ]),
+      ...rowTitles.map((row) =>
+        db
+          .update(roles)
+          .set({ title: row.title ?? "" })
+          .where(and(inArray(roles.id, row.ids), isNull(roles.leavedAt))),
+      ),
     ]);
   } catch (error) {
     if (isGuardFailure(error)) return refused(SIGN_IN_EMAIL_REFUSALS.changed);
