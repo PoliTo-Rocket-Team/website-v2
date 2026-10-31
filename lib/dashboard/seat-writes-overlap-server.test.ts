@@ -14,8 +14,9 @@ import { addRows, tableRows, testDb } from "./access-matrix/test-database";
 // write to land may succeed; the other is refused and adds no role row.
 // The overlap is laid out by hand: the first call's batch waits until a
 // second call has run from start to end, so the second call's write lands
-// between the first call's read and its write. The seat carries no
-// full-access flag, so no unique index (drizzle/0062) stops a second holder.
+// between the first call's read and its write. No unique index stops a
+// second holder of a seat (drizzle/0077, epic #861), so only the write's own
+// check refuses the late one.
 
 const SINCE = "2025-10-01";
 const HOLDER = 9_401;

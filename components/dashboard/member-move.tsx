@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/compone
 import { findMoveTargets, moveMember } from "@/app/dashboard/team-actions";
 import type { HandOverOutcome } from "@/lib/dashboard/hand-over";
 import { titleOnMove, type MovablePlace, type MoveDepartment, type MoveTo } from "@/lib/dashboard/member-move";
+import { andList } from "@/lib/dashboard/team-structure";
 import { Chips } from "./division-chips";
 import { ConfirmDialog } from "./confirm-dialog";
 import { Field, inputClass } from "./field";
@@ -282,8 +283,8 @@ export function NoHeadNote({ department }: { department: string }) {
   );
 }
 
-/** What a head's move asks on Save (board 98c): the head picked for the department they leave, and what the head they replace does. */
-export type HeadMoveAnswer = { readonly successor: number | null; readonly replaced: HandOverOutcome | null };
+/** What a head's move asks on Save (board 98c): the head picked for the department they leave, the head they replace (issue #872) and what that head does. */
+export type HeadMoveAnswer = { readonly successor: number | null; readonly replacing: number | null; readonly replaced: HandOverOutcome | null };
 
 /**
  * Save's confirm for a head's move (board 98c): their department will have no
@@ -315,13 +316,17 @@ export function HeadMoveConfirm({
   const [leave, setLeave] = useState<"pick" | "empty">("pick");
   const [successor, setSuccessor] = useState<number | null>(null);
   const [replaced, setReplaced] = useState<HandOverOutcome | null>(null);
+  const [replacingId, setReplacingId] = useState<number | null>(null);
   const first = person.split(" ")[0] ?? person;
   const source = departments.find((d) => d.id === from.id);
   const target = to.kind === "head" ? departments.find((d) => d.id === to.departmentId) : undefined;
-  const replacing = target?.head ?? null;
+  const targetHeads = target?.heads ?? [];
+  // They replace one head of it: its only head, or the one picked among several; every other head stays (issue #872).
+  const replacing = targetHeads.length === 1 ? targetHeads[0] : (targetHeads.find((h) => h.id === replacingId) ?? null);
+  const staying = replacing === null ? [] : targetHeads.filter((h) => h.id !== replacing.id).map((h) => h.name);
   const toLabel = moveLabel(departments, to);
   const joins = to.kind === "head" ? `${first} becomes head of ${toLabel}.` : `${first} joins ${toLabel} as ${to.as === "lead" ? "its lead" : "a member"}.`;
-  const ready = (leave === "empty" || successor !== null) && (replacing === null || replaced !== null);
+  const ready = (leave === "empty" || successor !== null) && (targetHeads.length === 0 || (replacing !== null && replaced !== null));
   return (
     <ConfirmDialog
       open={open}
@@ -333,7 +338,9 @@ export function HeadMoveConfirm({
       confirmLabel="Move"
       pending={pending}
       confirmDisabled={!ready}
-      onConfirm={() => onConfirm({ successor: leave === "pick" ? successor : null, replaced: replacing === null ? null : replaced })}
+      onConfirm={() =>
+        onConfirm({ successor: leave === "pick" ? successor : null, replacing: replacing?.id ?? null, replaced: replacing === null ? null : replaced })
+      }
     >
       <div className="mt-5">
         <RadioChoice
@@ -359,8 +366,28 @@ export function HeadMoveConfirm({
           </div>
         )}
       </div>
+      {targetHeads.length > 1 && to.kind === "head" && (
+        <div className="mt-5">
+          <RadioChoice
+            name="head-move-replacing"
+            legend={`Which head of ${toLabel} does ${first} replace?`}
+            layout="cards"
+            value={replacingId === null ? null : String(replacingId)}
+            onChange={(id) => {
+              setReplacingId(Number(id));
+              setReplaced(null);
+            }}
+            options={targetHeads.map((h) => ({ value: String(h.id), title: h.name, detail: "The other heads stay" }))}
+          />
+        </div>
+      )}
       {replacing !== null && to.kind === "head" && (
         <div className="mt-5">
+          {staying.length > 0 && (
+            <p className="mb-3 text-[13px] text-text-2">
+              {andList(staying)} {staying.length === 1 ? "stays" : "stay"} head of {toLabel}.
+            </p>
+          )}
           <HandOverChoice
             name="head-move-replaced"
             person={replacing.name}
@@ -413,7 +440,7 @@ export function MoveDialog({
   const save = () =>
     startTransition(async () => {
       if (to === null) return;
-      const result = await moveMember({ personId, from: { kind: "division", divisionId: place.divisionId }, to, title, replaced: null, successor: null });
+      const result = await moveMember({ personId, from: { kind: "division", divisionId: place.divisionId }, to, title, replaced: null, replacing: null, successor: null });
       if (!result.ok) {
         toast.error(`Could not move ${name}`, { description: result.error });
         return;

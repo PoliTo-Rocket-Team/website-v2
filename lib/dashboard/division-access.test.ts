@@ -364,6 +364,39 @@ test("the server refuses Approve orders from the operations lead and the IT lead
   assert.ok(removed.ok && removed.value.some((w) => w.approveOrders?.holds === false));
 });
 
+test("with two team leaders, each refuses Approve orders for the other and lists them nowhere in Give access (epic #861)", () => {
+  const coLeader: AccessPerson = { id: 40, name: "Marta Conti", photoUrl: null, role: { kind: "full", seat: "team-leader", title: "Team Leader" }, division: null };
+  const operations: AccessPerson = { id: 41, name: "Davide Russo", photoUrl: null, role: { kind: "full", seat: "operations-lead", title: "Operations Lead" }, division: null };
+  // The page of either team leader: the other is one of `people`, as the viewer never is.
+  const page = { ...team([], teamLeaderGives), people: [...headPeople, giulio, coLeader, operations] };
+  const refusal = { ok: false, error: "The team leader already approves orders." };
+  assert.deepEqual(checkSaveAccess(page, { personId: 40, where: "team", areas: {}, approveOrders: true }), refusal);
+  // Another full-access seat still takes it from either team leader.
+  assert.deepEqual(checkSaveAccess(page, { personId: 41, where: "team", areas: {}, approveOrders: true }), {
+    ok: true,
+    value: { personId: 41, place: WHOLE_TEAM_PLACE, changes: [], approveOrders: { personId: 41, holds: true } },
+  });
+  const listed = grantablePeople(page).map((p) => p.id);
+  assert.ok(!listed.includes(40), "the other team leader is not listed");
+  assert.ok(listed.includes(41), "the operations lead is listed for Approve orders");
+});
+
+test("with two team leaders, a grant one kept from an earlier seat is removed through Edit access and Remove all access (epic #861)", () => {
+  const coLeader: AccessPerson = { id: 40, name: "Marta Conti", photoUrl: null, role: { kind: "full", seat: "team-leader", title: "Team Leader" }, division: null };
+  // The co-leader still holds the "Approve orders" grant from the full-access seat they held before.
+  const kept: ApproveOrdersAccess = { ...teamLeaderGives, holders: [{ person: coLeader, givenBy: "Alessandro Greco", givenOn: "2026-10-06" }] };
+  const page = { ...team([], kept), people: [...headPeople, giulio, coLeader] };
+  const removal = { personId: 40, place: WHOLE_TEAM_PLACE, changes: [], approveOrders: { personId: 40, holds: false } };
+  assert.deepEqual(checkSaveAccess(page, { personId: 40, where: "team", areas: {}, approveOrders: false }), { ok: true, value: removal });
+  assert.deepEqual(checkRemoveAllAccess(page, 40), { ok: true, value: [removal] });
+  // Once removed, giving it back is refused; and only the team leader removes it.
+  const removed = { ...page, approveOrders: teamLeaderGives };
+  assert.deepEqual(checkSaveAccess(removed, { personId: 40, where: "team", areas: {}, approveOrders: true }), { ok: false, error: "The team leader already approves orders." });
+  const notLeader = { ...page, approveOrders: { ...kept, canGive: false } };
+  assert.equal(checkSaveAccess(notLeader, { personId: 40, where: "team", areas: {}, approveOrders: false }).ok, false);
+  assert.equal(checkRemoveAllAccess(notLeader, 40).ok, false);
+});
+
 test("Give access offers the whole team, one department or one division, every area at view or edit", () => {
   for (const where of ["team", "department-2", 3] as const) {
     for (const target of ["positions", "applications", "members", "orders"] as const) {
