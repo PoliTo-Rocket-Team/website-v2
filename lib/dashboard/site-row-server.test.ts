@@ -3,7 +3,7 @@ import "./access-matrix/install";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import * as actions from "@/app/dashboard/actions";
-import { betterAuthAccounts, betterAuthSessions, betterAuthUsers, users } from "@/db/schema";
+import { applications, betterAuthAccounts, betterAuthSessions, betterAuthUsers, logs, users } from "@/db/schema";
 import { ensureSiteRow } from "./database-site-row";
 import { openDashboard } from "./open";
 import { accountOf, EXTRA, seedFixture } from "./access-matrix/fixture";
@@ -94,6 +94,25 @@ describe("a sign-in whose login has no site row (ensureSiteRow)", () => {
     await addLogin("newcomer", "shared@mail.test");
     assert.deepEqual(await userRow(holder), held);
     assert.equal((await userRow("newcomer"))?.member, null);
+  });
+
+  test("a free record that applications and audit rows still point at cannot take the login's id: the login gets a fresh row, and the record and those rows are left unchanged", async () => {
+    await seedFixture();
+    await orphanLogin("lost-applicant", "applicant@mail.test");
+    await addRows(users, [{ id: "applicant", email: "applicant@mail.test", firstName: "Imported" }]);
+    await addRows(applications, [{ userId: "applicant" }]);
+    await addRows(logs, [{ schemaName: "public", tableName: "users", operation: "UPDATE", recordId: "applicant", changedBy: "applicant" }]);
+    const record = await userRow("applicant");
+    assert.equal((await openingAs("lost-applicant")).kind, "account-unresolved", "before the repair");
+
+    assert.deepEqual(await ensureSiteRow("lost-applicant"), { kind: "create" });
+    assert.deepEqual(await userRow("applicant"), record);
+    assert.deepEqual((await tableRows(applications)).filter((a) => a.userId === "applicant").length, 1);
+    assert.deepEqual((await tableRows(logs)).filter((l) => l.changedBy === "applicant" && l.recordId === "applicant").length, 1);
+    const fresh = await userRow("lost-applicant");
+    assert.deepEqual({ email: fresh?.email, member: fresh?.member, firstName: fresh?.firstName }, { email: "applicant@mail.test", member: null, firstName: null });
+    assert.equal((await openingAs("lost-applicant")).kind, "open");
+    assert.deepEqual(await ensureSiteRow("lost-applicant"), { kind: "present" }, "a second session changes nothing");
   });
 
   test("an unknown login is left alone", async () => {
