@@ -3,6 +3,7 @@ import { textLength } from "@/lib/content/text";
 import {
   BOARD_FLAGS,
   boardFlagOf,
+  boardSeatKey,
   boardTitleOf,
   DEPARTMENT_KINDS,
   defaultHeadTitle,
@@ -34,12 +35,13 @@ import {
 } from "./team-layer";
 import { byName, headSeatsOf, personOf, teamSeatsOf, titleOf, type TeamPerson } from "./team-person";
 import { carouselOf, coreMembersOf, drawnTeamPage, teamBuildOf, todaysGroupOf, TODAYS_GROUPS, type TeamRoles } from "./team-roles";
-import type { DepartmentHead, DivisionLead, Leader, Member, Person, PersonPhoto, TeamPage } from "./types";
+import type { CoHolder, CoHolders, DepartmentHead, DivisionLead, Leader, Member, Person, PersonPhoto, TeamPage } from "./types";
 
 // The Team page's own layout (epic #835, issue #849): the places the page
 // shows, each a page seat bound to a seat of the team record or to one team
 // member (Owner decision, #846 R4.1). Who fills a seat-bound place follows the
-// team record; the layout does not. A seat added, removed or moved in the Team
+// team record; the layout does not. A seat with several holders shows every
+// one of them side by side in its place (Owner decision, issue #880). A seat added, removed or moved in the Team
 // tree changes nothing here until an editor changes the layout. A page seat
 // whose bound seat has no holder is not drawn and keeps its place, so it
 // shows again once the seat has a holder; one whose bound seat no longer
@@ -163,44 +165,57 @@ function withEachSeat<L extends SeatedLayout>(layout: L, on: (seat: PageSeat) =>
 const leadsOf = (roles: TeamRoles, divisionId: number): TeamPerson[] =>
   roles.people.filter((p) => roleIn(p.placement.memberships, divisionId) === "lead").sort(byName);
 
+/** One person holding a seat by one of their rows, and whether the Team tree draws them in it. */
+type Held<S> = { readonly person: TeamPerson; readonly seat: S; readonly drawnIn: boolean };
+
 /**
- * The first holder among `held`: someone the Team tree draws in that seat
- * first, then by name. Each person's seats come drawn-in first
- * (`teamSeatsOf`, `headSeatsOf`), so index 0 of a placement of that kind is it.
+ * Every holder among `held`, each once (issue #880): someone the Team tree
+ * draws in that seat first, then by name. Each person's seats come drawn-in
+ * first (`teamSeatsOf`, `headSeatsOf`), so a person's first row here is the
+ * one they are drawn in, when they are.
  */
-function firstHeld<S>(held: readonly { readonly person: TeamPerson; readonly seat: S; readonly drawnIn: boolean }[]) {
-  return [...held].sort((a, b) => Number(b.drawnIn) - Number(a.drawnIn) || byName(a.person, b.person))[0];
+function inHolderOrder<S>(held: readonly Held<S>[]): Held<S>[] {
+  const ordered = [...held].sort((a, b) => Number(b.drawnIn) - Number(a.drawnIn) || byName(a.person, b.person));
+  return ordered.filter((h, i) => ordered.findIndex((o) => o.person.id === h.person.id) === i);
 }
 
 /**
- * The holder of a team-level seat `matches` picks, and its title, read from
- * every team-level seat each person holds, not only the one they are drawn
- * in: a team leader, or someone on another seat, who took this seat on a
- * hand-over shows in its place (#852, ADR 0019 Decision 3). Null while no
- * active row matches.
+ * Every holder of the team-level seat `matches` picks, each with the title
+ * their own row reads, read from every team-level seat each person holds, not
+ * only the one they are drawn in: a team leader, or someone on another seat,
+ * who took this seat on a hand-over shows in its place (#852, ADR 0019
+ * Decision 3). None while no active row matches.
  */
-function teamSeatHolding(matches: (seat: BoardRole) => boolean, roles: TeamRoles): Holding | null {
-  const held = firstHeld(
+function teamSeatHoldings(matches: (seat: BoardRole) => boolean, roles: TeamRoles): Holding[] {
+  return inHolderOrder(
     roles.people.flatMap((person) =>
       teamSeatsOf(person).flatMap((seat, i) => (matches(seat) ? [{ person, seat, drawnIn: i === 0 && person.placement.role === "board" }] : [])),
     ),
-  );
-  return held === undefined ? null : { person: held.person, title: boardTitleOf(held.seat) };
+  ).map((held) => ({ person: held.person, title: boardTitleOf(held.seat) }));
 }
 
 /**
- * The head of department `departmentId` and its title, read from every head
- * each person holds, as `teamSeatHolding` reads seats: someone drawn in a
- * team-level seat, or the team leader, who took the head on a hand-over shows
- * in its place (#852). `headOf` names the block for a head row with no title.
+ * Every head of department `departmentId`, each with the title their own
+ * head row reads, read from every head each person holds, as
+ * `teamSeatHoldings` reads seats: someone drawn in a team-level seat, or the
+ * team leader, who took the head on a hand-over shows in its place (#852).
+ * `headOf` names the block for a head row with no title.
  */
-function headHolding(departmentId: number, headOf: string, roles: TeamRoles): Holding | null {
-  const held = firstHeld(
+function headHoldings(departmentId: number, headOf: string, roles: TeamRoles): Holding[] {
+  return inHolderOrder(
     roles.people.flatMap((person) =>
       headSeatsOf(person).flatMap((seat, i) => (seat.departmentId === departmentId ? [{ person, seat, drawnIn: i === 0 && person.placement.role === "head" }] : [])),
     ),
-  );
-  return held === undefined ? null : { person: held.person, title: held.seat.title.trim() || defaultHeadTitle(headOf) };
+  ).map((held) => ({ person: held.person, title: held.seat.title.trim() || defaultHeadTitle(headOf) }));
+}
+
+/** The active team-level row `roleId`, as a seat someone holds; undefined once it has ended. */
+function teamSeatRow(roleId: number, roles: TeamRoles): BoardRole | undefined {
+  for (const person of roles.people) {
+    const seat = teamSeatsOf(person).find((s) => s.roleId === roleId);
+    if (seat !== undefined) return seat;
+  }
+  return undefined;
 }
 
 /**
@@ -217,7 +232,7 @@ function seatExists(binding: PlaceBinding, roles: TeamRoles): boolean {
     case "person":
       return true;
     case "team-seat":
-      return teamSeatHolding((seat) => seat.roleId === binding.roleId, roles) !== null;
+      return teamSeatRow(binding.roleId, roles) !== undefined;
     case "department-head":
       return roles.org.departments.some((d) => d.id === binding.departmentId);
     case "division-lead":
@@ -229,38 +244,55 @@ function seatExists(binding: PlaceBinding, roles: TeamRoles): boolean {
 export type Holding = { readonly person: TeamPerson; readonly title: string };
 
 /**
- * The holder of a bound seat now and the seat's own text: the team leader's
- * title or "Team Leader", a team-level seat's title, a head's title or "Head
- * of" `headOf` (the block's name; the department's own by default), a
- * division's name. A bound person reads "Head of" `headOf` on a head place,
- * else their own page title. Null when the seat has no holder or is gone, or
- * the person holds no active role.
+ * Every holder of a bound seat now, each with the seat's own text, drawn-in
+ * first, then by name (issue #880): the team leaders, each with their title
+ * or "Team Leader"; a full-access seat's holders by its flag; a team-level
+ * seat's holders by the seat its `roles` row is (`boardSeatKey`, as the Team
+ * tree reads co-holders), not by that row alone, each with their row's
+ * title; a department's heads, each with their title or "Head of" `headOf`
+ * (the block's name; the department's own by default). A division lead place
+ * and a bound person show one: the lead at that place among the division's
+ * co-leads with the division's name, and the person, who reads "Head of"
+ * `headOf` on a head place, else their own page title. None when the seat has
+ * no holder or is gone, or the person holds no active role.
  */
-export function holdingOf(binding: PlaceBinding, roles: TeamRoles, headOf?: string): Holding | null {
-  if (!seatExists(binding, roles)) return null;
-  const first = (test: (p: TeamPerson) => boolean) => roles.people.filter(test).sort(byName)[0];
+export function holdingsOf(binding: PlaceBinding, roles: TeamRoles, headOf?: string): readonly Holding[] {
+  if (!seatExists(binding, roles)) return [];
   switch (binding.kind) {
     case "person": {
       const person = roles.people.find((p) => p.id === binding.memberId);
-      if (person === undefined) return null;
-      return { person, title: headOf === undefined ? (titleOf(person) ?? "") : defaultHeadTitle(headOf) };
+      if (person === undefined) return [];
+      return [{ person, title: headOf === undefined ? (titleOf(person) ?? "") : defaultHeadTitle(headOf) }];
     }
-    case "team-leader": {
-      const person = first((p) => p.placement.role === "team-leader");
-      return person === undefined ? null : { person, title: titleOf(person) ?? "Team Leader" };
-    }
+    case "team-leader":
+      return roles.people
+        .filter((p) => p.placement.role === "team-leader")
+        .sort(byName)
+        .map((person) => ({ person, title: titleOf(person) ?? "Team Leader" }));
     case "full-access-seat":
-      return teamSeatHolding((seat) => boardFlagOf(seat.fullAccess) === binding.seat, roles);
-    case "team-seat":
-      return teamSeatHolding((seat) => seat.roleId === binding.roleId, roles);
+      return teamSeatHoldings((seat) => boardFlagOf(seat.fullAccess) === binding.seat, roles);
+    case "team-seat": {
+      const row = teamSeatRow(binding.roleId, roles);
+      if (row === undefined) return [];
+      const key = boardSeatKey(row);
+      return teamSeatHoldings((seat) => boardSeatKey(seat) === key, roles);
+    }
     case "department-head":
-      return headHolding(binding.departmentId, headOf ?? roles.org.departments.find((d) => d.id === binding.departmentId)?.name ?? "", roles);
+      return headHoldings(binding.departmentId, headOf ?? roles.org.departments.find((d) => d.id === binding.departmentId)?.name ?? "", roles);
     case "division-lead": {
       const person = leadsOf(roles, binding.divisionId)[binding.place];
       const division = roles.org.divisions.find((d) => d.id === binding.divisionId);
-      return person === undefined || division === undefined ? null : { person, title: divisionLabel(division.name) };
+      return person === undefined || division === undefined ? [] : [{ person, title: divisionLabel(division.name) }];
     }
   }
+}
+
+/**
+ * The holder a bound seat shows first now (`holdingsOf`), with the seat's own
+ * text: the one the editor names for the place. Null when it shows no one.
+ */
+export function holdingOf(binding: PlaceBinding, roles: TeamRoles, headOf?: string): Holding | null {
+  return holdingsOf(binding, roles, headOf)[0] ?? null;
 }
 
 /** A page seat whose bound seat no longer exists is dropped; a block whose head seat is gone goes with it. */
@@ -321,13 +353,19 @@ function seatOf(person: TeamPerson, roles: TeamRoles): SeatBinding | null {
 /**
  * What a page seat is bound to when the editor picks `person` for it: the
  * seat they hold, wherever the Team tree places it, so the place follows that
- * seat on a hand-over (ADR 0019); a person who holds no seat, or one the seat
- * would not show (a co-holder drawn first), is bound to themselves (Owner
- * decision, #846 R4.1).
+ * seat on a hand-over (ADR 0019). Any holder of a seat with several is bound
+ * to that seat, as its place shows every holder (issue #880). A person who
+ * holds no seat, or one the seat would not show, is bound to themselves
+ * (Owner decision, #846 R4.1).
  */
 export function bindingFor(person: TeamPerson, roles: TeamRoles): PlaceBinding {
   const seat = seatOf(person, roles);
-  return seat !== null && holdingOf(seat, roles)?.person.id === person.id ? seat : { kind: "person", memberId: person.id };
+  return seat !== null && holdsSeat(seat, person, roles) ? seat : { kind: "person", memberId: person.id };
+}
+
+/** Whether `person` is one of the holders the bound seat shows now (`holdingsOf`). */
+function holdsSeat(binding: PlaceBinding, person: TeamPerson, roles: TeamRoles, headOf?: string): boolean {
+  return holdingsOf(binding, roles, headOf).some((h) => h.person.id === person.id);
 }
 
 /** The division lead seats of a department as the team record has them: its divisions in order, each one's leads by name. */
@@ -376,60 +414,96 @@ function groupedOf<D extends { readonly group: number }>(groups: readonly Layout
   return groups.map((group) => ({ id: group.id, name: group.name, departments: departments.filter((d) => d.group === group.id) }));
 }
 
-type Placed<T> = Shown<number, T> & { readonly person: TeamPerson };
+/** A place as drawn, with every team member it shows. */
+type Placed<T> = Shown<number, T> & { readonly people: readonly TeamPerson[] };
 
-/** A page seat as drawn: its holder with each override laid on, and the text under the name. */
-function drawn(seat: PageSeat, roles: TeamRoles, headOf?: string): { readonly person: TeamPerson; readonly shown: Person; readonly role: string } | null {
-  const holding = holdingOf(seat.binding, roles, headOf);
-  if (holding === null) return null;
+/**
+ * A page seat as drawn: the holder it shows first, with the text under the
+ * name, and every further holder beside them (issue #880). A role override
+ * reads under every holder's name. A name, photo or LinkedIn override was
+ * written for one person, so it is laid on only while the place has one
+ * holder: on a place with several, each shows their own.
+ */
+type DrawnPlace = { readonly people: readonly TeamPerson[]; readonly shown: Person; readonly role: string; readonly coHolders?: CoHolders };
+
+function drawn(seat: PageSeat, roles: TeamRoles, headOf?: string): DrawnPlace | null {
+  const [first, ...rest] = holdingsOf(seat.binding, roles, headOf);
+  if (first === undefined) return null;
   const { name, photo, linkedin, role } = seat.overrides;
-  return {
-    person: holding.person,
-    shown: {
-      ...personOf(holding.person),
-      ...(name !== undefined && { name }),
-      ...(photo !== undefined && { photo }),
-      ...(linkedin !== undefined && { linkedin }),
-    },
-    role: role ?? holding.title,
-  };
+  const people = [first.person, ...rest.map((h) => h.person)];
+  const [next, ...after] = rest;
+  if (next === undefined) {
+    return {
+      people,
+      shown: {
+        ...personOf(first.person),
+        ...(name !== undefined && { name }),
+        ...(photo !== undefined && { photo }),
+        ...(linkedin !== undefined && { linkedin }),
+      },
+      role: role ?? first.title,
+    };
+  }
+  const coHolder = (h: Holding): CoHolder => ({ ...personOf(h.person), role: role ?? h.title });
+  return { people, shown: personOf(first.person), role: role ?? first.title, coHolders: [coHolder(next), ...after.map(coHolder)] };
 }
 
 const unplaced = <T>({ at, shown }: Placed<T>): Shown<number, T> => ({ at, shown });
 
 /**
  * The page `layout` draws on the team record `roles`: each page seat shows
- * its bound seat's holder now, with its overrides; one with no holder is left
- * out and keeps its place. The arc draws at most eight. The core members are
- * everyone in `roles` whom no drawn place shows, by name, with their title.
+ * its bound seat's holders now, side by side, with its overrides; one with no
+ * holder is left out and keeps its place, and so is one whose several holders
+ * an earlier place already draws (two places bound to one co-held seat by its
+ * holders' two rows). The arc draws at most eight places. The core members
+ * are everyone in `roles` whom no drawn place shows, by name, with their
+ * title.
  */
 export function resolveLayout(layout: TeamLayout, roles: TeamRoles): ResolvedTeam {
-  const leader = layout.leader === null ? null : drawn(layout.leader, roles);
+  const coHeld = new Set<string>();
+  /** The page seat as drawn, or null when it shows no one or its holders are already drawn together. */
+  const place = (seat: PageSeat, headOf?: string): DrawnPlace | null => {
+    const d = drawn(seat, roles, headOf);
+    if (d === null || d.coHolders === undefined) return d;
+    const key = d.people.map((p) => p.id).join(",");
+    if (coHeld.has(key)) return null;
+    coHeld.add(key);
+    return d;
+  };
+  const withCoHolders = (d: DrawnPlace) => (d.coHolders === undefined ? {} : { coHolders: d.coHolders });
+
+  const leader = layout.leader === null ? null : place(layout.leader);
   const arc = layout.arc
     .flatMap((seat): Placed<Leader>[] => {
-      const d = drawn(seat, roles);
-      return d === null ? [] : [{ at: seat.id, person: d.person, shown: { ...d.shown, role: d.role } }];
+      const d = place(seat);
+      return d === null ? [] : [{ at: seat.id, people: d.people, shown: { ...d.shown, role: d.role, ...withCoHolders(d) } }];
     })
     .slice(0, ARC_LEADERS);
   const departments = layout.departments.map((block) => {
     const leads = block.leads.flatMap((seat): Placed<DivisionLead>[] => {
-      const d = drawn(seat, roles);
-      return d === null ? [] : [{ at: seat.id, person: d.person, shown: { ...d.shown, division: d.role } }];
+      const d = place(seat);
+      return d === null ? [] : [{ at: seat.id, people: d.people, shown: { ...d.shown, division: d.role } }];
     });
-    const head = drawn(block.head, roles, block.name);
+    const head = place(block.head, block.name);
     const heads: Placed<DepartmentHead>[] =
       head === null
         ? []
-        : [{ at: block.head.id, person: head.person, shown: { kind: "head", ...head.shown, role: head.role, leads: leads.map((l) => l.shown) } }];
+        : [
+            {
+              at: block.head.id,
+              people: head.people,
+              shown: { kind: "head", ...head.shown, role: head.role, ...withCoHolders(head), leads: leads.map((l) => l.shown) },
+            },
+          ];
     return { at: block.id, name: block.name, group: block.group, leadsDrawn: block.leadsDrawn, heads, leads };
   });
   const carousel = carouselOf(groupedOf(layout.groups, departments)).flatMap((slide) =>
-    slide.places.flatMap((place) => (place.kind === "head" ? [place.head.person, ...place.leads.map((l) => l.person)] : [place.lead.person])),
+    slide.places.flatMap((p) => (p.kind === "head" ? [...p.head.people, ...p.leads.flatMap((l) => l.people)] : p.lead.people)),
   );
-  const shown = new Set([...(leader === null ? [] : [leader.person]), ...arc.map((l) => l.person), ...carousel].map((p) => p.id));
+  const shown = new Set([...(leader?.people ?? []), ...arc.flatMap((l) => l.people), ...carousel].map((p) => p.id));
   const resolved = departments.map((d): ResolvedDepartment => ({ ...d, heads: d.heads.map(unplaced), leads: d.leads.map(unplaced) }));
   return {
-    leader: leader === null ? null : { ...leader.shown, role: leader.role },
+    leader: leader === null ? null : { ...leader.shown, role: leader.role, ...withCoHolders(leader) },
     leaders: arc.map(unplaced),
     departments: resolved,
     groups: groupedOf(layout.groups, resolved),
@@ -475,7 +549,8 @@ function teamLevelBinding(seat: BoardRole): SeatBinding {
  * as the layer keys it: the team leader's edit, a spot, something the editor
  * added (a leader, a lead row, a department) or a department's edit. Every
  * place the page draws is carried except a department's heads past its
- * first, so the rest are edits the page does not draw today.
+ * first that its head place does not draw beside them, so the rest are edits
+ * the page does not draw today.
  */
 export type SnapshotGap = {
   readonly at: "leader" | Spot | AddedRef | `department:${number}`;
@@ -484,7 +559,8 @@ export type SnapshotGap = {
    * shows holds no active role. `not-shown`: the page draws nothing there for
    * another reason (a spot the roles no longer fill, past the arc's eight, a
    * department with no head drawn, a swap on the team leader while there is
-   * none). `second-head`: a block holds one head, and this one is drawn after it.
+   * none). `second-head`: a block holds one head place, this one is drawn
+   * after it, and that place does not draw them beside its first head.
    */
   readonly why: "hidden" | "left-team" | "not-shown" | "second-head";
 };
@@ -514,10 +590,12 @@ const spotPart = (spot: string, index: 1 | 2) => Number(spot.split(":")[index]);
  * (a person swap, or anyone the layer added) is bound to that person (Owner
  * decision, #846 R4.1), as the layer itself shows that person and not a seat.
  * Each edit carries over as an override, and a role text the binding would
- * not read by itself is set as one, so the page draws the same. `left` names
- * every part of the layer the layout does not carry, and why: hidden spots
- * and departments, edits the page does not draw today, and a department's
- * heads past its first, which one block cannot hold.
+ * not read by itself is set as one, so the page draws the same. A place
+ * showing a further holder of a seat an earlier page seat binds gets no page
+ * seat of its own: that page seat draws every holder side by side (issue
+ * #880). `left` names every part of the layer the layout does not carry, and
+ * why: hidden spots and departments, edits the page does not draw today, and
+ * a department's heads past its first that its head place does not draw.
  */
 export function snapshot(roles: TeamRoles, layer: TeamPageLayer): Snapshot {
   const build = teamBuildOf(roles);
@@ -538,11 +616,26 @@ export function snapshot(roles: TeamRoles, layer: TeamPageLayer): Snapshot {
     return swapped ?? fromRoles;
   };
 
+  /** The binding for a place showing `person`: `own` while they are one of its holders, else them. */
+  const bindingAt = (person: TeamPerson, own: SeatBinding | null, headOf?: string): PlaceBinding =>
+    own !== null && holdsSeat(own, person, roles, headOf) ? own : { kind: "person", memberId: person.id };
+
+  /**
+   * Whether the place at `at` showing `person` is a further holder of a seat
+   * an earlier page seat already binds: that page seat draws them beside its
+   * first holder (issue #880), so the place is carried by it.
+   */
+  const coHolderAt = (at: SnapshotGap["at"], person: TeamPerson, own: SeatBinding | null, earlier: readonly PageSeat[], headOf?: string): boolean => {
+    const binding = bindingAt(person, own, headOf);
+    if (binding.kind === "person" || !earlier.some((seat) => sameBinding(seat.binding, binding))) return false;
+    carried.add(at);
+    return true;
+  };
+
   /** The page seat for the place at `at` showing `person`: bound to `own` while they hold it, else to them. */
   const pageSeat = (at: SnapshotGap["at"], person: TeamPerson, own: SeatBinding | null, set: SeatOverrides, shownRole: string, headOf?: string): PageSeat => {
     carried.add(at);
-    const holdsOwn = own !== null && holdingOf(own, roles, headOf)?.person.id === person.id;
-    const binding: PlaceBinding = holdsOwn ? own : { kind: "person", memberId: person.id };
+    const binding = bindingAt(person, own, headOf);
     const title = holdingOf(binding, roles, headOf)?.title;
     const role = set.role ?? (shownRole === title ? undefined : shownRole);
     return { id: nextId(), binding, overrides: { ...set, ...(role !== undefined && { role }) } };
@@ -559,22 +652,25 @@ export function snapshot(roles: TeamRoles, layer: TeamPageLayer): Snapshot {
   };
   const leader = leaderSeat();
 
-  const arc = shown.leaders.map(({ at, shown: drawnLeader }): PageSeat => {
+  const arc: PageSeat[] = [];
+  for (const { at, shown: drawnLeader } of shown.leaders) {
     const built = build.arc.find((b) => b.spot === at);
     if (built !== undefined) {
       const edit = layer.spots[built.spot];
       const { placement } = built.person;
       const own = placement.role === "board" ? teamLevelBinding(placement.seat) : null;
-      return pageSeat(built.spot, shownAt(built.spot, edit, built.person), own, overridesOf(edit ?? {}), drawnLeader.role);
+      const person = shownAt(built.spot, edit, built.person);
+      if (coHolderAt(built.spot, person, own, [leader, ...arc])) continue;
+      arc.push(pageSeat(built.spot, person, own, overridesOf(edit ?? {}), drawnLeader.role));
+      continue;
     }
     const added = layer.addedLeaders.find((a) => `added:${a.id}` === at) ?? missing(at);
-    return pageSeat(at, memberOf(added.person) ?? missing(at), null, addedOverrides(added, added.role), drawnLeader.role);
-  });
+    arc.push(pageSeat(at, memberOf(added.person) ?? missing(at), null, addedOverrides(added, added.role), drawnLeader.role));
+  }
 
   const departments = shown.departments.flatMap((department): DepartmentBlock[] => {
     const [head, ...after] = department.heads;
     if (head === undefined) return [];
-    for (const extra of after) left.push({ at: extra.at, why: "second-head" });
     const id = nextId();
     const fromRoles = typeof department.at === "number" ? build.departments.find((d) => d.id === department.at) : undefined;
     const addedDepartment = layer.addedDepartments.find((d) => `added:${d.id}` === department.at);
@@ -591,6 +687,13 @@ export function snapshot(roles: TeamRoles, layer: TeamPageLayer): Snapshot {
       const added = addedDepartment ?? missing(`${department.at}`);
       const person = memberOf(added.head.person) ?? missing(`${department.at}`);
       headSeat = pageSeat(`added:${added.id}`, person, null, addedOverrides(added.head, added.head.role), head.shown.role, department.name);
+    }
+    // A further head the head's page seat draws beside them is carried by it (issue #880); any other is not.
+    for (const extra of after) {
+      const builtHead = fromRoles?.heads.find((h) => h.spot === extra.at);
+      const person = builtHead === undefined ? undefined : (memberOf(layer.spots[builtHead.spot]?.person) ?? builtHead.person);
+      const own: SeatBinding | null = fromRoles === undefined ? null : { kind: "department-head", departmentId: fromRoles.id };
+      if (person === undefined || !coHolderAt(extra.at, person, own, [headSeat], department.name)) left.push({ at: extra.at, why: "second-head" });
     }
 
     const leads = department.leads.map(({ at, shown: drawnLead }): PageSeat => {

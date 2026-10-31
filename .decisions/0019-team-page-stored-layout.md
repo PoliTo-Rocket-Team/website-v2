@@ -73,6 +73,17 @@ These parts of 0015 still stand: Decision 4 (contacts), Decision 5 (read path) a
 - Department grouping is set in the Team page editor, not in the Team tree, and is no longer limited to Technical and Operations.
 - Until follow-up #855 lands, the layer's people and layout fields and `departments.kind` stay in the database, and the Team page reads them only through the snapshot function of Decision 7. The page keeps reading the layer's intro text, figures and group photo under ADR 0015 Decision 6.
 
+## Amendment — 2026-10-31: a seat with several holders
+
+Owner decision, 2026-10-31, on issue [#880](https://github.com/PoliTo-Rocket-Team/website-v2/issues/880): since epic [#861](https://github.com/PoliTo-Rocket-Team/website-v2/issues/861) a seat can have several holders, and a page seat bound to such a seat shows every holder, side by side in that seat's place, each with their own photo, name and contacts and the seat's title under the name. A seat with one holder looks as before.
+
+This amends Decision 3 ("A page seat shows whoever holds its bound seat now"): a seat binding now resolves to every active holder of the seat, those the Team tree draws in it first, then by name.
+
+- **Who a seat binding shows.** The team leader binding shows every team leader. A full-access seat shows every holder of its flag. A team-level seat with no flag is still named by one `roles` row (Decision 2), and shows every holder of the seat that row is, as the Team tree reads co-holders (the row's type and stored title, or its flag), so a co-holder on another row shows there too. A department head binding shows every head of the department, and the block draws its division leads once, under or beside that one place. A division lead place and a person binding still show one person each.
+- **Overrides.** A page seat's role override reads under every holder's name. Its name, photo and LinkedIn overrides were written for one person, so they apply only while the place has one holder; on a place with several, each holder shows their own.
+- **One place per co-held seat.** A further holder of a seat a place already shows is bound to that seat (the editor's person pick and the snapshot of Decision 7 alike), not to themselves. Where two places of a stored layout name one co-held seat by two of its rows, the first draws the holders and the second is not drawn; it keeps its place in the layout, as Decision 4 keeps a place with no holder. The arc keeps at most eight places, whatever their holders.
+- **The stored form does not change.** A page seat still holds one binding, so no stored layout is rewritten, and every layout stored before this amendment parses and draws as before. Core members (Decision 5) leave out every holder a drawn place shows.
+
 ## Records
 
 New terms in `.glossary/TERMS.md`: page seat, seat binding, department group. No vacant or unbound seat term.

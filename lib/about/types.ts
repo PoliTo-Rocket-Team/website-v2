@@ -26,8 +26,22 @@ export type Person = {
   email?: string;
 };
 
-/** A leader in the org chart: a person and the role under the name. */
-export type Leader = Person & { role: string };
+/**
+ * Someone who holds a seat beside the person its place shows first (issue
+ * #880): drawn next to them, with their own photo, name and contacts, and
+ * the place's role under the name.
+ */
+export type CoHolder = Person & { role: string };
+
+/** A place's further holders, in order: one or more, never an empty list. */
+export type CoHolders = readonly [CoHolder, ...CoHolder[]];
+
+/**
+ * A leader in the org chart: a person and the role under the name. A seat
+ * with several holders draws the others beside them (`coHolders`); a seat
+ * with one has none.
+ */
+export type Leader = Person & { role: string; coHolders?: CoHolders };
 
 /**
  * The org chart: the university, the team leader under it, then up to eight
@@ -51,10 +65,15 @@ export type OrgChart = {
 /** The lead of one division, under the head of its department. */
 export type DivisionLead = Person & { division: string };
 
-/** A department head, with the leads of the department's divisions under them. */
+/**
+ * A department head, with the leads of the department's divisions under them.
+ * A department with several heads draws the others beside them
+ * (`coHolders`), over the one set of leads.
+ */
 export type DepartmentHead = Person & {
   kind: "head";
   role: string;
+  coHolders?: CoHolders;
   leads: readonly DivisionLead[];
 };
 
