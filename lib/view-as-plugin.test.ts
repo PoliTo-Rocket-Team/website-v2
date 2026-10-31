@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { getCookieCache } from "better-auth/cookies";
-import type { ViewAsEntry, ViewAsRefusal } from "./dashboard/view-as";
+import { VIEW_AS_STOP_REFUSAL_MESSAGES, type ViewAsEntry, type ViewAsRefusal } from "./dashboard/view-as";
 import { seededMemoryDb } from "./dev-tester-fixture";
 import { ADMIN_TESTERS, seatOf } from "./seeded-accounts";
 import { accountUserOf, impersonatorOf } from "./session-user";
-import type { ViewAsGate } from "./view-as-plugin";
+import { VIEW_AS_SESSION_SECONDS, type ViewAsGate } from "./view-as-plugin";
 
 // View as through the real Better Auth instance (issue #604), over an
 // in-memory database: the gate is asked before the admin plugin makes any
@@ -86,6 +86,9 @@ class Jar {
   }
   headers(): Headers {
     return new Headers({ cookie: [...this.cookies].map(([name, value]) => `${name}=${value}`).join("; "), origin: ORIGIN });
+  }
+  holds(name: string): boolean {
+    return this.cookies.has(name);
   }
 }
 
@@ -218,4 +221,117 @@ test("signing out of a View as session logs its stop once; a plain sign-out logs
       ["stop", PERSON.id, ACTING.id],
     ],
   );
+});
+
+// The banner's Stop (issue #899): POST /view-as/stop. -----------------------
+
+/** The admin plugin's cookie holding the acting account's own session while it views as someone. */
+const KEPT_SESSION_COOKIE = "better-auth.admin_session";
+
+/** Past the end of a View as session (an hour) and of the cookie cache it set (10 minutes). */
+const PAST_VIEW_AS_END_MS = (VIEW_AS_SESSION_SECONDS + 60) * 1000;
+
+test("Stop ends the View as session, logs it once, and returns the acting account to its own session", async () => {
+  const { auth, entries } = await setUp();
+  const jar = await signIn(auth, ACTING);
+  assert.equal((await post(auth, jar, "/admin/impersonate-user", { userId: PERSON.id })).status, 200);
+  assert.ok(jar.holds(KEPT_SESSION_COOKIE), "the acting account's own session is kept while it views as");
+
+  const stopped = await post(auth, jar, "/view-as/stop");
+  assert.equal(stopped.status, 200);
+  assert.deepEqual(await cachedUser(jar), { id: ACTING.id, name: ACTING.name, actingAccountId: null });
+  assert.equal((await auth.api.getSession({ headers: jar.headers(), query: { disableCookieCache: true } }))?.user.id, ACTING.id);
+  assert.deepEqual(
+    entries.map((e) => [e.event, e.personId, e.actingAccountId]),
+    [
+      ["start", PERSON.id, ACTING.id],
+      ["stop", PERSON.id, ACTING.id],
+    ],
+  );
+  assert.equal(jar.holds(KEPT_SESSION_COOKIE), false, "the kept session cookie goes with the stop");
+});
+
+test("Stop still returns the acting account to its own session after the View as session ran out", async (t) => {
+  const { auth, entries } = await setUp();
+  const jar = await signIn(auth, ACTING);
+  assert.equal((await post(auth, jar, "/admin/impersonate-user", { userId: PERSON.id })).status, 200);
+
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() + PAST_VIEW_AS_END_MS });
+  // The cause on production: the admin plugin's own stop finds no session once the View as one ran out, and answers 401 with no message.
+  const pluginStop = await post(auth, jar, "/admin/stop-impersonating");
+  assert.equal(pluginStop.status, 401);
+  assert.equal(((await pluginStop.json().catch(() => null)) as { message?: string } | null)?.message, undefined);
+
+  const stopped = await post(auth, jar, "/view-as/stop");
+  assert.equal(stopped.status, 200, await stopped.clone().text());
+  assert.equal((await auth.api.getSession({ headers: jar.headers(), query: { disableCookieCache: true } }))?.user.id, ACTING.id);
+  assert.deepEqual(await cachedUser(jar), { id: ACTING.id, name: ACTING.name, actingAccountId: null });
+  assert.equal(entries.length, 1, "a View as session that ran out has no stop to log");
+});
+
+test("a Stop that fails answers its reason and logs it on the server, and signing out still ends the session", async (t) => {
+  const { auth, db, entries } = await setUp();
+  const errors = t.mock.method(console, "error", () => {});
+  const jar = await signIn(auth, ACTING);
+  assert.equal((await post(auth, jar, "/admin/impersonate-user", { userId: PERSON.id })).status, 200);
+  // The acting account's own session ended while it viewed as someone (revoked, or past its seven days).
+  const ownSessions = db.session.filter((s) => s.userId === ACTING.id);
+  db.session = db.session.filter((s) => s.userId !== ACTING.id);
+  assert.equal(ownSessions.length, 1);
+
+  const refused = await post(auth, jar, "/view-as/stop");
+  assert.equal(refused.status, 401);
+  const body = (await refused.json()) as { message?: string };
+  assert.equal(body.message, VIEW_AS_STOP_REFUSAL_MESSAGES["own-session-gone"]);
+  assert.ok(
+    errors.mock.calls.some((call) => String(call.arguments[0]).includes(VIEW_AS_STOP_REFUSAL_MESSAGES["own-session-gone"])),
+    "the server log names the reason",
+  );
+  assert.equal(await cachedUser(jar).then((u) => u.id), PERSON.id, "a refused stop changes nothing");
+
+  // The banner's way out: signing out.
+  assert.equal((await post(auth, jar, "/sign-out")).status, 200);
+  assert.equal(await auth.api.getSession({ headers: jar.headers() }), null, "the browser is signed out");
+  assert.equal(jar.holds(KEPT_SESSION_COOKIE), false, "signing out drops the kept session cookie");
+  assert.equal(db.session.filter((s) => s.userId === PERSON.id).length, 0, "the View as session is gone");
+  assert.deepEqual(entries.map((e) => e.event), ["start", "stop"]);
+});
+
+test("signing out of a View as session ends the acting account's kept session too, and Stop then signs nobody back in", async () => {
+  const { auth, db } = await setUp();
+  const jar = await signIn(auth, ACTING);
+  assert.equal((await post(auth, jar, "/admin/impersonate-user", { userId: PERSON.id })).status, 200);
+  assert.equal((await post(auth, jar, "/sign-out")).status, 200);
+  assert.deepEqual(db.session, [], "neither the View as session nor the acting account's own session is left");
+  const refused = await post(auth, jar, "/view-as/stop");
+  assert.equal(refused.status, 401);
+  assert.equal(((await refused.json()) as { message?: string }).message, VIEW_AS_STOP_REFUSAL_MESSAGES["signed-out"]);
+  assert.equal(await auth.api.getSession({ headers: jar.headers() }), null);
+});
+
+test("Stop on a plain session is refused with its reason", async () => {
+  const { auth } = await setUp();
+  const jar = await signIn(auth, ACTING);
+  const refused = await post(auth, jar, "/view-as/stop");
+  assert.equal(refused.status, 400);
+  assert.equal(((await refused.json()) as { message?: string }).message, VIEW_AS_STOP_REFUSAL_MESSAGES["not-viewing-as"]);
+});
+
+test("a stop whose Activity log entry cannot be written still returns the acting account, and the server logs why", async (t) => {
+  Object.assign(process.env, TEST_ENV, { NODE_ENV: "development" });
+  delete process.env.VERCEL_ENV;
+  const errors = t.mock.method(console, "error", () => {});
+  const gate: ViewAsGate = {
+    refusal: async () => null,
+    record: async (entry) => {
+      if (entry.event === "stop") throw new Error("the log is unreachable");
+    },
+  };
+  const { createAuth } = await import("./auth");
+  const auth = createAuth(memoryAdapter(seededMemoryDb()), gate);
+  const jar = await signIn(auth, ACTING);
+  assert.equal((await post(auth, jar, "/admin/impersonate-user", { userId: PERSON.id })).status, 200);
+  assert.equal((await post(auth, jar, "/view-as/stop")).status, 200);
+  assert.deepEqual(await cachedUser(jar), { id: ACTING.id, name: ACTING.name, actingAccountId: null });
+  assert.ok(errors.mock.calls.some((call) => String(call.arguments[0]).includes("the log is unreachable")));
 });
