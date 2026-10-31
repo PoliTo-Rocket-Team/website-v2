@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { ArrowRightLeft, Lock, Pencil, RefreshCw, Undo2, UserMinus, UserX, X } from "lucide-react";
+import { ArrowRightLeft, Pencil, RefreshCw, Undo2, UserMinus, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { addMember, createDivision, findPeople, saveDivision } from "@/app/dashboard/team-actions";
 import {
@@ -16,7 +16,19 @@ import {
   type TeamSearch,
 } from "@/lib/dashboard/division-edit";
 import { matchesPerson, mayNotKnowTheyWereAdded, type DivisionMembers, type DivisionPerson, type WaitingPerson } from "@/lib/dashboard/division-members";
-import { fullAccessMovesLine, seatOfHandedRole, steppingDown, steppingDownLine, type HandOverOutcome, type HeldSeat } from "@/lib/dashboard/hand-over";
+import {
+  advisingLine,
+  defaultAdvisorScope,
+  fullAccessMovesLine,
+  seatOfHandedRole,
+  STAYS_AS_AN_ADVISOR,
+  steppingDown,
+  steppingDownLine,
+  type AdvisorScope,
+  type HandOverOutcome,
+  type HeldSeat,
+  type ScopeNames,
+} from "@/lib/dashboard/hand-over";
 import { divisionLabel, type Permission } from "@/lib/dashboard/team";
 import type { FullAccessSeat } from "@/lib/dashboard/viewer";
 import { Avatar } from "./avatar";
@@ -24,7 +36,7 @@ import { ConfirmDialog } from "./confirm-dialog";
 import { ConfirmNdaButton, MailAvatar, MemberDialogs, MenuItem, NoEmailNote, RowMenu, WaitingLine, matchesWaiting, type Asking } from "./division-members";
 import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, inputClass } from "./field";
-import { HandOverChoice } from "./hand-over-choice";
+import { advisorOption, HandOverChoice, RadioChoice, type AdvisorScopeField } from "./hand-over-choice";
 import { MoveDialog } from "./member-move";
 import type { MovablePlace } from "@/lib/dashboard/member-move";
 import { PersonCombobox } from "./person-combobox";
@@ -46,6 +58,8 @@ const ADD_LINK = `inline-flex items-center gap-1.5 rounded-md text-[13px] font-m
 const LIST = "overflow-hidden rounded-xl border border-hairline";
 const SECTION_LABEL = "text-[13px] text-prt-text";
 const MEMBERS_SHOWN = 5;
+/** What an old lead steps down from, as the advisor scope rules read it (issue #900). */
+const LEAD_STEP = { kind: "lead" } as const;
 
 /** What the drawer is about: a new division in a department, or an open division. */
 export type DivisionDrawerTarget =
@@ -68,6 +82,8 @@ type Draft = {
   readonly outcomes: Readonly<Record<number, RemovedLeadOutcome>>;
   /** What each replaced lead does next (issue #253, board 68b4): nothing is picked for them. */
   readonly handOvers: Readonly<Record<number, HandOverOutcome>>;
+  /** Where each old lead who becomes an advisor advises (issue #900); the division until another place is picked. */
+  readonly scopes: Readonly<Record<number, AdvisorScope>>;
   /** New division only: people from the team, and emails new to it. */
   readonly members: readonly TeamPick[];
   readonly emails: readonly string[];
@@ -82,6 +98,7 @@ function draftOf(target: DivisionDrawerTarget): Draft {
     removed: [],
     outcomes: {},
     handOvers: {},
+    scopes: {},
     members: [],
     emails: [],
   };
@@ -172,6 +189,14 @@ function DrawerForm({
   // The full-access seat a lead's role carries moves to whoever replaces them (issue #501).
   const seatOfLead = (leadId: number) => (divisionId === null ? null : seatOfHandedRole(seats, leadId, { kind: "lead", divisionId }));
   const gone = leads.filter((l) => draft.removed.includes(l.id) || replacedBy(l.id) !== null);
+  // Where an old lead advises (issue #900): this division, its department or the whole team.
+  const scopeOf = (leadId: number) => draft.scopes[leadId] ?? defaultAdvisorScope(LEAD_STEP);
+  const names: ScopeNames = { division: short, department: tab?.division.department ?? null };
+  const scopeField = (leadId: number): AdvisorScopeField => ({
+    value: scopeOf(leadId),
+    names,
+    onChange: (scope) => setDraft((d) => ({ ...d, scopes: { ...d.scopes, [leadId]: scope } })),
+  });
   const leadCount = leads.length - gone.length + draft.added.length;
 
   const code = normalizeDivisionCode(draft.code);
@@ -192,9 +217,10 @@ function DrawerForm({
     code,
     newLeads: draft.added.map((a) => a.pick.id),
     oldLeads: gone.flatMap((l): OldLead[] => {
-      if (replacedBy(l.id) === null) return [{ personId: l.id, via: "removed", outcome: draft.outcomes[l.id] ?? "member" }];
+      const scope = scopeOf(l.id);
+      if (replacedBy(l.id) === null) return [{ personId: l.id, via: "removed", outcome: draft.outcomes[l.id] ?? "member", scope }];
       const outcome = draft.handOvers[l.id];
-      return outcome === undefined ? [] : [{ personId: l.id, via: "replaced", outcome }];
+      return outcome === undefined ? [] : [{ personId: l.id, via: "replaced", outcome, scope }];
     }),
     members: draft.members.map((m) => m.id),
     emails: draft.emails,
@@ -384,6 +410,7 @@ function DrawerForm({
                     seat={seatOfLead(lead.id)}
                     successor={by.pick.name}
                     onChange={(outcome) => set({ handOvers: { ...draft.handOvers, [lead.id]: outcome } })}
+                    scope={scopeField(lead.id)}
                   />
                 </div>
               ) : (
@@ -393,6 +420,7 @@ function DrawerForm({
                   short={short}
                   value={draft.outcomes[lead.id] ?? "member"}
                   onChange={(outcome) => set({ outcomes: { ...draft.outcomes, [lead.id]: outcome } })}
+                  scope={scopeField(lead.id)}
                 />
               );
             })}
@@ -432,9 +460,11 @@ function DrawerForm({
           const by = replacedBy(l.id);
           return goneLine(
             l,
-            by === null ? { via: "removed", outcome: draft.outcomes[l.id] ?? "member" } : { via: "replaced", outcome: draft.handOvers[l.id] ?? null, by: by.pick.name, seat: seatOfLead(l.id) },
+            by === null
+              ? { via: "removed", outcome: draft.outcomes[l.id] ?? "member", scope: scopeOf(l.id) }
+              : { via: "replaced", outcome: draft.handOvers[l.id] ?? null, scope: scopeOf(l.id), by: by.pick.name, seat: seatOfLead(l.id) },
             divisionId,
-            short,
+            names,
           );
         })}
         members={draft.members.length + draft.emails.length}
@@ -550,81 +580,47 @@ function ReplacesSelect({ added, leads, onChange }: { added: NewLead; leads: rea
   );
 }
 
-/** Whether each of a removed lead's three outcomes is open, with the reason when it is not. */
-function outcomesFor(lead: DivisionPerson, short: string): Readonly<Record<RemovedLeadOutcome, Permission>> {
+/** Whether "Leaves <division>" is open for a removed lead, with the reason when it is not. */
+function leaveDivisionFor(lead: DivisionPerson, short: string): Permission {
   // Someone in another division, or with a seat, keeps a place on the team (`mayLeaveDivision`).
-  const mayLeave = lead.removal.kind !== "only-division";
-  return {
-    member: { allowed: true },
-    "leave-division": mayLeave ? { allowed: true } : { allowed: false, reason: `${short} is their only division` },
-    "leave-team": lead.leave,
-  };
+  return lead.removal.kind !== "only-division" ? { allowed: true } : { allowed: false, reason: `${short} is their only division` };
 }
 
 /**
  * "What happens to Marco?" for a lead taken off with Remove (board 68b4):
- * stays as a member, leaves this division, or leaves the team. Remove is not
- * a hand-over, so it keeps these three; a replaced lead gets `HandOverChoice`.
+ * stays as a member, stays as an advisor where the editor picks (issue
+ * #900), leaves this division, or leaves the team. Remove is not a
+ * hand-over; a replaced lead gets `HandOverChoice`.
  */
 function OutcomeChoice({
   lead,
   short,
   value,
   onChange,
+  scope,
 }: {
   lead: DivisionPerson;
   short: string;
   value: RemovedLeadOutcome;
   onChange: (outcome: RemovedLeadOutcome) => void;
+  scope: AdvisorScopeField;
 }) {
-  const open = outcomesFor(lead, short);
-  const options: readonly { value: RemovedLeadOutcome; title: string; detail: string; danger?: boolean }[] = [
-    { value: "member", title: "Stays as a member", detail: `Keeps ${short}, loses lead access` },
-    { value: "leave-division", title: `Leaves ${short}`, detail: "Keeps their other divisions, if any" },
-    { value: "leave-team", title: "Leaves the team", detail: "Moves to Alumni; their access ends", danger: true },
-  ];
+  const name = `outcome-${lead.id}`;
   return (
-    <fieldset className="mt-5">
-      <legend className={`mb-2 ${SECTION_LABEL}`}>What happens to {firstName(lead.name)}?</legend>
-      <div className={`${LIST} divide-y divide-hairline`}>
-        {options.map((o) => {
-          const permission = open[o.value];
-          const disabled = !permission.allowed;
-          const checked = value === o.value;
-          return (
-            <label
-              key={o.value}
-              className={`flex items-start gap-3 px-3.5 py-3 transition-colors duration-300 ease-out ${disabled ? "cursor-not-allowed" : "cursor-pointer hover:bg-white-5"}`}
-            >
-              <input
-                type="radio"
-                name={`outcome-${lead.id}`}
-                value={o.value}
-                checked={checked}
-                disabled={disabled}
-                onChange={() => onChange(o.value)}
-                className="peer sr-only"
-              />
-              <span
-                aria-hidden
-                className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent ${
-                  checked ? "border-accent" : "border-white-10"
-                }`}
-              >
-                {checked && <span className="h-2 w-2 rounded-full bg-accent" />}
-              </span>
-              <span className="min-w-0">
-                <span className={`flex items-center gap-1.5 text-[14px] ${disabled ? "text-prt-muted" : o.danger ? "text-danger" : "text-prt-text"}`}>
-                  {disabled && <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
-                  {o.title}
-                </span>
-                <span className="block text-[12px] leading-snug text-prt-muted">{permission.allowed ? o.detail : permission.reason}</span>
-              </span>
-            </label>
-          );
-        })}
-      </div>
-    </fieldset>
+    <div className="mt-5">
+      <RadioChoice
+        name={name}
+        legend={`What happens to ${firstName(lead.name)}?`}
+        value={value}
+        onChange={onChange}
+        options={[
+          { value: "member", title: "Stays as a member", detail: `Keeps ${short}, loses lead access` },
+          advisorOption({ name, person: lead.name, from: LEAD_STEP, title: STAYS_AS_AN_ADVISOR, field: scope }),
+          { value: "leave-division", title: `Leaves ${short}`, detail: "Keeps their other divisions, if any", permission: leaveDivisionFor(lead, short) },
+          { value: "leave-team", title: "Leaves the team", detail: "Moves to Alumni; their access ends", danger: true, permission: lead.leave },
+        ]}
+      />
+    </div>
   );
 }
 
@@ -1015,11 +1011,17 @@ function DraftMembers({
   );
 }
 
-const OUTCOME_LINES: Readonly<Record<RemovedLeadOutcome, (short: string) => string>> = {
+/** What the confirm says of a removed lead; an advisor's line names the place picked (`advisingLine`, issue #900). */
+const OUTCOME_LINES: Readonly<Record<Exclude<RemovedLeadOutcome, "advisor">, (short: string) => string>> = {
   member: (short) => `stays in ${short} as a member`,
   "leave-division": (short) => `leaves ${short} and keeps their other divisions`,
   "leave-team": () => "leaves the team: they move to Alumni and all their access ends",
 };
+
+function removedLine(outcome: RemovedLeadOutcome, scope: AdvisorScope, names: ScopeNames): string {
+  if (outcome !== "advisor") return OUTCOME_LINES[outcome](names.division ?? "this division");
+  return `${advisingLine(LEAD_STEP, scope, names)}; they keep their other divisions`;
+}
 
 /**
  * An old lead as the confirm lists them: what becomes of them, whether they
@@ -1031,16 +1033,17 @@ type GoneLine = { readonly lead: DivisionPerson; readonly line: string; readonly
 function goneLine(
   lead: DivisionPerson,
   old:
-    | { readonly via: "removed"; readonly outcome: RemovedLeadOutcome }
-    | { readonly via: "replaced"; readonly outcome: HandOverOutcome | null; readonly by: string; readonly seat: FullAccessSeat | null },
+    | { readonly via: "removed"; readonly outcome: RemovedLeadOutcome; readonly scope: AdvisorScope }
+    | { readonly via: "replaced"; readonly outcome: HandOverOutcome | null; readonly scope: AdvisorScope; readonly by: string; readonly seat: FullAccessSeat | null },
   divisionId: number | null,
-  short: string,
+  names: ScopeNames,
 ): GoneLine {
-  if (old.via === "removed") return { lead, line: `${lead.name} ${OUTCOME_LINES[old.outcome](short)}.`, leaving: old.outcome === "leave-team", fullAccess: null };
+  if (old.via === "removed") return { lead, line: `${lead.name} ${removedLine(old.outcome, old.scope, names)}.`, leaving: old.outcome === "leave-team", fullAccess: null };
   const step = old.outcome === null || divisionId === null ? null : steppingDown({ kind: "lead", divisionId }, old.outcome);
   const fullAccess = fullAccessMovesLine({ seat: old.seat, successor: old.by, from: lead.name, step });
   if (step === null) return { lead, line: `${lead.name} is replaced.`, leaving: false, fullAccess };
-  return { lead, line: `${lead.name} is replaced and ${steppingDownLine(step, short)}.`, leaving: step.kind === "leave", fullAccess };
+  const next = step.kind === "leave" ? steppingDownLine(step, null) : advisingLine(LEAD_STEP, old.scope, names);
+  return { lead, line: `${lead.name} is replaced and ${next}.`, leaving: step.kind === "leave", fullAccess };
 }
 
 /** The "are you sure" before Save changes or Create division, saying what will change. */

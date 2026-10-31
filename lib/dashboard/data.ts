@@ -561,11 +561,11 @@ export interface TeamWrites {
   addSeat(input: unknown): Promise<WriteResult<null>>;
   /**
    * Remove seat (issue #643): the seat row `roleId` ends and no successor's
-   * starts, so its full access ends with it; the holder stays on the team,
-   * checked by `planSeatRemoval` (./team-seats.ts). The team leader and full
-   * access only.
+   * starts, so its full access ends with it; the holder stays on the team, or
+   * stays as an advisor when `input` picks it (issue #900), checked by
+   * `planSeatRemoval` (./team-seats.ts). The team leader and full access only.
    */
-  removeSeat(roleId: number): Promise<WriteResult<null>>;
+  removeSeat(roleId: number, input: unknown): Promise<WriteResult<null>>;
   /**
    * Add another holder on the team leader's seat (epic #861, issue #868): a
    * `president` row starts for the person, and every team leader stays one;

@@ -18,13 +18,16 @@ import {
   type PersonMove,
 } from "@/lib/dashboard/department-edit";
 import {
+  advisingLine,
   advisorInDestinationDetail,
   BECOME_AN_ADVISOR,
+  defaultAdvisorScope,
   fullAccessMovesLine,
   movesWithAdvisorRoleLine,
   seatOfHandedRole,
   steppingDown,
   steppingDownLine,
+  type AdvisorScope,
   type HandOverOutcome,
   type Unit,
 } from "@/lib/dashboard/hand-over";
@@ -39,6 +42,9 @@ import { MenuItem, RowMenu } from "./division-members";
 import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
 import { HandOverChoice, RadioChoice } from "./hand-over-choice";
+
+/** What a replaced head steps down from, as the advisor scope rules read it (issue #900). */
+const HEAD_STEP = { kind: "head" } as const;
 
 // New department (board 77d), Edit department (77e) and Close department
 // (77f, reworked by issue #441), on the Team tree's edit view (issue #251).
@@ -334,6 +340,8 @@ function EditDepartment({
   const [newHead, setNewHead] = useState<TeamPick | null>(null);
   const [picking, setPicking] = useState(false);
   const [headOutcome, setHeadOutcome] = useState<HandOverOutcome | null>(null);
+  // Where a replaced head advises (issue #900): this department until the whole team is picked.
+  const [headScope, setHeadScope] = useState<AdvisorScope>(() => defaultAdvisorScope(HEAD_STEP));
   const [addingHead, setAddingHead] = useState(false);
   const [pending, startTransition] = useTransition();
   const { heads } = department;
@@ -356,6 +364,7 @@ function EditDepartment({
         : null;
   const valid = nameError === null && codeError === null && headError === null;
   const stored = storedDepartmentName(name);
+  const scopeNames = { division: null, department: stored };
   const nameChanged = stored !== department.name;
   const codeChanged = code !== normalizeDepartmentCode(department.code ?? "");
 
@@ -373,6 +382,7 @@ function EditDepartment({
   const undoHead = () => {
     setNewHead(null);
     setHeadOutcome(null);
+    setHeadScope(defaultAdvisorScope(HEAD_STEP));
     setReplacingId(null);
   };
 
@@ -387,7 +397,7 @@ function EditDepartment({
       const result = await saveDepartment(department.id, {
         name,
         code,
-        head: newHead === null ? null : { to: newHead.id, from: head?.id ?? null, outcome: headOutcome },
+        head: newHead === null ? null : { to: newHead.id, from: head?.id ?? null, outcome: headOutcome, scope: headScope },
       });
       if (!result.ok) {
         toast.error("Could not save the department", { description: result.error });
@@ -410,7 +420,8 @@ function EditDepartment({
   if (newHead !== null) lines.push(`${newHead.name} becomes Head of ${stored} and keeps their divisions.`);
   if (newHead !== null && head !== null && headOutcome !== null) {
     const step = steppingDown({ kind: "head", departmentId: department.id }, headOutcome);
-    lines.push(`${head.name} ${steppingDownLine(step, stored)}.`);
+    // An advisor's line names the place picked (issue #900).
+    lines.push(`${head.name} ${step.kind === "leave" ? steppingDownLine(step, stored) : advisingLine(HEAD_STEP, headScope, scopeNames)}.`);
     const access = fullAccessMovesLine({ seat: headSeat, successor: newHead.name, from: head.name, step });
     if (access !== null) lines.push(access);
     if (staying.length > 0) lines.push(`${andList(staying)} ${staying.length === 1 ? "stays" : "stay"} head of ${stored}.`);
@@ -579,6 +590,7 @@ function EditDepartment({
                   seat={headSeat}
                   successor={newHead.name}
                   onChange={setHeadOutcome}
+                  scope={{ value: headScope, names: scopeNames, onChange: setHeadScope }}
                 />
               </div>
             )}

@@ -5,9 +5,18 @@ import { Armchair, Plus, RefreshCw, Repeat, Undo2, UserMinus } from "lucide-reac
 import { toast } from "sonner";
 import { addSeat, addSeatHolder, changeSeatHolder, removeSeat } from "@/app/dashboard/team-actions";
 import type { TeamPick } from "@/lib/dashboard/division-edit";
-import { fullAccessMovesLine, steppingDown, steppingDownLine, type HandOverOutcome } from "@/lib/dashboard/hand-over";
+import { advisingLine, fullAccessMovesLine, STAYS_AS_AN_ADVISOR, steppingDown, steppingDownLine, type HandOverOutcome, type ScopeNames } from "@/lib/dashboard/hand-over";
 import { holderAddRefusal } from "@/lib/dashboard/seat-holders";
-import { keepTheSeat, seatRemovalLines, seatTitleError, storedSeatTitle } from "@/lib/dashboard/team-seats";
+import {
+  keepTheSeat,
+  SEAT_STEP,
+  seatRemovalLines,
+  seatTitleError,
+  STAYS_ON_THE_TEAM,
+  storedSeatTitle,
+  type SeatRemoval,
+  type SeatRemovalOutcome,
+} from "@/lib/dashboard/team-seats";
 import { andList, type SeatHolder, type StructureSeat, type TeamStructure } from "@/lib/dashboard/team-structure";
 import { AddHolderLink, AddHolderPicker } from "./add-holder";
 import { Avatar } from "./avatar";
@@ -16,7 +25,7 @@ import { PeoplePicker } from "./division-drawer";
 import { MenuItem, RowMenu } from "./division-members";
 import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
-import { HandOverChoice } from "./hand-over-choice";
+import { advisorOption, HandOverChoice, RadioChoice, type AdvisorScopeField } from "./hand-over-choice";
 
 // The seat row's panels on Edit team tree (issue #627): Change holder, opened
 // from a seat box, with Remove seat in its footer (issue #643) and Add another
@@ -38,7 +47,9 @@ const UNDO = `inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-1.5 te
 /** Which seat panel is open: Change holder on a seat, or Add seat. */
 export type SeatDrawerTarget = { readonly kind: "change"; readonly roleId: number } | { readonly kind: "new" };
 
-const SEAT_STEP = { kind: "team-seat" } as const;
+/** A team seat sits in no division and no department: its holder advises the whole team, the one scope offered (issue #900). */
+const NO_UNITS: ScopeNames = { division: null, department: null };
+const TEAM_SCOPE: AdvisorScopeField = { value: "team", names: NO_UNITS, onChange: () => {} };
 
 export function SeatDrawer({ target, structure, onClose }: { target: SeatDrawerTarget | null; structure: TeamStructure; onClose: () => void }) {
   // The last target stays while the panel closes, so its content does not vanish mid-close.
@@ -90,7 +101,14 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
   const [outcome, setOutcome] = useState<HandOverOutcome | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [removing, setRemoving] = useState<SeatHolder | null>(null);
+  const [removing, setRemovingHolder] = useState<SeatHolder | null>(null);
+  // What becomes of the holder Remove takes off (issue #900): they stay on the team as before, or stay as an advisor.
+  const [removal, setRemoval] = useState<SeatRemovalOutcome>("stays");
+  const setRemoving = (h: SeatHolder | null) => {
+    setRemovingHolder(h);
+    setRemoval("stays");
+  };
+  const removalSent: SeatRemoval = { outcome: removal, scope: removal === "advisor" ? "team" : null };
   const [adding, setAdding] = useState(false);
   const [pending, startTransition] = useTransition();
   const several = seat.holders.length > 1;
@@ -109,7 +127,7 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
   const remove = () =>
     startTransition(async () => {
       if (removing === null) return;
-      const result = await removeSeat(removing.roleId);
+      const result = await removeSeat(removing.roleId, removalSent);
       if (!result.ok) {
         toast.error(several ? "Could not remove the holder" : "Could not remove the seat", { description: result.error });
         return;
@@ -135,7 +153,7 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
   const confirm = () =>
     startTransition(async () => {
       if (next === null) return;
-      const result = await changeSeatHolder(holder.roleId, { to: next.id, outcome });
+      const result = await changeSeatHolder(holder.roleId, { to: next.id, outcome, scope: outcome === "advisor" ? TEAM_SCOPE.value : null });
       if (!result.ok) {
         toast.error("Could not change who holds the seat", { description: result.error });
         return;
@@ -149,7 +167,7 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
   const lines: string[] = [];
   if (next !== null) lines.push(`${next.name} holds ${seat.title} and keeps their divisions.`);
   if (next !== null && step !== null) {
-    lines.push(`${holder.name} ${steppingDownLine(step, null)}.`);
+    lines.push(`${holder.name} ${step.kind === "leave" ? steppingDownLine(step, null) : advisingLine(SEAT_STEP, "team", NO_UNITS)}.`);
     const access = fullAccessMovesLine({ seat: seat.flag, successor: next.name, from: holder.name, step });
     if (access !== null) lines.push(access);
   }
@@ -291,6 +309,7 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
                   seat={seat.flag}
                   successor={next.name}
                   onChange={setOutcome}
+                  scope={TEAM_SCOPE}
                 />
               </div>
             )}
@@ -325,11 +344,23 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
         danger
         title={removingOthers.length > 0 ? `Remove ${removing?.name ?? "them"} from ${seat.title}?` : `Remove ${seat.title}?`}
         description={
-          <ul className="flex list-disc flex-col gap-1.5 pl-5">
-            {seatRemovalLines(seat, removing?.name ?? holder.name, removingOthers).map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
+          <>
+            <RadioChoice
+              name={`remove-${seat.roleId}`}
+              legend={`What happens to ${(removing?.name ?? holder.name).split(" ")[0]}?`}
+              value={removal}
+              onChange={setRemoval}
+              options={[
+                { value: "stays", ...STAYS_ON_THE_TEAM },
+                advisorOption({ name: `remove-${seat.roleId}`, person: removing?.name ?? holder.name, from: SEAT_STEP, title: STAYS_AS_AN_ADVISOR, field: TEAM_SCOPE }),
+              ]}
+            />
+            <ul className="mt-4 flex list-disc flex-col gap-1.5 pl-5">
+              {seatRemovalLines(seat, removing?.name ?? holder.name, removingOthers, removalSent).map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </>
         }
         cancelLabel="Back"
         confirmLabel={removingOthers.length > 0 ? "Remove holder" : "Remove seat"}

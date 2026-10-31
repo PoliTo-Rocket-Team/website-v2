@@ -82,6 +82,108 @@ export function advising(handed: SteppedDownFrom): Advising {
   }
 }
 
+// Where a former lead, head or seat holder advises (issue #900; Owner
+// decision, 2026-10-31). Removing or replacing a lead, a head or a team seat
+// holder in the Team tree may keep them as an advisor at a place the editor
+// picks: a lead in this division, its department or the whole team; a head in
+// its department or the whole team; a team seat holder on the whole team. A
+// scope a role has no unit for is not offered, and with no scope picked the
+// place is the role's own unit (`advising`), as before.
+
+/** Where an advisor sits, as the editor picks it: the role's division, its department, or the whole team. */
+export const ADVISOR_SCOPES = ["division", "department", "team"] as const;
+export type AdvisorScope = (typeof ADVISOR_SCOPES)[number];
+
+/**
+ * A role someone steps down from, placed in the team: a lead's division with
+ * the department it sits in, which a "department" scope reads. Every other
+ * role carries the units it has already.
+ */
+export type PlacedRole = Exclude<SteppedDownFrom, { kind: "lead" }> | { readonly kind: "lead"; readonly divisionId: number; readonly departmentId: number };
+
+/** The kind of role stepped down from: all the scope rules read of it. */
+export type SteppedDownKind = Pick<SteppedDownFrom, "kind">;
+
+/** The scopes `from` offers, its default first: a lead division, department, team; a head department, team; a seat or the team leader the team. */
+export function advisorScopes(from: SteppedDownKind): readonly [AdvisorScope, ...AdvisorScope[]] {
+  switch (from.kind) {
+    case "lead":
+      return ["division", "department", "team"];
+    case "head":
+      return ["department", "team"];
+    case "team-seat":
+    case "team-leader":
+      return ["team"];
+  }
+}
+
+/** The scope `from` advises at when none is picked: the unit they held the role in (`advising`). */
+export function defaultAdvisorScope(from: SteppedDownKind): AdvisorScope {
+  return advisorScopes(from)[0];
+}
+
+/** The place `scope` names for someone stepping down from `role`, or null when `role` does not offer it. */
+export function advisorPlace(role: PlacedRole, scope: AdvisorScope): AdvisorPlace | null {
+  if (!advisorScopes(role).includes(scope)) return null;
+  if (scope === "team") return { kind: "team" };
+  if (scope === "division") return role.kind === "lead" ? { kind: "division", divisionId: role.divisionId } : null;
+  return role.kind === "lead" || role.kind === "head" ? { kind: "department", departmentId: role.departmentId } : null;
+}
+
+export const SCOPE_NOT_OFFERED = "They cannot advise there. Pick where they advise again.";
+
+/**
+ * "Stays as an advisor" at `scope`, or `role`'s default with none picked: an
+ * Advisor role at the place the scope names. A lead, head or seat holder
+ * loses their access, as `advising` says; a former team leader keeps theirs.
+ * A scope `role` does not offer is refused.
+ */
+export function advisingAt(role: PlacedRole, scope: AdvisorScope | null): Checked<Advising> {
+  const place = advisorPlace(role, scope ?? defaultAdvisorScope(role));
+  if (place === null) return { ok: false, error: SCOPE_NOT_OFFERED };
+  return { ok: true, value: { kind: "advisor", place, access: role.kind === "team-leader" ? "keeps-full-access" : "ends" } };
+}
+
+/** `steppingDown` with the place an advisor picked (`advisingAt`): "leave" is Alumni, whatever the scope. */
+export function steppingDownAt(role: PlacedRole, outcome: HandOverOutcome, scope: AdvisorScope | null): Checked<SteppingDown> {
+  return outcome === "leave" ? { ok: true, value: { kind: "leave" } } : advisingAt(role, scope);
+}
+
+/** A role row as the advisor rule reads it: its type and the unit it is kept on. */
+export type PlacedRow = { readonly type: string | null; readonly departmentId: number | null; readonly divisionId: number | null };
+
+/**
+ * Whether `row` is an Advisor role at `place`: someone who advises there
+ * already gets no second Advisor role there, so they hold one active advisor
+ * role at the picked place.
+ */
+export function isAdvisorRowAt(row: PlacedRow, place: AdvisorPlace): boolean {
+  if (row.type !== "advisor") return false;
+  switch (place.kind) {
+    case "team":
+      return row.departmentId === null && row.divisionId === null;
+    case "department":
+      return row.departmentId === place.departmentId && row.divisionId === null;
+    case "division":
+      return row.divisionId === place.divisionId;
+  }
+}
+
+/** The names the wording gives each scope's place: the division and the department, null where the role has none. */
+export type ScopeNames = { readonly division: string | null; readonly department: string | null };
+
+/** "Mission Analysis", "Aerodynamics", "the whole team": the place `scope` names, in words. */
+export function advisorScopeName(scope: AdvisorScope, names: ScopeNames): string {
+  if (scope === "division") return names.division ?? "this division";
+  if (scope === "department") return names.department ?? "this department";
+  return "the whole team";
+}
+
+/** "Mission Analysis", "Aerodynamics", "Whole team": a scope as the advisor picker lists it. */
+export function advisorScopeTitle(scope: AdvisorScope, names: ScopeNames): string {
+  return scope === "team" ? "Whole team" : advisorScopeName(scope, names);
+}
+
 // Full access follows the role (issue #501; Owner decision, 2026-10-21)
 
 /** A role row as the seat rule reads it: the full-access seat it is flagged as (`roles.full_access`), or null. */
@@ -231,9 +333,12 @@ export function advisorInDestinationDetail(destination: string): string {
 }
 
 function advisorWords(step: Advising, unit: string | null, voice: Voice): string {
-  const where = step.place.kind === "team" || unit === null ? "the team" : unit;
+  return advisorWordsAt(step.access, step.place.kind === "team" || unit === null ? "the team" : unit, voice);
+}
+
+function advisorWordsAt(access: Advising["access"], where: string, voice: Voice): string {
   const stays = withAdvisorRole(where, voice === "you" ? "stay" : "stays");
-  if (step.access === "ends") return `${stays}; ${voice === "you" ? "your" : "their"} access ends`;
+  if (access === "ends") return `${stays}; ${voice === "you" ? "your" : "their"} access ends`;
   const keeps = voice === "you" ? "keep your access" : "keeps their access";
   return `${stays} and ${keeps}; the new Team Leader can change it in Access`;
 }
@@ -252,6 +357,25 @@ export function advisorOptionDetail(handed: SteppedDownFrom, unit: string | null
 export function steppingDownLine(step: SteppingDown, unit: string | null): string {
   if (step.kind === "leave") return "leaves the team: every role they hold ends and they move to Alumni";
   return advisorWords(step, unit, "they");
+}
+
+/** The option's title where no advisor option was offered before (issue #900): Remove lead and Remove seat. */
+export const STAYS_AS_AN_ADVISOR = "Stays as an advisor";
+
+/**
+ * "stays in the whole team with the Advisor role; their access ends": what a
+ * confirm says of someone who advises at `scope` (issue #900), naming the
+ * place picked. Only the access rule reads `from`: a lead, head or seat
+ * holder's access ends, a former team leader keeps theirs.
+ */
+export function advisingLine(from: SteppedDownKind, scope: AdvisorScope, names: ScopeNames): string {
+  return advisorWordsAt(from.kind === "team-leader" ? "keeps-full-access" : "ends", advisorScopeName(scope, names), "they");
+}
+
+/** The detail under the advisor option once a scope is picked: "Stays in Aerodynamics with the Advisor role; their access ends". */
+export function advisingDetail(from: SteppedDownKind, scope: AdvisorScope, names: ScopeNames): string {
+  const words = advisingLine(from, scope, names);
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 // The Team Leader box (board 77i)

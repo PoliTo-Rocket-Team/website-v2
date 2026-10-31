@@ -102,7 +102,7 @@ test("a lead's save keeps every rule of Edit division (#594)", () => {
   assert.ok(asLead({ oldLeads: [removed(2, "leave-division")] }).ok, "Pietro is also in Optimization and Analysis");
   assert.equal(asLead({ oldLeads: [removed(2, "leave-team")] }).ok, false, "Pietro is also in a division the lead does not reach");
   const replaced = asLead({ newLeads: [3], oldLeads: [{ personId: 1, via: "replaced", outcome: "advisor" }] });
-  assert.ok(replaced.ok && replaced.plan.advise.includes(1) && replaced.plan.promote.includes(3), "a replaced lead becomes an advisor");
+  assert.ok(replaced.ok && replaced.plan.advise.some((a) => a.memberId === 1) && replaced.plan.promote.includes(3), "a replaced lead becomes an advisor");
 });
 
 test("an open division always keeps a lead: an edit or a create with none is refused", () => {
@@ -152,7 +152,10 @@ test("each outcome for an old lead is planned as chosen, within the rules", () =
 test("a replaced lead hands the division over: an advisor in it or Alumni, never a member (#253)", () => {
   const advises = plan({ newLeads: [3], oldLeads: [{ personId: 1, via: "replaced", outcome: "advisor" }] });
   assert.ok(advises.ok);
-  assert.deepEqual([advises.plan.advise, advises.plan.demote, advises.plan.leaveTeam], [[1], [], []]);
+  assert.deepEqual(
+    [advises.plan.advise, advises.plan.demote, advises.plan.leaveTeam],
+    [[{ memberId: 1, step: { kind: "advisor", place: { kind: "division", divisionId: 1 }, access: "ends" } }], [], []],
+  );
   assert.deepEqual(divisionRowWrites(advises.plan, 1, [{ id: 101, memberId: 1, type: "lead" }]).end, [101], "the lead row ends; the Advisor role starts beside it");
   const leaves = plan({ newLeads: [3], oldLeads: [{ personId: 1, via: "replaced", outcome: "leave" }] });
   assert.ok(leaves.ok);
