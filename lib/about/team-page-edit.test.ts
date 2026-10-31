@@ -114,6 +114,8 @@ test("Reset to team keeps the stored groups (issue #856): a kind changed in the 
     "the groups reordered": { ...layout, groups: [...layout.groups].reverse() },
   };
   for (const [name, edited] of Object.entries(edits)) assert.equal(editCount(roles, edited, record), 1, name);
+  const stored = teamRecordLayout(roles, { ...layout, groups: [...layout.groups, { id: 99, name: "Outreach" }] });
+  assert.equal(editCount(roles, layout, stored), 1, "an empty group deleted");
 });
 
 test("Reset to team counts a place whose overrides differ from the rebuilt layout's, and none for the same overrides", () => {

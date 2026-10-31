@@ -105,12 +105,19 @@ export type PageSeat = { readonly id: number; readonly binding: PlaceBinding; re
 export type LayoutGroup = { readonly id: number; readonly name: string };
 
 /**
- * A department block: the name it shows, the group it sits in, how it draws
- * its division leads (under its head or beside it), its head and its division
- * lead rows in order.
+ * A department block: the department of the team record it shows, the name
+ * it shows, the group it sits in, how it draws its division leads (under its
+ * head or beside it), its head and its division lead rows in order.
  */
 export type DepartmentBlock = {
   readonly id: number;
+  /**
+   * The id of the team record's department the block shows, whoever its head
+   * place shows; null for a department the editor added. At most one block
+   * shows a department. Reset to team finds a block's department by it, so a
+   * head swapped to another person keeps the block's group (issue #856).
+   */
+  readonly department: number | null;
   readonly name: string;
   readonly group: number;
   readonly leadsDrawn: LeadsDrawn;
@@ -586,7 +593,9 @@ export function snapshot(roles: TeamRoles, layer: TeamPageLayer): Snapshot {
     });
     // Today's grouping, by the department's kind: the one read of it (`TODAYS_GROUPS`, issue #856).
     const today = todaysGroupOf(department.kind);
-    return [{ id, name: department.name, group: TODAYS_GROUP_IDS[today.kind], leadsDrawn: today.leadsDrawn, head: headSeat, leads }];
+    return [
+      { id, department: fromRoles?.id ?? null, name: department.name, group: TODAYS_GROUP_IDS[today.kind], leadsDrawn: today.leadsDrawn, head: headSeat, leads },
+    ];
   });
 
   // What the layer holds that no page seat carries.
@@ -620,16 +629,14 @@ function todaysLayoutGroups(): LayoutGroup[] {
   return TODAYS_GROUPS.map((g) => ({ id: TODAYS_GROUP_IDS[g.kind], name: g.name }));
 }
 
-/** Whether two blocks show the same department: their heads bound alike. */
-const sameDepartment = (a: DepartmentBlock, b: DepartmentBlock) => sameBinding(a.head.binding, b.head.binding);
-
 /**
  * The layout Reset to team writes (board 80h; issue #856): the team record's
  * places as the snapshot builds them with no edit, under `kept`'s group list,
  * which it keeps. Each department `kept` shows stays in its group there and
- * draws its leads as there; a department new to the page goes under the
- * first group, its leads under its head. So a reset never reads a
- * department's kind for a group.
+ * draws its leads as there, found by the department its block shows, so a
+ * head swapped to another person or seat, or handed over, keeps it; a
+ * department new to the page goes under the first group, its leads under its
+ * head. So a reset never reads a department's kind for a group.
  */
 export function teamRecordLayout(roles: TeamRoles, kept: TeamLayout): TeamLayout {
   const rebuilt = snapshot(roles, NO_TEAM_LAYER).layout;
@@ -639,7 +646,7 @@ export function teamRecordLayout(roles: TeamRoles, kept: TeamLayout): TeamLayout
     ...rebuilt,
     groups: kept.groups,
     departments: rebuilt.departments.map((block) => {
-      const own = kept.departments.find((k) => sameDepartment(k, block));
+      const own = block.department === null ? undefined : kept.departments.find((k) => k.department === block.department);
       return { ...block, group: own?.group ?? first.id, leadsDrawn: own?.leadsDrawn ?? "under" };
     }),
   };
@@ -680,7 +687,7 @@ const layoutSchema = z.strictObject({
   leader: seatSchema.nullable(),
   arc: z.array(seatSchema).max(ARC_LEADERS),
   groups: z.array(z.strictObject({ id, name: text })).min(1).max(LAYOUT_GROUPS_MAX),
-  departments: z.array(z.strictObject({ ...blockParts, group: id, leadsDrawn: z.enum(LEADS_DRAWN) })).max(200),
+  departments: z.array(z.strictObject({ ...blockParts, department: id.nullable(), group: id, leadsDrawn: z.enum(LEADS_DRAWN) })).max(200),
 });
 
 /** A layout stored before department groups (issue #856): each block carries today's kind, and there is no group list. */
@@ -690,13 +697,30 @@ const kindLayoutSchema = z.strictObject({
   departments: z.array(z.strictObject({ ...blockParts, kind: z.enum(DEPARTMENT_KINDS) })).max(200),
 });
 
-/** A layout stored before department groups, read as today's two groups with each block where its kind put it; the next save writes the group list. */
+/** The department a block stored before groups shows: the one its head seat names, unless another block's head names it too. */
+function storedDepartmentOf(head: PlaceBinding, blocks: readonly { readonly head: { readonly binding: PlaceBinding } }[]): number | null {
+  if (head.kind !== "department-head") return null;
+  const named = blocks.filter((b) => b.head.binding.kind === "department-head" && b.head.binding.departmentId === head.departmentId);
+  return named.length === 1 ? head.departmentId : null;
+}
+
+/**
+ * A layout stored before department groups, read as today's two groups with
+ * each block where its kind put it, and showing the department its head seat
+ * names (a block whose head is no department's seat, or shares it, shows
+ * none); the next save writes the group list and each block's department.
+ */
 function groupedLayoutOf(stored: z.infer<typeof kindLayoutSchema>): TeamLayout {
   return {
     leader: stored.leader,
     arc: stored.arc,
     groups: todaysLayoutGroups(),
-    departments: stored.departments.map(({ kind, ...block }) => ({ ...block, group: TODAYS_GROUP_IDS[kind], leadsDrawn: todaysGroupOf(kind).leadsDrawn })),
+    departments: stored.departments.map(({ kind, ...block }) => ({
+      ...block,
+      department: storedDepartmentOf(block.head.binding, stored.departments),
+      group: TODAYS_GROUP_IDS[kind],
+      leadsDrawn: todaysGroupOf(kind).leadsDrawn,
+    })),
   };
 }
 
@@ -713,9 +737,10 @@ const unique = (ids: readonly number[]) => new Set(ids).size === ids.length;
 
 /**
  * `value` as a layout this code could have written: every part present and
- * well formed, every id used once, at least one group, and each block in a
- * group the list holds; null for anything else. A layout stored before
- * department groups reads as today's two groups (`groupedLayoutOf`).
+ * well formed, every id used once, at least one group, each block in a
+ * group the list holds, and no department shown by two blocks; null for
+ * anything else. A layout stored before department groups reads as today's
+ * two groups (`groupedLayoutOf`).
  */
 export function parseTeamLayout(value: unknown): TeamLayout | null {
   const parsed = layoutSchema.safeParse(value);
@@ -724,7 +749,8 @@ export function parseTeamLayout(value: unknown): TeamLayout | null {
   if (layout === null) return null;
   const groups = new Set(layout.groups.map((g) => g.id));
   const grouped = layout.departments.every((b) => groups.has(b.group));
-  return unique(idsOf(layout)) && groups.size === layout.groups.length && grouped ? layout : null;
+  const shown = layout.departments.flatMap((b) => (b.department === null ? [] : [b.department]));
+  return unique(idsOf(layout)) && groups.size === layout.groups.length && grouped && unique(shown) ? layout : null;
 }
 
 /** The id the next group the editor adds takes: after every group id the layout holds. */

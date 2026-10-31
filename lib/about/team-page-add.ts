@@ -373,7 +373,7 @@ export function layoutWithHead(roles: TeamRoles, layout: TeamLayout, at: HeadRef
   const head: PageSeat = { id: headId, binding, overrides: overridesOf(roles, binding, person, { ...fields, name: keptName ?? "" }, name) };
 
   const leads = leadSeatsOf(roles, block, fields.leads, nextId);
-  const next: DepartmentBlock = { id, name, group: fields.group, leadsDrawn: block?.leadsDrawn ?? "under", head, leads };
+  const next: DepartmentBlock = { id, department: block?.department ?? null, name, group: fields.group, leadsDrawn: block?.leadsDrawn ?? "under", head, leads };
   if (block === undefined) return { ...layout, departments: [...layout.departments, next] };
   return { ...layout, departments: layout.departments.map((b) => (b.id === id ? next : b)) };
 }
