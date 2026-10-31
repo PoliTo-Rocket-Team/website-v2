@@ -68,11 +68,12 @@ export type DepartmentCreate = {
 
 /**
  * Change head on Edit department (board 77e, issue #253): who heads the
- * department from now on, and what the head they replace does next. The
- * outcome is null only when nothing was picked; the rules refuse that while
- * the department has a head.
+ * department from now on, the head they replace (`from`, issue #872), and
+ * what that head does next. `from` may be null only while the department has
+ * at most one head; the outcome is null only when nothing was picked; the
+ * rules refuse either while it is needed.
  */
-export type HeadChange = { readonly to: number; readonly outcome: HandOverOutcome | null };
+export type HeadChange = { readonly to: number; readonly from: number | null; readonly outcome: HandOverOutcome | null };
 
 /** What Save changes on Edit department sends (board 77e): the name, the code, and a new head when Change head picked one; no kind (issue #856). */
 export type DepartmentSave = { readonly name: string; readonly code: string; readonly head: HeadChange | null };
@@ -114,7 +115,7 @@ const createSchema = z.object({ name, code, heads: z.array(id).max(5) });
 const saveSchema = z.object({
   name,
   code,
-  head: z.object({ to: id, outcome: z.enum(HAND_OVER_OUTCOMES).nullable() }).nullable().default(null),
+  head: z.object({ to: id, from: id.nullable().default(null), outcome: z.enum(HAND_OVER_OUTCOMES).nullable() }).nullable().default(null),
 });
 const unit = z.discriminatedUnion("kind", [z.object({ kind: z.literal("department"), departmentId: id }), z.object({ kind: z.literal("division"), divisionId: id })]);
 const closeSchema = z.object({
@@ -172,11 +173,14 @@ export function planDepartmentCreate(input: {
 }
 
 /**
- * A checked Change head: who heads the department from now on, the people
- * who head it now (`from`, none for a department with no head), and what
- * becomes of them (null when nobody heads it).
+ * A checked Change head: who heads the department from now on, and the one
+ * head they replace with what becomes of them (`replaces`, null for a
+ * department with no head). Every other head keeps the headship (issue #872).
  */
-export type HeadChangePlan = { readonly to: number; readonly from: readonly number[]; readonly steppingDown: SteppingDown | null };
+export type HeadChangePlan = {
+  readonly to: number;
+  readonly replaces: { readonly memberId: number; readonly steppingDown: SteppingDown } | null;
+};
 
 /** A checked Edit department save: the name and code as stored, what changed, and the new head, if any. */
 export type DepartmentSavePlan = {
@@ -190,12 +194,13 @@ export type DepartmentSavePlan = {
 /**
  * Edit department's Save changes (board 77e): the same name and code rules
  * as New department, for an open department. Change head (issue #253) hands
- * the head role over: the new head is on the team and does not head this
+ * one head role over: the new head is on the team and does not head this
  * department already; any other seat they hold stays (as in New department),
- * and they keep every role and division they hold; the head they replace becomes an
- * advisor in this department or leaves the team, as the editor picked, and
- * nothing is picked for them (`steppingDown`). `headIds` are the people who
- * head it now.
+ * and they keep every role and division they hold; the one head they replace
+ * (`HeadChange.from`, picked among several, issue #872) becomes an advisor
+ * in this department or leaves the team, as the editor picked, and nothing is
+ * picked for them (`steppingDown`). Every other head stays. `headIds` are the
+ * people who head it now.
  */
 export function planDepartmentSave(input: {
   readonly actor: TeamActor | null;
@@ -256,13 +261,29 @@ export function planHeadAdd(input: {
   });
 }
 
-function planHeadChange(change: HeadChange, departmentId: number, from: readonly number[], team: readonly TeamPerson[]): Checked<HeadChangePlan> {
+export const PICK_REPLACED_HEAD = "Pick which head the new head replaces.";
+
+/**
+ * The one head a new head replaces, or the first reason it cannot be read:
+ * none for a department with no head; the head named, who must head it now;
+ * with no head named, its only head, and a refusal while it has several
+ * (issue #872), so a replace never guesses which co-head ends.
+ */
+export function replacedHead(named: number | null, heads: readonly number[]): Checked<number | null> {
+  if (heads.length === 0) return named === null ? yes(null) : no("That department has no head to replace.");
+  if (named === null) return heads.length === 1 ? yes(heads[0]) : no(PICK_REPLACED_HEAD);
+  return heads.includes(named) ? yes(named) : no("They do not head this department now.");
+}
+
+function planHeadChange(change: HeadChange, departmentId: number, heads: readonly number[], team: readonly TeamPerson[]): Checked<HeadChangePlan> {
   const next = team.find((p) => p.id === change.to);
   if (!next) return no("They are not on the team.");
-  if (from.includes(next.id)) return no(`${next.name} already heads this department.`);
-  if (from.length === 0) return yes({ to: next.id, from, steppingDown: null });
+  if (heads.includes(next.id)) return no(`${next.name} already heads this department.`);
+  const from = replacedHead(change.from, heads);
+  if (!from.ok) return no(from.error);
+  if (from.value === null) return yes({ to: next.id, replaces: null });
   if (change.outcome === null) return no("Choose what happens to the head: Become an advisor or Leave the team.");
-  return yes({ to: next.id, from, steppingDown: steppingDown({ kind: "head", departmentId }, change.outcome) });
+  return yes({ to: next.id, replaces: { memberId: from.value, steppingDown: steppingDown({ kind: "head", departmentId }, change.outcome) } });
 }
 
 // Close department (Owner decision, 2026-10-19): the department and every one

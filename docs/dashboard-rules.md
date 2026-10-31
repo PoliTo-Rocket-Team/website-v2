@@ -470,6 +470,27 @@ These rules come from the Owner decisions of 2026-10-16 on #253 (boards 77i, 77e
 - The team leader's own powers (deciding orders by default, giving "Approve orders", handing the
   role over) belong to the role, so they move to the new team leader on save.
 - The person who takes over keeps every role they already hold.
+- **A co-holder's hand-over** (epic #861,
+  [#872](https://github.com/PoliTo-Rocket-Team/website-v2/issues/872)): when a seat has several
+  holders, a hand-over or replacement by one of them ends that holder's row only. Every other
+  holder keeps the seat and its full rights, on every seat kind:
+  - **Team leader:** any team leader hands over their own place from the Team Leader box. The
+    other team leaders stay team leaders.
+  - **Full-access seat and any other team-level seat:** Change holder and Remove act on the
+    holder picked on that holder's own row in the seat's panel. Remove ends that row only; the
+    seat leaves the Team tree only with its last holder.
+  - **Department head:** Change head replaces the one head picked on that head's row in Edit
+    department; with several heads, a save that names none is refused. A confirmed hand-over
+    request from one head ends only that head's row. A move that makes someone head of a
+    department with several heads replaces the one head picked in the move's confirm.
+  - The successor may not already hold that exact seat, by any holder's row: the server refuses
+    them on each seat kind with the reason Add another holder gives ("{name} holds this seat
+    now.", or "{name} already heads this department."), and writes nothing.
+  - The drawers name which holder a replace or remove applies to: with several holders, each
+    holder's row has its own Replace (and, on a team-level seat, Remove), and the confirm says
+    the other holders stay.
+  - A team address tied to the seat and held by a holder who stays gets no routing item (#789):
+    only the address of the holder who hands over moves, to the successor.
 - A lead taken off with Remove and no replacement is not a hand-over: Remove keeps its three
   outcomes (see Divisions below).
 - **A role holder's own request from My profile** (#262, boards 55d and 62c; Owner decisions of
@@ -717,7 +738,9 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
     refuses these writes to everyone but the team leader and full access.
   - **Change holder** picks who holds the seat from the team. As in Change head, a person who
     holds another seat may be picked and keeps it; their seat shows on the row as information.
-    Only the holder themself cannot be picked ("Holds it now"). The successor keeps their
+    Only a holder of this seat cannot be picked ("{name} holds this seat now.", #872). With
+    several holders, each holder's row has its own Replace and Remove, which act on that holder
+    alone (see "A co-holder's hand-over" above). The successor keeps their
     divisions. The holder gets "What happens to {name}?": Become an advisor (on the whole
     team, their access ends) or Leave the team, with neither picked at first. On save the
     holder's seat role ends and the successor's starts with the same title and the same
@@ -772,7 +795,9 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
   code or kind, after an "are you sure" that lists each change.
 - **Change head** (board 77e, #253), under the head in Edit department, picks the new head from
   the team. As in New department, a person who holds another seat may be picked and keeps it.
-  Only the current head cannot be picked ("Heads it now"). The new head keeps their divisions. The head they replace gets "What happens to {name}?":
+  Only a current head cannot be picked ("Heads it now"). With several heads, Change head is each
+  head's own Replace, and the new head replaces that head alone; the others stay (#872). The new
+  head keeps their divisions. The head they replace gets "What happens to {name}?":
   Become an advisor (in this department) or Leave the team, with neither picked at first. The
   change is saved with Save changes, after the same "are you sure".
 - **Close department** (board 77f), from Edit department's footer:

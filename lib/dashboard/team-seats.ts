@@ -2,8 +2,9 @@ import { z } from "zod";
 import { mayManageDepartments, type Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
 import { HAND_OVER_OUTCOMES, steppingDown, type HandOverOutcome, type SteppingDown } from "./hand-over";
-import { addedHolder, holdsSeat, seatOfTeamRow, type ActiveRoleRow, type HolderAdd, type HolderAddPlan, type Seat } from "./seat-holders";
+import { addedHolder, holderAddRefusal, holdersOfSeat, holdsSeat, seatOfTeamRow, type ActiveRoleRow, type HolderAdd, type HolderAddPlan, type Seat } from "./seat-holders";
 import { isTeamSeat, type BoardFlag, type BoardRole, type OrgChart, type TeamActor } from "./team";
+import { andList } from "./team-structure";
 
 // The seat row of Edit team tree (issue #627): who holds a team-level seat,
 // a new seat, and removing one (issue #643). Only the team leader and full access change them, as they
@@ -80,18 +81,33 @@ export function heldTeamSeat(team: readonly TeamPerson[], roleId: number): HeldT
 export type SeatHolderPlan = { readonly seat: BoardRole; readonly from: number; readonly to: number; readonly steppingDown: SteppingDown };
 
 /**
+ * Who holds the seat the active team-level row `roleId` is, each once
+ * (`holdersOfSeat`): its own holder and every co-holder (epic #861); none
+ * when no active team-level row is `roleId`.
+ */
+export function holdersOfSeatRow(roleId: number, active: readonly ActiveRoleRow[], org: OrgChart): number[] {
+  const row = active.find((r) => r.id === roleId && isTeamSeat(r));
+  return row === undefined ? [] : holdersOfSeat(seatOfTeamRow(row), active, org);
+}
+
+/**
  * Change holder as the rules allow it, or the first reason it is refused:
  * only the team leader or full access; an active team-level seat; a successor
- * on the team who is not its holder. Any other seat the successor holds stays
- * (Owner decision, issue #837), and they keep every role and division they
- * hold; the holder becomes an advisor to the team or leaves the team, as
- * the editor picked, and nothing is picked for them (`steppingDown`).
+ * on the team who does not hold that exact seat already, by this row or by a
+ * co-holder's (`holderAddRefusal`, issue #872). `roleId` is the picked
+ * holder's row: only it ends, and every other holder of the seat keeps it.
+ * Any other seat the successor holds stays (Owner decision, issue #837), and
+ * they keep every role and division they hold; the holder becomes an advisor
+ * to the team or leaves the team, as the editor picked, and nothing is picked
+ * for them (`steppingDown`).
  */
 export function planSeatHolderChange(input: {
   readonly actor: TeamActor | null;
   readonly roleId: number;
   readonly change: SeatHolderChange;
   readonly team: readonly TeamPerson[];
+  readonly active: readonly ActiveRoleRow[];
+  readonly org: OrgChart;
 }): Checked<SeatHolderPlan> {
   const { actor, roleId, change, team } = input;
   if (!mayManageDepartments(actor)) return no(ONLY_TEAM_SEATS);
@@ -99,7 +115,8 @@ export function planSeatHolderChange(input: {
   if (held === null) return no("That seat is no longer held.");
   const next = team.find((p) => p.id === change.to);
   if (next === undefined) return no("They are not on the team.");
-  if (next.id === held.holder.id) return no(`${next.name} holds this seat now.`);
+  const refusal = holderAddRefusal(next, [held.holder.id, ...holdersOfSeatRow(roleId, input.active, input.org)]);
+  if (refusal !== null) return no(refusal);
   if (change.outcome === null) return no(`Choose what happens to ${held.holder.name}: Become an advisor or Leave the team.`);
   return { ok: true, value: { seat: held.seat, from: held.holder.id, to: next.id, steppingDown: steppingDown({ kind: "team-seat" }, change.outcome) } };
 }
@@ -123,8 +140,10 @@ export type SeatRemovalPlan = { readonly seat: BoardRole; readonly holder: numbe
 /**
  * Remove seat as the rules allow it, or the first reason it is refused: only
  * the team leader or full access; an active team-level seat, the Project
- * Manager's and the Chief Engineer's included (Owner decision). Its row ends
- * and no successor's starts, so a seat's full access ends with it.
+ * Manager's and the Chief Engineer's included (Owner decision). `roleId` is
+ * the picked holder's row: it ends and no successor's starts, so that
+ * holder's full access ends with it. Every other holder of the seat keeps it
+ * (issue #872); the seat leaves the tree only with its last holder.
  */
 export function planSeatRemoval(input: { readonly actor: TeamActor | null; readonly roleId: number; readonly team: readonly TeamPerson[] }): Checked<SeatRemovalPlan> {
   const { actor, roleId, team } = input;
@@ -134,13 +153,25 @@ export function planSeatRemoval(input: { readonly actor: TeamActor | null; reado
   return { ok: true, value: { seat: held.seat, holder: held.holder.id } };
 }
 
-/** What the Remove seat confirm says: the seat's title and its holder by name, and what happens to them. */
-export function seatRemovalLines(seat: { readonly title: string; readonly flag: BoardFlag | null }, holder: string): readonly string[] {
+/**
+ * What the Remove confirm says: the seat's title and the holder it removes by
+ * name, and what happens to them. `others` are the co-holders who keep the
+ * seat (issue #872): with any, the seat stays on the Team tree; with none,
+ * it leaves the Team tree and the Team page.
+ */
+export function seatRemovalLines(seat: { readonly title: string; readonly flag: BoardFlag | null }, holder: string, others: readonly string[] = []): readonly string[] {
   return [
-    `${holder} no longer holds ${seat.title}. The seat leaves the Team tree and the Team page.`,
+    others.length === 0
+      ? `${holder} no longer holds ${seat.title}. The seat leaves the Team tree and the Team page.`
+      : `${holder} no longer holds ${seat.title}. ${keepTheSeat(others)}`,
     ...(seat.flag === null ? [] : [`${holder} loses the full access ${seat.title} gives.`]),
     `${holder} stays on the team and keeps their other roles and access. With no other role, they become an advisor to the team.`,
   ];
+}
+
+/** "Giulia Neri keeps the seat and its rights.": what a replace or remove of one co-holder says of the others (issue #872). */
+export function keepTheSeat(others: readonly string[]): string {
+  return `${andList(others)} ${others.length === 1 ? "keeps" : "keep"} the seat and its rights.`;
 }
 
 // Add another holder (epic #861, issue #868): the team leader's seat and any

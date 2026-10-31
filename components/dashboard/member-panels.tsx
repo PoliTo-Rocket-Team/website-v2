@@ -1075,6 +1075,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
             // Only the titled place's title is typed for the new unit; any other starts blank, never with the old unit's title (issue #777).
             title: place === titledPlace ? draft.title : "",
             replaced: place.kind === "head" ? (answer?.replaced ?? null) : null,
+            replacing: place.kind === "head" ? (answer?.replacing ?? null) : null,
             successor: place.kind === "head" ? (answer?.successor ?? null) : null,
           });
           if (!moved.ok) {

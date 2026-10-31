@@ -84,6 +84,12 @@ export type StructureDepartment = {
 /** At least one person: a seat on the tree is drawn only while someone holds it. */
 export type Holders = readonly [StructurePerson, ...StructurePerson[]];
 
+/** A team-level seat's holder, with the row they hold it by. */
+export type SeatHolder = StructurePerson & { readonly roleId: number };
+
+/** At least one holder of a team-level seat, each with their own row. */
+export type SeatHolders = readonly [SeatHolder, ...SeatHolder[]];
+
 /**
  * The Team Leader box (board 77i): every team leader (epic #861), the viewer
  * when they are one and so may hand their role over (`mayHandOverTeamLeader`),
@@ -105,11 +111,15 @@ export type StructureLeader = {
  * which moves with the seat on Change holder.
  */
 export type StructureSeat = {
-  /** The first holder's row: the one Change holder and Add another holder address. */
+  /** The first holder's row: the one Add another holder addresses. */
   readonly roleId: number;
   readonly title: string;
-  /** In seat order (`bySeatOrder`), so the first is the one `roleId` is. */
-  readonly holders: Holders;
+  /**
+   * In seat order (`bySeatOrder`), so the first is the one `roleId` is. Each
+   * names their own row of the seat, which Change holder and Remove act on,
+   * so they replace or remove that holder alone (issue #872).
+   */
+  readonly holders: SeatHolders;
   readonly flag: BoardFlag | null;
   /** The viewer holds it: its box wears the accent ring and tint (issue #405). */
   readonly yours: boolean;
@@ -264,20 +274,21 @@ export function teamStructure(input: {
     };
   });
 
-  // One box per seat (`boardSeatKey`), its holders in seat order; a person holding one seat by two rows is named once.
-  const bySeat = new Map<string, { seat: BoardRole; holders: PersonRecord[] }>();
+  // One box per seat (`boardSeatKey`), its holders in seat order, each by their first row of it; a person holding one seat by two rows is named once.
+  const bySeat = new Map<string, { seat: BoardRole; holders: SeatHolder[] }>();
   const rows = records
     .flatMap((r) => r.beyondDivisions.flatMap((b) => (b.kind === "board" ? [{ seat: b.seat, holder: r }] : [])))
     .sort((a, b) => bySeatOrder(a.seat, b.seat));
   for (const { seat, holder } of rows) {
+    const named: SeatHolder = { ...person(holder), roleId: seat.roleId };
     const held = bySeat.get(boardSeatKey(seat));
-    if (held === undefined) bySeat.set(boardSeatKey(seat), { seat, holders: [holder] });
-    else if (!held.holders.includes(holder)) held.holders.push(holder);
+    if (held === undefined) bySeat.set(boardSeatKey(seat), { seat, holders: [named] });
+    else if (!held.holders.some((h) => h.id === holder.id)) held.holders.push(named);
   }
   const board = [...bySeat.values()].map(({ seat, holders: [first, ...rest] }): StructureSeat => ({
     roleId: seat.roleId,
     title: boardTitleOf(seat),
-    holders: [person(first), ...rest.map(person)],
+    holders: [first, ...rest],
     flag: boardFlagOf(seat.fullAccess),
     yours: [first, ...rest].some((h) => h.id === self?.id),
   }));
