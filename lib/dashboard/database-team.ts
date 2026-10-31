@@ -9,6 +9,7 @@ import { getDb } from "@/db/client";
 import {
   applications,
   applyPositions,
+  betterAuthUsers,
   dashboardNotices,
   departments,
   divisions,
@@ -764,6 +765,30 @@ function memberRole(memberId: number, divisionId: number, title: string | null) 
   return { memberId, divisionId, title: title ?? "", type: "core" as const, startedAt: today() };
 }
 
+/** A `users` row's id, named with its table, so the subquery on the login table cannot read it as its own. */
+const userRowId = sql`${users}.${sql.identifier(users.id.name)}`;
+
+/**
+ * The open `users` row Add member attaches the join to, for an email (issue
+ * #930). Closed rows are skipped. A row with a member comes first, then a row
+ * a login holds (a `better_auth."user"` with its id), so the join lands where
+ * the person signs in when an older same-email record sits beside their
+ * login's row. The id breaks any remaining tie, so the same rows always give
+ * the same pick.
+ */
+function accountForAdd(email: string) {
+  return getDb()
+    .select({ id: users.id, member: users.member })
+    .from(users)
+    .where(and(sql`lower(${users.email}) = ${email}`, isNull(users.deletedAt)))
+    .orderBy(
+      sql`${users.member} is null`,
+      sql`not exists (select 1 from ${betterAuthUsers} as login where login.id = ${userRowId})`,
+      asc(users.id),
+    )
+    .limit(1);
+}
+
 /**
  * Add member (boards 61h, 61h2; Owner decisions on #231). Someone on the team
  * gets a role in the division at once, keeps every other role and signs no
@@ -778,15 +803,7 @@ async function addMember(identity: DashboardIdentity, input: unknown): Promise<W
   const add = checked.value;
   if ((await actingOn(identity, add.divisionId)) === null) return refused("You can add people only to a division your Members page lets you change.");
 
-  const [account] =
-    add.kind === "email"
-      ? await getDb()
-          .select({ id: users.id, member: users.member })
-          .from(users)
-          .where(sql`lower(${users.email}) = ${add.email}`)
-          .orderBy(sql`${users.member} is null`)
-          .limit(1)
-      : [];
+  const [account] = add.kind === "email" ? await accountForAdd(add.email) : [];
   const memberId = add.kind === "member" ? add.personId : (account?.member ?? null);
   const active = memberId === null ? [] : await activeRoles(memberId);
   if (add.kind === "member" && active.length === 0) return refused("They are not on the team.");
