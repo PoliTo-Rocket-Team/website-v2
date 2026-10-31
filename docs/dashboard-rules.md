@@ -71,7 +71,8 @@ An admin column comes later. **Planned**, no issue yet.
   viewer's own seat, never "the" holder, so with several holders each one sees and may act:
   - every team leader decides orders, sees the orders waiting for a decision, and gives and
     removes "Approve orders"; no team leader is given "Approve orders", since each decides by the
-    seat (see "4. Orders");
+    seat, but a grant one kept from a seat held before becoming team leader can still be removed,
+    through Edit access or Remove all access (see "4. Orders");
   - every holder of an alias approver seat (the team leader, the operations lead, the IT lead)
     sees each waiting PRT email request, team address request, routing item and removal, and
     either holder may answer it or mark it done;
@@ -1136,7 +1137,9 @@ These rules come from #238 and #247 (boards 71 and 71b).
   Content or an area elsewhere on the team is a grant. Full-access seats take no other grant,
   since their role holds every area, but the team leader can give them "Approve orders" and
   remove it (#635): Give access lists them for the team leader only, and only with that checkbox.
-  Another team leader is never listed and never given it: they decide by the seat (#870).
+  Another team leader is never listed in Give access and never given it: they decide by the seat
+  (#870). A grant they kept from a seat held before becoming team leader can still be removed,
+  through Edit access or Remove all access.
 
 ## 4. Orders
 
