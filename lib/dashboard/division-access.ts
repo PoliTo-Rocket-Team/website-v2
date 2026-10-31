@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { checkApproveOrdersChange, type ApproveOrdersChange } from "./orders";
 import { boardFlagOf } from "./team";
-import type { FullAccessSeat } from "./viewer";
+import { isFlaggedSeat, type FullAccessSeat } from "./viewer";
 
 // The Access page (boards 60, 60b, 60c and 60m for a division lead, issues
 // #145 and #213; boards 65, 65b and 65m for a department head, issue #230;
@@ -434,17 +434,19 @@ export const SEAT_LABELS: Readonly<Record<FullAccessSeat, string>> = {
   "it-lead": "IT lead",
   "project-manager": "Project Manager",
   "chief-engineer": "Chief Engineer",
+  "logistics-lead": "Logistics Lead",
 };
 
 /**
  * The line under a full-access person's name: a team-level seat's (the
  * Project Manager's, the Chief Engineer's) role title as stored on its
  * flagged row, the seat's name for a blank one; any other seat's name
- * (`SEAT_LABELS`), as that seat is not its row's title (issue #625).
+ * (`SEAT_LABELS`), as that seat is not its row's title (issue #625). The
+ * Logistics lead has no flagged row, so it reads its name (issue #885).
  */
 export function seatLine(seat: FullAccessSeat, storedTitle: string): string {
   const stored = storedTitle.trim();
-  const teamLevel = seat !== "team-leader" && boardFlagOf(seat) !== null;
+  const teamLevel = isFlaggedSeat(seat) && boardFlagOf(seat) !== null;
   return teamLevel && stored !== "" ? stored : SEAT_LABELS[seat];
 }
 

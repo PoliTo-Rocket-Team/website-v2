@@ -18,8 +18,9 @@ The six people:
 - **Member**: on the team.
 - **Division lead**: leads one or more divisions.
 - **Department head**: heads a department and all its divisions.
-- **Full access**: the team leader, the operations lead, the IT lead, the Project Manager and the
-  Chief Engineer. They see and act on the whole team (see "Full access" below).
+- **Full access**: the team leader, the operations lead, the IT lead, the Project Manager, the
+  Chief Engineer and the Logistics lead (#885). They see and act on the whole team (see "Full
+  access" below).
 
 An **advisor** (#253) is someone who handed over a role and stayed in the team (see "Handing
 over a role" below). The Advisor role leads nothing and heads nothing: it is never counted as a
@@ -34,7 +35,7 @@ An admin column comes later. **Planned**, no issue yet.
 | Overview | Yes | Yes | Yes | Yes | Yes | Yes |
 | My alumni | No | Yes | No | No | No | No |
 | Team tree | No | No | Yes | Yes | Yes | Yes |
-| Positions | No | No | No | Own divisions; the recruitment manager also has the site-wide recruitment switch (#875) | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
+| Positions | No | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
 | Applications | No | No | No | Own divisions | All divisions in the department, under division tabs | All; the team leader has department and division selects |
 | Members | No | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
 | Projects | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it first under Content |
@@ -84,19 +85,29 @@ An admin column comes later. **Planned**, no issue yet.
     member the item names while they still hold the seat, else the newest holder. While the
     address's holder still holds the seat, beside any co-holder, nothing moves.
 - **Full access** comes from the role alone, with no scope row (Owner decisions, 2026-10-11,
-  #238; Owner decision, 2026-10-21, #485). Five seats hold it:
+  #238; Owner decision, 2026-10-21, #485; Owner decision, 2026-10-31,
+  [#885](https://github.com/PoliTo-Rocket-Team/website-v2/issues/885)). Six seats hold it:
   - the **team leader**: the role of type `president`;
   - the **operations lead** and the **IT lead**: each seat's role carries a full-access flag
-    (`roles.full_access`, migration 0018), set once in the data. The seat is never read from a
-    department or division code, or from a title, because codes change.
+    (`roles.full_access`, migration 0018), set once in the data. These seats are never read from
+    a department or division code, or from a title, because codes change.
   - the **Project Manager** and the **Chief Engineer** (#485): each board seat's role carries the
     same flag (migration 0047, which marked the active board roles titled exactly "Project
     Manager" and "Chief Engineer" once). The code reads only the flag. Access follows the role:
     ending the role ends it. A hand-over moves the flag to the successor's role, and Add another
     holder (#868, under "Team structure") copies it onto the new holder's role; no other flow
     sets it.
+  - the **Logistics lead** (#885): every active lead of the open Logistics division (Operations
+    department), the division the recruitment manager rule finds (see "Recruitment"). This seat
+    is the one read from its division and not from a flag: it has no `roles.full_access` value,
+    and no row is ever flagged as it, so team address "Moves with" and the flag a hand-over moves
+    never offer or write it. The access follows the lead role: it starts when someone becomes a
+    Logistics lead and ends when the role ends (hand-over, leaving, removal), with no scope row
+    written or removed. Every co-holder holds it. While Logistics is closed or has no lead, nobody
+    holds it. A member of Logistics, or someone whose only Logistics link is an area grant, does
+    not hold it. The Access page lists it as "Logistics Lead".
   - Someone in two seats shows as the higher one: the team leader, the IT lead, the operations
-    lead, the Project Manager, then the Chief Engineer.
+    lead, the Project Manager, the Chief Engineer, then the Logistics lead.
   - Full access reaches every page in the table, in every department and every division. On
     Access and Orders it sees and acts on the whole team, and it can give any access to anyone.
   - An `admin` or `org` scope row still gives full access, as before.
@@ -360,12 +371,16 @@ grilling session #745, recorded in the 2026-10-25 status-list amendment of
   They see every division's applications and may make every move a lead may make on them,
   team-wide: "NDA received" and Confirm join included
   ([Owner decision, 2026-10-25](https://github.com/PoliTo-Rocket-Team/website-v2/issues/194#issuecomment-6396490285)).
-  Their Positions page and Members page stay their own division's. While the Logistics division is
-  closed, nobody is the recruitment manager (#194).
+  While the Logistics division is closed, nobody is the recruitment manager (#194).
   - The recruitment manager may open and close recruitment: their Positions page shows the
     site-wide recruitment switch, with the same warning step full access sees, and the server
-    accepts it from them (Owner decision, 2026-10-31, #875). It gives them no other full-access
-    right and no other site-wide setting.
+    accepts it from them (Owner decision, 2026-10-31, #875).
+  - Since [#885](https://github.com/PoliTo-Rocket-Team/website-v2/issues/885) (Owner decision,
+    2026-10-31) the same lead seat is a full-access seat, the Logistics lead (see "Full access"
+    above). Every page, Positions and Members included, covers the whole team for them, and
+    they hold every other full-access right. This replaces the narrower rule of #194 and #875,
+    where the role gained only team-wide Applications moves and the recruitment switch. Deciding
+    orders and the Activity log stay apart, as for the other full-access seats.
 - Confirm join, and setting "NDA received", is the last step of the application, so the
   Applications area decides it wherever it appears (#584, Owner decision, 2026-10-22). On the
   Applications page and on the Members page's "{name} is joining" banner it shows, and the server
@@ -1173,8 +1188,9 @@ These rules come from #230 (boards 65, 65b, 65c and 65m).
 These rules come from #238 and #247 (boards 71 and 71b).
 
 - The full-access seats are the team leader, the operations lead, the IT lead, the Project
-  Manager and the Chief Engineer (#485). On the Full access tab each shows under its label:
-  "Team leader", "Operations lead", "IT lead", "Project Manager", "Chief Engineer".
+  Manager, the Chief Engineer (#485) and the Logistics lead (#885). On the Full access tab each
+  shows under its label: "Team leader", "Operations lead", "IT lead", "Project Manager", "Chief
+  Engineer", "Logistics Lead". The Full access tab counts and lists every active Logistics lead.
 - Full access holds every area at Can edit across the whole team, Content included: "YOUR ACCESS ·
   Full access, whole team", with one "Every area · Can edit" chip, and "Approve orders" for the
   team leader.

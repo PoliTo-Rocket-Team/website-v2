@@ -17,7 +17,8 @@ export type PositionWriter = RecruitmentReader & ChangeAuthority;
  * passes both everywhere; a department head passes in their department, a
  * division lead in the divisions they lead. The recruitment manager, the
  * Logistics lead (`managesRecruitment`, issue #194), passes on Applications
- * in every division, and on Positions only where their role lets them.
+ * in every division; since issue #885 that seat is full access, so it passes
+ * on Positions everywhere too.
  */
 export function mayChangePositionIn(viewer: PositionWriter, area: Exclude<ChangeArea, "members">, unit: DivisionUnit): boolean {
   if (area === "applications" && managesRecruitment(viewer)) return true;

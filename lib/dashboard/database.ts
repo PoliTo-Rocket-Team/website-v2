@@ -126,7 +126,7 @@ type ActiveRole = {
   startedAt: string;
   divisionId: number | null;
   divisionName: string | null;
-  /** Its division's code, and the day that division closed (null while open): what finds the recruitment manager (issue #194). */
+  /** Its division's code, and the day that division closed (null while open): what finds the recruitment manager (issue #194) and the Logistics lead seat (issue #885). */
   divisionCode: string | null;
   divisionClosedAt: string | null;
   departmentId: number | null;

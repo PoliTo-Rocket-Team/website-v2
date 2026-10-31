@@ -1,7 +1,10 @@
 import { attributedName } from "./acting-account";
 import type { AttentionItem } from "./overview";
+import { recruitmentManagerDivision, type TeamDivision } from "./recruitment-manager";
 import { isPromoteMode, type PromoteMode } from "./team";
 import { shortDate } from "./write";
+
+export { RECRUITMENT_MANAGER_DIVISION_CODE, recruitmentManagerDivision, type TeamDivision } from "./recruitment-manager";
 
 // Notices on a member's dashboard (issue #201): something that happened to
 // someone else that the recipient should know about, stored one row per
@@ -248,31 +251,11 @@ export function handOverAnsweredNotice(
 /** A division the leaver had an active role in. */
 export type LeftDivision = { readonly id: number; readonly name: string };
 
-/** A division of the team as the recruitment manager rule reads it: its code and whether it is closed. */
-export type TeamDivision = { readonly id: number; readonly code: string | null; readonly closedAt: string | null };
-
 /** Someone who leads a division: an active lead role in it, or a division scope on it. */
 export type DivisionLead = { readonly memberId: number; readonly divisionId: number };
 
 /** One notice to write, and who reads it. */
 export type AddressedNotice = { readonly recipientId: number; readonly notice: NewNotice };
-
-/**
- * The code of the division whose leads are the recruitment manager: Logistics,
- * in the Operations department (owner ruling on #194,
- * https://github.com/PoliTo-Rocket-Team/website-v2/issues/194#issuecomment-6341780484).
- */
-export const RECRUITMENT_MANAGER_DIVISION_CODE = "LGS";
-
-/**
- * The division whose leads are the recruitment manager: the open division
- * with the Logistics code. Null when that division is closed or the team has
- * none, and then nobody is the recruitment manager. This is the one rule that
- * finds it.
- */
-export function recruitmentManagerDivision<D extends TeamDivision>(team: readonly D[]): D | null {
-  return team.find((d) => d.code === RECRUITMENT_MANAGER_DIVISION_CODE && d.closedAt === null) ?? null;
-}
 
 /**
  * The notices a member leaving writes. Each lead of a division they had an
