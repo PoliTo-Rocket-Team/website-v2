@@ -21,7 +21,7 @@ const held = (type: RecruitmentRole["type"], place: Place, fullAccess: ActiveRol
 
 /** A real account as the dashboard reads it: its standing from its active roles and scope rows, its roles and its area grants. */
 function reader(roles: readonly Held[], scopes: readonly ScopeRef[] = [], grants: readonly AreaGrant[] = []): RecruitmentReader {
-  const standing = viewerStandingOf({ scopes, activeRoles: roles.map(({ type, divisionId, fullAccess }) => ({ type, divisionId, fullAccess })) });
+  const standing = viewerStandingOf({ scopes, activeRoles: roles });
   return { ...standing, roles: roles.map(({ fullAccess: _, ...role }) => role), grants };
 }
 

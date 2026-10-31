@@ -10,7 +10,7 @@ import { viewerStandingOf, type ActiveRoleRef, type ScopeRef, type ScopeTarget }
 
 const MSA = 3;
 const now = new Date("2026-10-21T10:00:00Z");
-const core: ActiveRoleRef = { type: "core", divisionId: MSA, fullAccess: null };
+const core: ActiveRoleRef = { type: "core", divisionId: MSA, divisionCode: null, divisionClosedAt: null, fullAccess: null };
 const grant = (target: ScopeTarget): ScopeRef => ({ scope: "division", target, level: "view" });
 const member = (...targets: ScopeTarget[]) => viewerStandingOf({ scopes: targets.map(grant), activeRoles: [core] });
 
@@ -85,7 +85,7 @@ test("an area left unread adds nothing, and a figure read for an ungranted area 
 });
 
 test("a division lead reads every area, so their Overview is the whole board, as before", () => {
-  const lead = viewerStandingOf({ scopes: [], activeRoles: [{ type: "lead", divisionId: MSA, fullAccess: null }] });
+  const lead = viewerStandingOf({ scopes: [], activeRoles: [{ type: "lead", divisionId: MSA, divisionCode: null, divisionClosedAt: null, fullAccess: null }] });
   const areas = overviewAreasOf(lead);
   assert.deepEqual(areas, ["positions", "applications", "members", "orders"]);
   const overview = divisionOverviewOf(areas, everything);

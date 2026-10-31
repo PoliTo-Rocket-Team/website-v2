@@ -3,12 +3,13 @@ import type { Recruitment } from "./positions";
 
 // The site-wide recruitment switch on the dashboard (issue #121). Full access
 // includes it (Owner decision, issue #621): every full-access seat (the team
-// leader, the operations lead, the IT lead, the Project Manager and the Chief
-// Engineer) and full access from an org or admin scope row may flip it, from
-// the standing alone, with no positions grant. The recruitment manager, an
-// active lead of the open Logistics division (`managesRecruitment`, issue
-// #194), may flip it too (Owner decision, issue #875); it gives them no other
-// full-access right. Nobody else may: a lead's or a head's rights, or an area
+// leader, the operations lead, the IT lead, the Project Manager, the Chief
+// Engineer and, since issue #885, the Logistics lead) and full access from an
+// org or admin scope row may flip it, from the standing alone, with no
+// positions grant. The recruitment manager, an active lead of the open
+// Logistics division (`managesRecruitment`, issue #194), may flip it too
+// (Owner decision, issue #875); that is the Logistics lead seat, so the two
+// rules agree. Nobody else may: a lead's or a head's rights, or an area
 // grant, on one department or division do not reach the whole site. The
 // permission, the store and the cache are passed in, so the rule is tested
 // without them (recruitment-switch.test.ts). The dashboard data interface

@@ -57,7 +57,7 @@ type Seat = {
 };
 
 function seat(roles: readonly ScopedRole[], divisionIds: readonly number[], departmentIds: readonly number[]): Seat {
-  const activeRoles: ActiveRoleRef[] = roles.map((r) => ({ type: r.type, divisionId: r.divisionId, fullAccess: null }));
+  const activeRoles: ActiveRoleRef[] = roles.map((r) => ({ type: r.type, divisionId: r.divisionId, divisionCode: null, divisionClosedAt: null, fullAccess: null }));
   return { standing: viewerStandingOf({ scopes: [], activeRoles }), roles, divisionIds, departmentIds };
 }
 
@@ -191,7 +191,7 @@ test("orders: the team leader edits every order and decides; a head their depart
         fullAccess: s.standing.kind === "operations-lead",
         teamLeader: isTeamLeader(s.standing),
         headDepartment: s.standing.kind === "department-head" ? { id: 1, name: "Aerodynamics" } : null,
-        ledDivisionIds: ledDivisionIds({ scopes: [], activeRoles: s.roles.map((r) => ({ type: r.type, divisionId: r.divisionId, fullAccess: null })) }),
+        ledDivisionIds: ledDivisionIds({ scopes: [], activeRoles: s.roles.map((r) => ({ type: r.type, divisionId: r.divisionId, divisionCode: null, divisionClosedAt: null, fullAccess: null })) }),
       },
       rows,
       units,

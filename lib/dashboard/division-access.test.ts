@@ -338,6 +338,7 @@ test("only the team leader sees and gives the Approve orders checkbox (board 71b
     "it-lead": false,
     "project-manager": false,
     "chief-engineer": false,
+    "logistics-lead": false,
   };
   for (const [seat, gives] of Object.entries(seats) as [FullAccessSeat, boolean][]) assert.equal(canGiveApproveOrders(seat), gives, seat);
   assert.equal(canGiveApproveOrders(null), false);
@@ -481,7 +482,7 @@ test("a lead or head who holds Content gives, keeps and removes it across the wh
 test("a Content grant is the website row on content: it opens the content editors, the Alumni page among them (issue #589)", () => {
   const row = grantRowOf(WHOLE_TEAM_PLACE, "content");
   assert.deepEqual(row, { scope: "website", target: "content", deptId: null, divisionId: null });
-  const member = { type: null, divisionId: 1, fullAccess: null } as const;
+  const member = { type: null, divisionId: 1, divisionCode: null, divisionClosedAt: null, fullAccess: null } as const;
   const holder = viewerStandingOf({ scopes: [{ scope: row.scope, target: row.target, level: "edit" }], activeRoles: [member] });
   assert.equal(maySiteContent(holder), true);
   for (const page of ["projects", "outreach", "partners", "alumni", "faq", "team-page"] as const) assert.equal(canReach(holder, page), true, page);
@@ -501,7 +502,7 @@ test("an area given across the whole team opens its pages in every open departme
 });
 
 test("a member whose only access is \"Approve orders\" reaches the Orders page, and nothing else it adds (issue #270)", () => {
-  const member = { type: null, divisionId: 1, fullAccess: null } as const;
+  const member = { type: null, divisionId: 1, divisionCode: null, divisionClosedAt: null, fullAccess: null } as const;
   const standingFrom = (target: ScopeTarget) => {
     const units = unitRowsOf([{ scope: "team", target, level: "view", divisionId: null, deptId: null }], [1, 2]);
     return viewerStandingOf({ scopes: units, activeRoles: [member] });

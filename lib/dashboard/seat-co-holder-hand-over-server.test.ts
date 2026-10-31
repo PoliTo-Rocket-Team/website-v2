@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, test } from "node:test";
 import * as actions from "@/app/dashboard/actions";
 import * as teamActions from "@/app/dashboard/team-actions";
-import { handOverRequests, roles, teamAddresses, teamAddressReroutes } from "@/db/schema";
+import { divisions, handOverRequests, roles, teamAddresses, teamAddressReroutes } from "@/db/schema";
 import { addRows, databaseWrites, tableRows } from "./access-matrix/test-database";
 import { accountOf, EXTRA, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
@@ -50,9 +50,19 @@ const isSafetyOfficer = (r: RoleRow) => r.title === "Safety Officer" && r.deptId
 
 /** The full-access seat someone holds now, read off their active rows as the dashboard reads it. */
 async function seatOf(memberId: number) {
+  const teamDivisions = await tableRows(divisions);
   const active = (await activeRows())
     .filter((r) => r.memberId === memberId)
-    .map((r) => ({ type: r.type as RoleType, divisionId: r.divisionId as number | null, fullAccess: r.fullAccess == null ? null : SEAT_OF_FLAG[r.fullAccess as SeatFlag] }));
+    .map((r) => {
+      const division = teamDivisions.find((d) => d.id === r.divisionId);
+      return {
+        type: r.type as RoleType,
+        divisionId: r.divisionId as number | null,
+        divisionCode: (division?.code ?? null) as string | null,
+        divisionClosedAt: (division?.closedAt ?? null) as string | null,
+        fullAccess: r.fullAccess == null ? null : SEAT_OF_FLAG[r.fullAccess as SeatFlag],
+      };
+    });
   return fullAccessSeatOf(active);
 }
 

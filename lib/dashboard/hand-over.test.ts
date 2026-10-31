@@ -88,7 +88,7 @@ test("with two team leaders, either hands over their own place to someone who is
 });
 
 test("after the hand-over the new person is the team leader seat; the former one, a team advisor, keeps full access but not the seat", () => {
-  const role = (type: ActiveRoleRef["type"], divisionId: number | null = null): ActiveRoleRef => ({ type, divisionId, fullAccess: null });
+  const role = (type: ActiveRoleRef["type"], divisionId: number | null = null): ActiveRoleRef => ({ type, divisionId, divisionCode: null, divisionClosedAt: null, fullAccess: null });
   const newLeader = viewerStandingOf({ scopes: [], activeRoles: [role("core", 1), role("president")] });
   assert.equal(isTeamLeader(newLeader), true);
   assert.equal(decideRightOf({ teamLeader: isTeamLeader(newLeader), approveOrders: false }), "team-leader", "decides orders and gives Approve orders");
@@ -140,7 +140,7 @@ test("no hand-over, replacement or close path writes the Team page's advisory bo
 });
 
 test("an advisor is never counted as a lead or a head", () => {
-  const advisor = (divisionId: number | null): ActiveRoleRef => ({ type: "advisor", divisionId, fullAccess: null });
+  const advisor = (divisionId: number | null): ActiveRoleRef => ({ type: "advisor", divisionId, divisionCode: null, divisionClosedAt: null, fullAccess: null });
   assert.equal(divisionRoleOf("advisor"), "member");
   assert.equal(viewerKindOf({ scopes: [], activeRoles: [advisor(1)] }), "member", "an advisor in a division is no division lead");
   assert.equal(viewerKindOf({ scopes: [], activeRoles: [advisor(null)] }), "member", "a team advisor is no department head");
