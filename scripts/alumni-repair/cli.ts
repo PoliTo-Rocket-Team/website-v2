@@ -3,9 +3,9 @@ import { resolve } from "node:path";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "@/db/schema";
-import { failureLines } from "./failure";
+import { afterWrite, failureReport } from "./failure";
 import { readRoster } from "./roster";
-import { runRepair } from "./run";
+import { runRepair, type RunResult } from "./run";
 import type { RepairDb } from "./snapshot";
 
 // `pnpm db:alumni-repair <source-dir> [--mode dry-run|repair] [--report <file>]
@@ -58,21 +58,28 @@ async function main(): Promise<number> {
   }
   const { file, ...roster } = readRoster(args.directory);
   const client = postgres(args.url, { max: 1 });
+  let result: RunResult;
   try {
     const db = drizzle(client, { schema }) as unknown as RepairDb;
-    const result = await runRepair({ mode: args.mode, file, roster, db });
-    process.stdout.write(result.report);
-    if (args.report !== undefined) writeFileSync(resolve(args.report), result.report);
-    return 0;
-  } finally {
-    await client.end();
+    result = await runRepair({ mode: args.mode, file, roster, db });
+  } catch (error) {
+    // The run's own failure is the one to report; a failed close adds nothing to it.
+    await client.end().catch(() => undefined);
+    throw error;
   }
+  // A real run's transaction has committed by now: a failure from here on says the repair was written.
+  const step = <T>(name: string, act: () => T | Promise<T>) => (args.mode === "repair" ? afterWrite(name, act) : act());
+  await step("printing the report", () => void process.stdout.write(result.report));
+  const reportFile = args.report;
+  if (reportFile !== undefined) await step("writing the report file", () => writeFileSync(resolve(reportFile), result.report));
+  await step("closing the database connection", () => client.end());
+  return 0;
 }
 
 main().then(
   (code) => process.exit(code),
   (error: unknown) => {
-    console.error(["Alumni repair failed; nothing was written.", ...failureLines(error).map((line) => `  ${line}`)].join("\n"));
+    console.error(failureReport(error));
     process.exit(1);
   },
 );

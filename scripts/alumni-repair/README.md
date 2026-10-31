@@ -28,9 +28,12 @@ REPAIR_DATABASE_URL='<production database url>' pnpm db:alumni-repair <source-di
 - `<source-dir>`: the directory with the roster workbook, outside the repo. It must hold exactly
   one `.xlsx` file. Nothing else in it is read.
 - `--mode dry-run` (the default) reads the workbook and the database and prints the report. It
-  writes nothing. `--mode repair` reads, plans and writes in one transaction: a failure writes
-  nothing and prints "Alumni repair failed; nothing was written." with the error's cause chain
-  (never a query's values).
+  writes nothing. `--mode repair` reads, plans and writes in one transaction. A failure before the
+  transaction commits writes nothing and prints "Alumni repair failed; nothing was written." A
+  failure after the commit (printing the report, writing the `--report` file, closing the
+  connection) prints "Alumni repair was written: its transaction committed. Then <step> failed."
+  The repair is then in the database: do not run it again to recover the report, since a second
+  run plans nothing. Both print the error's cause chain (never a query's values).
 - `--database-url <url>`, or `REPAIR_DATABASE_URL` set for this one command: both modes need it.
   The tool loads no `.env` file and never reads `DATABASE_URL`.
 - `--report <file>`: also writes the report to this file. Keep it outside the repo.
@@ -81,11 +84,12 @@ ID, and no database id.
   "Efesto"; from 2024-2025 on it is "Propulsion". The run stops, writing nothing, when the
   database does not hold exactly one "Efesto" and one "Propulsion".
 - Its division moves to the division of the target department with the same name or code. When
-  the target has none, one closed division is created there, once, with the source division's name
-  and code. It starts on the first day of the first academic year it takes a role in, and closes
-  on the last day of the last one. When the target has
-  two, or the role's division sits under a department outside the lineage, the role stays where
-  it is and the report counts it.
+  the target has none, one closed division is created there with the source division's name and
+  code. Source divisions that share a name or a code share that one created division, even when
+  they sit under different lineage departments. It starts on the first day of the first academic
+  year it takes a role in, and closes on the last day of the last one. When the target has, or
+  would get, two divisions that match, or the role's division sits under a department outside
+  the lineage, the role stays where it is and the report counts it.
 - A move updates `dept_id` and `division_id` only, and only while the role still sits where the
   plan read it.
 
@@ -97,4 +101,6 @@ ID, and no database id.
 email on `example.com`) and the in-memory Postgres the other tests use. It covers the missing-year
 role, the skip when a role exists, the later join day, a person on the sheet of their leave year,
 a person with no member, idempotency (a second real run changes nothing), the lineage moves (to
-an existing division by name, and to a created closed division), and the date reading.
+an existing division by name, to a created closed division, and two source divisions with one
+code sharing one created division), the date reading, and what a failed run prints before and
+after its commit.

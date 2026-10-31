@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { departments, divisions, members, roles, users } from "@/db/schema";
 import { addRows, databaseWrites, restore, tableRows, testDb } from "@/lib/dashboard/access-matrix/test-database";
+import { afterWrite, failureReport } from "./failure";
 import { lastYearOf } from "./quitters";
 import { rosterOf, type QuitterRow } from "./roster";
 import { runRepair } from "./run";
@@ -180,6 +181,55 @@ test("a second real run changes nothing", async () => {
   assert.ok(plan.skipped.some((s) => s.kind === "has-role" && s.at.row === 3), "Anna's row now finds her 2025-2026 role");
   assert.deepEqual(await allRoles(), rolesAfterFirst);
   assert.deepEqual(await tableRows(divisions), divisionsAfterFirst);
+});
+
+test("two source divisions with different names and one code, missing from the target, share one created division", async () => {
+  const [VALVES, VALVE_SYSTEMS] = [9211, 9212];
+  await restore("alumni-repair-shared-code", async () => {
+    await addRows(departments, [
+      { id: LIQUID, name: "Liquid Propulsion", code: "LPR", closedAt: "2024-09-30" },
+      { id: EFESTO, name: "Efesto", code: "EFS", closedAt: "2025-09-30" },
+      { id: PROPULSION, name: "Propulsion", code: "PRO" },
+    ]);
+    await addRows(divisions, [
+      { id: VALVES, deptId: LIQUID, name: "Valves", code: "VLV" },
+      { id: VALVE_SYSTEMS, deptId: EFESTO, name: "Valve Systems", code: "vlv" },
+    ]);
+    await addRows(members, [{ memberId: ANNA }, { memberId: BRUNO }]);
+    await addRows(roles, [
+      { id: 9411, memberId: ANNA, deptId: LIQUID, divisionId: VALVES, title: "Engineer", type: "core", startedAt: "2024-10-01", leavedAt: "2025-09-30" },
+      { id: 9412, memberId: BRUNO, deptId: EFESTO, divisionId: VALVE_SYSTEMS, title: "Engineer", type: "core", startedAt: "2025-10-01", leavedAt: "2026-06-30" },
+    ]);
+  });
+  const { written } = await runRepair({ mode: "repair", file: "roster.xlsx", roster: ROSTER, db });
+  assert.deepEqual(written, { divisions: 1, roles: 0, moves: 2 });
+  const created = (await tableRows(divisions)).filter((d) => d.deptId === PROPULSION);
+  assert.deepEqual(
+    created.map((d) => [d.name, d.code, d.startedAt, d.closedAt]),
+    [["Valves", "VLV", "2024-10-01", "2026-09-30"]],
+  );
+  const moved = (await allRoles()).filter((r) => r.id === 9411 || r.id === 9412);
+  assert.deepEqual(
+    moved.map((r) => [r.deptId, r.divisionId]),
+    [
+      [PROPULSION, created[0].id],
+      [PROPULSION, created[0].id],
+    ],
+  );
+  // The created division matches both by code, so a second run plans nothing.
+  const again = await runRepair({ mode: "repair", file: "roster.xlsx", roster: ROSTER, db });
+  assert.deepEqual(again.written, { divisions: 0, roles: 0, moves: 0 });
+});
+
+test("a failed run says nothing was written only before its commit; after it, it says the repair was written and what failed", async () => {
+  const before = failureReport(new Error("connection refused"));
+  assert.match(before, /^Alumni repair failed; nothing was written\.\n {2}connection refused$/);
+  const after = await afterWrite("writing the report file", () => {
+    throw new Error("EACCES: permission denied");
+  }).catch((error: unknown) => failureReport(error));
+  assert.match(after, /^Alumni repair was written: its transaction committed\. Then writing the report file failed\.\n {2}EACCES: permission denied$/);
+  assert.doesNotMatch(after, /nothing was written/);
+  assert.equal(await afterWrite("closing the database connection", () => 7), 7);
 });
 
 test("a run with no single Efesto or Propulsion department refuses and writes nothing", async () => {
