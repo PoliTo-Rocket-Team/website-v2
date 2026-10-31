@@ -27,7 +27,7 @@ import type { TeamPage } from "./types";
 const since = "2024-10-01";
 
 function person(id: number, name: string, placement: Placement, over: Partial<TeamPerson> = {}): TeamPerson {
-  return { id, name, placement, pageTitle: null, photo: null, linkedin: null, teamEmail: null, ...over };
+  return { id, name, placement, furtherSeats: [], pageTitle: null, photo: null, linkedin: null, teamEmail: null, ...over };
 }
 
 const leader = (): Placement => ({ role: "team-leader", memberships: NO_MEMBERSHIPS });

@@ -1,4 +1,4 @@
-import type { RosterEntry } from "@/lib/dashboard/team";
+import type { BoardRole, Placement, RoleBeyondDivisions, RosterEntry } from "@/lib/dashboard/team";
 import type { Person, PersonPhoto } from "./types";
 
 // Someone on this year's team as the Team page reads them (issue #282), and
@@ -7,6 +7,13 @@ import type { Person, PersonPhoto } from "./types";
 
 /** Someone on this year's team, as the Team page reads them. */
 export type TeamPerson = Pick<RosterEntry, "id" | "name" | "placement" | "pageTitle"> & {
+  /**
+   * Every team-level seat they hold beside the one `placement` draws them
+   * in: a team leader, or someone on another seat, who took a seat on a
+   * hand-over (#852). Only a page seat bound to that seat's row shows them
+   * there; the roles build draws each person in their placement alone.
+   */
+  readonly furtherSeats: readonly BoardRole[];
   /** `members.picture`, null when they uploaded none. */
   readonly photo: string | null;
   /** `users.linkedin` as the dashboard keeps it: "linkedin.com/in/elifkaya". Null or "" when none. */
@@ -14,6 +21,17 @@ export type TeamPerson = Pick<RosterEntry, "id" | "name" | "placement" | "pageTi
   /** `members.prt_email`. Null or "" when none. */
   readonly teamEmail: string | null;
 };
+
+/** The team-level seats among someone's roles beyond their divisions (`beyond`) other than the one `placement` draws them in. */
+export function furtherSeatsOf(placement: Placement, beyond: readonly RoleBeyondDivisions[]): BoardRole[] {
+  const drawnIn = placement.role === "board" ? placement.seat.roleId : null;
+  return beyond.flatMap((role) => (role.kind === "board" && role.seat.roleId !== drawnIn ? [role.seat] : []));
+}
+
+/** Every team-level seat someone holds: the one they are drawn in first, then the rest. */
+export function teamSeatsOf(p: TeamPerson): BoardRole[] {
+  return [...(p.placement.role === "board" ? [p.placement.seat] : []), ...p.furtherSeats];
+}
 
 /** A photo the page can draw: one in public/team/, or a public store URL. */
 export function photoOf(url: string | null | undefined): PersonPhoto | undefined {

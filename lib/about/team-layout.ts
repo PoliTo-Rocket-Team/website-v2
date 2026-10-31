@@ -28,7 +28,7 @@ import {
   type TeamPageLayer,
   type TeamPageText,
 } from "./team-layer";
-import { byName, personOf, titleOf, type TeamPerson } from "./team-person";
+import { byName, personOf, teamSeatsOf, titleOf, type TeamPerson } from "./team-person";
 import { carouselOf, coreMembersOf, drawnTeamPage, teamBuildOf, type TeamRoles } from "./team-roles";
 import type { DepartmentHead, DivisionLead, Leader, Member, Person, PersonPhoto, TeamPage } from "./types";
 
@@ -113,6 +113,20 @@ const leadsOf = (roles: TeamRoles, divisionId: number): TeamPerson[] =>
   roles.people.filter((p) => roleIn(p.placement.memberships, divisionId) === "lead").sort(byName);
 
 /**
+ * The holder of team-level seat row `roleId` and its title, read from every
+ * team-level seat each person holds, not only the one they are drawn in: a
+ * team leader, or someone on another seat, who took this seat on a hand-over
+ * shows in its place (#852, ADR 0019 Decision 3). Null while no active row is
+ * `roleId`.
+ */
+function teamSeatHolding(roleId: number, roles: TeamRoles): Holding | null {
+  const held = roles.people
+    .flatMap((person) => teamSeatsOf(person).flatMap((seat) => (seat.roleId === roleId ? [{ person, seat }] : [])))
+    .sort((a, b) => byName(a.person, b.person))[0];
+  return held === undefined ? null : { person: held.person, title: boardTitleOf(held.seat) };
+}
+
+/**
  * Whether the bound seat is still on the team record: the team leader and a
  * flagged seat always are; a team-level seat while its `roles` row is active;
  * a head and a lead while their department or division is open. A person
@@ -126,7 +140,7 @@ function seatExists(binding: PlaceBinding, roles: TeamRoles): boolean {
     case "person":
       return true;
     case "team-seat":
-      return roles.people.some((p) => p.placement.role === "board" && p.placement.seat.roleId === binding.roleId);
+      return teamSeatHolding(binding.roleId, roles) !== null;
     case "department-head":
       return roles.org.departments.some((d) => d.id === binding.departmentId);
     case "division-lead":
@@ -158,12 +172,12 @@ export function holdingOf(binding: PlaceBinding, roles: TeamRoles, headOf?: stri
       const person = first((p) => p.placement.role === "team-leader");
       return person === undefined ? null : { person, title: titleOf(person) ?? "Team Leader" };
     }
-    case "full-access-seat":
-    case "team-seat": {
-      const holds = (seat: BoardRole) => (binding.kind === "team-seat" ? seat.roleId === binding.roleId : seat.flag === binding.seat);
-      const person = first((p) => p.placement.role === "board" && holds(p.placement.seat));
+    case "full-access-seat": {
+      const person = first((p) => p.placement.role === "board" && p.placement.seat.flag === binding.seat);
       return person?.placement.role === "board" ? { person, title: boardTitleOf(person.placement.seat) } : null;
     }
+    case "team-seat":
+      return teamSeatHolding(binding.roleId, roles);
     case "department-head": {
       const person = first((p) => p.placement.role === "head" && p.placement.departmentId === binding.departmentId);
       if (person?.placement.role !== "head") return null;

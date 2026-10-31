@@ -21,7 +21,7 @@ import {
   type TeamBuild,
   type TeamPageLayer,
 } from "./team-layer";
-import { byName, personOf, titleOf, type TeamPerson } from "./team-person";
+import { byName, furtherSeatsOf, personOf, titleOf, type TeamPerson } from "./team-person";
 import type { DepartmentGroup, FilledTeamPage, GroupMember, Member, TeamPage, UpTo } from "./types";
 
 // The Team page built from the team's roles (issue #282, ADR 0015): who
@@ -49,6 +49,7 @@ export function teamPeopleOf(roster: readonly RosterEntry[], records: readonly P
       id: entry.id,
       name: entry.name,
       placement: entry.placement,
+      furtherSeats: furtherSeatsOf(entry.placement, record?.beyondDivisions ?? []),
       pageTitle: entry.pageTitle,
       photo: record?.photoUrl ?? null,
       linkedin: record?.details.linkedin ?? null,

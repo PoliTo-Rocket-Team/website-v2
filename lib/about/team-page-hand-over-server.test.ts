@@ -16,6 +16,7 @@ import { queryTeamSnapshot, teamRolesOf } from "@/lib/dashboard/team-snapshot";
 import { teamPageData } from "./team-data";
 import { NO_TEAM_LAYER } from "./team-layer";
 import { holdingOf, layoutSeats, parseTeamLayout, resolveLayout, sameBinding, snapshot, type PageSeat, type PlaceBinding, type TeamLayout } from "./team-layout";
+import type { TeamPage } from "./types";
 
 // A Team tree hand-over and the Team page's stored layout (issue #852, ADR
 // 0019 Decision 3), on the migrated in-memory Postgres: a hand-over of a
@@ -104,6 +105,64 @@ test("a hand-over of a team-level seat with no flag binds its page seats to the 
     before.orgChart.leaders.map((l) => (l.name === "Seat Holder" ? "Mover Twice" : l.name)),
     "the successor shows in the seat's place with no editor action",
   );
+});
+
+/**
+ * Hands the seat over to `successor`, who is drawn in another role on the
+ * team record, and checks the handed-over page seat shows them on the public
+ * page and in the editor, and that the next save keeps it. Answers the page.
+ */
+async function handOverToSomeoneDrawnElsewhere(successor: number): Promise<TeamPage> {
+  const published = await storeLayouts();
+  const seatId = seatBoundTo(published, seatBinding).id;
+  signInAs(TEAM_LEADER);
+  assert.deepEqual(await teamActions.changeSeatHolder(SEAT, { to: successor, outcome: "advisor" }), { ok: true });
+
+  const successorRow = (await tableRows(roles)).find((r) => r.memberId === successor && r.title === SEAT_TITLE && r.leavedAt === null);
+  assert.ok(typeof successorRow?.id === "number", "the successor holds a new seat row");
+  const moved: PlaceBinding = { kind: "team-seat", roleId: successorRow.id };
+  const person = (await rolesNow()).people.find((p) => p.id === successor);
+  assert.ok(person, "the successor is on the team");
+  assert.ok(!(person.placement.role === "board" && person.placement.seat.roleId === successorRow.id), "the successor is drawn in another role");
+
+  const page = await teamPageData();
+  assert.ok(
+    page.orgChart.leaders.some((l) => l.name === person.name && l.role === SEAT_TITLE),
+    "the public page shows the successor in the seat's place with no editor action",
+  );
+
+  const opening = await openDashboard();
+  assert.equal(opening.kind, "open");
+  const { teamPage, teamAdvisors } = (opening as { data: DashboardData }).data;
+  const opened = await teamPage.open();
+  assert.ok(opened);
+  assert.equal(seatBoundTo(opened.content.layout, moved).id, seatId);
+  const drawn = resolveLayout(opened.content.layout, opened.roles).leaders.find((l) => l.at === seatId);
+  assert.equal(drawn?.shown.name, person.name, "the editor draws the successor in the seat's place");
+
+  const saved = await teamPage.save("publish", opened.content, advisorRowsOf((await teamAdvisors.list()) ?? []));
+  assert.ok(saved.ok, JSON.stringify(saved));
+  const stored = (await storedLayouts()).published;
+  assert.ok(stored);
+  assert.equal(seatBoundTo(stored, moved).id, seatId, "the next save keeps the page seat");
+  assert.ok((await teamPageData()).orgChart.leaders.some((l) => l.name === person.name && l.role === SEAT_TITLE), "and the page still shows it");
+  return page;
+}
+
+test("a hand-over of a team-level seat with no flag to the team leader shows them in the seat's place, and the next save keeps it", async () => {
+  const leader = accountOf("team leader").memberId;
+  assert.ok(leader !== null);
+  const page = await handOverToSomeoneDrawnElsewhere(leader);
+  const name = (await rolesNow()).people.find((p) => p.id === leader)?.name;
+  assert.equal(page.orgChart.leader?.name, name, "they still show as the team leader");
+});
+
+test("a hand-over of a team-level seat with no flag to someone who holds another team-level seat shows them in both places, and the next save keeps it", async () => {
+  const manager = accountOf("Project Manager").memberId;
+  assert.ok(manager !== null);
+  const page = await handOverToSomeoneDrawnElsewhere(manager);
+  const name = (await rolesNow()).people.find((p) => p.id === manager)?.name;
+  assert.ok(page.orgChart.leaders.some((l) => l.name === name && l.role !== SEAT_TITLE), "they still show in their own seat's place");
 });
 
 test("a hand-over of a team-level seat no stored page seat is bound to writes nothing to the layout", async () => {

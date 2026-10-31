@@ -155,3 +155,16 @@ test("the seeded published version holds the layout its layer snapshots to, and 
   assert.ok(today);
   assert.deepEqual(seatsOf(publicTeamPage(roles, team, published(stored))), seatsOf(today));
 });
+
+test("the seeded public page draws the same seats and core members as when a page seat read only the seat each person is drawn in (#852)", () => {
+  const rows = SEED_DATA.teamPageLayerVersions;
+  const stored = storedTeamPageOfRow({ layer: rows[0].layer, layout: rows[0].layout ?? null }, NO_UPLOADS);
+  assert.ok(stored?.layout);
+  // Before #852 a page seat bound to a team-level seat read each person's placement alone: the team with no further seats.
+  const drawnInOnly: TeamRoles ={ ...roles, people: roles.people.map((p) => ({ ...p, furtherSeats: [] })) };
+  const now = publicTeamPage(roles, team, published(stored));
+  const before = publicTeamPage(drawnInOnly, team, published(stored));
+  assert.deepEqual(seatsOf(now), seatsOf(before));
+  assert.deepEqual(now.coreMembers, before.coreMembers);
+  assert.deepEqual(now, before, "nothing else on the page moves either");
+});
