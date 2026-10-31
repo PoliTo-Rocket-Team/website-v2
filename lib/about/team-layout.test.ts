@@ -4,6 +4,8 @@ import { SEED_DATA, publishedTeamPageLayerOf, teamRolesOf } from "@/db/seed/case
 import { BOARD_FLAG_TITLES, BOARD_FLAGS, inDivisions, NO_MEMBERSHIPS, type BoardFlag, type DepartmentKind, type Placement } from "@/lib/dashboard/team";
 import { applyLayer, isTeamPageLayer, layerPhotos, NO_TEAM_LAYER, NO_UPLOADS, TEAM_PAGE_TEXT_MAX, type TeamPageLayer } from "./team-layer";
 import {
+  bindingFor,
+  holdingsOf,
   isGroupedLayout,
   layoutPageOf,
   layoutPhotos,
@@ -256,7 +258,8 @@ test("a person-bound place shows that person while they hold an active role, pas
 
 test("the snapshot names every part of the layer the layout does not carry, and why", () => {
   const l = layer({
-    spots: { "arc:chief-engineer:0": { hidden: true }, "lead:20:0": { person: 99 }, "lead:11:5": { role: "Gone Row" } },
+    // The second head is swapped to someone who heads nothing: the head place draws only the department's heads (issue #880).
+    spots: { "arc:chief-engineer:0": { hidden: true }, "lead:20:0": { person: 99 }, "lead:11:5": { role: "Gone Row" }, "head:1:1": { person: 11 } },
     departments: { "3": { hidden: true }, "9": { name: "Closed" } },
     addedLeaders: [{ id: 1, person: 99, place: { at: "end" }, role: "Ambassador" }],
   });
@@ -709,4 +712,230 @@ test("layoutPhotos lists the photos layerPhotos lists for the same edits", () =>
   }
   // The group photo stays in the layer's own store, beside the intro text and the figures.
   assert.deepEqual(sorted(layoutPhotos(snapshot(seededRoles, seededLayer!).layout)), sorted(layerPhotos({ ...seededLayer!, groupPhoto: null })));
+});
+
+// Seats with several holders (issue #880): every holder shows side by side in the seat's place.
+
+/** The layout of the team as it is now, built once before any co-holder joins. */
+const firstLayout = () => snapshot(roles(), NO_TEAM_LAYER).layout;
+
+/** The names a drawn place shows, the first holder then each co-holder, with the role under each. */
+const namesOf = (place: { readonly name: string; readonly role: string; readonly coHolders?: readonly { readonly name: string; readonly role: string }[] } | null | undefined) =>
+  place === null || place === undefined ? [] : [[place.name, place.role], ...(place.coHolders ?? []).map((c) => [c.name, c.role])];
+
+test("two team leaders show side by side in the team leader's place, and neither is a core member", () => {
+  const two = roles(moved(people, 9, leader()));
+  assert.deepEqual(
+    holdingsOf({ kind: "team-leader" }, two).map((h) => h.person.name),
+    ["Alessandro Greco", "Sofia Neri"],
+  );
+  const resolved = resolveLayout(firstLayout(), two);
+  assert.deepEqual(namesOf(resolved.leader), [
+    ["Alessandro Greco", "Team Leader"],
+    ["Sofia Neri", "Team Leader"],
+  ]);
+  assert.deepEqual(resolved.leader?.coHolders?.[0], {
+    name: "Sofia Neri",
+    role: "Team Leader",
+    linkedin: "sofia-neri",
+    email: "sofia.neri@politorocketteam.it",
+  }, "the co-holder shows their own contacts");
+  assert.ok(!resolved.core.some((m) => m.name === "Sofia Neri" || m.name === "Alessandro Greco"));
+  assert.deepEqual(bindingFor(two.people.find((p) => p.id === 9)!, two), { kind: "team-leader" }, "either team leader is bound to the seat");
+});
+
+test("two holders of a full-access seat show side by side in its arc place, drawn-in first, then by name", () => {
+  // Kenji holds the seat by a row he is drawn in; Marco Dona took it on a hand-over, beside his head row.
+  const dona = { ...people.find((p) => p.id === 17)!, furtherSeats: [{ kind: "board" as const, seat: { roleId: 61, title: "Project Manager", fullAccess: "project-manager" as const, type: "core" as const, since } }] };
+  const two = roles(moved(people, 10, flagged("project-manager", 50)).map((p) => (p.id === 17 ? dona : p)));
+  assert.deepEqual(
+    holdingsOf({ kind: "full-access-seat", seat: "project-manager" }, two).map((h) => h.person.name),
+    ["Kenji Watanabe", "Lorenzo Gallo", "Marco Dona"],
+    "those drawn in the seat first, by name, then one who holds it beside another seat",
+  );
+  const layout = firstLayout();
+  const resolved = resolveLayout(layout, two);
+  assert.equal(resolved.leaders.length, layout.arc.length, "the arc keeps its places");
+  assert.deepEqual(namesOf(resolved.leaders[0].shown), [
+    ["Kenji Watanabe", "Project Manager"],
+    ["Lorenzo Gallo", "Project Manager"],
+    ["Marco Dona", "Project Manager"],
+  ]);
+  assert.equal(resolved.leaders[0].shown.coHolders?.[0].photo, "/team/lorenzo.jpg", "each holder shows their own photo");
+  assert.ok(!resolved.core.some((m) => m.name === "Kenji Watanabe"), "a co-holder drawn in the seat's place is no core member");
+  for (const id of [3, 10]) {
+    assert.deepEqual(bindingFor(two.people.find((p) => p.id === id)!, two), { kind: "full-access-seat", seat: "project-manager" });
+  }
+});
+
+test("two holders of a team-level seat with no flag show in its place, found by the seat, not by the place's own row", () => {
+  // Anna Villa holds Chief of Safety by a row of her own, as Add another holder writes it.
+  const two = roles(moved(people, 11, teamSeat(28, "Chief of Safety")));
+  const place = firstLayout().arc.find((s) => s.binding.kind === "team-seat")!;
+  assert.deepEqual(place.binding, { kind: "team-seat", roleId: 27 });
+  assert.deepEqual(
+    holdingsOf(place.binding, two).map((h) => [h.person.name, h.title]),
+    [
+      ["Anna Villa", "Chief of Safety"],
+      ["Giulia Fontana", "Chief of Safety"],
+    ],
+  );
+  const resolved = resolveLayout(firstLayout(), two);
+  assert.deepEqual(namesOf(resolved.leaders.find((l) => l.at === place.id)?.shown), [
+    ["Anna Villa", "Chief of Safety"],
+    ["Giulia Fontana", "Chief of Safety"],
+  ]);
+  assert.ok(!resolved.core.some((m) => m.name === "Anna Villa"));
+  assert.deepEqual(bindingFor(two.people.find((p) => p.id === 11)!, two), { kind: "team-seat", roleId: 28 }, "the co-holder is bound to the seat by their own row");
+  assert.deepEqual(holdingsOf({ kind: "team-seat", roleId: 28 }, two), holdingsOf(place.binding, two), "either row names the same seat");
+  // Another seat of the same type with another title is another seat.
+  const other = roles(moved(people, 11, teamSeat(28, "Chief of Testing")));
+  assert.deepEqual(namesOf(resolveLayout(firstLayout(), other).leaders.find((l) => l.at === place.id)?.shown), [["Giulia Fontana", "Chief of Safety"]]);
+});
+
+test("two heads of a department show side by side in its head place, with its division leads drawn under them once", () => {
+  const two = roles(moved(people, 10, head(1)));
+  const layout = firstLayout();
+  const aero = layout.departments[0];
+  assert.deepEqual(aero.leadsDrawn, "under");
+  assert.deepEqual(
+    holdingsOf(aero.head.binding, two, aero.name).map((h) => [h.person.name, h.title]),
+    [
+      ["Chiara Rinaldi", "Head of Aerodynamics"],
+      ["Kenji Watanabe", "Head of Aerodynamics"],
+    ],
+  );
+  const page = layoutPageOf(two, layout, NO_TEAM_LAYER, team);
+  const [technical] = page.departments.groups;
+  assert.ok(technical, "the page draws the departments");
+  const { members } = technical;
+  assert.deepEqual(
+    members.map((m) => m.name),
+    ["Chiara Rinaldi", "Irene Galli"],
+    "one place for the department, not one per head",
+  );
+  const [head0] = members;
+  assert.ok(head0.kind === "head");
+  assert.deepEqual(namesOf(head0), [
+    ["Chiara Rinaldi", "Head of Aerodynamics"],
+    ["Kenji Watanabe", "Head of Aerodynamics"],
+  ]);
+  assert.deepEqual(
+    head0.leads.map((l) => l.name),
+    ["Pietro Ricci", "Marco Bianchi"],
+    "each division lead once",
+  );
+  assert.ok(!page.coreMembers.members.some((m) => m.name === "Kenji Watanabe"));
+  assert.deepEqual(bindingFor(two.people.find((p) => p.id === 10)!, two), { kind: "department-head", departmentId: 1 });
+});
+
+test("on a place with several holders a role override reads under every name, and a name, photo or LinkedIn override marks no one", () => {
+  const layout = firstLayout();
+  const overridden: TeamLayout = {
+    ...layout,
+    leader: { ...layout.leader!, overrides: { name: "Alessandro G.", role: "President", photo: "/team/leader.jpg", linkedin: "alessandro-g" } },
+  };
+  const one = resolveLayout(overridden, roles());
+  assert.deepEqual(one.leader, { name: "Alessandro G.", role: "President", photo: "/team/leader.jpg", linkedin: "alessandro-g", email: "president@politorocketteam.it" }, "one holder: every override, as before");
+  const two = resolveLayout(overridden, roles(moved(people, 9, leader())));
+  assert.deepEqual(two.leader, {
+    name: "Alessandro Greco",
+    role: "President",
+    email: "president@politorocketteam.it",
+    coHolders: [{ name: "Sofia Neri", role: "President", linkedin: "sofia-neri", email: "sofia.neri@politorocketteam.it" }],
+  });
+});
+
+test("two places bound to one co-held seat by its holders' two rows draw the holders once, in the first place", () => {
+  const two = roles(moved(people, 11, teamSeat(28, "Chief of Safety")));
+  const layout = firstLayout();
+  const place = layout.arc.find((s) => s.binding.kind === "team-seat")!;
+  const twice: TeamLayout = { ...layout, arc: [...layout.arc, { id: 500, binding: { kind: "team-seat", roleId: 28 }, overrides: {} }] };
+  const resolved = resolveLayout(twice, two);
+  assert.deepEqual(resolved.leaders.map((l) => l.at), layout.arc.map((s) => s.id), "the second place is not drawn");
+  assert.equal(resolved.leaders.find((l) => l.at === place.id)?.shown.coHolders?.length, 1);
+  assert.deepEqual(withoutGoneSeats(twice, two), twice, "and keeps its place in the layout");
+});
+
+test("two departments headed by the same two people each draw their own head place with both heads and their own division leads", () => {
+  // Chiara and Kenji head Aerodynamics, and both took Recovery on a hand-over; Irene no longer heads it.
+  const alsoRecovery = (p: TeamPerson): TeamPerson => ({ ...p, placement: head(1), furtherSeats: [{ kind: "head", departmentId: 2, title: "" }] });
+  const both = roles(moved(people, 7, member(20)).map((p) => (p.id === 4 || p.id === 10 ? alsoRecovery(p) : p)));
+  const resolved = resolveLayout(firstLayout(), both);
+  const [aero, recovery] = resolved.departments;
+  assert.deepEqual(namesOf(aero.heads[0]?.shown).map(([name]) => name), ["Chiara Rinaldi", "Kenji Watanabe"]);
+  assert.deepEqual(namesOf(recovery.heads[0]?.shown).map(([name]) => name), ["Chiara Rinaldi", "Kenji Watanabe"], "the same holders on another seat are no repeat");
+  assert.deepEqual(aero.heads[0]?.shown.leads.map((l) => l.name), ["Pietro Ricci", "Marco Bianchi"]);
+  assert.deepEqual(recovery.heads[0]?.shown.leads.map((l) => l.name), ["Simone Testa"]);
+});
+
+test("a division lead row draws one person: the person picked, never a co-head it would hide", () => {
+  const two = roles(moved(people, 10, head(1)));
+  const layout = firstLayout();
+  const aero = layout.departments[0];
+  const fields = headFieldsOf(two, layout, aero.id)!;
+  // The editor picks Kenji, the second of Aerodynamics' two heads, for the first lead row.
+  const picked = layoutWithHead(two, layout, aero.id, { ...fields, leads: fields.leads.map((row, i) => (i === 0 ? { ...row, person: 10 } : row)) });
+  const row = picked.departments[0].leads[0];
+  assert.deepEqual(row.binding, { kind: "person", memberId: 10 }, "a one-person row is bound to the person picked, not to the co-held seat");
+  const resolved = resolveLayout(picked, two);
+  assert.equal(resolved.departments[0].leads.find((l) => l.at === row.id)?.shown.name, "Kenji Watanabe", "the row shows the person picked");
+
+  // A lead row bound to a co-held head seat shows its first holder, and the other stays a core member unless another place draws them.
+  const onHeadSeat: TeamLayout = {
+    ...layout,
+    departments: [{ ...layout.departments[1], leads: [{ id: 900, binding: { kind: "department-head", departmentId: 1 }, overrides: {} }] }],
+  };
+  const drawnPage = resolveLayout(onHeadSeat, two);
+  assert.deepEqual(drawnPage.departments[0].leads.map((l) => l.shown.name), ["Chiara Rinaldi"]);
+  assert.ok(drawnPage.core.some((m) => m.name === "Kenji Watanabe"), "the co-head the row does not draw is a core member");
+  assert.ok(!drawnPage.core.some((m) => m.name === "Chiara Rinaldi"));
+});
+
+test("the snapshot of a team with co-holders gives each co-held seat one place, which draws every holder, and leaves nobody out", () => {
+  const coHeld = roles(moved(moved(moved(people, 10, flagged("project-manager", 50)), 11, head(1)), 9, leader()));
+  const { layout, left } = snapshot(coHeld, NO_TEAM_LAYER);
+  assert.deepEqual(left, []);
+  assert.deepEqual(
+    layout.arc.map((s) => s.binding),
+    [
+      { kind: "full-access-seat", seat: "project-manager" },
+      { kind: "full-access-seat", seat: "chief-engineer" },
+      { kind: "team-seat", roleId: 27 },
+    ],
+  );
+  const resolved = resolveLayout(layout, coHeld);
+  assert.deepEqual(namesOf(resolved.leaders[0].shown).map(([name]) => name), ["Kenji Watanabe", "Lorenzo Gallo"]);
+  assert.deepEqual(resolved.departments[0].heads.map((h) => namesOf(h.shown).map(([name]) => name)), [["Anna Villa", "Chiara Rinaldi"]]);
+  assert.deepEqual(namesOf(resolved.leader).map(([name]) => name), ["Alessandro Greco", "Sofia Neri"]);
+  assert.deepEqual(parseTeamLayout(JSON.parse(JSON.stringify(layout))), layout);
+});
+
+test("the snapshot lists a co-head's own role edit as a gap, never laying it under both heads or dropping it", () => {
+  const two = roles(moved(people, 10, head(1)));
+  assert.deepEqual(snapshot(two, NO_TEAM_LAYER).left, [], "a co-head with no edit is carried by the head place");
+  // Kenji, the second of Aerodynamics' two heads, has a role edit on his own spot.
+  const { layout, left } = snapshot(two, layer({ spots: { "head:1:1": { role: "Co-head of Aerodynamics" } } }));
+  assert.deepEqual(left, [{ at: "head:1:1", why: "co-holder-edit" }]);
+  assert.deepEqual(layout.departments[0].head.overrides, {}, "the head place keeps no role written for one of its holders");
+  assert.deepEqual(namesOf(resolveLayout(layout, two).departments[0].heads[0]?.shown), [
+    ["Chiara Rinaldi", "Head of Aerodynamics"],
+    ["Kenji Watanabe", "Head of Aerodynamics"],
+  ]);
+});
+
+test("the snapshot gives the two rows of one co-held team-level seat one arc place, and lists the further holder's own edit", () => {
+  const two = roles(moved(people, 11, teamSeat(28, "Chief of Safety")));
+  const [, further] = teamBuildOf(two).arc.filter((b) => b.role === "Chief of Safety");
+  const { layout, left } = snapshot(two, layer({ spots: { [further.spot]: { linkedin: "another-handle" } } }));
+  assert.equal(layout.arc.filter((s) => s.binding.kind === "team-seat").length, 1, "one place for the seat, whichever row names it");
+  assert.deepEqual(left, [{ at: further.spot, why: "co-holder-edit" }]);
+});
+
+test("a layout stored before co-holders still parses and draws every holder in place", () => {
+  const stored = readBack(firstLayout());
+  assert.ok(stored !== null && isGroupedLayout(stored));
+  assert.deepEqual(stored, firstLayout(), "no stored form changes");
+  const two = roles(moved(people, 10, flagged("project-manager", 50)));
+  assert.equal(resolveLayout(stored, two).leaders[0].shown.coHolders?.[0].name, "Lorenzo Gallo");
 });

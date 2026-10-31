@@ -18,6 +18,7 @@ import {
   type LayoutGroup,
   type PageSeat,
   type PlaceBinding,
+  type PlaceShows,
   type ResolvedTeam,
   type SeatOverrides,
   type TeamLayout,
@@ -187,10 +188,16 @@ export function overridesOf(
 /**
  * The binding of a place that showed `holder` once the editor picks `person`
  * for it: the binding it has while they are the one it shows, else the seat
- * they hold (`bindingFor`).
+ * they hold as a place that `shows` that many people binds it (`bindingFor`).
  */
-export function rebound(roles: TeamRoles, binding: PlaceBinding, holder: TeamPerson | undefined, person: TeamPerson): PlaceBinding {
-  return holder?.id === person.id ? binding : bindingFor(person, roles);
+export function rebound(
+  roles: TeamRoles,
+  binding: PlaceBinding,
+  holder: TeamPerson | undefined,
+  person: TeamPerson,
+  shows: PlaceShows = "every-holder",
+): PlaceBinding {
+  return holder?.id === person.id ? binding : bindingFor(person, roles, shows);
 }
 
 /**

@@ -1,8 +1,8 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import Image from "next/image";
 import { Plus } from "lucide-react";
 import { arcVisualOrder } from "@/lib/about/arc-order";
-import type { Leader, OrgChart as OrgChartData } from "@/lib/about/types";
+import type { CoHolder, Leader, OrgChart as OrgChartData } from "@/lib/about/types";
 import { arcLayout, CENTRE_BELOW_PHOTO, LEADER_PHOTO, type ArcNode } from "./arc-layout";
 import { Avatar, Contacts } from "./person";
 import { SectionHead } from "./section-head";
@@ -12,7 +12,9 @@ import { SectionHead } from "./section-head";
 // the team leader, placed by count (arc-layout.ts), each joined to the
 // leader by a dashed line. Below xl the arc does not fit beside its labels,
 // so the chart is board 26m's stacked tree: logo, leader, then the others in
-// a two-column grid (four columns from md).
+// a two-column grid (four columns from md). A seat with several holders
+// draws them side by side in its one place (issue #880): smaller photos on
+// the arc, two columns in the grid.
 
 /** Who a frame wraps: the team leader, or a leader on the arc by their place in `OrgChart.leaders`. */
 export type LeaderSlot = "leader" | number;
@@ -117,17 +119,89 @@ function ArcAdds({ nodes, leaders, centreY, onAdd }: { nodes: readonly ArcNode[]
   );
 }
 
-function LeaderLabel({ leader, size }: { leader: Leader; size: "top" | "arc" | "grid" }) {
-  const name = { top: "text-[18px] md:text-[26px]", arc: "text-[22px]", grid: "text-[17px]" }[size];
-  const role = { top: "text-[15px] md:text-[18px]", arc: "text-[16px]", grid: "text-[14px]" }[size];
+/**
+ * A label's size: the team leader's, an arc leader's, a grid cell's, or one
+ * of several holders of a place (issue #880), whose names may wrap so the
+ * holders fit side by side in the place one holder fills.
+ */
+type LabelSize = "top" | "arc" | "grid" | "top-holder" | "holder";
+
+function LeaderLabel({ leader, size }: { leader: CoHolder; size: LabelSize }) {
+  const name = {
+    top: "text-[18px] md:text-[26px]",
+    arc: "text-[22px]",
+    grid: "text-[17px]",
+    "top-holder": "text-[17px] md:text-[22px]",
+    holder: "text-[15px] md:text-[17px]",
+  }[size];
+  const role = {
+    top: "text-[15px] md:text-[18px]",
+    arc: "text-[16px]",
+    grid: "text-[14px]",
+    "top-holder": "text-[14px] md:text-[17px]",
+    holder: "text-[13px] md:text-[14px]",
+  }[size];
+  const wrap = size === "top-holder" || size === "holder" ? "text-balance" : "whitespace-nowrap";
   return (
     <div className="flex flex-col items-center text-center">
-      <p className={`whitespace-nowrap font-semibold leading-tight tracking-[-0.01em] text-prt-text ${name}`}>{leader.name}</p>
-      <p className={`mt-1 whitespace-nowrap leading-tight text-accent md:mt-1.5 ${role}`}>{leader.role}</p>
+      <p className={`${wrap} font-semibold leading-tight tracking-[-0.01em] text-prt-text ${name}`}>{leader.name}</p>
+      <p className={`mt-1 ${wrap} leading-tight text-accent md:mt-1.5 ${role}`}>{leader.role}</p>
       <Contacts person={leader} iconClass="h-[18px] w-[18px]" className="mt-2.5 md:mt-3" />
     </div>
   );
 }
+
+/** Everyone a place shows: the holder it shows first, then each co-holder (issue #880). */
+const holdersOf = (leader: Leader): readonly CoHolder[] => [leader, ...(leader.coHolders ?? [])];
+
+/**
+ * The holders of one place side by side, each a photo over their label in a
+ * column of `column`'s width (issue #880). The row stands where one holder
+ * would, so the place keeps its spot on the arc or in the tree.
+ */
+function Holders({
+  leader,
+  photo,
+  column,
+  label,
+  gap = "gap-4",
+}: {
+  leader: Leader;
+  /** The photo's size class and its width for next/image. */
+  photo: { sizeClass: string; sizes: string };
+  /** Each holder's column width class. */
+  column: string;
+  label: LabelSize;
+  gap?: string;
+}) {
+  return (
+    <div className={`flex items-start justify-center ${gap}`}>
+      {holdersOf(leader).map((h, i) => (
+        <div key={`${h.name}-${i}`} className={`flex flex-col items-center ${column}`}>
+          <Avatar photo={h.photo} sizeClass={photo.sizeClass} sizes={photo.sizes} />
+          <div className="mt-3 md:mt-3.5">
+            <LeaderLabel leader={h} size={label} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** From xl: the photo of each of several team leaders, their column, and the gap between columns, px. */
+const TOP_HOLDER_PHOTO = 136;
+const TOP_HOLDER_COLUMN = 200;
+const TOP_HOLDER_GAP = 32;
+
+/** How far out the arc's lines start round several team leaders: past their row's outer edge. */
+function leaderCircleOf(leader: Leader | null): number | undefined {
+  const count = leader === null ? 1 : holdersOf(leader).length;
+  if (count === 1) return undefined;
+  return (count * TOP_HOLDER_COLUMN + (count - 1) * TOP_HOLDER_GAP) / 2 + 40;
+}
+
+/** On the arc, each of several holders' photo, against the node's own: smaller, so the pair fits the place. */
+const arcHolderPhoto = (node: ArcNode) => Math.round(node.photo * 0.72);
 
 function University({ university }: { university: OrgChartData["university"] }) {
   return (
@@ -147,7 +221,7 @@ function University({ university }: { university: OrgChartData["university"] }) 
  * 0019 Decision 9) the leaders keep their places and draw no line to it.
  */
 function Arc({ leader, leaders, frame, onAdd }: { leader: Leader | null; leaders: readonly Leader[]; frame?: LeaderFrame; onAdd: AddLeader | null }) {
-  const nodes = arcLayout(leaders.length);
+  const nodes = arcLayout(leaders.length, leaderCircleOf(leader));
   const centreY = LEADER_PHOTO / 2 + CENTRE_BELOW_PHOTO;
   // The lowest leader's photo, then room for its name, role and icons.
   const height = Math.max(...nodes.map((n) => centreY + n.y + n.photo / 2)) + 110;
@@ -170,24 +244,63 @@ function Arc({ leader, leaders, frame, onAdd }: { leader: Leader | null; leaders
             ))}
           </svg>
 
-          <div className="absolute left-1/2 top-0 flex -translate-x-1/2 flex-col items-center">
-            {framed(
-              frame,
-              "leader",
-              <>
-                <Avatar photo={leader.photo} sizeClass="h-[176px] w-[176px]" sizes="176px" />
-                <div className="mt-5">
-                  <LeaderLabel leader={leader} size="top" />
-                </div>
-              </>,
-            )}
-          </div>
+          {leader.coHolders === undefined ? (
+            <div className="absolute left-1/2 top-0 flex -translate-x-1/2 flex-col items-center">
+              {framed(
+                frame,
+                "leader",
+                <>
+                  <Avatar photo={leader.photo} sizeClass="h-[176px] w-[176px]" sizes="176px" />
+                  <div className="mt-5">
+                    <LeaderLabel leader={leader} size="top" />
+                  </div>
+                </>,
+              )}
+            </div>
+          ) : (
+            // Several team leaders: their photos' centres level with one leader's, so the lines still meet at the centre.
+            <div className="absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ top: (LEADER_PHOTO - TOP_HOLDER_PHOTO) / 2 }}>
+              {framed(
+                frame,
+                "leader",
+                <Holders
+                  leader={leader}
+                  photo={{ sizeClass: "h-[136px] w-[136px]", sizes: `${TOP_HOLDER_PHOTO}px` }}
+                  column="w-[200px]"
+                  label="top-holder"
+                  gap="gap-8"
+                />,
+              )}
+            </div>
+          )}
         </>
       )}
 
       {leaders.map((l, i) => {
         const n = nodes[i];
         const px = `${n.photo}px`;
+        if (l.coHolders !== undefined) {
+          // Several holders of one place: smaller photos side by side, centred on the place's own point.
+          const photo = arcHolderPhoto(n);
+          return (
+            <div
+              key={i}
+              className="absolute flex -translate-x-1/2 flex-col items-center"
+              style={{ left: `calc(50% + ${n.x}px)`, top: centreY + n.y - photo / 2, "--holder": `${photo}px` } as CSSProperties}
+            >
+              {framed(
+                frame,
+                i,
+                <Holders
+                  leader={l}
+                  photo={{ sizeClass: "h-[var(--holder)] w-[var(--holder)]", sizes: `${photo}px` }}
+                  column="w-[132px]"
+                  label="holder"
+                />,
+              )}
+            </div>
+          );
+        }
         return (
           <div
             key={i}
@@ -228,12 +341,22 @@ function Tree({ leader, leaders, frame, onAdd }: { leader: Leader | null; leader
         framed(
           frame,
           "leader",
-          <>
-            <Avatar photo={leader.photo} sizeClass="h-[120px] w-[120px]" sizes="120px" />
-            <div className="mt-3">
-              <LeaderLabel leader={leader} size="top" />
-            </div>
-          </>,
+          leader.coHolders === undefined ? (
+            <>
+              <Avatar photo={leader.photo} sizeClass="h-[120px] w-[120px]" sizes="120px" />
+              <div className="mt-3">
+                <LeaderLabel leader={leader} size="top" />
+              </div>
+            </>
+          ) : (
+            <Holders
+              leader={leader}
+              photo={{ sizeClass: "h-24 w-24 md:h-[120px] md:w-[120px]", sizes: "120px" }}
+              column="w-[148px] md:w-[200px]"
+              label="top-holder"
+              gap="gap-4 md:gap-8"
+            />
+          ),
         )}
       {/* A line down from the leader, a rule across to the first row's
           outer columns, and a short drop to each. */}
@@ -245,20 +368,31 @@ function Tree({ leader, leaders, frame, onAdd }: { leader: Leader | null; leader
             className="col-span-2 mx-[25%] block h-4 border-x border-t border-white-10 md:col-span-4 md:mx-[12.5%]"
           />
         )}
-        {leaders.map((l, i) => (
-          <div key={i} className="mt-2 flex flex-col items-center pb-8">
-            {framed(
-              frame,
-              i,
-              <>
-                <Avatar photo={l.photo} sizeClass="h-24 w-24" sizes="96px" />
-                <div className="mt-3">
-                  <LeaderLabel leader={l} size="grid" />
-                </div>
-              </>,
-            )}
-          </div>
-        ))}
+        {leaders.map((l, i) =>
+          l.coHolders === undefined ? (
+            <div key={i} className="mt-2 flex flex-col items-center pb-8">
+              {framed(
+                frame,
+                i,
+                <>
+                  <Avatar photo={l.photo} sizeClass="h-24 w-24" sizes="96px" />
+                  <div className="mt-3">
+                    <LeaderLabel leader={l} size="grid" />
+                  </div>
+                </>,
+              )}
+            </div>
+          ) : (
+            // Several holders of one place take two columns, side by side.
+            <div key={i} className="col-span-2 mt-2 flex flex-col items-center pb-8">
+              {framed(
+                frame,
+                i,
+                <Holders leader={l} photo={{ sizeClass: "h-24 w-24", sizes: "96px" }} column="w-[148px] md:w-[180px]" label="holder" />,
+              )}
+            </div>
+          ),
+        )}
         {/* The grid has no gaps to click between: the editor adds after the
             last leader here, and the panel's Place field moves them. */}
         {onAdd !== null && (
