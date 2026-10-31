@@ -1,10 +1,12 @@
 import "server-only";
 
+import type { BatchItem } from "drizzle-orm/batch";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
 import { getDb } from "@/db/client";
 import { teamPageLayerVersions } from "@/db/schema";
 import { ownsTeamPageUpload } from "@/lib/about/team-page-photos";
-import { storedTeamPageOfRow, type StoredTeamPage } from "@/lib/about/team-page-stored";
+import { bindsStoredTeamSeat, storedTeamPageOfRow, teamSeatHandedOver, type StoredTeamPage } from "@/lib/about/team-page-stored";
+import { rowIds, unchangedRows } from "@/lib/db-guard";
 import { ownPublicStoreHost } from "@/lib/storage/public-store";
 import type { ContentStore } from "@/lib/content/editor";
 import { versionedFromRows, versionRows, type ContentItem, type Versioned, type VersionKind } from "@/lib/content/versioned";
@@ -17,10 +19,11 @@ import { written, type WriteResult } from "./write";
 // document, so the store holds one item at most, kept as one row per
 // version in `team_page_layer_versions` (migration 0034), each with its
 // layout of page seats beside it (migration 0076, issue #850,
-// lib/about/team-page-stored.ts). Writes touch that
+// lib/about/team-page-stored.ts). The editor's writes touch that
 // table alone, through runAuditQuery or runAuditBatch so the audit trigger
 // logs who made them, then refresh the public read
-// (.patterns/audited-mutations.md).
+// (.patterns/audited-mutations.md). A Team tree hand-over of a seat bound by
+// its `roles` row adds its layout writes to its own batch (issue #852).
 
 export const TEAM_PAGE_LAYER_CACHE_TAG = "team-page-layer";
 
@@ -116,6 +119,60 @@ async function writeVersions(version: Versioned<StoredTeamPage>, expected: Versi
   if (!landed.ok) return landed;
   updateTag(TEAM_PAGE_LAYER_CACHE_TAG);
   return written({ ...DOCUMENT, version });
+}
+
+/**
+ * What a Team tree hand-over of a team-level seat with no flag adds to its
+ * own batch, so the stored page seats bound to the ended row are bound to the
+ * successor's row in the same transaction (issue #852, ADR 0019 Decision 3).
+ * The writes always open with the layer rows' guard: a Team page save that
+ * lands between this read and the batch fails it, also one that binds a page
+ * seat to the ended row when none was bound at the read, and `changed` then
+ * answers true.
+ */
+export type PageSeatsHandOver = {
+  /**
+   * The successor's row id when a stored page seat is bound to the ended row:
+   * reserved before the batch, which inserts the row with it. Null when none
+   * is, and the batch then only guards the layer rows.
+   */
+  readonly to: number | null;
+  readonly writes: (db: ReturnType<typeof getDb>) => readonly BatchItem<"pg">[];
+  /** Whether the layer rows are no longer the ones read: a Team page save landed meanwhile. */
+  readonly changed: () => Promise<boolean>;
+  /** Refreshes the public read once the batch has landed. */
+  readonly landed: () => void;
+};
+
+/**
+ * The page-seat part of a hand-over of team-level seat row `from`, or null
+ * when this database has no layer table yet. When no stored layout binds a
+ * page seat to `from`, it writes nothing to the page and only guards the
+ * layer rows. `reserve` gives the successor's row id, and runs only when a
+ * page seat must move.
+ */
+export async function pageSeatsHandOver(from: number, reserve: () => Promise<number>): Promise<PageSeatsHandOver | null> {
+  let ids: number[];
+  let version: Versioned<StoredTeamPage> | undefined;
+  try {
+    ids = await rowIds(LAYER_ROWS);
+    version = (await readTeamPageLayer())[0]?.version;
+  } catch (error) {
+    if (hasCode(error, UNDEFINED_TABLE)) return null;
+    throw error;
+  }
+  const changed = async () => (await rowIds(LAYER_ROWS)).join() !== ids.join();
+  if (version === undefined || !bindsStoredTeamSeat(version, from)) {
+    return { to: null, writes: (db) => unchangedRows(db, LAYER_ROWS, ids), changed, landed: () => {} };
+  }
+  const to = await reserve();
+  const moved = teamSeatHandedOver(version, from, to);
+  return {
+    to,
+    writes: (db) => [...unchangedRows(db, LAYER_ROWS, ids), ...layerVersionWrites(db, moved)],
+    changed,
+    landed: () => updateTag(TEAM_PAGE_LAYER_CACHE_TAG),
+  };
 }
 
 export const databaseTeamPageLayerStore: ContentStore<StoredTeamPage> = {

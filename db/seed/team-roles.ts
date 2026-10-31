@@ -6,7 +6,7 @@
 
 import type { InferInsertModel } from "drizzle-orm";
 import type { departments, divisions, members, roles, users } from "@/db/schema";
-import type { TeamPerson as PagePerson } from "@/lib/about/team-person";
+import { furtherSeatsOf, type TeamPerson as PagePerson } from "@/lib/about/team-person";
 import type { TeamRoles } from "@/lib/about/team-roles";
 import { isTeamSeat, membershipsOfRoles, roleBeyondDivisions, type OrgChart, type Placement, type RoleSeat } from "@/lib/dashboard/team";
 import { SEAT_OF_FLAG } from "@/lib/dashboard/viewer";
@@ -89,11 +89,13 @@ export function teamRolesOf(data: SeedRoster): TeamRoles {
     const user = data.users.find((u) => u.member === memberId);
     const member = data.members.find((m) => m.memberId === memberId);
     if (user === undefined) return [];
+    const placement = placementOfRoles(data, active, org);
     return [
       {
         id: memberId,
         name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email,
-        placement: placementOfRoles(data, active, org),
+        placement,
+        furtherSeats: furtherSeatsOf(placement, active.flatMap((r) => roleBeyondDivisions(seatOfRole(data, r), org) ?? [])),
         pageTitle: active[0].title || null,
         photo: member?.picture ?? null,
         linkedin: user.linkedin ?? null,

@@ -11,7 +11,16 @@ import { NO_TEAM_LAYER, NO_UPLOADS, textOf } from "./team-layer";
 import { layoutPageOf, snapshot, type TeamLayout } from "./team-layout";
 import { photosInUse, publicTeamPage, teamPageEditor, type TeamPageEditor, type TeamPagePhotos, type TeamPageStore } from "./team-page-editor";
 import { memoryTeamPageStore } from "./team-page-memory";
-import { contentOf, layoutOf, storedTeamPage, storedTeamPageOfRow, type StoredTeamPage, type TeamPageContent } from "./team-page-stored";
+import {
+  bindsStoredTeamSeat,
+  contentOf,
+  layoutOf,
+  storedTeamPage,
+  storedTeamPageOfRow,
+  teamSeatHandedOver,
+  type StoredTeamPage,
+  type TeamPageContent,
+} from "./team-page-stored";
 import { teamPageFromRoles, type TeamRoles } from "./team-roles";
 import type { TeamPage } from "./types";
 
@@ -97,6 +106,29 @@ test("a save stores the layout the editor sends and the layer's text in one writ
   assert.deepEqual(draft, { layer: { ...layer, intro: "Edited intro." }, layout: snapshot(roles, NO_TEAM_LAYER).layout });
 });
 
+test("a hand-over of a team-level seat row binds every stored page seat on it to the successor's row, in each version, and leaves the rest", () => {
+  const layout = snapshot(roles, NO_TEAM_LAYER).layout;
+  const onSeat: TeamLayout = {
+    ...layout,
+    arc: [...layout.arc, { id: 900, binding: { kind: "team-seat", roleId: 27 }, overrides: { photo: "/team/seat.jpg" } }, { id: 901, binding: { kind: "person", memberId: 27 }, overrides: {} }],
+  };
+  const version: Versioned<StoredTeamPage> = { state: "published", published: { layer, layout: onSeat }, draft: { layer, layout: null } };
+  assert.ok(bindsStoredTeamSeat(version, 27));
+  assert.ok(!bindsStoredTeamSeat(version, 28), "no page seat is bound to another row");
+  assert.ok(!bindsStoredTeamSeat({ state: "draft", draft: { layer, layout: null } }, 27), "a version with no stored layout binds none");
+
+  const handed = teamSeatHandedOver(version, 27, 28);
+  assert.deepEqual(handed, {
+    state: "published",
+    published: {
+      layer,
+      layout: { ...onSeat, arc: [...layout.arc, { id: 900, binding: { kind: "team-seat", roleId: 28 }, overrides: { photo: "/team/seat.jpg" } }, onSeat.arc.at(-1)] },
+    },
+    draft: { layer, layout: null },
+  });
+  assert.ok(!bindsStoredTeamSeat(handed, 27));
+});
+
 test("a photo only a stored layout shows is in use", () => {
   const layout = snapshot(roles, NO_TEAM_LAYER).layout;
   const photo = "/team/only-in-the-layout.jpg";
@@ -122,4 +154,17 @@ test("the seeded published version holds the layout its layer snapshots to, and 
   const today = teamPageFromRoles(roles, team, layer);
   assert.ok(today);
   assert.deepEqual(seatsOf(publicTeamPage(roles, team, published(stored))), seatsOf(today));
+});
+
+test("the seeded public page draws the same seats and core members as when a page seat read only the seat each person is drawn in (#852)", () => {
+  const rows = SEED_DATA.teamPageLayerVersions;
+  const stored = storedTeamPageOfRow({ layer: rows[0].layer, layout: rows[0].layout ?? null }, NO_UPLOADS);
+  assert.ok(stored?.layout);
+  // Before #852 a page seat bound to a team-level seat read each person's placement alone: the team with no further seats.
+  const drawnInOnly: TeamRoles ={ ...roles, people: roles.people.map((p) => ({ ...p, furtherSeats: [] })) };
+  const now = publicTeamPage(roles, team, published(stored));
+  const before = publicTeamPage(drawnInOnly, team, published(stored));
+  assert.deepEqual(seatsOf(now), seatsOf(before));
+  assert.deepEqual(now.coreMembers, before.coreMembers);
+  assert.deepEqual(now, before, "nothing else on the page moves either");
 });
