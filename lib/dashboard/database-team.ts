@@ -30,7 +30,7 @@ import { DashboardRefused, type TeamWrites } from "./data";
 import { automaticAliasRequests } from "./database-alias";
 import { readWaitingHandOvers } from "./database-hand-over";
 import { automaticTeamAddressReroutes } from "./database-team-address";
-import { handedTo, seatHandedTo, type TiedRoleChange } from "./team-address";
+import { addedBeside, handedTo, seatHandedTo, type TiedRoleChange } from "./team-address";
 import { moveApplication } from "./database-recruitment";
 import { answerNoticeOf, HAND_OVER_NEEDS_MEMBER, planHandOverAnswer, type HandOverAnswer, type HandOverAnswerPlan } from "./hand-over-request";
 import { photoPathnames } from "./database-self";
@@ -102,9 +102,11 @@ import {
   planDepartmentClose,
   planDepartmentCreate,
   planDepartmentSave,
+  planHeadAdd,
 } from "./department-edit";
 import { editableDivisionIds, editsStructure, teamStructure, type TeamStructure } from "./team-structure";
-import { checkNewSeat, checkSeatHolderChange, planNewSeat, planSeatHolderChange, planSeatRemoval, stayingOnTeam } from "./team-seats";
+import { checkNewSeat, checkSeatHolderChange, planNewSeat, planSeatHolderAdd, planSeatHolderChange, planSeatRemoval, planTeamLeaderAdd, stayingOnTeam } from "./team-seats";
+import { asksAlias, checkHolderAdd, tieOfSeat, type ActiveRoleRow, type HolderAddPlan } from "./seat-holders";
 import {
   checkDivisionSave,
   closeRefusal,
@@ -1806,6 +1808,91 @@ async function addSeat(identity: DashboardIdentity, input: unknown): Promise<Wri
   return written(null);
 }
 
+// Add another holder (epic #861, issue #868). `planTeamLeaderAdd`,
+// `planSeatHolderAdd` (./team-seats.ts) and `planHeadAdd`
+// (./department-edit.ts) decide; each write below starts the new holder's row
+// in one audited batch and ends no row, so every holder of the seat keeps it.
+
+/** Every active role row on the team, read now rather than off the cached roster, as a seat is read off it. */
+async function activeRoleRows(): Promise<ActiveRoleRow[]> {
+  const rows = await getDb()
+    .select({
+      id: roles.id,
+      memberId: roles.memberId,
+      type: roles.type,
+      title: roles.title,
+      fullAccess: roles.fullAccess,
+      departmentId: roles.deptId,
+      divisionId: roles.divisionId,
+    })
+    .from(roles)
+    .where(isNull(roles.leavedAt))
+    .orderBy(asc(roles.startedAt), asc(roles.id));
+  return rows.flatMap(({ memberId, fullAccess, ...r }) => (memberId === null ? [] : [{ ...r, memberId, fullAccess: seatOfFlag(fullAccess) }]));
+}
+
+/**
+ * Writes a checked Add another holder: the new holder's row, then what a
+ * hand-over of the seat owes them. A new team leader or head is owed an
+ * alias request when they have none (`asksAlias`, issue #543), and a team
+ * address tied to the seat is owed a routing item only when its holder holds
+ * the seat no more (`addedBeside`, issue #789).
+ */
+async function writeHolderAdd(plan: HolderAddPlan): Promise<WriteResult<null>> {
+  const { seat, holders, row } = plan;
+  const aliasAsked = await automaticAliasRequests(asksAlias(seat) ? [row.personId] : []);
+  const tie = tieOfSeat(seat);
+  const reroutesAsked = await automaticTeamAddressReroutes(tie === null ? [] : [addedBeside(tie, row.personId, holders)]);
+  await runAuditBatch((db) => [
+    db.insert(roles).values({
+      memberId: row.personId,
+      deptId: row.departmentId,
+      divisionId: null,
+      title: row.title,
+      type: row.type,
+      startedAt: today(),
+      fullAccess: row.fullAccess === null ? null : FLAG_OF_SEAT[row.fullAccess],
+    }),
+    ...aliasAsked(db),
+    ...reroutesAsked(db),
+  ]);
+  done();
+  return written(null);
+}
+
+/** Add another team leader (`planTeamLeaderAdd`): a `president` row starts for them, and every team leader stays one. */
+async function addTeamLeader(identity: DashboardIdentity, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkHolderAdd(input);
+  if (!checked.ok) return refused(checked.error);
+  const [snapshot, active] = await Promise.all([readTeamSnapshot(), activeRoleRows()]);
+  const actor = await readActor(identity, snapshot.org);
+  const planned = planTeamLeaderAdd({ actor, add: checked.value, team: teamPeopleOf(snapshot), active, org: snapshot.org });
+  if (!planned.ok) return refused(planned.error);
+  return writeHolderAdd(planned.value);
+}
+
+/** Add another holder on the team-level seat `roleId` (`planSeatHolderAdd`): a row with the seat's type, title and full-access flag starts for them. */
+async function addSeatHolder(identity: DashboardIdentity, roleId: number, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkHolderAdd(input);
+  if (!checked.ok) return refused(checked.error);
+  const [snapshot, active] = await Promise.all([readTeamSnapshot(), activeRoleRows()]);
+  const actor = await readActor(identity, snapshot.org);
+  const planned = planSeatHolderAdd({ actor, roleId, add: checked.value, team: teamPeopleOf(snapshot), active, org: snapshot.org });
+  if (!planned.ok) return refused(planned.error);
+  return writeHolderAdd(planned.value);
+}
+
+/** Add another head of `departmentId` (`planHeadAdd`): a head row on the department starts for them, and every head of it stays one. */
+async function addDepartmentHead(identity: DashboardIdentity, departmentId: number, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkHolderAdd(input);
+  if (!checked.ok) return refused(checked.error);
+  const [snapshot, active] = await Promise.all([readTeamSnapshot(), activeRoleRows()]);
+  const actor = await readActor(identity, snapshot.org);
+  const planned = planHeadAdd({ actor, org: snapshot.org, departmentId, add: checked.value, team: teamPeopleOf(snapshot), active });
+  if (!planned.ok) return refused(planned.error);
+  return writeHolderAdd(planned.value);
+}
+
 /**
  * Remove seat (issue #643), in one batch: the holder's seat role ends and no
  * successor's starts, so a full-access flag on it ends with the row. The
@@ -1980,5 +2067,8 @@ export function databaseTeamWrites(
     changeSeatHolder: (roleId, input) => changeSeatHolder(identity, roleId, input),
     addSeat: (input) => addSeat(identity, input),
     removeSeat: (roleId) => removeSeat(identity, roleId),
+    addTeamLeader: (input) => addTeamLeader(identity, input),
+    addSeatHolder: (roleId, input) => addSeatHolder(identity, roleId, input),
+    addDepartmentHead: (departmentId, input) => addDepartmentHead(identity, departmentId, input),
   };
 }

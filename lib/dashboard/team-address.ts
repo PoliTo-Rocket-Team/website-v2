@@ -523,6 +523,15 @@ export function handedTo(tie: MovesWith, memberId: number): TiedRoleChange {
   return { tie, becoming: [memberId], staying: [], leaving: [] };
 }
 
+/**
+ * A role `memberId` joins beside the holders it keeps (Add another holder,
+ * epic #861, issue #868): it owes a routing item only when the address's
+ * holder holds the role no more.
+ */
+export function addedBeside(tie: MovesWith, memberId: number, holders: readonly number[]): TiedRoleChange {
+  return { tie, becoming: [memberId], staying: holders, leaving: [] };
+}
+
 /** The full-access seat a hand-over moves (`seatHandOver`, ./hand-over.ts), as a change of its tie; none when no seat moves. */
 export function seatHandedTo(seat: SeatMove | null): TiedRoleChange[] {
   return seat === null ? [] : [handedTo({ kind: "full-access-seat", seat: seat.seat }, seat.to)];

@@ -265,3 +265,28 @@ export async function removeSeat(roleId: number): Promise<TeamActionResult> {
   if (!writes || !isId(roleId)) return REFUSED;
   return answered(await writes.removeSeat(roleId));
 }
+
+// Add another holder (epic #861, issue #868): one more person holds a seat,
+// beside the holders it has. The rules are checked again behind each of these
+// (lib/dashboard/seat-holders.ts): only the team leader and full access.
+
+/** Add another team leader: who joins the team leader's seat. */
+export async function addTeamLeader(input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes) return REFUSED;
+  return answered(await writes.addTeamLeader(input));
+}
+
+/** Add another holder on the team-level seat `roleId`. */
+export async function addSeatHolder(roleId: number, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes || !isId(roleId)) return REFUSED;
+  return answered(await writes.addSeatHolder(roleId, input));
+}
+
+/** Add another head of `departmentId`. */
+export async function addDepartmentHead(departmentId: number, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes || !isId(departmentId)) return REFUSED;
+  return answered(await writes.addDepartmentHead(departmentId, input));
+}

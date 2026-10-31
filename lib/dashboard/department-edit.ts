@@ -2,7 +2,8 @@ import { z } from "zod";
 import type { TeamPerson } from "./division-edit";
 import type { PersonRecord } from "./division-members";
 import { advisingIn, HAND_OVER_OUTCOMES, steppingDown, type HandOverOutcome, type SteppingDown, type Unit } from "./hand-over";
-import { beyondTitle, DEPARTMENT_KINDS, divisionLabel, type DepartmentKind, type OrgChart, type TeamActor } from "./team";
+import { addedHolder, type ActiveRoleRow, type HolderAdd, type HolderAddPlan } from "./seat-holders";
+import { beyondTitle, defaultHeadTitle, DEPARTMENT_KINDS, divisionLabel, type DepartmentKind, type OrgChart, type TeamActor } from "./team";
 
 // New department, Edit department and Close department (issue #251, boards
 // 77d to 77f): the team leader and full access manage departments, from the
@@ -222,6 +223,37 @@ export function planDepartmentSave(input: {
     nameChanged: stored !== department.name,
     codeChanged: save.code !== normalizeDepartmentCode(department.code ?? ""),
     head: head === null ? null : head.value,
+  });
+}
+
+/**
+ * Add another head (epic #861, issue #868) as the rules allow it, or the
+ * first reason it is refused: only the team leader or full access; an open
+ * department; a person on the team who does not head it already
+ * (`addedHolder`). Their row is a head row on the department, titled as a new
+ * head's is (`defaultHeadTitle`), with no full-access flag: a seat kept on
+ * another head's row is that seat's, not the head's. Every head of it stays
+ * one, and the person keeps every role and division they hold.
+ */
+export function planHeadAdd(input: {
+  readonly actor: TeamActor | null;
+  readonly org: OrgChart;
+  readonly departmentId: number;
+  readonly add: HolderAdd;
+  readonly team: readonly TeamPerson[];
+  readonly active: readonly ActiveRoleRow[];
+}): Checked<HolderAddPlan> {
+  const { actor, org, departmentId, add, team, active } = input;
+  if (!mayManageDepartments(actor)) return no(ONLY_TEAM);
+  const department = org.departments.find((d) => d.id === departmentId);
+  if (!department) return no("That department is closed.");
+  return addedHolder({
+    seat: { kind: "head", departmentId },
+    add,
+    team,
+    active,
+    org,
+    row: { type: "head", title: defaultHeadTitle(department.name), fullAccess: null, departmentId },
   });
 }
 
