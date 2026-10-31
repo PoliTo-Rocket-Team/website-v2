@@ -37,15 +37,20 @@ export function leaderCaption(leaders: TreeHolders): string {
   return leaders.length > 1 ? "Team Leaders" : "Team Leader";
 }
 
-/** The caption under a department's heads: their stored titles, each once; null when it has none. */
-export function headCaption(heads: TreeHolders<TreeHead>): string | null {
-  return heads.length === 0 ? null : [...new Set(heads.map((h) => h.title))].join(", ");
+/** A stored title with its role word capitalised: "head of avionics" reads "Head of avionics" (issue #916). */
+function withCapitalHead(title: string): string {
+  return title.replace(/\bhead\b/gi, "Head");
 }
 
-/** The caption under a division's leads: "Safety · lead", or "· leads" for several; null when it has none. */
+/** The caption under a department's heads: their stored titles, "Head" capitalised, each once; null when it has none. */
+export function headCaption(heads: TreeHolders<TreeHead>): string | null {
+  return heads.length === 0 ? null : [...new Set(heads.map((h) => withCapitalHead(h.title)))].join(", ");
+}
+
+/** The caption under a division's leads: "Safety · Lead", or "· Leads" for several; null when it has none. */
 export function leadCaption(divisionName: string, leads: TreeHolders): string | null {
   if (leads.length === 0) return null;
-  return `${divisionLabel(divisionName)} · ${leads.length > 1 ? "leads" : "lead"}`;
+  return `${divisionLabel(divisionName)} · ${leads.length > 1 ? "Leads" : "Lead"}`;
 }
 
 export type Point = readonly [x: number, y: number];

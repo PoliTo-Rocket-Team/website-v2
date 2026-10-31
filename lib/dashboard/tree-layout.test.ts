@@ -184,6 +184,8 @@ test("a head's card shows their stored title; a blank one reads Head of the depa
   const blank = roster.map((p) => (p.id === 4 ? { ...p, placement: head(1, " ") } : p));
   assert.equal(cards(buildTeamTree(blank, org, "2026–27", 6)).get(4)!.subtitle, "Head of Aerodynamics");
   assert.equal(cards(buildTeamTree(roster, org, "2026–27", 6)).get(4)!.subtitle, "Head of Aerodynamics", "today's stored title reads as before");
+  const lower = roster.map((p) => (p.id === 4 ? { ...p, placement: head(1, "head of aerodynamics") } : p));
+  assert.equal(cards(buildTeamTree(lower, org, "2026–27", 6)).get(4)!.subtitle, "Head of aerodynamics", "the role word is capitalised (#916)");
 });
 
 test("someone in one place is drawn once, heads in one row over their leads", () => {
@@ -274,7 +276,7 @@ test("a card with one holder lays out as before #916: the same height, under its
       ["lead-10", 72, 1],
     ],
   );
-  assert.deepEqual([card(layout, "leader-1").subtitle, card(layout, "lead-10").subtitle], ["Team Leader", "Mission Analysis · lead"]);
+  assert.deepEqual([card(layout, "leader-1").subtitle, card(layout, "lead-10").subtitle], ["Team Leader", "Mission Analysis · Lead"]);
 });
 
 test("two team leaders, two holders of a seat, two heads and two leads each share one card, sized so nothing overlaps (#916)", () => {
@@ -288,7 +290,7 @@ test("two team leaders, two holders of a seat, two heads and two leads each shar
   assert.equal(layout.nodes.filter((n) => n.kind === "card").length, plain.nodes.filter((n) => n.kind === "card").length, "no card of its own for a co-holder");
   assert.deepEqual(
     [card(layout, "leader-1").subtitle, card(layout, "board-3").subtitle, card(layout, "head-1").subtitle, card(layout, "lead-10").subtitle],
-    ["Team Leaders", "Project Manager", "Head of Aerodynamics", "Mission Analysis · leads"],
+    ["Team Leaders", "Project Manager", "Head of Aerodynamics", "Mission Analysis · Leads"],
   );
   for (const key of ["leader-1", "board-3", "head-1", "lead-10"]) assert.ok(card(layout, key).h > card(plain, key).h, `${key} grows for its second holder`);
   // Everything under a taller card moves down with it.
