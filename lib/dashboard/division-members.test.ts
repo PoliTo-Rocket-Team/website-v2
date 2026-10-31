@@ -144,6 +144,15 @@ test("Edit details keeps an unchanged phone whatever its format, and checks a ch
   });
 });
 
+// Issue #911: the error summary lists every field in error, so a bad LinkedIn is named beside the other bad details.
+test("Edit details names a bad LinkedIn together with the other details in error", () => {
+  const edit = checkMemberEdit({ title: "", details: { ...NO_MEMBER_DETAILS, linkedin: "not a link", politoId: "abc" } }, "");
+  assert.deepEqual(edit, {
+    ok: false,
+    errors: { linkedin: "Paste your profile link, like linkedin.com/in/your-name.", politoId: "Numbers only, like s312456." },
+  });
+});
+
 // Issue #799: the "hasn't signed in yet" box names who added the person.
 test("the box says You to the adder and the adder's full name to anyone else", () => {
   const added = { addedOn: "2026-10-20", email: "elena@x.it" };
