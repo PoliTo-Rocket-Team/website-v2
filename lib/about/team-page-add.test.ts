@@ -6,7 +6,8 @@ import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { SEED_DATA, teamRolesOf } from "@/db/seed/cases";
 import { team } from "./team";
 import { ARC_LEADERS, NO_TEAM_LAYER, NO_UPLOADS, textOf } from "./team-layer";
-import { layoutPageOf, nextSeatId, resolveLayout, snapshot, type TeamLayout } from "./team-layout";
+import { bindingFor, holdingOf, layoutPageOf, nextSeatId, resolveLayout, sameBinding, snapshot, type TeamLayout } from "./team-layout";
+import type { TeamRoles } from "./team-roles";
 import { arcVisualOrder, readingIndexOfGap } from "./arc-order";
 import {
   arcHasRoom,
@@ -30,7 +31,7 @@ import {
   withNewLead,
   type HeadFields,
 } from "./team-page-add";
-import { editedTeamPage } from "./team-page-edit";
+import { editCount, editedTeamPage } from "./team-page-edit";
 import { publicTeamPage, teamPageEditor, type TeamPagePhotos } from "./team-page-editor";
 import { memoryTeamPageStore } from "./team-page-memory";
 import type { StoredTeamPage } from "./team-page-stored";
@@ -101,6 +102,7 @@ const divisionsOf = (layout: TeamLayout, id: number) =>
   resolveLayout(layout, roles)
     .departments.find((d) => d.at === id)!
     .leads.map((l) => l.shown.division);
+const blockLeadIds = (layout: TeamLayout) => layout.departments.find((d) => d.id === block.id)!.leads.map((s) => s.id);
 
 test("added departments, division leads and head-block edits show on the page, and the save writes the stored version alone", async () => {
   const before = structuredClone(roles);
@@ -158,6 +160,36 @@ test("Hide from page takes a head block off the page or drops an added departmen
   const withDepartment = layoutWithHead(roles, record, null, pickedHead({ ...withHeadPerson(roles, newDepartmentFields(), someone), department: "Payload" })!);
   assert.equal(resolveLayout(withDepartment, roles).departments.at(-1)?.name, "Payload");
   assert.deepEqual(hideHead(withDepartment, nextSeatId(record)), record);
+});
+
+test("two lead rows picking the same division lead put one binding on the block twice, and Reset to team counts it without throwing", () => {
+  const opened = headFieldsOf(roles, record, block.id)!;
+  const [first, second, ...rest] = opened.leads;
+  const firstSeat = block.leads.find((s) => s.id === first.at)!;
+  assert.ok(sameBinding(bindingFor(roles.people.find((p) => p.id === first.person)!, roles), firstSeat.binding), "the first lead's own seat");
+  const layout = layoutWithHead(roles, record, block.id, pickedHead({ ...opened, leads: [first, { ...second, person: first.person, division: first.division }, ...rest] })!);
+  const [a, b] = layout.departments.find((d) => d.id === block.id)!.leads;
+  assert.ok(sameBinding(a.binding, b.binding), "both rows hold one binding");
+  assert.ok(editCount(roles, layout, record) > 0, "Reset to team would change the block");
+});
+
+test("Back to the team record keeps a lead page seat whose seat has no holder in its place, as Done does", () => {
+  // A division with one lead, not the block's first: its seat has no holder once that lead leaves the team.
+  const at = block.leads.findIndex(
+    (seat, i) => i > 0 && seat.binding.kind === "division-lead" && !block.leads.some((s) => s.binding.kind === "division-lead" && seat.binding.kind === "division-lead" && s.binding.divisionId === seat.binding.divisionId && s.id !== seat.id),
+  );
+  assert.ok(at > 0, "the seeded block has such a lead");
+  const lead = holdingOf(block.leads[at].binding, roles)!.person;
+  const vacant: TeamRoles = { ...roles, people: roles.people.filter((p) => p.id !== lead.id) };
+
+  const opened = headFieldsOf(vacant, record, block.id)!;
+  const edited = layoutWithHead(vacant, record, block.id, pickedHead({ ...opened, department: "Renamed", leads: [...opened.leads].reverse() })!);
+  assert.ok(blockLeadIds(edited).includes(block.leads[at].id), "Done keeps it");
+
+  const back = headBackToRecord(vacant, edited, block.id);
+  assert.deepEqual(blockLeadIds(back), block.leads.map((s) => s.id), "in its place, among the record's leads");
+  assert.deepEqual(back.departments.find((d) => d.id === block.id)!.leads[at], block.leads[at]);
+  assert.deepEqual(layoutPageOf(roles, back, text, team), pageOf(record), "shown again once the seat has a holder");
 });
 
 // Issue #618: a person field on the Team page editor starts with nobody

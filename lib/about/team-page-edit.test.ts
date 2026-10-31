@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SEED_DATA, teamRolesOf } from "@/db/seed/cases";
 import { NO_TEAM_LAYER, textOf } from "./team-layer";
-import { bindingFor, snapshot } from "./team-layout";
+import { bindingFor, snapshot, type TeamLayout } from "./team-layout";
 import { team } from "./team";
 import {
   backToTeamRecord,
@@ -71,6 +71,20 @@ test("a place can be bound to any seat of the team record, a division lead the T
     const edited = withPersonFields(roles, layout, arcId, fields);
     assert.equal(spotRecord(roles, edited, arcId)?.person.id, person.id, "the place shows the seat's holder");
     assert.equal(pageOf({ layout: edited, text }).orgChart.leaders[0]?.name, person.name);
+  }
+});
+
+test("Reset to team counts an edit whenever the arc, the department blocks or a block's leads hold the record's seats in another order", () => {
+  assert.ok(layout.arc.length >= 2 && layout.departments.length >= 2, "the seeded layout has something to reorder");
+  const block = layout.departments.find((b) => b.leads.length >= 2)!;
+  const reordered: TeamLayout[] = [
+    { ...layout, arc: [...layout.arc].reverse() },
+    { ...layout, departments: [...layout.departments].reverse() },
+    { ...layout, departments: layout.departments.map((b) => (b.id === block.id ? { ...b, leads: [...b.leads].reverse() } : b)) },
+  ];
+  for (const edited of reordered) {
+    assert.notDeepEqual(pageOf({ layout: edited, text }), pageOf({ layout, text }), "Reset to team would change the page");
+    assert.ok(editCount(roles, edited, layout) > 0);
   }
 });
 

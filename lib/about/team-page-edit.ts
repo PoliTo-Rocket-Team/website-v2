@@ -14,6 +14,7 @@ import {
   layoutPageOf,
   resolveLayout,
   sameBinding,
+  type DepartmentBlock,
   type PageSeat,
   type PlaceBinding,
   type ResolvedTeam,
@@ -364,28 +365,36 @@ function seatEdits(seats: readonly PageSeat[], record: readonly PageSeat[]): num
   return kept.length + gone.length;
 }
 
-/** Whether the seats both lists hold come in the same order. */
-function sameOrder(seats: readonly PageSeat[], record: readonly PageSeat[]): boolean {
-  const common = (list: readonly PageSeat[], other: readonly PageSeat[]) => list.filter((s) => other.some((o) => sameBinding(o.binding, s.binding)));
-  const a = common(seats, record);
-  const b = common(record, seats);
-  return a.every((seat, i) => sameBinding(seat.binding, b[i].binding));
+/**
+ * Whether the bindings both lists hold come in the same order, each as often
+ * in one list as in the other: a binding held twice, as two lead rows picking
+ * the same person make it, is a change Reset to team undoes.
+ */
+function sameOrder(bindings: readonly PlaceBinding[], record: readonly PlaceBinding[]): boolean {
+  const common = (list: readonly PlaceBinding[], other: readonly PlaceBinding[]) => list.filter((b) => other.some((o) => sameBinding(o, b)));
+  const a = common(bindings, record);
+  const b = common(record, bindings);
+  return a.length === b.length && a.every((binding, i) => sameBinding(binding, b[i]));
 }
+
+const bindingsOf = (seats: readonly PageSeat[]) => seats.map((seat) => seat.binding);
 
 /**
  * How many edits Reset to team removes (board 80h): `layout` against
  * `record`, the layout Reset to team writes. One per page seat drawn with an
  * override or bound where the record has none, one per place of the record
- * the layout no longer draws, one per department block added or gone, and
- * one per block's name and its leads' order. Only drawn seats count: one
- * whose seat has no holder shows nothing to reset. The intro text, its
- * figures and the group photo stay, so they do not count.
+ * the layout no longer draws, one per department block added or gone, one
+ * per block's name and its leads' order, and one each for the arc's order and
+ * the blocks' order. Only drawn seats count: one whose seat has no holder
+ * shows nothing to reset. The intro text, its figures and the group photo
+ * stay, so they do not count.
  */
 export function editCount(roles: TeamRoles, layout: TeamLayout, record: TeamLayout): number {
   const drawn = (seats: readonly PageSeat[]) => seats.filter((seat) => holdingOf(seat.binding, roles) !== null);
+  const drawnBlocks = (of: TeamLayout) => of.departments.filter((b) => holdingOf(b.head.binding, roles, b.name) !== null);
   const leader = seatEdits(drawn(layout.leader === null ? [] : [layout.leader]), drawn(record.leader === null ? [] : [record.leader]));
-  const arc = seatEdits(drawn(layout.arc), drawn(record.arc));
-  const blocks = layout.departments.filter((b) => holdingOf(b.head.binding, roles, b.name) !== null);
+  const arc = seatEdits(drawn(layout.arc), drawn(record.arc)) + (sameOrder(bindingsOf(drawn(layout.arc)), bindingsOf(drawn(record.arc))) ? 0 : 1);
+  const blocks = drawnBlocks(layout);
   const departments = blocks.reduce((n, block) => {
     const own = record.departments.find((r) => sameBinding(r.head.binding, block.head.binding));
     if (own === undefined) return n + 1;
@@ -395,9 +404,11 @@ export function editCount(roles: TeamRoles, layout: TeamLayout, record: TeamLayo
       (block.name === own.name ? 0 : 1) +
       (Object.keys(block.head.overrides).length > 0 ? 1 : 0) +
       seatEdits(leads, own.leads) +
-      (sameOrder(leads, own.leads) ? 0 : 1)
+      (sameOrder(bindingsOf(leads), bindingsOf(own.leads)) ? 0 : 1)
     );
   }, 0);
   const goneBlocks = record.departments.filter((r) => !blocks.some((b) => sameBinding(b.head.binding, r.head.binding))).length;
-  return leader + arc + departments + goneBlocks;
+  const heads = (of: readonly DepartmentBlock[]) => of.map((b) => b.head.binding);
+  const blockOrder = sameOrder(heads(blocks), heads(drawnBlocks(record))) ? 0 : 1;
+  return leader + arc + departments + goneBlocks + blockOrder;
 }

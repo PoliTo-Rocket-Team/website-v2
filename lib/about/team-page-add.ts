@@ -306,19 +306,29 @@ function leadSeatOf(roles: TeamRoles, row: PickedLeadRow, old: PageSeat | undefi
 }
 
 /**
+ * `seats`, the block's new leads, with every lead of `old` whose seat has no
+ * holder put back after the seat it followed, or first when none of those
+ * stays (ADR 0019 Decision 4): no panel lists such a seat, so no step removes it.
+ */
+function withHolderlessLeads(roles: TeamRoles, old: readonly PageSeat[], seats: readonly PageSeat[]): PageSeat[] {
+  const kept = [...seats];
+  old.forEach((seat, i) => {
+    if (holdingOf(seat.binding, roles) !== null) return;
+    const before = old.slice(0, i).reverse().find((s) => kept.some((k) => k.id === s.id));
+    kept.splice(before === undefined ? 0 : kept.findIndex((k) => k.id === before.id) + 1, 0, seat);
+  });
+  return kept;
+}
+
+/**
  * The block's lead page seats in the panel's order. A lead the panel removed
  * leaves the layout; a seat the panel never listed, because its seat has no
  * holder, keeps its place after the seat it followed.
  */
-function leadSeatsOf(roles: TeamRoles, block: DepartmentBlock | undefined, drawn: ReadonlySet<number>, rows: readonly PickedLeadRow[], nextId: () => number): PageSeat[] {
+function leadSeatsOf(roles: TeamRoles, block: DepartmentBlock | undefined, rows: readonly PickedLeadRow[], nextId: () => number): PageSeat[] {
   const old = block?.leads ?? [];
   const seats = rows.flatMap((row) => leadSeatOf(roles, row, row.at === null ? undefined : old.find((s) => s.id === row.at), nextId) ?? []);
-  old.forEach((seat, i) => {
-    if (drawn.has(seat.id)) return;
-    const before = old.slice(0, i).reverse().find((s) => seats.some((kept) => kept.id === s.id));
-    seats.splice(before === undefined ? 0 : seats.findIndex((kept) => kept.id === before.id) + 1, 0, seat);
-  });
-  return seats;
+  return withHolderlessLeads(roles, old, seats);
 }
 
 /**
@@ -350,8 +360,7 @@ export function layoutWithHead(roles: TeamRoles, layout: TeamLayout, at: HeadRef
   const keptName = samePerson ? old.overrides.name : undefined;
   const head: PageSeat = { id: headId, binding, overrides: overridesOf(roles, binding, person, { ...fields, name: keptName ?? "" }, name) };
 
-  const drawn = new Set((resolveLayout(layout, roles).departments.find((d) => d.at === at)?.leads ?? []).map((l) => l.at));
-  const leads = leadSeatsOf(roles, block, drawn, fields.leads, nextId);
+  const leads = leadSeatsOf(roles, block, fields.leads, nextId);
   const next: DepartmentBlock = { id, name, kind: block?.kind ?? "technical", head, leads };
   if (block === undefined) return { ...layout, departments: [...layout.departments, next] };
   return { ...layout, departments: layout.departments.map((b) => (b.id === id ? next : b)) };
@@ -408,7 +417,8 @@ export function hideHead(layout: TeamLayout, at: HeadRef): TeamLayout {
 /**
  * Back to the team record (board 80g): the head with no override; for a
  * department's own head, the department's name and its leads as the team
- * record has them, each lead seat the block already held keeping its id.
+ * record has them, each lead seat the block already held keeping its id. A
+ * lead seat with no holder keeps its place, as the panel's own Done keeps it.
  */
 export function headBackToRecord(roles: TeamRoles, layout: TeamLayout, at: HeadRef): TeamLayout {
   const block = blockOf(layout, at);
@@ -417,9 +427,10 @@ export function headBackToRecord(roles: TeamRoles, layout: TeamLayout, at: HeadR
   const { binding } = block.head;
   if (binding.kind !== "department-head") return { ...layout, departments: layout.departments.map((b) => (b.id === at ? { ...b, head } : b)) };
   let last = nextSeatId(layout) - 1;
-  const leads = departmentLeadBindings(binding.departmentId, roles).map(
+  const record = departmentLeadBindings(binding.departmentId, roles).map(
     (lead): PageSeat => ({ id: block.leads.find((s) => sameBinding(s.binding, lead))?.id ?? ++last, binding: lead, overrides: {} }),
   );
+  const leads = withHolderlessLeads(roles, block.leads, record);
   const name = roles.org.departments.find((d) => d.id === binding.departmentId)?.name ?? block.name;
   return { ...layout, departments: layout.departments.map((b) => (b.id === at ? { ...b, name, head, leads } : b)) };
 }
