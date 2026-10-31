@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
@@ -9,7 +9,6 @@ import { getDb } from "@/db/client";
 import {
   applications,
   applyPositions,
-  betterAuthUsers,
   dashboardNotices,
   departments,
   divisions,
@@ -43,6 +42,7 @@ import {
   checkAddMember,
   checkMemberEdit,
   divisionMembers,
+  editedFields,
   lookupForAdd,
   positionsOf,
   SEAT_TITLE_REQUIRED,
@@ -122,7 +122,8 @@ import { mayChangePositionIn } from "./position-access";
 import { readsRecruitmentIn } from "./application-documents";
 import { readTeamSnapshot, recordsOf, seatsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
-import { correctsSignInEmail, planSignInEmailCorrection, type SignInEmailCorrection, type SignInEmailRow } from "./sign-in-email";
+import { correctsSignInEmail, SIGN_IN_EMAIL_REFUSALS, type DetailsSaved } from "./sign-in-email";
+import { correctionWrites, linkLogin, planCorrection, signedIn } from "./database-sign-in-email";
 
 // The Members page's reads and writes on the database (Dashboard v2 boards 59
 // to 59e, issue #172; boards 61e to 61h2, issue #231): who is in the lead's
@@ -285,16 +286,6 @@ async function readJoining(identity: DashboardIdentity, divisionIds: readonly nu
   }
   return joining;
 }
-
-/**
- * Whether a sign-in account holds the `public.users` row: a Better Auth user
- * with its id, as the `sync_auth_users` trigger (drizzle/0001) leaves it once
- * the person signs in. Only read here: nothing in this file writes the
- * `better_auth` schema. Both ids are named with their table: a one-table
- * select names its columns bare, and a bare `id` inside the subquery would
- * read the Better Auth row's own.
- */
-const signedIn = sql<boolean>`exists (select 1 from ${betterAuthUsers} as account where account.id = ${users}.${sql.identifier(users.id.name)})`;
 
 const waitingColumns = {
   join_id: teamJoins.id,
@@ -567,44 +558,6 @@ async function readSignInEmailCorrectable(identity: DashboardIdentity): Promise<
   if (!correctsSignInEmail(identity, false)) return [];
   const rows = await getDb().select({ member: users.member, linked: signedIn }).from(users).where(isNotNull(users.member));
   return rows.flatMap((r) => (r.member !== null && correctsSignInEmail(identity, r.linked) ? [r.member] : []));
-}
-
-/** The user row a sign-in email correction is aimed at, with whether a sign-in account holds it; null unless exactly one row matches. */
-async function signInEmailRowOf(where: SQL): Promise<SignInEmailRow | null> {
-  const rows = await getDb().select({ id: users.id, email: users.email, linked: signedIn }).from(users).where(where);
-  return rows.length === 1 ? rows[0] : null;
-}
-
-/** Whether any user row but `userId`'s holds `email`, compared case-insensitively: another member, someone waiting, or an account. */
-async function signInEmailTaken(userId: string, email: string): Promise<boolean> {
-  const [row] = await getDb()
-    .select({ id: users.id })
-    .from(users)
-    .where(and(sql`lower(${users.email}) = ${email}`, ne(users.id, userId)))
-    .limit(1);
-  return row !== undefined;
-}
-
-/** The correction Edit details sent for the user row `where` names (`planSignInEmailCorrection`, ./sign-in-email.ts), read for the rule. */
-async function planCorrection(identity: DashboardIdentity, sent: string | null, where: SQL): Promise<SignInEmailCorrection> {
-  if (sent === null) return planSignInEmailCorrection(identity, null, null, false);
-  const row = await signInEmailRowOf(where);
-  return planSignInEmailCorrection(identity, sent, row, row !== null && (await signInEmailTaken(row.id, sent)));
-}
-
-/**
- * The write of a planned correction, in the caller's audited batch: the
- * `public.users` email alone, on a row no sign-in account holds, which the
- * `where` checks again so a sign-in between the read and the write keeps it.
- */
-function correctionWrites(db: Tx, correction: SignInEmailCorrection): BatchItem<"pg">[] {
-  if (correction.kind !== "write") return [];
-  return [
-    db
-      .update(users)
-      .set({ email: correction.email, updatedAt: sql`now()` })
-      .where(and(eq(users.id, correction.userId), sql`not ${signedIn}`)),
-  ];
 }
 
 /** Add member's field (boards 61h, 69c): the team, searched by name or email, and who is waiting here. */
@@ -1138,15 +1091,17 @@ async function saveMemberDetails(
   target: DetailsTarget,
   divisionId: number | null,
   input: unknown,
-): Promise<WriteResult<null>> {
+): Promise<WriteResult<DetailsSaved>> {
   const checked = checkMemberEdit(input);
   if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
-  const { title, details, name, signInEmail } = checked.value;
-  const columns = columnsFromMemberDetails(details);
+  const { title, name: sentName, signInEmail } = checked.value;
+  // What the viewer changed, when the form says what it opened with (Save after Link login, issue #860); else all it sent.
+  const edited = editedFields(checked.value);
+  const columns = columnsFromMemberDetails(edited.details);
 
   if (target.kind === "waiting") {
     // Someone waiting keeps the name they were added with; only Edit details renames, once they are on the team.
-    if (name !== null) return refused("Their name is set once they join.");
+    if (sentName !== null) return refused("Their name is set once they join.");
     if (divisionId === null || (await actingOn(identity, divisionId)) === null) return refused(NOT_IN_SCOPE);
     const [join] = await getDb()
       .select({ user_id: teamJoins.userId })
@@ -1156,12 +1111,14 @@ async function saveMemberDetails(
     if (!join) return refused("They are not waiting to join this division.");
     const correction = await planCorrection(identity, signInEmail, eq(users.id, join.user_id));
     if (correction.kind === "refused") return refused(correction.error);
+    // Someone waiting holds no member record, so no link is ever planned for them.
+    if (correction.kind === "link") return refused(SIGN_IN_EMAIL_REFUSALS.taken);
     await runAuditBatch((db) => [
       db.update(teamJoins).set({ title, ...columns.member }).where(eq(teamJoins.id, target.joinId)),
       db.update(users).set({ ...columns.user, updatedAt: sql`now()` }).where(eq(users.id, join.user_id)),
       ...correctionWrites(db, correction),
     ]);
-    return written(null);
+    return written({ kind: "saved" });
   }
 
   const { org } = await readTeamSnapshot();
@@ -1181,12 +1138,14 @@ async function saveMemberDetails(
   }
   const correction = await planCorrection(identity, signInEmail, eq(users.member, target.id));
   if (correction.kind === "refused") return refused(correction.error);
+  // The address is an empty login's: nothing is written, and Edit details asks to link it (issue #860).
+  if (correction.kind === "link") return written({ kind: "link-offered", offer: correction.offer });
   await runAuditBatch((db) => [
     db
       .update(users)
-      .set({ ...columns.user, ...(name === null ? {} : { firstName: name.firstName, lastName: name.lastName }), updatedAt: sql`now()` })
+      .set({ ...columns.user, ...edited.name, updatedAt: sql`now()` })
       .where(eq(users.member, target.id)),
-    db.update(members).set(columns.member).where(eq(members.memberId, target.id)),
+    ...(Object.keys(columns.member).length === 0 ? [] : [db.update(members).set(columns.member).where(eq(members.memberId, target.id))]),
     ...(titled.length === 0
       ? []
       : [
@@ -1198,7 +1157,7 @@ async function saveMemberDetails(
     ...correctionWrites(db, correction),
   ]);
   done();
-  return written(null);
+  return written({ kind: "saved" });
 }
 
 /** The photo in Edit details (board 61g): a square JPEG under 500 KB in the public store, or none; for anyone the viewer may edit. */
@@ -1994,6 +1953,11 @@ export function databaseTeamWrites(
     removeFromDivision: (personId, divisionId) => removeFromDivision(identity, personId, divisionId),
     moveMember: (input) => moveMember(identity, input),
     saveMemberDetails: (target, divisionId, input) => saveMemberDetails(identity, target, divisionId, input),
+    linkLogin: async (input) => {
+      const linked = await linkLogin(identity, input);
+      if (linked.ok) done();
+      return linked;
+    },
     setMemberPhoto: (personId, photo) => setMemberPhoto(identity, personId, photo),
     createDivision: (departmentId, input) => createDivision(identity, departmentId, input),
     saveDivision: (divisionId, input) => saveDivision(identity, divisionId, input),

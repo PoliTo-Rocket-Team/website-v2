@@ -625,14 +625,74 @@ export function lookupForAdd(
  * details, and for someone on the team their first and last name (issue
  * #668). `name` is null when the form sent none, as Fill details does for
  * someone waiting: nothing renames them. `signInEmail` is a corrected
- * sign-in email (issue #741), null when the form sent none.
+ * sign-in email (issue #741), null when the form sent none. `opened` is what
+ * the form opened with, when it sent that: then only what the viewer changed
+ * is written (`editedFields`).
  */
 export type MemberEditDetails = {
   readonly title: string | null;
   readonly details: MemberDetails;
   readonly name: PersonName | null;
   readonly signInEmail: string | null;
+  readonly opened: OpenedEdit | null;
 };
+
+/**
+ * The details and name Edit details opened with. Its Save after Link login
+ * sends them (issue #860): the record then sits on the login's row, whose own
+ * values the form never showed, so a field the viewer left as it opened keeps
+ * the value that row holds.
+ */
+export type OpenedEdit = { readonly details: MemberDetails; readonly name: PersonName | null };
+
+/** `OpenedEdit` as Edit details sends it, in its input's `opened`: the names beside the details, as the form sends its own. */
+export type OpenedSent = { readonly details: MemberDetails } & Partial<PersonName>;
+
+/**
+ * The row one open Edit details form saves onto (issue #860). At first it is
+ * the record's own row, the one the form shows, so Save sends all it holds.
+ * Link login moves the record onto the login's row, which the form never
+ * showed: from then on every Save of that form, the one right after the link
+ * and any retry once that one failed, sends what the form opened with, or
+ * once a Save wrote its details what that Save sent (`savedOn`), so only the
+ * fields the viewer changed overwrite that row's own.
+ */
+export type SaveBasis = { readonly kind: "shown-row" } | { readonly kind: "linked-login"; readonly opened: OpenedSent };
+
+/** The basis a form opens on: the record's own row, as shown. */
+export const SHOWN_ROW: SaveBasis = { kind: "shown-row" };
+
+/** The basis once Link login landed: what the form opened with, for every Save after it. */
+export function linkedLogin(opened: OpenedSent): SaveBasis {
+  return { kind: "linked-login", opened };
+}
+
+/**
+ * The basis once a Save on `basis` wrote `sent`. On a linked login that row
+ * now holds every field the viewer changed, so the next Save compares with
+ * what was just sent: a field set back to its opening value is then a change
+ * and is written. The shown row was written whole, so it stays the basis.
+ */
+export function savedOn(basis: SaveBasis, sent: OpenedSent): SaveBasis {
+  return basis.kind === "shown-row" ? basis : linkedLogin(sent);
+}
+
+/** Save's input on `basis`: what the form sends, with what it opened with beside it once the record sits on a linked login. */
+export function saveInputOn<T extends object>(basis: SaveBasis, sent: T): T & { readonly opened?: OpenedSent } {
+  return basis.kind === "shown-row" ? sent : { ...sent, opened: basis.opened };
+}
+
+/**
+ * The details and name a checked save writes: all it sent, or with `opened`
+ * only each one the viewer changed from it. An empty object writes nothing.
+ */
+export function editedFields(edit: MemberEditDetails): { readonly details: Partial<MemberDetails>; readonly name: Partial<PersonName> } {
+  const { details, name, opened } = edit;
+  if (opened === null) return { details, name: name ?? {} };
+  const changed = <T extends object>(sent: T, was: T | null): Partial<T> =>
+    Object.fromEntries(Object.entries(sent).filter(([key, value]) => was === null || was[key as keyof T] !== value)) as Partial<T>;
+  return { details: changed(details, opened.details), name: name === null ? {} : changed(name, opened.name) };
+}
 
 /** A corrected sign-in email: the rule of the other email fields, never blank, keyed as Google answers it. */
 const signInEmailRule = z.string().transform(signInEmailOf).pipe(z.email("Write an email address.").max(200, "Too long."));
@@ -670,7 +730,9 @@ export function checkMemberEdit(
   const email = sent.signInEmail === undefined ? null : signInEmailRule.safeParse(sent.signInEmail);
   if (email !== null && !email.success) return { ok: false, errors: { signInEmail: email.error.issues[0]?.message ?? "Write an email address." } };
   const signInEmail = email === null ? null : email.data;
-  if (sent.firstName === undefined && sent.lastName === undefined) return { ok: true, value: { title: t.data, details: details.value, name: null, signInEmail } };
+  const opened = checkOpened(sent.opened);
+  if (opened === "bad") return { ok: false, errors: {} };
+  if (sent.firstName === undefined && sent.lastName === undefined) return { ok: true, value: { title: t.data, details: details.value, name: null, signInEmail, opened } };
   // A rename sends both names, each trimmed and never blank, so the Team page never shows a nameless person.
   const name = renameSchema.safeParse({ firstName: sent.firstName ?? "", lastName: sent.lastName ?? "" });
   if (!name.success) {
@@ -678,7 +740,19 @@ export function checkMemberEdit(
     for (const issue of name.error.issues) errors[issue.path[0] as "firstName" | "lastName"] ??= issue.message;
     return { ok: false, errors };
   }
-  return { ok: true, value: { title: t.data, details: details.value, name: name.data, signInEmail } };
+  return { ok: true, value: { title: t.data, details: details.value, name: name.data, signInEmail, opened } };
+}
+
+/** What the form opened with, checked as the sent values are so the two compare; null when none was sent, "bad" when it does not read. */
+function checkOpened(input: unknown): OpenedEdit | null | "bad" {
+  if (input === undefined) return null;
+  if (typeof input !== "object" || input === null) return "bad";
+  const sent = input as Record<string, unknown>;
+  const details = parseMemberDetails(sent.details);
+  if (!details.ok) return "bad";
+  if (sent.firstName === undefined && sent.lastName === undefined) return { details: details.value, name: null };
+  if (typeof sent.firstName !== "string" || typeof sent.lastName !== "string") return "bad";
+  return { details: details.value, name: { firstName: sent.firstName.trim(), lastName: sent.lastName.trim() } };
 }
 
 /** A member photo set from Edit details (board 61g): a square JPEG under 500 KB, as the crop dialog makes it. */
