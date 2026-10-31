@@ -7,7 +7,7 @@ import { viewerStandingOf, type ActiveRoleRef, type ScopeRef, type ScopeTarget }
 // "Your access" on a member's Overview (issue #480): one counts-only line per
 // granted area, in GRANT_AREAS order, and nothing for an area not granted.
 
-const core: ActiveRoleRef = { type: "core", divisionId: 3, fullAccess: null };
+const core: ActiveRoleRef = { type: "core", divisionId: 3, divisionCode: null, divisionClosedAt: null, fullAccess: null };
 const grant = (target: ScopeTarget): ScopeRef => ({ scope: "division", target, level: "view" });
 const member = (...targets: ScopeTarget[]) => viewerStandingOf({ scopes: targets.map(grant), activeRoles: [core] });
 

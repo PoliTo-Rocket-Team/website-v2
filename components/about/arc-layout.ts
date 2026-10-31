@@ -17,6 +17,8 @@ export const CENTRE_BELOW_PHOTO = 55;
 const LEADER_CIRCLE = 176;
 /** The gap between a line's end and the leader's photo. */
 const LINE_GAP = 14;
+/** The shortest a line is drawn, however wide the team leaders' place. */
+const MIN_LINE = 40;
 
 export type ArcNode = {
   /** The photo's centre. */
@@ -26,8 +28,14 @@ export type ArcNode = {
   line: { x1: number; y1: number; x2: number; y2: number };
 };
 
-/** Where each leader sits, in the order given: the first half left of the centre, the rest right, each from the centre outward. */
-export function arcLayout(count: number): readonly ArcNode[] {
+/**
+ * Where each leader sits, in the order given: the first half left of the
+ * centre, the rest right, each from the centre outward. `leaderCircle` is
+ * where the lines start: wider when several team leaders stand side by side
+ * at the centre (issue #880), so no line crosses their labels; a line always
+ * keeps some length.
+ */
+export function arcLayout(count: number, leaderCircle: number = LEADER_CIRCLE): readonly ArcNode[] {
   // 0 at 4 leaders, 1 at 8; fewer than 4 keep the 4-leader size.
   const t = Math.min(1, Math.max(0, (count - 4) / 4));
   const photo = Math.round(148 - 20 * t);
@@ -49,11 +57,12 @@ export function arcLayout(count: number): readonly ArcNode[] {
     const ux = Math.cos(a);
     const uy = Math.sin(a);
     const end = radius - photo / 2 - LINE_GAP;
+    const start = Math.min(leaderCircle, end - MIN_LINE);
     return {
       x: radius * ux,
       y: radius * uy,
       photo,
-      line: { x1: LEADER_CIRCLE * ux, y1: LEADER_CIRCLE * uy, x2: end * ux, y2: end * uy },
+      line: { x1: start * ux, y1: start * uy, x2: end * ux, y2: end * uy },
     };
   });
 }

@@ -307,7 +307,7 @@ function leadSeatOf(roles: TeamRoles, row: PickedLeadRow, old: PageSeat | undefi
   const person = memberOf(roles, row.person);
   if (person === undefined) return null;
   const holder = old === undefined ? undefined : holdingOf(old.binding, roles)?.person;
-  const binding = old === undefined || old.binding.kind === "person" ? personBinding(person) : rebound(roles, old.binding, holder, person);
+  const binding = old === undefined || old.binding.kind === "person" ? personBinding(person) : rebound(roles, old.binding, holder, person, "one-person");
   const same = old !== undefined && sameBinding(old.binding, binding) && holder?.id === person.id;
   const kept = same ? old.overrides : {};
   const division = row.division.trim();

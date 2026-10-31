@@ -212,11 +212,16 @@ export function standingOfUser(data: SeedData, userId: string): ViewerStanding |
     }));
   const activeRoles = data.roles
     .filter((r) => r.memberId === memberId && isActive(r))
-    .map((r) => ({
-      type: r.type ?? null,
-      divisionId: r.divisionId ?? null,
-      fullAccess: r.fullAccess == null ? null : SEAT_OF_FLAG[r.fullAccess],
-    }));
+    .map((r) => {
+      const division = data.divisions.find((d) => d.id === r.divisionId);
+      return {
+        type: r.type ?? null,
+        divisionId: r.divisionId ?? null,
+        divisionCode: division?.code ?? null,
+        divisionClosedAt: division?.closedAt ?? null,
+        fullAccess: r.fullAccess == null ? null : SEAT_OF_FLAG[r.fullAccess],
+      };
+    });
   const onAlumniRecord = activeRoles.length === 0 && alumnusOf(data, memberId) !== undefined;
   return viewerStandingOf({ scopes: unitRowsOf(scopeRows, openDepartmentIds), activeRoles, onAlumniRecord });
 }

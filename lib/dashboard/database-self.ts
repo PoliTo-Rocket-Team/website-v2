@@ -278,10 +278,13 @@ async function readAccount(identity: DashboardIdentity): Promise<MyAccount | nul
 /**
  * Someone off the team edits every field on My account; anyone on the team
  * only My profile's, their own name only when they rename themselves
- * (`detailsEditorOf`, issue #668): a member's name sent here is dropped.
+ * (`detailsEditorOf`, issue #668): a member's name sent here is dropped. The
+ * phone is checked against the stored one the form opened with, so an
+ * unchanged phone saves whatever its format (issue #887).
  */
 async function saveDetails(identity: DashboardIdentity, input: unknown): Promise<WriteResult<YourDetails>> {
-  const parsed = parseDetailsChange(input, detailsEditorOf(identity.kind));
+  const stored = await readDetails(identity.userId);
+  const parsed = parseDetailsChange(input, detailsEditorOf(identity.kind), stored.phone);
   if (!parsed.ok) return refused(firstDetailError(parsed.errors));
   await runAuditQuery((db) =>
     db

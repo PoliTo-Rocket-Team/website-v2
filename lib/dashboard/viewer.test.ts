@@ -5,7 +5,10 @@ import {
   areaGrantsOf,
   areaUnitsOf,
   coveredDivisionIds,
+  FLAG_OF_SEAT,
   fullAccessSeatOf,
+  isFlaggedSeat,
+  SEAT_OF_FLAG,
   GRANT_AREAS,
   grantedAreasOf,
   headDivisionsOf,
@@ -38,6 +41,8 @@ import { decideRightOf } from "./orders";
 const role = (type: ActiveRoleRef["type"], divisionId: number | null = null, fullAccess: FlaggedSeat | null = null): ActiveRoleRef => ({
   type,
   divisionId,
+  divisionCode: null,
+  divisionClosedAt: null,
   fullAccess,
 });
 
@@ -252,6 +257,71 @@ test("seats rank team leader, IT lead, operations lead, Project Manager, Chief E
       assert.equal(fullAccessSeatOf([higher, lower]), seat);
     }
   });
+});
+
+// The Logistics lead seat (issue #885): a lead role in the open Logistics
+// division is a full-access seat, read from the role's division and no flag.
+
+const LOGISTICS = 15;
+const MISSION_ANALYSIS = 3;
+/** An active role in a division with its code, open unless `closedAt` names the day it closed. */
+const roleIn = (type: ActiveRoleRef["type"], divisionId: number, divisionCode: string, closedAt: string | null = null): ActiveRoleRef => ({
+  type,
+  divisionId,
+  divisionCode,
+  divisionClosedAt: closedAt,
+  fullAccess: null,
+});
+const logisticsLead = roleIn("lead", LOGISTICS, "LGS");
+
+test("a lead of the open Logistics division holds the Logistics lead seat and full access, with no scope row (issue #885)", () => {
+  assert.equal(fullAccessSeatOf([logisticsLead]), "logistics-lead");
+  assert.equal(viewerKindOf({ scopes: [], activeRoles: [logisticsLead] }), "operations-lead");
+  const standing = viewerStandingOf({ scopes: [], activeRoles: [logisticsLead] });
+  assert.equal(standing.kind === "operations-lead" ? standing.seat : null, "logistics-lead");
+  for (const page of ["members", "division-access", "positions", "applications", "projects", "faq", "team-page"] as const) assert.equal(canReach(standing, page), true, page);
+});
+
+test("every co-holder of the Logistics lead seat gets full access, and a holder who hands over loses it with the role (issues #861, #885)", () => {
+  // Two active leads of Logistics: each reads the seat off their own role.
+  for (const holder of [[logisticsLead], [roleIn("lead", LOGISTICS, "LGS"), roleIn("core", MISSION_ANALYSIS, "MSA")]]) {
+    assert.equal(fullAccessSeatOf(holder), "logistics-lead");
+  }
+  // After a hand-over the outgoing lead role has ended, so it is no active role: only what they still hold counts.
+  assert.equal(fullAccessSeatOf([roleIn("core", LOGISTICS, "LGS")]), null, "stays on as a member of Logistics");
+  assert.equal(viewerKindOf({ scopes: [], activeRoles: [] }), "non-member", "left the team");
+  // The successor holds it by their new lead role, with no scope row written.
+  assert.equal(viewerKindOf({ scopes: [], activeRoles: [roleIn("lead", LOGISTICS, "LGS")] }), "operations-lead");
+});
+
+test("a lead of a closed Logistics division, a member of Logistics, a Logistics area grant and another division's lead get no full access (issue #885)", () => {
+  assert.equal(fullAccessSeatOf([roleIn("lead", LOGISTICS, "LGS", "2026-09-30")]), null);
+  assert.equal(viewerKindOf({ scopes: [], activeRoles: [roleIn("lead", LOGISTICS, "LGS", "2026-09-30")] }), "division-lead");
+  assert.equal(fullAccessSeatOf([roleIn("core", LOGISTICS, "LGS")]), null);
+  assert.equal(viewerKindOf({ scopes: [], activeRoles: [roleIn("core", LOGISTICS, "LGS")] }), "member");
+  const granted: ScopeRef = { scope: "division", target: "all", level: "edit" };
+  assert.equal(viewerKindOf({ scopes: [granted], activeRoles: [roleIn("core", MISSION_ANALYSIS, "MSA")] }), "member");
+  assert.equal(fullAccessSeatOf([roleIn("lead", MISSION_ANALYSIS, "MSA")]), null);
+  assert.equal(viewerKindOf({ scopes: [], activeRoles: [roleIn("lead", MISSION_ANALYSIS, "MSA")] }), "division-lead");
+});
+
+test("the Logistics lead seat is no seat flag, and ranks after every flagged seat (issue #885)", () => {
+  assert.equal(isFlaggedSeat("logistics-lead"), false);
+  assert.equal(isFlaggedSeat("team-leader"), false);
+  assert.equal((Object.values(SEAT_OF_FLAG) as string[]).includes("logistics-lead"), false);
+  assert.equal(Object.keys(FLAG_OF_SEAT).includes("logistics-lead"), false);
+  for (const flagged of [itLead, operationsLead, projectManager, chiefEngineer]) {
+    assert.equal(fullAccessSeatOf([logisticsLead, flagged]), fullAccessSeatOf([flagged]));
+  }
+  assert.equal(fullAccessSeatOf([logisticsLead, teamLeader]), "team-leader");
+});
+
+test("the Logistics lead decides no orders without Approve orders and does not reach the Activity log (issue #885)", () => {
+  const standing = viewerStandingOf({ scopes: [], activeRoles: [logisticsLead] });
+  assert.equal(isTeamLeader(standing), false);
+  assert.equal(decideRightOf({ teamLeader: isTeamLeader(standing), approveOrders: false }), null);
+  assert.equal(decideRightOf({ teamLeader: isTeamLeader(standing), approveOrders: true }), "approve-orders");
+  assert.equal(canReach(standing, "activity-log"), false);
 });
 
 test("by default only the team leader decides orders; the operations lead and the IT lead need Approve orders (issue #238)", () => {

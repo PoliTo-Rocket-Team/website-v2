@@ -992,7 +992,8 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         ? { id: title.divisionId, short: title.short }
         : null;
   const startTitle = waiting?.title ?? (title?.kind === "division" || title?.kind === "seat" ? title.value : null);
-  const { draft, errors, setErrors, set } = useDraft(draftOf(startTitle, person?.details ?? waiting?.details ?? NO_MEMBER_DETAILS));
+  const openedDetails = person?.details ?? waiting?.details ?? NO_MEMBER_DETAILS;
+  const { draft, errors, setErrors, set } = useDraft(draftOf(startTitle, openedDetails));
   // Where each place they hold goes, and what they are there (boards 98a, 98b); a seat is never one (issue #647).
   const places = position?.moves ?? [];
   const departments = useMoveTargets(places.length > 0 && person !== null ? person.id : null);
@@ -1045,7 +1046,8 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
       ...(corrected ? { signInEmail } : {}),
       ...(landed === null ? {} : { landed }),
     };
-    return { input, checked: checkMemberEdit(input, title?.kind === "seat" && titledMove === null ? "required" : "optional") };
+    // The phone the form opened with saves as it is, whatever its format (issue #887).
+    return { input, checked: checkMemberEdit(input, openedDetails.phone, title?.kind === "seat" && titledMove === null ? "required" : "optional") };
   };
 
   const save = async (answer: HeadMoveAnswer | null) => {

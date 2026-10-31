@@ -531,7 +531,8 @@ export function checkAddMember(input: unknown): { ok: true; value: AddMember } |
   const value = result.data;
   if (value.kind === "member") return { ok: true, value };
   if (value.details === null || value.details === undefined) return { ok: true, value: { ...value, details: null } };
-  const details = parseMemberDetails(value.details);
+  // Someone new has no stored phone, so the form opened with none.
+  const details = parseMemberDetails(value.details, "");
   if (!details.ok) return { ok: false, errors: details.errors };
   return { ok: true, value: { ...value, details: details.value } };
 }
@@ -657,7 +658,7 @@ export type LandedSent = { readonly details: MemberDetails } & Partial<PersonNam
  * stored value Save would refuse stays as it reads.
  */
 export function shownEditOf(details: MemberDetails, name: PersonName | null): ShownEdit {
-  const parsed = parseMemberDetails(details);
+  const parsed = parseMemberDetails(details, details.phone);
   return { details: parsed.ok ? parsed.value : details, name: name === null ? null : { firstName: name.firstName.trim(), lastName: name.lastName.trim() } };
 }
 
@@ -694,23 +695,28 @@ export function isDetailsTarget(value: unknown): value is DetailsTarget {
 export const SEAT_TITLE_REQUIRED = "Enter their role.";
 
 /**
- * What Edit details sends, checked. `titled` says whether the role title may
- * be blank: a division title may, a seat's is `required` (issue #626).
+ * What Edit details sends, checked. `openedPhone` is the phone the form opened
+ * with, as the page reads the person's record: sent back unchanged it is kept
+ * whatever its format (issue #887). The browser passes its own; the server
+ * reads it, never taking it from the form. `titled` says whether the role
+ * title may be blank: a division title may, a seat's is `required` (issue
+ * #626).
  */
 export function checkMemberEdit(
   input: unknown,
+  openedPhone: string,
   titled: "optional" | "required" = "optional",
 ): { ok: true; value: MemberEditDetails } | { ok: false; errors: AddMemberErrors } {
   const sent = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
   const t = title.safeParse(sent.title ?? "");
   if (!t.success) return { ok: false, errors: { title: t.error.issues[0]?.message ?? "Check the role." } };
   if (titled === "required" && t.data === null) return { ok: false, errors: { title: SEAT_TITLE_REQUIRED } };
-  const details = parseMemberDetails(sent.details);
+  const details = parseMemberDetails(sent.details, openedPhone);
   if (!details.ok) return { ok: false, errors: details.errors };
   const email = sent.signInEmail === undefined ? null : signInEmailRule.safeParse(sent.signInEmail);
   if (email !== null && !email.success) return { ok: false, errors: { signInEmail: email.error.issues[0]?.message ?? "Write an email address." } };
   const signInEmail = email === null ? null : email.data;
-  const landed = checkLanded(sent.landed);
+  const landed = checkLanded(sent.landed, openedPhone);
   if (landed === "bad") return { ok: false, errors: {} };
   if (sent.firstName === undefined && sent.lastName === undefined) return { ok: true, value: { title: t.data, details: details.value, name: null, signInEmail, landed } };
   // A rename sends both names, each trimmed and never blank, so the Team page never shows a nameless person.
@@ -724,11 +730,11 @@ export function checkMemberEdit(
 }
 
 /** What an earlier Save landed, checked as the sent values are so the two compare; null when none was sent, "bad" when it does not read. */
-function checkLanded(input: unknown): ShownEdit | null | "bad" {
+function checkLanded(input: unknown, openedPhone: string): ShownEdit | null | "bad" {
   if (input === undefined) return null;
   if (typeof input !== "object" || input === null) return "bad";
   const sent = input as Record<string, unknown>;
-  const details = parseMemberDetails(sent.details);
+  const details = parseMemberDetails(sent.details, openedPhone);
   if (!details.ok) return "bad";
   if (sent.firstName === undefined && sent.lastName === undefined) return { details: details.value, name: null };
   if (typeof sent.firstName !== "string" || typeof sent.lastName !== "string") return "bad";
