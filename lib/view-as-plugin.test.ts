@@ -3,7 +3,7 @@ import { afterEach, test } from "node:test";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { getCookieCache } from "better-auth/cookies";
 import { VIEW_AS_STOP_REFUSAL_MESSAGES, type ViewAsEntry, type ViewAsRefusal } from "./dashboard/view-as";
-import { seededMemoryDb } from "./dev-tester-fixture";
+import { NO_SITE_ROWS, seededMemoryDb } from "./dev-tester-fixture";
 import { ADMIN_TESTERS, seatOf } from "./seeded-accounts";
 import { accountUserOf, impersonatorOf } from "./session-user";
 import { VIEW_AS_SESSION_SECONDS, type ViewAsGate } from "./view-as-plugin";
@@ -65,7 +65,7 @@ async function setUp() {
   const db = seededMemoryDb();
   const stand = standInGate();
   const { createAuth } = await import("./auth");
-  return { auth: createAuth(memoryAdapter(db), stand.gate), db, ...stand };
+  return { auth: createAuth(memoryAdapter(db), { viewAs: stand.gate, siteRows: NO_SITE_ROWS }), db, ...stand };
 }
 
 type Auth = Awaited<ReturnType<typeof setUp>>["auth"];
@@ -328,7 +328,7 @@ test("a stop whose Activity log entry cannot be written still returns the acting
     },
   };
   const { createAuth } = await import("./auth");
-  const auth = createAuth(memoryAdapter(seededMemoryDb()), gate);
+  const auth = createAuth(memoryAdapter(seededMemoryDb()), { viewAs: gate, siteRows: NO_SITE_ROWS });
   const jar = await signIn(auth, ACTING);
   assert.equal((await post(auth, jar, "/admin/impersonate-user", { userId: PERSON.id })).status, 200);
   assert.equal((await post(auth, jar, "/view-as/stop")).status, 200);

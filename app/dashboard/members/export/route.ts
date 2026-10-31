@@ -19,7 +19,7 @@ export async function GET(): Promise<Response> {
   const { data } = opening;
   if (!mayExportMembers(data.viewer)) return refusal(403, "Only full access may export members.");
 
-  const directory = await data.members(null);
+  const directory = await data.members();
   if (directory.scope !== "whole-team") return refusal(403, "Only full access may export members.");
 
   const file = await membersWorkbook(directory.people);
