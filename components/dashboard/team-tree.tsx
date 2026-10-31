@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import Link from "next/link";
 import { ChevronDown, LocateFixed, Maximize2, Minus, Pencil, Plus } from "lucide-react";
 import { departmentsOnPath, divisionLabel, divisionsOnPath, matchesQuery, type TeamTree, type TreeHolders, type TreePerson } from "@/lib/dashboard/team";
-import { boxOf, headCaption, layoutTeamTree, leadCaption, leaderCaption, type Box, type TreeLayout, type TreeNode } from "@/lib/dashboard/tree-layout";
+import { boxOf, headCaption, layoutTeamTree, leadCaption, leaderCaption, seatCaption, type Box, type TreeLayout, type TreeNode } from "@/lib/dashboard/tree-layout";
 import { Avatar } from "./avatar";
 import { SearchField } from "./search-field";
 
@@ -573,7 +573,7 @@ function SeatRow({
         {board.map(({ key, title, holders }, i) => (
           <div key={key} ref={keep(holders)} className="relative flex min-h-[52px]">
             <span aria-hidden className={`absolute -top-3 left-1/2 h-3 border-l ${i === mine ? "border-accent" : "border-border-strong"}`} />
-            <TreeCard holders={holders} title={title} subtitle={title} onPath={i === mine} found={atFirstPlace(holders, found)} />
+            <TreeCard holders={holders} title={title} subtitle={seatCaption(title)} onPath={i === mine} found={atFirstPlace(holders, found)} />
           </div>
         ))}
       </div>

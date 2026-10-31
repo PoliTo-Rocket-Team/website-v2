@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildTeamTree, homeDivisionOf, inDivisions, NO_MEMBERSHIPS, type BoardFlag, type OrgChart, type RosterEntry } from "./team";
-import { boxOf, layoutTeamTree, peopleOn, type TreeNode } from "./tree-layout";
+import { boxOf, layoutTeamTree, peopleOn, seatCaption, type TreeNode } from "./tree-layout";
 
 /** Whether `personId` is drawn on the node, as any of a card's holders or as the row. */
 const on = (node: TreeNode, personId: number) => peopleOn(node).some((p) => p.id === personId);
@@ -175,6 +175,13 @@ test("a further team-level seat sits on the seat row after the flagged seats, ol
       ["Head of R&D", ["Marco Dona"]],
     ],
   );
+});
+
+test("a team-level seat's card capitalises Head in a lowercase stored title, on the canvas and the phone caption (#916)", () => {
+  const lower = [...roster, person(11, "Marco Dona", seat(11, "head of R&D", null))];
+  assert.equal(cards(buildTeamTree(lower, org, "2026–27", 6)).get(11)!.subtitle, "Head of R&D");
+  assert.equal(seatCaption("head of R&D"), "Head of R&D");
+  assert.equal(cards(buildTeamTree(roster, org, "2026–27", 6)).get(3)!.subtitle, "Project Manager", "a title with no head reads as stored");
 });
 
 test("a head's card shows their stored title; a blank one reads Head of the department (issue #625)", () => {

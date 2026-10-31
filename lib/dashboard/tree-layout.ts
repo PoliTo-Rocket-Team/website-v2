@@ -47,6 +47,11 @@ export function headCaption(heads: TreeHolders<TreeHead>): string | null {
   return heads.length === 0 ? null : [...new Set(heads.map((h) => withCapitalHead(h.title)))].join(", ");
 }
 
+/** The caption under a team-level seat's holders: its stored title, "Head" capitalised. */
+export function seatCaption(title: string): string {
+  return withCapitalHead(title);
+}
+
 /** The caption under a division's leads: "Safety · Lead", or "· Leads" for several; null when it has none. */
 export function leadCaption(divisionName: string, leads: TreeHolders): string | null {
   if (leads.length === 0) return null;
@@ -231,10 +236,11 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
   let boardBottom = boardY + CARD.h;
   tree.board.forEach(({ title, holders }, i) => {
     const mine = holders.some((p) => p.self);
-    const h = holdersCardHeight(holders, title, title, CARD.w, CARD.h);
+    const subtitle = seatCaption(title);
+    const h = holdersCardHeight(holders, title, subtitle, CARD.w, CARD.h);
     const box: Box = { x: boardLeft + i * (CARD.w + BOARD_GAP), y: boardY, w: CARD.w, h };
     boardBottom = Math.max(boardBottom, bottom(box));
-    nodes.push({ kind: "card", key: `board-${holders[0].id}`, level: "board", ...box, holders, title, subtitle: title, onPath: mine });
+    nodes.push({ kind: "card", key: `board-${holders[0].id}`, level: "board", ...box, holders, title, subtitle, onPath: mine });
     if (hasLeader) edges.push(elbow(leaderBox, box, boardBus, mine));
   });
 
