@@ -394,7 +394,7 @@ export async function automaticTeamAddressReroutes(changes: readonly TiedRoleCha
 }
 
 /** The active `roles` rows, as the holder of a tied role is read from them (`holdersOf`). */
-async function readActiveTieRoles(): Promise<TieRoleRow[]> {
+export async function readActiveTieRoles(): Promise<TieRoleRow[]> {
   const rows = await getDb()
     .select({
       id: roles.id,

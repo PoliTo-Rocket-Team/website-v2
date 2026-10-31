@@ -29,9 +29,9 @@ import { alumniMove } from "./alumni-move";
 import { DashboardRefused, type TeamWrites } from "./data";
 import { automaticAliasRequests } from "./database-alias";
 import { readWaitingHandOvers } from "./database-hand-over";
-import { automaticTeamAddressReroutes } from "./database-team-address";
+import { automaticTeamAddressReroutes, readActiveTieRoles } from "./database-team-address";
 import { pageSeatsHandOver, type PageSeatsHandOver } from "./database-team-page";
-import { handedTo, seatHandedTo, type TiedRoleChange } from "./team-address";
+import { addedBeside, handedOver, handedTo, holdersOf, seatHandedOver, seatHandedTo, type MovesWith, type TiedRoleChange } from "./team-address";
 import { moveApplication } from "./database-recruitment";
 import { answerNoticeOf, HAND_OVER_NEEDS_MEMBER, planHandOverAnswer, type HandOverAnswer, type HandOverAnswerPlan } from "./hand-over-request";
 import { photoPathnames } from "./database-self";
@@ -103,9 +103,11 @@ import {
   planDepartmentClose,
   planDepartmentCreate,
   planDepartmentSave,
+  planHeadAdd,
 } from "./department-edit";
 import { editableDivisionIds, editsStructure, teamStructure, type TeamStructure } from "./team-structure";
-import { checkNewSeat, checkSeatHolderChange, planNewSeat, planSeatHolderChange, planSeatRemoval, stayingOnTeam } from "./team-seats";
+import { checkNewSeat, checkSeatHolderChange, planNewSeat, planSeatHolderAdd, planSeatHolderChange, planSeatRemoval, planTeamLeaderAdd, stayingOnTeam } from "./team-seats";
+import { asksAlias, checkHolderAdd, tieOfSeat, type ActiveRoleRow, type HolderAddPlan } from "./seat-holders";
 import {
   checkDivisionSave,
   closeRefusal,
@@ -612,6 +614,16 @@ async function activeRoles(memberId: number): Promise<ActiveRole[]> {
 }
 
 /**
+ * Who holds each tied role now (`holdersOf`), read off the active rows: the
+ * holders a hand-over by one of them keeps (`handedOver`, issue #872), so a
+ * team address a staying co-holder holds is owed no routing item.
+ */
+async function holdersNow(org: OrgChart): Promise<(tie: MovesWith) => number[]> {
+  const active = await readActiveTieRoles();
+  return (tie) => holdersOf(tie, active, org);
+}
+
+/**
  * The seat a hand-over moves (`seatHandOver`, ./hand-over.ts), as the
  * successor's inserted role row carries it: nothing for anyone else, so a
  * hand-over of a role with no seat inserts what it always did.
@@ -985,7 +997,7 @@ async function moveMember(identity: DashboardIdentity, input: unknown): Promise<
     plan.start.kind === "division" && plan.start.type === "lead" ? heldRows(plan.start.divisionId).then(leadsIn) : [],
     plan.leaves.kind === "division" ? heldRows(plan.leaves.divisionId).then(leadsIn) : [],
   ]);
-  const reroutesAsked = await automaticTeamAddressReroutes(moveRoleChanges(plan, leadsThere, leadsLeft));
+  const reroutesAsked = await automaticTeamAddressReroutes(moveRoleChanges(plan, leadsThere, leadsLeft, await holdersNow(snapshot.org)));
   // Every row the move ends, the head it replaces' included, ends in one guarded statement (issue #666), so an overlapping move ends nothing twice.
   const ending: readonly [number, ...number[]] = [...plan.end, ...(plan.replaced?.rows ?? [])];
   try {
@@ -1013,23 +1025,35 @@ const MOVED_SINCE = "Someone changed this placement since you opened it. Reload 
  * lead beside `leadsThere`, its leads now, or the department they head with
  * its seat, and the department the picked head takes over with its seat; and
  * the division they leave while leading it, beside the rest of `leadsLeft`,
- * its leads now (issue #804).
+ * its leads now (issue #804). A headship handed over from one head keeps
+ * every other head of it (`holders`, issue #872).
  */
-function moveRoleChanges(plan: MovePlan, leadsThere: readonly number[], leadsLeft: readonly number[]): TiedRoleChange[] {
-  const { personId, start, leaves, successor } = plan;
+function moveRoleChanges(
+  plan: MovePlan,
+  leadsThere: readonly number[],
+  leadsLeft: readonly number[],
+  holders: (tie: MovesWith) => readonly number[],
+): TiedRoleChange[] {
+  const { personId, start, leaves, successor, replaced } = plan;
+  const headed = (departmentId: number, to: number, from: number | null): TiedRoleChange => {
+    const tie: MovesWith = { kind: "department-head", departmentId };
+    return from === null ? handedTo(tie, to) : handedOver(tie, { from, to }, holders(tie));
+  };
+  const seatMoved = (seat: SeatMove | null, from: number | null) => (from === null ? seatHandedTo(seat) : seatHandedOver(seat, from, holders));
+  const replacedId = replaced?.memberId ?? null;
   const starts: TiedRoleChange[] =
     start.kind === "division"
       ? start.type === "lead"
         ? [{ tie: { kind: "division-lead", divisionId: start.divisionId }, becoming: [personId], staying: leadsThere, leaving: [] }]
         : []
-      : [handedTo({ kind: "department-head", departmentId: start.departmentId }, personId), ...seatHandedTo(start.seat)];
+      : [headed(start.departmentId, personId, replacedId), ...seatMoved(start.seat, replacedId)];
   const left: TiedRoleChange[] =
     leaves.kind === "division" && leadsLeft.includes(personId)
       ? [{ tie: { kind: "division-lead", divisionId: leaves.divisionId }, becoming: [], staying: leadsLeft.filter((id) => id !== personId), leaving: [personId] }]
       : [];
   const changes = [...starts, ...left];
   if (successor === null) return changes;
-  return [...changes, handedTo({ kind: "department-head", departmentId: successor.departmentId }, successor.memberId), ...seatHandedTo(successor.seat)];
+  return [...changes, headed(successor.departmentId, successor.memberId, personId), ...seatMoved(successor.seat, personId)];
 }
 
 /** The people who lead a division, newest lead first, from its active rows (`heldRows`). */
@@ -1048,7 +1072,8 @@ function moveWrites(db: Tx, plan: MovePlan, replacedRoles: readonly ActiveRole[]
     leaves.kind === "division"
       ? db.delete(scopes).where(and(eq(scopes.memberId, personId), eq(scopes.scope, "division"), eq(scopes.divisionId, leaves.divisionId)))
       : db.delete(scopes).where(and(eq(scopes.memberId, personId), eq(scopes.scope, "department"), eq(scopes.deptId, leaves.departmentId), isNull(scopes.divisionId))),
-    // The head they replace steps down before their headship starts: the database keeps one active head per department.
+    // The head they replace steps down before their headship starts. A replace ends that head's row by choice; the database
+    // would take a second active head (epic #861, drizzle/0077).
     // Their head rows already ended in `endRoleRows`, so none is passed to end here.
     ...(plan.replaced === null ? [] : steppingDownWrites(db, { memberId: plan.replaced.memberId, active: replacedRoles }, plan.replaced.steppingDown, [], on)),
     start.kind === "division"
@@ -1362,7 +1387,8 @@ async function writeDivisionPlan(
           .set({ name: plan.name, code: plan.code })
           .where(and(eq(divisions.id, divisionId), isNull(divisions.closedAt))),
     ...(rows.end.length === 0 ? [] : [db.update(roles).set({ leavedAt: on }).where(open(rows.end))]),
-    // Old leads who leave the team end every role before a seat on one moves to a new lead (issue #667).
+    // Old leads who leave the team end every role before a seat on one moves to a new lead. The hand-over ends their rows by
+    // choice, not because the database refuses a second active holder (epic #861, drizzle/0077).
     ...leavers.flatMap((leaver) => leaveTeamWrites(db, leaver, on)),
     ...(rows.toLead.length === 0 ? [] : [db.update(roles).set({ type: "lead" }).where(open(rows.toLead))]),
     ...seatOnto(db, seat, seatRow),
@@ -1524,17 +1550,24 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
   const { name, code, nameChanged, head } = planned.value;
   const oldName = snapshot.org.departments.find((d) => d.id === departmentId)?.name ?? null;
   const on = today();
-  const stepping = head?.steppingDown ?? null;
-  const replaced = head === null || stepping === null ? [] : await Promise.all(head.from.map(async (memberId) => ({ memberId, active: await activeRoles(memberId) })));
+  // Change head replaces the one head picked (issue #872): only their head rows end, and every other head stays.
+  const replaces = head?.replaces ?? null;
+  const replaced = replaces === null ? null : { ...replaces, active: await activeRoles(replaces.memberId) };
   // A seat on a head row they hand over moves to the new head's row (issue #501).
-  const handed = head === null ? null : seatHandOver(replaced.flatMap((person) => person.active.filter(isHeadRow)), [head.to]);
+  const handed = head === null ? null : seatHandOver(replaced === null ? [] : replaced.active.filter(isHeadRow), [head.to]);
   if (handed !== null && !handed.ok) return refused(handed.error);
   const seat = handed?.value ?? null;
   // A new head is owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests(head === null ? [] : [head.to]);
-  // A team address tied to the head, or to the seat on their row, is owed a routing item (issue #789).
+  // A team address tied to the head, or to the seat on their row, is owed a routing item (issue #789); one a staying head holds is not (issue #872).
+  const holders = await holdersNow(snapshot.org);
+  const headTie: MovesWith = { kind: "department-head", departmentId };
   const reroutesAsked = await automaticTeamAddressReroutes(
-    head === null ? [] : [handedTo({ kind: "department-head", departmentId }, head.to), ...seatHandedTo(seat)],
+    head === null
+      ? []
+      : replaces === null
+        ? [handedTo(headTie, head.to), ...seatHandedTo(seat)]
+        : [handedOver(headTie, { from: replaces.memberId, to: head.to }, holders(headTie)), ...seatHandedOver(seat, replaces.memberId, holders)],
   );
   await runAuditBatch((db) => [
     db
@@ -1550,7 +1583,7 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
         ]
       : []),
     // Change head (issue #253): the head they replace steps down as the editor picked, then the new head's role starts.
-    ...(stepping === null ? [] : replaced.flatMap((person) => steppingDownWrites(db, person, stepping, person.active.filter(isHeadRow).map((r) => r.id), on))),
+    ...(replaced === null ? [] : steppingDownWrites(db, replaced, replaced.steppingDown, replaced.active.filter(isHeadRow).map((r) => r.id), on)),
     ...(head === null
       ? []
       : [db.insert(roles).values({ memberId: head.to, deptId: departmentId, divisionId: null, title: defaultHeadTitle(name), type: "head", startedAt: on, ...seatFor(seat, head.to) })]),
@@ -1659,18 +1692,20 @@ async function closeDepartment(identity: DashboardIdentity, departmentId: number
  * powers (deciding orders, giving "Approve orders", handing the role over)
  * move with it (`seatOf`, ./viewer.ts); the former team leader's role ends,
  * and they become a team-level advisor who keeps their access, or leave the
- * team (`steppingDown`). Only the current team leader may: the server refuses
- * everyone else, the operations lead and the IT lead included.
+ * team (`steppingDown`). Only a current team leader may, for their own place:
+ * the server refuses everyone else, the operations lead and the IT lead
+ * included. Every other team leader keeps the seat, and the successor may not
+ * be one already (issue #872).
  */
 async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): Promise<WriteResult<null>> {
   const checked = checkTeamLeaderHandOver(input);
   if (!checked.ok) return refused(checked.error);
   const snapshot = await readTeamSnapshot();
-  const leaders = new Set(snapshot.roles.filter((r) => r.leaved_at === null && r.type === "president").map((r) => r.member_id));
-  const leaderId = identity.memberId !== null && leaders.has(identity.memberId) ? identity.memberId : null;
+  const holders = await holdersNow(snapshot.org);
+  const leaderTie: MovesWith = { kind: "team-leader" };
   const planned = planTeamLeaderHandOver({
     viewer: { seat: seatOf(identity), selfId: identity.memberId },
-    leaderId,
+    leaders: holders(leaderTie),
     handOver: checked.value,
     team: teamPeopleOf(snapshot),
   });
@@ -1686,10 +1721,11 @@ async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): 
   const seat = active.filter((r) => r.type === "president");
   // The new team leader is owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests([to]);
-  // A team address tied to the team leader is owed a routing item (issue #789).
-  const reroutesAsked = await automaticTeamAddressReroutes([handedTo({ kind: "team-leader" }, to)]);
+  // A team address tied to the team leader is owed a routing item (issue #789); one a staying team leader holds is not (issue #872).
+  const reroutesAsked = await automaticTeamAddressReroutes([handedOver(leaderTie, { from, to }, holders(leaderTie))]);
   const on = today();
-  // The old role ends before the new one starts: the database keeps one active team leader (issue #667).
+  // The old role ends before the new one starts. The hand-over ends the holder's row by choice, not because the database
+  // refuses a second active team leader (epic #861, drizzle/0077).
   await runAuditBatch((db) => [
     ...steppingDownWrites(db, { memberId: from, active }, step, seat.map((r) => r.id), on, Number(held?.count ?? 0)),
     db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: seat[0]?.title.trim() || "Team Leader", type: "president", startedAt: on }),
@@ -1779,9 +1815,10 @@ async function reservedRoleId(): Promise<number> {
 }
 
 /**
- * Change holder on a seat box, in one batch: the holder's seat role ends, the
+ * Change holder on a seat box, in one batch: the picked holder's seat role
+ * (`roleId`) ends and every co-holder keeps theirs (issue #872), the
  * successor's starts with the same type, title and full-access flag, so the
- * flag moves with the seat and one active row holds it; then the holder
+ * flag moves with the seat; then the holder
  * becomes an advisor to the team, whose access rows go, or leaves the team
  * (`steppingDownWrites`). The successor keeps every role they hold. A seat
  * with no flag is bound on the Team page by its row, so the page seats bound
@@ -1791,9 +1828,9 @@ async function reservedRoleId(): Promise<number> {
 async function changeSeatHolder(identity: DashboardIdentity, roleId: number, input: unknown): Promise<WriteResult<null>> {
   const checked = checkSeatHolderChange(input);
   if (!checked.ok) return refused(checked.error);
-  const snapshot = await readTeamSnapshot();
+  const [snapshot, activeRows] = await Promise.all([readTeamSnapshot(), activeRoleRows()]);
   const actor = await readActor(identity, snapshot.org);
-  const planned = planSeatHolderChange({ actor, roleId, change: checked.value, team: teamPeopleOf(snapshot) });
+  const planned = planSeatHolderChange({ actor, roleId, change: checked.value, team: teamPeopleOf(snapshot), active: activeRows, org: snapshot.org });
   if (!planned.ok) return refused(planned.error);
   const { from, to, steppingDown: step } = planned.value;
   const row = snapshot.roles.find((r) => r.id === roleId && r.leaved_at === null && r.member_id === from);
@@ -1802,11 +1839,12 @@ async function changeSeatHolder(identity: DashboardIdentity, roleId: number, inp
   const handed = seatHandOver([{ fullAccess: seatOfFlag(row.full_access) }], [to]);
   if (!handed.ok) return refused(handed.error);
   const active = await activeRoles(from);
-  // A team address tied to the full-access seat is owed a routing item (issue #789).
-  const reroutesAsked = await automaticTeamAddressReroutes(seatHandedTo(handed.value));
+  // A team address tied to the full-access seat is owed a routing item (issue #789); one a staying co-holder holds is not (issue #872).
+  const reroutesAsked = await automaticTeamAddressReroutes(seatHandedOver(handed.value, from, await holdersNow(snapshot.org)));
   const pageSeats = row.full_access === null ? await pageSeatsHandOver(roleId, reservedRoleId) : null;
   const on = today();
-  // The holder's row ends before the successor's starts: the database keeps one active holder per seat (issue #667).
+  // The holder's row ends before the successor's starts. Change holder ends that row by choice, not because the database
+  // refuses a second active holder (epic #861, drizzle/0077).
   // It ends in `writeSeat`'s first statement, so the stepping-down writes end no row of it again.
   return writeSeat(
     roleId,
@@ -1843,9 +1881,95 @@ async function addSeat(identity: DashboardIdentity, input: unknown): Promise<Wri
   return written(null);
 }
 
+// Add another holder (epic #861, issue #868). `planTeamLeaderAdd`,
+// `planSeatHolderAdd` (./team-seats.ts) and `planHeadAdd`
+// (./department-edit.ts) decide; each write below starts the new holder's row
+// in one audited batch and ends no row, so every holder of the seat keeps it.
+
+/** Every active role row on the team, read now rather than off the cached roster, as a seat is read off it. */
+async function activeRoleRows(): Promise<ActiveRoleRow[]> {
+  const rows = await getDb()
+    .select({
+      id: roles.id,
+      memberId: roles.memberId,
+      type: roles.type,
+      title: roles.title,
+      fullAccess: roles.fullAccess,
+      departmentId: roles.deptId,
+      divisionId: roles.divisionId,
+    })
+    .from(roles)
+    .where(isNull(roles.leavedAt))
+    .orderBy(asc(roles.startedAt), asc(roles.id));
+  return rows.flatMap(({ memberId, fullAccess, ...r }) => (memberId === null ? [] : [{ ...r, memberId, fullAccess: seatOfFlag(fullAccess) }]));
+}
+
 /**
- * Remove seat (issue #643), in one batch: the holder's seat role ends and no
- * successor's starts, so a full-access flag on it ends with the row. The
+ * Writes a checked Add another holder: the new holder's row, then what a
+ * hand-over of the seat owes them. A new team leader or head is owed an
+ * alias request when they have none (`asksAlias`, issue #543), and a team
+ * address tied to the seat is owed a routing item only when its holder holds
+ * the seat no more (`addedBeside`, issue #789).
+ */
+async function writeHolderAdd(plan: HolderAddPlan): Promise<WriteResult<null>> {
+  const { seat, holders, row } = plan;
+  const aliasAsked = await automaticAliasRequests(asksAlias(seat) ? [row.personId] : []);
+  const tie = tieOfSeat(seat);
+  const reroutesAsked = await automaticTeamAddressReroutes(tie === null ? [] : [addedBeside(tie, row.personId, holders)]);
+  await runAuditBatch((db) => [
+    db.insert(roles).values({
+      memberId: row.personId,
+      deptId: row.departmentId,
+      divisionId: null,
+      title: row.title,
+      type: row.type,
+      startedAt: today(),
+      fullAccess: row.fullAccess === null ? null : FLAG_OF_SEAT[row.fullAccess],
+    }),
+    ...aliasAsked(db),
+    ...reroutesAsked(db),
+  ]);
+  done();
+  return written(null);
+}
+
+/** Add another team leader (`planTeamLeaderAdd`): a `president` row starts for them, and every team leader stays one. */
+async function addTeamLeader(identity: DashboardIdentity, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkHolderAdd(input);
+  if (!checked.ok) return refused(checked.error);
+  const [snapshot, active] = await Promise.all([readTeamSnapshot(), activeRoleRows()]);
+  const actor = await readActor(identity, snapshot.org);
+  const planned = planTeamLeaderAdd({ actor, add: checked.value, team: teamPeopleOf(snapshot), active, org: snapshot.org });
+  if (!planned.ok) return refused(planned.error);
+  return writeHolderAdd(planned.value);
+}
+
+/** Add another holder on the team-level seat `roleId` (`planSeatHolderAdd`): a row with the seat's type, title and full-access flag starts for them. */
+async function addSeatHolder(identity: DashboardIdentity, roleId: number, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkHolderAdd(input);
+  if (!checked.ok) return refused(checked.error);
+  const [snapshot, active] = await Promise.all([readTeamSnapshot(), activeRoleRows()]);
+  const actor = await readActor(identity, snapshot.org);
+  const planned = planSeatHolderAdd({ actor, roleId, add: checked.value, team: teamPeopleOf(snapshot), active, org: snapshot.org });
+  if (!planned.ok) return refused(planned.error);
+  return writeHolderAdd(planned.value);
+}
+
+/** Add another head of `departmentId` (`planHeadAdd`): a head row on the department starts for them, and every head of it stays one. */
+async function addDepartmentHead(identity: DashboardIdentity, departmentId: number, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkHolderAdd(input);
+  if (!checked.ok) return refused(checked.error);
+  const [snapshot, active] = await Promise.all([readTeamSnapshot(), activeRoleRows()]);
+  const actor = await readActor(identity, snapshot.org);
+  const planned = planHeadAdd({ actor, org: snapshot.org, departmentId, add: checked.value, team: teamPeopleOf(snapshot), active });
+  if (!planned.ok) return refused(planned.error);
+  return writeHolderAdd(planned.value);
+}
+
+/**
+ * Remove seat (issue #643), in one batch: the picked holder's seat role
+ * (`roleId`) ends and no successor's starts, so a full-access flag on it
+ * ends with the row; every co-holder keeps theirs (issue #872). The
  * holder stays on the team (`stayingOnTeam`): they keep every other role and
  * every access row, and when the seat was their only role they become an
  * advisor to the team, so they stay on the roster and never move to Alumni.
@@ -1891,6 +2015,8 @@ async function confirmedHandOverWrites(
   if (!handed.ok) throw new Error(handed.error);
   const seat = handed.value;
   const endingIds = ending.map((r) => r.id);
+  // Every other holder of the role or its seat keeps it (issue #872).
+  const holders = await holdersNow(org);
   if (role.kind === "lead") {
     const held = await heldRows(role.divisionId);
     const theirs = held.filter((r) => r.memberId === toId);
@@ -1907,9 +2033,10 @@ async function confirmedHandOverWrites(
         staying: leadsIn(held).filter((id) => id !== fromId),
         leaving: [fromId],
       },
-      ...seatHandedTo(seat),
+      ...seatHandedOver(seat, fromId, holders),
     ]);
-    // The sender's rows end before the seat lands on the successor's: one active holder per seat (issue #667).
+    // The sender's rows end before the seat lands on the successor's. The hand-over ends them by choice, not because the
+    // database refuses a second active holder (epic #861, drizzle/0077).
     return (db) => [
       ...(promote.length === 0 ? [] : [db.update(roles).set({ type: "lead" }).where(and(inArray(roles.id, promote), isNull(roles.leavedAt)))]),
       ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
@@ -1921,9 +2048,15 @@ async function confirmedHandOverWrites(
   const department = org.departments.find((d) => d.id === role.departmentId)?.name ?? "";
   // The successor becomes a head, owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests([toId]);
-  // A team address tied to this head, or to the seat on the sender's row, is owed a routing item (issue #789).
-  const reroutesAsked = await automaticTeamAddressReroutes([handedTo({ kind: "department-head", departmentId: role.departmentId }, toId), ...seatHandedTo(seat)]);
-  // The sender's head row ends before the successor's starts: one active head per department (issue #667).
+  // A team address tied to this head, or to the seat on the sender's row, is owed a routing item (issue #789); one a staying
+  // co-head holds is not (issue #872).
+  const headTie: MovesWith = { kind: "department-head", departmentId: role.departmentId };
+  const reroutesAsked = await automaticTeamAddressReroutes([
+    handedOver(headTie, { from: fromId, to: toId }, holders(headTie)),
+    ...seatHandedOver(seat, fromId, holders),
+  ]);
+  // Only the sender's head row ends, before the successor's starts: every other head of the department stays (issue #872).
+  // The hand-over ends it by choice, not because the database refuses a second active head (epic #861, drizzle/0077).
   return (db) => [
     ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
     db.insert(roles).values({ memberId: toId, deptId: role.departmentId, divisionId: null, title: defaultHeadTitle(department), type: "head", startedAt: on, ...seatFor(seat, toId) }),
@@ -2015,5 +2148,8 @@ export function databaseTeamWrites(
     changeSeatHolder: (roleId, input) => changeSeatHolder(identity, roleId, input),
     addSeat: (input) => addSeat(identity, input),
     removeSeat: (roleId) => removeSeat(identity, roleId),
+    addTeamLeader: (input) => addTeamLeader(identity, input),
+    addSeatHolder: (roleId, input) => addSeatHolder(identity, roleId, input),
+    addDepartmentHead: (departmentId, input) => addDepartmentHead(identity, departmentId, input),
   };
 }

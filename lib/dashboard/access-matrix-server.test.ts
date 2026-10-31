@@ -642,6 +642,15 @@ const ACTION_CASES: readonly ActionCase[] = [
   { action: "team-actions.addSeat", run: () => teamActions.addSeat({ personId: EXTRA.mover, title: "Safety Officer" }), may: fullAccess, control: by("team leader") },
   // Remove seat (issue #643): the same viewers as the rest of the seat row.
   { action: "team-actions.removeSeat", run: async () => teamActions.removeSeat(await seatRowOf("Project Manager")), may: fullAccess, control: by("team leader") },
+  // Add another holder (epic #861, issue #868): the same viewers as the rest of the seat row, on every seat kind.
+  { action: "team-actions.addTeamLeader", run: () => teamActions.addTeamLeader({ personId: EXTRA.mover }), may: fullAccess, control: by("team leader") },
+  {
+    action: "team-actions.addSeatHolder",
+    run: async () => teamActions.addSeatHolder(await seatRowOf("Project Manager"), { personId: EXTRA.mover }),
+    may: fullAccess,
+    control: by("team leader"),
+  },
+  { action: "team-actions.addDepartmentHead", run: () => teamActions.addDepartmentHead(IDS.department(DM), { personId: EXTRA.mover }), may: fullAccess, control: by("team leader") },
 
   // The Alumni page: site content under the Content grant (issue #589). The
   // control is a member holding Content at Can edit, so each write is proven
@@ -852,7 +861,7 @@ describe("the break-glass admin makes every action the matrix lets the team lead
 
   test("the cases cover the Access page, order decisions and the seats", () => {
     const covered = teamLeaderCases.map((c) => c.action);
-    for (const action of ["actions.saveAccess", "actions.removeGrant", "actions.decideOrder", "actions.markOrdered", "team-actions.changeSeatHolder", "team-actions.addSeat", "team-actions.removeSeat"]) {
+    for (const action of ["actions.saveAccess", "actions.removeGrant", "actions.decideOrder", "actions.markOrdered", "team-actions.changeSeatHolder", "team-actions.addSeat", "team-actions.removeSeat", "team-actions.addTeamLeader", "team-actions.addSeatHolder", "team-actions.addDepartmentHead"]) {
       assert.ok(covered.includes(action), action);
     }
   });
@@ -2450,7 +2459,7 @@ describe("View as: on production only the IT lead seat starts it, on a preview o
     assert.equal(await viewAsRefusal(start(itLead.userId, adminTester), PREVIEW), null, "an admin tester on a preview");
     assert.equal(await viewAsRefusal(start(member.userId, itLead.userId), PREVIEW), null, "the IT lead on a preview");
     // On production an account that holds the IT lead seat may use View as, so nobody views as it. The
-    // database keeps one active IT lead (issue #667), so it is a second account of the IT lead's own member.
+    // fixture keeps one active IT lead, so it is a second account of the IT lead's own member.
     const secondAccount = "it-lead-second-account";
     await addRows(users, [{ id: secondAccount, email: `${secondAccount}@team.test`, firstName: "Viewer", lastName: secondAccount, member: itLead.memberId, createdAt: "2025-10-01" }]);
     await addRows(betterAuthUsers, [{ id: secondAccount, name: secondAccount, email: `${secondAccount}@team.test`, emailVerified: true, role: "user" }]);
@@ -2809,7 +2818,7 @@ describe("a renamed role title changes no access, no seat and no headship (issue
     assert.deepEqual(await teamActions.saveMemberDetails({ kind: "person", id: IDS.person("MA") }, IDS.division("MA"), SAVE), { ok: true });
     assert.ok(isRefusal(await answerOf(() => teamActions.saveMemberDetails({ kind: "person", id: IDS.person(DM) }, IDS.division(DM), SAVE))));
     // The team leader's roster and Team tree read them as Aerodynamics' head, under the stored title:
-    // the fixture keeps one active head per department (issue #667), and it is them.
+    // the fixture keeps one active head per department, and it is them.
     const leader = await openAfter("team leader", () => rename(name, "Chief of Aerodynamics"));
     const roster = await leader.members(null);
     assert.equal(roster.scope, "whole-team");
@@ -2976,7 +2985,7 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
     const leader = await openAs("team leader");
     const tree = (await leader.teamTree()).board.map((b) => [b.person.id, b.title]);
     assert.deepEqual(tree.at(-1), [EXTRA.mover, "Safety Officer"], "after the flagged seats on the Team tree");
-    const structure = (await leader.teamStructure())?.board.map((s) => [s.holder.id, s.title, s.flag]);
+    const structure = (await leader.teamStructure())?.board.map((s) => [s.holders[0].id, s.title, s.flag]);
     assert.deepEqual(structure?.at(-1), [EXTRA.mover, "Safety Officer", null], "and on Edit team tree's seat row");
     const arc = teamBuildOf(await databaseTeamRoles()).arc.map((l) => [l.person.id, l.role]);
     assert.deepEqual(arc.at(-1), [EXTRA.mover, "Safety Officer"], "and on the public Team page's arc");
@@ -3130,7 +3139,7 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
     await seedFixture();
     const rows = async (name: string) => {
       const structure = await (await openAs(name)).teamStructure();
-      return { board: structure?.board.map((s) => [s.roleId, s.holder.id, s.title]), editable: structure?.departmentsEditable };
+      return { board: structure?.board.map((s) => [s.roleId, s.holders.map((h) => h.id), s.title]), editable: structure?.departmentsEditable };
     };
     const leader = await rows("team leader");
     const head = await rows("department head");

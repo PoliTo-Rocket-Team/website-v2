@@ -526,6 +526,13 @@
       "when": 1795540800000,
       "tag": "0076_team_page_layout",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1795627200000,
+      "tag": "0077_roles_several_seat_holders",
+      "breakpoints": true
     }
   ]
 }

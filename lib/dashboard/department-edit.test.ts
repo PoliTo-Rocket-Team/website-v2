@@ -187,8 +187,11 @@ test("Close department sends people only to an open unit outside it where they h
 
 // Change head (issue #253, board 77e): handing the head role over.
 
-const changeHead = (head: { to: number; outcome: HandOverOutcome | null } | null, headIds: readonly number[] = [6], actor: TeamActor | null = fullAccess) =>
-  planDepartmentSave({ actor, org, departmentId: 1, team, headIds, save: { name: "Aerodynamics", code: "AE", head } });
+const changeHead = (
+  head: { to: number; from?: number | null; outcome: HandOverOutcome | null } | null,
+  headIds: readonly number[] = [6],
+  actor: TeamActor | null = fullAccess,
+) => planDepartmentSave({ actor, org, departmentId: 1, team, headIds, save: { name: "Aerodynamics", code: "AE", head: head === null ? null : { from: null, ...head } } });
 
 test("Change head: the replaced head becomes an advisor in the department or leaves the team; nothing leaves them as a member", () => {
   assert.deepEqual(changeHead({ to: 1, outcome: "advisor" }), {
@@ -198,12 +201,12 @@ test("Change head: the replaced head becomes an advisor in the department or lea
       code: "AE",
       nameChanged: false,
       codeChanged: false,
-      head: { to: 1, from: [6], steppingDown: { kind: "advisor", place: { kind: "department", departmentId: 1 }, access: "ends" } },
+      head: { to: 1, replaces: { memberId: 6, steppingDown: { kind: "advisor", place: { kind: "department", departmentId: 1 }, access: "ends" } } },
     },
   });
   const leaves = changeHead({ to: 1, outcome: "leave" });
   assert.ok(leaves.ok);
-  assert.deepEqual(leaves.value.head?.steppingDown, { kind: "leave" });
+  assert.deepEqual(leaves.value.head?.replaces?.steppingDown, { kind: "leave" });
   assert.deepEqual(changeHead({ to: 1, outcome: null }), { ok: false, error: "Choose what happens to the head: Become an advisor or Leave the team." });
   assert.equal(checkDepartmentSave({ name: "Aerodynamics", code: "AE", head: { to: 1, outcome: "member" } }).ok, false, "only advisor or leave");
 });
@@ -212,18 +215,35 @@ test("Change head picks anyone on the team but the head it has now (issue #837);
   assert.deepEqual(changeHead({ to: 6, outcome: "advisor" }), { ok: false, error: "Chiara Rinaldi already heads this department." });
   assert.deepEqual(changeHead({ to: 99, outcome: "advisor" }), { ok: false, error: "They are not on the team." });
   // Chiara heads Aerodynamics; she takes Structures over from Marco and keeps her head seat there.
-  const otherHead = planDepartmentSave({ actor: fullAccess, org, departmentId: 2, team, headIds: [1], save: { name: "Structures", code: "ST", head: { to: 6, outcome: "advisor" } } });
+  const otherHead = planDepartmentSave({
+    actor: fullAccess,
+    org,
+    departmentId: 2,
+    team,
+    headIds: [1],
+    save: { name: "Structures", code: "ST", head: { to: 6, from: null, outcome: "advisor" } },
+  });
   assert.ok(otherHead.ok && otherHead.value.head?.to === 6, "another department's head");
   for (const to of [7, 8, 9]) {
     const changed = changeHead({ to, outcome: "advisor" });
-    assert.ok(changed.ok && changed.value.head?.to === to && changed.value.head.from.includes(6), `person ${to}: the team leader, an advisor, a division member`);
+    assert.ok(changed.ok && changed.value.head?.to === to && changed.value.head.replaces?.memberId === 6, `person ${to}: the team leader, an advisor, a division member`);
   }
   const first = changeHead({ to: 1, outcome: null }, []);
   assert.ok(first.ok);
-  assert.deepEqual(first.value.head, { to: 1, from: [], steppingDown: null });
+  assert.deepEqual(first.value.head, { to: 1, replaces: null });
   for (const actor of [head, lead, null]) assert.equal(changeHead({ to: 1, outcome: "advisor" }, [6], actor).ok, false, "only the team leader and full access");
   const sent = checkDepartmentSave({ name: "Aerodynamics", code: "AE" });
   assert.ok(sent.ok && sent.value.head === null, "a save with no head field changes no head");
+});
+
+test("with two heads, Change head replaces only the head picked; a successor who heads it already is refused (issue #872)", () => {
+  const changed = changeHead({ to: 7, from: 9, outcome: "advisor" }, [6, 9]);
+  assert.ok(changed.ok);
+  assert.equal(changed.value.head?.replaces?.memberId, 9, "only the picked head steps down");
+  assert.deepEqual(changeHead({ to: 7, outcome: "advisor" }, [6, 9]), { ok: false, error: "Pick which head the new head replaces." });
+  assert.deepEqual(changeHead({ to: 7, from: 8, outcome: "advisor" }, [6, 9]), { ok: false, error: "They do not head this department now." });
+  assert.equal(changeHead({ to: 9, from: 6, outcome: "advisor" }, [6, 9]).ok, false, "the other head heads it already");
+  assert.equal(changeHead({ to: 7, from: 6, outcome: "advisor" }, []).ok, false, "no head to replace");
 });
 
 test("New department and Edit department send no kind, and a kind sent anyway is not kept (issue #856)", () => {

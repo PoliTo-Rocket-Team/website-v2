@@ -566,6 +566,26 @@ export interface TeamWrites {
    * access only.
    */
   removeSeat(roleId: number): Promise<WriteResult<null>>;
+  /**
+   * Add another holder on the team leader's seat (epic #861, issue #868): a
+   * `president` row starts for the person, and every team leader stays one;
+   * checked by `planTeamLeaderAdd` (./team-seats.ts). The team leader and
+   * full access only.
+   */
+  addTeamLeader(input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Add another holder on the team-level seat `roleId` (issue #868): a row
+   * with the seat's type, title and full-access flag starts for the person,
+   * and every holder keeps it; checked by `planSeatHolderAdd`. The team
+   * leader and full access only.
+   */
+  addSeatHolder(roleId: number, input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Add another head of `departmentId` (issue #868): a head row on it starts
+   * for the person, and every head of it stays one; checked by `planHeadAdd`
+   * (./department-edit.ts). The team leader and full access only.
+   */
+  addDepartmentHead(departmentId: number, input: unknown): Promise<WriteResult<null>>;
 }
 
 /** A read or write the viewer does not reach. */

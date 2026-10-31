@@ -116,9 +116,10 @@ function titleOf(r: Role): string {
 type RoleRow = typeof roles.$inferInsert;
 
 /**
- * The seats a role row holds that only one active role may hold
- * (drizzle/0062, issue #667): the team leader's, a full-access seat, a
- * department's head.
+ * The seats a role row holds that the fixture gives one active role each:
+ * the team leader's, a full-access seat, a department's head. The database
+ * takes several holders of a seat (drizzle/0077, epic #861); the fixture
+ * keeps one, so each matrix viewer's seat is read as theirs alone.
  */
 function seatsOf(r: Pick<RoleRow, "type" | "deptId" | "fullAccess">): string[] {
   return [
@@ -131,7 +132,7 @@ function seatsOf(r: Pick<RoleRow, "type" | "deptId" | "fullAccess">): string[] {
 /**
  * Each matrix viewer's role rows, split by seat. Several viewers hold one
  * seat (the operations lead with and without Approve orders, the department
- * head with each grant), and the database keeps one active holder per seat.
+ * head with each grant), and the fixture keeps one active holder per seat.
  * The first viewer in the matrix to hold a seat sits in it in the fixture;
  * a later one's row is `benched`, kept out of the fixture until they sign in
  * (`seatSignedIn`).
@@ -168,7 +169,7 @@ const VIEWER_ROLES = (() => {
 /**
  * Puts a signed-in matrix viewer in the seat they share with an earlier
  * viewer: the seat's holder's role row is removed and theirs added, so the
- * database still has one active holder and it is them. The fake session
+ * fixture still has one active holder and it is them. The fake session
  * (./fakes/current-user.ts) calls this as each server call reads who is
  * signed in. A viewer already seated, or whose row a test has changed, is
  * left as it is.
@@ -189,8 +190,8 @@ export async function seatSignedIn(userId: string): Promise<void> {
 
 /**
  * Moves the full-access seat `flag` onto role row `rowId`: the flag comes
- * off the row holding it (a matrix viewer's), so one active row holds it
- * (drizzle/0062). A test's setup, as `changeRows` is.
+ * off the row holding it (a matrix viewer's), so one active row holds it,
+ * as the fixture keeps it. A test's setup, as `changeRows` is.
  */
 export async function moveSeatOnto(rowId: number, flag: SeatFlag): Promise<void> {
   await changeRows(roles, { fullAccess: flag }, { fullAccess: null });

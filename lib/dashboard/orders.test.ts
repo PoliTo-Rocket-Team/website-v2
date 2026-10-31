@@ -359,6 +359,20 @@ test("Approve orders goes only to someone on the team, never to the team leader,
   assert.equal(checkApproveOrdersChange(facts, { personId: "2", holds: true }).ok, false);
 });
 
+test("with two team leaders, each gives Approve orders and neither is given it, but a kept grant can be removed (epic #861)", () => {
+  const coLeader = 15;
+  const both: ApproveOrdersFacts = { ...facts, teamLeaders: [teamLeader, coLeader] };
+  // Either team leader asks: the facts read the same, as each holds the seat.
+  assert.deepEqual(checkApproveOrdersChange(both, { personId: 2, holds: true }), { ok: true, value: { personId: 2, holds: true } });
+  for (const leader of [teamLeader, coLeader]) {
+    assert.deepEqual(checkApproveOrdersChange(both, { personId: leader, holds: true }), { ok: false, error: "The team leader already approves orders." }, `leader ${leader}`);
+  }
+  // A grant the co-leader kept from a seat held before can still be removed; one they lack cannot.
+  const kept: ApproveOrdersFacts = { ...both, holders: [coLeader] };
+  assert.deepEqual(checkApproveOrdersChange(kept, { personId: coLeader, holds: false }), { ok: true, value: { personId: coLeader, holds: false } });
+  assert.deepEqual(checkApproveOrdersChange(both, { personId: coLeader, holds: false }), { ok: false, error: "They do not hold Approve orders." });
+});
+
 test("a page holds 12 orders, newest first, and a page past the end shows the last", () => {
   const orders = Array.from({ length: 30 }, (_, i) => order({ status: "waiting" }, `2026-09-${String(i + 1).padStart(2, "0")}`));
   const first = orderPage(orders, 1);

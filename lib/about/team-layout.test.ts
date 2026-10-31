@@ -41,12 +41,12 @@ function person(id: number, name: string, placement: Placement, over: Partial<Te
 const leader = (): Placement => ({ role: "team-leader", memberships: NO_MEMBERSHIPS });
 const flagged = (flag: BoardFlag, roleId = BOARD_FLAGS.indexOf(flag) + 1): Placement => ({
   role: "board",
-  seat: { roleId, title: BOARD_FLAG_TITLES[flag], flag, since },
+  seat: { roleId, title: BOARD_FLAG_TITLES[flag], fullAccess: flag, type: "core", since },
   memberships: NO_MEMBERSHIPS,
 });
 const teamSeat = (roleId: number, title: string, from = "2024-11-01"): Placement => ({
   role: "board",
-  seat: { roleId, title, flag: null, since: from },
+  seat: { roleId, title, fullAccess: null, type: "core", since: from },
   memberships: NO_MEMBERSHIPS,
 });
 const head = (departmentId: number, title = ""): Placement => ({ role: "head", departmentId, title, memberships: NO_MEMBERSHIPS });

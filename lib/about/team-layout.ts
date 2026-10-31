@@ -2,6 +2,7 @@ import { z } from "zod";
 import { textLength } from "@/lib/content/text";
 import {
   BOARD_FLAGS,
+  boardFlagOf,
   boardTitleOf,
   DEPARTMENT_KINDS,
   defaultHeadTitle,
@@ -249,7 +250,7 @@ export function holdingOf(binding: PlaceBinding, roles: TeamRoles, headOf?: stri
       return person === undefined ? null : { person, title: titleOf(person) ?? "Team Leader" };
     }
     case "full-access-seat":
-      return teamSeatHolding((seat) => seat.flag === binding.seat, roles);
+      return teamSeatHolding((seat) => boardFlagOf(seat.fullAccess) === binding.seat, roles);
     case "team-seat":
       return teamSeatHolding((seat) => seat.roleId === binding.roleId, roles);
     case "department-head":
@@ -465,7 +466,8 @@ export function layoutPhotos(layout: SeatedLayout): PersonPhoto[] {
 
 /** The binding of a team-level seat: its flag when it has one, else its `roles` row. */
 function teamLevelBinding(seat: BoardRole): SeatBinding {
-  return seat.flag === null ? { kind: "team-seat", roleId: seat.roleId } : { kind: "full-access-seat", seat: seat.flag };
+  const flag = boardFlagOf(seat.fullAccess);
+  return flag === null ? { kind: "team-seat", roleId: seat.roleId } : { kind: "full-access-seat", seat: flag };
 }
 
 /**
