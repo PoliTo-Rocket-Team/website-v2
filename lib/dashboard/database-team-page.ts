@@ -125,13 +125,18 @@ async function writeVersions(version: Versioned<StoredTeamPage>, expected: Versi
  * What a Team tree hand-over of a team-level seat with no flag adds to its
  * own batch, so the stored page seats bound to the ended row are bound to the
  * successor's row in the same transaction (issue #852, ADR 0019 Decision 3).
- * `to` is the successor's row id, reserved before the batch, which inserts
- * the row with it. The writes open with the layer rows' guard: a Team page
- * save that lands between this read and the batch fails it, and `changed`
- * then answers true.
+ * The writes always open with the layer rows' guard: a Team page save that
+ * lands between this read and the batch fails it, also one that binds a page
+ * seat to the ended row when none was bound at the read, and `changed` then
+ * answers true.
  */
 export type PageSeatsHandOver = {
-  readonly to: number;
+  /**
+   * The successor's row id when a stored page seat is bound to the ended row:
+   * reserved before the batch, which inserts the row with it. Null when none
+   * is, and the batch then only guards the layer rows.
+   */
+  readonly to: number | null;
   readonly writes: (db: ReturnType<typeof getDb>) => readonly BatchItem<"pg">[];
   /** Whether the layer rows are no longer the ones read: a Team page save landed meanwhile. */
   readonly changed: () => Promise<boolean>;
@@ -141,9 +146,10 @@ export type PageSeatsHandOver = {
 
 /**
  * The page-seat part of a hand-over of team-level seat row `from`, or null
- * when no stored layout binds a page seat to it, or this database has no
- * layer table yet: the hand-over then writes nothing to the page. `reserve`
- * gives the successor's row id, and runs only when a page seat must move.
+ * when this database has no layer table yet. When no stored layout binds a
+ * page seat to `from`, it writes nothing to the page and only guards the
+ * layer rows. `reserve` gives the successor's row id, and runs only when a
+ * page seat must move.
  */
 export async function pageSeatsHandOver(from: number, reserve: () => Promise<number>): Promise<PageSeatsHandOver | null> {
   let ids: number[];
@@ -155,13 +161,16 @@ export async function pageSeatsHandOver(from: number, reserve: () => Promise<num
     if (hasCode(error, UNDEFINED_TABLE)) return null;
     throw error;
   }
-  if (version === undefined || !bindsStoredTeamSeat(version, from)) return null;
+  const changed = async () => (await rowIds(LAYER_ROWS)).join() !== ids.join();
+  if (version === undefined || !bindsStoredTeamSeat(version, from)) {
+    return { to: null, writes: (db) => unchangedRows(db, LAYER_ROWS, ids), changed, landed: () => {} };
+  }
   const to = await reserve();
   const moved = teamSeatHandedOver(version, from, to);
   return {
     to,
     writes: (db) => [...unchangedRows(db, LAYER_ROWS, ids), ...layerVersionWrites(db, moved)],
-    changed: async () => (await rowIds(LAYER_ROWS)).join() !== ids.join(),
+    changed,
     landed: () => updateTag(TEAM_PAGE_LAYER_CACHE_TAG),
   };
 }

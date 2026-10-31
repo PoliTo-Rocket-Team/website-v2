@@ -1771,8 +1771,9 @@ function isEndGuardFailure(error: unknown): boolean {
 const TEAM_PAGE_SAVED_MEANWHILE = "The Team page was saved while this ran. Try again.";
 
 /**
- * Runs one seat write: `endSeatRow` first, then `after`, then the page seats'
- * move when the hand-over carries one (`pageSeats`, issue #852), in one
+ * Runs one seat write: `endSeatRow` first, then `after`, then the layer rows'
+ * guard and any page seats' move when the hand-over carries them
+ * (`pageSeats`, issue #852), in one
  * audited batch. When the batch fails on a guard, the write is refused as no
  * longer held when the seat row is ended on re-read, else as the Team page
  * saved meanwhile when the layer rows changed; any other failure is thrown
@@ -1842,7 +1843,7 @@ async function changeSeatHolder(identity: DashboardIdentity, roleId: number, inp
     (db) => [
       ...steppingDownWrites(db, { memberId: from, active }, step, [], on),
       db.insert(roles).values({
-        ...(pageSeats !== null && { id: pageSeats.to }),
+        ...(pageSeats?.to != null && { id: pageSeats.to }),
         memberId: to,
         deptId: null,
         divisionId: null,

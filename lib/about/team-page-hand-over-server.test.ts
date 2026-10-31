@@ -149,6 +149,33 @@ test("a Team page save that lands between the hand-over's read and its batch ref
   assert.deepEqual(seatBoundTo((await storedLayouts()).published!, seatBinding).binding, seatBinding);
 });
 
+test("a Team page save that binds a page seat to the ended row between the hand-over's read and its batch refuses the hand-over, and nothing is written", async () => {
+  const { layout } = snapshot(await rolesNow(), NO_TEAM_LAYER);
+  const without: TeamLayout = { ...layout, arc: layout.arc.filter((s) => !sameBinding(s.binding, seatBinding)) };
+  await addRows(teamPageLayerVersions, [{ version: "published", layer: NO_TEAM_LAYER, layout: without }]);
+  signInAs(TEAM_LEADER);
+  const batch = testDb.batch;
+  testDb.batch = async (queries) => {
+    testDb.batch = batch;
+    // Another save replaces the layer rows with a layout that binds a page seat to the seat's row.
+    await testDb.delete(teamPageLayerVersions);
+    await testDb.insert(teamPageLayerVersions).values({ version: "published", layer: NO_TEAM_LAYER, layout });
+    return batch(queries);
+  };
+  try {
+    assert.deepEqual(await teamActions.changeSeatHolder(SEAT, { to: EXTRA.mover, outcome: "advisor" }), {
+      ok: false,
+      error: "The Team page was saved while this ran. Try again.",
+    });
+  } finally {
+    testDb.batch = batch;
+  }
+  const rows = await tableRows(roles);
+  assert.ok(rows.some((r) => r.id === SEAT && r.leavedAt === null), "the seat is still held");
+  assert.ok(!rows.some((r) => r.memberId === EXTRA.mover && r.title === SEAT_TITLE), "the successor holds no seat row");
+  assert.deepEqual(seatBoundTo((await storedLayouts()).published!, seatBinding).binding, seatBinding, "the saved page seat is still bound to the held seat");
+});
+
 /** The page seat bound to `binding` in the stored published layout shows `memberId` on the team now. */
 async function shows(binding: PlaceBinding, memberId: number): Promise<void> {
   const layout = (await storedLayouts()).published;
