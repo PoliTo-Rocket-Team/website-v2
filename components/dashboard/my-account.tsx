@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { YourDetails } from "@/lib/dashboard/details";
+import type { GoogleAccountsNotice } from "@/lib/dashboard/google-accounts";
 import { DELETE_ACCOUNT_COPY, type MyAccount } from "@/lib/dashboard/self";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { DANGER_PILL, DangerBox, DangerRow, DeleteAccountDialog, SignInCard } from "./account-parts";
@@ -20,12 +21,12 @@ type Actions = {
 // fetched.
 export function MyAccountView({
   account,
-  linkError = null,
+  googleAccountsNotice = null,
   ...actions
 }: {
   account: MyAccount;
-  /** What went wrong adding a Google account, in words, when Google sent the person back with an error (issue #906). */
-  linkError?: string | null;
+  /** What the return from Google came to, in words: a refused link (issue #906) or a merge's outcome (issue #907). */
+  googleAccountsNotice?: GoogleAccountsNotice | null;
 } & Actions) {
   const [deleting, setDeleting] = useState(false);
   return (
@@ -33,7 +34,7 @@ export function MyAccountView({
       <PageHeader title="My account" intro="Your sign-in and the details we keep for your applications." />
       <div className="mt-6 flex flex-col gap-5">
         <SignInCard account={account} />
-        <GoogleAccountsCard accounts={account.googleAccounts} returnTo="/dashboard/account" linkError={linkError} />
+        <GoogleAccountsCard accounts={account.googleAccounts} returnTo="/dashboard/account" notice={googleAccountsNotice} />
         <YourDetailsCard details={account.details} editor="applicant" saveDetails={actions.saveDetails} />
         <DangerBox>
           <DangerRow title="Delete account" text={DELETE_ACCOUNT_COPY}>

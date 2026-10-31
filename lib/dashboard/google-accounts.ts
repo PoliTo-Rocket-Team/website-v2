@@ -11,6 +11,8 @@
 // #653), so the section draws the same buttons in both; inside View as the
 // server refuses the change itself, and the section shows that refusal.
 
+import { mergeResultNotice } from "./login-merge";
+
 /** One Google account linked to a login, as `better_auth.account` stores it. Never any token. */
 export type LinkedGoogleAccount = {
   /** The account row's own id. */
@@ -64,24 +66,46 @@ export function mayRemove(accounts: readonly LinkedGoogleAccount[], account: Lin
 
 // Coming back from Google ----------------------------------------------------------
 
+/** Better Auth's error code when the added Google account already signs in to another login: the case the merge answers (issue #907). */
+export const HELD_BY_ANOTHER_LOGIN = "account_already_linked_to_different_user";
+
 /**
  * What the section says when Google sends the person back with an error code
- * (Better Auth's `error` query value). Merging a login that already holds the
- * Google account is a later slice of epic #902; until then the section only
- * says why it was not added.
+ * (Better Auth's `error` query value). A Google account another login holds
+ * is not added; the section then offers to merge that login (./login-merge.ts).
  */
 const LINK_ERRORS: Readonly<Record<string, string>> = {
-  account_already_linked_to_different_user:
-    "That Google account already has its own login on this site, so it was not added. Sign in with it to use that login.",
+  [HELD_BY_ANOTHER_LOGIN]:
+    "That Google account already has its own login on this site, so it was not added. If that login is yours and holds no member record, merge it into this account: you sign in with that Google account once more to confirm.",
   access_denied: "Adding the Google account was cancelled.",
 };
 
-const LINK_FAILED = "Could not add that Google account. Please try again.";
+export const LINK_FAILED = "Could not add that Google account. Please try again.";
 
 /** The message for an error code on return from Google; null when there is none. */
 export function linkErrorMessage(code: string | null | undefined): string | null {
   if (code === null || code === undefined || code.trim() === "") return null;
   return LINK_ERRORS[code] ?? LINK_FAILED;
+}
+
+/**
+ * What the section shows on return from Google: a merge's outcome, or a
+ * refused link, which offers the merge when another login holds the Google
+ * account. `done` reads as a confirmation, `refused` as an alert.
+ */
+export type GoogleAccountsNotice = { readonly tone: "done" | "refused"; readonly message: string; readonly offersMerge: boolean };
+
+/** The notice for the query the page came back with (`error` from Better Auth, `google_merge` from the merge); null when it carries neither. */
+export function googleAccountsNoticeOf(query: { readonly error?: string | null; readonly merge?: string | null }): GoogleAccountsNotice | null {
+  const merged = mergeResultNotice(query.merge);
+  if (merged !== null) return { ...merged, offersMerge: false };
+  const message = linkErrorMessage(query.error);
+  return message === null ? null : { tone: "refused", message, offersMerge: query.error === HELD_BY_ANOTHER_LOGIN };
+}
+
+/** The one value of a search parameter, or null when it is absent or repeated. */
+export function searchValue(value: string | string[] | undefined): string | null {
+  return typeof value === "string" ? value : null;
 }
 
 /** Better Auth's words when the session is too old to remove a sign-in account. */
@@ -99,25 +123,31 @@ export function unlinkErrorMessage(message: string | null | undefined): string {
 
 // The Activity log -----------------------------------------------------------------
 
-export const GOOGLE_ACCOUNT_EVENTS = ["link", "unlink"] as const;
+export const GOOGLE_ACCOUNT_EVENTS = ["link", "unlink", "merge"] as const;
 export type GoogleAccountEvent = (typeof GOOGLE_ACCOUNT_EVENTS)[number];
 
-/** The `logs.operation` each change is stored under, on the `better_auth.account` row it names. */
+/**
+ * The `logs.operation` each change is stored under: a link or an unlink on
+ * the `better_auth.account` row it names, a merge (issue #907) beside them,
+ * naming the merged login's user id.
+ */
 export const GOOGLE_ACCOUNT_OPERATIONS: Readonly<Record<GoogleAccountEvent, string>> = {
   link: "GOOGLE_ACCOUNT_LINK",
   unlink: "GOOGLE_ACCOUNT_UNLINK",
+  merge: "GOOGLE_ACCOUNT_MERGE",
 };
 
 /** One link or unlink as the Activity log keeps it: whose login, which account row, and its email. No token is ever part of it. */
 export type GoogleAccountEntry = {
-  readonly event: GoogleAccountEvent;
+  readonly event: Exclude<GoogleAccountEvent, "merge">;
   readonly userId: string;
   readonly accountRowId: string;
   readonly email: string | null;
 };
 
-/** The Activity log's sentence for a link or an unlink. */
+/** The Activity log's sentence for a link, an unlink or a merge; `email` is the Google account's, or for a merge the merged login's. */
 export function googleAccountSentence(event: GoogleAccountEvent, email: string | null): string {
+  if (event === "merge") return email === null ? "Merged another login into their account" : `Merged the login ${email} into their account`;
   const account = email === null ? "a Google account" : `the Google account ${email}`;
   return event === "link" ? `Linked ${account}` : `Removed ${account}`;
 }
