@@ -32,6 +32,7 @@ import { uploadPublicFile } from "@/lib/storage/public-store";
 import { deleteUnreferencedAfter } from "@/lib/storage/unreferenced-delete";
 import { canReach } from "./access";
 import type { DashboardIdentity } from "./database";
+import { linkedGoogleAccountsOf } from "./database-google-accounts";
 import { readHandOverOffer } from "./database-hand-over";
 import { memberLeftNoticesFor } from "./database-notices";
 import {
@@ -110,11 +111,12 @@ async function readLeaveState(memberId: number): Promise<LeaveState> {
 async function readProfile(identity: DashboardIdentity): Promise<MyProfile | null> {
   if (!hasOwnProfile(identity)) return null;
   const memberId = identity.memberId;
-  const [[member], details, leave, handOver] = await Promise.all([
+  const [[member], details, leave, handOver, googleAccounts] = await Promise.all([
     getDb().select({ prt_email: members.prtEmail }).from(members).where(eq(members.memberId, memberId)).limit(1),
     readDetails(identity.userId),
     readLeaveState(memberId),
     readHandOverOffer(identity),
+    linkedGoogleAccountsOf(identity.userId),
   ]);
   const linkedin = identity.linkedin === null ? null : normalizeLinkedin(identity.linkedin);
   return {
@@ -126,6 +128,7 @@ async function readProfile(identity: DashboardIdentity): Promise<MyProfile | nul
     linkedin: linkedin === null ? null : linkedin.ok ? linkedin.value : identity.linkedin,
     photoUrl: identity.picture,
     signIn: { provider: "google", email: identity.email },
+    googleAccounts,
     leave,
     details,
     handOver,
@@ -259,17 +262,19 @@ const USED_ONLY_BY_APPLICATIONS_WITHDRAWN_NOW = sql`exists (select 1 from ${appl
 
 async function readAccount(identity: DashboardIdentity): Promise<MyAccount | null> {
   if (!isOffTeam(identity.kind)) return null;
-  const [details, unwithdrawn] = await Promise.all([
+  const [details, unwithdrawn, googleAccounts] = await Promise.all([
     readDetails(identity.userId),
     getDb()
       .select({ id: applications.id })
       .from(applications)
       .where(and(eq(applications.userId, identity.userId), isNull(applications.withdrawnAt))),
+    linkedGoogleAccountsOf(identity.userId),
   ]);
   return {
     name: identity.name,
     photoUrl: identity.picture,
     signIn: { provider: "google", email: identity.email },
+    googleAccounts,
     details,
     unwithdrawnApplications: unwithdrawn.length,
   };

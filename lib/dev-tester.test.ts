@@ -56,7 +56,7 @@ test("where the gate is off, getAuth keeps Google alone, registers no tester plu
 
     assert.deepEqual(Object.keys(auth.options.socialProviders ?? {}), ["google"], label);
     assert.equal("emailAndPassword" in auth.options, false, label);
-    assert.deepEqual(auth.options.plugins.map((plugin) => plugin.id), ["custom-session", "admin", "view-as"], label);
+    assert.deepEqual(auth.options.plugins.map((plugin) => plugin.id), ["custom-session", "admin", "view-as", "google-accounts"], label);
 
     for (const path of ["/dev-tester", "/dev-tester/sign-in?tester=member", "/dev-tester/sign-in?tester=admin-1"]) {
       const response = await auth.handler(new Request(BASE + path));
@@ -73,7 +73,7 @@ test("where the gate is on, getAuth registers the tester plugin beside Google al
     const label = JSON.stringify(vars);
     assert.deepEqual(Object.keys(auth.options.socialProviders ?? {}), ["google"], label);
     assert.equal("emailAndPassword" in auth.options, false, label);
-    assert.deepEqual(auth.options.plugins.map((plugin) => plugin.id), ["custom-session", "admin", "view-as", "dev-tester"], label);
+    assert.deepEqual(auth.options.plugins.map((plugin) => plugin.id), ["custom-session", "admin", "view-as", "google-accounts", "dev-tester"], label);
   }
 });
 
