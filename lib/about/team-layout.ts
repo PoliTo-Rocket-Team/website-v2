@@ -351,16 +351,32 @@ function seatOf(person: TeamPerson, roles: TeamRoles): SeatBinding | null {
 }
 
 /**
+ * How many people a place draws (issue #880): the team leader's place, an arc
+ * place and a head place draw every holder of their seat side by side; a
+ * division lead row draws one person.
+ */
+export type PlaceShows = "every-holder" | "one-person";
+
+/**
  * What a page seat is bound to when the editor picks `person` for it: the
  * seat they hold, wherever the Team tree places it, so the place follows that
- * seat on a hand-over (ADR 0019). Any holder of a seat with several is bound
- * to that seat, as its place shows every holder (issue #880). A person who
- * holds no seat, or one the seat would not show, is bound to themselves
- * (Owner decision, #846 R4.1).
+ * seat on a hand-over (ADR 0019). On a place that draws every holder, any
+ * holder of a seat with several is bound to that seat (issue #880). A place
+ * that draws one person is bound to the seat only while `person` is its one
+ * holder, so the row shows the person picked. A person who holds no seat, or
+ * one the place would not show them in, is bound to themselves (Owner
+ * decision, #846 R4.1).
  */
-export function bindingFor(person: TeamPerson, roles: TeamRoles): PlaceBinding {
+export function bindingFor(person: TeamPerson, roles: TeamRoles, shows: PlaceShows = "every-holder"): PlaceBinding {
   const seat = seatOf(person, roles);
-  return seat !== null && holdsSeat(seat, person, roles) ? seat : { kind: "person", memberId: person.id };
+  const showsThem = seat !== null && (shows === "every-holder" ? holdsSeat(seat, person, roles) : soleHolder(seat, person, roles));
+  return showsThem ? seat : { kind: "person", memberId: person.id };
+}
+
+/** Whether `person` is the one holder the bound seat shows now. */
+function soleHolder(binding: PlaceBinding, person: TeamPerson, roles: TeamRoles): boolean {
+  const holders = holdingsOf(binding, roles);
+  return holders.length === 1 && holders[0].person.id === person.id;
 }
 
 /** Whether `person` is one of the holders the bound seat shows now (`holdingsOf`). */
@@ -426,46 +442,92 @@ type Placed<T> = Shown<number, T> & { readonly people: readonly TeamPerson[] };
  */
 type DrawnPlace = { readonly people: readonly TeamPerson[]; readonly shown: Person; readonly role: string; readonly coHolders?: CoHolders };
 
+/** A place showing `holding` alone: every override laid on. */
+function drawnAlone(holding: Holding, { name, photo, linkedin, role }: SeatOverrides): DrawnPlace {
+  return {
+    people: [holding.person],
+    shown: {
+      ...personOf(holding.person),
+      ...(name !== undefined && { name }),
+      ...(photo !== undefined && { photo }),
+      ...(linkedin !== undefined && { linkedin }),
+    },
+    role: role ?? holding.title,
+  };
+}
+
+/** A place that draws every holder of its seat: the team leader's, an arc place or a head place. */
 function drawn(seat: PageSeat, roles: TeamRoles, headOf?: string): DrawnPlace | null {
   const [first, ...rest] = holdingsOf(seat.binding, roles, headOf);
   if (first === undefined) return null;
-  const { name, photo, linkedin, role } = seat.overrides;
-  const people = [first.person, ...rest.map((h) => h.person)];
   const [next, ...after] = rest;
-  if (next === undefined) {
-    return {
-      people,
-      shown: {
-        ...personOf(first.person),
-        ...(name !== undefined && { name }),
-        ...(photo !== undefined && { photo }),
-        ...(linkedin !== undefined && { linkedin }),
-      },
-      role: role ?? first.title,
-    };
-  }
+  if (next === undefined) return drawnAlone(first, seat.overrides);
+  const { role } = seat.overrides;
   const coHolder = (h: Holding): CoHolder => ({ ...personOf(h.person), role: role ?? h.title });
-  return { people, shown: personOf(first.person), role: role ?? first.title, coHolders: [coHolder(next), ...after.map(coHolder)] };
+  return {
+    people: [first.person, ...rest.map((h) => h.person)],
+    shown: personOf(first.person),
+    role: role ?? first.title,
+    coHolders: [coHolder(next), ...after.map(coHolder)],
+  };
+}
+
+/**
+ * A division lead row, which draws one person: the first holder of its seat
+ * (issue #880). Only that person counts as shown, so a further holder of a
+ * seat the row is bound to stays in the core members unless another place
+ * draws them.
+ */
+function drawnLead(seat: PageSeat, roles: TeamRoles): DrawnPlace | null {
+  const first = holdingOf(seat.binding, roles);
+  return first === null ? null : drawnAlone(first, seat.overrides);
+}
+
+/**
+ * The seat a binding names, as one key for every way of naming it: two
+ * `roles` rows of one co-held seat give one key (`boardSeatKey`). Null for a
+ * division lead and a person, which name one person, not a seat with holders.
+ */
+function seatKeyOf(binding: PlaceBinding, roles: TeamRoles): string | null {
+  switch (binding.kind) {
+    case "team-leader":
+      return "team-leader";
+    case "full-access-seat":
+      return `flag:${binding.seat}`;
+    case "team-seat": {
+      const row = teamSeatRow(binding.roleId, roles);
+      if (row === undefined) return null;
+      const flag = boardFlagOf(row.fullAccess);
+      return flag === null ? `seat:${boardSeatKey(row)}` : `flag:${flag}`;
+    }
+    case "department-head":
+      return `head:${binding.departmentId}`;
+    case "division-lead":
+    case "person":
+      return null;
+  }
 }
 
 const unplaced = <T>({ at, shown }: Placed<T>): Shown<number, T> => ({ at, shown });
 
 /**
  * The page `layout` draws on the team record `roles`: each page seat shows
- * its bound seat's holders now, side by side, with its overrides; one with no
- * holder is left out and keeps its place, and so is one whose several holders
- * an earlier place already draws (two places bound to one co-held seat by its
- * holders' two rows). The arc draws at most eight places. The core members
- * are everyone in `roles` whom no drawn place shows, by name, with their
- * title.
+ * its bound seat's holders now, side by side, with its overrides; a division
+ * lead row shows one. One with no holder is left out and keeps its place, and
+ * so is one bound to a co-held seat an earlier place already draws (two
+ * places naming one seat, for example by its holders' two rows): the repeat
+ * is the seat, never the people, so two seats with the same holders each
+ * draw. The arc draws at most eight places. The core members are everyone in
+ * `roles` whom no drawn place shows, by name, with their title.
  */
 export function resolveLayout(layout: TeamLayout, roles: TeamRoles): ResolvedTeam {
   const coHeld = new Set<string>();
-  /** The page seat as drawn, or null when it shows no one or its holders are already drawn together. */
+  /** The page seat as drawn, or null when it shows no one or an earlier place draws its co-held seat. */
   const place = (seat: PageSeat, headOf?: string): DrawnPlace | null => {
     const d = drawn(seat, roles, headOf);
     if (d === null || d.coHolders === undefined) return d;
-    const key = d.people.map((p) => p.id).join(",");
+    const key = seatKeyOf(seat.binding, roles);
+    if (key === null) return d;
     if (coHeld.has(key)) return null;
     coHeld.add(key);
     return d;
@@ -481,7 +543,7 @@ export function resolveLayout(layout: TeamLayout, roles: TeamRoles): ResolvedTea
     .slice(0, ARC_LEADERS);
   const departments = layout.departments.map((block) => {
     const leads = block.leads.flatMap((seat): Placed<DivisionLead>[] => {
-      const d = place(seat);
+      const d = drawnLead(seat, roles);
       return d === null ? [] : [{ at: seat.id, people: d.people, shown: { ...d.shown, division: d.role } }];
     });
     const head = place(block.head, block.name);

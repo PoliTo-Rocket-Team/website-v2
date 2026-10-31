@@ -857,6 +857,41 @@ test("two places bound to one co-held seat by its holders' two rows draw the hol
   assert.deepEqual(withoutGoneSeats(twice, two), twice, "and keeps its place in the layout");
 });
 
+test("two departments headed by the same two people each draw their own head place with both heads and their own division leads", () => {
+  // Chiara and Kenji head Aerodynamics, and both took Recovery on a hand-over; Irene no longer heads it.
+  const alsoRecovery = (p: TeamPerson): TeamPerson => ({ ...p, placement: head(1), furtherSeats: [{ kind: "head", departmentId: 2, title: "" }] });
+  const both = roles(moved(people, 7, member(20)).map((p) => (p.id === 4 || p.id === 10 ? alsoRecovery(p) : p)));
+  const resolved = resolveLayout(firstLayout(), both);
+  const [aero, recovery] = resolved.departments;
+  assert.deepEqual(namesOf(aero.heads[0]?.shown).map(([name]) => name), ["Chiara Rinaldi", "Kenji Watanabe"]);
+  assert.deepEqual(namesOf(recovery.heads[0]?.shown).map(([name]) => name), ["Chiara Rinaldi", "Kenji Watanabe"], "the same holders on another seat are no repeat");
+  assert.deepEqual(aero.heads[0]?.shown.leads.map((l) => l.name), ["Pietro Ricci", "Marco Bianchi"]);
+  assert.deepEqual(recovery.heads[0]?.shown.leads.map((l) => l.name), ["Simone Testa"]);
+});
+
+test("a division lead row draws one person: the person picked, never a co-head it would hide", () => {
+  const two = roles(moved(people, 10, head(1)));
+  const layout = firstLayout();
+  const aero = layout.departments[0];
+  const fields = headFieldsOf(two, layout, aero.id)!;
+  // The editor picks Kenji, the second of Aerodynamics' two heads, for the first lead row.
+  const picked = layoutWithHead(two, layout, aero.id, { ...fields, leads: fields.leads.map((row, i) => (i === 0 ? { ...row, person: 10 } : row)) });
+  const row = picked.departments[0].leads[0];
+  assert.deepEqual(row.binding, { kind: "person", memberId: 10 }, "a one-person row is bound to the person picked, not to the co-held seat");
+  const resolved = resolveLayout(picked, two);
+  assert.equal(resolved.departments[0].leads.find((l) => l.at === row.id)?.shown.name, "Kenji Watanabe", "the row shows the person picked");
+
+  // A lead row bound to a co-held head seat shows its first holder, and the other stays a core member unless another place draws them.
+  const onHeadSeat: TeamLayout = {
+    ...layout,
+    departments: [{ ...layout.departments[1], leads: [{ id: 900, binding: { kind: "department-head", departmentId: 1 }, overrides: {} }] }],
+  };
+  const drawnPage = resolveLayout(onHeadSeat, two);
+  assert.deepEqual(drawnPage.departments[0].leads.map((l) => l.shown.name), ["Chiara Rinaldi"]);
+  assert.ok(drawnPage.core.some((m) => m.name === "Kenji Watanabe"), "the co-head the row does not draw is a core member");
+  assert.ok(!drawnPage.core.some((m) => m.name === "Chiara Rinaldi"));
+});
+
 test("the snapshot of a team with co-holders gives each co-held seat one place, which draws every holder, and leaves nobody out", () => {
   const coHeld = roles(moved(moved(moved(people, 10, flagged("project-manager", 50)), 11, head(1)), 9, leader()));
   const { layout, left } = snapshot(coHeld, NO_TEAM_LAYER);
