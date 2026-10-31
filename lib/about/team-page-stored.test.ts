@@ -7,18 +7,19 @@ import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { advisorRowsOf } from "./advisors";
 import { importedAdvisors } from "./advisors-import";
 import { team } from "./team";
-import { NO_TEAM_LAYER, NO_UPLOADS, resetLayer } from "./team-layer";
-import { snapshot, type TeamLayout } from "./team-layout";
-import { photosInUse, publicTeamPage, teamPageEditor, type TeamPagePhotos, type TeamPageStore } from "./team-page-editor";
+import { NO_TEAM_LAYER, NO_UPLOADS, textOf } from "./team-layer";
+import { layoutPageOf, snapshot, type TeamLayout } from "./team-layout";
+import { photosInUse, publicTeamPage, teamPageEditor, type TeamPageEditor, type TeamPagePhotos, type TeamPageStore } from "./team-page-editor";
 import { memoryTeamPageStore } from "./team-page-memory";
-import { layoutOf, storedTeamPage, storedTeamPageOfRow, type StoredTeamPage } from "./team-page-stored";
+import { contentOf, layoutOf, storedTeamPage, storedTeamPageOfRow, type StoredTeamPage, type TeamPageContent } from "./team-page-stored";
 import { teamPageFromRoles, type TeamRoles } from "./team-roles";
 import type { TeamPage } from "./types";
 
 // The Team page stored with its layout (issue #850): a version with a layout
 // draws it, one with none draws the layout its layer snapshots to, a save
-// stores the layer and its snapshot layout together, the layout's photos are
-// in use, and the seed draws the seats the page drew before.
+// from the editor stores its layout with the layer's text (issue #851), the
+// layout's photos are in use, and the seed draws the seats the page drew
+// before.
 
 const roles = teamRolesOf(SEED_DATA);
 const layer = publishedTeamPageLayerOf(SEED_DATA)!;
@@ -31,6 +32,13 @@ function seatsOf(page: TeamPage) {
 }
 
 const published = (stored: StoredTeamPage): ContentItem<StoredTeamPage>[] => [{ id: 1, siteOrder: 1, version: { state: "published", published: stored, draft: null } }];
+
+/** The page the editor draws as it opens. */
+async function openedPage(editor: TeamPageEditor): Promise<TeamPage> {
+  const opened = await editor.open();
+  assert.ok(opened);
+  return layoutPageOf(opened.roles, opened.content.layout, opened.content.text, opened.base);
+}
 
 /**
  * The seeded team with the division of the layout's first drawn lead moved
@@ -55,7 +63,7 @@ test("the public page and the editor's opening page draw the stored layout when 
   // A version with a layout: the Team tree change leaves the seats as they were.
   assert.deepEqual(seatsOf(publicTeamPage(moved, team, published(stored))), before);
   const withLayout = teamPageEditor(siteContent, memoryTeamPageStore(memoryContentStore(published(stored)), memoryContentStore(importedAdvisors())), async () => moved, team, NO_PHOTOS);
-  assert.deepEqual(seatsOf((await withLayout.open())!.page), before);
+  assert.deepEqual(seatsOf(await openedPage(withLayout)), before);
 
   // A version with none: the layout its layer snapshots to on the team now, which follows the change.
   const unfilled: StoredTeamPage = { layer, layout: null };
@@ -64,25 +72,29 @@ test("the public page and the editor's opening page draw the stored layout when 
   assert.deepEqual(derived, seatsOf(publicTeamPage(moved, team, published(storedTeamPage(moved, layer)))));
   assert.deepEqual(layoutOf(moved, unfilled), snapshot(moved, layer).layout);
   const withoutLayout = teamPageEditor(siteContent, memoryTeamPageStore(memoryContentStore(published(unfilled)), memoryContentStore(importedAdvisors())), async () => moved, team, NO_PHOTOS);
-  assert.deepEqual(seatsOf((await withoutLayout.open())!.page), derived);
+  assert.deepEqual(seatsOf(await openedPage(withoutLayout)), derived);
 });
 
-test("a save from today's editor stores the layer and its snapshot layout in one write, and Reset to team does too", async () => {
-  const store = memoryTeamPageStore(memoryContentStore<StoredTeamPage>([]), memoryContentStore(importedAdvisors()));
+test("a save stores the layout the editor sends and the layer's text in one write, leaving the layer's people fields; Reset to team rebuilds the layout from the roles", async () => {
+  const stored = storedTeamPage(roles, layer);
+  const store = memoryTeamPageStore(memoryContentStore<StoredTeamPage>(published(stored)), memoryContentStore(importedAdvisors()));
   const writes: Versioned<StoredTeamPage>[] = [];
   const spied: TeamPageStore = { ...store, save: (version, advisors, expected) => (writes.push(version), store.save(version, advisors, expected)) };
   const editor = teamPageEditor(siteContent, spied, async () => roles, team, NO_PHOTOS);
 
-  const saved = await editor.save("publish", layer, advisorRowsOf(await store.advisors()));
+  const opened = await editor.open();
+  assert.deepEqual(opened?.content, contentOf(roles, stored), "the editor opens on the stored layout and the layer's text");
+  const content: TeamPageContent = { layout: { ...stored.layout!, arc: stored.layout!.arc.slice(1) }, text: { ...textOf(layer), intro: "Edited intro." } };
+  const saved = await editor.save("publish", content, advisorRowsOf(await store.advisors()));
   assert.ok(saved.ok, JSON.stringify(saved));
-  assert.deepEqual(writes, [{ state: "published", published: { layer, layout: snapshot(roles, layer).layout }, draft: null }]);
-  assert.deepEqual(saved.value.layer, { state: "published", published: layer, draft: null }, "the editor still answers the layer");
+  assert.deepEqual(writes, [{ state: "published", published: { layer: { ...layer, intro: "Edited intro." }, layout: content.layout }, draft: null }]);
+  assert.deepEqual(saved.value.content, { state: "published", published: content, draft: null }, "the editor answers the content as stored");
 
   const reset = await editor.reset();
   assert.ok(reset.ok);
   const [item] = await store.layer.list();
   const draft = item.version.state === "published" ? item.version.draft : null;
-  assert.deepEqual(draft, { layer: resetLayer(layer), layout: snapshot(roles, resetLayer(layer)).layout });
+  assert.deepEqual(draft, { layer: { ...layer, intro: "Edited intro." }, layout: snapshot(roles, NO_TEAM_LAYER).layout });
 });
 
 test("a photo only a stored layout shows is in use", () => {

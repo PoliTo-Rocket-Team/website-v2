@@ -22,8 +22,8 @@ import type { TeamPage } from "./types";
 // migrated in-memory Postgres holding the whole seed
 // (lib/dashboard/access-matrix/whole-seed.ts): Team tree changes leave the
 // page's seats and core members as they were, a seat with no holder or whose
-// team seat is gone is not drawn, and a save stores the layer with its
-// snapshot layout in one row.
+// team seat is gone is not drawn, and a save from the editor stores its
+// layout with the layer's text in one row (issue #851).
 
 const ROLE_DAY = "2026-10-30";
 
@@ -179,19 +179,23 @@ test("a section whose seats have no holder is drawn empty on /about/the-team, ne
   assert.equal(noHeads.orgChart.leader, null);
 });
 
-test("a save from today's editor stores the layer and its snapshot layout in one row", async () => {
+test("a save from the editor stores the layout it sends and the layer's text in one row (issue #851)", async () => {
   await seedFixture();
   signInAs(accountOf("team leader").userId);
   const opening = await openDashboard();
   assert.equal(opening.kind, "open");
   const { teamPage, teamAdvisors } = (opening as { data: DashboardData }).data;
-  const layer: TeamPageLayer = { ...NO_TEAM_LAYER, intro: "Saved with its layout." };
-  const saved = await teamPage.save("publish", layer, advisorRowsOf((await teamAdvisors.list()) ?? []));
+  const opened = await teamPage.open();
+  assert.ok(opened);
+  const teamRoles = teamRolesOf(await queryTeamSnapshot(testDb));
+  assert.deepEqual(opened.content.layout, snapshot(teamRoles, NO_TEAM_LAYER).layout, "before any save, the layout the roles snapshot to");
+  const layout: TeamLayout = { ...opened.content.layout, arc: [...opened.content.layout.arc].reverse() };
+  const saved = await teamPage.save("publish", { layout, text: { ...opened.content.text, intro: "Saved with its layout." } }, advisorRowsOf((await teamAdvisors.list()) ?? []));
   assert.ok(saved.ok, JSON.stringify(saved));
   const rows = await tableRows(teamPageLayerVersions);
-  const teamRoles = teamRolesOf(await queryTeamSnapshot(testDb));
+  const layer: TeamPageLayer = { ...NO_TEAM_LAYER, intro: "Saved with its layout." };
   assert.deepEqual(
     rows.map((r) => [r.version, r.layer, r.layout]),
-    [["published", layer, snapshot(teamRoles, layer).layout]],
+    [["published", layer, layout]],
   );
 });
