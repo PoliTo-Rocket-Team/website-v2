@@ -133,7 +133,7 @@ const READS: readonly Read[] = [
   // The page streams the Overview by section (issue #397): every section is swept, as it arrives.
   { path: "overviewSections", whole: (answer) => overviewOfSections(answer as OverviewSections) },
   { path: "myAlumni" },
-  { path: "members", args: [[null], ...ALL.map((u) => [IDS.division(u)])] },
+  { path: "members" },
   { path: "findForAdd", args: ALL.map((u) => [IDS.division(u), "person"]) },
   { path: "findPeople", args: [["person"]] },
   { path: "findMoveTargets", args: ALL.map((u) => [IDS.person(u)]) },
@@ -1930,7 +1930,7 @@ describe("Edit details sets a seat's title: the team leader and full access only
     );
     const opening = await openDashboard();
     assert.equal(opening.kind, "open");
-    const roster = await (opening as { data: DashboardData }).data.members(null);
+    const roster = await (opening as { data: DashboardData }).data.members();
     const row = roster.scope === "whole-team" ? roster.people.find((p) => p.id === EXTRA.head) : undefined;
     assert.deepEqual([row?.role, row?.roleLabel], ["head", RENAMED]);
   });
@@ -1960,7 +1960,7 @@ describe("Edit details sets a seat's title: the team leader and full access only
     for (const round of [1, 2]) {
       const opening = await openDashboard();
       assert.equal(opening.kind, "open");
-      const roster = await (opening as { data: DashboardData }).data.members(null);
+      const roster = await (opening as { data: DashboardData }).data.members();
       const title = roster.scope === "whole-team" ? roster.positions.find((p) => p.id === leaderId)?.title : undefined;
       assert.deepEqual(title, { kind: "seat", value: CUSTOM }, `round ${round}: the Role input starts at the stored title`);
       // The Role left as shown: the value the panel starts at.
@@ -2138,7 +2138,7 @@ describe("a rename sets a member's first and last name: leads, heads, the team l
 
   test("Edit details starts at the stored names, and after a rename the public Team page shows the new name", async () => {
     const leader = await open("team leader");
-    const roster = await leader.members(null);
+    const roster = await leader.members();
     const position = roster.scope === "whole-team" ? roster.positions.find((p) => p.id === IDS.person(DM)) : undefined;
     assert.deepEqual(position?.name, { firstName: "Person", lastName: DM });
     const { answer } = await renameAs("team leader", IDS.person(DM), IDS.division(DM));
@@ -2215,7 +2215,7 @@ describe("Confirm join is decided by the Applications area, and the whole team l
   const unitOfJoining = (applicationId: number) => ALL.find((u) => IDS.joining(u) === applicationId);
   /** What the viewer's Members page shows with no select or search: its joining banners and its waiting rows. */
   const shownOf = async (name: string) => {
-    const page = membersModelOf(await (await open(name)).members(null));
+    const page = membersModelOf(await (await open(name)).members());
     return page === null ? null : shownMembers(page, NO_MEMBERS_FILTER);
   };
 
@@ -2291,7 +2291,7 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
     assert.ok(full.length >= 5, "the full-access seats are in the matrix");
     for (const { name } of full) {
       const data = await open(name);
-      const directory = await data.members(null);
+      const directory = await data.members();
       assert.ok(directory.scope === "whole-team", `${name}: the whole team`);
       const { response, body, writes } = await exported(accountOf(name).userId);
       assert.equal(response.status, 200, name);
@@ -2309,7 +2309,7 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
 
   test("a member the page's filters would hide is still in the file", async () => {
     const data = await open("team leader");
-    const directory = await data.members(null);
+    const directory = await data.members();
     assert.ok(directory.scope === "whole-team");
     const person = directory.people.find((p) => p.id === IDS.person(DM))!;
     const filters = [
@@ -2341,7 +2341,7 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
     signInAs(accountOf("team leader").userId);
     const opening = await openDashboard();
     assert.equal(opening.kind, "open");
-    const directory = await (opening as { data: DashboardData }).data.members(null);
+    const directory = await (opening as { data: DashboardData }).data.members();
     assert.ok(directory.scope === "whole-team", "the team leader reads the whole team");
     const lead = directory.people.find((p) => p.id === IDS.lead(DM));
     assert.ok(lead !== undefined, "the DM lead is on the team");
@@ -2539,7 +2539,7 @@ describe("a write made while viewing as someone records both people, from the se
     assert.deepEqual(await teamActions.confirmNda(IDS.join(DM)), { ok: true });
     const joined = (await tableRows(members)).find((m) => m.ndaConfirmedByActingAccount !== null)!;
     assert.deepEqual({ by: joined.ndaConfirmedBy, acting: joined.ndaConfirmedByActingAccount }, { by: teamLeader.memberId, acting: itLead.userId });
-    assert.ok(JSON.stringify(await data.members(null)).includes(asTeamLeader), "Members shows who confirmed the NDA");
+    assert.ok(JSON.stringify(await data.members()).includes(asTeamLeader), "Members shows who confirmed the NDA");
     assert.deepEqual(await loggedWriters(), [{ userId: teamLeader.userId, actingAccountId: itLead.userId }], "every write is logged with the acting account");
   });
 
@@ -2820,7 +2820,7 @@ describe("a renamed role title changes no access, no seat and no headship (issue
     // The team leader's roster and Team tree read them as Aerodynamics' head, under the stored title:
     // the fixture keeps one active head per department, and it is them.
     const leader = await openAfter("team leader", () => rename(name, "Chief of Aerodynamics"));
-    const roster = await leader.members(null);
+    const roster = await leader.members();
     assert.equal(roster.scope, "whole-team");
     const row = roster.scope === "whole-team" ? roster.people.find((p) => p.id === head) : undefined;
     assert.deepEqual([row?.role, row?.roleLabel, row?.departmentIds], ["head", "Chief of Aerodynamics", [IDS.department("MA")]]);
@@ -3043,7 +3043,7 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
     assert.deepEqual(await seatShown(seatId, pm!), { tree: false, row: false, arc: false }, "the seat is gone from both trees and the Team page");
 
     const leader = await openAs("team leader");
-    const roster = await leader.members(null);
+    const roster = await leader.members();
     assert.ok(roster.scope === "whole-team" && roster.people.some((p) => p.id === pm), "they are on the roster");
     assert.ok(!(await leader.alumni()).rows.some((r) => r.key === `m${pm}`), "they are not on Alumni");
     assert.notEqual((await openAs("Project Manager")).viewer.kind, "operations-lead", "the seat's full access ended with it");

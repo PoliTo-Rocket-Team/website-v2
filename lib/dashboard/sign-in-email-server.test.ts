@@ -57,7 +57,7 @@ async function opened(): Promise<{ readonly details: MemberDetails; readonly fir
   signInAs(accountOf("operations lead").userId);
   const opening = await openDashboard();
   assert.equal(opening.kind, "open");
-  const page = membersModelOf(await (opening as { data: DashboardData }).data.members(null));
+  const page = membersModelOf(await (opening as { data: DashboardData }).data.members());
   const actions = page?.everyone.find((p) => p.id === PERSON.id)?.actions;
   assert.ok(actions);
   return { details: actions.person.details, ...actions.position.name };
@@ -486,7 +486,7 @@ describe("Edit details offers the field from one flag the server sets (issues #7
     signInAs(accountOf(viewer).userId);
     const opening = await openDashboard();
     assert.equal(opening.kind, "open");
-    const page = membersModelOf(await (opening as { data: DashboardData }).data.members(null));
+    const page = membersModelOf(await (opening as { data: DashboardData }).data.members());
     assert.ok(page !== null);
     const person = page.everyone.find((p) => p.id === PERSON.id)?.actions?.correctsSignInEmail ?? false;
     const waiting = page.queues.flatMap((q) => q.waiting).find((w) => w.joinId === WAITING.joinId)?.correctsSignInEmail ?? false;

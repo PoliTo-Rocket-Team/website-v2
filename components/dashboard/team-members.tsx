@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { FileSpreadsheet, List, Lock, Pencil, Plus, Table2, UserMinus, UserX } from "lucide-react";
 import type { MemberAliases } from "@/lib/dashboard/alias-request";
 import type { MemberTeamAddresses } from "@/lib/dashboard/team-address";
@@ -9,8 +8,10 @@ import { memberDetailText } from "@/lib/dashboard/details";
 import { mayNotKnowTheyWereAdded, type DivisionHeader, type WaitingPerson } from "@/lib/dashboard/division-members";
 import {
   divisionOptions,
+  membersHeader,
   membersTableRows,
   shownMembers,
+  startingFilter,
   type MemberActions,
   type MemberEntry,
   type MembersModel,
@@ -63,7 +64,9 @@ import { SearchField } from "./search-field";
 // opens the one Edit details panel (board 61g with board 46b's position part,
 // issue #584) for everyone the viewer may edit, on the whole team, a
 // department and a division alike, and Add member adds where the viewer may.
-// Phone, date of birth and gender stay blurred until hover.
+// Phone, date of birth and gender stay blurred until hover. The selects are the
+// page's only filters: there is no division chip row, and the header line
+// follows them (Owner decision, 2026-10-31, issue #903).
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -80,15 +83,19 @@ export function ScopedMembersView({
   teamAddresses,
   editable: writes,
   exportable,
+  askedDivision,
 }: {
   page: MembersModel;
   aliases: MemberAliases;
   teamAddresses: MemberTeamAddresses;
   editable: boolean;
   exportable: boolean;
+  askedDivision: number | null;
 }) {
-  const [department, setDepartment] = useState<string | null>(null);
-  const [divisionId, setDivisionId] = useState<number | null>(null);
+  // The page opens on the viewer's whole scope, or on the division `?division=` names (issue #903).
+  const [start] = useState(() => startingFilter(page, askedDivision));
+  const [department, setDepartment] = useState<string | null>(start.department);
+  const [divisionId, setDivisionId] = useState<number | null>(start.divisionId);
   const [query, setQuery] = useState("");
   // Table first wherever the page offers it (Owner decision, 2026-10-24).
   const [view, setView] = useState<View>(() => (page.tools.includes("table-view") ? "table" : "list"));
@@ -115,6 +122,7 @@ export function ScopedMembersView({
     setListPage(1);
   };
   const divisionName = divisions.find((d) => d.id === shownDivision)?.name ?? null;
+  const header = membersHeader(page, { department, divisionId });
 
   const editPerson = (entry: MemberEntry) => {
     setOpenId(null);
@@ -130,7 +138,7 @@ export function ScopedMembersView({
     <DrawerPage drawerOpen={adding}>
       <PageHeader
         title="Members"
-        intro={page.intro}
+        intro={header.intro}
         phone="bar"
         action={
           add !== null || exportable ? (
@@ -147,26 +155,6 @@ export function ScopedMembersView({
           ) : undefined
         }
       />
-
-      {page.switcher && (
-        <nav aria-label="Your divisions" className="mt-6 flex flex-wrap gap-1.5">
-          {page.switcher.options.map((d) => {
-            const here = d.id === page.switcher?.current;
-            return (
-              <Link
-                key={d.id}
-                href={`/dashboard/members?division=${d.id}`}
-                aria-current={here ? "page" : undefined}
-                className={`flex h-8 items-center whitespace-nowrap rounded-full border px-3 text-[13px] transition-colors duration-300 ease-out ${FOCUS} ${
-                  here ? "border-white-10 bg-white-10 font-semibold text-prt-text" : "border-hairline text-text-2 hover:text-prt-text"
-                }`}
-              >
-                {divisionLabel(d.name)}
-              </Link>
-            );
-          })}
-        </nav>
-      )}
 
       {shown.joining.length > 0 && (
         <ul className="mt-6 flex flex-col gap-2.5">
@@ -208,10 +196,10 @@ export function ScopedMembersView({
         </div>
       </div>
 
-      {page.notice !== null && (
+      {header.notice !== null && (
         <p className="mt-3 flex items-center gap-2 text-[13px] text-prt-muted">
           <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-          {page.notice}
+          {header.notice}
         </p>
       )}
 
