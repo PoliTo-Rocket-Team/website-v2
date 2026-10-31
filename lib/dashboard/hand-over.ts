@@ -96,7 +96,7 @@ export const ONE_SUCCESSOR_FOR_SEAT = "This lead holds a full-access seat. Name 
  * seat follows the role. `outgoing` are the role rows the hand-over ends;
  * when one of them carries a seat, the successor's role row carries the same
  * seat, written in the same batch that ends the outgoing rows, which end with
- * it. So the predecessor holds the seat no more and one active row holds it.
+ * it. So the predecessor holds the seat no more and the successor holds it.
  * `successors` are the people who take the role over: a seat goes to exactly
  * one, so a hand-over with more than one (a division save naming two new
  * leads) is refused rather than guessing, and one with none would drop the

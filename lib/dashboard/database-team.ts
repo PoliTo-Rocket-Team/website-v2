@@ -1047,7 +1047,8 @@ function moveWrites(db: Tx, plan: MovePlan, replacedRoles: readonly ActiveRole[]
     leaves.kind === "division"
       ? db.delete(scopes).where(and(eq(scopes.memberId, personId), eq(scopes.scope, "division"), eq(scopes.divisionId, leaves.divisionId)))
       : db.delete(scopes).where(and(eq(scopes.memberId, personId), eq(scopes.scope, "department"), eq(scopes.deptId, leaves.departmentId), isNull(scopes.divisionId))),
-    // The head they replace steps down before their headship starts: the database keeps one active head per department.
+    // The head they replace steps down before their headship starts. A replace ends that head's row by choice; the database
+    // would take a second active head (epic #861, drizzle/0076).
     // Their head rows already ended in `endRoleRows`, so none is passed to end here.
     ...(plan.replaced === null ? [] : steppingDownWrites(db, { memberId: plan.replaced.memberId, active: replacedRoles }, plan.replaced.steppingDown, [], on)),
     start.kind === "division"
@@ -1361,7 +1362,8 @@ async function writeDivisionPlan(
           .set({ name: plan.name, code: plan.code })
           .where(and(eq(divisions.id, divisionId), isNull(divisions.closedAt))),
     ...(rows.end.length === 0 ? [] : [db.update(roles).set({ leavedAt: on }).where(open(rows.end))]),
-    // Old leads who leave the team end every role before a seat on one moves to a new lead (issue #667).
+    // Old leads who leave the team end every role before a seat on one moves to a new lead. The hand-over ends their rows by
+    // choice, not because the database refuses a second active holder (epic #861, drizzle/0076).
     ...leavers.flatMap((leaver) => leaveTeamWrites(db, leaver, on)),
     ...(rows.toLead.length === 0 ? [] : [db.update(roles).set({ type: "lead" }).where(open(rows.toLead))]),
     ...seatOnto(db, seat, seatRow),
@@ -1686,7 +1688,8 @@ async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): 
   // A team address tied to the team leader is owed a routing item (issue #789).
   const reroutesAsked = await automaticTeamAddressReroutes([handedTo({ kind: "team-leader" }, to)]);
   const on = today();
-  // The old role ends before the new one starts: the database keeps one active team leader (issue #667).
+  // The old role ends before the new one starts. The hand-over ends the holder's row by choice, not because the database
+  // refuses a second active team leader (epic #861, drizzle/0076).
   await runAuditBatch((db) => [
     ...steppingDownWrites(db, { memberId: from, active }, step, seat.map((r) => r.id), on, Number(held?.count ?? 0)),
     db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: seat[0]?.title.trim() || "Team Leader", type: "president", startedAt: on }),
@@ -1758,7 +1761,7 @@ async function writeSeat(roleId: number, on: string, after: (db: Tx) => BatchIte
 /**
  * Change holder on a seat box, in one batch: the holder's seat role ends, the
  * successor's starts with the same type, title and full-access flag, so the
- * flag moves with the seat and one active row holds it; then the holder
+ * flag moves with the seat; then the holder
  * becomes an advisor to the team, whose access rows go, or leaves the team
  * (`steppingDownWrites`). The successor keeps every role they hold.
  */
@@ -1779,7 +1782,8 @@ async function changeSeatHolder(identity: DashboardIdentity, roleId: number, inp
   // A team address tied to the full-access seat is owed a routing item (issue #789).
   const reroutesAsked = await automaticTeamAddressReroutes(seatHandedTo(handed.value));
   const on = today();
-  // The holder's row ends before the successor's starts: the database keeps one active holder per seat (issue #667).
+  // The holder's row ends before the successor's starts. Change holder ends that row by choice, not because the database
+  // refuses a second active holder (epic #861, drizzle/0076).
   // It ends in `writeSeat`'s first statement, so the stepping-down writes end no row of it again.
   return writeSeat(roleId, on, (db) => [
     ...steppingDownWrites(db, { memberId: from, active }, step, [], on),
@@ -1868,7 +1872,8 @@ async function confirmedHandOverWrites(
       },
       ...seatHandedTo(seat),
     ]);
-    // The sender's rows end before the seat lands on the successor's: one active holder per seat (issue #667).
+    // The sender's rows end before the seat lands on the successor's. The hand-over ends them by choice, not because the
+    // database refuses a second active holder (epic #861, drizzle/0076).
     return (db) => [
       ...(promote.length === 0 ? [] : [db.update(roles).set({ type: "lead" }).where(and(inArray(roles.id, promote), isNull(roles.leavedAt)))]),
       ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
@@ -1882,7 +1887,8 @@ async function confirmedHandOverWrites(
   const aliasAsked = await automaticAliasRequests([toId]);
   // A team address tied to this head, or to the seat on the sender's row, is owed a routing item (issue #789).
   const reroutesAsked = await automaticTeamAddressReroutes([handedTo({ kind: "department-head", departmentId: role.departmentId }, toId), ...seatHandedTo(seat)]);
-  // The sender's head row ends before the successor's starts: one active head per department (issue #667).
+  // The sender's head row ends before the successor's starts. The hand-over ends it by choice, not because the database
+  // refuses a second active head (epic #861, drizzle/0076).
   return (db) => [
     ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
     db.insert(roles).values({ memberId: toId, deptId: role.departmentId, divisionId: null, title: defaultHeadTitle(department), type: "head", startedAt: on, ...seatFor(seat, toId) }),

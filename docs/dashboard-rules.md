@@ -58,6 +58,14 @@ An admin column comes later. **Planned**, no issue yet.
 - **Every viewer lands on the Overview** (#317). A non-member with nothing shown sees their name,
   their sign-in address and "No applications right now" (board 50f). Before #317 they landed on
   the My applications empty state (#179).
+- **Every seat may have several active holders** (Owner decision on epic
+  [#861](https://github.com/PoliTo-Rocket-Team/website-v2/issues/861), 2026-10-30): the team
+  leader seat, each full-access seat, each department's head seat and every other team-level
+  seat. Each holder, a co-holder when there are several, has the seat's full rights, exactly as a
+  sole holder has them; there is no per-holder tier. The database refuses no second active holder:
+  migration 0076 dropped the one-holder indexes migration 0062 had added (#667), and changed no
+  row. A hand-over or Change holder ends the holder's own row by choice, not because the database
+  refuses a second one.
 - **Full access** comes from the role alone, with no scope row (Owner decisions, 2026-10-11,
   #238; Owner decision, 2026-10-21, #485). Five seats hold it:
   - the **team leader**: the role of type `president`;
