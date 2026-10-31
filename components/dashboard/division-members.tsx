@@ -78,10 +78,15 @@ export function Private({ children, label }: { children: ReactNode; label: strin
   );
 }
 
-export function MailAvatar() {
+/** The mail mark of someone waiting: the List's row size, or "xs" at the Members Table's avatar size. */
+export function MailAvatar({ size = "md" }: { size?: "md" | "xs" }) {
+  const small = size === "xs";
   return (
-    <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white-10 text-prt-muted">
-      <Mail className="h-3.5 w-3.5" strokeWidth={1.75} />
+    <span
+      aria-hidden
+      className={`flex shrink-0 items-center justify-center rounded-full border border-white-10 text-prt-muted ${small ? "h-5 w-5" : "h-8 w-8"}`}
+    >
+      <Mail className={small ? "h-3 w-3" : "h-3.5 w-3.5"} strokeWidth={1.75} />
     </span>
   );
 }

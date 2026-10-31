@@ -4,7 +4,17 @@ import { departmentMembers } from "./department-members";
 import { NO_NAME } from "./person-name";
 import { NO_MEMBER_DETAILS } from "./details";
 import { divisionMembers, positionsOf, type PersonRecord, type WaitingPerson } from "./division-members";
-import { MEMBERS_TOOLS, membersModelOf, NO_MEMBERS_FILTER, opensWholeTeam, shownMembers, type MemberEntry, type MembersModel } from "./members-view";
+import {
+  MEMBERS_TOOLS,
+  membersModelOf,
+  membersTableRows,
+  NO_MEMBERS_FILTER,
+  opensWholeTeam,
+  shownMembers,
+  type MemberEntry,
+  type MembersModel,
+  type MembersTableRow,
+} from "./members-view";
 import { membershipsOf, type DivisionQueue, type DivisionRole, type Joining, type OrgChart, type RoleBeyondDivisions, type TeamActor } from "./team";
 import type { TeamAddressLine } from "./team-address";
 import { wholeTeamMembers } from "./team-members";
@@ -285,4 +295,32 @@ test("the whole team lists every division's people waiting for their NDA and joi
   assert.deepEqual([dm.waiting.map((w) => w.waiting.joinId), dm.joining.map((j) => j.joining.name)], [[9], ["Paolo Neri"]]);
   // The selects still narrow the whole team's people, not a division's own list.
   assert.deepEqual(dm.people.map((p) => p.name).sort(), ["Davide Russo", "Federica Leone"]);
+});
+
+function tableLabels(rows: readonly MembersTableRow[]): string[] {
+  return rows.map((r) => (r.kind === "waiting" ? `waiting ${r.entry.waiting.email}` : r.person.name));
+}
+
+test("the Table lists the List view's waiting people first, above every member row in any order, and the column filters narrow members only (#890)", () => {
+  const leader = leaderPage();
+  const all = shownMembers(leader, NO_MEMBERS_FILTER);
+  const rows = membersTableRows(all, {});
+  assert.deepEqual(
+    rows.filter((r) => r.kind === "waiting").map((r) => (r.kind === "waiting" ? r.entry : null)),
+    all.waiting,
+  );
+  assert.equal(tableLabels(rows)[0], "waiting elena@x.it");
+  // Member rows in another order than the page's own: the waiting row still leads.
+  const reordered = membersTableRows({ ...all, people: [...all.people].reverse() }, {});
+  assert.deepEqual(tableLabels(reordered), ["waiting elena@x.it", ...[...all.people].reverse().map((p) => p.name)]);
+  // A column filter no member matches leaves the waiting row listed.
+  const leadRole = all.people.find((p) => p.name === "Marco Bianchi")!.roleLabel;
+  const picked = membersTableRows(all, { role: [leadRole] });
+  assert.equal(tableLabels(picked)[0], "waiting elena@x.it");
+  assert.ok(picked.length > 1 && picked.length - 1 < all.people.length);
+  assert.ok(picked.slice(1).every((r) => r.kind === "member" && r.person.roleLabel === leadRole));
+  assert.deepEqual(tableLabels(membersTableRows(all, { role: ["No such role"] })), ["waiting elena@x.it"]);
+  // The search narrows waiting rows exactly as in the List view.
+  const searched = shownMembers(leader, { ...NO_MEMBERS_FILTER, query: "nobody-matches" });
+  assert.deepEqual(membersTableRows(searched, {}), []);
 });

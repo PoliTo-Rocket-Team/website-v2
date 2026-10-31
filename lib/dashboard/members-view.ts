@@ -11,7 +11,7 @@ import {
 } from "./division-members";
 import type { DivisionQueue, Joining, MemberDirectory } from "./team";
 import type { MemberTeamAddresses } from "./team-address";
-import { wholeTeamLine, type TeamMember, type WholeTeamMembers } from "./team-members";
+import { wholeTeamLine, withPicks, type ColumnPicks, type TeamMember, type WholeTeamMembers } from "./team-members";
 import type { ViewerStanding } from "./viewer";
 
 // The Members page as one view for every role that opens it (Owner decision,
@@ -280,13 +280,34 @@ export function matchesWaiting(waiting: Pick<WaitingPerson, "email" | "name">, q
   return q === "" || waiting.email.includes(q) || (waiting.name ?? "").toLowerCase().includes(q);
 }
 
+/** One person waiting for Confirm NDA, with the division they wait for and whether the viewer may act there. */
+export type WaitingEntry = { readonly waiting: WaitingPerson; readonly division: DivisionHeader; readonly editable: boolean };
+
 export type ShownMembers = {
   /** The one division chosen in the select, for every role: its bar shows above the rows. */
   readonly division: MembersUnit["divisions"][number] | null;
   readonly people: readonly MemberEntry[];
-  readonly waiting: readonly { readonly waiting: WaitingPerson; readonly division: DivisionHeader; readonly editable: boolean }[];
+  readonly waiting: readonly WaitingEntry[];
   readonly joining: readonly { readonly joining: Joining; readonly division: string }[];
 };
+
+/** One row of the Members Table: a person waiting for Confirm NDA, or a member. */
+export type MembersTableRow = { readonly kind: "waiting"; readonly entry: WaitingEntry } | { readonly kind: "member"; readonly person: MemberEntry };
+
+/**
+ * The Members Table's rows (issue #890): every waiting person the selects and
+ * the search leave, as in the List view, then the members the column filters
+ * leave. Waiting rows always come first, above every member row, whatever
+ * order the member rows take (Owner decision on #890); the column filters
+ * read member fields a waiting person does not have, so they narrow members
+ * only.
+ */
+export function membersTableRows(shown: Pick<ShownMembers, "people" | "waiting">, picks: ColumnPicks): MembersTableRow[] {
+  return [
+    ...shown.waiting.map((entry): MembersTableRow => ({ kind: "waiting", entry })),
+    ...withPicks(shown.people, picks).map((person): MembersTableRow => ({ kind: "member", person })),
+  ];
+}
 
 /**
  * What the selects and the search leave. A division held as its own data
