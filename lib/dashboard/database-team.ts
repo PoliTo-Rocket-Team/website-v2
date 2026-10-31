@@ -28,6 +28,7 @@ import { deleteUnreferencedAfter } from "@/lib/storage/unreferenced-delete";
 import { alumniMove } from "./alumni-move";
 import { DashboardRefused, type TeamWrites } from "./data";
 import { automaticAliasRequests } from "./database-alias";
+import { readMemberGoogleEmails } from "./database-google-accounts";
 import { readWaitingHandOvers } from "./database-hand-over";
 import { automaticTeamAddressReroutes, readActiveTieRoles } from "./database-team-address";
 import { pageSeatsHandOver, type PageSeatsHandOver } from "./database-team-page";
@@ -455,7 +456,8 @@ async function readDepartmentMembers(
     waiting: Object.fromEntries(perDivision.map((d) => [d.id, d.waiting.map((w) => waitingPerson(identity, w))])),
     joining: Object.fromEntries(perDivision.map((d) => [d.id, d.joining])),
   });
-  return page === null ? NO_MEMBERS : { scope: "department", ...page };
+  if (page === null) return NO_MEMBERS;
+  return { scope: "department", ...page, googleEmails: await readMemberGoogleEmails(page.everyone.map((p) => p.id)) };
 }
 
 /**
@@ -521,7 +523,8 @@ export async function readDivisionMembers(identity: DashboardIdentity): Promise<
     waiting: Object.fromEntries(perDivision.map((d) => [d.id, d.waiting.map((w) => waitingPerson(identity, w))])),
     joining: Object.fromEntries(perDivision.map((d) => [d.id, d.joining])),
   });
-  return page.divisions.length === 0 ? NO_MEMBERS : { scope: "divisions", ...page };
+  if (page.divisions.length === 0) return NO_MEMBERS;
+  return { scope: "divisions", ...page, googleEmails: await readMemberGoogleEmails(page.divisions.flatMap((d) => d.people.map((p) => p.id))) };
 }
 
 /**
@@ -538,7 +541,12 @@ export async function readWholeTeamMembers(identity: DashboardIdentity): Promise
   const [snapshot, actor] = await Promise.all([snapshotRead, readActor(identity, snapshotRead.then((s) => s.org))]);
   const records = recordsOf(snapshot);
   const divisionIds = snapshot.org.divisions.map((d) => d.id);
-  const [perDivision, correctable] = await Promise.all([readPerDivision(identity, divisionIds, snapshot.org), readSignInEmailCorrectable(identity)]);
+  const team = wholeTeamMembers({ records, org: snapshot.org, selfId: identity.memberId });
+  const [perDivision, correctable, googleEmails] = await Promise.all([
+    readPerDivision(identity, divisionIds, snapshot.org),
+    readSignInEmailCorrectable(identity),
+    readMemberGoogleEmails(team.people.map((p) => p.id)),
+  ]);
   return {
     scope: "whole-team",
     positions: positionsOf(records, snapshot.org, actor, identity.memberId),
@@ -549,7 +557,8 @@ export async function readWholeTeamMembers(identity: DashboardIdentity): Promise
       joining: d.joining,
       editable: actor !== null && reachesDivision(actor, d.id, snapshot.org),
     })),
-    ...wholeTeamMembers({ records, org: snapshot.org, selfId: identity.memberId }),
+    ...team,
+    googleEmails,
   };
 }
 

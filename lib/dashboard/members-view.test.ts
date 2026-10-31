@@ -4,8 +4,10 @@ import { departmentMembers } from "./department-members";
 import { NO_NAME } from "./person-name";
 import { NO_MEMBER_DETAILS } from "./details";
 import { positionsOf, reachMembers, type PersonRecord, type WaitingPerson } from "./division-members";
+import { NO_GOOGLE_EMAILS, type MemberGoogleEmails } from "./google-accounts";
 import {
   divisionOptions,
+  googleEmailsOf,
   MEMBERS_TOOLS,
   membersHeader,
   membersModelOf,
@@ -78,14 +80,14 @@ const queues: readonly DivisionQueue[] = [
   { divisionId: 3, waiting: [elena], joining: [paolo], editable: true },
 ];
 
-function leaderPage(): MembersModel {
-  return seatPage(7);
+function leaderPage(googleEmails: MemberGoogleEmails = NO_GOOGLE_EMAILS): MembersModel {
+  return seatPage(7, googleEmails);
 }
 
 // Every full-access seat's whole team, the team leader's included (issue #444): the one Edit details panel's position for each person (issue #584).
-function seatPage(selfId: number): MembersModel {
+function seatPage(selfId: number, googleEmails: MemberGoogleEmails = NO_GOOGLE_EMAILS): MembersModel {
   const positions = positionsOf(records, org, { kind: "team" }, selfId);
-  return membersModelOf({ scope: "whole-team", positions, queues, correctsSignInEmail: [], ...wholeTeamMembers({ records, org, selfId }) })!;
+  return membersModelOf({ scope: "whole-team", positions, queues, correctsSignInEmail: [], ...wholeTeamMembers({ records, org, selfId }), googleEmails })!;
 }
 
 /** Where a row's menu and Edit details may remove someone from; null where the row offers no change. */
@@ -93,14 +95,18 @@ function removalsOf(entry: MemberEntry) {
   return entry.actions?.position.removals ?? null;
 }
 
-function headPage(): MembersModel {
+function headPage(googleEmails: MemberGoogleEmails = NO_GOOGLE_EMAILS): MembersModel {
   const page = departmentMembers({ records, org, departmentId: 1, actor: { kind: "head", departmentIds: [1] }, selfId: 6, waiting: { 1: [elena] }, joining: {} })!;
-  return membersModelOf({ scope: "department", ...page })!;
+  return membersModelOf({ scope: "department", ...page, googleEmails })!;
 }
 
-function leadPage(actor: TeamActor | null = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] }, divisionIds: readonly number[] = [1]): MembersModel {
+function leadPage(
+  actor: TeamActor | null = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] },
+  divisionIds: readonly number[] = [1],
+  googleEmails: MemberGoogleEmails = NO_GOOGLE_EMAILS,
+): MembersModel {
   const page = reachMembers({ records, org, divisionIds, actor, selfId: 1, waiting: { 1: [elena] }, joining: {} });
-  return membersModelOf({ scope: "divisions", ...page })!;
+  return membersModelOf({ scope: "divisions", ...page, googleEmails })!;
 }
 
 test("the team leader, a head and a division lead get the same Members tools, the list view included", () => {
@@ -198,7 +204,14 @@ test("the search matches a held team address and the personal PRT email, not an 
     r.id === 3 ? { ...r, details: { ...NO_MEMBER_DETAILS, prtEmail: "davide.russo@team.example", phone: "+39 333 123 4567" } } : r,
   );
   const positions = positionsOf(withDetails, org, { kind: "team" }, 7);
-  const leader = membersModelOf({ scope: "whole-team", positions, queues, correctsSignInEmail: [], ...wholeTeamMembers({ records: withDetails, org, selfId: 7 }) })!;
+  const leader = membersModelOf({
+    scope: "whole-team",
+    positions,
+    queues,
+    correctsSignInEmail: [],
+    ...wholeTeamMembers({ records: withDetails, org, selfId: 7 }),
+    googleEmails: NO_GOOGLE_EMAILS,
+  })!;
   let nextId = 0;
   const line = (address: string): TeamAddressLine => ({ id: ++nextId, address, purpose: "", movesWith: null, removal: "none" });
   const teamAddresses = {
@@ -225,6 +238,29 @@ test("the search matches a held team address and the personal PRT email, not an 
   assert.deepEqual(names("3331234"), ["Davide Russo"]);
   // Without the address rows, a team address finds no one: only the page's rows carry them.
   assert.deepEqual(shownMembers(leader, { ...NO_MEMBERS_FILTER, query: "logistics" }).people, []);
+});
+
+// Issue #908: a member's linked Google emails, read with the page, are found
+// by the search on every role's page, as a team address is (#800).
+test("the search finds a member by a linked Google email on every role's page, never someone else (#908)", () => {
+  // Lena (2) also signs in with a second Gmail; Davide (3) with a work one.
+  const linked: MemberGoogleEmails = { 2: ["lena.f.private@gmail.com"], 3: ["d.russo@studenti.example"] };
+  const names = (page: MembersModel, query: string) => shownMembers(page, { ...NO_MEMBERS_FILTER, query }).people.map((p) => p.name);
+  for (const [role, page] of [
+    ["team leader", leaderPage(linked)],
+    ["department head", headPage(linked)],
+    ["division lead", leadPage(undefined, undefined, linked)],
+    ["division lead under a Can view grant", leadPage(null, undefined, linked)],
+  ] as const) {
+    assert.deepEqual(names(page, "lena.f.private@gmail.com"), ["Lena Fischer"], role);
+    assert.deepEqual(names(page, "LENA.F.PRIVATE"), ["Lena Fischer"], `${role}: in part, any case`);
+    assert.deepEqual(names(page, "studenti.example"), ["Davide Russo"], role);
+    assert.deepEqual(names(page, "lena@gmail.com"), ["Lena Fischer"], `${role}: the sign-in email still matches`);
+    assert.deepEqual(googleEmailsOf(page, 2), ["lena.f.private@gmail.com"], `${role}: the panels read the same list`);
+    assert.deepEqual(googleEmailsOf(page, 1), [], `${role}: no other Google account, nothing listed`);
+  }
+  // A page read with no linked emails finds no one by them.
+  assert.deepEqual(names(leaderPage(), "lena.f.private"), []);
 });
 
 // Issue #584: one Edit details panel for every viewer who may edit someone.

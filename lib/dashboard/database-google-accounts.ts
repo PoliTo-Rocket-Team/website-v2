@@ -1,7 +1,14 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { betterAuthAccounts, logs } from "@/db/schema";
-import { GOOGLE_ACCOUNT_OPERATIONS, type GoogleAccountEntry, type LinkedGoogleAccount } from "./google-accounts";
+import { betterAuthAccounts, logs, users } from "@/db/schema";
+import {
+  GOOGLE_ACCOUNT_OPERATIONS,
+  memberGoogleEmailsOf,
+  NO_GOOGLE_EMAILS,
+  type GoogleAccountEntry,
+  type LinkedGoogleAccount,
+  type MemberGoogleEmails,
+} from "./google-accounts";
 
 // The database side of linked Google accounts (issue #906, epic #902): the
 // read the "Google accounts" section and the later slices of #902 share, and
@@ -26,6 +33,24 @@ export async function readLinkedGoogleAccounts(userIds: readonly string[]): Prom
 /** One login's linked Google accounts, oldest first and newest last. */
 export async function linkedGoogleAccountsOf(userId: string): Promise<readonly LinkedGoogleAccount[]> {
   return (await readLinkedGoogleAccounts([userId])).get(userId) ?? [];
+}
+
+/**
+ * The linked Google emails beside the sign-in email of each of `memberIds`
+ * (issue #908), from every login that holds their member record. Callers pass
+ * only the members the viewer's Members page lists, whose emails the viewer
+ * already sees.
+ */
+export async function readMemberGoogleEmails(memberIds: readonly number[]): Promise<MemberGoogleEmails> {
+  if (memberIds.length === 0) return NO_GOOGLE_EMAILS;
+  const logins = await getDb()
+    .select({ userId: users.id, memberId: users.member, signInEmail: users.email })
+    .from(users)
+    .where(inArray(users.member, [...new Set(memberIds)]));
+  const accounts = await readLinkedGoogleAccounts(logins.map((l) => l.userId));
+  return memberGoogleEmailsOf(
+    logins.flatMap((l) => (l.memberId === null ? [] : [{ memberId: l.memberId, signInEmail: l.signInEmail, accounts: accounts.get(l.userId) ?? [] }])),
+  );
 }
 
 /**

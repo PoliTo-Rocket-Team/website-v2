@@ -64,6 +64,48 @@ export function mayRemove(accounts: readonly LinkedGoogleAccount[], account: Lin
   return googleAccountRefusal({ kind: "remove", googleId: account.googleId }, { accounts, viewingAs: false }) === null;
 }
 
+// What other viewers see (issue #908) ------------------------------------------------
+
+/**
+ * Each listed member's linked Google emails beside their sign-in email, by
+ * member id: what the member panel and Edit details on Members show and what
+ * the Members search matches. A member with none is absent. Read only for the
+ * members a viewer's Members page lists, so it reaches exactly the viewers
+ * who see member emails, and no one else.
+ */
+export type MemberGoogleEmails = Readonly<Record<number, readonly string[]>>;
+
+export const NO_GOOGLE_EMAILS: MemberGoogleEmails = {};
+
+/** One login of a member, as the read finds it: the email it signs in with and its linked Google accounts. */
+export type MemberLogin = {
+  readonly memberId: number;
+  readonly signInEmail: string;
+  readonly accounts: readonly Pick<LinkedGoogleAccount, "email">[];
+};
+
+/**
+ * The linked Google emails each member signs in with besides their sign-in
+ * email, oldest first, each once in any letter case. The sign-in email itself
+ * stays the one address it always was and is never repeated in the list; an
+ * account whose email is still unknown is left out.
+ */
+export function memberGoogleEmailsOf(logins: readonly MemberLogin[]): MemberGoogleEmails {
+  const out: Record<number, string[]> = {};
+  for (const login of logins) {
+    const listed = out[login.memberId] ?? [];
+    const seen = new Set([login.signInEmail, ...listed].map((e) => e.trim().toLowerCase()));
+    for (const { email } of login.accounts) {
+      const key = email?.trim().toLowerCase() ?? "";
+      if (email === null || key === "" || seen.has(key)) continue;
+      seen.add(key);
+      listed.push(email.trim());
+    }
+    if (listed.length > 0) out[login.memberId] = listed;
+  }
+  return out;
+}
+
 // Coming back from Google ----------------------------------------------------------
 
 /** Better Auth's error code when the added Google account already signs in to another login: the case the merge answers (issue #907). */

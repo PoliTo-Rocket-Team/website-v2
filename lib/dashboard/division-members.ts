@@ -463,19 +463,21 @@ export function headcount(leads: number, all: number): string {
 
 /**
  * The page's search (board 61e: "Search name, email, phone"): every word in
- * the name, an email or the phone. `teamAddresses` are the shared team
- * addresses the person holds (issue #800), so a lead who knows only a team
- * address finds who holds it; a search with no address data passes none.
+ * the name, an email or the phone. `otherEmails` are the other addresses the
+ * page holds for the person: the shared team addresses they hold (issue
+ * #800) and the linked Google emails they sign in with (issue #908), so a
+ * lead who knows only one of those finds who it is; a search with no such
+ * data passes none.
  */
 export function matchesPerson(
   person: Pick<DivisionPerson, "name" | "signInEmail" | "details">,
   query: string,
-  teamAddresses: readonly string[] = [],
+  otherEmails: readonly string[] = [],
 ): boolean {
   const digits = person.details.phone.replace(/\D/g, "");
   const typed = query.replace(/\D/g, "");
   if (typed.length >= 3 && digits.includes(typed)) return true;
-  return matchesQuery([person.name, person.signInEmail, person.details.prtEmail, ...teamAddresses], query);
+  return matchesQuery([person.name, person.signInEmail, person.details.prtEmail, ...otherEmails], query);
 }
 
 // Add member (boards 61h and 61h2)
