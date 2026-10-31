@@ -2450,7 +2450,7 @@ describe("View as: on production only the IT lead seat starts it, on a preview o
     assert.equal(await viewAsRefusal(start(itLead.userId, adminTester), PREVIEW), null, "an admin tester on a preview");
     assert.equal(await viewAsRefusal(start(member.userId, itLead.userId), PREVIEW), null, "the IT lead on a preview");
     // On production an account that holds the IT lead seat may use View as, so nobody views as it. The
-    // database keeps one active IT lead (issue #667), so it is a second account of the IT lead's own member.
+    // fixture keeps one active IT lead, so it is a second account of the IT lead's own member.
     const secondAccount = "it-lead-second-account";
     await addRows(users, [{ id: secondAccount, email: `${secondAccount}@team.test`, firstName: "Viewer", lastName: secondAccount, member: itLead.memberId, createdAt: "2025-10-01" }]);
     await addRows(betterAuthUsers, [{ id: secondAccount, name: secondAccount, email: `${secondAccount}@team.test`, emailVerified: true, role: "user" }]);
@@ -2809,7 +2809,7 @@ describe("a renamed role title changes no access, no seat and no headship (issue
     assert.deepEqual(await teamActions.saveMemberDetails({ kind: "person", id: IDS.person("MA") }, IDS.division("MA"), SAVE), { ok: true });
     assert.ok(isRefusal(await answerOf(() => teamActions.saveMemberDetails({ kind: "person", id: IDS.person(DM) }, IDS.division(DM), SAVE))));
     // The team leader's roster and Team tree read them as Aerodynamics' head, under the stored title:
-    // the fixture keeps one active head per department (issue #667), and it is them.
+    // the fixture keeps one active head per department, and it is them.
     const leader = await openAfter("team leader", () => rename(name, "Chief of Aerodynamics"));
     const roster = await leader.members(null);
     assert.equal(roster.scope, "whole-team");

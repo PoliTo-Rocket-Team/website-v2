@@ -204,10 +204,11 @@ test("0060 and 0061 apply again over a database that already holds them", async 
   assert.equal(constraints.rows[0].count, 8, "each acting-account foreign key exists once");
 });
 
-// One active holder per seat (issue #667) only creates partial unique
-// indexes on `roles`: no column, type or row changes. What the indexes refuse
-// is run in lib/dashboard/roles-one-active-seat-server.test.ts.
+// One active holder per seat (issue #667) only created partial unique
+// indexes on `roles`: no column, type or row changes. 0076 drops them again
+// (epic #861), so in the migrated database no seat index stands.
 const SEAT_TAG = "0062_roles_one_active_seat_holder";
+const SEVERAL_HOLDERS_TAG = "0076_roles_several_seat_holders";
 
 test("0062_roles_one_active_seat_holder.sql only creates indexes, and its header links the issue", () => {
   const sql = readFileSync(resolve(process.cwd(), `drizzle/${SEAT_TAG}.sql`), "utf8");
@@ -221,7 +222,13 @@ test("0062_roles_one_active_seat_holder.sql only creates indexes, and its header
   assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/667/);
 });
 
-test("0062 keeps every existing role row as it was, and applies again over a database that already holds it", async () => {
+/** The `roles_one_active_*` indexes the database holds, by name. */
+async function seatIndexes(db: PGlite): Promise<string[]> {
+  const indexes = await db.query<{ name: string }>(`select indexname as name from pg_indexes where tablename = 'roles' and indexname like 'roles_one_active_%' order by 1`);
+  return indexes.rows.map((r) => r.name);
+}
+
+test("0062 and then 0076 keep every existing role row as it was, each applies again, and the migrated database holds no seat index", async () => {
   const { db, apply } = await databaseBefore(SEAT_TAG);
   await db.exec(`
     set session_replication_role = replica;
@@ -235,9 +242,60 @@ test("0062 keeps every existing role row as it was, and applies again over a dat
   const before = await db.query(`select * from roles order by id`);
   await apply();
   await apply();
+  assert.deepEqual(await seatIndexes(db), ["roles_one_active_department_head", "roles_one_active_full_access_seat", "roles_one_active_team_leader"], "0062 creates them");
+  const drop = readFileSync(resolve(process.cwd(), `drizzle/${SEVERAL_HOLDERS_TAG}.sql`), "utf8");
+  const runDrop = async () => {
+    for (const statement of drop.split("--> statement-breakpoint")) if (statement.trim()) await db.exec(statement);
+  };
+  await runDrop();
+  await runDrop();
   assert.deepEqual((await db.query(`select * from roles order by id`)).rows, before.rows);
-  const indexes = await db.query<{ name: string }>(`select indexname as name from pg_indexes where tablename = 'roles' and indexname like 'roles_one_active_%' order by 1`);
-  assert.deepEqual(indexes.rows.map((r) => r.name), ["roles_one_active_department_head", "roles_one_active_full_access_seat", "roles_one_active_team_leader"]);
+  assert.deepEqual(await seatIndexes(db), [], "0076 drops them");
+});
+
+// Several holders of one seat (epic #861, issue #867). Not additive, by
+// design: it drops the three one-holder indexes of 0062 and nothing else, so
+// it is pinned to exactly those three statements and any further drop or
+// rewrite fails here.
+test("0076_roles_several_seat_holders.sql drops the three 0062 indexes and nothing else, and its header links the epic", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${SEVERAL_HOLDERS_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), [
+    'DROP INDEX IF EXISTS "roles_one_active_team_leader"',
+    'DROP INDEX IF EXISTS "roles_one_active_full_access_seat"',
+    'DROP INDEX IF EXISTS "roles_one_active_department_head"',
+  ]);
+  const statements = sql
+    .split("--> statement-breakpoint")
+    .map((s) => s.replace(/--.*$/gm, "").trim())
+    .filter(Boolean);
+  assert.equal(statements.length, 3, "no other statement");
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/861/);
+});
+
+test("0076 keeps every role row, lets each seat take a second active holder, and applies again over a database that already ran it", async () => {
+  const { db, apply } = await databaseBefore(SEVERAL_HOLDERS_TAG);
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id) values (1), (2), (3), (4);
+    insert into departments (id, name) values (1, 'Aerodynamics');
+    insert into roles (id, member_id, dept_id, title, started_at, leaved_at, type, full_access) values
+      (1, 1, 1, 'Head', '2025-10-01', null, 'head', null),
+      (2, 2, null, 'Team Leader', '2025-10-01', null, 'president', null),
+      (3, 3, null, 'IT Lead', '2025-10-01', null, 'core', 'it_lead');
+    set session_replication_role = origin;
+  `);
+  const before = await db.query(`select * from roles order by id`);
+  await assert.rejects(db.exec(`insert into roles (id, member_id, title, type) values (9, 4, 'Team Leader', 'president')`), Error, "0062 still refuses a second team leader");
+  await apply();
+  await apply();
+  assert.deepEqual((await db.query(`select * from roles order by id`)).rows, before.rows, "every role row is kept");
+  await db.exec(`
+    insert into roles (id, member_id, dept_id, title, type, full_access) values
+      (4, 4, 1, 'Head', 'head', null),
+      (5, 4, null, 'Team Leader', 'president', null),
+      (6, 4, null, 'IT Lead', 'core', 'it_lead');
+  `);
+  assert.deepEqual(await seatIndexes(db), []);
 });
 
 // The notice acting account (issue #628) adds one nullable column to

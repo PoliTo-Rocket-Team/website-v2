@@ -5,7 +5,7 @@ import { actingAccount, signedInUser } from "../session";
 // signed-in account is the one the test names, never a cookie, in a plain
 // session or, after `viewAs`, a View as session whose acting account the
 // session names (issue #605). A matrix viewer who shares a seat with an
-// earlier one takes that seat as the call reads them (issue #667).
+// earlier one takes that seat as the call reads them (`seatSignedIn`).
 
 export type CurrentUser = { readonly id: string; readonly name: string; readonly actingAccountId: string | null };
 
