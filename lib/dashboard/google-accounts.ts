@@ -187,6 +187,9 @@ export type GoogleAccountEntry = {
   readonly email: string | null;
 };
 
+/** One Google account to remove: whose login, which account row, and its email for the unlink's entry. */
+export type GoogleAccountRemoval = Omit<GoogleAccountEntry, "event">;
+
 /** The Activity log's sentence for a link, an unlink or a merge; `email` is the Google account's, or for a merge the merged login's. */
 export function googleAccountSentence(event: GoogleAccountEvent, email: string | null): string {
   if (event === "merge") return email === null ? "Merged another login into their account" : `Merged the login ${email} into their account`;

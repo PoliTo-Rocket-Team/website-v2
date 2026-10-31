@@ -5,14 +5,14 @@ import { customSession } from "better-auth/plugins";
 import { admin } from "better-auth/plugins/admin";
 import { getDb } from "@/db/client";
 import { breakGlassSignInOf, readBreakGlassEmails, type BreakGlassSignIn } from "@/lib/break-glass";
-import { recordGoogleAccountChange } from "@/lib/dashboard/database-google-accounts";
+import { recordGoogleAccountChange, removeGoogleAccount } from "@/lib/dashboard/database-google-accounts";
 import { mergeLogin } from "@/lib/dashboard/database-login-merge";
 import { recordBreakGlassSignIn } from "@/lib/dashboard/database-sign-in";
 import { ensureSiteRow } from "@/lib/dashboard/database-site-row";
 import { recordViewAs, viewAsRefusal } from "@/lib/dashboard/database-view-as";
 import { devTesterPlugin, type TesterDirectory } from "@/lib/dev-tester-plugin";
 import { testerSignInOn } from "@/lib/dev-tester";
-import { googleAccountDatabaseHooks, googleAccountsPlugin, type GoogleAccountLog } from "@/lib/google-accounts-plugin";
+import { googleAccountDatabaseHooks, googleAccountsPlugin, type GoogleAccountStore } from "@/lib/google-accounts-plugin";
 import { loginMergePlugin, type LoginMerger } from "@/lib/login-merge-plugin";
 import { impersonatorOf } from "@/lib/session-user";
 import {
@@ -38,18 +38,21 @@ const trustedOrigins = [
 ].filter((origin): origin is string => Boolean(origin));
 
 export function getAuth() {
-  return createAuth(
-    drizzleAdapter(getDb(), {
-      provider: "pg",
-      camelCase: true,
-      schema: {
-        user: betterAuthUsers,
-        session: betterAuthSessions,
-        account: betterAuthAccounts,
-        verification: betterAuthVerifications,
-      },
-    }),
-  );
+  return createAuth(authDatabase());
+}
+
+/** Better Auth's tables on this repo's database: what getAuth() runs over. */
+export function authDatabase() {
+  return drizzleAdapter(getDb(), {
+    provider: "pg",
+    camelCase: true,
+    schema: {
+      user: betterAuthUsers,
+      session: betterAuthSessions,
+      account: betterAuthAccounts,
+      verification: betterAuthVerifications,
+    },
+  });
 }
 
 /** Who may start View as, read from the database at request time, and where each start and stop is logged (issue #604). */
@@ -73,8 +76,8 @@ export type SiteRows = { readonly ensure: (loginId: string) => Promise<unknown> 
 
 const databaseSiteRows: SiteRows = { ensure: ensureSiteRow };
 
-/** Where each link and unlink of a Google account is logged (issue #906). */
-const databaseGoogleAccounts: GoogleAccountLog = { record: recordGoogleAccountChange };
+/** Where each link of a Google account is logged (issue #906), and each unlink checked, written and logged in one transaction (epic #902). */
+const databaseGoogleAccounts: GoogleAccountStore = { record: recordGoogleAccountChange, remove: removeGoogleAccount };
 
 /** Where an empty second login is judged and merged (issue #907). */
 const databaseLogins: LoginMerger = { merge: mergeLogin };
@@ -85,7 +88,7 @@ export type AuthDependencies = {
   readonly testers: TesterDirectory;
   readonly signIns: SignInLog;
   readonly siteRows: SiteRows;
-  readonly googleAccounts: GoogleAccountLog;
+  readonly googleAccounts: GoogleAccountStore;
   readonly logins: LoginMerger;
 };
 
@@ -122,7 +125,8 @@ export function createAuth(database: BetterAuthOptions["database"], replaced: Pa
     // or My account (issue #906), and signs in with any of them. Google is
     // trusted and each linked account may have its own email; unlinking the
     // last account stays refused (Better Auth's default), and
-    // lib/google-accounts-plugin.ts adds the rest of the rules. Each account
+    // lib/google-accounts-plugin.ts adds the rest of the rules, checking the
+    // last account again inside the delete's own transaction. Each account
     // row keeps its Google account's email, never shown with any token.
     account: {
       accountLinking: {
@@ -188,7 +192,7 @@ export function createAuth(database: BetterAuthOptions["database"], replaced: Pa
         impersonationSessionDuration: VIEW_AS_SESSION_SECONDS,
       }),
       viewAsPlugin(viewAs),
-      googleAccountsPlugin(googleAccounts),
+      googleAccountsPlugin(),
       // A Google account another login holds merges that login in when it
       // is empty (issue #907), over the same Google sign-in and redirect URI.
       loginMergePlugin(logins),

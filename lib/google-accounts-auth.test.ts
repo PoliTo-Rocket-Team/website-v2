@@ -4,7 +4,7 @@ import { memoryAdapter } from "better-auth/adapters/memory";
 import { GOOGLE_ACCOUNT_REFUSAL_MESSAGES, type GoogleAccountEntry } from "./dashboard/google-accounts";
 import { LOGIN_MERGE_REFUSAL_MESSAGES, MERGE_TICKET_STATE_KEY } from "./dashboard/login-merge";
 import { BASE, envRestorer, Jar, NO_SITE_ROWS, ORIGIN, SEAT_DIRECTORY, seededMemoryDb, setEnv, TEST_ENV, type MemoryDb } from "./dev-tester-fixture";
-import { ONLY_THROUGH_GOOGLE_SIGN_IN, type GoogleAccountLog } from "./google-accounts-plugin";
+import { ONLY_THROUGH_GOOGLE_SIGN_IN, type GoogleAccountStore } from "./google-accounts-plugin";
 import type { LoginMerger } from "./login-merge-plugin";
 import { seatOf } from "./seeded-accounts";
 import type { ViewAsGate } from "./view-as-plugin";
@@ -54,6 +54,27 @@ function standInGoogle(accounts: Map<string, Google>): void {
   }) as typeof fetch;
 }
 
+/**
+ * The database's Google account store as the test plays it: a link is logged,
+ * and a removal deletes the row and logs it unless no other Google account
+ * stays on the login, as lib/dashboard/database-google-accounts.ts does in one
+ * transaction (lib/dashboard/google-accounts-unlink-server.test.ts runs that
+ * one on the migrated database, two removals at once included).
+ */
+function standInStore(db: MemoryDb, entries: GoogleAccountEntry[]): GoogleAccountStore {
+  return {
+    record: async (entry) => void entries.push(entry),
+    remove: async (removal) => {
+      const rows = db.account.filter((a) => a.userId === removal.userId && a.providerId === "google");
+      if (!rows.some((a) => a.id === removal.accountRowId)) return "not-yours";
+      if (rows.length < 2) return "last";
+      db.account = db.account.filter((a) => a.id !== removal.accountRowId);
+      entries.push({ event: "unlink", ...removal });
+      return null;
+    },
+  };
+}
+
 /** A merge the stand-in merger was asked for (issue #907). */
 type MergeRequest = Parameters<LoginMerger["merge"]>[0];
 
@@ -86,8 +107,8 @@ async function setUp() {
   ]);
   standInGoogle(google);
   const entries: GoogleAccountEntry[] = [];
-  const log: GoogleAccountLog = { record: async (entry) => void entries.push(entry) };
   const db = seededMemoryDb();
+  const log = standInStore(db, entries);
   const merges: MergeRequest[] = [];
   const holdsMember = new Set<string>();
   const { createAuth } = await import("./auth");

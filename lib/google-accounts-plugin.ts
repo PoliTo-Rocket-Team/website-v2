@@ -6,6 +6,7 @@ import {
   type GoogleAccountChange,
   type GoogleAccountEntry,
   type GoogleAccountRefusal,
+  type GoogleAccountRemoval,
   type GoogleAccountsState,
   type LinkedGoogleAccount,
 } from "@/lib/dashboard/google-accounts";
@@ -17,12 +18,17 @@ import { impersonatorOf } from "@/lib/session-user";
 //
 //   POST /api/auth/link-social      asks the rules in
 //   POST /api/auth/unlink-account   lib/dashboard/google-accounts.ts first and
-//                                   refuses before Better Auth acts; an unlink
-//                                   that succeeds is logged once.
+//                                   refuses before Better Auth acts.
 //   account rows written            take the Google account's email from the
 //                                   id token Google sent; a Google account
 //                                   added to a login that already had one is
 //                                   logged once as a link.
+//   the account row an unlink       is removed by the store instead, which
+//   deletes                         checks again that another Google account
+//                                   stays, in the same database transaction
+//                                   as the delete and its log entry; two
+//                                   removals at once cannot both pass a check
+//                                   read before either deleted (epic #902).
 //
 // Both go through the same redirect URI sign-in uses,
 // `<BETTER_AUTH_URL>/api/auth/callback/google`, so Google's console needs no
@@ -32,8 +38,12 @@ const LINK = "/link-social";
 const UNLINK = "/unlink-account";
 const GOOGLE = "google";
 
-/** Where each link and unlink is logged. */
-export type GoogleAccountLog = { readonly record: (entry: GoogleAccountEntry) => Promise<void> };
+/** Where each link is logged, and where an unlink is checked, written and logged as one. */
+export type GoogleAccountStore = {
+  readonly record: (entry: GoogleAccountEntry) => Promise<void>;
+  /** Removes the account unless it is the login's last Google account, or no longer on it; answers null when removed, else why not. */
+  readonly remove: (removal: GoogleAccountRemoval) => Promise<GoogleAccountRefusal | null>;
+};
 
 /** An account row as Better Auth hands it over, with the email column this repo adds. */
 type StoredAccount = { readonly id: string; readonly providerId: string; readonly accountId: string; readonly email?: unknown };
@@ -78,29 +88,6 @@ function withEmail<T extends { readonly idToken?: unknown }>(data: T): { data: T
 
 type AccountHooks = NonNullable<NonNullable<BetterAuthOptions["databaseHooks"]>["account"]>;
 
-/**
- * The `account` database hooks: each row Better Auth writes with an id token
- * (a sign-up, a link, every sign-in after) takes the email that token names,
- * and a Google account added to a login that already holds one is logged as a
- * link. A login's first account is its sign-up, never a link.
- */
-export function googleAccountDatabaseHooks(log: GoogleAccountLog): AccountHooks {
-  return {
-    create: {
-      before: async (account) => withEmail(account),
-      after: async (account, ctx) => {
-        if (account.providerId !== GOOGLE || !ctx) return;
-        const linked = googleAccountsIn(await ctx.context.internalAdapter.findAccounts(account.userId));
-        if (linked.length < 2) return;
-        await log.record({ event: "link", userId: account.userId, accountRowId: account.id, email: emailOf(account) });
-      },
-    },
-    update: {
-      before: async (data) => withEmail(data),
-    },
-  };
-}
-
 /** The status each refusal answers with. */
 const REFUSAL_STATUS: Readonly<Record<GoogleAccountRefusal, "FORBIDDEN" | "BAD_REQUEST">> = {
   "view-as": "FORBIDDEN",
@@ -108,23 +95,59 @@ const REFUSAL_STATUS: Readonly<Record<GoogleAccountRefusal, "FORBIDDEN" | "BAD_R
   last: "BAD_REQUEST",
 };
 
-/** The unlink a before hook let through, carried to the after hook that logs it. */
-type Removing = { readonly googleAccountRemoving?: GoogleAccountEntry };
+/** The answer a refused change gets, in the rules' own words. */
+function refused(refusal: GoogleAccountRefusal): APIError {
+  return new APIError(REFUSAL_STATUS[refusal], { message: GOOGLE_ACCOUNT_REFUSAL_MESSAGES[refusal] });
+}
+
+/**
+ * The `account` database hooks: each row Better Auth writes with an id token
+ * (a sign-up, a link, every sign-in after) takes the email that token names,
+ * and a Google account added to a login that already holds one is logged as a
+ * link. A login's first account is its sign-up, never a link. The Google
+ * account an unlink deletes is removed by the store, which checks again, in
+ * the delete's own transaction, that the login keeps another; Better Auth's
+ * own delete then does not run.
+ */
+export function googleAccountDatabaseHooks(store: GoogleAccountStore): AccountHooks {
+  return {
+    create: {
+      before: async (account) => withEmail(account),
+      after: async (account, ctx) => {
+        if (account.providerId !== GOOGLE || !ctx) return;
+        const linked = googleAccountsIn(await ctx.context.internalAdapter.findAccounts(account.userId));
+        if (linked.length < 2) return;
+        await store.record({ event: "link", userId: account.userId, accountRowId: account.id, email: emailOf(account) });
+      },
+    },
+    update: {
+      before: async (data) => withEmail(data),
+    },
+    delete: {
+      before: async (account, ctx) => {
+        if (ctx?.path !== UNLINK || account.providerId !== GOOGLE) return;
+        const refusal = await store.remove({ userId: account.userId, accountRowId: account.id, email: emailOf(account) });
+        if (refusal !== null) throw refused(refusal);
+        return false;
+      },
+    },
+  };
+}
 
 type HookContext = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
 
 /** The signed-in login's accounts and session as the rules read them, or null when no one is signed in (the endpoint's own check refuses then). */
-async function stateOf(ctx: HookContext): Promise<{ readonly userId: string; readonly state: GoogleAccountsState } | null> {
+async function stateOf(ctx: HookContext): Promise<GoogleAccountsState | null> {
   const session = await getSessionFromCtx(ctx);
   if (session === null) return null;
   const accounts = googleAccountsIn(await ctx.context.internalAdapter.findAccounts(session.user.id));
-  return { userId: session.user.id, state: { accounts, viewingAs: impersonatorOf(session.session) !== null } };
+  return { accounts, viewingAs: impersonatorOf(session.session) !== null };
 }
 
 /** Refuses the change with the rules' own words, when the rules refuse it. */
 function refuseUnless(change: GoogleAccountChange, state: GoogleAccountsState): void {
   const refusal = googleAccountRefusal(change, state);
-  if (refusal !== null) throw new APIError(REFUSAL_STATUS[refusal], { message: GOOGLE_ACCOUNT_REFUSAL_MESSAGES[refusal] });
+  if (refusal !== null) throw refused(refusal);
 }
 
 const ONLY_GOOGLE = "Only a Google account can be added or removed.";
@@ -140,7 +163,7 @@ function carriesIdToken(body: unknown): boolean {
   return typeof body === "object" && body !== null && (body as { readonly idToken?: unknown }).idToken != null;
 }
 
-export function googleAccountsPlugin(log: GoogleAccountLog) {
+export function googleAccountsPlugin() {
   return {
     id: "google-accounts",
     hooks: {
@@ -148,38 +171,23 @@ export function googleAccountsPlugin(log: GoogleAccountLog) {
         {
           matcher: (ctx) => ctx.path === LINK,
           handler: createAuthMiddleware(async (ctx) => {
-            const signedIn = await stateOf(ctx);
-            if (signedIn === null) return;
+            const state = await stateOf(ctx);
+            if (state === null) return;
             if (ctx.body?.provider !== GOOGLE) throw new APIError("BAD_REQUEST", { message: ONLY_GOOGLE });
             if (carriesIdToken(ctx.body)) throw new APIError("BAD_REQUEST", { message: ONLY_THROUGH_GOOGLE_SIGN_IN });
-            refuseUnless({ kind: "link" }, signedIn.state);
+            refuseUnless({ kind: "link" }, state);
           }),
         },
         {
           matcher: (ctx) => ctx.path === UNLINK,
           handler: createAuthMiddleware(async (ctx) => {
-            const signedIn = await stateOf(ctx);
-            if (signedIn === null) return;
+            const state = await stateOf(ctx);
+            if (state === null) return;
             if (ctx.body?.providerId !== GOOGLE) throw new APIError("BAD_REQUEST", { message: ONLY_GOOGLE });
             // An unlink names the account: Better Auth would otherwise take the first Google account it finds.
             const googleId = typeof ctx.body?.accountId === "string" ? ctx.body.accountId : "";
-            refuseUnless({ kind: "remove", googleId }, signedIn.state);
-            const account = signedIn.state.accounts.find((a) => a.googleId === googleId);
-            if (account === undefined) return;
-            const removing: Removing = {
-              googleAccountRemoving: { event: "unlink", userId: signedIn.userId, accountRowId: account.id, email: account.email },
-            };
-            return { context: removing };
-          }),
-        },
-      ],
-      after: [
-        {
-          matcher: (ctx) => ctx.path === UNLINK,
-          handler: createAuthMiddleware(async (ctx) => {
-            const removing = (ctx as Removing).googleAccountRemoving;
-            if (removing === undefined || ctx.context.returned instanceof APIError) return;
-            await log.record(removing);
+            // A first answer from the list read now; the store checks again as it deletes.
+            refuseUnless({ kind: "remove", googleId }, state);
           }),
         },
       ],
