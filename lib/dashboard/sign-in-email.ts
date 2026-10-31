@@ -12,8 +12,9 @@ import type { ViewerStanding } from "./viewer";
 //
 // - When a sign-in account holds the member's user row, or another login
 //   with no member record already holds the new address, the member record
-//   moves off that row (`RecordMove`). The row it leaves is detached, and a
-//   login on it is signed out at once: every session of it ends.
+//   moves off that row (`RecordMove`). The row it leaves is detached and
+//   emptied of the member's profile (Owner decision, 2026-10-31, issue
+//   #881), and a login on it is signed out at once: every session of it ends.
 // - Otherwise the row keeps the record and takes the new address, so the
 //   person lands on it at their first sign-in.
 //
@@ -95,7 +96,9 @@ export type RecordDestination = { readonly kind: "login"; readonly userId: strin
 
 /**
  * A member record moving off the user row `from` because its sign-in email
- * changed. The row it leaves no longer holds the record. When a sign-in
+ * changed. The row it leaves no longer holds the record, and the member's
+ * profile fields on it are cleared, so it is left an empty account (issue
+ * #881); anything else it holds, applications included, stays. When a sign-in
  * account holds that row, the row stays open as that login's own and every
  * session of it ends; when none does, the row is closed (`deleted_at`),
  * never deleted.

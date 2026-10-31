@@ -3,12 +3,12 @@ import "./access-matrix/install";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import * as teamActions from "@/app/dashboard/team-actions";
-import { applications, betterAuthSessions, betterAuthUsers, members, teamJoins, users } from "@/db/schema";
+import { applicationFiles, applications, betterAuthSessions, betterAuthUsers, members, teamJoins, users } from "@/db/schema";
 import { addRows, changeRows, databaseWrites, logRowsSinceSeed, tableRows, testDb, writesByTransaction } from "./access-matrix/test-database";
 import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 import type { DashboardData } from "./data";
-import type { MemberDetails } from "./details";
+import { NO_DETAILS, type MemberDetails } from "./details";
 import type { DetailsTarget, LandedSent } from "./division-members";
 import { membersModelOf } from "./members-view";
 import { openDashboard } from "./open";
@@ -85,6 +85,61 @@ async function openSessions(userId: string): Promise<void> {
 }
 
 const sessionOwners = async () => (await tableRows(betterAuthSessions)).map((s) => s.userId).sort();
+
+/** The member's profile on the user row the record leaves, every field set (issue #881). */
+const PROFILE = {
+  firstName: "Person",
+  lastName: "MA",
+  origin: "Turin",
+  levelOfStudy: "Bachelor",
+  linkedin: "linkedin.com/in/person-ma",
+  politoId: "312456",
+  program: "Aerospace Engineering",
+  phone: "+39 333 111 1111",
+  gender: "Male",
+  referralSource: "A friend",
+  country: "Italy",
+  dateOfBirth: "2003-03-14",
+} as const;
+type ProfileField = keyof typeof PROFILE;
+const PROFILE_FIELDS = Object.keys(PROFILE) as ProfileField[];
+
+/** The profile fields of `userId`'s row as stored, or undefined when no row has that id. */
+async function profileOf(userId: string): Promise<Record<ProfileField, unknown> | undefined> {
+  const row = await userRow(userId);
+  return row === undefined ? undefined : (Object.fromEntries(PROFILE_FIELDS.map((key) => [key, row[key]])) as Record<ProfileField, unknown>);
+}
+
+const EMPTY_PROFILE = Object.fromEntries(PROFILE_FIELDS.map((key) => [key, null])) as Record<ProfileField, null>;
+
+/** An application of the person's row's own, with a CV file, which no change of the sign-in email touches. */
+const OWN_APPLICATION = 9_881;
+const OWN_FILE = 9_881;
+
+/** Gives `userId`'s row an application of its own, with its CV file. */
+async function addOwnApplication(userId: string): Promise<void> {
+  await addRows(applicationFiles, [
+    { id: OWN_FILE, pathname: "applications/cv-own.pdf", originalFilename: "cv-own.pdf", fileHash: "hash-cv-own", fileSize: 1, uploadedAt: new Date().toISOString(), userId },
+  ]);
+  await addRows(applications, [
+    { id: OWN_APPLICATION, applyPositionId: IDS.position("MA"), userId, cvFileId: OWN_FILE, cvName: "cv-own.pdf", status: "received", statusKey: "new", customAnswers: [{ question: "Why?", answer: "own" }] },
+  ]);
+}
+
+/** Who holds the own application and its file, and which file the application names. */
+async function ownApplicationOf(): Promise<{ application: unknown; file: unknown; cv: unknown }> {
+  const application = (await tableRows(applications)).find((a) => a.id === OWN_APPLICATION);
+  const file = (await tableRows(applicationFiles)).find((f) => f.id === OWN_FILE);
+  return { application: application?.userId, file: file?.userId, cv: application?.cvFileId };
+}
+
+/** "Your details" as `userId` reads them on My account. */
+async function yourDetailsOf(userId: string) {
+  signInAs(userId);
+  const opening = await openDashboard();
+  assert.equal(opening.kind, "open");
+  return (await (opening as { data: DashboardData }).data.myAccount())?.details;
+}
 
 /** How the dashboard reads `userId` now: their standing's kind. */
 async function standingOf(userId: string): Promise<string> {
@@ -208,10 +263,15 @@ describe("a change is checked before anything is written (issue #741)", () => {
 });
 
 describe("a stranger signed in on a member's wrong stored address loses the record on Save (issue #864)", () => {
-  /** A fresh database where a stranger signed in with the person's wrong stored address and holds their row, with sessions open. */
+  /**
+   * A fresh database where a stranger signed in with the person's wrong
+   * stored address and holds their row, with the member's whole profile on
+   * it, an application of the login's own and sessions open.
+   */
   async function seededStranger(): Promise<void> {
     await seededSignedIn(PERSON_USER);
-    await changeRows(users, { id: PERSON_USER }, { phone: "+39 333 111 1111", country: "Italy", access: ["members"] });
+    await changeRows(users, { id: PERSON_USER }, { ...PROFILE, access: ["members"] });
+    await addOwnApplication(PERSON_USER);
     await openSessions(PERSON_USER);
     assert.equal(await standingOf(PERSON_USER), "member", "the stranger reaches the member's dashboard");
   }
@@ -227,16 +287,18 @@ describe("a stranger signed in on a member's wrong stored address loses the reco
     const [moved] = holders;
     assert.equal(moved.email, CORRECTED);
     assert.equal(await signInAccounts().then((a) => a.some((x) => x.id === moved.id)), false, "no sign-in account holds the new row yet");
-    assert.deepEqual([moved.firstName, moved.lastName, moved.phone, moved.country], ["Person", "MA", "+39 333 111 1111", "Italy"], "the record's details come along");
-    assert.equal(moved.gender, "Female", "a field the viewer changed is written");
+    assert.deepEqual(await profileOf(String(moved.id)), { ...PROFILE, gender: "Female" }, "the record's whole profile comes along, with the field the viewer changed");
     assert.deepEqual(moved.access, ["members"]);
     const stranger = await userRow(PERSON_USER);
     assert.equal(stranger?.member, null, "the stranger's row no longer holds the record");
     assert.equal(stranger?.deletedAt, null, "the stranger's own login stays open");
     assert.equal(stranger?.email, "person-ma@mail.test", "the stranger's address is left as it is");
+    assert.deepEqual(await profileOf(PERSON_USER), EMPTY_PROFILE, "the stranger's row is emptied of the member's profile (issue #881)");
+    assert.deepEqual(await ownApplicationOf(), { application: PERSON_USER, file: PERSON_USER, cv: OWN_FILE }, "the stranger's own application and its file stay");
     assert.deepEqual(await sessionOwners(), ["bystander"], "every session of the stranger ended; nobody else's");
     assert.deepEqual(await signInAccounts(), accounts, "better_auth.user reads back unchanged");
     assert.equal(await standingOf(PERSON_USER), "non-member", "on any later sign-in the stranger has no member record");
+    assert.deepEqual(await yourDetailsOf(PERSON_USER), NO_DETAILS, "the stranger's Your details read none of the member's");
     await addRows(betterAuthUsers, [{ id: "real-person", name: "Person MA", email: CORRECTED, emailVerified: true }]);
     assert.equal((await userRow("real-person"))?.member, MEMBER, "the person lands on their record at their first sign-in");
     assert.equal(await standingOf("real-person"), "member");
@@ -259,12 +321,20 @@ describe("a stranger signed in on a member's wrong stored address loses the reco
     assert.equal(login?.country, "Italy", "an empty field takes the record row's value");
     assert.equal(login?.gender, "Female", "a field the viewer changed is written");
     assert.deepEqual(login?.access, ["members"], "the grant the login lacked comes with the record");
+    assert.deepEqual(
+      await profileOf(LOGIN),
+      { ...PROFILE, firstName: "Applicant", lastName: "appl-ma", phone: "appl-ma-phone", gender: "Female" },
+      "every field the login had empty takes the record row's value",
+    );
     assert.deepEqual((await tableRows(applications)).filter((a) => a.userId === LOGIN).map((a) => a.id), owned, "its applications stay its own");
     const stranger = await userRow(PERSON_USER);
     assert.equal(stranger?.member, null);
     assert.equal(stranger?.deletedAt, null);
+    assert.deepEqual(await profileOf(PERSON_USER), EMPTY_PROFILE, "the stranger's row is emptied of the member's profile (issue #881)");
+    assert.deepEqual(await ownApplicationOf(), { application: PERSON_USER, file: PERSON_USER, cv: OWN_FILE }, "the stranger's own application and its file stay");
     assert.deepEqual(await sessionOwners(), ["bystander"], "every session of the stranger ended; nobody else's");
     assert.equal(await standingOf(PERSON_USER), "non-member");
+    assert.deepEqual(await yourDetailsOf(PERSON_USER), NO_DETAILS, "the stranger's Your details read none of the member's");
     assert.equal(await standingOf(LOGIN), "member", "the login reaches the member's dashboard");
   });
 });
@@ -300,6 +370,7 @@ describe("an empty login takes the record off a row nobody signed in on (issues 
     assert.ok(old !== undefined, "the old row is not deleted");
     assert.equal(old.member, null, "the old row no longer holds the record");
     assert.notEqual(old.deletedAt, null, "the old row, which no sign-in held, is closed");
+    assert.deepEqual(await profileOf(PERSON_USER), EMPTY_PROFILE, "and emptied of the member's profile (issue #881)");
     assert.equal((await writesByTransaction()).length, 1, "one batch");
     const logged = (await logRowsSinceSeed()).filter((r) => r.tableName === "users");
     assert.deepEqual(new Set(logged.map((r) => r.recordId)), new Set([LOGIN_USER, PERSON_USER]));
