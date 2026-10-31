@@ -172,8 +172,8 @@ for (const { stored, shows, label } of CASES) {
     const structure = (await data.teamStructure())!;
     const { createElement } = await import("react");
     const { TeamLeaderDrawer } = await import("@/components/dashboard/team-leader-drawer");
-    const ui = await mount(async () => createElement(TeamLeaderDrawer, { open: true, leader: structure.leader!, onClose: () => {} }));
-    assert.deepEqual(circlesBeside(structure.leader!.name), [shows], "the current team leader");
+    const ui = await mount(async () => createElement(TeamLeaderDrawer, { open: true, leader: structure.leader!, addsHolder: true, onClose: () => {} }));
+    assert.deepEqual(circlesBeside(structure.leader!.handsOver!.name), [shows], "the current team leader");
     const row = await ui.find(PICKED.name);
     assert.equal(drawnBy(row.querySelector(CIRCLE)!), shows, "the picker's row");
     await ui.click(row);
@@ -184,17 +184,18 @@ for (const { stored, shows, label } of CASES) {
 
   test(`Change holder: the holder, the person picked and the holder they replace; ${label}`, async () => {
     await seedFixture();
-    const holderId = (await (await signedIn(LEADER.userId)).teamStructure())!.board[0].holder.id;
+    const holderId = (await (await signedIn(LEADER.userId)).teamStructure())!.board[0].holders[0].id;
     await seedWith(stored, [holderId, PICKED.id]);
     const structure = (await (await signedIn(LEADER.userId)).teamStructure())!;
     const seat = structure.board[0];
+    const [holder] = seat.holders;
     const { createElement } = await import("react");
     const { SeatDrawer } = await import("@/components/dashboard/seat-drawers");
     const ui = await mount(async () => createElement(SeatDrawer, { target: { kind: "change", roleId: seat.roleId }, structure, onClose: () => {} }));
-    assert.deepEqual(circlesBeside(seat.holder.name), [shows], "who holds the seat");
+    assert.deepEqual(circlesBeside(holder.name), [shows], "who holds the seat");
     await ui.press("Change holder");
     await ui.click(await ui.find(PICKED.name));
-    assert.deepEqual(circlesBeside(seat.holder.name), [shows], "the holder replaced");
+    assert.deepEqual(circlesBeside(holder.name), [shows], "the holder replaced");
     assert.deepEqual(circlesBeside(PICKED.name), [shows], "the holder picked");
     noEmptyImage();
     await ui.unmount();

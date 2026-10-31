@@ -275,7 +275,7 @@ test("a page seat whose seat has no holder is not drawn in the editor, survives 
   const index = record.arc.findIndex((s) => s.binding.kind === "full-access-seat" && s.binding.seat === "project-manager");
   assert.notEqual(index, -1);
   const seat = record.arc[index];
-  const holder = roles.people.find((p) => p.placement.role === "board" && p.placement.seat.flag === "project-manager")!;
+  const holder = roles.people.find((p) => p.placement.role === "board" && p.placement.seat.fullAccess === "project-manager")!;
   const vacant = without(holder.id);
 
   let teamRoles: TeamRoles = vacant;

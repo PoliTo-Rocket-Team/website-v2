@@ -11,6 +11,7 @@ import { addRows, changeRows, tableRows, testDb } from "@/lib/dashboard/access-m
 import { seeded } from "@/lib/dashboard/access-matrix/whole-seed";
 import type { DashboardData } from "@/lib/dashboard/data";
 import { openDashboard } from "@/lib/dashboard/open";
+import { boardFlagOf } from "@/lib/dashboard/team";
 import { queryTeamSnapshot, teamRolesOf } from "@/lib/dashboard/team-snapshot";
 import { teamPageData } from "./team-data";
 import { NO_TEAM_LAYER, type TeamPageLayer } from "./team-layer";
@@ -97,7 +98,7 @@ test("adding, removing, moving or reordering a seat in the Team tree leaves the 
     { memberId: coreOnly[0].memberId, title: coreOnly[0].title, startedAt: "2026-10-01", type: "core" },
     { memberId: coreOnly[1].memberId, title: coreOnly[1].title, startedAt: ROLE_DAY, type: "core" },
   ]);
-  const unflagged = async () => (await boardArc()).filter((seat) => seat.flag === null).map((seat) => seat.roleId);
+  const unflagged = async () => (await boardArc()).filter((seat) => boardFlagOf(seat.fullAccess) === null).map((seat) => seat.roleId);
   const [first, second] = await unflagged();
   assert.ok(first !== undefined && second !== undefined, "the Team tree holds two unflagged team-level seats");
   assert.deepEqual(seatsOf(await teamPageData()), seatsOf(before));

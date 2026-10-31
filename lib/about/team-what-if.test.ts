@@ -89,7 +89,7 @@ test("the role build fills at most five carousel slides of up to ten heads", () 
   });
   const people: TeamPerson[] = [
     person(1, "Leader", { role: "team-leader", memberships: NO_MEMBERSHIPS }),
-    person(2, "Manager", { role: "board", seat: { roleId: 2, title: "Project Manager", flag: "project-manager", since }, memberships: NO_MEMBERSHIPS }),
+    person(2, "Manager", { role: "board", seat: { roleId: 2, title: "Project Manager", fullAccess: "project-manager", type: "core", since }, memberships: NO_MEMBERSHIPS }),
     ...range(52).map((d) =>
       person(100 + d, `Head ${String(d).padStart(2, "0")}`, {
         role: "head",

@@ -33,8 +33,8 @@ const TEAM_LEADER = accountOf("team leader").userId;
 const activeRows = async () => (await tableRows(roles)).filter((r) => r.leavedAt === null);
 
 /**
- * How many active rows carry the seat: one, since the database keeps one
- * active holder (drizzle/0062), so a hand-over is checked to add none: the
+ * How many active rows carry the seat. The database takes several holders
+ * (drizzle/0077, epic #861), so a hand-over is checked to add none: the
  * successor's row carries it only as the predecessor's row ends.
  */
 const holders = async (seat: FlaggedSeat) => (await activeRows()).filter((r) => r.fullAccess === FLAG_OF_SEAT[seat]).length;
