@@ -15,7 +15,8 @@ import {
   withPersonFields,
 } from "./team-page-edit";
 import type { TeamPageContent } from "./team-page-stored";
-import { teamPageFromRoles } from "./team-roles";
+import { teamPageFromRoles, type TeamRoles } from "./team-roles";
+import type { DepartmentKind } from "@/lib/dashboard/team";
 
 // The Team page editor's Edit person panel (board 80b, issues #284 and #851):
 // the fields make a page seat with only the overrides that differ from the
@@ -85,6 +86,44 @@ test("Reset to team counts an edit whenever the arc, the department blocks or a 
   for (const edited of reordered) {
     assert.notDeepEqual(pageOf({ layout: edited, text }), pageOf({ layout, text }), "Reset to team would change the page");
     assert.ok(editCount(roles, edited, layout) > 0);
+  }
+});
+
+test("Reset to team counts an edit when the Team tree changed a department's kind since the layout was saved", () => {
+  const block = layout.departments.find((b) => b.leads.length > 0 && b.head.binding.kind === "department-head")!;
+  const departmentId = block.head.binding.kind === "department-head" ? block.head.binding.departmentId : -1;
+  const flip: DepartmentKind = block.kind === "technical" ? "operations" : "technical";
+  const changed: TeamRoles = {
+    ...roles,
+    org: { ...roles.org, departments: roles.org.departments.map((d) => (d.id === departmentId ? { ...d, kind: flip } : d)) },
+  };
+  const record = snapshot(changed, NO_TEAM_LAYER).layout;
+  const page = (of: TeamLayout) => editedTeamPage(changed, team, { layout: of, text }).page;
+  assert.notDeepEqual(page(layout), page(record), "Reset to team would move the block and redraw its places");
+  assert.deepEqual(
+    record,
+    { ...layout, departments: layout.departments.map((b) => (b.id === block.id ? { ...b, kind: flip } : b)) },
+    "the kind is all that differs",
+  );
+  assert.equal(editCount(changed, layout, record), 1);
+  assert.equal(editCount(changed, record, record), 0);
+});
+
+test("Reset to team counts a place whose overrides differ from the rebuilt layout's, and none for the same overrides", () => {
+  const block = layout.departments[0];
+  const record: TeamLayout = {
+    ...layout,
+    arc: layout.arc.map((seat, i) => (i === 0 ? { ...seat, overrides: { role: "Captain" } } : seat)),
+    departments: layout.departments.map((b) => (b.id === block.id ? { ...b, head: { ...b.head, overrides: { role: "Chief" } } } : b)),
+  };
+  assert.equal(editCount(roles, record, record), 0, "the same overrides as the rebuilt layout are nothing to reset");
+  const plain: TeamLayout[] = [
+    { ...record, arc: layout.arc },
+    { ...record, departments: layout.departments },
+  ];
+  for (const edited of plain) {
+    assert.notDeepEqual(pageOf({ layout: edited, text }), pageOf({ layout: record, text }), "Reset to team would change the page");
+    assert.equal(editCount(roles, edited, record), 1);
   }
 });
 

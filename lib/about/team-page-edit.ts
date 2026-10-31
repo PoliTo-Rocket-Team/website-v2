@@ -358,11 +358,18 @@ export function introBlockError(base: TeamPage, text: TeamPageText): string | un
   return figureErrors(figuresOf(base, text)).some((e) => Object.keys(e).length > 0) ? "Figures: fix the highlighted fields." : undefined;
 }
 
-/** How many of `seats` differ from `record`, matched by binding: a seat with an override or a binding `record` lacks, and a binding of `record` no seat holds. */
+/**
+ * How many of `seats` differ from `record`, matched by binding: a seat with a
+ * binding `record` lacks or other overrides than the record's seat of that
+ * binding, and a binding of `record` no seat holds.
+ */
 function seatEdits(seats: readonly PageSeat[], record: readonly PageSeat[]): number {
-  const kept = seats.filter((seat) => !record.some((r) => sameBinding(r.binding, seat.binding)) || Object.keys(seat.overrides).length > 0);
+  const changed = seats.filter((seat) => {
+    const own = record.find((r) => sameBinding(r.binding, seat.binding));
+    return own === undefined || !sameOverrides(seat.overrides, own.overrides);
+  });
   const gone = record.filter((r) => !seats.some((seat) => sameBinding(seat.binding, r.binding)));
-  return kept.length + gone.length;
+  return changed.length + gone.length;
 }
 
 /**
@@ -381,11 +388,12 @@ const bindingsOf = (seats: readonly PageSeat[]) => seats.map((seat) => seat.bind
 
 /**
  * How many edits Reset to team removes (board 80h): `layout` against
- * `record`, the layout Reset to team writes. One per page seat drawn with an
- * override or bound where the record has none, one per place of the record
- * the layout no longer draws, one per department block added or gone, one
- * per block's name and its leads' order, and one each for the arc's order and
- * the blocks' order. Only drawn seats count: one whose seat has no holder
+ * `record`, the layout Reset to team writes. One per page seat drawn with
+ * other overrides than the record's seat of its binding, or bound where the
+ * record has none, one per place of the record the layout no longer draws,
+ * one per department block added or gone, one per block's name, its kind
+ * (which carousel section and shape it draws in) and its leads' order, and
+ * one each for the arc's order and the blocks' order. Only drawn seats count: one whose seat has no holder
  * shows nothing to reset. The intro text, its figures and the group photo
  * stay, so they do not count.
  */
@@ -402,7 +410,8 @@ export function editCount(roles: TeamRoles, layout: TeamLayout, record: TeamLayo
     return (
       n +
       (block.name === own.name ? 0 : 1) +
-      (Object.keys(block.head.overrides).length > 0 ? 1 : 0) +
+      (block.kind === own.kind ? 0 : 1) +
+      (sameOverrides(block.head.overrides, own.head.overrides) ? 0 : 1) +
       seatEdits(leads, own.leads) +
       (sameOrder(bindingsOf(leads), bindingsOf(own.leads)) ? 0 : 1)
     );
