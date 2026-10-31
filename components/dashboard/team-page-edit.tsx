@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import Image from "next/image";
-import { Check, Eye, LoaderCircle, LogOut, Plus, RotateCcw, TriangleAlert, Upload, X } from "lucide-react";
+import { Check, Eye, ListOrdered, LoaderCircle, LogOut, Plus, RotateCcw, TriangleAlert, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { endAdvising, resetTeamPageLayer, saveTeamPage, uploadTeamPagePhoto } from "@/app/dashboard/actions";
 import { INTRO_WIDTH, PAGE_INTRO } from "@/components/about/page-header";
@@ -18,8 +18,9 @@ import {
   type AdvisorItem,
   type AdvisorRow,
 } from "@/lib/about/advisors";
-import { NO_TEAM_LAYER, TEAM_PAGE_INTRO_MAX, type GroupPhoto } from "@/lib/about/team-layer";
-import { nextSeatId, snapshot, type TeamLayout } from "@/lib/about/team-layout";
+import { TEAM_PAGE_INTRO_MAX, type GroupPhoto } from "@/lib/about/team-layer";
+import { nextSeatId, teamRecordLayout, type LayoutGroup, type TeamLayout } from "@/lib/about/team-layout";
+import { groupsKeepable, trimmedGroups } from "@/lib/about/team-page-groups";
 import {
   arcHasRoom,
   hasHeadErrors,
@@ -94,6 +95,7 @@ import { BarButton, EditableBlock, EditShell } from "./edit-shell";
 import { shrunkPhoto } from "./outreach-post-photos";
 import { PHOTO_ACCEPT } from "./photo-crop-dialog";
 import { TeamAdvisorsPanel, type KeyedAdvisorRow } from "./team-advisors-panel";
+import { TeamGroupsPanel } from "./team-groups-panel";
 import { TeamHeadPanel } from "./team-head-panel";
 import { TeamLeaderPanel } from "./team-leader-panel";
 import { EditedTeamPage } from "./team-page-edit-view";
@@ -107,8 +109,9 @@ import { TeamPersonPanel } from "./team-person-panel";
 // may be uploaded (issue #510), are edited in place. The bar's arrow goes back
 // to the dashboard home (Owner decision). Board
 // 80e's add affordances sit on the page while no panel is open: a "+" at each
-// place on the arc (gone at eight leaders), "+ Add department" beside each
-// slide's heading, and "+ Add division lead" on every head block, under a
+// place on the arc (gone at eight leaders), "+ Add department" and "Edit
+// groups" (the Department groups panel, issue #856) beside each slide's
+// heading, and "+ Add division lead" on every head block, under a
 // note that added items show only on the Team page. The core members list and
 // "In numbers" have no affordance. The Advisors section is one block (board
 // 80c) whose "Edit advisors" opens the Advisors panel (board 80d, issue
@@ -132,7 +135,9 @@ type Panel =
   /** `at` null: a department "+ Add department" is adding. */
   | { readonly kind: "head"; readonly at: HeadRef | null; readonly fields: HeadFields }
   /** The Advisors panel, with its copy of the list: Done keeps it, closing drops it. */
-  | { readonly kind: "advisors"; readonly rows: readonly KeyedAdvisorRow[] };
+  | { readonly kind: "advisors"; readonly rows: readonly KeyedAdvisorRow[] }
+  /** The Department groups panel (issue #856), with its copy of the groups: Done keeps it, closing drops it. */
+  | { readonly kind: "groups"; readonly groups: readonly LayoutGroup[] };
 
 const seatKey = (id: number) => `seat:${id}` as const;
 const blockKey = (id: number) => `block:${id}` as const;
@@ -155,6 +160,7 @@ function previewOf(roles: TeamRoles, layout: TeamLayout, panel: Panel | null): T
     return picked === null ? layout : layoutWithLeader(roles, layout, panel.id, picked);
   }
   if (panel.kind === "advisors") return layout;
+  if (panel.kind === "groups") return { ...layout, groups: trimmedGroups(panel.groups) };
   const picked = pickedHead(panel.fields);
   return picked === null ? layout : layoutWithHead(roles, layout, panel.at, picked);
 }
@@ -173,6 +179,7 @@ function panelRefusal(layout: TeamLayout, panel: Panel | null): string | null {
   if (panel.kind === "advisors") {
     return panel.rows.some((r) => Object.keys(advisorFieldErrors(r.fields)).length > 0) ? "Fix the highlighted advisors first." : null;
   }
+  if (panel.kind === "groups") return groupsKeepable(panel.groups) ? null : "Name every group first.";
   return hasHeadErrors(headFieldErrors(addingBlock(layout, panel.at), panel.fields)) ? "Fix the highlighted fields first." : null;
 }
 
@@ -182,6 +189,7 @@ function selectedOf(layout: TeamLayout, panel: Panel | null): string | undefined
   if (panel.kind === "person") return seatKey(panel.seat);
   if (panel.kind === "leader") return seatKey(panel.id ?? nextSeatId(layout));
   if (panel.kind === "advisors") return "advisors";
+  if (panel.kind === "groups") return undefined;
   return blockKey(panel.at ?? nextSeatId(layout));
 }
 
@@ -202,6 +210,8 @@ export function TeamPageEdit({
 }) {
   const { roles, base } = opening;
   const [content, setContent] = useState<TeamPageContent>(opening.content);
+  // The layout as last stored: Reset to team keeps its group list and each department's group (issue #856).
+  const [storedLayout, setStoredLayout] = useState<TeamLayout>(opening.content.layout);
   const { layout, text } = content;
   const setLayout = (change: (layout: TeamLayout) => TeamLayout) => setContent((c) => ({ ...c, layout: change(c.layout) }));
   const setText = (change: (text: TeamPageContent["text"]) => TeamPageContent["text"]) => setContent((c) => ({ ...c, text: change(c.text) }));
@@ -223,8 +233,8 @@ export function TeamPageEdit({
   const edited = useMemo(() => editedTeamPage(roles, base, { layout: preview, text }), [roles, base, preview, text]);
   const { resolved } = edited;
   const page = useMemo(() => withAdvisors(edited.page, advisorsOfRows(shownAdvisors)), [edited, shownAdvisors]);
-  /** The layout Reset to team writes: the team's roles as they are now. */
-  const record = useMemo(() => snapshot(roles, NO_TEAM_LAYER).layout, [roles]);
+  /** The layout Reset to team writes: the team's roles as they are now, in the stored groups. */
+  const record = useMemo(() => teamRecordLayout(roles, storedLayout), [roles, storedLayout]);
   const edits = editCount(roles, preview, record);
   const personPhotos = useMemo(() => personPhotoChoices(roles.people, base), [roles, base]);
   const groupPhotos = useMemo(() => groupPhotoChoices(roles.people, base), [roles, base]);
@@ -234,7 +244,7 @@ export function TeamPageEdit({
   /** Each carousel member's head block, in slide order; null for a division drawn at a head's level (issue #325). */
   const carouselSpots = useMemo(() => {
     const blockOfHead = new Map(preview.departments.map((b) => [b.head.id, b.id]));
-    return carouselSpotsOf(resolved.departments).map((at) => (at === null ? null : (blockOfHead.get(at) ?? null)));
+    return carouselSpotsOf(resolved.groups).map((at) => (at === null ? null : (blockOfHead.get(at) ?? null)));
   }, [resolved, preview]);
 
   const blocks = useMemo(() => {
@@ -309,6 +319,11 @@ export function TeamPageEdit({
     setPanel({ kind: "head", at: null, fields: newDepartmentFields() });
   };
 
+  const editGroups = () => {
+    setInPlace(null);
+    setPanel({ kind: "groups", groups: layout.groups });
+  };
+
   const adding = panel === null;
 
   const frames: TeamPageFrames = {
@@ -355,7 +370,12 @@ export function TeamPageEdit({
       heading: (node) => (
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3 lg:justify-center">
           {node}
-          {adding && <AddDepartmentButton onClick={addDepartment} />}
+          {adding && (
+            <>
+              <AddDepartmentButton onClick={addDepartment} />
+              <EditGroupsButton onClick={editGroups} />
+            </>
+          )}
         </div>
       ),
     },
@@ -428,7 +448,9 @@ export function TeamPageEdit({
       }
       setLayerStatus(statusOf(result.value.content));
       // The content as saved: a photo picked from a member is its copy now (issue #831), and a page seat whose seat is gone has left.
-      setContent(editorVersion(result.value.content));
+      const saved = editorVersion(result.value.content);
+      setContent(saved);
+      setStoredLayout(saved.layout);
       setAdvisorItems(result.value.advisors);
       setAdvisorRows(advisorRowsOf(result.value.advisors));
       toast.success(step === "publish" ? "The Team page is published." : "Draft saved. The live Team page stays as it is.");
@@ -445,6 +467,7 @@ export function TeamPageEdit({
       // The layout as the team's roles build it now; the reset keeps the intro text, its figures and the group photo as the editor has them.
       const rebuilt = editorVersion(result.value).layout;
       setLayout(() => rebuilt);
+      setStoredLayout(rebuilt);
       setPanel(null);
       setLayerStatus(statusOf(result.value));
       setResetOpen(false);
@@ -524,6 +547,13 @@ export function TeamPageEdit({
               onSubmit={keep}
               onCancel={() => setPanel(null)}
               onRemove={panel.id === null ? null : () => closeWith((l) => withoutArcSeat(l, panel.id!))}
+            />
+          ) : panel.kind === "groups" ? (
+            <TeamGroupsPanel
+              layout={{ ...layout, groups: panel.groups }}
+              onChange={(groups) => setPanel({ kind: "groups", groups })}
+              onDone={keep}
+              onCancel={() => setPanel(null)}
             />
           ) : (
             <HeadPanel
@@ -616,6 +646,16 @@ function AddDepartmentButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+/** "Edit groups" beside "+ Add department" (issue #856): opens the Department groups panel, in the same pill. */
+function EditGroupsButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className={`${ADD_PILL} h-8 px-3.5 text-[13px] hover:bg-accent/10`}>
+      <ListOrdered aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
+      Edit groups
+    </button>
+  );
+}
+
 /**
  * "+ Add division lead" on every head block (board 80e), shown at all times on
  * Desktop, Phone and touch (Owner decision on #498, issue #507): it sits on the
@@ -675,6 +715,7 @@ function HeadPanel({
     <TeamHeadPanel
       kind={at === null ? "new" : fromRecord === null ? "added" : "roles"}
       fields={fields}
+      groups={layout.groups}
       record={fromRecord === null ? null : headRecord(roles, layout, fromRecord)}
       people={people}
       errors={headFieldErrors(added, fields)}

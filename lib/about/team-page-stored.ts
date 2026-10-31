@@ -1,6 +1,16 @@
 import { isTeamPageLayer, isTeamPageText, NO_TEAM_LAYER, textOf, withText, type OwnsUpload, type TeamPageLayer, type TeamPageText } from "./team-layer";
 import { mapVersions, versionRows, type Versioned } from "@/lib/content/versioned";
-import { bindsTeamSeat, layoutPageOf, parseTeamLayout, snapshot, withTeamSeatMoved, type TeamLayout } from "./team-layout";
+import {
+  bindsTeamSeat,
+  layoutPageOf,
+  parseStoredLayout,
+  parseTeamLayout,
+  snapshot,
+  teamLayoutOf,
+  withTeamSeatMoved,
+  type StoredLayout,
+  type TeamLayout,
+} from "./team-layout";
 import type { TeamRoles } from "./team-roles";
 import type { TeamPage } from "./types";
 
@@ -14,22 +24,28 @@ import type { TeamPage } from "./types";
 // the layout and the layer's text (issue #851): a save stores the layout it
 // sends and writes the layer's intro text, figures and group photo, leaving
 // the layer's people fields as they were until follow-up #855 drops them
-// (ADR 0019 Decision 8).
+// (ADR 0019 Decision 8). A layout stored before department groups keeps that
+// form until the editor saves it: only the team record tells which
+// department each of its blocks shows (`teamLayoutOf`, issue #856).
 
 /** A stored version: the layer, and its layout, or none on a row the layout's first fill has not reached. */
-export type StoredTeamPage = { readonly layer: TeamPageLayer; readonly layout: TeamLayout | null };
+export type StoredTeamPage = { readonly layer: TeamPageLayer; readonly layout: StoredLayout | null };
 
 /** What the page draws before anything was saved: no layer edit, and the layout that snapshots to. */
 export const NO_STORED_TEAM_PAGE: StoredTeamPage = { layer: NO_TEAM_LAYER, layout: null };
 
 /** The version the seed and the first fill store: `layer`, and the layout it snapshots to on `roles` (ADR 0019 Decision 7). */
-export function storedTeamPage(roles: TeamRoles, layer: TeamPageLayer): StoredTeamPage {
+export function storedTeamPage(roles: TeamRoles, layer: TeamPageLayer): StoredTeamPage & { readonly layout: TeamLayout } {
   return { layer, layout: snapshot(roles, layer).layout };
 }
 
-/** The layout `stored` draws: its own, else the one its layer snapshots to on `roles` (ADR 0019 Decision 7, transitional read). */
+/**
+ * The layout `stored` draws: its own, grouped on `roles` (`teamLayoutOf`),
+ * else the one its layer snapshots to on `roles` (ADR 0019 Decision 7,
+ * transitional read).
+ */
 export function layoutOf(roles: TeamRoles, stored: StoredTeamPage): TeamLayout {
-  return stored.layout ?? snapshot(roles, stored.layer).layout;
+  return stored.layout === null ? snapshot(roles, stored.layer).layout : teamLayoutOf(stored.layout, roles, stored.layer);
 }
 
 /**
@@ -50,7 +66,7 @@ export function storedTeamPageOf(roles: TeamRoles, stored: StoredTeamPage, base:
  * snapshots to.
  */
 export function storedTeamPageOfRow(row: { readonly layer: unknown; readonly layout: unknown }, owns: OwnsUpload): StoredTeamPage | null {
-  return isTeamPageLayer(row.layer, owns) ? { layer: row.layer, layout: parseTeamLayout(row.layout) } : null;
+  return isTeamPageLayer(row.layer, owns) ? { layer: row.layer, layout: parseStoredLayout(row.layout) } : null;
 }
 
 // A hand-over in the Team tree (issue #852, ADR 0019 Decision 3): a

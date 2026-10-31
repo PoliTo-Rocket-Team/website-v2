@@ -8,7 +8,7 @@ import { advisorRowsOf } from "./advisors";
 import { importedAdvisors } from "./advisors-import";
 import { team } from "./team";
 import { NO_TEAM_LAYER, NO_UPLOADS, textOf } from "./team-layer";
-import { layoutPageOf, snapshot, type TeamLayout } from "./team-layout";
+import { isGroupedLayout, layoutPageOf, snapshot, type KindLayout, type TeamLayout } from "./team-layout";
 import { photosInUse, publicTeamPage, teamPageEditor, type TeamPageEditor, type TeamPagePhotos, type TeamPageStore } from "./team-page-editor";
 import { memoryTeamPageStore } from "./team-page-memory";
 import {
@@ -104,6 +104,49 @@ test("a save stores the layout the editor sends and the layer's text in one writ
   const [item] = await store.layer.list();
   const draft = item.version.state === "published" ? item.version.draft : null;
   assert.deepEqual(draft, { layer: { ...layer, intro: "Edited intro." }, layout: snapshot(roles, NO_TEAM_LAYER).layout });
+});
+
+test("a version stored before groups opens with each department found, a save writes them, and Reset to team keeps the group of an Operations department whose head was swapped to a person", async () => {
+  const { layout } = storedTeamPage(roles, layer);
+  const operations = layout.groups[1].id;
+  const swapped = layout.departments.find((b) => b.group === operations);
+  assert.ok(swapped, "the seed has an Operations department");
+  const someone = roles.people.find((p) => p.placement.role !== "head")!;
+  const kindLayout: KindLayout = {
+    leader: layout.leader,
+    arc: layout.arc,
+    departments: layout.departments.map(({ department: _d, group, leadsDrawn: _l, ...b }) => ({
+      ...b,
+      head: b.id === swapped.id ? { ...b.head, binding: { kind: "person", memberId: someone.id } } : b.head,
+      kind: group === operations ? "operations" : "technical",
+    })),
+  };
+  const stored = storedTeamPageOfRow({ layer, layout: JSON.parse(JSON.stringify(kindLayout)) }, NO_UPLOADS);
+  assert.deepEqual(stored, { layer, layout: kindLayout }, "storage keeps the form before groups");
+  const handedOver = teamSeatHandedOver({ state: "published", published: stored!, draft: null }, 27, 28);
+  assert.ok(handedOver.state === "published" && handedOver.published.layout !== null && !isGroupedLayout(handedOver.published.layout), "a hand-over writes it in the same form");
+  const store = memoryTeamPageStore(memoryContentStore<StoredTeamPage>(published(stored!)), memoryContentStore(importedAdvisors()));
+  const editor = teamPageEditor(siteContent, store, async () => roles, team, NO_PHOTOS);
+
+  const opened = await editor.open();
+  assert.ok(opened);
+  const shown = (of: TeamLayout) => of.departments.map((b) => [b.id, b.department, b.group, b.leadsDrawn]);
+  assert.deepEqual(shown(opened.content.layout), shown(layout), "each block shows its department, the swapped one too");
+
+  // Saved, then held as storage reads it back: grouped, with each department.
+  const saved = await editor.save("publish", opened.content, advisorRowsOf(await store.advisors()));
+  assert.ok(saved.ok, JSON.stringify(saved));
+  const [item] = await store.layer.list();
+  const savedLayout = item.version.state === "published" ? item.version.published.layout : null;
+  const reread = storedTeamPageOfRow({ layer, layout: JSON.parse(JSON.stringify(savedLayout)) }, NO_UPLOADS);
+  assert.ok(reread?.layout && isGroupedLayout(reread.layout));
+  assert.deepEqual(shown(reread.layout), shown(layout));
+
+  const reset = await editor.reset();
+  assert.ok(reset.ok);
+  const [after] = await store.layer.list();
+  const draft = after.version.state === "published" ? after.version.draft : null;
+  assert.deepEqual(draft?.layout, snapshot(roles, NO_TEAM_LAYER).layout, "Reset keeps the swapped department in Operations, its leads beside its head");
 });
 
 test("a hand-over of a team-level seat row binds every stored page seat on it to the successor's row, in each version, and leaves the rest", () => {

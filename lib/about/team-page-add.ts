@@ -82,6 +82,9 @@ export function pickedLeader(fields: LeaderFields): PickedLeaderFields | null {
 /** What the person fields say while nobody is picked, as Give access on the Access page says it. */
 export const CHOOSE_A_PERSON = "Choose a person.";
 
+/** What the Group field says while a department the editor adds has none (issue #856). */
+export const CHOOSE_A_GROUP = "Choose a group.";
+
 const memberOf = (roles: TeamRoles, id: number): TeamPerson | undefined => roles.people.find((p) => p.id === id);
 const ownLinkedin = (person: TeamPerson | undefined) => (person === undefined ? "" : (personOf(person).linkedin ?? ""));
 const personBinding = (person: TeamPerson): PersonBinding => ({ kind: "person", memberId: person.id });
@@ -217,25 +220,32 @@ export type HeadFields = {
   readonly person: number | null;
   readonly role: string;
   readonly department: string;
+  /** The department group the block sits in, by id; null until the editor picks one for a department they add (issue #856). */
+  readonly group: number | null;
   readonly photo: PersonPhoto | null;
   readonly linkedin: string;
   /** The division leads the block shows, in order. */
   readonly leads: readonly LeadRow[];
 };
 
-/** The panel with its head and every lead row picked: the only fields the layout takes. */
-export type PickedHeadFields = Omit<HeadFields, "person" | "leads"> & { readonly person: number; readonly leads: readonly PickedLeadRow[] };
+/** The panel with its head, its group and every lead row picked: the only fields the layout takes. */
+export type PickedHeadFields = Omit<HeadFields, "person" | "group" | "leads"> & {
+  readonly person: number;
+  readonly group: number;
+  readonly leads: readonly PickedLeadRow[];
+};
 
 const isPickedRow = (row: LeadRow): row is PickedLeadRow => row.person !== null;
 
 /**
  * What the page can show of the panel as the editor fills it: nothing while
- * no head is picked, and only the lead rows with someone picked. Done keeps
- * it only once `headFieldErrors` refuses nothing, so a row with nobody picked
- * never reaches the layout.
+ * no head or no group is picked, and only the lead rows with someone picked.
+ * Done keeps it only once `headFieldErrors` refuses nothing, so a row with
+ * nobody picked never reaches the layout.
  */
 export function pickedHead(fields: HeadFields): PickedHeadFields | null {
-  return fields.person === null ? null : { ...fields, person: fields.person, leads: fields.leads.filter(isPickedRow) };
+  const { person, group } = fields;
+  return person === null || group === null ? null : { ...fields, person, group, leads: fields.leads.filter(isPickedRow) };
 }
 
 const blockOf = (layout: TeamLayout, at: HeadRef) => layout.departments.find((b) => b.id === at);
@@ -264,6 +274,7 @@ export function headFieldsOf(roles: TeamRoles, layout: TeamLayout, at: HeadRef):
     person: holding.person.id,
     role: overrides.role ?? (added ? "" : holding.title),
     department: block.name,
+    group: block.group,
     photo: overrides.photo ?? null,
     linkedin: overrides.linkedin ?? ownLinkedin(holding.person),
     leads: leads.map((l, key) => {
@@ -274,9 +285,9 @@ export function headFieldsOf(roles: TeamRoles, layout: TeamLayout, at: HeadRef):
   };
 }
 
-/** The panel as "+ Add department" opens it: no head picked yet (issue #618), no name yet, no leads. */
+/** The panel as "+ Add department" opens it: no head picked yet (issue #618), no name, no group (issue #856), no leads. */
 export function newDepartmentFields(): HeadFields {
-  return { person: null, role: "", department: "", photo: null, linkedin: "", leads: [] };
+  return { person: null, role: "", department: "", group: null, photo: null, linkedin: "", leads: [] };
 }
 
 /** Another head in the block: their own photo and LinkedIn. */
@@ -335,13 +346,14 @@ function leadSeatsOf(roles: TeamRoles, block: DepartmentBlock | undefined, rows:
  * `layout` with the Edit a head block panel's fields: the head, rebound as the
  * person picked asks, the name on the page, the leads in the panel's order (a
  * lead the panel removed leaves, a row added there is a page seat bound to
- * its person), the role, photo and LinkedIn where they differ from the
- * record. `at` null adds a new department after the others. None of it
- * creates a role, department or division.
+ * its person), the group it sits in, the role, photo and LinkedIn where they
+ * differ from the record. `at` null adds a new department after the others,
+ * drawing its leads under its head. None of it creates a role, department or
+ * division. A group the layout does not hold changes nothing.
  */
 export function layoutWithHead(roles: TeamRoles, layout: TeamLayout, at: HeadRef | null, fields: PickedHeadFields): TeamLayout {
   const person = memberOf(roles, fields.person);
-  if (person === undefined) return layout;
+  if (person === undefined || !layout.groups.some((g) => g.id === fields.group)) return layout;
   const block = at === null ? undefined : blockOf(layout, at);
   if (at !== null && block === undefined) return layout;
   let last = nextSeatId(layout) - 1;
@@ -361,7 +373,7 @@ export function layoutWithHead(roles: TeamRoles, layout: TeamLayout, at: HeadRef
   const head: PageSeat = { id: headId, binding, overrides: overridesOf(roles, binding, person, { ...fields, name: keptName ?? "" }, name) };
 
   const leads = leadSeatsOf(roles, block, fields.leads, nextId);
-  const next: DepartmentBlock = { id, name, kind: block?.kind ?? "technical", head, leads };
+  const next: DepartmentBlock = { id, department: block?.department ?? null, name, group: fields.group, leadsDrawn: block?.leadsDrawn ?? "under", head, leads };
   if (block === undefined) return { ...layout, departments: [...layout.departments, next] };
   return { ...layout, departments: layout.departments.map((b) => (b.id === id ? next : b)) };
 }
@@ -372,6 +384,7 @@ export type LeadRowErrors = { readonly person?: string; readonly division?: stri
 export type HeadFieldErrors = {
   readonly person?: string;
   readonly department?: string;
+  readonly group?: string;
   readonly role?: string;
   readonly linkedin?: string;
   /** By row key: what the row refuses. */
@@ -380,9 +393,10 @@ export type HeadFieldErrors = {
 
 /**
  * What Done refuses: no head or lead picked, an added department with no
- * name, text the layout would not take, a LinkedIn that is no handle, or an
- * added lead with no division. `added` is a department the editor adds or
- * added, whose name the team record does not give.
+ * name, no group (issue #856), text the layout would not take, a LinkedIn
+ * that is no handle, or an added lead with no division. `added` is a
+ * department the editor adds or added, whose name the team record does not
+ * give.
  */
 export function headFieldErrors(added: boolean, fields: HeadFields): HeadFieldErrors {
   const leads = Object.fromEntries(
@@ -398,6 +412,7 @@ export function headFieldErrors(added: boolean, fields: HeadFields): HeadFieldEr
     ...withDefined({
       person: fields.person === null ? CHOOSE_A_PERSON : undefined,
       department: textError(fields.department, added ? "Enter the department's name." : null),
+      group: fields.group === null ? CHOOSE_A_GROUP : undefined,
       role: textError(fields.role, null),
       linkedin: linkedinError(fields.linkedin),
     }),
