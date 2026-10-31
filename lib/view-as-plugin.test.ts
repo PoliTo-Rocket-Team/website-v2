@@ -3,7 +3,7 @@ import { afterEach, test } from "node:test";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { getCookieCache } from "better-auth/cookies";
 import type { ViewAsEntry, ViewAsRefusal } from "./dashboard/view-as";
-import { seededMemoryDb } from "./dev-tester-fixture";
+import { NO_SITE_ROWS, seededMemoryDb } from "./dev-tester-fixture";
 import { ADMIN_TESTERS, seatOf } from "./seeded-accounts";
 import { accountUserOf, impersonatorOf } from "./session-user";
 import type { ViewAsGate } from "./view-as-plugin";
@@ -65,7 +65,7 @@ async function setUp() {
   const db = seededMemoryDb();
   const stand = standInGate();
   const { createAuth } = await import("./auth");
-  return { auth: createAuth(memoryAdapter(db), stand.gate), db, ...stand };
+  return { auth: createAuth(memoryAdapter(db), { viewAs: stand.gate, siteRows: NO_SITE_ROWS }), db, ...stand };
 }
 
 type Auth = Awaited<ReturnType<typeof setUp>>["auth"];
