@@ -1,10 +1,11 @@
-import { divisionLabel, type TeamTree, type TreePerson } from "./team";
+import { departmentsOnPath, divisionLabel, divisionsOnPath, type TeamTree, type TreePerson } from "./team";
 
 // Where every card, row and line of the Team tree canvas sits (board 54c),
 // in canvas pixels at 100% zoom. The tree reads top-down: the team leader,
 // the board seats side by side, every department head in one row, each
 // head's division leads, and each division's members as a short list under
-// its lead. The viewer's path carries `onPath` from the leader down to them.
+// its lead. The viewer's path carries `onPath` from the leader down to every
+// place they are drawn (issue #862).
 // No name or label is cut off: a long one wraps, and its card or row, and
 // everything under it, moves down to fit (Owner decision, 2026-10-19, on #398).
 
@@ -137,6 +138,11 @@ function elbow(parent: Box, child: Box, busY: number, onPath: boolean, from = mi
 
 export function layoutTeamTree(tree: TeamTree): TreeLayout {
   const path = tree.path;
+  const pathDepartments = departmentsOnPath(path);
+  const pathDivisions = divisionsOnPath(path);
+  // The canvas opens on the viewer's first place: its department, or the top of the tree for a seat.
+  const first = path?.[0] ?? null;
+  const firstDepartment = first?.kind === "head" || first?.kind === "division" ? first.departmentId : null;
   const nodes: TreeNode[] = [];
   const edges: TreeEdge[] = [];
 
@@ -151,7 +157,7 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
 
   const leaderTitle = tree.leader ? shownName(tree.leader.name, tree.leader.self) : "";
   const leaderBox: Box = { x: centre - CARD.w / 2, y: 0, w: CARD.w, h: tree.leader ? cardHeight(leaderTitle, "Team Leader", CARD.w, CARD.h) : CARD.h };
-  const aboveDepartments = tree.leader?.self === true || tree.board.some((b) => b.person.self);
+  const aboveDepartments = first?.kind === "leader" || first?.kind === "board";
   if (tree.leader) {
     nodes.push({
       kind: "card",
@@ -161,7 +167,7 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
       person: tree.leader,
       title: tree.leader.name,
       subtitle: "Team Leader",
-      onPath: path !== null || aboveDepartments,
+      onPath: path !== null,
     });
   }
 
@@ -194,7 +200,7 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
 
   let left = (width - headsWidth) / 2;
   for (const [i, { department, width: columnWidth, leadsWidth }] of columns.entries()) {
-    const onDepartment = path?.departmentId === department.id;
+    const onDepartment = pathDepartments.has(department.id);
     const head = heads[i];
     const headBox: Box = { x: left + columnWidth / 2 - CARD.w / 2, y: headY, w: CARD.w, h: head.h };
     nodes.push({
@@ -213,7 +219,7 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
     let columnBottom = bottom(headBox);
     let slotLeft = left + (columnWidth - leadsWidth) / 2;
     for (const division of department.divisions) {
-      const onDivision = onDepartment && path?.divisionId === division.id;
+      const onDivision = pathDivisions.has(division.id);
       const label = divisionLabel(division.name);
       const title = division.lead?.name ?? label;
       const subtitle = division.lead ? `${label} · lead` : null;
@@ -248,7 +254,7 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
       columnBottom = Math.max(columnBottom, rows.length > 0 ? bottom(rows[rows.length - 1]) : bottom(leadBox));
     }
 
-    if (onDepartment) ownColumn = { x: left, y: headY, w: columnWidth, h: columnBottom - headY };
+    if (department.id === firstDepartment) ownColumn = { x: left, y: headY, w: columnWidth, h: columnBottom - headY };
     height = Math.max(height, columnBottom);
     left += columnWidth + DEPARTMENT_GAP;
   }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronDown, LocateFixed, Maximize2, Minus, Pencil, Plus } from "lucide-react";
-import { divisionLabel, matchesQuery, type TeamTree, type TreePerson } from "@/lib/dashboard/team";
+import { departmentsOnPath, divisionLabel, divisionsOnPath, matchesQuery, type TeamTree, type TreePerson } from "@/lib/dashboard/team";
 import { boxOf, layoutTeamTree, type Box, type TreeLayout, type TreeNode } from "@/lib/dashboard/tree-layout";
 import { Avatar } from "./avatar";
 import { SearchField } from "./search-field";
@@ -371,9 +371,17 @@ function TreeCanvas({ tree, found, target }: { tree: TeamTree; found: number | n
   );
 }
 
-/** The connectors, grey first, then the viewer's path over them in accent, at 1px whatever the zoom. */
+/**
+ * The connectors, grey first, then the viewer's path over them in accent, at
+ * 1px whatever the zoom. The path is one shape, so a stretch two of its lines
+ * share (the trunk, a department reached by two divisions) is stroked once.
+ */
 function TreeLines({ layout }: { layout: TreeLayout }) {
   const line = (points: readonly (readonly [number, number])[]) => points.map(([x, y]) => `${x},${y}`).join(" ");
+  const path = layout.edges
+    .filter((e) => e.onPath)
+    .flatMap((e) => e.points.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x},${y}`))
+    .join(" ");
   return (
     <svg aria-hidden className="pointer-events-none absolute inset-0 overflow-visible" width={layout.width} height={layout.height}>
       {layout.edges
@@ -381,11 +389,7 @@ function TreeLines({ layout }: { layout: TreeLayout }) {
         .map((e, i) => (
           <polyline key={`g${i}`} points={line(e.points)} fill="none" className="stroke-border-strong" strokeWidth={1} vectorEffect="non-scaling-stroke" />
         ))}
-      {layout.edges
-        .filter((e) => e.onPath)
-        .map((e, i) => (
-          <polyline key={`a${i}`} points={line(e.points)} fill="none" className="stroke-accent" strokeWidth={1} vectorEffect="non-scaling-stroke" />
-        ))}
+      {path !== "" && <path d={path} fill="none" className="stroke-accent" strokeWidth={1} vectorEffect="non-scaling-stroke" />}
     </svg>
   );
 }
@@ -452,11 +456,12 @@ const TICK = 18;
 
 /**
  * Items hung on one vertical rail, each joined to it by a short tick at its
- * card's middle. The rail stops at the last item; the part down to the item
- * on the viewer's path is in accent.
+ * card's middle. The rail stops at the last item; the part down to the last
+ * item on the viewer's path is in accent.
  */
 function Rail({ items, middle, gap }: { items: { key: string | number; onPath: boolean; node: ReactNode }[]; middle: number; gap: number }) {
-  const pathIndex = items.findIndex((item) => item.onPath);
+  // The rail is accent down to the last item on the path, so it reaches every one of them.
+  const pathIndex = items.findLastIndex((item) => item.onPath);
   return (
     <ul className="flex flex-col">
       {items.map((item, i) => {
@@ -478,11 +483,9 @@ function Rail({ items, middle, gap }: { items: { key: string | number; onPath: b
 
 type Opened = { readonly departments: ReadonlySet<number>; readonly divisions: ReadonlySet<number> };
 
+/** Every department and division on the viewer's path opens first, so each place they are in shows. */
 function openedOnPath(tree: TeamTree): Opened {
-  return {
-    departments: new Set(tree.path ? [tree.path.departmentId] : []),
-    divisions: new Set(tree.path?.divisionId != null ? [tree.path.divisionId] : []),
-  };
+  return { departments: departmentsOnPath(tree.path), divisions: divisionsOnPath(tree.path) };
 }
 
 function toggled(set: ReadonlySet<number>, id: number): Set<number> {
@@ -555,9 +558,12 @@ function SeatRow({
 function PhoneTree({ tree, found, target }: { tree: TeamTree; found: number | null; target: Target | null }) {
   const [opened, setOpened] = useState<Opened>(() => openedOnPath(tree));
   const nodes = useRef(new Map<number, HTMLElement>());
-  const path = tree.path;
-  const aboveDepartments = tree.leader?.self === true || tree.board.some((b) => b.person.self);
-  const trunkOnPath = path !== null;
+  const pathDepartments = departmentsOnPath(tree.path);
+  const pathDivisions = divisionsOnPath(tree.path);
+  /** The leader and the trunk down to the seats: on any path. */
+  const onTop = tree.path !== null;
+  /** The trunk on down to the heads: on a path that reaches a department. */
+  const trunkOnPath = pathDepartments.size > 0;
 
   // "Find someone" opens the branch of the person's first place and scrolls to them there.
   useEffect(() => {
@@ -591,7 +597,7 @@ function PhoneTree({ tree, found, target }: { tree: TeamTree; found: number | nu
     <div>
       {tree.leader && (
         <div ref={keep(tree.leader)} className="mx-auto flex min-h-[52px] w-[200px]">
-          <TreeCard person={tree.leader} title={tree.leader.name} subtitle="Team Leader" onPath={trunkOnPath || aboveDepartments} found={atFirstPlace(tree.leader, found)} />
+          <TreeCard person={tree.leader} title={tree.leader.name} subtitle="Team Leader" onPath={onTop} found={atFirstPlace(tree.leader, found)} />
         </div>
       )}
 
@@ -599,7 +605,7 @@ function PhoneTree({ tree, found, target }: { tree: TeamTree; found: number | nu
         <SeatRow
           board={tree.board}
           hasLeader={tree.leader !== null}
-          trunk={line(trunkOnPath || aboveDepartments)}
+          trunk={line(onTop)}
           down={line(trunkOnPath)}
           found={found}
           keep={keep}
@@ -618,7 +624,7 @@ function PhoneTree({ tree, found, target }: { tree: TeamTree; found: number | nu
             middle={26}
             gap={12}
             items={tree.departments.map((department) => {
-              const onDepartment = path?.departmentId === department.id;
+              const onDepartment = pathDepartments.has(department.id);
               const isOpen = opened.departments.has(department.id);
               return {
                 key: department.id,
@@ -647,7 +653,7 @@ function PhoneTree({ tree, found, target }: { tree: TeamTree; found: number | nu
                           middle={26}
                           gap={8}
                           items={department.divisions.map((division) => {
-                            const onDivision = onDepartment && path?.divisionId === division.id;
+                            const onDivision = pathDivisions.has(division.id);
                             const divisionOpen = opened.divisions.has(division.id);
                             const label = divisionLabel(division.name);
                             return {

@@ -101,8 +101,8 @@ test("Find someone and Show me go to the first place: the highest role, then the
   const box = boxOf(layout, 11)!;
   const safetyLead = layout.nodes.find((n) => n.key === "lead-20")!;
   assert.deepEqual([box.x, box.y], [safetyLead.x, safetyLead.y], "her Safety lead card, not her Mission Analysis row");
-  // Her path ends there too: only that card is on it, and no row of hers is.
-  assert.ok(layout.nodes.filter((n) => n.person?.id === 11 && n.onPath).every((n) => n.key === "lead-20"));
+  // Her path reaches both her places (#862): the Safety card she leads and her Mission Analysis row.
+  assert.deepEqual(layout.nodes.filter((n) => n.person?.id === 11 && n.onPath).map((n) => n.key).sort(), ["lead-20", "row-10-11"]);
   const matteo = boxOf(layout, 10)!;
   const safetyRow = layout.nodes.find((n) => n.key === "row-20-10")!;
   assert.deepEqual([matteo.x, matteo.y], [safetyRow.x, safetyRow.y], "Matteo's Safety row, his oldest division");
@@ -204,6 +204,45 @@ test("the viewer's path runs from the leader down to their row, and the canvas o
   const head = boxOf(layout, 4)!;
   assert.ok(layout.focus && layout.focus.x <= head.x && layout.focus.y === head.y);
   assert.ok(layout.focus.x + layout.focus.w < boxOf(layout, 9)!.x);
+});
+
+test("the path of a viewer in three divisions across two departments reaches all three, and nothing else (#862)", () => {
+  const three = person(12, "Nadia Russo", inDivisions([
+    { divisionId: 11, role: "member", since: "2025-10-01" },
+    { divisionId: 10, role: "member", since: "2024-10-01" },
+    { divisionId: 20, role: "member", since: "2023-10-01" },
+  ]));
+  const tree = buildTeamTree([...roster, three], org, "2026–27", 12);
+  assert.deepEqual(tree.path, [
+    { kind: "division", departmentId: 2, divisionId: 20 },
+    { kind: "division", departmentId: 1, divisionId: 10 },
+    { kind: "division", departmentId: 1, divisionId: 11 },
+  ], "her first place, Safety, first");
+  const layout = layoutTeamTree(tree);
+  const on = layout.nodes.filter((n) => n.onPath).map((n) => n.key).sort();
+  assert.deepEqual(on, ["head-1", "head-2", "lead-10", "lead-11", "lead-20", "leader-1", "row-10-12", "row-11-12", "row-20-12"]);
+
+  // Each accent line ends at a head, a lead card or one of her rows: the trunk to both heads, each head to her divisions, each lead to her row.
+  const node = (key: string) => layout.nodes.find((n) => n.key === key)!;
+  const top = (key: string) => [node(key).x + node(key).w / 2, node(key).y];
+  const rowEnd = (key: string) => [node(key).x, node(key).y + node(key).h / 2];
+  const ends = layout.edges.filter((e) => e.onPath).map((e) => [...e.points[e.points.length - 1]]);
+  assert.deepEqual(
+    ends.map(String).sort(),
+    [top("head-1"), top("head-2"), top("lead-10"), top("lead-11"), top("lead-20"), rowEnd("row-10-12"), rowEnd("row-11-12"), rowEnd("row-20-12")].map(String).sort(),
+  );
+
+  // The canvas still opens on her first place's department, and Show me still goes to her Safety row.
+  const safety = node("head-2");
+  assert.ok(layout.focus && layout.focus.x <= safety.x && layout.focus.x + layout.focus.w >= safety.x + safety.w);
+  assert.deepEqual(boxOf(layout, 12), node("row-20-12"));
+});
+
+test("a seat's path stops at the seat: the leader, a board seat and a head (#862)", () => {
+  const onPath = (selfId: number) => layoutTeamTree(buildTeamTree(roster, org, "2026–27", selfId)).nodes.filter((n) => n.onPath).map((n) => n.key);
+  assert.deepEqual(onPath(1), ["leader-1"]);
+  assert.deepEqual(onPath(2), ["leader-1", "board-2"]);
+  assert.deepEqual(onPath(4), ["leader-1", "head-1"]);
 });
 
 test("the team leader's canvas opens on the top of the tree down to its lowest row", () => {
