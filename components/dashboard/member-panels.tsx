@@ -58,7 +58,7 @@ import {
   type HeadMoveAnswer,
   type MoveChoice,
 } from "./member-move";
-import { titleOnMove, type MovablePlace } from "@/lib/dashboard/member-move";
+import { headsAfterMove, titleOnMove, type MovablePlace } from "@/lib/dashboard/member-move";
 import { ConfirmDialog, SHEET_BUTTONS, SHEET_CANCEL, SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber, sheetConfirm } from "./confirm-dialog";
 import { Drawer, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
@@ -1028,7 +1028,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
     setErrors((errs) => ({ ...errs, [key]: undefined }));
   };
 
-  // A head's move leaves their department with no head, so Save asks first (board 98c).
+  // A head's move changes who heads their department, so Save asks first (board 98c).
   const headMove = places.flatMap((p) => {
     const to = p.kind === "head" ? moveToOf(p, choiceFor(p), departments) : null;
     return p.kind === "head" && to !== null ? [{ place: p, to }] : [];
@@ -1132,7 +1132,9 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
           <div className="mt-4">{titleField(to === null ? null : to.kind === "division" ? `Role in ${short ?? ""}` : "Role", to === null && title?.kind === "seat")}</div>
         )}
         <MoveHint place={place} moving={to !== null} />
-        {place.kind === "head" && to !== null && <NoHeadNote department={place.department} />}
+        {place.kind === "head" && to !== null && person !== null && headsAfterMove(departments, place.departmentId, person.id).kind === "none" && (
+          <NoHeadNote department={place.department} />
+        )}
       </div>
     );
   };
@@ -1286,11 +1288,12 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         {person && position && <LeavingSection person={person} position={position} onAsk={setAsking} />}
       </Drawer>
       <MemberDialogs asking={asking} onClose={() => setAsking(null)} onDone={onClose} />
-      {headMove !== undefined && headMove.place.kind === "head" && (
+      {headMove !== undefined && headMove.place.kind === "head" && person !== null && (
         <HeadMoveConfirm
           open={confirming}
           onOpenChange={setConfirming}
           person={name}
+          personId={person.id}
           from={{ id: headMove.place.departmentId, name: headMove.place.department }}
           to={headMove.to}
           departments={departments}

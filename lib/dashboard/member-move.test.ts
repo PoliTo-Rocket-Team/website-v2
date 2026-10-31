@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { TeamPerson } from "./division-edit";
-import { moveTargetsOf, ONLY_TEAM_MOVES_HEADS, planMove, titleOnMove, type HeadRow, type MoveRecord, type MoveRequest, type MoveTo } from "./member-move";
+import { headsAfterMove, moveTargetsOf, ONLY_TEAM_MOVES_HEADS, planMove, titleOnMove, type HeadRow, type MoveRecord, type MoveRequest, type MoveTo } from "./member-move";
 import { isDivisionRole, membershipsOfRoles, roleBeyondDivisions, type OrgChart, type RoleSeat, type TeamActor } from "./team";
 
 // The title box of a move (issue #777): Edit details and the Team tree's
@@ -177,4 +177,18 @@ test("Pick a new head lists seated people in the department's divisions, never i
     propulsion?.successors.map((p) => p.name),
     ["Bruno", "Dario"],
   );
+});
+
+// Who heads the department a head leaves (issue #879): the confirm says it
+// will have no head only when they are its last head.
+
+test("a last head leaves their department with no head; with a co-head, the co-head stays", () => {
+  const targets = (records: readonly MoveRecord[]) => moveTargetsOf(records, org, team);
+  const record = (person: TeamPerson): MoveRecord => ({ id: person.id, name: person.name, photoUrl: null, memberships: person.memberships, beyondDivisions: person.beyond });
+  assert.deepEqual(headsAfterMove(targets(people.map(record)), 1, 1), { kind: "none" });
+  // Bruno co-heads Propulsion beside Ada here.
+  const bruno: TeamPerson = { ...people[1], beyond: [...rowsOf(2), row(204, 2, "head", { departmentId: 1 })].flatMap((r) => roleBeyondDivisions(r, org) ?? []) };
+  const coHeaded = targets([people[0], bruno, people[2], people[3]].map(record));
+  assert.deepEqual(headsAfterMove(coHeaded, 1, 1), { kind: "staying", heads: [{ id: 2, name: "Bruno", photoUrl: null }] });
+  assert.deepEqual(headsAfterMove(coHeaded, 1, 2), { kind: "staying", heads: [{ id: 1, name: "Ada", photoUrl: null }] });
 });
