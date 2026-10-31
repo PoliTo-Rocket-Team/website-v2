@@ -15,7 +15,17 @@ import { queryTeamSnapshot, type TeamSnapshot } from "./team-snapshot";
 /** Tag for the snapshot; a write that changes who is on the team invalidates it (lib/cache-tags.ts). */
 export { TEAM_ROSTER_CACHE_TAG };
 
-export { aliasTeamOf, memberNamesOf, recordsOf, rosterOf, seatsOf, teamPeopleOf, teamRolesOf, type TeamSnapshot } from "./team-snapshot";
+export {
+  aliasTeamOf,
+  editorViewOf,
+  memberNamesOf,
+  recordsOf,
+  rosterOf,
+  seatsOf,
+  teamPeopleOf,
+  teamRolesOf,
+  type TeamSnapshot,
+} from "./team-snapshot";
 
 export async function readTeamSnapshot(): Promise<TeamSnapshot> {
   "use cache";

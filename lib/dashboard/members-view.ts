@@ -51,9 +51,9 @@ export type MemberActions = {
   readonly person: EditPerson;
   readonly position: MemberPosition;
   /**
-   * Whether Edit details may correct their sign-in email (issue #741): set
-   * on the server, for full access only and only while no sign-in account
-   * holds their user row (./sign-in-email.ts). A head's or a lead's page never offers it.
+   * Whether Edit details may change their sign-in email (issues #741, #864):
+   * set on the server, for full access only, whether or not a sign-in
+   * account holds their user row (./sign-in-email.ts). A head's or a lead's page never offers it.
    */
   readonly correctsSignInEmail: boolean;
 };

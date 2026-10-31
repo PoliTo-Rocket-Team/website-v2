@@ -122,7 +122,7 @@ test("the tree is built from the roster: a person added to it is a node", () => 
   assert.deepEqual(names(before), ["Elif Kaya"]);
   assert.deepEqual(names(after), ["Anna Villa", "Elif Kaya"]);
   assert.equal(after.departments[0].size, before.departments[0].size + 1);
-  assert.deepEqual(after.path, { departmentId: 1, divisionId: 10 });
+  assert.deepEqual(after.path, [{ kind: "division", departmentId: 1, divisionId: 10 }]);
   assert.equal(after.leader?.name, "Alessandro Greco");
 });
 

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
@@ -9,7 +9,6 @@ import { getDb } from "@/db/client";
 import {
   applications,
   applyPositions,
-  betterAuthUsers,
   dashboardNotices,
   departments,
   divisions,
@@ -44,9 +43,11 @@ import {
   checkAddMember,
   checkMemberEdit,
   divisionMembers,
+  editedFields,
   lookupForAdd,
   positionsOf,
   SEAT_TITLE_REQUIRED,
+  shownEditOf,
   type AddLookup,
   type AddStanding,
   type DetailsTarget,
@@ -121,9 +122,11 @@ import {
 import { refreshAfter } from "@/lib/cache-tags";
 import { mayChangePositionIn } from "./position-access";
 import { readsRecruitmentIn } from "./application-documents";
-import { readTeamSnapshot, recordsOf, seatsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
+import { editorViewOf, readTeamSnapshot, recordsOf, seatsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
-import { correctsSignInEmail, planSignInEmailCorrection, type SignInEmailCorrection, type SignInEmailRow } from "./sign-in-email";
+import { correctsSignInEmail, SIGN_IN_EMAIL_REFUSALS } from "./sign-in-email";
+import { correctionWrites, planCorrection, signedIn } from "./database-sign-in-email";
+import { isGuardFailure } from "@/lib/db-guard";
 
 // The Members page's reads and writes on the database (Dashboard v2 boards 59
 // to 59e, issue #172; boards 61e to 61h2, issue #231): who is in the lead's
@@ -287,16 +290,6 @@ async function readJoining(identity: DashboardIdentity, divisionIds: readonly nu
   return joining;
 }
 
-/**
- * Whether a sign-in account holds the `public.users` row: a Better Auth user
- * with its id, as the `sync_auth_users` trigger (drizzle/0001) leaves it once
- * the person signs in. Only read here: nothing in this file writes the
- * `better_auth` schema. Both ids are named with their table: a one-table
- * select names its columns bare, and a bare `id` inside the subquery would
- * read the Better Auth row's own.
- */
-const signedIn = sql<boolean>`exists (select 1 from ${betterAuthUsers} as account where account.id = ${users}.${sql.identifier(users.id.name)})`;
-
 const waitingColumns = {
   join_id: teamJoins.id,
   user_id: teamJoins.userId,
@@ -400,7 +393,7 @@ function waitingPerson(identity: DashboardIdentity, row: WaitingRow): WaitingPer
   return {
     joinId: row.join_id,
     email: row.email,
-    correctsSignInEmail: correctsSignInEmail(identity, row.linked),
+    correctsSignInEmail: correctsSignInEmail(identity, "waiting", row.linked),
     name: [row.first_name, row.last_name].filter(Boolean).join(" ") || null,
     title: row.title,
     details: waitingDetails(row),
@@ -563,49 +556,11 @@ export async function readWholeTeamMembers(identity: DashboardIdentity): Promise
   };
 }
 
-/** The members whose sign-in email the viewer may correct in Edit details (issue #741): none unless full access, and never one who signs in. */
+/** The members whose sign-in email the viewer may change in Edit details (issues #741, #864): every member for full access, none for anyone else. */
 async function readSignInEmailCorrectable(identity: DashboardIdentity): Promise<number[]> {
-  if (!correctsSignInEmail(identity, false)) return [];
+  if (!correctsSignInEmail(identity, "member", true)) return [];
   const rows = await getDb().select({ member: users.member, linked: signedIn }).from(users).where(isNotNull(users.member));
-  return rows.flatMap((r) => (r.member !== null && correctsSignInEmail(identity, r.linked) ? [r.member] : []));
-}
-
-/** The user row a sign-in email correction is aimed at, with whether a sign-in account holds it; null unless exactly one row matches. */
-async function signInEmailRowOf(where: SQL): Promise<SignInEmailRow | null> {
-  const rows = await getDb().select({ id: users.id, email: users.email, linked: signedIn }).from(users).where(where);
-  return rows.length === 1 ? rows[0] : null;
-}
-
-/** Whether any user row but `userId`'s holds `email`, compared case-insensitively: another member, someone waiting, or an account. */
-async function signInEmailTaken(userId: string, email: string): Promise<boolean> {
-  const [row] = await getDb()
-    .select({ id: users.id })
-    .from(users)
-    .where(and(sql`lower(${users.email}) = ${email}`, ne(users.id, userId)))
-    .limit(1);
-  return row !== undefined;
-}
-
-/** The correction Edit details sent for the user row `where` names (`planSignInEmailCorrection`, ./sign-in-email.ts), read for the rule. */
-async function planCorrection(identity: DashboardIdentity, sent: string | null, where: SQL): Promise<SignInEmailCorrection> {
-  if (sent === null) return planSignInEmailCorrection(identity, null, null, false);
-  const row = await signInEmailRowOf(where);
-  return planSignInEmailCorrection(identity, sent, row, row !== null && (await signInEmailTaken(row.id, sent)));
-}
-
-/**
- * The write of a planned correction, in the caller's audited batch: the
- * `public.users` email alone, on a row no sign-in account holds, which the
- * `where` checks again so a sign-in between the read and the write keeps it.
- */
-function correctionWrites(db: Tx, correction: SignInEmailCorrection): BatchItem<"pg">[] {
-  if (correction.kind !== "write") return [];
-  return [
-    db
-      .update(users)
-      .set({ email: correction.email, updatedAt: sql`now()` })
-      .where(and(eq(users.id, correction.userId), sql`not ${signedIn}`)),
-  ];
+  return rows.flatMap((r) => (r.member !== null && correctsSignInEmail(identity, "member", r.linked) ? [r.member] : []));
 }
 
 /** Add member's field (boards 61h, 69c): the team, searched by name or email, and who is waiting here. */
@@ -1157,6 +1112,7 @@ async function saveMemberDetails(
     if (!join) return refused("They are not waiting to join this division.");
     const correction = await planCorrection(identity, signInEmail, eq(users.id, join.user_id));
     if (correction.kind === "refused") return refused(correction.error);
+    // Someone waiting holds no member record, so no move is ever planned for them.
     await runAuditBatch((db) => [
       db.update(teamJoins).set({ title, ...columns.member }).where(eq(teamJoins.id, target.joinId)),
       db.update(users).set({ ...columns.user, updatedAt: sql`now()` }).where(eq(users.id, join.user_id)),
@@ -1165,7 +1121,8 @@ async function saveMemberDetails(
     return written(null);
   }
 
-  const { org } = await readTeamSnapshot();
+  const snapshot = await readTeamSnapshot();
+  const { org } = snapshot;
   const actor = await readActor(identity, org);
   const active = await rolesTheViewerChanges(identity, actor, target.id);
   if (actor === null || active === null) return refused(NOT_IN_SCOPE);
@@ -1182,22 +1139,34 @@ async function saveMemberDetails(
   }
   const correction = await planCorrection(identity, signInEmail, eq(users.member, target.id));
   if (correction.kind === "refused") return refused(correction.error);
-  await runAuditBatch((db) => [
-    db
-      .update(users)
-      .set({ ...columns.user, ...(name === null ? {} : { firstName: name.firstName, lastName: name.lastName }), updatedAt: sql`now()` })
-      .where(eq(users.member, target.id)),
-    db.update(members).set(columns.member).where(eq(members.memberId, target.id)),
-    ...(titled.length === 0
-      ? []
-      : [
-          db
-            .update(roles)
-            .set({ title: title ?? "" })
-            .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
-        ]),
-    ...correctionWrites(db, correction),
-  ]);
+  // The record can move onto a login whose own fields the form never showed (issue #864), so the user columns written are
+  // only those the viewer changed: on the Save that moves it, against the record's row as the form showed it; on a retry
+  // of the same open form, against what its last Save wrote. The members row never moves.
+  const opened = correction.kind === "move" ? editorViewOf(snapshot, target.id) : null;
+  const edited = editedFields(checked.value, opened === null ? checked.value.landed : shownEditOf(opened.details, opened.name));
+  const userColumns = { ...columnsFromMemberDetails(edited.details).user, ...edited.name };
+  try {
+    // The change lands before the user row's details: after a move, they are written onto the row that now holds the record (issue #864).
+    await runAuditBatch((db) => [
+      db.update(members).set(columns.member).where(eq(members.memberId, target.id)),
+      ...correctionWrites(db, correction),
+      db
+        .update(users)
+        .set({ ...userColumns, updatedAt: sql`now()` })
+        .where(eq(users.member, target.id)),
+      ...(titled.length === 0
+        ? []
+        : [
+            db
+              .update(roles)
+              .set({ title: title ?? "" })
+              .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
+          ]),
+    ]);
+  } catch (error) {
+    if (isGuardFailure(error)) return refused(SIGN_IN_EMAIL_REFUSALS.changed);
+    throw error;
+  }
   done();
   return written(null);
 }

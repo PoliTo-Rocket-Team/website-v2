@@ -498,7 +498,9 @@ export interface TeamWrites {
    * Edit details or Fill details (board 61g, issue #584): the details of
    * anyone the viewer may edit, and the title in `divisionId`, which they
    * must reach and the person be in; null for someone in no division the
-   * viewer reaches (a seat), whose title is not set here.
+   * viewer reaches (a seat), whose title is not set here. A changed sign-in
+   * email lands in the same batch, moving the member record onto another
+   * login where it must (issue #864, ./sign-in-email.ts).
    */
   saveMemberDetails(target: DetailsTarget, divisionId: number | null, input: unknown): Promise<WriteResult<null>>;
   /** The photo in Edit details, for anyone the viewer may edit: a square JPEG under 500 KB, or null to remove it. */

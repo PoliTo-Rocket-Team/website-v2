@@ -625,14 +625,54 @@ export function lookupForAdd(
  * details, and for someone on the team their first and last name (issue
  * #668). `name` is null when the form sent none, as Fill details does for
  * someone waiting: nothing renames them. `signInEmail` is a corrected
- * sign-in email (issue #741), null when the form sent none.
+ * sign-in email (issue #741), null when the form sent none. `landed` is what
+ * an earlier Save of the same open form already wrote, when it sent that:
+ * then only what changed since is written (`editedFields`).
  */
 export type MemberEditDetails = {
   readonly title: string | null;
   readonly details: MemberDetails;
   readonly name: PersonName | null;
   readonly signInEmail: string | null;
+  readonly landed: ShownEdit | null;
 };
+
+/**
+ * The details and name an open Edit details form stood on (issue #864): what
+ * it showed when it opened, or what an earlier Save of it wrote. When the
+ * record moves onto another login's row, that row's own values never showed
+ * in the form, so Save writes only the fields that differ from these, and a
+ * field the viewer left keeps the value the login holds. That holds on the
+ * Save that moves the record and on a retry of the same open form after it,
+ * as when a placement move after Save fails and leaves the form open.
+ */
+export type ShownEdit = { readonly details: MemberDetails; readonly name: PersonName | null };
+
+/** What an earlier Save wrote, as Edit details sends it in its input's `landed`: the names beside the details, as the form sends its own. */
+export type LandedSent = { readonly details: MemberDetails } & Partial<PersonName>;
+
+/**
+ * Details and a name as an Edit details form shows them, read as Save reads
+ * what it sends (`checkMemberEdit`), so the two compare field by field. A
+ * stored value Save would refuse stays as it reads.
+ */
+export function shownEditOf(details: MemberDetails, name: PersonName | null): ShownEdit {
+  const parsed = parseMemberDetails(details);
+  return { details: parsed.ok ? parsed.value : details, name: name === null ? null : { firstName: name.firstName.trim(), lastName: name.lastName.trim() } };
+}
+
+/**
+ * The details and name a checked save writes: all it sent, or, against what
+ * the form `shown`, only each one that differs from it. An empty object
+ * writes nothing.
+ */
+export function editedFields(edit: MemberEditDetails, shown: ShownEdit | null): { readonly details: Partial<MemberDetails>; readonly name: Partial<PersonName> } {
+  const { details, name } = edit;
+  if (shown === null) return { details, name: name ?? {} };
+  const changed = <T extends object>(sent: T, was: T | null): Partial<T> =>
+    Object.fromEntries(Object.entries(sent).filter(([key, value]) => was === null || was[key as keyof T] !== value)) as Partial<T>;
+  return { details: changed(details, shown.details), name: name === null ? {} : changed(name, shown.name) };
+}
 
 /** A corrected sign-in email: the rule of the other email fields, never blank, keyed as Google answers it. */
 const signInEmailRule = z.string().transform(signInEmailOf).pipe(z.email("Write an email address.").max(200, "Too long."));
@@ -670,7 +710,9 @@ export function checkMemberEdit(
   const email = sent.signInEmail === undefined ? null : signInEmailRule.safeParse(sent.signInEmail);
   if (email !== null && !email.success) return { ok: false, errors: { signInEmail: email.error.issues[0]?.message ?? "Write an email address." } };
   const signInEmail = email === null ? null : email.data;
-  if (sent.firstName === undefined && sent.lastName === undefined) return { ok: true, value: { title: t.data, details: details.value, name: null, signInEmail } };
+  const landed = checkLanded(sent.landed);
+  if (landed === "bad") return { ok: false, errors: {} };
+  if (sent.firstName === undefined && sent.lastName === undefined) return { ok: true, value: { title: t.data, details: details.value, name: null, signInEmail, landed } };
   // A rename sends both names, each trimmed and never blank, so the Team page never shows a nameless person.
   const name = renameSchema.safeParse({ firstName: sent.firstName ?? "", lastName: sent.lastName ?? "" });
   if (!name.success) {
@@ -678,7 +720,19 @@ export function checkMemberEdit(
     for (const issue of name.error.issues) errors[issue.path[0] as "firstName" | "lastName"] ??= issue.message;
     return { ok: false, errors };
   }
-  return { ok: true, value: { title: t.data, details: details.value, name: name.data, signInEmail } };
+  return { ok: true, value: { title: t.data, details: details.value, name: name.data, signInEmail, landed } };
+}
+
+/** What an earlier Save landed, checked as the sent values are so the two compare; null when none was sent, "bad" when it does not read. */
+function checkLanded(input: unknown): ShownEdit | null | "bad" {
+  if (input === undefined) return null;
+  if (typeof input !== "object" || input === null) return "bad";
+  const sent = input as Record<string, unknown>;
+  const details = parseMemberDetails(sent.details);
+  if (!details.ok) return "bad";
+  if (sent.firstName === undefined && sent.lastName === undefined) return { details: details.value, name: null };
+  if (typeof sent.firstName !== "string" || typeof sent.lastName !== "string") return "bad";
+  return { details: details.value, name: { firstName: sent.firstName.trim(), lastName: sent.lastName.trim() } };
 }
 
 /** A member photo set from Edit details (board 61g): a square JPEG under 500 KB, as the crop dialog makes it. */

@@ -916,7 +916,8 @@ export type TreePerson = {
   /**
    * Whether this is their first place: their seat, else the division they
    * are first in by `homeDivision` (their highest role, then their earliest
-   * division). "Find someone", "Show me" and the viewer's path go only here.
+   * division). "Find someone" and "Show me" go only here; the viewer's path
+   * runs to every place they are drawn (issue #862).
    */
   readonly first: boolean;
 };
@@ -956,9 +957,49 @@ export type TeamTree = {
   readonly departments: readonly TreeDepartment[];
   /** Everyone on the roster. */
   readonly size: number;
-  /** The viewer's place, for the highlighted path; null when they are not in a division or department. */
-  readonly path: { readonly departmentId: number; readonly divisionId: number | null } | null;
+  /** Every place the viewer is drawn, for the highlighted path; null when they are drawn nowhere on the tree. */
+  readonly path: TreePath | null;
 };
+
+/** One place the viewer is drawn on the tree: their seat, a department they head, or a division they are in. */
+export type TreePlace =
+  | { readonly kind: "leader" }
+  | { readonly kind: "board" }
+  | { readonly kind: "head"; readonly departmentId: number }
+  | { readonly kind: "division"; readonly departmentId: number; readonly divisionId: number };
+
+/**
+ * The viewer's highlighted path: every place they are drawn, so someone in
+ * several divisions has the path run to each (issue #862). Their first place
+ * comes first; never empty.
+ */
+export type TreePath = readonly [TreePlace, ...TreePlace[]];
+
+/** The departments the viewer's path runs to: one they head, or one holding a division they are in. */
+export function departmentsOnPath(path: TreePath | null): ReadonlySet<number> {
+  return new Set((path ?? []).flatMap((p) => (p.kind === "head" || p.kind === "division" ? [p.departmentId] : [])));
+}
+
+/** The divisions the viewer's path runs to: every drawn division they are in. */
+export function divisionsOnPath(path: TreePath | null): ReadonlySet<number> {
+  return new Set((path ?? []).flatMap((p) => (p.kind === "division" ? [p.divisionId] : [])));
+}
+
+/** Where the viewer is drawn on a built tree, their first place first; null when nowhere. */
+function pathOf(leader: TreePerson | null, board: readonly TreeBoardMember[], departments: readonly TreeDepartment[]): TreePath | null {
+  const places: { readonly place: TreePlace; readonly first: boolean }[] = [];
+  if (leader?.self) places.push({ place: { kind: "leader" }, first: leader.first });
+  for (const { person } of board) if (person.self) places.push({ place: { kind: "board" }, first: person.first });
+  for (const department of departments) {
+    if (department.head?.self) places.push({ place: { kind: "head", departmentId: department.id }, first: department.head.first });
+    for (const division of department.divisions) {
+      const me = [division.lead, ...division.members].find((p) => p?.self);
+      if (me) places.push({ place: { kind: "division", departmentId: department.id, divisionId: division.id }, first: me.first });
+    }
+  }
+  const [head, ...rest] = [...places.filter((p) => p.first), ...places.filter((p) => !p.first)].map((p) => p.place);
+  return head ? [head, ...rest] : null;
+}
 
 /**
  * The tree of this year's roster as `selfId` sees it. Departments and
@@ -1022,17 +1063,14 @@ export function buildTeamTree(
     .flatMap((e) => (e.placement.role === "board" ? [{ seat: e.placement.seat, entry: e }] : []))
     .sort((a, b) => bySeatOrder(a.seat, b.seat))
     .map(({ seat, entry }): TreeBoardMember => ({ roleId: seat.roleId, title: boardTitleOf(seat), person: node(entry, null) }));
-  const me = roster.find((e) => e.id === selfId);
-  const myDivision = me ? firstDivision(me) : null;
-  const myDepartment =
-    me?.placement.role === "head" ? me.placement.departmentId : (org.divisions.find((d) => d.id === myDivision)?.departmentId ?? null);
+  const shownLeader = leader ? node(leader, null) : null;
   return {
     season,
-    leader: leader ? node(leader, null) : null,
+    leader: shownLeader,
     board,
     departments,
     size: roster.length,
-    path: myDepartment !== null ? { departmentId: myDepartment, divisionId: myDivision } : null,
+    path: pathOf(shownLeader, board, departments),
   };
 }
 

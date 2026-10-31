@@ -108,6 +108,25 @@ test("the rows one write stored at once read as one change, said by the row that
   assert.deepEqual(sentences(entries), ["Moved Applicant D to Interview for Role Z"]);
 });
 
+test("a sign-in email change names the old and the new address, whether the address changed on the row or the record moved rows (issue #864)", () => {
+  const at = "2026-10-25T09:00:00.000Z";
+  const users = (operation: string, before: Record<string, unknown> | null, after: Record<string, unknown>) => row({ table: "users", operation, at, before, after });
+  const details = row({ table: "members", operation: "UPDATE", at, before: { member_id: 4, discord: null }, after: { member_id: 4, discord: null } });
+  const retyped = read([details, users("UPDATE", { id: "added:1", email: "old@mail.test", member: 4 }, { id: "added:1", email: "new@mail.test", member: 4 })]);
+  assert.deepEqual(sentences(retyped), ["Changed the sign-in email of Person E: old@mail.test → new@mail.test"]);
+  const moved = read([
+    details,
+    users("INSERT", null, { id: "added:2", email: "new@mail.test", member: null }),
+    users("UPDATE", { id: "added:2", email: "new@mail.test", member: null }, { id: "added:2", email: "new@mail.test", member: 4 }),
+    users("UPDATE", { id: "login-old", email: "old@mail.test", member: 4 }, { id: "login-old", email: "old@mail.test", member: null }),
+    row({ table: "session", schema: "better_auth", operation: "DELETE", at, before: { userId: "login-old" } }),
+  ]);
+  assert.deepEqual(sentences(moved), ["Changed the sign-in email of Person E: old@mail.test → new@mail.test"]);
+  assert.equal(moved[0].change.kind === "write" && moved[0].change.area, "members");
+  const anonymized = read([users("UPDATE", { id: "acct-d", email: "old@mail.test", anonymized_at: null }, { id: "acct-d", email: "anonymized@invalid", anonymized_at: at })]);
+  assert.deepEqual(sentences(anonymized), ["Updated the details of Applicant D"], "anonymization is no sign-in email change");
+});
+
 test("a status move names the status it set by its stored name, built-in or added, and an unlisted key by the key", () => {
   const move = (before: string | null, after: string, extra: Record<string, unknown> = {}) =>
     row({
