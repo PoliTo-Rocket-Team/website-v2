@@ -7,6 +7,7 @@ import { addRows, changeRows, tableRows } from "./access-matrix/test-database";
 import { accountOf, BREAK_GLASS_EMAIL, IDS, seedFixture } from "./access-matrix/fixture";
 import { readActivityLog } from "./database-activity-log";
 import { mergeLogin, readMergeLogin, writeLoginMerge } from "./database-login-merge";
+import { ensureSiteRow } from "./database-site-row";
 import { planLoginMerge } from "./login-merge";
 
 // Merging an empty second login on the migrated in-memory Postgres the access
@@ -86,6 +87,16 @@ test("an empty login merges into the member: its application, file, Google accou
   assert.deepEqual(await accountSentences(), [[MEMBER, `Merged the login ${EMPTY_EMAIL} into their account`]]);
   assert.equal((await readActivityLog(new Date())).entries.length, entriesBefore + 1, "the merge reads as one entry");
   assert.equal(JSON.stringify(await readActivityLog(new Date())).includes(TOKEN), false, "no token reaches the Activity log");
+});
+
+test("after a merge, the sign-in site-row repair (issue #910) leaves the merged login's closed row closed and gives no login a new row", async () => {
+  await seeded();
+  await mergeLogin({ userId: MEMBER, fromUserId: EMPTY, viewingAs: false });
+  const before = await tableRows(users);
+
+  assert.deepEqual(await ensureSiteRow(EMPTY), { kind: "present" }, "the merged login still has its own, closed row");
+  assert.deepEqual(await ensureSiteRow(MEMBER), { kind: "present" });
+  assert.deepEqual(await tableRows(users), before, "no row is reopened, taken over or added");
 });
 
 test("a login that holds another member's record, the break-glass account, the person's own login and View as are refused, and nothing changes", async () => {
