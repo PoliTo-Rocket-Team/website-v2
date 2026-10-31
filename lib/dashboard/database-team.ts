@@ -42,6 +42,7 @@ import {
   checkAddMember,
   checkMemberEdit,
   divisionMembers,
+  editedFields,
   lookupForAdd,
   positionsOf,
   SEAT_TITLE_REQUIRED,
@@ -1135,6 +1136,10 @@ async function saveMemberDetails(
   }
   const correction = await planCorrection(identity, signInEmail, eq(users.member, target.id));
   if (correction.kind === "refused") return refused(correction.error);
+  // The user row can change under an open form, when an earlier Save of it moved the record onto another login: a retry
+  // that says what landed writes only the user columns changed since (issue #864). The members row never moves.
+  const edited = editedFields(checked.value);
+  const userColumns = { ...columnsFromMemberDetails(edited.details).user, ...edited.name };
   try {
     // The change lands before the user row's details: after a move, they are written onto the row that now holds the record (issue #864).
     await runAuditBatch((db) => [
@@ -1142,7 +1147,7 @@ async function saveMemberDetails(
       ...correctionWrites(db, correction),
       db
         .update(users)
-        .set({ ...detailsOnto(correction, { ...columns.user, ...(name ?? {}) }), updatedAt: sql`now()` })
+        .set({ ...detailsOnto(correction, userColumns), updatedAt: sql`now()` })
         .where(eq(users.member, target.id)),
       ...(titled.length === 0
         ? []

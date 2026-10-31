@@ -28,6 +28,7 @@ import {
   type AddMemberErrors,
   type DivisionHeader,
   type DivisionPerson,
+  type LandedSent,
   type MemberPosition,
   type TeamMatch,
   type WaitingPerson,
@@ -1018,6 +1019,9 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   const [asking, setAsking] = useState<Asking | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
+  // What this form's last Save wrote, once one did: a retry then writes only what changed since, so a record
+  // that Save moved onto another login keeps that login's own fields (issue #864).
+  const [landed, setLanded] = useState<LandedSent | null>(null);
 
   const setName = (key: keyof PersonName, value: string) => {
     setNames((n) => (n === null ? n : { ...n, [key]: value }));
@@ -1039,6 +1043,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
       details: detailsOf(draft),
       ...names,
       ...(corrected ? { signInEmail } : {}),
+      ...(landed === null ? {} : { landed }),
     };
     return { input, checked: checkMemberEdit(input, title?.kind === "seat" && titledMove === null ? "required" : "optional") };
   };
@@ -1057,6 +1062,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         toast.error("Could not save the details", { description: result.error });
         return;
       }
+      setLanded({ details: checked.value.details, ...(checked.value.name ?? {}) });
       for (const place of person === null ? [] : places) {
         const choice = choiceFor(place);
         const to = moveToOf(place, choice, departments);

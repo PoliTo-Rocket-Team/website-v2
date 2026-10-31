@@ -9,7 +9,7 @@ import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 import type { DashboardData } from "./data";
 import type { MemberDetails } from "./details";
-import type { DetailsTarget } from "./division-members";
+import type { DetailsTarget, LandedSent } from "./division-members";
 import { membersModelOf } from "./members-view";
 import { openDashboard } from "./open";
 import { SIGN_IN_EMAIL_REFUSALS, takenBy } from "./sign-in-email";
@@ -304,6 +304,38 @@ describe("an empty login takes the record off a row nobody signed in on (issues 
     const logged = (await logRowsSinceSeed()).filter((r) => r.tableName === "users");
     assert.deepEqual(new Set(logged.map((r) => r.recordId)), new Set([LOGIN_USER, PERSON_USER]));
     assert.ok(logged.every((r) => r.changedBy === accountOf("operations lead").userId), "in the activity log under the viewer");
+  });
+
+  test("a retry of the same open form after the record moved writes only what changed since: the login's own fields survive", async () => {
+    await seededEmptyLogin();
+    const { details, ...name } = await opened();
+    assert.equal(details.phone, "+39 333 111 1111", "the form opens with the old row's phone");
+    /** One Save of the form as it opened, with `changed` typed over it and what an earlier Save landed, as Edit details sends it. */
+    const send = (changed: Partial<MemberDetails>, landed?: LandedSent) => {
+      signInAs(accountOf("operations lead").userId);
+      return teamActions.saveMemberDetails(PERSON, MA, { title: "Member", details: { ...details, ...changed }, ...name, signInEmail: REAL, ...(landed === undefined ? {} : { landed }) });
+    };
+    const landedOf = (changed: Partial<MemberDetails>): LandedSent => ({ details: { ...details, ...changed }, ...name });
+    // The first Save moves the record; a placement move after it fails and leaves the form open.
+    assert.deepEqual(await send({ country: "France" }), { ok: true });
+    assert.equal((await userRow(LOGIN_USER))?.member, MEMBER);
+    let landed = landedOf({ country: "France" });
+    for (const [round, changed] of [
+      ["a retry of the same Save", { country: "France" }],
+      ["a retry with one more change", { country: "France", gender: "Female" }],
+    ] as const) {
+      assert.deepEqual(await send(changed, landed), { ok: true }, round);
+      landed = landedOf(changed);
+      const login = await userRow(LOGIN_USER);
+      assert.equal(login?.phone, "+39 333 222 2222", `${round}: the login's own phone is not overwritten with the old row's`);
+      assert.equal(login?.country, "France", `${round}: a field the viewer changed stays written`);
+    }
+    assert.equal((await userRow(LOGIN_USER))?.gender, "Female", "the retry's own change is written");
+    // A field set back to its opening value is a change since the last Save, so it is written too.
+    assert.deepEqual(await send({ country: "Italy", gender: "Female" }, landed), { ok: true });
+    const login = await userRow(LOGIN_USER);
+    assert.equal(login?.country, "Italy", "the value set back is written, not dropped behind a success");
+    assert.equal(login?.phone, "+39 333 222 2222", "the login's own phone still survives");
   });
 
   test("an address held by an account that has a member record is refused, naming who", async () => {
