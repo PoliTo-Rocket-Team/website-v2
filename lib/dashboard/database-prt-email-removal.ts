@@ -22,7 +22,7 @@ import { refused, written, type WriteResult } from "./write";
 // Personal PRT email removals on the database (issue #931): the open rows of
 // `prt_email_removals` as the approvers' rows, and their Mark done and Keep
 // address. The database opens and cancels the rows itself when a `roles`
-// write commits (drizzle/0079); what they mean and who answers them are
+// write commits (drizzle/0080); what they mean and who answers them are
 // ./prt-email-removal.ts's. The reads go to the table, not the cached team
 // snapshot, so an answer shows at once.
 

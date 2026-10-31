@@ -859,19 +859,101 @@ test("0078 keeps every row, applies again, and a new login takes over a free row
   ]);
 });
 
+// A first sign-in never fails on a refused take-over (issue #917,
+// https://github.com/PoliTo-Rocket-Team/website-v2/issues/917): when
+// applications, uploaded files or audit rows point at the free row the
+// sign-in sync would take over, the database refuses the id change, and the
+// login now gets a fresh row instead of failing. The function replacement
+// changes no stored row.
+const REFUSED_TAKE_OVER_TAG = "0079_sync_auth_users_fresh_row_on_refused_take_over";
+
+test("0079_sync_auth_users_fresh_row_on_refused_take_over.sql drops, renames and rewrites nothing, and its header links the issue", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${REFUSED_TAKE_OVER_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/917/);
+});
+
+test("0079 keeps every row, applies again, and a first sign-in on a free row that applications, files and audit rows point at succeeds on a fresh row, leaving those rows as they were", async () => {
+  const { db, apply } = await databaseBefore(REFUSED_TAKE_OVER_TAG);
+  const login = (id: string, email: string) => `insert into better_auth."user" (id, name, email, "emailVerified") values ('${id}', '${id}', '${email}', true)`;
+  await db.exec(`
+    insert into users (id, email, first_name) values ('applicant', 'applicant@example.com', 'Imported');
+    insert into applications (user_id) values ('applicant');
+    insert into application_files (r2_key, original_filename, user_id) values ('applications/applicant/cv.pdf', 'cv.pdf', 'applicant');
+    insert into logs (schema_name, table_name, operation, record_id, changed_by) values ('public', 'users', 'UPDATE', 'applicant', 'applicant');
+  `);
+  const snapshot = async () => ({
+    users: (await db.query<{ id: string }>(`select * from users order by id`)).rows,
+    applications: (await db.query(`select * from applications order by id`)).rows,
+    files: (await db.query(`select * from application_files order by id`)).rows,
+    logs: (await db.query(`select * from logs order by id`)).rows,
+  });
+  const before = await snapshot();
+  await apply();
+  await apply();
+  assert.deepEqual(await snapshot(), before, "every row is kept");
+
+  await db.exec(login("new-login", "applicant@example.com"));
+  const rows = await db.query<{ id: string; email: string; first_name: string | null }>(`select id, email, first_name from users order by id`);
+  assert.deepEqual(rows.rows, [
+    { id: "applicant", email: "applicant@example.com", first_name: "Imported" },
+    { id: "new-login", email: "applicant@example.com", first_name: null },
+  ]);
+  const after = await snapshot();
+  assert.deepEqual(after.users.find((u) => u.id === "applicant"), before.users.find((u) => u.id === "applicant"), "the matched row is unchanged");
+  assert.deepEqual(after.applications, before.applications, "every application still points at the unchanged row");
+  assert.deepEqual(after.files, before.files, "every uploaded file still points at the unchanged row");
+  for (const row of before.logs) assert.ok(after.logs.some((l) => JSON.stringify(l) === JSON.stringify(row)), "every audit row is kept as it was");
+});
+
+test("after 0079 the sign-in sync still matches its own id, takes over a free unreferenced row, skips held and closed rows, and makes a fresh row on no match", async () => {
+  const { db, apply } = await databaseBefore(REFUSED_TAKE_OVER_TAG);
+  await apply();
+  const login = (id: string, email: string) => `insert into better_auth."user" (id, name, email, "emailVerified") values ('${id}', '${id}', '${email}', true)`;
+  await db.exec(`
+    ${login("held", "held@example.com")};
+    update users set email = 'shared@example.com' where id = 'held';
+    insert into users (id, email, first_name) values ('own', 'old@example.com', 'Own');
+    insert into users (id, email, first_name) values ('added:free', 'free@example.com', 'Imported');
+    insert into users (id, email, first_name, deleted_at) values ('closed', 'closed@example.com', 'Closed', now());
+  `);
+  await db.exec(`
+    ${login("own", "own@example.com")};
+    ${login("second", "shared@example.com")};
+    ${login("returning", "free@example.com")};
+    ${login("reopening", "closed@example.com")};
+    ${login("stranger", "stranger@example.com")};
+  `);
+  const rows = await db.query<{ id: string; email: string; first_name: string | null }>(`select id, email, first_name from users order by id`);
+  assert.deepEqual(rows.rows, [
+    { id: "closed", email: "closed@example.com", first_name: "Closed" },
+    { id: "held", email: "shared@example.com", first_name: null },
+    { id: "own", email: "own@example.com", first_name: "Own" },
+    { id: "reopening", email: "closed@example.com", first_name: null },
+    { id: "returning", email: "free@example.com", first_name: "Imported" },
+    { id: "second", email: "shared@example.com", first_name: null },
+    { id: "stranger", email: "stranger@example.com", first_name: null },
+  ]);
+});
+
 // Personal PRT email removals (issue #931): one new type, one new table with
 // its keys, indexes, check and audit trigger, one new function and three new
 // deferred triggers on `roles`. Nothing existing is dropped or rewritten, and
-// nobody who left before it gets a removal.
-const PRT_EMAIL_REMOVALS_TAG = "0079_prt_email_removals";
+// nobody who left before it gets a removal. The one UPDATE the check finds is
+// inside the new trigger function's body: it cancels a leaving member's open
+// alias request when a later role write commits, and the migration itself runs
+// it on no row (the test below applies it twice and compares the rows).
+const PRT_EMAIL_REMOVALS_TAG = "0080_prt_email_removals";
 
-test("0079_prt_email_removals.sql drops, renames and rewrites nothing, and its header links the issue", () => {
+test("0080_prt_email_removals.sql drops, renames and rewrites nothing, and its header links the issue", () => {
   const sql = readFileSync(resolve(process.cwd(), `drizzle/${PRT_EMAIL_REMOVALS_TAG}.sql`), "utf8");
-  assert.deepEqual(nonAdditiveStatements(sql), []);
+  assert.deepEqual(nonAdditiveStatements(sql), [
+    "UPDATE public.alias_requests SET outcome = 'cancelled', answered_at = now() WHERE member_id = person AND outcome IS NULL",
+  ]);
   assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/931/);
 });
 
-test("0079 keeps every row, opens nothing for who left before it, applies again, and judges a role write as it commits", async () => {
+test("0080 keeps every row, opens nothing for who left before it, applies again, and judges a role write as it commits", async () => {
   const { db, apply } = await databaseBefore(PRT_EMAIL_REMOVALS_TAG);
   await db.exec(`
     set session_replication_role = replica;
@@ -880,12 +962,15 @@ test("0079 keeps every row, opens nothing for who left before it, applies again,
       (1, 1, null, 'Member', '2025-10-01', null, 'core'),
       (2, 2, null, 'Member', '2024-10-01', '2025-09-30', 'core'),
       (3, 3, null, 'Member', '2025-10-01', null, 'core');
+    insert into alias_requests (member_id) values (2), (3);
     set session_replication_role = origin;
   `);
   const before = await db.query(`select * from roles order by id`);
+  const requestsBefore = await db.query(`select * from alias_requests order by id`);
   await apply();
   await apply();
   assert.deepEqual((await db.query(`select * from roles order by id`)).rows, before.rows, "every role row is kept");
+  assert.deepEqual((await db.query(`select * from alias_requests order by id`)).rows, requestsBefore.rows, "every request is kept, one of who left before it too");
   assert.deepEqual((await db.query(`select * from prt_email_removals`)).rows, [], "nobody who left before it gets one");
   const triggers = await db.query<{ name: string }>(`select tgname as name from pg_trigger where tgrelid = 'public.roles'::regclass and tgname like 'settle_prt_email_removals%' order by 1`);
   assert.deepEqual(
@@ -893,18 +978,26 @@ test("0079 keeps every row, opens nothing for who left before it, applies again,
     ["settle_prt_email_removals_on_delete", "settle_prt_email_removals_on_insert", "settle_prt_email_removals_on_update"],
   );
   const open = async () => (await db.query(`select member_id, address, outcome from prt_email_removals order by id`)).rows;
+  const requests = async () => (await db.query(`select member_id, outcome from alias_requests where member_id = 3 order by id`)).rows;
 
   // A hand-over to an advisor role in one write: the member still holds a role when it commits.
   await db.exec(`begin; update roles set leaved_at = '2026-10-31' where id = 1; insert into roles (id, member_id, title, type) values (4, 1, 'Advisor', 'advisor'); commit;`);
   assert.deepEqual(await open(), []);
-  // A member with no PRT email leaves: nothing.
-  await db.exec(`update roles set leaved_at = '2026-10-31' where id = 3`);
+  // A member with no PRT email stays on as an advisor: the open request is kept.
+  await db.exec(`begin; update roles set leaved_at = '2026-10-31' where id = 3; insert into roles (id, member_id, title, type) values (6, 3, 'Advisor', 'advisor'); commit;`);
+  assert.deepEqual(await requests(), [{ member_id: 3, outcome: null }]);
+  // Their last advisor role ends: no removal (no PRT email), and the open request is cancelled.
+  await db.exec(`update roles set leaved_at = '2026-10-31' where id = 6`);
   assert.deepEqual(await open(), []);
+  assert.deepEqual(await requests(), [{ member_id: 3, outcome: "cancelled" }]);
   // The last role ends: one open removal, and a delete of an old role after it opens none.
   await db.exec(`update roles set leaved_at = '2026-10-31' where id = 4`);
   await db.exec(`delete from roles where id = 2`);
   assert.deepEqual(await open(), [{ member_id: 1, address: "one@politorocketteam.it", outcome: null }]);
-  // A role started again cancels it.
-  await db.exec(`insert into roles (id, member_id, title, type) values (5, 1, 'Member', 'core')`);
+  // An advisor role taken again leaves it open.
+  await db.exec(`insert into roles (id, member_id, title, type) values (5, 1, 'Advisor', 'advisor')`);
+  assert.deepEqual(await open(), [{ member_id: 1, address: "one@politorocketteam.it", outcome: null }]);
+  // Rejoining the team cancels it.
+  await db.exec(`insert into roles (id, member_id, title, type) values (7, 1, 'Member', 'core')`);
   assert.deepEqual(await open(), [{ member_id: 1, address: "one@politorocketteam.it", outcome: "cancelled" }]);
 });

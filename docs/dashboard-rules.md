@@ -989,13 +989,16 @@ personal PRT email, and the PRT emails section above sets how it reads.
   #931, `lib/dashboard/prt-email-removal.ts`, Owner decisions of 2026-10-31). Leaving is any
   write after which the member holds no active role: Leave the team, Move to alumni, a hand-over
   or a replace that ends their last role, the end of their last advisor role. The database opens
-  the removal as that write commits (`drizzle/0079`), so every way of leaving is covered, and
+  the removal as that write commits (`drizzle/0080`), so every way of leaving is covered, and
   the leave is never refused because of it. A member with no PRT email gets none.
-- A member who stays on as an advisor (division, department or team) keeps the address; the
-  removal opens when their last advisor role ends.
+- The same leave cancels the member's own open PRT email request, if one is open. The
+  cancellation shows in the Activity log under who made the leave.
+- A member who stays on as an advisor (division, department or team) keeps the address and any
+  open PRT email request; the removal opens, and the request is cancelled, when their last
+  advisor role ends.
 - One address has at most one open removal, in any letter case (`prt_email_removals_one_open`).
-  A member who starts a role again before it is answered, as a member or an advisor, has it
-  cancelled.
+  A member who rejoins the team before it is answered has it cancelled. A member who takes an
+  advisor role again leaves it open: the approvers answer it with Keep address or Mark done.
 - Each open removal is one "Remove … from …" item on the approvers' Overview, every holder of
   each seat, drawn as a team address removal's, with Keep address and Mark done. Mark done is
   pressed once the mailbox is deleted in Google Workspace: it clears the member's PRT email.

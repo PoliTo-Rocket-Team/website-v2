@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as actions from "@/app/dashboard/actions";
 import * as teamActions from "@/app/dashboard/team-actions";
-import { members, prtEmailRemovals, roles } from "@/db/schema";
+import { aliasRequests, members, prtEmailRemovals, roles } from "@/db/schema";
 import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 import { addRows, changeRows, databaseWrites, logRowsSinceSeed, tableRows } from "./access-matrix/test-database";
@@ -15,10 +15,12 @@ import { PRT_EMAIL_REMOVAL_ALREADY_ANSWERED } from "./prt-email-removal";
 
 // Personal PRT email removals on the migrated in-memory Postgres (issue
 // #931): every way of leaving the team opens one for the member's PRT email,
-// the database judging the roles as each write leaves them (drizzle/0079); a
-// member who stays on as an advisor keeps the address until that role ends;
-// a role started again cancels it; and the alias approvers, every holder of
-// each seat, answer it with Mark done or Keep address, once.
+// the database judging the roles as each write leaves them (drizzle/0080),
+// and cancels the member's own open PRT email request; a member who stays on
+// as an advisor keeps the address and the request until that role ends;
+// rejoining the team cancels an open removal, taking an advisor role again
+// leaves it open; and the alias approvers, every holder of each seat, answer
+// it with Mark done or Keep address, once.
 
 const PERSON = IDS.person("DM"); // a member of Design & Manufacturing, "Person DM"
 const LEAD = IDS.lead("DM"); // its lead, "Lead DM"
@@ -124,12 +126,42 @@ test("a member who rejoins before the removal is answered has it cancelled", asy
   assert.deepEqual(await removalRowsSeenBy(accountOf("IT lead").userId), [], "the row leaves the approvers' Overview");
 });
 
-test("a member who takes an advisor role again before the removal is answered has it cancelled", async () => {
+test("a member who takes an advisor role again before the removal is answered leaves it open for the approvers", async () => {
   await seedFixture();
   await withPrtEmail(PERSON, ADDRESS);
   await moveToAlumni(PERSON);
+  const id = await openIdOf(ADDRESS);
   await addRows(roles, [{ id: 9_101, memberId: PERSON, divisionId: DM, title: "Advisor", startedAt: "2026-10-31", type: "advisor" }]);
-  assert.deepEqual(await removals(), [{ memberId: PERSON, address: ADDRESS, outcome: "cancelled" }]);
+  assert.deepEqual(await removals(), [{ memberId: PERSON, address: ADDRESS, outcome: null }]);
+  assert.equal((await removalRowsSeenBy(accountOf("IT lead").userId)).length, 1, "the row stays on the approvers' Overview");
+  assert.deepEqual(await actions.answerPrtEmailRemoval(id, "kept"), { ok: true, value: null }, "the approvers still answer it");
+  assert.deepEqual(await removals(), [{ memberId: PERSON, address: ADDRESS, outcome: "kept" }]);
+});
+
+// The member's own open PRT email request ------------------------------------
+
+async function requestsOf(memberId: number) {
+  return (await tableRows(aliasRequests)).filter((r) => r.memberId === memberId).map((r) => ({ id: r.id, outcome: r.outcome }));
+}
+
+test("leaving the team with no advisor role left cancels the member's own open PRT email request, logged under who made the leave", async () => {
+  await seedFixture();
+  const request = IDS.aliasRequest("DM");
+  assert.deepEqual(await requestsOf(LEAD), [{ id: request, outcome: null }], "the lead's request is open");
+  await moveToAlumni(LEAD);
+  assert.deepEqual(await requestsOf(LEAD), [{ id: request, outcome: "cancelled" }]);
+  const logged = (await logRowsSinceSeed()).filter((r) => r.tableName === "alias_requests");
+  assert.deepEqual(logged.map((r) => [r.operation, r.recordId, r.changedBy]), [["UPDATE", String(request), TEAM_LEADER]]);
+});
+
+test("a member who stays on as an advisor keeps their own open PRT email request until the last advisor role ends", async () => {
+  await seedFixture();
+  const request = IDS.aliasRequest("DM");
+  signInAs("head-str");
+  assert.equal((await actions.answerHandOver(IDS.handOver("DM"), "confirm")).ok, true, "the hand-over to an advisor is confirmed");
+  assert.deepEqual(await requestsOf(LEAD), [{ id: request, outcome: null }], "the request stays open while the advisor role is held");
+  await moveToAlumni(LEAD);
+  assert.deepEqual(await requestsOf(LEAD), [{ id: request, outcome: "cancelled" }]);
 });
 
 // Who sees and answers it ------------------------------------------------------

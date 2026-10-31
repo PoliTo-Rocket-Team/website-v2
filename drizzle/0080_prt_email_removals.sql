@@ -16,8 +16,15 @@
 -- - a member who loses an active role and then holds none, with a non-empty
 --   PRT email, gets one open removal for that address, unless one is open
 --   already (`prt_email_removals_one_open`; the insert does nothing then);
--- - a member who starts an active role again (rejoins, or takes an advisor
---   role) has their open removal closed as cancelled.
+-- - a member who holds no active role any more also has their own open PRT
+--   email request (`alias_requests`) closed as cancelled; the audit trigger
+--   logs it, so it shows in the activity log (Owner decision, 2026-10-31);
+-- - a member who holds an active role other than an advisor role (rejoins the
+--   team) has their open removal closed as cancelled;
+-- - a member whose only active roles are advisor roles is left as they are:
+--   a leave that keeps an advisor role opens no removal and keeps the open
+--   request, and taking an advisor role again leaves an open removal open for
+--   the approvers to answer (Owner decision, 2026-10-31).
 --
 -- A role write that ends no active role and starts none (a title edit, a fix
 -- to an old role's dates) is not judged, so an address kept with Keep address
@@ -67,18 +74,24 @@ BEGIN
   END IF;
   FOREACH person IN ARRAY changed LOOP
     CONTINUE WHEN person IS NULL;
-    IF EXISTS (SELECT 1 FROM public.roles WHERE member_id = person AND leaved_at IS NULL) THEN
+    IF EXISTS (SELECT 1 FROM public.roles WHERE member_id = person AND leaved_at IS NULL AND type IS DISTINCT FROM 'advisor') THEN
       -- Back on the team: an open removal is no longer owed.
       UPDATE public.prt_email_removals
          SET outcome = 'cancelled', answered_at = now()
        WHERE member_id = person AND outcome IS NULL;
-    ELSE
-      -- Off the team: the address is owed a removal, once.
+    ELSIF NOT EXISTS (SELECT 1 FROM public.roles WHERE member_id = person AND leaved_at IS NULL) THEN
+      -- Off the team: the address is owed a removal, once, and the member's
+      -- own open PRT email request is no longer owed.
       SELECT nullif(btrim(prt_email), '') INTO held FROM public.members WHERE member_id = person;
       IF held IS NOT NULL THEN
         INSERT INTO public.prt_email_removals (member_id, address) VALUES (person, held) ON CONFLICT DO NOTHING;
       END IF;
+      UPDATE public.alias_requests
+         SET outcome = 'cancelled', answered_at = now()
+       WHERE member_id = person AND outcome IS NULL;
     END IF;
+    -- Advisor roles only: the member keeps the address and any open request,
+    -- and an open removal stays open for the approvers to answer.
   END LOOP;
   RETURN NULL;
 END;

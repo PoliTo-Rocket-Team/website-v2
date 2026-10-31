@@ -14,11 +14,14 @@ import type { ViewerStanding } from "./viewer";
 // decision, 2026-10-31).
 //
 // The database opens and cancels the removals itself, when a `roles` write
-// commits (drizzle/0079, `settle_prt_email_removals`), so no way of leaving
+// commits (drizzle/0080, `settle_prt_email_removals`), so no way of leaving
 // can miss one: a member left holding no role, with a PRT email, gets one
-// open removal for that address, never a second while it is open; a member
-// who starts a role again before it is answered has it cancelled. The leave
-// itself is never refused because of it.
+// open removal for that address, never a second while it is open, and their
+// own open PRT email request is cancelled; a member who rejoins the team
+// (any active role but an advisor one) before it is answered has it
+// cancelled. Taking an advisor role again leaves it open for the approvers
+// to answer (Owner decision, 2026-10-31). The leave itself is never refused
+// because of it.
 //
 // This module owns the rest: the approvers' row under Needs your attention,
 // shaped like a team address removal's (issue #797), and its two answers.
