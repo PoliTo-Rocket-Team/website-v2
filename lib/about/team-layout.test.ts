@@ -1,17 +1,23 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SEED_DATA, publishedTeamPageLayerOf, teamRolesOf } from "@/db/seed/cases";
-import { BOARD_FLAG_TITLES, BOARD_FLAGS, inDivisions, NO_MEMBERSHIPS, type BoardFlag, type Placement } from "@/lib/dashboard/team";
+import { BOARD_FLAG_TITLES, BOARD_FLAGS, inDivisions, NO_MEMBERSHIPS, type BoardFlag, type DepartmentKind, type Placement } from "@/lib/dashboard/team";
 import { applyLayer, isTeamPageLayer, layerPhotos, NO_TEAM_LAYER, NO_UPLOADS, TEAM_PAGE_TEXT_MAX, type TeamPageLayer } from "./team-layer";
 import {
+  isGroupedLayout,
   layoutPageOf,
   layoutPhotos,
+  parseStoredLayout,
   parseTeamLayout,
   resolveLayout,
   snapshot,
+  teamLayoutOf,
   teamRecordLayout,
   withoutGoneSeats,
   withTeamSeatMoved,
+  type DepartmentBlock,
+  type KindBlock,
+  type KindLayout,
   type TeamLayout,
 } from "./team-layout";
 import { headFieldsOf, layoutWithHead, newDepartmentFields, pickedHead, withHeadPerson } from "./team-page-add";
@@ -516,25 +522,95 @@ test("a group fills slides of up to ten places, and the carousel keeps five slid
   assert.ok(page.departments.groups.every((g) => g.members.length <= 10));
 });
 
+/** A block as a layout stored before groups held it: `kind` in place of its group, lead drawing and department. */
+const kinded = ({ department: _d, group: _g, leadsDrawn: _l, ...block }: DepartmentBlock, kind: DepartmentKind): KindBlock => ({ ...block, kind });
+
+/** A stored layout read back, as storage reads it. */
+const readBack = (layout: unknown) => parseStoredLayout(JSON.parse(JSON.stringify(layout)));
+
 test("a layout stored before groups reads as today's two groups and saves with the group list", () => {
   const { layout } = snapshot(roles(), LAYERS["every edit"]);
   const kindOf = (groupId: number) => (groupId === layout.groups[1].id ? "operations" : "technical");
-  const stored = { leader: layout.leader, arc: layout.arc, departments: layout.departments.map(({ group, leadsDrawn: _l, department: _d, ...b }) => ({ ...b, kind: kindOf(group) })) };
-  const read = parseTeamLayout(JSON.parse(JSON.stringify(stored)));
-  assert.deepEqual(read, layout, "the same groups and the same assignment");
-  assert.deepEqual(Object.keys(JSON.parse(JSON.stringify(read))).sort(), ["arc", "departments", "groups", "leader"], "the next save writes the group list");
+  const stored: KindLayout = { leader: layout.leader, arc: layout.arc, departments: layout.departments.map((b) => kinded(b, kindOf(b.group))) };
+  const read = readBack(stored);
+  assert.deepEqual(read, stored, "storage keeps the form before groups until a save");
+  assert.equal(parseTeamLayout(JSON.parse(JSON.stringify(stored))), null, "the browser never sends that form");
+  const opened = teamLayoutOf(read!, roles(), LAYERS["every edit"]);
+  assert.deepEqual(opened, layout, "the same groups, the same assignment and the same departments");
+  const saved = readBack(opened);
+  assert.ok(saved !== null && isGroupedLayout(saved), "the next save writes the group list");
+  assert.deepEqual(saved, layout);
+});
 
-  // A block's department is the one its head seat names, unless another block's head names it too.
-  const [aero, ...rest] = stored.departments;
-  const shared = { ...stored, departments: [{ ...aero, head: { ...aero.head, binding: { kind: "department-head", departmentId: 3 } } }, ...rest] };
-  assert.deepEqual(
-    parseTeamLayout(JSON.parse(JSON.stringify(shared)))?.departments.map((b) => [b.name, b.department]),
-    [
-      ["Aerodynamics", null],
-      ["Recovery and Landing", 2],
-      ["Logistics", null],
-      ["Outreach", null],
+test("Reset to team keeps the group and lead drawing of each department of a layout stored before groups, whose head was swapped to a person or another seat, or whose head seat another block shares", () => {
+  // As #850 stored it: the layer swapped Aerodynamics' head to Sofia Neri, who holds no seat, so the snapshot bound it to her.
+  const swaps = layer({ spots: { "head:1:0": { person: 9 } } });
+  const { layout } = snapshot(roles(), swaps);
+  const [aero, recovery, logistics] = layout.departments;
+  assert.deepEqual(aero.head.binding, { kind: "person", memberId: 9 });
+  // Then the #851 editor, each department in Operations: Recovery's head picked as Rocco Bellon, who heads Logistics, and Logistics'
+  // as Giulia Fontana, on a team-level seat; and a department added with Rocco as its head, so two blocks share his head seat.
+  const outreach: KindBlock = {
+    id: 900,
+    name: "Outreach",
+    head: { id: 901, binding: { kind: "department-head", departmentId: 3 }, overrides: { role: "Head of Outreach" } },
+    leads: [],
+    kind: "technical",
+  };
+  const stored: KindLayout = {
+    leader: layout.leader,
+    arc: layout.arc,
+    departments: [
+      kinded(aero, "operations"),
+      kinded({ ...recovery, head: { ...recovery.head, binding: { kind: "department-head", departmentId: 3 } } }, "operations"),
+      kinded({ ...logistics, head: { ...logistics.head, binding: { kind: "team-seat", roleId: 27 } } }, "operations"),
+      outreach,
     ],
+  };
+  const [TECHNICAL, OPERATIONS] = layout.groups.map((g) => g.id);
+
+  // Read: each block shows its department, found without a kind; the added one shows none.
+  const read = readBack(stored);
+  assert.ok(read !== null && !isGroupedLayout(read));
+  const opened = teamLayoutOf(read, roles(), swaps);
+  const shown = (of: TeamLayout) => of.departments.map((b) => [b.name, b.department, b.group, b.leadsDrawn]);
+  assert.deepEqual(shown(opened), [
+    ["Aerodynamics", 1, OPERATIONS, "beside"],
+    ["Recovery", 2, OPERATIONS, "beside"],
+    ["Logistics", 3, OPERATIONS, "beside"],
+    ["Outreach", null, TECHNICAL, "under"],
+  ]);
+  const flipped = roles(people, { ...org, departments: org.departments.map((d) => ({ ...d, kind: d.kind === "technical" ? ("operations" as const) : ("technical" as const) })) });
+  assert.deepEqual(teamLayoutOf(read, flipped, swaps), opened, "no department's kind is read");
+
+  // Save: the grouped form, each department written.
+  const saved = readBack(opened);
+  assert.ok(saved !== null && isGroupedLayout(saved));
+  assert.deepEqual(shown(saved), shown(opened));
+
+  // Reset, after the save or before it: each department back in Operations, its leads beside its head, each head the team record's.
+  const expected = [
+    ["Aerodynamics", OPERATIONS, "beside"],
+    ["Recovery", OPERATIONS, "beside"],
+    ["Logistics", OPERATIONS, "beside"],
+  ];
+  for (const kept of [saved, opened]) {
+    const reset = teamRecordLayout(roles(), kept);
+    assert.deepEqual(
+      reset.departments.map((b) => [b.name, b.group, b.leadsDrawn]),
+      expected,
+    );
+    assert.deepEqual(
+      reset.departments.map((b) => b.head.binding),
+      [1, 2, 3].map((departmentId) => ({ kind: "department-head", departmentId })),
+    );
+  }
+
+  // Two blocks of the team record sharing a head seat: Recovery's head picked as Rocco while Logistics keeps him.
+  const shared: KindLayout = { ...stored, departments: [stored.departments[0], stored.departments[1], kinded(logistics, "operations")] };
+  assert.deepEqual(
+    teamLayoutOf(readBack(shared)!, roles(), swaps).departments.map((b) => b.department),
+    [1, 2, 3],
   );
 });
 
