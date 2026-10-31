@@ -24,6 +24,7 @@ import {
   checkAddMember,
   checkMemberEdit,
   checkMemberPhoto,
+  GOOGLE_EMAIL_NOTE,
   type AddLookup,
   type AddMemberErrors,
   type DivisionHeader,
@@ -1649,7 +1650,8 @@ function AddForm({ open, onOpenChange, target }: { open: boolean; onOpenChange: 
           )
         }
       </Field>
-      {picked !== null && target.kind === "division" && <p className="mt-2 text-[12px] text-prt-muted">Already in other divisions? They keep them.</p>}
+      {picked === null && <p className="mt-2 text-[12px] text-prt-muted">{GOOGLE_EMAIL_NOTE}</p>}
+      {picked !== null && target.kind === "division" &&<p className="mt-2 text-[12px] text-prt-muted">Already in other divisions? They keep them.</p>}
       {picked === null && lookup.kind === "waiting" && (
         <p className="mt-2 flex items-start gap-2 text-[13px] text-warning">
           <UserPlus aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
