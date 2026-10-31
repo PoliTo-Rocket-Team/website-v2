@@ -54,7 +54,13 @@ describe("a sign-in whose login has no site row (ensureSiteRow)", () => {
 
   test("an imported record with the same email, whatever the case, is attached and keeps its member link and details", async () => {
     await seedFixture();
+    // The sign-in sync takes over a free record whatever the email's case
+    // (drizzle/0080), so the record's email is moved aside while the login is
+    // made and its fresh row removed; the session repair is then the only path
+    // left to attach it.
+    await changeRows(users, { id: "mover" }, { email: "aside@mail.test" });
     await orphanLogin("lost-mover", "MOVER@mail.test");
+    await changeRows(users, { id: "mover" }, { email: "mover@mail.test" });
     const before = await userRow("mover");
 
     assert.deepEqual(await ensureSiteRow("lost-mover"), { kind: "attach", rowId: "mover" });

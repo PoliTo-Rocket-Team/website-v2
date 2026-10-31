@@ -4,6 +4,8 @@ import type { FormEvent, ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ArrowLeft, X } from "lucide-react";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
+import type { FormSummary } from "@/lib/dashboard/error-summary";
+import { ErrorSummary } from "./error-summary";
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
 
@@ -123,6 +125,8 @@ export function PanelBody({ children, className = "" }: { children: ReactNode; c
 // A side panel that is a form (boards 60b and 61b): Cancel beside the main
 // button at the foot, and the button submits. `secondary` takes Cancel's
 // place where the board puts another action there (Remove all access, 60c).
+// A form that passes `summary` gets it right above the two buttons while it
+// is set (issue #911); a drawer that passes none is unchanged.
 export function Drawer({
   open,
   onOpenChange,
@@ -133,6 +137,7 @@ export function Drawer({
   submitting,
   onSubmit,
   secondary,
+  summary,
   children,
 }: {
   open: boolean;
@@ -144,6 +149,8 @@ export function Drawer({
   submitting: boolean;
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
   secondary?: ReactNode;
+  /** Why the last Save was refused, while it still holds; null or absent shows nothing. */
+  summary?: FormSummary | null;
   children: ReactNode;
 }) {
   const formId = `${title.toLowerCase().replace(/\W+/g, "-")}-form`;
@@ -156,6 +163,11 @@ export function Drawer({
       leading={leading}
       footer={
         <>
+          {summary != null && (
+            <div className="col-span-2">
+              <ErrorSummary summary={summary} />
+            </div>
+          )}
           {secondary ?? <DialogClose className={PANEL_GHOST_BUTTON}>Cancel</DialogClose>}
           <button type="submit" form={formId} disabled={submitting} className={PANEL_PRIMARY_BUTTON}>
             {submitLabel}
