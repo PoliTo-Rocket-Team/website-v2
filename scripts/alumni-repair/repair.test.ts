@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { departments, divisions, members, roles, users } from "@/db/schema";
 import { addRows, databaseWrites, restore, tableRows, testDb } from "@/lib/dashboard/access-matrix/test-database";
 import { afterWrite, failureReport } from "./failure";
+import { groupDivisions } from "./lineage";
 import { lastYearOf } from "./quitters";
 import { rosterOf, type QuitterRow } from "./roster";
 import { runRepair } from "./run";
@@ -219,6 +220,110 @@ test("two source divisions with different names and one code, missing from the t
   // The created division matches both by code, so a second run plans nothing.
   const again = await runRepair({ mode: "repair", file: "roster.xlsx", roster: ROSTER, db });
   assert.deepEqual(again.written, { divisions: 0, roles: 0, moves: 0 });
+});
+
+// A chain: "Alpha"/X and "Alpha"/Y share a name, "Alpha"/Y and "Beta"/y share a code. None is in Propulsion.
+const CHAIN = [
+  { id: 9221, deptId: LIQUID, name: "Alpha", code: "X", year: 2024 },
+  { id: 9222, deptId: EFESTO, name: "Alpha", code: "Y", year: 2025 },
+  { id: 9223, deptId: LIQUID, name: "Beta", code: "y", year: 2024 },
+] as const;
+
+test("source divisions chained by name and code fall in one group, whatever order they come in", () => {
+  const other = { id: 9224, deptId: EFESTO, name: "Gamma", code: "Z" };
+  const all = [...CHAIN.map(({ year: _year, ...d }) => d), other];
+  const orders = (xs: readonly (typeof all)[number][]): (typeof all)[number][][] =>
+    xs.length <= 1 ? [[...xs]] : xs.flatMap((x, i) => orders([...xs.slice(0, i), ...xs.slice(i + 1)]).map((rest) => [x, ...rest]));
+  for (const order of orders(all)) {
+    assert.deepEqual(
+      groupDivisions(order).map((g) => g.map((d) => d.id)),
+      [[9221, 9222, 9223], [9224]],
+      `read in the order ${order.map((d) => d.id).join(", ")}`,
+    );
+  }
+});
+
+for (const [label, order] of [
+  ["name first, then code", [9221, 9222, 9223]],
+  ["code first, then name", [9223, 9222, 9221]],
+] as const) {
+  test(`source divisions chained by a shared name and a shared code share one created division (roles read ${label})`, async () => {
+    await restore(`alumni-repair-chain-${order[0]}`, async () => {
+      await addRows(departments, [
+        { id: LIQUID, name: "Liquid Propulsion", code: "LPR", closedAt: "2024-09-30" },
+        { id: EFESTO, name: "Efesto", code: "EFS", closedAt: "2025-09-30" },
+        { id: PROPULSION, name: "Propulsion", code: "PRO" },
+      ]);
+      await addRows(
+        divisions,
+        CHAIN.map(({ year: _year, ...d }) => d),
+      );
+      await addRows(members, [{ memberId: ANNA }]);
+      // Roles are read in id order, so the role ids set the order the divisions are met in.
+      await addRows(
+        roles,
+        order.map((divisionId, i) => {
+          const d = CHAIN.find((c) => c.id === divisionId)!;
+          return { id: 9421 + i, memberId: ANNA, deptId: d.deptId, divisionId, title: "Engineer", type: "core" as const, startedAt: `${d.year}-10-01`, leavedAt: `${d.year + 1}-06-30` };
+        }),
+      );
+    });
+    const { written } = await runRepair({ mode: "repair", file: "roster.xlsx", roster: ROSTER, db });
+    assert.deepEqual(written, { divisions: 1, roles: 0, moves: 3 });
+    const created = (await tableRows(divisions)).filter((d) => d.deptId === PROPULSION);
+    // Named after the group's lowest id, its span over every role's year: the same in both orders.
+    assert.deepEqual(
+      created.map((d) => [d.name, d.code, d.startedAt, d.closedAt]),
+      [["Alpha", "X", "2024-10-01", "2026-09-30"]],
+    );
+    const moved = (await allRoles()).filter((r) => r.id >= 9421 && r.id <= 9423);
+    assert.deepEqual(
+      moved.map((r) => [r.deptId, r.divisionId]),
+      [0, 1, 2].map(() => [PROPULSION, created[0].id]),
+    );
+    const again = await runRepair({ mode: "repair", file: "roster.xlsx", roster: ROSTER, db });
+    assert.deepEqual(again.written, { divisions: 0, roles: 0, moves: 0 });
+  });
+}
+
+test("a failure in any step after a real run's commit, rendering the report included, says the repair was written", async () => {
+  const reportOf = (error: unknown) => failureReport(error);
+  // Rendering the report runs inside the run, after the commit: a roster the report cannot render fails it there.
+  await world();
+  const unrenderable = { ...ROSTER, read: { join: () => { throw new Error("cannot render"); } } as unknown as readonly string[] };
+  const rendering = await runRepair({ mode: "repair", file: "roster.xlsx", roster: unrenderable, db }).then(() => "no failure", reportOf);
+  assert.match(rendering, /^Alumni repair was written: its transaction committed\. Then rendering the report failed\.\n {2}cannot render$/);
+  assert.equal((await allRoles()).filter((r) => r.memberId === ANNA).length, 2, "Anna's added role is written");
+
+  // The caller's steps run inside the run too: the first that fails is named, and none after it runs.
+  await world();
+  const ran: string[] = [];
+  const writing = await runRepair({ mode: "repair", file: "roster.xlsx", roster: ROSTER, db }, [
+    { name: "printing the report", act: ({ report }) => void ran.push(report.includes("Workbook: roster.xlsx") ? "printed" : "empty") },
+    {
+      name: "writing the report file",
+      act: () => {
+        throw new Error("EACCES: permission denied");
+      },
+    },
+    { name: "closing the database connection", act: () => void ran.push("closed") },
+  ]).then(() => "no failure", reportOf);
+  assert.match(writing, /^Alumni repair was written: its transaction committed\. Then writing the report file failed\.\n {2}EACCES: permission denied$/);
+  assert.deepEqual(ran, ["printed"]);
+  assert.equal((await allRoles()).filter((r) => r.memberId === ANNA).length, 2, "Anna's added role is written");
+
+  // A dry run commits nothing, so the same failure says nothing was written.
+  await world();
+  const dry = await runRepair({ mode: "dry-run", file: "roster.xlsx", roster: ROSTER, db }, [
+    {
+      name: "writing the report file",
+      act: () => {
+        throw new Error("EACCES: permission denied");
+      },
+    },
+  ]).then(() => "no failure", reportOf);
+  assert.match(dry, /^Alumni repair failed; nothing was written\./);
+  assert.deepEqual(await databaseWrites(), []);
 });
 
 test("a failed run says nothing was written only before its commit; after it, it says the repair was written and what failed", async () => {

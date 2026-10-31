@@ -34,8 +34,9 @@ function lineOf(error: unknown): string {
 
 /**
  * A failure after a real run's transaction committed: the repair is written,
- * and `step` (writing the report file, closing the connection) is what failed
- * after it. A failed run prints "nothing was written" only when this is not it.
+ * and `step` (rendering or printing the report, writing the report file,
+ * closing the connection; ./run.ts runs each) is what failed after it. A
+ * failed run prints "nothing was written" only when this is not it.
  */
 export class FailedAfterWrite extends Error {
   constructor(

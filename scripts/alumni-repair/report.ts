@@ -21,7 +21,7 @@ const SKIP_TEXT: Readonly<Record<SkipKind, string>> = {
   "has-role": "the person already has a role in that year",
   "unknown-unit": "a unit cell names no unit the database holds, or two",
   "no-unit": "the unit cells name no unit, and the title is not a board seat",
-  "ambiguous-division": "the target department has, or would get, two divisions that match",
+  "ambiguous-division": "the target department has two divisions that match",
   "division-outside-lineage": "the division sits under a department outside the lineage",
 };
 

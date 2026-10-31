@@ -3,9 +3,9 @@ import { resolve } from "node:path";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "@/db/schema";
-import { afterWrite, failureReport } from "./failure";
+import { failureReport } from "./failure";
 import { readRoster } from "./roster";
-import { runRepair, type RunResult } from "./run";
+import { runRepair, type FinishStep, type RunResult } from "./run";
 import type { RepairDb } from "./snapshot";
 
 // `pnpm db:alumni-repair <source-dir> [--mode dry-run|repair] [--report <file>]
@@ -58,22 +58,30 @@ async function main(): Promise<number> {
   }
   const { file, ...roster } = readRoster(args.directory);
   const client = postgres(args.url, { max: 1 });
-  let result: RunResult;
+  const reportFile = args.report;
+  // These run inside the run, after a real run's commit: a failure in any of them says the repair was written.
+  const finish: FinishStep[] = [
+    { name: "printing the report", act: ({ report }) => print(report) },
+    ...(reportFile === undefined ? [] : [{ name: "writing the report file", act: ({ report }: RunResult) => writeFileSync(resolve(reportFile), report) }]),
+    { name: "closing the database connection", act: () => client.end() },
+  ];
   try {
     const db = drizzle(client, { schema }) as unknown as RepairDb;
-    result = await runRepair({ mode: args.mode, file, roster, db });
+    await runRepair({ mode: args.mode, file, roster, db }, finish);
   } catch (error) {
     // The run's own failure is the one to report; a failed close adds nothing to it.
     await client.end().catch(() => undefined);
     throw error;
   }
-  // A real run's transaction has committed by now: a failure from here on says the repair was written.
-  const step = <T>(name: string, act: () => T | Promise<T>) => (args.mode === "repair" ? afterWrite(name, act) : act());
-  await step("printing the report", () => void process.stdout.write(result.report));
-  const reportFile = args.report;
-  if (reportFile !== undefined) await step("writing the report file", () => writeFileSync(resolve(reportFile), result.report));
-  await step("closing the database connection", () => client.end());
   return 0;
+}
+
+/** Writes `text` to stdout and settles once it is written, so a failed write (a closed pipe) fails this step rather than a later event. */
+function print(text: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    process.stdout.on("error", reject);
+    process.stdout.write(text, (error) => (error ? reject(error) : resolve()));
+  });
 }
 
 main().then(

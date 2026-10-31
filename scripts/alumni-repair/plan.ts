@@ -1,5 +1,5 @@
 import { academicYearOf, yearEnd, yearStart } from "./academic-year";
-import { Lineage, type DivisionRef, type LeftReason, type LineagePlace, type NewDivision } from "./lineage";
+import { Lineage, type DivisionRef, type LeftReason, type LineagePlace, type NewDivision, type PendingRef } from "./lineage";
 import { matchQuitters } from "./people";
 import { lastYearOf, type SwappedField } from "./quitters";
 import type { At, Roster } from "./roster";
@@ -92,8 +92,13 @@ const inYear = (role: Pick<ExistingRole, "startedAt" | "leavedAt">, year: number
 type Place = { readonly deptId: number | null; readonly division: Division | null };
 
 /** One key per place a role is stored in: a row naming one unit twice adds one role there. */
-const refKey = (t: { readonly deptId: number | null; readonly division: DivisionRef | null }) =>
-  `${t.deptId ?? ""}|${t.division === null ? "" : t.division.kind === "existing" ? `e${t.division.id}` : `n${t.division.index}`}`;
+const refKey = (t: { readonly deptId: number | null; readonly division: DivisionRef | PendingRef | null }) => {
+  const d = t.division;
+  return `${t.deptId ?? ""}|${d === null ? "" : d.kind === "existing" ? `e${d.id}` : d.kind === "new" ? `n${d.index}` : `c${d.deptId}:${d.from}`}`;
+};
+
+/** A role or move while the plan is worked out: a division to create is still pending (`Lineage.finish`). */
+type Draft<T extends { readonly division: DivisionRef | null }> = Omit<T, "division"> & { readonly division: PendingRef | null };
 
 export function planRepair(roster: Roster, snapshot: Snapshot): Plan {
   const units = snapshot.units;
@@ -104,7 +109,7 @@ export function planRepair(roster: Roster, snapshot: Snapshot): Plan {
 
   // Part 1 ---------------------------------------------------------------------
 
-  const roles: NewRole[] = [];
+  const roles: Draft<NewRole>[] = [];
   const skipped: Skip[] = [];
   const swapped: { at: At; field: SwappedField }[] = [];
   /** `<member>|<year>` for each year a role is planned in, so one run adds one year once. */
@@ -200,7 +205,7 @@ export function planRepair(roster: Roster, snapshot: Snapshot): Plan {
       skipped.push({ kind: left.reason, at: row.at, field: "division" });
       continue;
     }
-    const kept = new Map<string, NewRole>();
+    const kept = new Map<string, Draft<NewRole>>();
     for (const p of resolved) {
       if (p.kind === "left") continue;
       const target =
@@ -216,7 +221,7 @@ export function planRepair(roster: Roster, snapshot: Snapshot): Plan {
 
   // Part 2 ---------------------------------------------------------------------
 
-  const moves: Move[] = [];
+  const moves: Draft<Move>[] = [];
   const left: { reason: LeftReason; year: number }[] = [];
   for (const role of snapshot.roles) {
     const division = role.divisionId === null ? null : (divisionOf.get(role.divisionId) ?? null);
@@ -233,6 +238,16 @@ export function planRepair(roster: Roster, snapshot: Snapshot): Plan {
     moves.push({ roleId: role.id, year, from: { deptId: role.deptId, divisionId: role.divisionId }, deptId: place.deptId, division: lineage.commit(place, year) });
   }
 
+  // The divisions to create, worked out over every placed role, and where each role goes.
+  const placed = lineage.finish();
+  /** One role per Quitters row and place: two units of a row whose divisions to create became one division give one role. */
+  const added = new Map<string, NewRole>();
+  for (const r of roles) {
+    const role = { ...r, division: placed.resolve(r.division) };
+    const key = `${r.at.sheet}|${r.at.row}|${refKey(role)}`;
+    if (!added.has(key)) added.set(key, role);
+  }
+
   return {
     currentYear,
     units,
@@ -242,10 +257,10 @@ export function planRepair(roster: Roster, snapshot: Snapshot): Plan {
     onYearSheet,
     noEarlierSheet,
     swapped,
-    roles,
+    roles: [...added.values()],
     skipped,
-    moves,
+    moves: moves.map((m) => ({ ...m, division: placed.resolve(m.division) })),
     left,
-    divisions: lineage.created(),
+    divisions: placed.divisions,
   };
 }
