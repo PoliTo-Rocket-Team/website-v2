@@ -244,7 +244,7 @@ function viewAsEntry(row: LogRow, event: ViewAsEvent, at: string, names: Activit
 
 function writeEntry(group: readonly LogRow[], names: ActivityNames): ActivityEntry {
   const lead = [...group].sort((a, b) => rankOf(a) - rankOf(b) || OP_RANK(a) - OP_RANK(b) || a.id - b.id)[0];
-  const { sentence, area } = describe(lead, group, names);
+  const { sentence, area } = signInEmailChangeOf(new Describer(names, group)) ?? describe(lead, group, names);
   const firstId = Math.min(...group.map((r) => r.id));
   return { key: `w-${firstId}`, at: lead.at, who: whoOf(lead.by ?? "", lead.acting, names), change: { kind: "write", sentence, area } };
 }
@@ -401,6 +401,33 @@ class Describer {
   rows(table: string): LogRow[] {
     return this.group.filter((r) => r.table === table);
   }
+}
+
+/**
+ * A sign-in email change (Edit details, issue #864), whatever else the same
+ * Save wrote, with the old and the new address: a `users` row whose address
+ * changed, or a member record moving from one `users` row, which keeps the
+ * old address, onto another, which holds the new one. Anonymization clears
+ * the address too, and is never one.
+ */
+function signInEmailChangeOf(d: Describer): Described | null {
+  const rows = d.rows("users").filter((r) => r.schema === "public");
+  const sentence = (person: string, from: string | null, to: string | null): Described => ({
+    sentence: `Changed the sign-in email of ${person}: ${from ?? "none"} → ${to ?? "none"}`,
+    area: "members",
+  });
+  for (const left of rows) {
+    const memberId = int(left.before, "member");
+    if (left.operation !== "UPDATE" || memberId === null || int(left.after, "member") !== null) continue;
+    const took = rows.find((r) => r !== left && int(r.after, "member") === memberId && int(r.before, "member") !== memberId);
+    if (took !== undefined) return sentence(d.member(memberId), text(left.after, "email"), text(took.after, "email"));
+  }
+  const retyped = rows.find(
+    (r) => r.operation === "UPDATE" && !changed(r, "anonymized_at") && text(r.before, "email")?.toLowerCase() !== text(r.after, "email")?.toLowerCase(),
+  );
+  if (retyped === undefined) return null;
+  const memberId = int(retyped.after, "member");
+  return sentence(memberId === null ? d.account(text(retyped.after, "id")) : d.member(memberId), text(retyped.before, "email"), text(retyped.after, "email"));
 }
 
 function describe(row: LogRow, group: readonly LogRow[], names: ActivityNames): Described {

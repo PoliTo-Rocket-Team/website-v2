@@ -9,7 +9,6 @@ import { isDetailsTarget, type AddLookup, type DetailsTarget } from "@/lib/dashb
 import type { MoveLookup } from "@/lib/dashboard/member-move";
 import { openDashboard } from "@/lib/dashboard/open";
 import { checkDeparture, type EditableRole } from "@/lib/dashboard/team";
-import { LINK_OFFERED, type LoginLinkOffer } from "@/lib/dashboard/sign-in-email";
 import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
 
 // The Team pages' writes (issues #143 and #172). Each goes through the dashboard data
@@ -161,27 +160,11 @@ export async function moveMember(input: unknown): Promise<TeamActionResult> {
   return answered(await writes.moveMember(input));
 }
 
-/**
- * What Edit details' Save answers: saved, refused, or refused with the empty
- * login Link login may take the record onto (issue #860). The offer rides a
- * refusal, so a caller that reads only `ok` never takes it for a save.
- */
-export type DetailsSaveResult = TeamActionResult | { readonly ok: false; readonly error: string; readonly offer: LoginLinkOffer };
-
 /** Edit details: `divisionId` names the division whose title the form sets, or null for a seat with none (issue #584). */
-export async function saveMemberDetails(target: DetailsTarget, divisionId: number | null, input: unknown): Promise<DetailsSaveResult> {
+export async function saveMemberDetails(target: DetailsTarget, divisionId: number | null, input: unknown): Promise<TeamActionResult> {
   const writes = await writesOn("members");
   if (!writes || !isDetailsTarget(target) || (divisionId !== null && !isId(divisionId))) return REFUSED;
-  const result = await writes.saveMemberDetails(target, divisionId, input);
-  if (result.ok && result.value.kind === "link-offered") return { ok: false, error: LINK_OFFERED, offer: result.value.offer };
-  return answered(result);
-}
-
-/** Link login, from the confirmation Edit details opens on an empty login's address (issue #860). */
-export async function linkLogin(input: unknown): Promise<TeamActionResult> {
-  const writes = await writesOn("members");
-  if (!writes) return REFUSED;
-  return answered(await writes.linkLogin(input));
+  return answered(await writes.saveMemberDetails(target, divisionId, input));
 }
 
 /** Edit details' photo: the cropped square JPEG in the form's `photo` field, or none to remove it. */

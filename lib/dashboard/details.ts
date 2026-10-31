@@ -347,45 +347,26 @@ export function memberDetailText(details: MemberDetails, key: MemberDetailKey): 
   return value;
 }
 
-/** The columns member details are stored in, each holding `V`: a value, null to clear it, or undefined where it is not written. */
-type MemberDetailColumns<V> = {
-  readonly user: {
-    readonly phone: V;
-    readonly linkedin: V;
-    readonly politoId: V;
-    readonly program: V;
-    readonly levelOfStudy: V;
-    readonly country: V;
-    readonly dateOfBirth: V;
-    readonly gender: V;
-  };
-  readonly member: { readonly prtEmail: V; readonly discord: V };
-};
-
 /**
  * Where each member detail is stored: the person's `users` row, or their
  * `members` row for the PRT email and Discord (a person waiting for their NDA
  * keeps those two on their `team_joins` row). An empty field clears its
- * column; a field left out is not written, so neither is its column.
+ * column.
  */
-export function columnsFromMemberDetails(details: MemberDetails): MemberDetailColumns<string | null>;
-export function columnsFromMemberDetails(details: Partial<MemberDetails>): MemberDetailColumns<string | null | undefined>;
-export function columnsFromMemberDetails(details: Partial<MemberDetails>): MemberDetailColumns<string | null | undefined> {
-  const value = (text: string | undefined) => (text === undefined ? undefined : text === "" ? null : text);
-  const sent = <T extends Record<string, string | null | undefined>>(columns: T) =>
-    Object.fromEntries(Object.entries(columns).filter(([, v]) => v !== undefined)) as T;
+export function columnsFromMemberDetails(details: MemberDetails) {
+  const value = (text: string) => (text === "" ? null : text);
   return {
-    user: sent({
+    user: {
       phone: value(details.phone),
-      linkedin: details.linkedin === undefined ? undefined : details.linkedin === "" ? null : `https://www.${details.linkedin}`,
+      linkedin: details.linkedin === "" ? null : `https://www.${details.linkedin}`,
       politoId: value(details.politoId),
       program: value(details.programme),
       levelOfStudy: value(details.level),
       country: value(details.country),
       dateOfBirth: value(details.birthDate),
       gender: value(details.gender),
-    }),
-    member: sent({ prtEmail: value(details.prtEmail), discord: value(details.discord) }),
+    },
+    member: { prtEmail: value(details.prtEmail), discord: value(details.discord) },
   };
 }
 
