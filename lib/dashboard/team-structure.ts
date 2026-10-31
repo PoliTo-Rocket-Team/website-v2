@@ -1,13 +1,29 @@
 import { closingPeople, mayManageDepartments, type ClosingPerson } from "./department-edit";
 import { mayManageDivisionsIn } from "./division-edit";
 import { divisionMembers, type DivisionMembers, type PersonRecord, type WaitingPerson } from "./division-members";
-import { boardTitleOf, bySeatOrder, divisionLabel, mayChangeDivision, roleIn, type BoardFlag, type DepartmentKind, type Joining, type OrgChart, type OrgDivision, type TeamActor } from "./team";
+import {
+  boardFlagOf,
+  boardSeatKey,
+  boardTitleOf,
+  bySeatOrder,
+  divisionLabel,
+  mayChangeDivision,
+  roleIn,
+  type BoardFlag,
+  type BoardRole,
+  type DepartmentKind,
+  type Joining,
+  type OrgChart,
+  type OrgDivision,
+  type TeamActor,
+} from "./team";
 import { mayHandOverTeamLeader, type HeldSeat } from "./hand-over";
 import type { FullAccessSeat, ViewerStanding } from "./viewer";
 
 // The Team tree's edit view (issue #251, boards 77b and 66t-b): every open
-// department with its head, and every open division under it with its lead,
-// each box collapsed with a count. Structure is edited here and nowhere else:
+// department with its heads, and every open division under it with its lead,
+// each box collapsed with a count. A box for a seat names every holder of it
+// (epic #861). Structure is edited here and nowhere else:
 // the team leader and full access edit every department and division, a
 // department head only their own department's divisions, and a division lead
 // only the divisions they lead (issue #594). Both sides of the data interface
@@ -38,6 +54,9 @@ export type StructureDivision = {
   readonly yours: boolean;
 };
 
+/** A department's head as its box and Edit department name them: the divisions they are in beside the department. */
+export type StructureHead = StructurePerson & { readonly divisions: readonly string[] };
+
 export type StructureDepartment = {
   readonly id: number;
   /** "Aerodynamics" */
@@ -45,8 +64,9 @@ export type StructureDepartment = {
   readonly code: string | null;
   /** The Team page slide its head sits on (issue #325); Edit department sets it. */
   readonly kind: DepartmentKind;
-  readonly head: (StructurePerson & { readonly divisions: readonly string[] }) | null;
-  /** Everyone in it, head included, each once. */
+  /** Every head of it, by name (epic #861: a seat may have several holders); none while it has no head. */
+  readonly heads: readonly StructureHead[];
+  /** Everyone in it, heads included, each once. */
   readonly size: number;
   /**
    * Its Add division, and Close division on each of its divisions: its head,
@@ -61,22 +81,35 @@ export type StructureDepartment = {
   readonly yours: boolean;
 };
 
-/**
- * The Team Leader box (board 77i): who leads the team, whether the viewer may
- * hand the role over (only the team leader), and whether the viewer is the
- * team leader, so the box wears the accent ring and tint (issue #405).
- */
-export type StructureLeader = StructurePerson & { readonly handsOver: boolean; readonly yours: boolean };
+/** At least one person: a seat on the tree is drawn only while someone holds it. */
+export type Holders = readonly [StructurePerson, ...StructurePerson[]];
 
 /**
- * A box on the seat row under the Team Leader box (issue #627): a team-level
- * seat, its stored title (`boardTitleOf`), who holds it, and the full-access
- * seat its row is flagged as, which moves with the seat on Change holder.
+ * The Team Leader box (board 77i): every team leader (epic #861), the viewer
+ * when they are one and so may hand their role over (`mayHandOverTeamLeader`),
+ * and whether the viewer is one, so the box wears the accent ring and tint
+ * (issue #405).
+ */
+export type StructureLeader = {
+  /** By name. */
+  readonly holders: Holders;
+  /** The viewer, when they are a team leader: "Hand over your role" hands over theirs. Null for anyone else. */
+  readonly handsOver: StructurePerson | null;
+  readonly yours: boolean;
+};
+
+/**
+ * A box on the seat row under the Team Leader box (issue #627): one
+ * team-level seat (`boardSeatKey`), its stored title (`boardTitleOf`), every
+ * holder of it (epic #861), and the full-access seat its rows are flagged as,
+ * which moves with the seat on Change holder.
  */
 export type StructureSeat = {
+  /** The first holder's row: the one Change holder and Add another holder address. */
   readonly roleId: number;
   readonly title: string;
-  readonly holder: StructurePerson;
+  /** In seat order (`bySeatOrder`), so the first is the one `roleId` is. */
+  readonly holders: Holders;
   readonly flag: BoardFlag | null;
   /** The viewer holds it: its box wears the accent ring and tint (issue #405). */
   readonly yours: boolean;
@@ -130,7 +163,7 @@ export function showsTreeEdit(viewer: ViewerStanding): boolean {
 }
 
 /** "A", "A and B", "A, B and C". */
-function andList(names: readonly string[]): string {
+export function andList(names: readonly string[]): string {
   return names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
@@ -170,18 +203,20 @@ export function teamStructure(input: {
   const { records, org, actor } = input;
   if (!editsStructure(actor, org)) return null;
   const person = (r: PersonRecord): StructurePerson => ({ id: r.id, name: r.name, photoUrl: r.photoUrl });
-  const leader = records.find((r) => r.beyondDivisions.some((b) => b.kind === "team-leader"));
+  // Every holder of a seat, never the first found (epic #861).
+  const leaders = records.filter((r) => r.beyondDivisions.some((b) => b.kind === "team-leader")).map(person).sort(byName);
   // The viewer's own record: their box is the one the edit view marks (issue #405).
   const self = input.selfId === null ? undefined : records.find((r) => r.id === input.selfId);
 
   const departments = org.departments.map((department): StructureDepartment => {
-    const head = records.find((r) => r.beyondDivisions.some((b) => b.kind === "head" && b.departmentId === department.id));
+    const heads = records.filter((r) => r.beyondDivisions.some((b) => b.kind === "head" && b.departmentId === department.id));
+    const headIds = new Set(heads.map((h) => h.id));
     const editable = mayManageDivisionsIn(actor, department.id);
     const own = org.divisions.filter((d) => d.departmentId === department.id);
     const inDepartment = new Set<number>();
     const divisions = own.map((division): StructureDivision => {
       const people = records.filter((r) => roleIn(r.memberships, division.id) !== null);
-      for (const p of people) if (p.id !== head?.id) inDepartment.add(p.id);
+      for (const p of people) if (!headIds.has(p.id)) inDepartment.add(p.id);
       const [lead] = people
         .filter((r) => roleIn(r.memberships, division.id) === "lead")
         .map(person)
@@ -208,19 +243,20 @@ export function teamStructure(input: {
         yours: self !== undefined && roleIn(self.memberships, division.id) === "lead",
       };
     });
-    const headDivisions = head
-      ? head.memberships.flatMap((m) => {
-          const division = org.divisions.find((d) => d.id === m.divisionId);
-          return division ? [divisionLabel(division.name)] : [];
-        })
-      : [];
+    const headOf = (head: PersonRecord): StructureHead => ({
+      ...person(head),
+      divisions: head.memberships.flatMap((m) => {
+        const division = org.divisions.find((d) => d.id === m.divisionId);
+        return division ? [divisionLabel(division.name)] : [];
+      }),
+    });
     return {
       id: department.id,
       name: department.name,
       code: department.code ?? null,
       kind: department.kind,
-      head: head ? { ...person(head), divisions: headDivisions } : null,
-      size: (head ? 1 : 0) + inDepartment.size,
+      heads: heads.map(headOf).sort(byName),
+      size: headIds.size + inDepartment.size,
       divisionsEditable: editable,
       divisions,
       closing: mayManageDepartments(actor) ? closingPeople(records, org, department.id) : [],
@@ -228,19 +264,35 @@ export function teamStructure(input: {
     };
   });
 
-  const board = records
+  // One box per seat (`boardSeatKey`), its holders in seat order; a person holding one seat by two rows is named once.
+  const bySeat = new Map<string, { seat: BoardRole; holders: PersonRecord[] }>();
+  const rows = records
     .flatMap((r) => r.beyondDivisions.flatMap((b) => (b.kind === "board" ? [{ seat: b.seat, holder: r }] : [])))
-    .sort((a, b) => bySeatOrder(a.seat, b.seat))
-    .map(({ seat, holder }): StructureSeat => ({ roleId: seat.roleId, title: boardTitleOf(seat), holder: person(holder), flag: seat.flag, yours: holder.id === self?.id }));
+    .sort((a, b) => bySeatOrder(a.seat, b.seat));
+  for (const { seat, holder } of rows) {
+    const held = bySeat.get(boardSeatKey(seat));
+    if (held === undefined) bySeat.set(boardSeatKey(seat), { seat, holders: [holder] });
+    else if (!held.holders.includes(holder)) held.holders.push(holder);
+  }
+  const board = [...bySeat.values()].map(({ seat, holders: [first, ...rest] }): StructureSeat => ({
+    roleId: seat.roleId,
+    title: boardTitleOf(seat),
+    holders: [person(first), ...rest.map(person)],
+    flag: boardFlagOf(seat.fullAccess),
+    yours: [first, ...rest].some((h) => h.id === self?.id),
+  }));
 
+  const [firstLeader, ...otherLeaders] = leaders;
+  const selfLeader = leaders.find((l) => l.id === self?.id) ?? null;
   return {
-    leader: leader
-      ? {
-          ...person(leader),
-          handsOver: mayHandOverTeamLeader({ seat: input.seat, selfId: input.selfId }, leader.id),
-          yours: leader.id === self?.id,
-        }
-      : null,
+    leader:
+      firstLeader === undefined
+        ? null
+        : {
+            holders: [firstLeader, ...otherLeaders],
+            handsOver: selfLeader !== null && mayHandOverTeamLeader({ seat: input.seat, selfId: input.selfId }, selfLeader.id) ? selfLeader : null,
+            yours: selfLeader !== null,
+          },
     board,
     departmentsEditable: mayManageDepartments(actor),
     departments,

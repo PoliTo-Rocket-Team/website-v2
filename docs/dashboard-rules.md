@@ -454,9 +454,10 @@ These rules come from the Owner decisions of 2026-10-16 on #253 (boards 77i, 77e
   - **Leave the team:** every role and every access ends and they move to Alumni, as Leaves
     the team does.
 - Who hands over which role:
-  - **Team leader:** only the current team leader, from the Team Leader box in the Team tree's
-    edit view (board 77i). The box is locked for everyone else, the operations lead and the IT
-    lead included, and the server refuses them.
+  - **Team leader:** only a current team leader, their own role, from the Team Leader box in the
+    Team tree's edit view (board 77i). Full access opens the box only to add another team leader
+    (#869), with no hand-over in it; it is locked for everyone else, and the server refuses a
+    hand-over by anyone but a team leader.
   - **Department head:** the team leader or full access, with Change head in Edit department
     (board 77e).
   - **Division lead:** the department's head, the team leader, full access or a lead of the
@@ -696,17 +697,24 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
 - A division's pencil opens Edit division (below), with **Close division** in its footer for its
   department's head, the team leader and full access; a lead's Edit division has none. Add
   division opens New division in the department of the column it is under.
-- The **Team Leader box** on top opens "Hand over your role" (board 77i, #253) for the team leader
-  alone, with a pencil. For everyone else, full access included, it shows a lock and opens
-  nothing (see "Handing over a role" above).
+- Every box for a seat names every holder of it (epic #861, issue #869): the Team Leader box
+  every team leader, a department box every head, and a seat box every holder. One holder is
+  drawn as before; several are one row each, their photo beside their name, over the seat's
+  name ("Team Leaders", "Heads · 12 people"). A department counts each person once, every head
+  included.
+- The **Team Leader box** on top opens its panel, with a pencil, for a team leader and for full
+  access. A team leader's is "Hand over your role" (board 77i, #253), which hands over their own
+  role. Both list every team leader and offer **Add another holder** (below). For everyone else
+  it shows a lock and opens nothing (see "Handing over a role" above).
 - The **seat row** (#627) sits directly under the Team Leader box and above the department
-  columns: one box per team-level seat, built like the Team Leader box, with the holder's name
-  and the seat's stored title, in the Team tree's seat order. Everyone who opens the edit view
-  sees the same row. A row too wide for the frame shrinks to fit it, as the department row does.
+  columns: one box per team-level seat, built like the Team Leader box, with every holder's name
+  and the seat's stored title, in the Team tree's seat order. A seat is what its rows share, as
+  Add another holder reads it (below). Everyone who opens the edit view sees the same row. A row
+  too wide for the frame shrinks to fit it, as the department row does.
   - For the team leader and full access, each seat box has a pencil and opens **Change
-    holder**, and the row ends in **+ Add seat**, in the Add department style. For a head the
-    boxes open nothing and there is no Add seat. The server refuses both writes to everyone
-    but the team leader and full access.
+    holder** with **Add another holder** beside it, and the row ends in **+ Add seat**, in the
+    Add department style. For a head the boxes open nothing and there is no Add seat. The server
+    refuses these writes to everyone but the team leader and full access.
   - **Change holder** picks who holds the seat from the team. As in Change head, a person who
     holds another seat may be picked and keeps it; their seat shows on the row as information.
     Only the holder themself cannot be picked ("Holds it now"). The successor keeps their
@@ -722,9 +730,13 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
     active role in no department and no division with that title and no full-access flag, so a
     new seat gives no access of its own. It shows on the Team tree's seat row, this row and the
     public Team page's arc. Ending a seat with no successor is not offered.
-- **Add another holder** (epic #861, issue #868) gives a seat one more holder beside the ones it
-  has, on every seat kind. The server writes come first; the Team tree buttons follow in a later
-  child of #861. The rules (`lib/dashboard/seat-holders.ts`):
+- **Add another holder** (epic #861, issues #868 and #869) gives a seat one more holder beside the
+  ones it has, on every seat kind. The Team tree offers it beside the replace action: in the Team
+  Leader panel, in a seat's Change holder panel and under Change head in Edit department (when
+  the department has a head). It picks one person from the team; anyone who holds that exact seat
+  is listed but cannot be picked, with the reason the server gives ("{name} holds this seat
+  now.", `holderAddRefusal`). The save asks "are you sure" first, and then the seat's box names
+  the new holder. The rules (`lib/dashboard/seat-holders.ts`):
   - Only the team leader and full access may add a holder; a department head, a division lead
     and a member are refused, and a refusal writes nothing.
   - The person is on the team and does not hold that exact seat already. Someone who holds a

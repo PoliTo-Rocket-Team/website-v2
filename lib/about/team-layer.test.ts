@@ -32,7 +32,7 @@ function person(id: number, name: string, placement: Placement, over: Partial<Te
 const leader = (): Placement => ({ role: "team-leader", memberships: NO_MEMBERSHIPS });
 const seat = (s: BoardFlag): Placement => ({
   role: "board",
-  seat: { roleId: BOARD_FLAGS.indexOf(s) + 1, title: BOARD_FLAG_TITLES[s], flag: s, since },
+  seat: { roleId: BOARD_FLAGS.indexOf(s) + 1, title: BOARD_FLAG_TITLES[s], fullAccess: s, type: "core", since },
   memberships: NO_MEMBERSHIPS,
 });
 const head = (departmentId: number): Placement => ({ role: "head", departmentId, title: "", memberships: NO_MEMBERSHIPS });
@@ -180,7 +180,7 @@ test("added leaders land at their place in OrgChart.leaders reading order: eithe
 });
 
 test("someone the editor added to the arc whose role then becomes a team-level seat shows once, where the editor put them", () => {
-  const rd: Placement = { role: "board", seat: { roleId: 27, title: "Head of R&D", flag: null, since }, memberships: NO_MEMBERSHIPS };
+  const rd: Placement = { role: "board", seat: { roleId: 27, title: "Head of R&D", fullAccess: null, type: "core", since }, memberships: NO_MEMBERSHIPS };
   const withSeat = [...people, person(12, "Marco Dona", rd)];
   const layer: TeamPageLayer = { ...NO_TEAM_LAYER, addedLeaders: [added(1, 12, { at: "start" }, "Head of R&D")] };
   assert.deepEqual(

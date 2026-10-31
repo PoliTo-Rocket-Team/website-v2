@@ -3,11 +3,12 @@
 import { useState, useTransition, type FormEvent } from "react";
 import { Armchair, Plus, Repeat, Undo2 } from "lucide-react";
 import { toast } from "sonner";
-import { addSeat, changeSeatHolder, removeSeat } from "@/app/dashboard/team-actions";
+import { addSeat, addSeatHolder, changeSeatHolder, removeSeat } from "@/app/dashboard/team-actions";
 import type { TeamPick } from "@/lib/dashboard/division-edit";
 import { fullAccessMovesLine, steppingDown, steppingDownLine, type HandOverOutcome } from "@/lib/dashboard/hand-over";
 import { seatRemovalLines, seatTitleError, storedSeatTitle } from "@/lib/dashboard/team-seats";
-import type { StructureSeat, TeamStructure } from "@/lib/dashboard/team-structure";
+import { andList, type StructureSeat, type TeamStructure } from "@/lib/dashboard/team-structure";
+import { AddHolderLink, AddHolderPicker, HolderRows } from "./add-holder";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { PeoplePicker } from "./division-drawer";
@@ -16,8 +17,9 @@ import { inputClass } from "./field";
 import { HandOverChoice } from "./hand-over-choice";
 
 // The seat row's panels on Edit team tree (issue #627): Change holder, opened
-// from a seat box, with Remove seat in its footer (issue #643), and Add seat,
-// opened from the box at the end of the row.
+// from a seat box, with Remove seat in its footer (issue #643) and Add another
+// holder beside Change holder (epic #861, issue #869), and Add seat, opened
+// from the box at the end of the row.
 // They are built like Change head in Edit department (board 77e). Only the
 // team leader and full access open them; each save asks "are you sure" first,
 // and the server checks every rule again (lib/dashboard/team-seats.ts). A seat
@@ -78,8 +80,10 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
   const [showErrors, setShowErrors] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [pending, startTransition] = useTransition();
-  const { holder } = seat;
+  // Change holder and Remove seat act on the seat's first row (`roleId`); which co-holder they replace is a later child of epic #861.
+  const [holder] = seat.holders;
 
   const remove = () =>
     startTransition(async () => {
@@ -134,7 +138,7 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
       open={open}
       onOpenChange={(value) => !value && onClose()}
       title={seat.title}
-      detail={`Held by ${holder.name}`}
+      detail={`Held by ${andList(seat.holders.map((h) => h.name))}`}
       footer={
         <>
           <button type="button" onClick={() => setRemoving(true)} disabled={pending} className={PANEL_DANGER_BUTTON}>
@@ -149,27 +153,58 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
       <form id={`seat-${seat.roleId}-form`} noValidate onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
         <PanelBody>
           <section>
-            <h3 className={SECTION_LABEL}>Holder</h3>
+            <h3 className={SECTION_LABEL}>
+              {seat.holders.length > 1 ? "Holders" : "Holder"}
+              {seat.holders.length > 1 && <span className="ml-1.5 text-prt-muted">{seat.holders.length}</span>}
+            </h3>
             {next === null ? (
-              <div className={`${LIST} mt-2.5 flex items-center gap-3 px-3.5 py-3`}>
-                <Avatar size="md" accent person={holder} />
-                <span className="min-w-0 flex-1 truncate text-[15px] text-prt-text">{holder.name}</span>
-              </div>
+              seat.holders.length > 1 ? (
+                <div className="mt-2.5">
+                  <HolderRows holders={seat.holders} />
+                </div>
+              ) : (
+                <div className={`${LIST} mt-2.5 flex items-center gap-3 px-3.5 py-3`}>
+                  <Avatar size="md" accent person={holder} />
+                  <span className="min-w-0 flex-1 truncate text-[15px] text-prt-text">{holder.name}</span>
+                </div>
+              )
             ) : (
               <ul className={`${LIST} mt-2.5 divide-y divide-hairline`}>
-                <li className="flex items-center gap-3 px-3.5 py-2.5 opacity-60">
-                  <Avatar size="md" person={holder} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[14px] text-prt-text">{holder.name}</span>
-                    <span className="block truncate text-[12px] text-prt-muted">Replaced by {next.name}</span>
-                  </span>
-                </li>
+                {seat.holders.map((h) =>
+                  h.id === holder.id ? (
+                    <li key={h.id} className="flex items-center gap-3 px-3.5 py-2.5 opacity-60">
+                      <Avatar size="md" person={h} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[14px] text-prt-text">{h.name}</span>
+                        <span className="block truncate text-[12px] text-prt-muted">Replaced by {next.name}</span>
+                      </span>
+                    </li>
+                  ) : (
+                    <li key={h.id} className="flex items-center gap-3 px-3.5 py-2.5">
+                      <Avatar size="md" accent person={h} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[14px] text-prt-text">{h.name}</span>
+                        <span className="block truncate text-[12px] text-prt-muted">Keeps the seat</span>
+                      </span>
+                    </li>
+                  ),
+                )}
                 <li>
                   <PickedHolder pick={next} isNew onUndo={undo} />
                 </li>
               </ul>
             )}
-            {picking ? (
+            {adding ? (
+              <AddHolderPicker
+                mode="seat"
+                seat={seat.title}
+                short={seat.title}
+                holders={seat.holders}
+                save={(personId) => addSeatHolder(seat.roleId, { personId })}
+                onCancel={() => setAdding(false)}
+                onSaved={onClose}
+              />
+            ) : picking ? (
               <PeoplePicker
                 mode="seat"
                 short={seat.title}
@@ -182,10 +217,13 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
               />
             ) : (
               next === null && (
-                <button type="button" onClick={() => setPicking(true)} className={`${ADD_LINK} mt-3`}>
-                  <Repeat aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
-                  Change holder
-                </button>
+                <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+                  <button type="button" onClick={() => setPicking(true)} className={ADD_LINK}>
+                    <Repeat aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
+                    Change holder
+                  </button>
+                  <AddHolderLink onClick={() => setAdding(true)} />
+                </div>
               )
             )}
             {next !== null && (

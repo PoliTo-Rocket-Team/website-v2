@@ -131,7 +131,7 @@ test("every place on the tree carries that person's own stored photo, and null w
   const pictured = [
     ...roster.map((p) => ({ ...p, photoUrl: photo(p.id) })),
     {
-      ...person(7, "Sara Conti", { role: "board", seat: { roleId: 70, title: "", flag: "project-manager", since: "2024-10-01" }, memberships: NO_MEMBERSHIPS }),
+      ...person(7, "Sara Conti", { role: "board", seat: { roleId: 70, title: "", fullAccess: "project-manager", type: "core", since: "2024-10-01" }, memberships: NO_MEMBERSHIPS }),
       photoUrl: photo(7),
     },
     person(8, "Anna Villa", member(10)),
@@ -312,7 +312,7 @@ test("the years on the team are read as typed, in order and not after this year;
 });
 
 test("the seat whose title Edit details sets: the team leader's, else a head's, else a team-level seat's by seat order; none for an advisor (#626)", () => {
-  const board = (roleId: number, flag: "chief-engineer" | null, since: string): RoleBeyondDivisions => ({ kind: "board", seat: { roleId, title: "", flag, since } });
+  const board = (roleId: number, flag: "chief-engineer" | null, since: string): RoleBeyondDivisions => ({ kind: "board", seat: { roleId, title: "", fullAccess: flag, type: "core", since } });
   const head: RoleBeyondDivisions = { kind: "head", departmentId: 1, title: "" };
   const pick = (roles: readonly RoleBeyondDivisions[]) => titledSeatOf(roles, (r) => r)?.seat ?? null;
   assert.deepEqual(pick([board(1, null, "2020-10-01"), head, { kind: "team-leader", title: "" }]), { kind: "team-leader", title: "" });
