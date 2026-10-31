@@ -63,7 +63,7 @@ An admin column comes later. **Planned**, no issue yet.
   leader seat, each full-access seat, each department's head seat and every other team-level
   seat. Each holder, a co-holder when there are several, has the seat's full rights, exactly as a
   sole holder has them; there is no per-holder tier. The database refuses no second active holder:
-  migration 0076 dropped the one-holder indexes migration 0062 had added (#667), and changed no
+  migration 0077 dropped the one-holder indexes migration 0062 had added (#667), and changed no
   row. A hand-over or Change holder ends the holder's own row by choice, not because the database
   refuses a second one.
 - **What goes to a seat goes to every holder of it** (epic #861,

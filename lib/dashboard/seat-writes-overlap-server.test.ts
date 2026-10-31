@@ -15,7 +15,7 @@ import { addRows, tableRows, testDb } from "./access-matrix/test-database";
 // The overlap is laid out by hand: the first call's batch waits until a
 // second call has run from start to end, so the second call's write lands
 // between the first call's read and its write. No unique index stops a
-// second holder of a seat (drizzle/0076, epic #861), so only the write's own
+// second holder of a seat (drizzle/0077, epic #861), so only the write's own
 // check refuses the late one.
 
 const SINCE = "2025-10-01";

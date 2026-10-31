@@ -14,7 +14,7 @@ import type { PublicPathname } from "./pathname";
 
 // Which public-store files a row still shows (issue #831). A file in the
 // public store may be named by any of these columns: a member's picture, an
-// alumni entry's photo, a Team page layer version, an advisor version, an
+// alumni entry's photo, a Team page layer version or its layout, an advisor version, an
 // Outreach post version, a project version or a partner version. A delete
 // asks this first, with every column at once, so a file another row still
 // shows is never deleted. A column names a file by its URL, which ends in
@@ -27,7 +27,7 @@ function referencingTexts(): { readonly table: SQL; readonly text: SQL }[] {
   return [
     { table: sql`${members}`, text: sql`${members.picture}` },
     { table: sql`${alumniEntries}`, text: sql`${alumniEntries.photo}` },
-    { table: sql`${teamPageLayerVersions}`, text: sql`${teamPageLayerVersions.layer}::text` },
+    { table: sql`${teamPageLayerVersions}`, text: sql`${teamPageLayerVersions.layer}::text || coalesce(${teamPageLayerVersions.layout}::text, '')` },
     { table: sql`${teamPageAdvisorVersions}`, text: sql`${teamPageAdvisorVersions.advisor}::text` },
     {
       table: sql`${outreachPostVersions}`,

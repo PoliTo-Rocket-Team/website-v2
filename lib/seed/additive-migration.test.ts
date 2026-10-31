@@ -205,10 +205,10 @@ test("0060 and 0061 apply again over a database that already holds them", async 
 });
 
 // One active holder per seat (issue #667) only created partial unique
-// indexes on `roles`: no column, type or row changes. 0076 drops them again
+// indexes on `roles`: no column, type or row changes. 0077 drops them again
 // (epic #861), so in the migrated database no seat index stands.
 const SEAT_TAG = "0062_roles_one_active_seat_holder";
-const SEVERAL_HOLDERS_TAG = "0076_roles_several_seat_holders";
+const SEVERAL_HOLDERS_TAG = "0077_roles_several_seat_holders";
 
 test("0062_roles_one_active_seat_holder.sql only creates indexes, and its header links the issue", () => {
   const sql = readFileSync(resolve(process.cwd(), `drizzle/${SEAT_TAG}.sql`), "utf8");
@@ -228,7 +228,7 @@ async function seatIndexes(db: PGlite): Promise<string[]> {
   return indexes.rows.map((r) => r.name);
 }
 
-test("0062 and then 0076 keep every existing role row as it was, each applies again, and the migrated database holds no seat index", async () => {
+test("0062 and then 0077 keep every existing role row as it was, each applies again, and the migrated database holds no seat index", async () => {
   const { db, apply } = await databaseBefore(SEAT_TAG);
   await db.exec(`
     set session_replication_role = replica;
@@ -250,14 +250,14 @@ test("0062 and then 0076 keep every existing role row as it was, each applies ag
   await runDrop();
   await runDrop();
   assert.deepEqual((await db.query(`select * from roles order by id`)).rows, before.rows);
-  assert.deepEqual(await seatIndexes(db), [], "0076 drops them");
+  assert.deepEqual(await seatIndexes(db), [], "0077 drops them");
 });
 
 // Several holders of one seat (epic #861, issue #867). Not additive, by
 // design: it drops the three one-holder indexes of 0062 and nothing else, so
 // it is pinned to exactly those three statements and any further drop or
 // rewrite fails here.
-test("0076_roles_several_seat_holders.sql drops the three 0062 indexes and nothing else, and its header links the epic", () => {
+test("0077_roles_several_seat_holders.sql drops the three 0062 indexes and nothing else, and its header links the epic", () => {
   const sql = readFileSync(resolve(process.cwd(), `drizzle/${SEVERAL_HOLDERS_TAG}.sql`), "utf8");
   assert.deepEqual(nonAdditiveStatements(sql), [
     'DROP INDEX IF EXISTS "roles_one_active_team_leader"',
@@ -272,7 +272,7 @@ test("0076_roles_several_seat_holders.sql drops the three 0062 indexes and nothi
   assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/861/);
 });
 
-test("0076 keeps every role row, lets each seat take a second active holder, and applies again over a database that already ran it", async () => {
+test("0077 keeps every role row, lets each seat take a second active holder, and applies again over a database that already ran it", async () => {
   const { db, apply } = await databaseBefore(SEVERAL_HOLDERS_TAG);
   await db.exec(`
     set session_replication_role = replica;
@@ -799,4 +799,25 @@ test("0075 succeeds and leaves every member as it was on a database whose member
   const before = await db.query(`select * from members order by member_id`);
   await apply();
   assert.deepEqual((await db.query(`select * from members order by member_id`)).rows, before.rows);
+});
+
+// The Team page's own layout (issue #850, ADR 0019): one nullable column
+// beside each stored layer version. The post-migration step that fills it is
+// TypeScript (lib/about/team-layout-fill.ts), so the migration changes no row.
+const TEAM_PAGE_LAYOUT_TAG = "0076_team_page_layout";
+
+test("0076_team_page_layout.sql only adds the nullable layout column, applies again and leaves every stored layer version as it was", async () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${TEAM_PAGE_LAYOUT_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  const { db, apply } = await databaseBefore(TEAM_PAGE_LAYOUT_TAG);
+  await db.exec(`insert into team_page_layer_versions (version, layer) values ('published', '{"intro":"Kept"}'), ('draft', '{"intro":"Draft"}')`);
+  const before = await db.query(`select id, version, layer, updated_at from team_page_layer_versions order by id`);
+  await apply();
+  await apply();
+  assert.deepEqual((await db.query(`select id, version, layer, updated_at from team_page_layer_versions order by id`)).rows, before.rows);
+  assert.deepEqual((await db.query(`select layout from team_page_layer_versions order by id`)).rows, [{ layout: null }, { layout: null }]);
+  const column = await db.query(
+    `select data_type, is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'team_page_layer_versions' and column_name = 'layout'`,
+  );
+  assert.deepEqual(column.rows, [{ data_type: "jsonb", is_nullable: "YES" }]);
 });

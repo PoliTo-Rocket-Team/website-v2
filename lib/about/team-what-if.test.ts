@@ -81,6 +81,7 @@ test("the role build fills at most five carousel slides of up to ten heads", () 
     id,
     name,
     placement,
+    furtherSeats: [],
     pageTitle: null,
     photo: null,
     linkedin: null,

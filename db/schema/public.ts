@@ -232,7 +232,7 @@ export const roles = pgTable("roles", {
   // Manager's and the Chief Engineer's (issue #485) seats; null on every
   // other role. The team leader is the `president` type and needs none.
   // Every seat may have several active holders (epic #861): the team leader,
-  // each full-access seat and each department's head. drizzle/0076 dropped
+  // each full-access seat and each department's head. drizzle/0077 dropped
   // the one-holder indexes drizzle/0062 had added (issue #667).
   fullAccess: fullAccessSeatEnum("full_access"),
 });
@@ -1134,10 +1134,16 @@ export const outreachSummitVersions = pgTable(
 // the published version /about/the-team lays on the roles build and an
 // optional draft, one row each. It holds what an editor changed on the page
 // (lib/about/team-layer.ts), never a role, division, department or access.
+// Each version also keeps the page's layout of page seats (issue #850, ADR
+// 0019, lib/about/team-layout.ts). It is null on a row written before the
+// layout existed, until the post-migration step fills it
+// (lib/about/team-layout-fill.ts); the page reads such a row's layout from
+// its layer meanwhile (lib/about/team-page-stored.ts).
 export const teamPageLayerVersions = pgTable("team_page_layer_versions", {
   id: serial("id").primaryKey(),
   version: contentVersionEnum("version").notNull().unique("team_page_layer_versions_version_unique"),
   layer: jsonb("layer").notNull(),
+  layout: jsonb("layout"),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
     .defaultNow()
     .notNull(),

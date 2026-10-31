@@ -13,7 +13,7 @@ import { FLAG_OF_SEAT, fullAccessSeatOf, SEAT_OF_FLAG, standingOf, viewerKindOf,
 
 // Every seat may have several active holders (epic #861, issue #867): the
 // database takes two active team leaders, two active holders of one
-// full-access seat and two active heads of one department (drizzle/0076
+// full-access seat and two active heads of one department (drizzle/0077
 // dropped the one-holder indexes of drizzle/0062), and each holder gets the
 // seat's viewer kind and full-access seat, read off their own active rows
 // (`viewerKindOf`, `fullAccessSeatOf`) and as their dashboard opens. The team

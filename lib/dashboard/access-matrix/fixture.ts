@@ -118,7 +118,7 @@ type RoleRow = typeof roles.$inferInsert;
 /**
  * The seats a role row holds that the fixture gives one active role each:
  * the team leader's, a full-access seat, a department's head. The database
- * takes several holders of a seat (drizzle/0076, epic #861); the fixture
+ * takes several holders of a seat (drizzle/0077, epic #861); the fixture
  * keeps one, so each matrix viewer's seat is read as theirs alone.
  */
 function seatsOf(r: Pick<RoleRow, "type" | "deptId" | "fullAccess">): string[] {

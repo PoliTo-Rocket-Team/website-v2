@@ -293,7 +293,9 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
   );
 }
 
+/** With no group (no department head on the stored layout has a holder, ADR 0019 Decision 9), the page leaves the section out, as it does Advisors. */
 export function Departments({ departments, frames = {} }: { departments: DepartmentsData; frames?: DepartmentFrames }) {
+  if (departments.groups.length === 0) return null;
   return (
     <section className="px-5 pt-section md:px-16">
       <div className="mx-auto max-w-[1312px]">
