@@ -939,9 +939,9 @@ test("after 0079 the sign-in sync still matches its own id, takes over a free un
 // one nullable column and a fill from the login's own email, with the audit
 // trigger off for the fill alone so no token is copied into `logs`. The fill
 // is the one statement that changes rows, so the file is pinned to it.
-const ACCOUNT_EMAIL_TAG = "0080_account_google_email";
+const ACCOUNT_EMAIL_TAG = "0081_account_google_email";
 
-test("0080_account_google_email.sql adds the nullable email column and fills it, and nothing else", () => {
+test("0081_account_google_email.sql adds the nullable email column and fills it, and nothing else", () => {
   const sql = readFileSync(resolve(process.cwd(), `drizzle/${ACCOUNT_EMAIL_TAG}.sql`), "utf8");
   assert.deepEqual(nonAdditiveStatements(sql), [
     `UPDATE "better_auth"."account" SET "email" = "user"."email" FROM "better_auth"."user" WHERE "user"."id" = "account"."userId" AND "account"."email" IS NULL`,
@@ -949,7 +949,7 @@ test("0080_account_google_email.sql adds the nullable email column and fills it,
   assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/902/);
 });
 
-test("0080 fills each existing account's email from its login, copies no token into logs, keeps every other value and applies again", async () => {
+test("0081 fills each existing account's email from its login, copies no token into logs, keeps every other value and applies again", async () => {
   const { db, apply } = await databaseBefore(ACCOUNT_EMAIL_TAG);
   await db.exec(`
     insert into better_auth."user" (id, name, email, "emailVerified") values ('u-1', 'Sara Conti', 'sara@example.com', true), ('u-2', 'Luca Neri', 'luca@example.com', true);
