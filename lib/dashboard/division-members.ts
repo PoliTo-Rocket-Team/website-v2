@@ -649,6 +649,29 @@ export type OpenedEdit = { readonly details: MemberDetails; readonly name: Perso
 export type OpenedSent = { readonly details: MemberDetails } & Partial<PersonName>;
 
 /**
+ * The row one open Edit details form saves onto (issue #860). At first it is
+ * the record's own row, the one the form shows, so Save sends all it holds.
+ * Link login moves the record onto the login's row, which the form never
+ * showed: from then on every Save of that form, the one right after the link
+ * and any retry once that one failed, sends what the form opened with, so
+ * only the fields the viewer changed overwrite that row's own.
+ */
+export type SaveBasis = { readonly kind: "shown-row" } | { readonly kind: "linked-login"; readonly opened: OpenedSent };
+
+/** The basis a form opens on: the record's own row, as shown. */
+export const SHOWN_ROW: SaveBasis = { kind: "shown-row" };
+
+/** The basis once Link login landed: what the form opened with, for every Save after it. */
+export function linkedLogin(opened: OpenedSent): SaveBasis {
+  return { kind: "linked-login", opened };
+}
+
+/** Save's input on `basis`: what the form sends, with what it opened with beside it once the record sits on a linked login. */
+export function saveInputOn<T extends object>(basis: SaveBasis, sent: T): T & { readonly opened?: OpenedSent } {
+  return basis.kind === "shown-row" ? sent : { ...sent, opened: basis.opened };
+}
+
+/**
  * The details and name a checked save writes: all it sent, or with `opened`
  * only each one the viewer changed from it. An empty object writes nothing.
  */

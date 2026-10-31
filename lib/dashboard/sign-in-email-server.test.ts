@@ -8,7 +8,7 @@ import { addRows, changeRows, databaseWrites, logRowsSinceSeed, tableRows, testD
 import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 import type { DashboardData } from "./data";
-import type { DetailsTarget, OpenedSent } from "./division-members";
+import { linkedLogin, saveInputOn, type DetailsTarget, type OpenedSent, type SaveBasis } from "./division-members";
 import { membersModelOf } from "./members-view";
 import { openDashboard } from "./open";
 import { LOGIN_LINK_REFUSALS, loginLinkQuestion, SIGN_IN_EMAIL_REFUSALS, takenBy, type LoginLinkOffer } from "./sign-in-email";
@@ -205,11 +205,11 @@ describe("Edit details links an empty login to the member it belongs to (issue #
     return { details: actions.person.details, ...actions.position.name };
   }
 
-  /** The Save Link login runs next, as Edit details sends it: the form as it opened with `changed` typed over it, and what it opened with. */
-  async function followUpSave(form: OpenedSent, changed: Partial<OpenedSent["details"]>) {
+  /** A Save after Link login, as Edit details sends it on `basis`: the form as it opened with `changed` typed over it. */
+  async function followUpSave(basis: SaveBasis, form: OpenedSent, changed: Partial<OpenedSent["details"]>) {
     signInAs(accountOf("operations lead").userId);
     const { details, ...name } = form;
-    return teamActions.saveMemberDetails(PERSON, MA, { title: "Member", details: { ...details, ...changed }, ...name, signInEmail: REAL, opened: form });
+    return teamActions.saveMemberDetails(PERSON, MA, saveInputOn(basis, { title: "Member", details: { ...details, ...changed }, ...name, signInEmail: REAL }));
   }
 
   test("Save offers the login, with the day it first signed in, and the confirmation asks to link it to the member", async () => {
@@ -251,13 +251,33 @@ describe("Edit details links an empty login to the member it belongs to (issue #
     const sent = await offer();
     assert.deepEqual((await link("operations lead", sent)).answer, { ok: true });
     // The viewer typed a new country and left the phone as the form showed it.
-    assert.deepEqual(await followUpSave(form, { country: "France" }), { ok: true });
+    assert.deepEqual(await followUpSave(linkedLogin(form), form, { country: "France" }), { ok: true });
     const login = await userRow(LOGIN_USER);
     assert.equal(login?.member, MEMBER);
     assert.equal(login?.email, REAL, "the address is now the record row's own");
     assert.equal(login?.phone, "+39 333 222 2222", "the login's own phone is neither overwritten nor cleared");
     assert.equal(login?.country, "France", "a field the viewer changed is written");
     assert.equal(login?.firstName, "Person", "the name the viewer left stays");
+  });
+
+  test("every Save after Link login keeps the login's own fields: the retry after a failed follow-up writes only what the viewer changed", async () => {
+    await seededEmptyLogin();
+    const form = await opened();
+    const sent = await offer();
+    assert.deepEqual((await link("operations lead", sent)).answer, { ok: true });
+    // The form keeps one basis from the link on: the follow-up Save, then the retries once a step after it failed and left the form open.
+    const basis = linkedLogin(form);
+    for (const [round, changed] of [
+      ["the follow-up Save", { country: "France" }],
+      ["a retry of the same Save", { country: "France" }],
+      ["a retry with one more change", { country: "France", gender: "Female" }],
+    ] as const) {
+      assert.deepEqual(await followUpSave(basis, form, changed), { ok: true }, round);
+      const login = await userRow(LOGIN_USER);
+      assert.equal(login?.phone, "+39 333 222 2222", `${round}: the login's own phone is neither overwritten nor cleared`);
+      assert.equal(login?.country, "France", `${round}: a field the viewer changed is written`);
+    }
+    assert.equal((await userRow(LOGIN_USER))?.gender, "Female", "the retry's own change is written");
   });
 
   test("an address held by an account that has a member record keeps the refusal, naming who", async () => {

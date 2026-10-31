@@ -25,12 +25,15 @@ import {
   checkAddMember,
   checkMemberEdit,
   checkMemberPhoto,
+  linkedLogin,
+  saveInputOn,
+  SHOWN_ROW,
   type AddLookup,
   type AddMemberErrors,
   type DivisionHeader,
   type DivisionPerson,
   type MemberPosition,
-  type OpenedSent,
+  type SaveBasis,
   type TeamMatch,
   type WaitingPerson,
 } from "@/lib/dashboard/division-members";
@@ -1022,6 +1025,8 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   const [pending, setPending] = useState(false);
   // An empty login already holds the corrected email: Save asks to link it, then saves again (issue #860).
   const [linkOffer, setLinkOffer] = useState<{ readonly offer: LoginLinkOffer; readonly answer: HeadMoveAnswer | null } | null>(null);
+  // The row Save writes onto: once Link login lands, every later Save of this form, a retry included, sends what it opened with.
+  const [basis, setBasis] = useState<SaveBasis>(SHOWN_ROW);
 
   const setName = (key: keyof PersonName, value: string) => {
     setNames((n) => (n === null ? n : { ...n, [key]: value }));
@@ -1035,21 +1040,20 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   })[0];
 
   /** The details as Save sends them: a moved place's title goes with its move, so the details keep the one it had. */
-  const checkedDetails = (opened?: OpenedSent) => {
+  const checkedDetails = (on: SaveBasis = basis) => {
     // The sign-in email is sent only when corrected, so a save that leaves it as shown asks for no correction.
     const corrected = correctsEmail && signInEmail.trim().toLowerCase() !== email.toLowerCase();
-    const input = {
+    const input = saveInputOn(on, {
       title: titledMove === null ? draft.title : (startTitle ?? ""),
       details: detailsOf(draft),
       ...names,
       ...(corrected ? { signInEmail } : {}),
-      ...(opened === undefined ? {} : { opened }),
-    };
+    });
     return { input, checked: checkMemberEdit(input, title?.kind === "seat" && titledMove === null ? "required" : "optional") };
   };
 
-  const save = async (answer: HeadMoveAnswer | null, opened?: OpenedSent) => {
-    const { input, checked } = checkedDetails(opened);
+  const save = async (answer: HeadMoveAnswer | null, on: SaveBasis = basis) => {
+    const { input, checked } = checkedDetails(on);
     if (!checked.ok) return setErrors(checked.errors);
     setPending(true);
     try {
@@ -1123,11 +1127,14 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
     } finally {
       setPending(false);
     }
-    // The record now sits on the login's row: send what the form opened with, so only the fields the viewer changed overwrite that row's own.
-    await save(answer, { details: person?.details ?? NO_MEMBER_DETAILS, ...(position?.name ?? {}) });
+    // The record now sits on the login's row: this Save and every one after it send what the form opened with,
+    // so only the fields the viewer changed overwrite that row's own, a retry after a failed Save included.
+    const onLogin = linkedLogin({ details: person?.details ?? NO_MEMBER_DETAILS, ...(position?.name ?? {}) });
+    setBasis(onLogin);
+    await save(answer, onLogin);
   };
 
-  const submit =(e: FormEvent<HTMLFormElement>) => {
+  const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (headMove !== undefined) {
       const { checked } = checkedDetails();
