@@ -857,3 +857,80 @@ test("0078 keeps every row, applies again, and a new login takes over a free row
     { id: "second", email: "shared@example.com", first_name: null },
   ]);
 });
+
+// A first sign-in never fails on a refused take-over (issue #917,
+// https://github.com/PoliTo-Rocket-Team/website-v2/issues/917): when
+// applications, uploaded files or audit rows point at the free row the
+// sign-in sync would take over, the database refuses the id change, and the
+// login now gets a fresh row instead of failing. The function replacement
+// changes no stored row.
+const REFUSED_TAKE_OVER_TAG = "0079_sync_auth_users_fresh_row_on_refused_take_over";
+
+test("0079_sync_auth_users_fresh_row_on_refused_take_over.sql drops, renames and rewrites nothing, and its header links the issue", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${REFUSED_TAKE_OVER_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/917/);
+});
+
+test("0079 keeps every row, applies again, and a first sign-in on a free row that applications, files and audit rows point at succeeds on a fresh row, leaving those rows as they were", async () => {
+  const { db, apply } = await databaseBefore(REFUSED_TAKE_OVER_TAG);
+  const login = (id: string, email: string) => `insert into better_auth."user" (id, name, email, "emailVerified") values ('${id}', '${id}', '${email}', true)`;
+  await db.exec(`
+    insert into users (id, email, first_name) values ('applicant', 'applicant@example.com', 'Imported');
+    insert into applications (user_id) values ('applicant');
+    insert into application_files (r2_key, original_filename, user_id) values ('applications/applicant/cv.pdf', 'cv.pdf', 'applicant');
+    insert into logs (schema_name, table_name, operation, record_id, changed_by) values ('public', 'users', 'UPDATE', 'applicant', 'applicant');
+  `);
+  const snapshot = async () => ({
+    users: (await db.query<{ id: string }>(`select * from users order by id`)).rows,
+    applications: (await db.query(`select * from applications order by id`)).rows,
+    files: (await db.query(`select * from application_files order by id`)).rows,
+    logs: (await db.query(`select * from logs order by id`)).rows,
+  });
+  const before = await snapshot();
+  await apply();
+  await apply();
+  assert.deepEqual(await snapshot(), before, "every row is kept");
+
+  await db.exec(login("new-login", "applicant@example.com"));
+  const rows = await db.query<{ id: string; email: string; first_name: string | null }>(`select id, email, first_name from users order by id`);
+  assert.deepEqual(rows.rows, [
+    { id: "applicant", email: "applicant@example.com", first_name: "Imported" },
+    { id: "new-login", email: "applicant@example.com", first_name: null },
+  ]);
+  const after = await snapshot();
+  assert.deepEqual(after.users.find((u) => u.id === "applicant"), before.users.find((u) => u.id === "applicant"), "the matched row is unchanged");
+  assert.deepEqual(after.applications, before.applications, "every application still points at the unchanged row");
+  assert.deepEqual(after.files, before.files, "every uploaded file still points at the unchanged row");
+  for (const row of before.logs) assert.ok(after.logs.some((l) => JSON.stringify(l) === JSON.stringify(row)), "every audit row is kept as it was");
+});
+
+test("after 0079 the sign-in sync still matches its own id, takes over a free unreferenced row, skips held and closed rows, and makes a fresh row on no match", async () => {
+  const { db, apply } = await databaseBefore(REFUSED_TAKE_OVER_TAG);
+  await apply();
+  const login = (id: string, email: string) => `insert into better_auth."user" (id, name, email, "emailVerified") values ('${id}', '${id}', '${email}', true)`;
+  await db.exec(`
+    ${login("held", "held@example.com")};
+    update users set email = 'shared@example.com' where id = 'held';
+    insert into users (id, email, first_name) values ('own', 'old@example.com', 'Own');
+    insert into users (id, email, first_name) values ('added:free', 'free@example.com', 'Imported');
+    insert into users (id, email, first_name, deleted_at) values ('closed', 'closed@example.com', 'Closed', now());
+  `);
+  await db.exec(`
+    ${login("own", "own@example.com")};
+    ${login("second", "shared@example.com")};
+    ${login("returning", "free@example.com")};
+    ${login("reopening", "closed@example.com")};
+    ${login("stranger", "stranger@example.com")};
+  `);
+  const rows = await db.query<{ id: string; email: string; first_name: string | null }>(`select id, email, first_name from users order by id`);
+  assert.deepEqual(rows.rows, [
+    { id: "closed", email: "closed@example.com", first_name: "Closed" },
+    { id: "held", email: "shared@example.com", first_name: null },
+    { id: "own", email: "own@example.com", first_name: "Own" },
+    { id: "reopening", email: "closed@example.com", first_name: null },
+    { id: "returning", email: "free@example.com", first_name: "Imported" },
+    { id: "second", email: "shared@example.com", first_name: null },
+    { id: "stranger", email: "stranger@example.com", first_name: null },
+  ]);
+});
