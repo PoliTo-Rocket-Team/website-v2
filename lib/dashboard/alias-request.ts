@@ -233,15 +233,46 @@ export function planAliasRequest(input: {
   /** The addresses already held: every PRT email and every special PRT email; only one equal to `address` is read. */
   readonly taken: readonly string[];
 }): Checked<PlannedAliasRequest> {
-  const { requesterId, standing, memberId, team, org, address } = input;
+  const { requesterId, standing, memberId, team, org } = input;
   const member = team.find((p) => p.id === memberId);
   if (requesterId === null || member === undefined || !mayAskFor(requesterId, standing, memberId, team, org)) {
     return { ok: false, error: "You can request a PRT email only for someone you lead or head." };
   }
+  return openableRequest(member, requesterId, input);
+}
+
+/** What an open request may not meet, whoever asks for it. */
+type OpenRequestGround = Pick<Parameters<typeof planAliasRequest>[0], "prtEmail" | "open" | "address" | "taken">;
+
+/**
+ * The rules every personal request meets, whoever sends it: the member's PRT
+ * email is empty and they have no open request, and the address is nobody's
+ * PRT email and no special PRT email yet, in any letter case.
+ */
+function openableRequest(member: TeamPerson, requesterId: number, input: OpenRequestGround): Checked<PlannedAliasRequest> {
+  const { address } = input;
   if (teamAddressOf(input.prtEmail) !== null) return { ok: false, error: `${member.name} already has a personal PRT email.` };
-  if (input.open.some((r) => r.memberId === memberId)) return { ok: false, error: aliasAlreadyRequested(member.name) };
+  if (input.open.some((r) => r.memberId === member.id)) return { ok: false, error: aliasAlreadyRequested(member.name) };
   if (input.taken.some((t) => t.toLowerCase() === address)) return { ok: false, error: `${address} is already a PRT email.` };
-  return { ok: true, value: { memberId, requesterId, address } };
+  return { ok: true, value: { memberId: member.id, requesterId, address } };
+}
+
+/**
+ * Request my PRT email on My profile (issue #921): a member asks for
+ * themselves, whoever leads them and whatever access they hold. It is its own
+ * rule, not a wider `mayAskFor`: asking for oneself makes nobody a manager,
+ * so the Members page offers no one anything new. The request is the one
+ * Request PRT email stores, under the same rules (`openableRequest`), and
+ * the approvers answer it as any other.
+ */
+export function planOwnAliasRequest(input: {
+  /** The member asking, who is the member asked for. */
+  readonly memberId: number;
+  readonly team: readonly TeamPerson[];
+} & OpenRequestGround): Checked<PlannedAliasRequest> {
+  const member = input.team.find((p) => p.id === input.memberId);
+  if (member === undefined) return { ok: false, error: "You can request a PRT email only while you are on the team." };
+  return openableRequest(member, member.id, input);
 }
 
 /** The refusal of a second open personal request for a member, from the check or from the database index. */
