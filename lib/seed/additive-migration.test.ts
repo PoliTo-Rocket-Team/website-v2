@@ -742,3 +742,24 @@ test("0075 succeeds and leaves every member as it was on a database whose member
   await apply();
   assert.deepEqual((await db.query(`select * from members order by member_id`)).rows, before.rows);
 });
+
+// The Team page's own layout (issue #850, ADR 0019): one nullable column
+// beside each stored layer version. The post-migration step that fills it is
+// TypeScript (lib/about/team-layout-fill.ts), so the migration changes no row.
+const TEAM_PAGE_LAYOUT_TAG = "0076_team_page_layout";
+
+test("0076_team_page_layout.sql only adds the nullable layout column, applies again and leaves every stored layer version as it was", async () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${TEAM_PAGE_LAYOUT_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  const { db, apply } = await databaseBefore(TEAM_PAGE_LAYOUT_TAG);
+  await db.exec(`insert into team_page_layer_versions (version, layer) values ('published', '{"intro":"Kept"}'), ('draft', '{"intro":"Draft"}')`);
+  const before = await db.query(`select id, version, layer, updated_at from team_page_layer_versions order by id`);
+  await apply();
+  await apply();
+  assert.deepEqual((await db.query(`select id, version, layer, updated_at from team_page_layer_versions order by id`)).rows, before.rows);
+  assert.deepEqual((await db.query(`select layout from team_page_layer_versions order by id`)).rows, [{ layout: null }, { layout: null }]);
+  const column = await db.query(
+    `select data_type, is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'team_page_layer_versions' and column_name = 'layout'`,
+  );
+  assert.deepEqual(column.rows, [{ data_type: "jsonb", is_nullable: "YES" }]);
+});

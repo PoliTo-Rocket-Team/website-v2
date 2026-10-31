@@ -1,0 +1,416 @@
+import { asc, eq, isNull } from "drizzle-orm";
+import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
+import { departments, divisions, members, roles, scopes, users } from "@/db/schema";
+import { teamPeopleOf as pagePeopleOf, type TeamRoles } from "@/lib/about/team-roles";
+import { DEGREE_PROGRAMMES, GENDERS, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
+import { actingTitleOf, attributedName } from "./acting-account";
+import type { MemberDetails } from "./details";
+import type { FoundPerson } from "./division-edit";
+import type { PersonRecord } from "./division-members";
+import type { HeldSeat } from "./hand-over";
+import type { PersonName } from "./person-name";
+import { normalizeLinkedin } from "./self";
+import { viewAsSiteOf, type ViewAsSite } from "./view-as";
+import { SEAT_OF_FLAG, type SeatFlag } from "./viewer";
+import {
+  headDepartmentOf,
+  isTeamSeat,
+  membershipsIn,
+  membershipsOfRoles,
+  roleBeyondDivisions,
+  type OrgChart,
+  type Placement,
+  type RoleHeld,
+  type RoleSeat,
+  type RoleType,
+  type RosterEntry,
+} from "./team";
+
+// The team snapshot of the Team pages (issue #143): every role, the open org
+// chart and every scope, read on any Postgres connection, and what the pages
+// read from it. The app reads it cached through ./team-database.ts; the
+// post-migration step that fills the Team page layout (issue #850,
+// lib/about/team-layout-fill.ts) reads it here on the migration's own
+// connection, outside Next.
+
+type RoleRow = {
+  id: number;
+  member_id: number;
+  type: RoleType;
+  title: string;
+  started_at: string;
+  leaved_at: string | null;
+  dept_id: number | null;
+  division_id: number | null;
+  /** The full-access seat the row is flagged as (`roles.full_access`). */
+  full_access: SeatFlag | null;
+};
+
+type PersonRow = {
+  member_id: number;
+  /** Their account id: what an acting account is stored as (issue #605). */
+  user_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  /** The email they sign in with, or were added with. */
+  email: string;
+  program: string | null;
+  level_of_study: string | null;
+  /** The years on the team their lead gave when moving them to alumni (issue #172). */
+  team_from: number | null;
+  team_to: number | null;
+  // The Members page's private details (issue #231, board 61f).
+  phone: string | null;
+  mobile_number: string | null;
+  discord: string | null;
+  prt_email: string | null;
+  linkedin: string | null;
+  polito_id: string | null;
+  country: string | null;
+  date_of_birth: string | null;
+  gender: string | null;
+  picture: string | null;
+  nda_signed_at: string | null;
+  nda_confirmed_by: number | null;
+  nda_confirmed_by_acting_account: string | null;
+};
+
+type ScopeRow = { member_id: number | null; target: string; access_level: string };
+
+export type TeamSnapshot = {
+  readonly org: OrgChart;
+  readonly roles: readonly RoleRow[];
+  readonly people: readonly PersonRow[];
+  readonly scopes: readonly ScopeRow[];
+};
+
+/** Any Drizzle Postgres client the snapshot can be read on: the app's, or a migration's own. */
+export type SnapshotDb = Pick<PgDatabase<PgQueryResultHKT>, "select">;
+
+/** The team snapshot as `db` holds it now, uncached. */
+export async function queryTeamSnapshot(db: SnapshotDb): Promise<TeamSnapshot> {
+  const [departmentRows, divisionRows, roleRows, personRows, scopeRows] = await Promise.all([
+    db
+      .select({ id: departments.id, name: departments.name, code: departments.code, kind: departments.kind })
+      .from(departments)
+      .where(isNull(departments.closedAt))
+      .orderBy(asc(departments.id)),
+    db
+      .select({ id: divisions.id, name: divisions.name, dept_id: divisions.deptId, code: divisions.code })
+      .from(divisions)
+      .where(isNull(divisions.closedAt))
+      .orderBy(asc(divisions.id)),
+    db
+      .select({
+        id: roles.id,
+        member_id: roles.memberId,
+        type: roles.type,
+        title: roles.title,
+        started_at: roles.startedAt,
+        leaved_at: roles.leavedAt,
+        dept_id: roles.deptId,
+        division_id: roles.divisionId,
+        full_access: roles.fullAccess,
+      })
+      .from(roles)
+      // A stable order, so a pick among roles (a department's head) does
+      // not change when an update moves a row (issue #667).
+      .orderBy(asc(roles.startedAt), asc(roles.id)),
+    db
+      .select({
+        member_id: users.member,
+        user_id: users.id,
+        first_name: users.firstName,
+        last_name: users.lastName,
+        email: users.email,
+        program: users.program,
+        level_of_study: users.levelOfStudy,
+        team_from: members.teamFrom,
+        team_to: members.teamTo,
+        phone: users.phone,
+        mobile_number: members.mobileNumber,
+        discord: members.discord,
+        prt_email: members.prtEmail,
+        linkedin: users.linkedin,
+        polito_id: users.politoId,
+        country: users.country,
+        date_of_birth: users.dateOfBirth,
+        gender: users.gender,
+        picture: members.picture,
+        nda_signed_at: members.ndaSignedAt,
+        nda_confirmed_by: members.ndaConfirmedBy,
+        nda_confirmed_by_acting_account: members.ndaConfirmedByActingAccount,
+      })
+      .from(users)
+      .leftJoin(members, eq(members.memberId, users.member)),
+    db
+      .select({ member_id: scopes.memberId, target: scopes.target, access_level: scopes.accessLevel })
+      .from(scopes),
+  ]);
+  return {
+    org: {
+      departments: departmentRows.map((d) => ({ id: d.id, name: d.name, code: d.code?.trim() || null, kind: d.kind })),
+      divisions: divisionRows.flatMap((d) =>
+        d.dept_id === null ? [] : [{ id: d.id, name: d.name, departmentId: d.dept_id, code: d.code?.trim() || null }],
+      ),
+    },
+    roles: roleRows.flatMap((r) => (r.member_id === null ? [] : [{ ...r, member_id: r.member_id }])),
+    people: personRows.flatMap((p) => (p.member_id === null ? [] : [{ ...p, member_id: p.member_id }])),
+    scopes: scopeRows,
+  };
+}
+
+const ROLE_RANK = { president: 0, head: 2, lead: 3, core: 4, advisor: 4 } as const;
+
+/**
+ * A team-level seat (the Project Manager, the Chief Engineer, any other) has
+ * no role type of its own: it is read from where the row sits
+ * (`roleBeyondDivisions`), never from its title, and ranks under the team
+ * leader only.
+ */
+function rank(role: RoleRow): number {
+  if (isTeamSeat(roleSeat(role))) return 1;
+  return role.type === null ? 5 : ROLE_RANK[role.type];
+}
+
+/**
+ * Where someone's active roles put them, highest first: the team leader, a
+ * team-level seat or a head by their top role; anyone else in every open
+ * division they hold a role in, each with its own role (issue #229). A seat
+ * or a head also keeps each division role they hold beside it, since anyone
+ * can lead a division (Owner decision, 2026-10-11, on #232); a head row kept
+ * on a division is the seat, not a role in it. A role in a closed or missing
+ * division places them nowhere, so someone with only such roles is on the
+ * roster and not yet placed.
+ */
+function placementOf(active: readonly RoleRow[], org: OrgChart): Placement {
+  const [top] = active;
+  const open = active.filter((role) => org.divisions.some((d) => d.id === role.division_id));
+  const beside = () => membershipsOfRoles(open.filter((role) => roleBeyondDivisions(roleSeat(role), org) === null).map(roleHeld));
+  const seat = roleBeyondDivisions(roleSeat(top), org);
+  if (seat?.kind === "team-leader") return { role: "team-leader", memberships: beside() };
+  if (seat?.kind === "board") return { role: "board", seat: seat.seat, memberships: beside() };
+  if (seat?.kind === "head") {
+    const { departmentId, title } = seat;
+    if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId, title, memberships: beside() };
+  }
+  return { role: "divisions", memberships: membershipsOfRoles(open.map(roleHeld)) };
+}
+
+function roleHeld(role: RoleRow): RoleHeld {
+  return { type: role.type, divisionId: role.division_id, since: role.started_at };
+}
+
+function roleSeat(role: RoleRow): RoleSeat {
+  return {
+    ...roleHeld(role),
+    id: role.id,
+    departmentId: role.dept_id,
+    title: role.title,
+    fullAccess: role.full_access === null ? null : SEAT_OF_FLAG[role.full_access],
+  };
+}
+
+const TARGET_LABELS: Readonly<Record<string, string>> = {
+  all: "All pages",
+  positions: "Positions",
+  applications: "Applications",
+  members: "Members",
+  orders: "Orders",
+  faq: "FAQ",
+  blog: "Blog",
+  logs: "Activity log",
+};
+
+function nameOf(person: PersonRow | undefined): { name: string; email: string } | null {
+  if (!person) return null;
+  const name = [person.first_name, person.last_name].filter(Boolean).join(" ") || person.email;
+  return { name, email: person.email };
+}
+
+/**
+ * The name of everyone with a member row, on the team or not, as the roster
+ * shows it: for a row about someone who may have left since, such as a team
+ * address removal (issue #797).
+ */
+export function memberNamesOf(snapshot: TeamSnapshot): ReadonlyMap<number, string> {
+  return new Map(snapshot.people.flatMap((p) => {
+    const named = nameOf(p);
+    return named === null ? [] : [[p.member_id, named.name] as const];
+  }));
+}
+
+function yearOf(date: string): number {
+  return Number(date.slice(0, 4));
+}
+
+function rolesByMember(snapshot: TeamSnapshot): Map<number, RoleRow[]> {
+  const byMember = new Map<number, RoleRow[]>();
+  for (const role of snapshot.roles) byMember.set(role.member_id, [...(byMember.get(role.member_id) ?? []), role]);
+  return byMember;
+}
+
+/** Everyone with an active role, placed by all of them (`placementOf`). */
+export function rosterOf(snapshot: TeamSnapshot): RosterEntry[] {
+  const people = new Map(snapshot.people.map((p) => [p.member_id, p]));
+  return [...rolesByMember(snapshot)].flatMap(([memberId, memberRoles]): RosterEntry[] => {
+    const active = memberRoles.filter((r) => r.leaved_at === null).sort((a, b) => rank(a) - rank(b));
+    const person = people.get(memberId);
+    const named = nameOf(person);
+    if (active.length === 0 || !named) return [];
+    return [
+      {
+        id: memberId,
+        ...named,
+        photoUrl: person?.picture ?? null,
+        placement: placementOf(active, snapshot.org),
+        pageTitle: active[0].title || null,
+        joined: Math.min(...memberRoles.map((r) => yearOf(r.started_at))),
+        program: person?.program ?? null,
+        study: person?.level_of_study ?? null,
+        access: snapshot.scopes
+          .filter((s) => s.member_id === memberId)
+          .map((s) => `${TARGET_LABELS[s.target] ?? s.target} · ${s.access_level}`),
+      },
+    ];
+  });
+}
+
+function oneOf<T extends string>(options: readonly T[], value: string | null): T | "" {
+  return options.find((o) => o === value) ?? "";
+}
+
+/** The details a person's rows hold, as the Members page shows and edits them; a value no longer an option reads empty. */
+function detailsOf(person: PersonRow): MemberDetails {
+  const linkedin = person.linkedin === null ? null : normalizeLinkedin(person.linkedin);
+  return {
+    prtEmail: person.prt_email ?? "",
+    phone: person.phone ?? person.mobile_number ?? "",
+    discord: person.discord ?? "",
+    linkedin: linkedin?.ok ? (linkedin.value ?? "") : "",
+    politoId: person.polito_id ?? "",
+    programme: oneOf(DEGREE_PROGRAMMES, person.program),
+    level: oneOf(STUDY_PROGRAMMES, person.level_of_study),
+    country: person.country ?? "",
+    birthDate: person.date_of_birth ?? "",
+    gender: oneOf(GENDERS, person.gender),
+  };
+}
+
+/** A person's first and last name as Edit details opens them: what their user row stores, an empty one blank. */
+function storedNameOf(person: PersonRow): PersonName {
+  return { firstName: person.first_name ?? "", lastName: person.last_name ?? "" };
+}
+
+/**
+ * What Edit details opens with for the member `memberId`, off the snapshot
+ * the Members page hands it from (`recordsOf`): their details and stored
+ * name. Null when no user row holds the member record.
+ */
+export function editorViewOf(snapshot: TeamSnapshot, memberId: number): { readonly details: MemberDetails; readonly name: PersonName } | null {
+  const person = snapshot.people.find((p) => p.member_id === memberId);
+  return person === undefined ? null : { details: detailsOf(person), name: storedNameOf(person) };
+}
+
+/**
+ * The full-access seats on the team's active lead and head roles, as the
+ * hand-over screens read them (`HeldSeat`, issue #501): a flagged lead row of
+ * an open division, or a flagged head row of an open department. A seat on a
+ * row no hand-over reaches (a board seat, a lead row with no division) is not
+ * one of them.
+ */
+export function seatsOf(snapshot: TeamSnapshot): HeldSeat[] {
+  return snapshot.roles.flatMap((row): HeldSeat[] => {
+    if (row.leaved_at !== null || row.full_access === null) return [];
+    const seat = SEAT_OF_FLAG[row.full_access];
+    if (row.type === "lead" && row.division_id !== null && snapshot.org.divisions.some((d) => d.id === row.division_id)) {
+      return [{ seat, personId: row.member_id, role: { kind: "lead", divisionId: row.division_id } }];
+    }
+    const departmentId = row.type === "head" ? headDepartmentOf(roleSeat(row), snapshot.org) : null;
+    if (departmentId === null || !snapshot.org.departments.some((d) => d.id === departmentId)) return [];
+    return [{ seat, personId: row.member_id, role: { kind: "head", departmentId } }];
+  });
+}
+
+/**
+ * Everyone on the team as the division and hand-over rules read them
+ * (./division-edit.ts, ./hand-over-request.ts), with the stored photo their
+ * pickers show (issue #656).
+ */
+export function teamPeopleOf(snapshot: TeamSnapshot): FoundPerson[] {
+  return recordsOf(snapshot).map(teamPersonOf);
+}
+
+/**
+ * Everyone on the team as the alias approvers' rows read them
+ * (./alias-request.ts): as `teamPeopleOf` reads them, with the address each
+ * signs in with, which their alias forwards to (issue #586).
+ */
+export function aliasTeamOf(snapshot: TeamSnapshot): (FoundPerson & { readonly signInEmail: string })[] {
+  return recordsOf(snapshot).map((r) => ({ ...teamPersonOf(r), signInEmail: r.signInEmail }));
+}
+
+function teamPersonOf(r: PersonRecord): FoundPerson {
+  return {
+    id: r.id,
+    name: r.name,
+    photoUrl: r.photoUrl,
+    emails: [r.signInEmail, r.details.prtEmail].filter((e) => e !== ""),
+    memberships: r.memberships,
+    beyond: r.beyondDivisions,
+  };
+}
+
+/** The team as the Team page reads it (lib/about/team-roles.ts): the open org chart and everyone with an active role. */
+export function teamRolesOf(snapshot: TeamSnapshot): TeamRoles {
+  return { org: snapshot.org, people: pagePeopleOf(rosterOf(snapshot), recordsOf(snapshot)) };
+}
+
+/**
+ * Everyone on the roster as the Members page reads them (issue #231): their
+ * divisions with the title of their active role in each, their details, and
+ * the NDA they signed, with who confirmed it: "IT lead as Sara Conti" when
+ * it was confirmed while viewing as Sara Conti (issue #605).
+ */
+export function recordsOf(snapshot: TeamSnapshot, site: ViewAsSite = viewAsSiteOf()): PersonRecord[] {
+  const people = new Map(snapshot.people.map((p) => [p.member_id, p]));
+  const byMember = rolesByMember(snapshot);
+  const actingTitle = (accountId: string | null): string | null => {
+    if (accountId === null) return null;
+    const acting = snapshot.people.find((p) => p.user_id === accountId);
+    const held = acting === undefined ? [] : (byMember.get(acting.member_id) ?? []);
+    return actingTitleOf(held.map((r) => (r.full_access === null ? null : SEAT_OF_FLAG[r.full_access])), site);
+  };
+  const confirmerOf = (person: PersonRow): string | null => {
+    const confirmer = person.nda_confirmed_by === null ? null : (nameOf(people.get(person.nda_confirmed_by))?.name ?? null);
+    return confirmer === null ? null : attributedName(confirmer, actingTitle(person.nda_confirmed_by_acting_account));
+  };
+  return rosterOf(snapshot).map((entry): PersonRecord => {
+    const person = people.get(entry.id)!;
+    const active = (byMember.get(entry.id) ?? []).filter((r) => r.leaved_at === null);
+    const titles: Record<number, string | null> = {};
+    for (const role of active) {
+      if (role.division_id !== null) titles[role.division_id] ??= role.title.trim() || null;
+    }
+    return {
+      id: entry.id,
+      name: entry.name,
+      storedName: storedNameOf(person),
+      signInEmail: entry.email,
+      photoUrl: person.picture,
+      since: entry.joined,
+      memberships: membershipsIn(entry.placement),
+      beyondDivisions: active.flatMap((role) => roleBeyondDivisions(roleSeat(role), snapshot.org) ?? []),
+      titles,
+      advising: active.flatMap((role) => (role.type === "advisor" && role.division_id !== null ? [role.division_id] : [])),
+      details: detailsOf(person),
+      nda:
+        person.nda_signed_at === null
+          ? null
+          : {
+              signedOn: person.nda_signed_at.slice(0, 10),
+              confirmedBy: confirmerOf(person),
+            },
+    };
+  });
+}

@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { EyeOff, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Avatar } from "@/components/about/person";
+import type { LayoutGroup } from "@/lib/about/team-layout";
 import type { HeadFieldErrors, HeadFields, LeadRow, LeadRowErrors } from "@/lib/about/team-page-add";
 import type { PhotoChoice } from "@/lib/about/team-page-edit";
 import { personOf, type TeamPerson } from "@/lib/about/team-person";
@@ -13,7 +14,8 @@ import { ContactFields, PANEL_FOOT_DANGER_LINK, PANEL_HINT, PersonSelect, PhotoF
 
 // The Edit a head block panel (board 80g, issue #285), opened from a head
 // block's Edit chip, its "+ Add division lead", or "+ Add department": the
-// person in the spot, the role and department name on the page, the division
+// person in the spot, the role and department name on the page, the
+// department group it sits in (issue #856), the division
 // leads the block shows (drag to reorder, edit, remove, add), the photo and
 // the contacts. The page redraws as the editor types. It changes only what
 // the Team page shows: real heads, leads and divisions are set in Team tree.
@@ -26,6 +28,7 @@ const ICON_BUTTON = `inline-flex h-7 w-7 shrink-0 items-center justify-center ro
 export function TeamHeadPanel({
   kind,
   fields,
+  groups,
   record,
   people,
   errors,
@@ -40,6 +43,8 @@ export function TeamHeadPanel({
 }: {
   kind: HeadPanelKind;
   fields: HeadFields;
+  /** The department groups the block may sit in, in page order (issue #856). */
+  groups: readonly LayoutGroup[];
   /** Who the roles put in the spot, for the "Team record" line; null for an added department. */
   record: TeamPerson | null;
   /** Everyone on the team, by name. */
@@ -154,6 +159,30 @@ export function TeamHeadPanel({
           )}
         </Field>
       </div>
+
+      <Field label="Group" hint="its heading on the page" error={errors.group}>
+        {(id, describedBy) => (
+          <select
+            id={id}
+            value={fields.group ?? ""}
+            aria-describedby={describedBy}
+            aria-invalid={errors.group !== undefined}
+            onChange={(e) => set("group", e.target.value === "" ? null : Number(e.target.value))}
+            className={`${inputClass(errors.group)} cursor-pointer`}
+          >
+            {fields.group === null && (
+              <option value="" className="bg-panel">
+                Choose a group
+              </option>
+            )}
+            {groups.map((group) => (
+              <option key={group.id} value={group.id} className="bg-panel">
+                {group.name.trim() || "Unnamed group"}
+              </option>
+            ))}
+          </select>
+        )}
+      </Field>
 
       <div>
         <GroupLabel id={leadsLabel} label="Division leads shown" hint={rows.length > 1 ? "drag to reorder" : undefined} />

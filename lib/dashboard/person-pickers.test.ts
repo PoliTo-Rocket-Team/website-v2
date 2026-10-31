@@ -7,8 +7,8 @@ import { JSDOM } from "jsdom";
 import { betterAuthUsers } from "@/db/schema";
 import { SEED_DATA, teamRolesOf } from "@/db/seed/cases";
 import { NO_TEAM_LAYER } from "@/lib/about/team-layer";
+import { snapshot } from "@/lib/about/team-layout";
 import { leaderFieldErrors, leaderGaps, newLeaderFields, teamByName } from "@/lib/about/team-page-add";
-import { teamBuildOf } from "@/lib/about/team-roles";
 import type { DashboardData } from "./data";
 import { openDashboard } from "./open";
 import { addRows, resetDatabase } from "./access-matrix/test-database";
@@ -184,7 +184,8 @@ test("View as: the field lists people as it opens with nobody chosen, and neithe
 });
 
 test("Team page editor, Add leader: the Person field opens on the whole team with nobody picked, and shows why Add to page is refused", async () => {
-  const build = teamBuildOf(teamRolesOf(SEED_DATA));
+  const roles = teamRolesOf(SEED_DATA);
+  const layout = snapshot(roles, NO_TEAM_LAYER).layout;
   const fields = newLeaderFields(0);
   const { createElement } = await import("react");
   const { TeamLeaderPanel } = await import("@/components/dashboard/team-leader-panel");
@@ -192,9 +193,9 @@ test("Team page editor, Add leader: the Person field opens on the whole team wit
     createElement(TeamLeaderPanel, {
       adding: true,
       fields,
-      gaps: leaderGaps(build, NO_TEAM_LAYER, null),
-      people: teamByName(build),
-      errors: leaderFieldErrors(build, NO_TEAM_LAYER, null, fields),
+      gaps: leaderGaps(roles, layout, null),
+      people: teamByName(roles),
+      errors: leaderFieldErrors(layout, null, fields),
       photoChoices: [],
       onChange: () => {},
       onPerson: () => {},

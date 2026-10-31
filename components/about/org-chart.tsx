@@ -141,41 +141,49 @@ function University({ university }: { university: OrgChartData["university"] }) 
   );
 }
 
-/** The arc, from xl. Every position is measured from the centre of the circle round the team leader. */
-function Arc({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: readonly Leader[]; frame?: LeaderFrame; onAdd: AddLeader | null }) {
+/**
+ * The arc, from xl, for one leader or more. Every position is measured from
+ * the centre of the circle round the team leader; with no team leader (ADR
+ * 0019 Decision 9) the leaders keep their places and draw no line to it.
+ */
+function Arc({ leader, leaders, frame, onAdd }: { leader: Leader | null; leaders: readonly Leader[]; frame?: LeaderFrame; onAdd: AddLeader | null }) {
   const nodes = arcLayout(leaders.length);
   const centreY = LEADER_PHOTO / 2 + CENTRE_BELOW_PHOTO;
   // The lowest leader's photo, then room for its name, role and icons.
   const height = Math.max(...nodes.map((n) => centreY + n.y + n.photo / 2)) + 110;
   return (
     <div className="relative mx-auto" style={{ height }}>
-      <svg aria-hidden className="absolute left-1/2 top-0 overflow-visible" width="1" height="1">
-        {nodes.map((n, i) => (
-          <line
-            key={i}
-            x1={n.line.x1}
-            y1={centreY + n.line.y1}
-            x2={n.line.x2}
-            y2={centreY + n.line.y2}
-            className="stroke-dim"
-            strokeWidth={1.25}
-            strokeDasharray="6 5"
-          />
-        ))}
-      </svg>
+      {leader !== null && (
+        <>
+          <svg aria-hidden className="absolute left-1/2 top-0 overflow-visible" width="1" height="1">
+            {nodes.map((n, i) => (
+              <line
+                key={i}
+                x1={n.line.x1}
+                y1={centreY + n.line.y1}
+                x2={n.line.x2}
+                y2={centreY + n.line.y2}
+                className="stroke-dim"
+                strokeWidth={1.25}
+                strokeDasharray="6 5"
+              />
+            ))}
+          </svg>
 
-      <div className="absolute left-1/2 top-0 flex -translate-x-1/2 flex-col items-center">
-        {framed(
-          frame,
-          "leader",
-          <>
-            <Avatar photo={leader.photo} sizeClass="h-[176px] w-[176px]" sizes="176px" />
-            <div className="mt-5">
-              <LeaderLabel leader={leader} size="top" />
-            </div>
-          </>,
-        )}
-      </div>
+          <div className="absolute left-1/2 top-0 flex -translate-x-1/2 flex-col items-center">
+            {framed(
+              frame,
+              "leader",
+              <>
+                <Avatar photo={leader.photo} sizeClass="h-[176px] w-[176px]" sizes="176px" />
+                <div className="mt-5">
+                  <LeaderLabel leader={leader} size="top" />
+                </div>
+              </>,
+            )}
+          </div>
+        </>
+      )}
 
       {leaders.map((l, i) => {
         const n = nodes[i];
@@ -207,28 +215,36 @@ function Arc({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: reado
   );
 }
 
-/** Board 26m's tree, below xl: the leader, a rule branching to the grid, then the others. */
-function Tree({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: readonly Leader[]; frame?: LeaderFrame; onAdd: AddLeader | null }) {
+/**
+ * Board 26m's tree, below xl: the leader, a rule branching to the grid, then
+ * the others. A part the stored layout leaves empty (ADR 0019 Decision 9) is
+ * not drawn, and neither is the rule that would join it.
+ */
+function Tree({ leader, leaders, frame, onAdd }: { leader: Leader | null; leaders: readonly Leader[]; frame?: LeaderFrame; onAdd: AddLeader | null }) {
+  const joined = leader !== null && leaders.length > 0;
   return (
     <div className="flex flex-col items-center">
-      {framed(
-        frame,
-        "leader",
-        <>
-          <Avatar photo={leader.photo} sizeClass="h-[120px] w-[120px]" sizes="120px" />
-          <div className="mt-3">
-            <LeaderLabel leader={leader} size="top" />
-          </div>
-        </>,
-      )}
+      {leader !== null &&
+        framed(
+          frame,
+          "leader",
+          <>
+            <Avatar photo={leader.photo} sizeClass="h-[120px] w-[120px]" sizes="120px" />
+            <div className="mt-3">
+              <LeaderLabel leader={leader} size="top" />
+            </div>
+          </>,
+        )}
       {/* A line down from the leader, a rule across to the first row's
           outer columns, and a short drop to each. */}
-      <span aria-hidden className="mt-3 block h-6 w-px bg-white-10" />
+      {joined && <span aria-hidden className="mt-3 block h-6 w-px bg-white-10" />}
       <div className="grid w-full max-w-[880px] grid-cols-2 md:grid-cols-4">
-        <span
-          aria-hidden
-          className="col-span-2 mx-[25%] block h-4 border-x border-t border-white-10 md:col-span-4 md:mx-[12.5%]"
-        />
+        {joined && (
+          <span
+            aria-hidden
+            className="col-span-2 mx-[25%] block h-4 border-x border-t border-white-10 md:col-span-4 md:mx-[12.5%]"
+          />
+        )}
         {leaders.map((l, i) => (
           <div key={i} className="mt-2 flex flex-col items-center pb-8">
             {framed(
@@ -273,15 +289,25 @@ export function OrgChart({
         <div className="mt-8 md:mt-14">
           <University university={chart.university} />
           {/* The line from the logo to the leader: solid and joined on
-              phones (board 26m), dashed with a gap at each end on desktop. */}
-          <span aria-hidden className="mx-auto block h-6 w-px bg-white-10 xl:mt-1 xl:h-[34px] xl:w-0 xl:border-l xl:border-dashed xl:border-dim xl:bg-transparent" />
-          <div className="xl:mt-9">
-            <div className="hidden xl:block">
-              <Arc leader={chart.leader} leaders={chart.leaders} frame={frame} onAdd={onAdd} />
-            </div>
-            <div className="xl:hidden">
+              phones (board 26m), dashed with a gap at each end on desktop.
+              With no team leader there is nothing for it to join. */}
+          {chart.leader !== null && (
+            <span aria-hidden className="mx-auto block h-6 w-px bg-white-10 xl:mt-1 xl:h-[34px] xl:w-0 xl:border-l xl:border-dashed xl:border-dim xl:bg-transparent" />
+          )}
+          <div className={chart.leader === null ? "mt-6 xl:mt-9" : "xl:mt-9"}>
+            {/* An arc needs a leader on it; with none the team leader stands alone, as the tree draws them at every width. */}
+            {chart.leaders.length > 0 ? (
+              <>
+                <div className="hidden xl:block">
+                  <Arc leader={chart.leader} leaders={chart.leaders} frame={frame} onAdd={onAdd} />
+                </div>
+                <div className="xl:hidden">
+                  <Tree leader={chart.leader} leaders={chart.leaders} frame={frame} onAdd={onAdd} />
+                </div>
+              </>
+            ) : (
               <Tree leader={chart.leader} leaders={chart.leaders} frame={frame} onAdd={onAdd} />
-            </div>
+            )}
           </div>
         </div>
       </div>

@@ -10,42 +10,66 @@ import { SEED_DATA, teamRolesOf } from "@/db/seed/cases";
 import { publicStoreHost } from "@/lib/storage/pathname";
 import { advisorRowsOf, publicAdvisors, withAdvisors, type AdvisorRow, type AdvisorVersion } from "./advisors";
 import { importedAdvisors } from "./advisors-import";
-import { addLeader, applyLayer, NO_TEAM_LAYER, NO_UPLOADS, type AddedDepartment, type TeamPageLayer } from "./team-layer";
+import { NO_TEAM_LAYER, NO_UPLOADS, textOf } from "./team-layer";
+import { holdingOf, layoutPageOf, nextSeatId, snapshot, type DepartmentBlock, type PageSeat, type SeatOverrides, type TeamLayout } from "./team-layout";
 import { hideHead } from "./team-page-add";
 import {
   HEADS_FULL,
+  layoutHeadsShown,
   PICKED_PHOTO_GONE,
-  publishedLayer,
+  publishedTeamPage,
   publicTeamPage,
   SECTION_EMPTY,
   teamPageEditor,
+  type TeamPageEditor,
   type TeamPagePhotos,
   type TeamPageStore,
 } from "./team-page-editor";
 import { memoryTeamPageStore } from "./team-page-memory";
+import { NO_STORED_TEAM_PAGE, savedTeamPage, storedTeamPage, type StoredTeamPage, type TeamPageContent } from "./team-page-stored";
 import { publicStoreTeamPagePhotos, type TeamPageFileWrites } from "./team-page-photos";
 import { CHANGED_SINCE_READ } from "@/lib/content/editor";
 import { team } from "./team";
-import { HEADS_SHOWN_MAX, headsShown, teamBuildOf, teamPageFromRoles } from "./team-roles";
+import { HEADS_SHOWN_MAX, teamPageFromRoles, type TeamRoles } from "./team-roles";
 import type { PersonPhoto } from "./types";
 
-// The Team page's visual layer and advisors as the editor saves them (issues
-// #283 and #321): Save draft never reaches the public page, Publish does,
-// Reset to team is a draft, every write passes the site-content gate, the
-// layer and the advisors land together or not at all, and a layer the page
-// cannot draw as edited is refused. The team is the seeded one, read as the
-// Team page reads it.
+// The Team page as the editor saves it, its layout of page seats with the
+// intro text, figures and group photo, and the advisors (issues #283, #321
+// and #851): Save draft never reaches the public page, Publish does, Reset to
+// team is a draft, every write passes the site-content gate, the content and
+// the advisors land together or not at all, and a layout the page cannot
+// draw as edited is refused. The team is the seeded one, read as the Team
+// page reads it.
 
 const roles = teamRolesOf(SEED_DATA);
 /** Photos that store nothing: the tests below that upload bring their own. */
 const NO_PHOTOS: TeamPagePhotos = { put: async () => "/team/stand-in.webp", owns: NO_UPLOADS, adopt: async (photo) => photo, drop: async () => {}, gone: async () => [] };
-const build = teamBuildOf(roles);
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 const siteContent: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false };
 
-const renamed: TeamPageLayer = { ...NO_TEAM_LAYER, leader: { role: "President" }, intro: "Edited intro." };
+/** The layout Reset to team writes, and the content the editor opens on before anything is saved. */
+const record = snapshot(roles, NO_TEAM_LAYER).layout;
+const plain: TeamPageContent = { layout: record, text: textOf(NO_TEAM_LAYER) };
 
-function editorOver(viewer: ViewerStanding, seed: ContentItem<TeamPageLayer>[] = []) {
+/** The plain content with the team leader's page seat overriding `overrides`. */
+const withLeader = (overrides: SeatOverrides, content: TeamPageContent = plain): TeamPageContent => ({
+  ...content,
+  layout: { ...content.layout, leader: { ...content.layout.leader!, overrides } },
+});
+
+const renamed: TeamPageContent = withLeader({ role: "President" }, { ...plain, text: { ...plain.text, intro: "Edited intro." } });
+
+/** The page the editor draws as it opens. */
+async function openedPage(editor: TeamPageEditor) {
+  const opened = await editor.open();
+  assert.ok(opened);
+  return layoutPageOf(opened.roles, opened.content.layout, opened.content.text, opened.base);
+}
+
+/** The photo the published version's team leader seat sets, if any. */
+const publishedLeaderPhoto = (items: Parameters<typeof publishedTeamPage>[0]) => publishedTeamPage(items).layout?.leader?.overrides.photo;
+
+function editorOver(viewer: ViewerStanding, seed: ContentItem<StoredTeamPage>[] = []) {
   const layer = memoryContentStore(seed);
   const advisors = memoryContentStore<AdvisorVersion>(importedAdvisors());
   const store = memoryTeamPageStore(layer, advisors);
@@ -68,25 +92,39 @@ test("Save draft never changes the public page; Publish does; the public page re
 
   const drafted = await editor.save("save-draft", renamed, await rowsOf(store));
   assert.ok(drafted.ok);
-  assert.equal(statusOf(drafted.value.layer), "draft");
+  assert.equal(statusOf(drafted.value.content), "draft");
   assert.deepEqual(await publicPage(store), before, "a draft never reaches the public page");
-  // The editor opens on the draft, laid on the roles build.
+  // The editor opens on the draft's layout.
   const opened = await editor.open();
   assert.equal(opened?.status, "draft");
-  assert.equal(opened?.page.orgChart.leader.role, "President");
+  assert.equal((await openedPage(editor)).orgChart.leader?.role, "President");
 
   const published = await editor.save("publish", renamed, await rowsOf(store));
   assert.ok(published.ok);
   const after = await publicPage(store);
-  assert.equal(after.orgChart.leader.role, "President");
+  assert.equal(after.orgChart.leader?.role, "President");
   assert.equal(after.header.intro, "Edited intro.");
 
-  // A new draft over the published layer leaves the public page on the published one.
-  const again = await editor.save("save-draft", { ...renamed, leader: { role: "Chair" } }, await rowsOf(store));
+  // A new draft over the published version leaves the public page on the published one.
+  const again = await editor.save("save-draft", withLeader({ role: "Chair" }, renamed), await rowsOf(store));
   assert.ok(again.ok);
-  assert.equal(statusOf(again.value.layer), "draft-changes");
-  assert.equal((await publicPage(store)).orgChart.leader.role, "President");
-  assert.equal((await editor.open())?.page.orgChart.leader.role, "Chair");
+  assert.equal(statusOf(again.value.content), "draft-changes");
+  assert.equal((await publicPage(store)).orgChart.leader?.role, "President");
+  assert.equal((await openedPage(editor)).orgChart.leader?.role, "Chair");
+});
+
+test("a save stores the layout the editor sends, and the public page drawn from it equals the editor's page", async () => {
+  const { store, editor } = editorOver(siteContent);
+  const leaders = renamed.layout.arc;
+  // The arc's first two places swapped, and a department block taken off.
+  const content: TeamPageContent = {
+    ...renamed,
+    layout: { ...renamed.layout, arc: [leaders[1], leaders[0], ...leaders.slice(2)], departments: renamed.layout.departments.slice(1) },
+  };
+  assert.ok((await editor.save("publish", content, await rowsOf(store))).ok);
+  assert.deepEqual(publishedTeamPage(await store.layer.list()).layout, content.layout);
+  assert.deepEqual(await publicPage(store), layoutPageOf(roles, content.layout, content.text, team));
+  assert.deepEqual(await publicPage(store), await openedPage(editor));
 });
 
 test("Save draft and Publish write the layer and the advisors together, and answer both as stored", async () => {
@@ -95,35 +133,41 @@ test("Save draft and Publish write the layer and the advisors together, and answ
   const added: AdvisorRow = { id: null, fields: { name: "Prof. Ada Rossi", role: "Propulsion", standing: "specialist", photo: null, linkedin: "", email: "" } };
   const saved = await editor.save("publish", renamed, [...rows, added]);
   assert.ok(saved.ok);
-  assert.equal(statusOf(saved.value.layer), "published");
+  assert.equal(statusOf(saved.value.content), "published");
   assert.deepEqual(saved.value.advisors, await store.advisors());
   assert.ok(saved.value.advisors.some((a) => a.version.state === "published" && a.version.published.name === "Prof. Ada Rossi"));
-  assert.equal((await publicPage(store)).orgChart.leader.role, "President");
+  assert.equal((await publicPage(store)).orgChart.leader?.role, "President");
 });
 
-test("Reset to team is a draft with only the intro text and the group photo kept; the public page changes on Publish", async () => {
+test("Reset to team is a draft whose layout the team's roles rebuild, with only the intro text, figures and group photo kept; the public page changes on Publish", async () => {
   const { store, editor } = editorOver(admin);
-  const layer: TeamPageLayer = { ...renamed, groupPhoto: { src: "/team/team-2026.jpg", alt: "The team" } };
-  assert.ok((await editor.save("publish", layer, await rowsOf(store))).ok);
+  const leaders = record.arc;
+  const edited: TeamPageContent = {
+    layout: { ...renamed.layout, arc: [leaders[1], leaders[0], ...leaders.slice(2)], departments: record.departments.slice(1) },
+    text: { ...renamed.text, groupPhoto: { src: "/team/team-2026.jpg", alt: "The team" } },
+  };
+  assert.ok((await editor.save("publish", edited, await rowsOf(store))).ok);
   const advisorsBefore = await store.advisors();
 
   const reset = await editor.reset();
   assert.ok(reset.ok);
   assert.equal(statusOf(reset.value), "draft-changes");
-  assert.equal((await publicPage(store)).orgChart.leader.role, "President", "the live page keeps the published layer");
+  assert.equal((await publicPage(store)).orgChart.leader?.role, "President", "the live page keeps the published version");
   assert.deepEqual(await store.advisors(), advisorsBefore, "Reset to team never reaches the advisors");
   const opened = await editor.open();
-  assert.deepEqual(opened?.layer, { ...NO_TEAM_LAYER, intro: "Edited intro.", groupPhoto: layer.groupPhoto });
+  assert.deepEqual(opened?.content, { layout: record, text: edited.text });
 
-  assert.ok((await editor.save("publish", opened!.layer, await rowsOf(store))).ok);
+  assert.ok((await editor.save("publish", opened!.content, await rowsOf(store))).ok);
   const live = await publicPage(store);
-  assert.equal(live.orgChart.leader.role, teamPageFromRoles(roles, team)?.orgChart.leader.role);
+  const fromRoles = teamPageFromRoles(roles, team)!;
+  assert.deepEqual(live.orgChart, fromRoles.orgChart);
+  assert.deepEqual(live.departments, fromRoles.departments);
   assert.equal(live.header.intro, "Edited intro.");
-  assert.deepEqual(live.coreMembers.groupPhoto, layer.groupPhoto);
+  assert.deepEqual(live.coreMembers.groupPhoto, edited.text.groupPhoto);
 });
 
 test("every write path is refused without the site-content permission, and stores nothing", async () => {
-  const published: ContentItem<TeamPageLayer>[] = [{ id: 1, siteOrder: 1, version: { state: "published", published: renamed, draft: null } }];
+  const published: ContentItem<StoredTeamPage>[] = [{ id: 1, siteOrder: 1, version: { state: "published", published: savedTeamPage(NO_STORED_TEAM_PAGE, renamed), draft: null } }];
   const refusedViewers: ViewerStanding[] = [
     { kind: "non-member", siteContent: false, approveOrders: false },
     ...VIEWER_KINDS.filter((kind) => kind !== "operations-lead" && kind !== "non-member").map(
@@ -135,75 +179,134 @@ test("every write path is refused without the site-content permission, and store
     const rows = await rowsOf(store);
     const advisors = await store.advisors();
     assert.equal(await editor.open(), null, viewer.kind);
-    assert.equal((await editor.save("save-draft", NO_TEAM_LAYER, rows)).ok, false, viewer.kind);
-    assert.equal((await editor.save("publish", NO_TEAM_LAYER, rows)).ok, false, viewer.kind);
+    assert.equal((await editor.save("save-draft", plain, rows)).ok, false, viewer.kind);
+    assert.equal((await editor.save("publish", plain, rows)).ok, false, viewer.kind);
     assert.equal((await editor.reset()).ok, false, viewer.kind);
     assert.deepEqual(await store.layer.list(), published, `${viewer.kind}: no layer stored`);
     assert.deepEqual(await store.advisors(), advisors, `${viewer.kind}: no advisor stored`);
   }
 });
 
-test("a save is refused when it is not a layer, or when it puts more than eight on the arc", async () => {
+test("a save is refused when it is not the editor's content, or when it puts more than eight on the arc", async () => {
   const { store, editor } = editorOver(admin);
   const rows = await rowsOf(store);
-  assert.equal((await editor.save("publish", { leader: {} }, rows)).ok, false);
-  assert.equal((await editor.save("publish", { ...renamed, spots: { "arc:project-manager:0": { email: "x@y.z" } } }, rows)).ok, false);
+  assert.equal((await editor.save("publish", { layout: {} }, rows)).ok, false);
+  assert.equal((await editor.save("publish", { ...NO_TEAM_LAYER }, rows)).ok, false, "a layer is no longer what the editor sends");
+  assert.equal((await editor.save("publish", withLeader({ email: "x@y.z" } as SeatOverrides), rows)).ok, false);
 
-  let layer = NO_TEAM_LAYER;
-  for (const person of roles.people.slice(10, 16)) {
-    const added = addLeader(build, layer, { person: person.id, place: { at: "end" }, role: "Lead" });
-    assert.ok(added.ok);
-    layer = added.value;
+  let layout: TeamLayout = record;
+  for (const person of roles.people.slice(10, 10 + 8 - record.arc.length)) {
+    const seat: PageSeat = { id: nextSeatId(layout), binding: { kind: "person", memberId: person.id }, overrides: { role: "Lead" } };
+    layout = { ...layout, arc: [...layout.arc, seat] };
   }
-  assert.ok((await editor.save("save-draft", layer, rows)).ok, "eight on the arc");
-  const ninth = { ...layer, addedLeaders: [...layer.addedLeaders, { id: 99, person: roles.people[20].id, place: { at: "start" as const }, role: "Lead" }] };
-  assert.equal((await editor.save("save-draft", ninth, rows)).ok, false, "nine on the arc");
-  assert.deepEqual((await editor.open())?.layer, layer);
+  assert.equal(layout.arc.length, 8);
+  assert.ok((await editor.save("save-draft", { ...plain, layout }, rows)).ok, "eight on the arc");
+  const ninth: PageSeat = { id: nextSeatId(layout), binding: { kind: "person", memberId: roles.people[20].id }, overrides: { role: "Lead" } };
+  assert.equal((await editor.save("save-draft", { ...plain, layout: { ...layout, arc: [ninth, ...layout.arc] } }, rows)).ok, false, "nine on the arc");
+  assert.deepEqual((await editor.open())?.content.layout, layout);
   assert.equal((await store.layer.list()).length, 1);
 });
 
-test("hiding every department head is refused on Save draft and Publish, naming the section, and writes nothing", async () => {
+test("taking every department head off the page is refused on Save draft and Publish, naming the section, and writes nothing", async () => {
   const { store, editor } = editorOver(admin);
   const rows = await rowsOf(store);
-  const everyHeadHidden = build.departments.flatMap((d) => d.heads).reduce((layer, head) => hideHead(layer, head.spot), NO_TEAM_LAYER);
-  assert.equal(headsShown(applyLayer(build, everyHeadHidden)), 0);
-  assert.equal(teamPageFromRoles(roles, team, everyHeadHidden), null, "the page cannot be drawn without a department head");
+  const everyHeadHidden = record.departments.reduce((layout, block) => hideHead(layout, block.id), record);
+  assert.equal(layoutHeadsShown(roles, everyHeadHidden), 0);
   // An advisor change rides along, so a refusal must leave it unwritten too.
   const edited = [{ ...rows[0], fields: { ...rows[0].fields, role: "Faculty Advisor, Structures" } }, ...rows.slice(1)];
   const advisors = await store.advisors();
   for (const step of ["save-draft", "publish"] as const) {
-    assert.deepEqual(await editor.save(step, everyHeadHidden, edited), refused(SECTION_EMPTY.departments), step);
+    assert.deepEqual(await editor.save(step, { ...plain, layout: everyHeadHidden }, edited), refused(SECTION_EMPTY.departments), step);
   }
   assert.equal(SECTION_EMPTY.departments, "Keep at least one department head on the page.");
-  assert.deepEqual(await store.layer.list(), [], "no layer written");
+  assert.deepEqual(await store.layer.list(), [], "nothing written");
   assert.deepEqual(await store.advisors(), advisors, "no advisor written");
 });
 
-test("hiding every leader on the arc is refused, naming the arc", async () => {
+test("taking every leader off the arc is refused, naming the arc", async () => {
   const { store, editor } = editorOver(admin);
-  const spots = Object.fromEntries(build.arc.map((l) => [l.spot, { hidden: true as const }]));
-  const result = await editor.save("publish", { ...NO_TEAM_LAYER, spots }, await rowsOf(store));
+  const result = await editor.save("publish", { ...plain, layout: { ...record, arc: [] } }, await rowsOf(store));
   assert.deepEqual(result, refused(SECTION_EMPTY.arc));
   assert.deepEqual(await store.layer.list(), []);
 });
 
-test("a layer showing more department heads than the carousel holds is refused on Save draft and Publish, and writes nothing", async () => {
+test("a layout showing more department heads than the carousel holds is refused on Save draft and Publish, and writes nothing", async () => {
   const { store, editor } = editorOver(admin);
   const rows = await rowsOf(store);
-  const person = roles.people[0].id;
-  const addedDepartments: AddedDepartment[] = Array.from({ length: 50 }, (_, i) => ({ id: i + 1, name: `Added ${i + 1}`, head: { person }, leads: [] }));
-  const crowded: TeamPageLayer = { ...NO_TEAM_LAYER, addedDepartments };
-  assert.ok(headsShown(applyLayer(build, crowded)) > HEADS_SHOWN_MAX, "more heads than five slides of ten");
-  assert.ok(headsShown(applyLayer(build, NO_TEAM_LAYER)) <= HEADS_SHOWN_MAX, "the roles alone fit");
+  const memberId = roles.people[0].id;
+  const first = nextSeatId(record);
+  const added: DepartmentBlock[] = Array.from({ length: 50 }, (_, i) => ({
+    id: first + 2 * i,
+    department: null,
+    name: `Added ${i + 1}`,
+    group: record.groups[0].id,
+    leadsDrawn: "under",
+    head: { id: first + 2 * i + 1, binding: { kind: "person", memberId }, overrides: {} },
+    leads: [],
+  }));
+  const crowded: TeamLayout = { ...record, departments: [...record.departments, ...added] };
+  assert.ok(layoutHeadsShown(roles, crowded) > HEADS_SHOWN_MAX, "more heads than five slides of ten");
+  assert.ok(layoutHeadsShown(roles, record) <= HEADS_SHOWN_MAX, "the roles alone fit");
   for (const step of ["save-draft", "publish"] as const) {
-    assert.deepEqual(await editor.save(step, crowded, rows), refused(HEADS_FULL), step);
+    assert.deepEqual(await editor.save(step, { ...plain, layout: crowded }, rows), refused(HEADS_FULL), step);
   }
   assert.equal(HEADS_FULL, "The departments area shows up to 50 heads.");
   assert.deepEqual(await store.layer.list(), []);
 
-  // Just at the limit, the layer is kept.
-  const fits = { ...NO_TEAM_LAYER, addedDepartments: addedDepartments.slice(0, HEADS_SHOWN_MAX - headsShown(applyLayer(build, NO_TEAM_LAYER))) };
-  assert.ok((await editor.save("save-draft", fits, rows)).ok);
+  // Just at the limit, the layout is kept.
+  const fits: TeamLayout = { ...record, departments: [...record.departments, ...added.slice(0, HEADS_SHOWN_MAX - layoutHeadsShown(roles, record))] };
+  assert.ok((await editor.save("save-draft", { ...plain, layout: fits }, rows)).ok);
+});
+
+// Owner decisions of 2026-10-29 (grilling session #846, R2.1 and R2.2; ADR
+// 0019 Decision 4): a page seat whose seat has no holder is not drawn and
+// keeps its place; one whose team seat is gone leaves the layout on the next
+// save.
+
+/** The seeded team with `person` gone from it: no active role. */
+const without = (personId: number) => ({ ...roles, people: roles.people.filter((p) => p.id !== personId) });
+
+/** The plain content, published. */
+const publishedPlain: ContentItem<StoredTeamPage>[] = [{ id: 1, siteOrder: 1, version: { state: "published", published: savedTeamPage(NO_STORED_TEAM_PAGE, plain), draft: null } }];
+
+test("a page seat whose seat has no holder is not drawn in the editor, survives a save in its place, and shows again once the seat has a holder", async () => {
+  const { store } = editorOver(siteContent, publishedPlain);
+  // The Project Manager's seat: a flagged seat stays on the team record while nobody holds it.
+  const index = record.arc.findIndex((s) => s.binding.kind === "full-access-seat" && s.binding.seat === "project-manager");
+  assert.notEqual(index, -1);
+  const seat = record.arc[index];
+  const holder = roles.people.find((p) => p.placement.role === "board" && p.placement.seat.flag === "project-manager")!;
+  const vacant = without(holder.id);
+
+  let teamRoles: TeamRoles = vacant;
+  const editor = teamPageEditor(siteContent, store, async () => teamRoles, team, NO_PHOTOS);
+  const opened = await editor.open();
+  assert.ok(opened);
+  const page = await openedPage(editor);
+  assert.ok(!page.orgChart.leaders.some((l) => l.name === holder.name), "not drawn in the editor");
+  assert.equal(page.orgChart.leaders.length, record.arc.length - 1);
+  assert.ok((await editor.save("publish", opened.content, await rowsOf(store))).ok);
+  assert.deepEqual(publishedTeamPage(await store.layer.list()).layout?.arc[index], seat, "kept in its place");
+
+  teamRoles = roles;
+  assert.deepEqual((await publicPage(store)).orgChart.leaders, teamPageFromRoles(roles, team)!.orgChart.leaders, "shown again in the same place");
+});
+
+test("a page seat whose team seat was deleted is not drawn, and is gone from the layout after the next save", async () => {
+  const { store } = editorOver(siteContent, publishedPlain);
+  const block = record.departments.find((b) => b.head.binding.kind === "department-head")!;
+  const departmentId = block.head.binding.kind === "department-head" ? block.head.binding.departmentId : -1;
+  const head = holdingOf(block.head.binding, roles, block.name)!.person;
+  const closed = { ...roles, org: { ...roles.org, departments: roles.org.departments.filter((d) => d.id !== departmentId) } };
+  const editor = teamPageEditor(siteContent, store, async () => closed, team, NO_PHOTOS);
+  const opened = await editor.open();
+  assert.ok(opened);
+  assert.ok(opened.content.layout.departments.some((b) => b.id === block.id), "still in the layout until a save");
+  const heads = (await openedPage(editor)).departments.groups.flatMap((g) => g.members.filter((m) => m.kind === "head"));
+  assert.ok(heads.length > 0 && !heads.some((m) => m.name === head.name), "not drawn");
+  assert.ok((await editor.save("save-draft", opened.content, await rowsOf(store))).ok);
+  const saved = await editor.open();
+  assert.ok(!saved?.content.layout.departments.some((b) => b.id === block.id), "gone from the layout");
 });
 
 test("when the advisors are refused, or the store fails, the stored layer and advisors are unchanged", async () => {
@@ -218,7 +321,7 @@ test("when the advisors are refused, or the store fails, the stored layer and ad
   assert.deepEqual(await store.advisors(), advisors);
 
   // Failed partway: the advisors' store refuses the second of two new advisors, after the layer and the first could have landed.
-  const layer = memoryContentStore<TeamPageLayer>([]);
+  const layer = memoryContentStore<StoredTeamPage>([]);
   const seed = importedAdvisors();
   const full = memoryContentStore<AdvisorVersion>(seed, async (items) => (items.length > seed.length + 1 ? "The store failed." : null));
   const failing = teamPageEditor(admin, memoryTeamPageStore(layer, full), async () => roles, team, NO_PHOTOS);
@@ -231,7 +334,7 @@ test("when the advisors are refused, or the store fails, the stored layer and ad
 
 test("the editor writes through the store's one save: never the layer or advisors one by one", async () => {
   const fail = async (): Promise<never> => assert.fail("written outside the one save");
-  const layer = { ...memoryContentStore<TeamPageLayer>([]), create: fail, update: fail, remove: fail, setOrder: fail };
+  const layer = { ...memoryContentStore<StoredTeamPage>([]), create: fail, update: fail, remove: fail, setOrder: fail };
   let saves = 0;
   const store: TeamPageStore = {
     layer,
@@ -309,11 +412,11 @@ test("an uploaded photo is stored and saved on a person and an advisor, and show
 
   const [first, ...rest] = await rowsOf(store);
   const rows = [{ ...first, fields: { ...first.fields, photo: uploaded.value } }, ...rest];
-  const published = await editor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: uploaded.value } }, rows);
-  assert.ok(published.ok, "the layer and the advisor rows take the uploaded src");
+  const published = await editor.save("publish", withLeader({ photo: uploaded.value }), rows);
+  assert.ok(published.ok, "the layout and the advisor rows take the uploaded src");
   // As /about/the-team reads it (./team-data.ts): the published layer, then the published advisors.
   const live = withAdvisors(await publicPage(store), publicAdvisors(await store.advisors()));
-  assert.equal(live.orgChart.leader.photo, STORED);
+  assert.equal(live.orgChart.leader?.photo, STORED);
   assert.equal(live.advisors.people[0]?.photo, STORED);
 });
 
@@ -370,7 +473,7 @@ test("a replaced uploaded photo's file is deleted after the write lands, once no
     team,
     storePhotos(async (pathname) => {
       removed.push(pathname);
-      assert.notEqual(publishedLayer(await store.layer.list()).leader.photo, ownUrl(pathname), "deleted only after the write landed");
+      assert.notEqual(publishedLeaderPhoto(await store.layer.list()), ownUrl(pathname), "deleted only after the write landed");
     }, copied),
   );
   const [a, b, c, d] = [await uploaded(editor), await uploaded(editor), await uploaded(editor), await uploaded(editor)];
@@ -380,21 +483,21 @@ test("a replaced uploaded photo's file is deleted after the write lands, once no
   };
 
   // The member's own picture is kept as a copy of its own (Owner decision, issue #831).
-  assert.ok((await editor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: a } }, await withAdvisorPhoto(MEMBER_PICTURE))).ok);
+  assert.ok((await editor.save("publish", withLeader({ photo: a }), await withAdvisorPhoto(MEMBER_PICTURE))).ok);
   assert.deepEqual(copied, ["photos/member-7.jpg -> photos/team-page-5.jpg"]);
   assert.equal(publicAdvisors(await store.advisors())[0]?.photo, ownUrl("photos/team-page-5.jpg"), "the advisor row names the copy, not the member's file");
   assert.deepEqual(removed, []);
 
   // A draft replaces both, but the published version still shows them.
-  assert.ok((await editor.save("save-draft", { ...NO_TEAM_LAYER, leader: { photo: b } }, await withAdvisorPhoto(c))).ok);
+  assert.ok((await editor.save("save-draft", withLeader({ photo: b }), await withAdvisorPhoto(c))).ok);
   assert.deepEqual(removed, [], "the published version still uses them");
 
   // Publish: the leader's upload and the copy go; the member's own picture is never this editor's to delete.
-  assert.ok((await editor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: b } }, await withAdvisorPhoto(c))).ok);
+  assert.ok((await editor.save("publish", withLeader({ photo: b }), await withAdvisorPhoto(c))).ok);
   assert.deepEqual(removed, ["photos/team-page-1.jpg", "photos/team-page-5.jpg"]);
 
   // Reset to team drops a draft's upload the published version never showed.
-  assert.ok((await editor.save("save-draft", { ...NO_TEAM_LAYER, leader: { photo: d } }, await rowsOf(store))).ok);
+  assert.ok((await editor.save("save-draft", withLeader({ photo: d }), await rowsOf(store))).ok);
   assert.deepEqual(removed, ["photos/team-page-1.jpg", "photos/team-page-5.jpg"], "the published version still shows b");
   assert.ok((await editor.reset()).ok);
   assert.deepEqual(removed, ["photos/team-page-1.jpg", "photos/team-page-5.jpg", "photos/team-page-4.jpg"]);
@@ -406,20 +509,19 @@ test("a photo picked from a member is copied once for each row that shows it, an
   const editor = teamPageEditor(siteContent, store, async () => roles, team, storePhotos(async () => {}, copied));
   const [first, ...rest] = await rowsOf(store);
   const rows = [{ ...first, fields: { ...first.fields, photo: MEMBER_PICTURE } }, ...rest];
-  assert.ok((await editor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: MEMBER_PICTURE } }, rows)).ok);
+  assert.ok((await editor.save("publish", withLeader({ photo: MEMBER_PICTURE }), rows)).ok);
   assert.deepEqual(
     copied,
     ["photos/member-7.jpg -> photos/team-page-1.jpg", "photos/member-7.jpg -> photos/team-page-2.jpg"],
-    "one copy for the layer and one for the advisor row",
+    "one copy for the layout and one for the advisor row",
   );
-  const published = publishedLayer(await store.layer.list());
-  assert.equal(published.leader.photo, ownUrl("photos/team-page-1.jpg"));
+  assert.equal(publishedLeaderPhoto(await store.layer.list()), ownUrl("photos/team-page-1.jpg"));
   assert.equal(publicAdvisors(await store.advisors())[0]?.photo, ownUrl("photos/team-page-2.jpg"), "the advisor row has a copy of its own");
 
   const gone = publicStoreTeamPagePhotos(OWN_HOST, { ...noWrites, copy: async () => null }, () => "x");
   const refusedEditor = teamPageEditor(siteContent, store, async () => roles, team, gone);
   assert.deepEqual(
-    await refusedEditor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: ownUrl("photos/member-8.jpg") } }, await rowsOf(store)),
+    await refusedEditor.save("publish", withLeader({ photo: ownUrl("photos/member-8.jpg") }), await rowsOf(store)),
     refused(PICKED_PHOTO_GONE),
   );
 });
@@ -430,13 +532,13 @@ test("a Team page save made on a layer another save replaced in the meantime is 
     ...store,
     async save(layer, advisors, expected) {
       // Another save lands between this one's read and its write.
-      await store.save({ state: "published", published: { ...NO_TEAM_LAYER, intro: "Theirs" }, draft: null }, [], expected);
+      await store.save({ state: "published", published: storedTeamPage(roles, { ...NO_TEAM_LAYER, intro: "Theirs" }), draft: null }, [], expected);
       return store.save(layer, advisors, expected);
     },
   };
   const editor = teamPageEditor(siteContent, racing, async () => roles, team, NO_PHOTOS);
-  assert.deepEqual(await editor.save("publish", { ...NO_TEAM_LAYER, intro: "Mine" }, await rowsOf(store)), refused(CHANGED_SINCE_READ));
-  assert.equal(publishedLayer(await store.layer.list()).intro, "Theirs");
+  assert.deepEqual(await editor.save("publish", { ...plain, text: { ...plain.text, intro: "Mine" } }, await rowsOf(store)), refused(CHANGED_SINCE_READ));
+  assert.equal(publishedTeamPage(await store.layer.list()).layer.intro, "Theirs");
 });
 
 test("an uploaded group photo is in use while any stored version shows it, and its file goes once none does", async () => {
@@ -444,7 +546,7 @@ test("an uploaded group photo is in use while any stored version shows it, and i
   const { store } = editorOver(siteContent);
   const editor = teamPageEditor(siteContent, store, async () => roles, team, storePhotos(async (pathname) => void removed.push(pathname)));
   const [a, b] = [await uploaded(editor), await uploaded(editor)];
-  const withGroup = (src: PersonPhoto): TeamPageLayer => ({ ...NO_TEAM_LAYER, groupPhoto: { src, alt: "The team" } });
+  const withGroup = (src: PersonPhoto): TeamPageContent => ({ ...plain, text: { ...plain.text, groupPhoto: { src, alt: "The team" } } });
 
   assert.ok((await editor.save("publish", withGroup(a), await rowsOf(store))).ok);
   assert.equal((await publicPage(store)).coreMembers.groupPhoto.src, a);
@@ -466,11 +568,11 @@ test("a failed delete of a replaced photo never fails the save, and logs one lin
     throw new Error(`Blob is down for ${pathname}`);
   }));
   const [a, b] = [await uploaded(editor), await uploaded(editor)];
-  assert.ok((await editor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: a } }, await rowsOf(store))).ok);
+  assert.ok((await editor.save("publish", withLeader({ photo: a }), await rowsOf(store))).ok);
 
-  const replaced = await editor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: b } }, await rowsOf(store));
+  const replaced = await editor.save("publish", withLeader({ photo: b }), await rowsOf(store));
   assert.ok(replaced.ok, "the save stands");
-  assert.equal(publishedLayer(await store.layer.list()).leader.photo, b);
+  assert.equal(publishedLeaderPhoto(await store.layer.list()), b);
   assert.deepEqual(
     log.mock.calls.map((call) => call.arguments),
     [["Blob delete failed (store: public, area: team-photo): Blob is down for [file]"]],

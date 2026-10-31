@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import Image from "next/image";
-import { Check, Eye, LoaderCircle, LogOut, Plus, RotateCcw, TriangleAlert, Upload, X } from "lucide-react";
+import { Check, Eye, ListOrdered, LoaderCircle, LogOut, Plus, RotateCcw, TriangleAlert, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { endAdvising, resetTeamPageLayer, saveTeamPage, uploadTeamPagePhoto } from "@/app/dashboard/actions";
 import { INTRO_WIDTH, PAGE_INTRO } from "@/components/about/page-header";
@@ -18,17 +18,9 @@ import {
   type AdvisorItem,
   type AdvisorRow,
 } from "@/lib/about/advisors";
-import {
-  nextAddedId,
-  resetLayer,
-  TEAM_PAGE_INTRO_MAX,
-  type AddedRef,
-  type ArcSpot,
-  type GroupPhoto,
-  type HeadSpot,
-  type TeamBuild,
-  type TeamPageLayer,
-} from "@/lib/about/team-layer";
+import { TEAM_PAGE_INTRO_MAX, type GroupPhoto } from "@/lib/about/team-layer";
+import { nextSeatId, teamRecordLayout, type LayoutGroup, type TeamLayout } from "@/lib/about/team-layout";
+import { groupsKeepable, trimmedGroups } from "@/lib/about/team-page-groups";
 import {
   arcHasRoom,
   hasHeadErrors,
@@ -37,9 +29,11 @@ import {
   headFieldsOf,
   headRecord,
   hideHead,
+  isAddedBlock,
+  isAddedLeader,
   isHeadEdited,
-  layerWithHead,
-  layerWithLeader,
+  layoutWithHead,
+  layoutWithLeader,
   leaderFieldErrors,
   leaderFieldsOf,
   leaderGaps,
@@ -51,19 +45,19 @@ import {
   withHeadPerson,
   withLeaderPerson,
   withNewLead,
-  withoutAddedLeader,
+  withoutArcSeat,
   type HeadFields,
   type HeadRef,
   type LeaderFields,
 } from "@/lib/about/team-page-add";
 import type { TeamPerson } from "@/lib/about/team-person";
-import { carouselSpotsOf } from "@/lib/about/team-roles";
+import { carouselSpotsOf, type TeamRoles } from "@/lib/about/team-roles";
 import {
   backToTeamRecord,
+  changesSeat,
   describedGroupPhoto,
   editCount,
   editedTeamPage,
-  editOfFields,
   figureErrors,
   figuresOf,
   groupPhotoChoices,
@@ -74,6 +68,7 @@ import {
   introBlockError,
   introError,
   isEdited,
+  isLeaderSeat,
   personFieldErrors,
   personFieldsOf,
   personPhotoChoices,
@@ -82,14 +77,14 @@ import {
   withGroupPhoto,
   withIntro,
   withPerson,
-  withSpotEdit,
+  withPersonFields,
   type PersonFieldErrors,
   type PersonFields,
-  type PersonSpot,
   type PhotoChoice,
 } from "@/lib/about/team-page-edit";
 import type { HeaderStat, HeaderStats, PersonPhoto } from "@/lib/about/types";
 import type { TeamPageOpening } from "@/lib/about/team-page-editor";
+import type { TeamPageContent } from "@/lib/about/team-page-stored";
 import type { EditBlocks, EditDevice } from "@/lib/content/edit-shell";
 import { editorVersion, statusOf, type ContentStatus, type PublishStep } from "@/lib/content/versioned";
 import { FIRST_ALUMNI_YEAR } from "@/lib/dashboard/alumni";
@@ -100,6 +95,7 @@ import { BarButton, EditableBlock, EditShell } from "./edit-shell";
 import { shrunkPhoto } from "./outreach-post-photos";
 import { PHOTO_ACCEPT } from "./photo-crop-dialog";
 import { TeamAdvisorsPanel, type KeyedAdvisorRow } from "./team-advisors-panel";
+import { TeamGroupsPanel } from "./team-groups-panel";
 import { TeamHeadPanel } from "./team-head-panel";
 import { TeamLeaderPanel } from "./team-leader-panel";
 import { EditedTeamPage } from "./team-page-edit-view";
@@ -113,33 +109,38 @@ import { TeamPersonPanel } from "./team-person-panel";
 // may be uploaded (issue #510), are edited in place. The bar's arrow goes back
 // to the dashboard home (Owner decision). Board
 // 80e's add affordances sit on the page while no panel is open: a "+" at each
-// place on the arc (gone at eight leaders), "+ Add department" beside each
-// slide's heading, and "+ Add division lead" on every head block, under a
+// place on the arc (gone at eight leaders), "+ Add department" and "Edit
+// groups" (the Department groups panel, issue #856) beside each slide's
+// heading, and "+ Add division lead" on every head block, under a
 // note that added items show only on the Team page. The core members list and
 // "In numbers" have no affordance. The Advisors section is one block (board
 // 80c) whose "Edit advisors" opens the Advisors panel (board 80d, issue
-// #286). The editor holds the working layer and the working advisor list and
-// lays both on the page as they change; Save draft and Publish send them
-// whole to the layer and advisor actions, which check them again and write
-// nothing but the layer and the advisors. End advising is the one change
-// made at once, after the editor confirms the years.
+// #286). The editor holds the working content, the layout of page seats and
+// the intro text, figures and group photo (issue #851), and the working
+// advisor list, and draws the page from them as the public page draws it as
+// they change; Save draft and Publish send them whole to the save, which
+// checks them again and writes nothing but the stored version and the
+// advisors. End advising is the one change made at once, after the editor
+// confirms the years.
 
-/** What an Edit chip opens: the intro and its figures or the group photo in place, or a panel: a person's spot, a leader the editor added, a head block, a department the editor added. */
-type Section = "intro" | "group-photo" | "advisors" | PersonSpot | `leader:${number}` | HeadSpot | `department:${number}`;
+/** What an Edit chip opens: the intro and its figures or the group photo in place, or a panel: a page seat on the org chart, or a department block. */
+type Section = "intro" | "group-photo" | "advisors" | `seat:${number}` | `block:${number}`;
 
 /** The panel open beside the page, with its fields as the editor fills them. */
 type Panel =
-  | { readonly kind: "person"; readonly spot: PersonSpot; readonly fields: PersonFields }
-  /** `id` null: a leader the "+" is adding. */
+  /** The team leader's page seat or one on the arc the team record fills. */
+  | { readonly kind: "person"; readonly seat: number; readonly fields: PersonFields }
+  /** A leader the editor added; `id` null: one the "+" is adding. */
   | { readonly kind: "leader"; readonly id: number | null; readonly fields: LeaderFields }
   /** `at` null: a department "+ Add department" is adding. */
   | { readonly kind: "head"; readonly at: HeadRef | null; readonly fields: HeadFields }
   /** The Advisors panel, with its copy of the list: Done keeps it, closing drops it. */
-  | { readonly kind: "advisors"; readonly rows: readonly KeyedAdvisorRow[] };
+  | { readonly kind: "advisors"; readonly rows: readonly KeyedAdvisorRow[] }
+  /** The Department groups panel (issue #856), with its copy of the groups: Done keeps it, closing drops it. */
+  | { readonly kind: "groups"; readonly groups: readonly LayoutGroup[] };
 
-const isArcSpot = (at: string): at is ArcSpot => at.startsWith("arc:");
-const isAddedRef = (at: string): at is AddedRef => at.startsWith("added:");
-const addedId = (at: AddedRef) => Number(at.slice("added:".length));
+const seatKey = (id: number) => `seat:${id}` as const;
+const blockKey = (id: number) => `block:${id}` as const;
 
 const PLACE = "Org chart";
 
@@ -147,43 +148,49 @@ const PLACE = "Org chart";
 const BACK = { label: "Dashboard", href: "/dashboard" } as const;
 
 /**
- * The layer with the open panel's edit laid on: the page shows it as the
+ * The layout with the open panel's edit laid on: the page shows it as the
  * editor types, and Cancel drops it. A leader or head with nobody picked
  * adds nothing yet (issue #618).
  */
-function previewOf(build: TeamBuild, layer: TeamPageLayer, panel: Panel | null): TeamPageLayer {
-  if (panel === null) return layer;
-  if (panel.kind === "person") return withSpotEdit(layer, panel.spot, editOfFields(build, panel.spot, panel.fields));
+function previewOf(roles: TeamRoles, layout: TeamLayout, panel: Panel | null): TeamLayout {
+  if (panel === null) return layout;
+  if (panel.kind === "person") return withPersonFields(roles, layout, panel.seat, panel.fields);
   if (panel.kind === "leader") {
     const picked = pickedLeader(panel.fields);
-    return picked === null ? layer : layerWithLeader(build, layer, panel.id, picked);
+    return picked === null ? layout : layoutWithLeader(roles, layout, panel.id, picked);
   }
-  if (panel.kind === "advisors") return layer;
+  if (panel.kind === "advisors") return layout;
+  if (panel.kind === "groups") return { ...layout, groups: trimmedGroups(panel.groups) };
   const picked = pickedHead(panel.fields);
-  return picked === null ? layer : layerWithHead(build, layer, panel.at, picked);
+  return picked === null ? layout : layoutWithHead(roles, layout, panel.at, picked);
 }
 
+/** Whether the head panel edits a department the editor adds or added. */
+const addingBlock = (layout: TeamLayout, at: HeadRef | null) => at === null || isAddedBlock(layout, at);
+
 /** What the open panel refuses before it keeps its edit, as one message; null when nothing is refused. */
-function panelRefusal(build: TeamBuild, layer: TeamPageLayer, panel: Panel | null): string | null {
+function panelRefusal(layout: TeamLayout, panel: Panel | null): string | null {
   if (panel === null) return null;
   if (panel.kind === "person") return hasErrors(personFieldErrors(panel.fields)) ? "Fix the highlighted fields first." : null;
   if (panel.kind === "leader") {
-    const errors = leaderFieldErrors(build, layer, panel.id, panel.fields);
+    const errors = leaderFieldErrors(layout, panel.id, panel.fields);
     return errors.arc ?? (Object.keys(errors).length > 0 ? "Fix the highlighted fields first." : null);
   }
   if (panel.kind === "advisors") {
     return panel.rows.some((r) => Object.keys(advisorFieldErrors(r.fields)).length > 0) ? "Fix the highlighted advisors first." : null;
   }
-  return hasHeadErrors(headFieldErrors(panel.at, panel.fields)) ? "Fix the highlighted fields first." : null;
+  if (panel.kind === "groups") return groupsKeepable(panel.groups) ? null : "Name every group first.";
+  return hasHeadErrors(headFieldErrors(addingBlock(layout, panel.at), panel.fields)) ? "Fix the highlighted fields first." : null;
 }
 
-/** The block the open panel edits, which the page keeps outlined; a thing being added takes the next added id. */
-function selectedOf(layer: TeamPageLayer, panel: Panel | null): string | undefined {
+/** The block the open panel edits, which the page keeps outlined; a thing being added takes the next seat id. */
+function selectedOf(layout: TeamLayout, panel: Panel | null): string | undefined {
   if (panel === null) return undefined;
-  if (panel.kind === "person") return panel.spot;
-  if (panel.kind === "leader") return `added:${panel.id ?? nextAddedId(layer)}`;
+  if (panel.kind === "person") return seatKey(panel.seat);
+  if (panel.kind === "leader") return seatKey(panel.id ?? nextSeatId(layout));
   if (panel.kind === "advisors") return "advisors";
-  return panel.at ?? `added:${nextAddedId(layer)}`;
+  if (panel.kind === "groups") return undefined;
+  return blockKey(panel.at ?? nextSeatId(layout));
 }
 
 /** The rows the panel opens on, each keyed for the panel. */
@@ -201,8 +208,13 @@ export function TeamPageEdit({
   advisors: readonly AdvisorItem[];
   academicYear: number;
 }) {
-  const { build, base } = opening;
-  const [layer, setLayer] = useState<TeamPageLayer>(opening.layer);
+  const { roles, base } = opening;
+  const [content, setContent] = useState<TeamPageContent>(opening.content);
+  // The layout as last stored: Reset to team keeps its group list and each department's group (issue #856).
+  const [storedLayout, setStoredLayout] = useState<TeamLayout>(opening.content.layout);
+  const { layout, text } = content;
+  const setLayout = (change: (layout: TeamLayout) => TeamLayout) => setContent((c) => ({ ...c, layout: change(c.layout) }));
+  const setText = (change: (text: TeamPageContent["text"]) => TeamPageContent["text"]) => setContent((c) => ({ ...c, text: change(c.text) }));
   // Null until the layer is first saved: the bar then reads Draft, as board 80 shows it.
   const [layerStatus, setLayerStatus] = useState<ContentStatus | null>(opening.status);
   // The advisors as stored, for the bar's state, and the list the editor works on.
@@ -216,24 +228,29 @@ export function TeamPageEdit({
   const [pending, startTransition] = useTransition();
 
   const status = teamPageStatus(layerStatus, advisorItems);
-  const preview = previewOf(build, layer, panel);
+  const preview = previewOf(roles, layout, panel);
   const shownAdvisors = panel?.kind === "advisors" ? panel.rows : advisorRows;
-  const edited = useMemo(() => editedTeamPage(build, base, preview), [build, base, preview]);
-  const { shown } = edited;
+  const edited = useMemo(() => editedTeamPage(roles, base, { layout: preview, text }), [roles, base, preview, text]);
+  const { resolved } = edited;
   const page = useMemo(() => withAdvisors(edited.page, advisorsOfRows(shownAdvisors)), [edited, shownAdvisors]);
-  const edits = editCount(preview);
-  const personPhotos = useMemo(() => personPhotoChoices(build, base), [build, base]);
-  const groupPhotos = useMemo(() => groupPhotoChoices(build, base), [build, base]);
-  const people = useMemo(() => teamByName(build), [build]);
-  /** Every head block in the order the departments' slides draw them. */
-  const heads = useMemo(() => (shown?.departments ?? []).flatMap((d) => d.heads.map((h) => h.at)), [shown]);
+  /** The layout Reset to team writes: the team's roles as they are now, in the stored groups. */
+  const record = useMemo(() => teamRecordLayout(roles, storedLayout), [roles, storedLayout]);
+  const edits = editCount(roles, preview, record);
+  const personPhotos = useMemo(() => personPhotoChoices(roles.people, base), [roles, base]);
+  const groupPhotos = useMemo(() => groupPhotoChoices(roles.people, base), [roles, base]);
+  const people = useMemo(() => teamByName(roles), [roles]);
+  /** Every drawn head block in the order the departments' slides draw them. */
+  const heads = useMemo(() => resolved.departments.filter((d) => d.heads.length > 0).map((d) => d.at), [resolved]);
   /** Each carousel member's head block, in slide order; null for a division drawn at a head's level (issue #325). */
-  const carouselSpots = useMemo(() => carouselSpotsOf(shown?.departments ?? []), [shown]);
+  const carouselSpots = useMemo(() => {
+    const blockOfHead = new Map(preview.departments.map((b) => [b.head.id, b.id]));
+    return carouselSpotsOf(resolved.groups).map((at) => (at === null ? null : (blockOfHead.get(at) ?? null)));
+  }, [resolved, preview]);
 
   const blocks = useMemo(() => {
-    const person = (spot: PersonSpot, role: string) => ({
-      name: `${role} · ${isEdited(preview, spot) ? "Edited" : "From roles"}`,
-      section: spot,
+    const person = (id: number, role: string) => ({
+      name: `${role} · ${isEdited(preview, id) ? "Edited" : "From roles"}`,
+      section: seatKey(id),
       chip: "Edit person",
     });
     const entries: [string, EditBlocks<string, Section>[string]][] = [
@@ -241,27 +258,26 @@ export function TeamPageEdit({
       ["advisors", { name: "Advisors · Added by hand", section: "advisors", chip: "Edit advisors" }],
       ["group-photo", { name: "Group photo", section: "group-photo", chip: "Replace photo" }],
     ];
-    if (shown !== null && shown.leader !== null) entries.push(["leader", person("leader", shown.leader.role)]);
-    for (const l of shown?.leaders ?? []) {
-      if (isArcSpot(l.at)) entries.push([l.at, person(l.at, l.shown.role)]);
-      else entries.push([l.at, { name: `${l.shown.role} · Added`, section: `leader:${addedId(l.at)}`, chip: "Edit person" }]);
+    if (resolved.leader !== null && preview.leader !== null) entries.push([seatKey(preview.leader.id), person(preview.leader.id, resolved.leader.role)]);
+    for (const l of resolved.leaders) {
+      if (!isAddedLeader(preview, l.at)) entries.push([seatKey(l.at), person(l.at, l.shown.role)]);
+      else entries.push([seatKey(l.at), { name: `${l.shown.role} · Added`, section: seatKey(l.at), chip: "Edit person" }]);
     }
     for (const at of heads) {
-      const added = isAddedRef(at);
-      const from = added ? "Added" : isHeadEdited(build, preview, at) ? "Edited" : "From roles";
-      entries.push([at, { name: `Head · ${from}`, section: added ? `department:${addedId(at)}` : at }]);
+      const from = isAddedBlock(preview, at) ? "Added" : isHeadEdited(roles, preview, at) ? "Edited" : "From roles";
+      entries.push([blockKey(at), { name: `Head · ${from}`, section: blockKey(at) }]);
     }
     return Object.fromEntries(entries) as EditBlocks<string, Section>;
-  }, [shown, preview, heads, build]);
+  }, [resolved, preview, heads, roles]);
 
   const openHead = useCallback(
     (at: HeadRef, addLead = false) => {
-      const fields = headFieldsOf(build, layer, at);
+      const fields = headFieldsOf(roles, layout, at);
       if (fields === null) return;
       setInPlace(null);
       setPanel({ kind: "head", at, fields: addLead ? withNewLead(fields) : fields });
     },
-    [build, layer],
+    [roles, layout],
   );
 
   const openSection = useCallback(
@@ -276,23 +292,21 @@ export function TeamPageEdit({
         setPanel({ kind: "advisors", rows: keyed(advisorRows) });
         return;
       }
-      if (section.startsWith("leader:")) {
-        const id = Number(section.slice("leader:".length));
-        const fields = leaderFieldsOf(build, layer, id);
+      if (section.startsWith("block:")) return openHead(Number(section.slice("block:".length)));
+      const id = Number(section.slice("seat:".length));
+      if (isAddedLeader(layout, id)) {
+        const fields = leaderFieldsOf(roles, layout, id);
         if (fields === null) return;
         setInPlace(null);
         setPanel({ kind: "leader", id, fields });
         return;
       }
-      if (section.startsWith("department:")) return openHead(`added:${Number(section.slice("department:".length))}`);
-      if (section.startsWith("head:")) return openHead(section as HeadSpot);
-      const spot = section as PersonSpot;
-      const fields = personFieldsOf(build, layer, spot);
+      const fields = personFieldsOf(roles, layout, id);
       if (fields === null) return;
       setInPlace(null);
-      setPanel({ kind: "person", spot, fields });
+      setPanel({ kind: "person", seat: id, fields });
     },
-    [build, layer, openHead, advisorRows],
+    [roles, layout, openHead, advisorRows],
   );
 
   const addLeader = (gap: number) => {
@@ -305,33 +319,37 @@ export function TeamPageEdit({
     setPanel({ kind: "head", at: null, fields: newDepartmentFields() });
   };
 
-  const adding = panel === null && shown !== null;
+  const editGroups = () => {
+    setInPlace(null);
+    setPanel({ kind: "groups", groups: layout.groups });
+  };
+
+  const adding = panel === null;
 
   const frames: TeamPageFrames = {
     intro: (node) =>
       inPlace === "intro" ? (
         <IntroBox
-          initial={{ text: layer.intro ?? base.header.intro, figures: figuresOf(base, layer) }}
+          initial={{ text: text.intro ?? base.header.intro, figures: figuresOf(base, text) }}
           original={{ text: base.header.intro, figures: base.header.stats }}
           phone={device === "phone"}
-          onText={(text) => setLayer((l) => withIntro(base, l, text))}
-          onFigures={(figures) => setLayer((l) => withFigures(base, l, figures))}
+          onText={(typed) => setText((t) => withIntro(base, t, typed))}
+          onFigures={(figures) => setText((t) => withFigures(base, t, figures))}
           onDone={() => setInPlace(null)}
         />
       ) : (
         <EditableBlock id="intro">{node}</EditableBlock>
       ),
     leader: (slot, node) => {
-      if (shown === null) return node;
-      const at = slot === "leader" ? "leader" : shown.leaders[slot]?.at;
-      if (at === undefined) return node;
+      const id = slot === "leader" ? (resolved.leader === null ? undefined : preview.leader?.id) : resolved.leaders[slot]?.at;
+      if (id === undefined) return node;
       return (
-        <EditableBlock id={at} shape="narrow">
+        <EditableBlock id={seatKey(id)} shape="narrow">
           {node}
         </EditableBlock>
       );
     },
-    addLeader: adding && arcHasRoom(build, layer) ? addLeader : null,
+    addLeader: adding && arcHasRoom(layout) ? addLeader : null,
     departments: {
       member: (index, node) => {
         const at = carouselSpots[index];
@@ -343,7 +361,7 @@ export function TeamPageEdit({
           // the pill's 4px focus ring (2px outline at 2px offset): 12px +
           // 12px + 4px below md and 22px + 12px + 4px from md. What hangs
           // above a head sits over its group's heading, inside the row.
-          <EditableBlock id={at} className="mb-7 md:mb-[38px]">
+          <EditableBlock id={blockKey(at)} className="mb-7 md:mb-[38px]">
             {node}
             {adding && <AddLeadButton onClick={() => openHead(at, true)} />}
           </EditableBlock>
@@ -352,7 +370,12 @@ export function TeamPageEdit({
       heading: (node) => (
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3 lg:justify-center">
           {node}
-          {adding && <AddDepartmentButton onClick={addDepartment} />}
+          {adding && (
+            <>
+              <AddDepartmentButton onClick={addDepartment} />
+              <EditGroupsButton onClick={editGroups} />
+            </>
+          )}
         </div>
       ),
     },
@@ -363,10 +386,10 @@ export function TeamPageEdit({
         <EditableBlock id="group-photo">{node}</EditableBlock>
         {inPlace === "group-photo" && (
           <GroupPhotoBox
-            photo={groupPhotoOf(base, layer)}
+            photo={groupPhotoOf(base, text)}
             site={groupPhotos}
             original={base.coreMembers.groupPhoto}
-            onChange={(photo) => setLayer((l) => withGroupPhoto(base, l, photo))}
+            onChange={(photo) => setText((t) => withGroupPhoto(base, t, photo))}
             onDone={() => setInPlace(null)}
           />
         )}
@@ -374,9 +397,9 @@ export function TeamPageEdit({
     ),
   };
 
-  /** The working layer with the panel's edit kept; null while the panel's fields are refused. */
-  const keptLayer = (): TeamPageLayer | null => {
-    const refusal = panelRefusal(build, layer, panel);
+  /** The working layout with the panel's edit kept; null while the panel's fields are refused. */
+  const keptLayout = (): TeamLayout | null => {
+    const refusal = panelRefusal(layout, panel);
     if (refusal !== null) {
       toast.error(refusal);
       return null;
@@ -387,44 +410,47 @@ export function TeamPageEdit({
   /** The working advisor list with the Advisors panel's changes kept. */
   const keptAdvisors = (): readonly AdvisorRow[] => (panel?.kind === "advisors" ? unkeyed(panel.rows) : advisorRows);
 
-  /** The panel's edit kept in the working layer or advisor list, and the panel closed. */
+  /** The panel's edit kept in the working layout or advisor list, and the panel closed. */
   const keep = () => {
-    const next = keptLayer();
+    const next = keptLayout();
     if (next === null) return;
-    setLayer(next);
+    setLayout(() => next);
     setAdvisorRows(keptAdvisors());
     setPanel(null);
   };
 
-  /** A change the panel's footer makes to the working layer at once, closing the panel. */
-  const closeWith = (change: (layer: TeamPageLayer) => TeamPageLayer) => {
-    setLayer(change);
+  /** A change the panel's footer makes to the working layout at once, closing the panel. */
+  const closeWith = (change: (layout: TeamLayout) => TeamLayout) => {
+    setLayout(change);
     setPanel(null);
   };
 
   const save = (step: PublishStep) => {
-    const next = keptLayer();
-    if (next === null) return;
-    const refused = introBlockError(base, next);
+    const nextLayout = keptLayout();
+    if (nextLayout === null) return;
+    const refused = introBlockError(base, text);
     if (refused !== undefined) {
       setInPlace("intro");
       toast.error(refused);
       return;
     }
+    const next: TeamPageContent = { layout: nextLayout, text };
     const rows = keptAdvisors();
-    setLayer(next);
+    setContent(next);
     setAdvisorRows(rows);
     setPanel(null);
     startTransition(async () => {
-      // One write: the layer and the advisors land together, or neither does.
+      // One write: the content and the advisors land together, or neither does.
       const result = await saveTeamPage(step, next, rows);
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
-      setLayerStatus(statusOf(result.value.layer));
-      // The layer as saved: a photo picked from a member is its copy now (issue #831).
-      setLayer(editorVersion(result.value.layer));
+      setLayerStatus(statusOf(result.value.content));
+      // The content as saved: a photo picked from a member is its copy now (issue #831), and a page seat whose seat is gone has left.
+      const saved = editorVersion(result.value.content);
+      setContent(saved);
+      setStoredLayout(saved.layout);
       setAdvisorItems(result.value.advisors);
       setAdvisorRows(advisorRowsOf(result.value.advisors));
       toast.success(step === "publish" ? "The Team page is published." : "Draft saved. The live Team page stays as it is.");
@@ -438,8 +464,10 @@ export function TeamPageEdit({
         toast.error(result.error);
         return;
       }
-      // The reset keeps the intro text, its figures and the group photo as the editor has them.
-      setLayer((l) => resetLayer(l));
+      // The layout as the team's roles build it now; the reset keeps the intro text, its figures and the group photo as the editor has them.
+      const rebuilt = editorVersion(result.value).layout;
+      setLayout(() => rebuilt);
+      setStoredLayout(rebuilt);
       setPanel(null);
       setLayerStatus(statusOf(result.value));
       setResetOpen(false);
@@ -481,20 +509,20 @@ export function TeamPageEdit({
         onSaveDraft={pending ? null : () => save("save-draft")}
         onPublish={pending ? null : () => save("publish")}
         blocks={blocks}
-        selected={selectedOf(layer, panel)}
+        selected={selectedOf(layout, panel)}
         onEdit={openSection}
         panel={
           panel === null ? null : panel.kind === "person" ? (
             <PersonPanel
               panel={panel}
-              opening={opening}
-              layer={layer}
+              roles={roles}
+              layout={layout}
               errors={personFieldErrors(panel.fields)}
               photoChoices={personPhotos}
               onChange={(fields) => setPanel({ ...panel, fields })}
               onSave={keep}
               onCancel={() => setPanel(null)}
-              onBack={() => closeWith((l) => backToTeamRecord(l, panel.spot))}
+              onBack={() => closeWith((l) => backToTeamRecord(l, panel.seat))}
             />
           ) : panel.kind === "advisors" ? (
             <TeamAdvisorsPanel
@@ -510,29 +538,36 @@ export function TeamPageEdit({
               key={panel.id ?? "new"}
               adding={panel.id === null}
               fields={panel.fields}
-              gaps={leaderGaps(build, layer, panel.id)}
+              gaps={leaderGaps(roles, layout, panel.id)}
               people={people}
-              errors={leaderFieldErrors(build, layer, panel.id, panel.fields)}
+              errors={leaderFieldErrors(layout, panel.id, panel.fields)}
               photoChoices={personPhotos}
               onChange={(fields) => setPanel({ ...panel, fields })}
-              onPerson={(id) => setPanel({ ...panel, fields: withLeaderPerson(build, panel.fields, id) })}
+              onPerson={(id) => setPanel({ ...panel, fields: withLeaderPerson(roles, panel.fields, id) })}
               onSubmit={keep}
               onCancel={() => setPanel(null)}
-              onRemove={panel.id === null ? null : () => closeWith((l) => withoutAddedLeader(l, panel.id!))}
+              onRemove={panel.id === null ? null : () => closeWith((l) => withoutArcSeat(l, panel.id!))}
+            />
+          ) : panel.kind === "groups" ? (
+            <TeamGroupsPanel
+              layout={{ ...layout, groups: panel.groups }}
+              onChange={(groups) => setPanel({ kind: "groups", groups })}
+              onDone={keep}
+              onCancel={() => setPanel(null)}
             />
           ) : (
             <HeadPanel
               key={panel.at ?? "new"}
               panel={panel}
-              build={build}
-              layer={layer}
+              roles={roles}
+              layout={layout}
               people={people}
               photoChoices={personPhotos}
               onChange={(fields) => setPanel({ ...panel, fields })}
               onDone={keep}
               onCancel={() => setPanel(null)}
               onHide={(at) => closeWith((l) => hideHead(l, at))}
-              onBack={(at) => closeWith((l) => headBackToRecord(build, l, at))}
+              onBack={(at) => closeWith((l) => headBackToRecord(roles, l, at))}
             />
           )
         }
@@ -611,6 +646,16 @@ function AddDepartmentButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+/** "Edit groups" beside "+ Add department" (issue #856): opens the Department groups panel, in the same pill. */
+function EditGroupsButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className={`${ADD_PILL} h-8 px-3.5 text-[13px] hover:bg-accent/10`}>
+      <ListOrdered aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
+      Edit groups
+    </button>
+  );
+}
+
 /**
  * "+ Add division lead" on every head block (board 80e), shown at all times on
  * Desktop, Phone and touch (Owner decision on #498, issue #507): it sits on the
@@ -638,8 +683,8 @@ function AddLeadButton({ onClick }: { onClick: () => void }) {
 /** The Edit a head block panel for the open head block, with its errors, Team record and footer actions. */
 function HeadPanel({
   panel,
-  build,
-  layer,
+  roles,
+  layout,
   people,
   photoChoices,
   onChange,
@@ -649,37 +694,39 @@ function HeadPanel({
   onBack,
 }: {
   panel: { readonly at: HeadRef | null; readonly fields: HeadFields };
-  build: TeamBuild;
-  layer: TeamPageLayer;
+  roles: TeamRoles;
+  layout: TeamLayout;
   people: readonly TeamPerson[];
   photoChoices: readonly PhotoChoice[];
   onChange: (fields: HeadFields) => void;
   onDone: () => void;
   onCancel: () => void;
   onHide: (at: HeadRef) => void;
-  onBack: (at: HeadSpot) => void;
+  onBack: (at: HeadRef) => void;
 }) {
   const { at, fields } = panel;
-  const record = at === null ? null : headRecord(build, at);
-  const roles = at !== null && !isAddedRef(at) ? at : null;
+  const added = addingBlock(layout, at);
+  const fromRecord = at !== null && !added ? at : null;
   const picked = pickedHead(fields);
   const edited =
-    roles !== null && (isHeadEdited(build, layer, roles) || (picked !== null && isHeadEdited(build, layerWithHead(build, layer, roles, picked), roles)));
+    fromRecord !== null &&
+    (isHeadEdited(roles, layout, fromRecord) || (picked !== null && isHeadEdited(roles, layoutWithHead(roles, layout, fromRecord, picked), fromRecord)));
   return (
     <TeamHeadPanel
-      kind={at === null ? "new" : roles === null ? "added" : "roles"}
+      kind={at === null ? "new" : fromRecord === null ? "added" : "roles"}
       fields={fields}
-      record={record?.person ?? null}
+      groups={layout.groups}
+      record={fromRecord === null ? null : headRecord(roles, layout, fromRecord)}
       people={people}
-      errors={headFieldErrors(at, fields)}
+      errors={headFieldErrors(added, fields)}
       photoChoices={photoChoices}
       onChange={onChange}
-      onPerson={(id) => onChange(withHeadPerson(build, fields, id))}
+      onPerson={(id) => onChange(withHeadPerson(roles, fields, id))}
       onAddLead={() => onChange(withNewLead(fields))}
       onDone={onDone}
       onCancel={onCancel}
       onHide={at === null ? null : () => onHide(at)}
-      onBack={roles !== null && edited ? () => onBack(roles) : null}
+      onBack={fromRecord !== null && edited ? () => onBack(fromRecord) : null}
     />
   );
 }
@@ -760,8 +807,8 @@ function ResetLine({ kept, children }: { kept: boolean; children: ReactNode }) {
 
 function PersonPanel({
   panel,
-  opening,
-  layer,
+  roles,
+  layout,
   errors,
   photoChoices,
   onChange,
@@ -769,9 +816,9 @@ function PersonPanel({
   onCancel,
   onBack,
 }: {
-  panel: { readonly spot: PersonSpot; readonly fields: PersonFields };
-  opening: TeamPageOpening;
-  layer: TeamPageLayer;
+  panel: { readonly seat: number; readonly fields: PersonFields };
+  roles: TeamRoles;
+  layout: TeamLayout;
   errors: PersonFieldErrors;
   photoChoices: readonly PhotoChoice[];
   onChange: (fields: PersonFields) => void;
@@ -779,20 +826,20 @@ function PersonPanel({
   onCancel: () => void;
   onBack: () => void;
 }) {
-  const { build } = opening;
-  const record = spotRecord(build, panel.spot);
+  const record = spotRecord(roles, layout, panel.seat);
   if (record === null) return null;
-  const edited = isEdited(layer, panel.spot) || Object.keys(editOfFields(build, panel.spot, panel.fields)).length > 0;
+  const back = backToTeamRecord(layout, panel.seat);
+  const edited = isEdited(layout, panel.seat) || changesSeat(roles, back, panel.seat, panel.fields);
   return (
     <TeamPersonPanel
-      key={panel.spot}
-      leader={panel.spot === "leader"}
+      key={panel.seat}
+      leader={isLeaderSeat(layout, panel.seat)}
       place={PLACE}
       record={record}
-      people={build.people}
+      people={roles.people}
       fields={panel.fields}
       onChange={onChange}
-      onPerson={(id) => onChange(withPerson(build, panel.fields, id))}
+      onPerson={(id) => onChange(withPerson(roles, panel.fields, id))}
       errors={errors}
       photoChoices={photoChoices}
       onSave={onSave}
