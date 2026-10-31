@@ -554,6 +554,13 @@
       "when": 1795886400000,
       "tag": "0080_sync_auth_users_email_case",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1795972800000,
+      "tag": "0081_audit_log_skip_auth_secrets",
+      "breakpoints": true
     }
   ]
 }
