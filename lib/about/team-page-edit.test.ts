@@ -1,56 +1,100 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SEED_DATA, teamRolesOf } from "@/db/seed/cases";
-import { NO_TEAM_LAYER, type TeamPageLayer } from "./team-layer";
+import { NO_TEAM_LAYER, textOf } from "./team-layer";
+import { bindingFor, snapshot } from "./team-layout";
 import { team } from "./team";
-import { backToTeamRecord, editedTeamPage, editOfFields, personFieldsOf, withPerson, withSpotEdit } from "./team-page-edit";
-import { teamBuildOf, teamPageFromRoles } from "./team-roles";
+import {
+  backToTeamRecord,
+  editCount,
+  editedTeamPage,
+  personFieldsOf,
+  seatOfFields,
+  spotRecord,
+  withPerson,
+  withPersonFields,
+} from "./team-page-edit";
+import type { TeamPageContent } from "./team-page-stored";
+import { teamPageFromRoles } from "./team-roles";
 
-// The Team page editor's Edit person panel (board 80b, issue #284): the
-// fields make only the edit that differs from the team record, and Back to
-// the team record removes the spot's edit so the spot shows the roles again.
-// The team is the seeded one, read as the Team page reads it.
+// The Team page editor's Edit person panel (board 80b, issues #284 and #851):
+// the fields make a page seat with only the overrides that differ from the
+// team record, picking someone binds the place to the seat they hold, and
+// Back to the team record removes the place's overrides so it shows its
+// seat's holder again. The team is the seeded one, read as the Team page
+// reads it, and the layout is the one Reset to team writes.
 
 const roles = teamRolesOf(SEED_DATA);
-const build = teamBuildOf(roles);
+const layout = snapshot(roles, NO_TEAM_LAYER).layout;
+const text = textOf(NO_TEAM_LAYER);
 const fromRoles = teamPageFromRoles(roles, team)!;
-const arcSpot = build.arc[0].spot;
-const someoneElse = build.people.find((p) => p.id !== build.leader?.person.id && p.id !== build.arc[0].person.id)!;
+const leaderId = layout.leader!.id;
+const arcId = layout.arc[0].id;
+const pageOf = (content: TeamPageContent) => editedTeamPage(roles, team, content).page;
+const shownIds = new Set([layout.leader!, ...layout.arc].map((seat) => spotRecord(roles, layout, seat.id)!.person.id));
+const someoneElse = roles.people.find((p) => !shownIds.has(p.id))!;
 
-test("the panel's fields make only what differs from the team record: put back as the roles have it, there is no edit", () => {
-  const start = personFieldsOf(build, NO_TEAM_LAYER, "leader")!;
-  assert.deepEqual(editOfFields(build, "leader", start), {}, "the fields as opened are no edit");
-
-  const renamed = { ...start, role: "President", name: `  ${start.name}  ` };
-  assert.deepEqual(editOfFields(build, "leader", renamed), { role: "President" }, "an unchanged name is no edit");
-
-  // The team leader cannot be hidden; a place on the arc can.
-  assert.deepEqual(editOfFields(build, "leader", { ...start, shown: false }), {});
-  const arc = personFieldsOf(build, NO_TEAM_LAYER, arcSpot)!;
-  assert.deepEqual(editOfFields(build, arcSpot, { ...arc, shown: false }), { hidden: true });
-
-  // Another person in the spot takes their own name; the role on the page stays the spot's.
-  const swapped = withPerson(build, arc, someoneElse.id);
-  assert.deepEqual(editOfFields(build, arcSpot, swapped), { person: someoneElse.id });
-  assert.equal(swapped.name, someoneElse.name);
+test("the layout the editor opens on draws the page the roles build", () => {
+  assert.deepEqual(pageOf({ layout, text }), fromRoles);
 });
 
-test("Back to the team record removes that spot's edits and leaves every other edit", () => {
-  const leaderFields = personFieldsOf(build, NO_TEAM_LAYER, "leader")!;
-  const arcFields = personFieldsOf(build, NO_TEAM_LAYER, arcSpot)!;
-  let layer: TeamPageLayer = { ...NO_TEAM_LAYER, intro: "Edited intro." };
-  layer = withSpotEdit(layer, "leader", editOfFields(build, "leader", { ...leaderFields, role: "President" }));
-  layer = withSpotEdit(layer, arcSpot, editOfFields(build, arcSpot, withPerson(build, arcFields, someoneElse.id)));
-  const edited = editedTeamPage(build, team, layer).page;
-  assert.equal(edited.orgChart.leader?.role, "President");
-  assert.equal(edited.orgChart.leaders[0]?.name, someoneElse.name);
+test("the panel's fields make only the overrides that differ from the team record: put back as the record has it, there is none", () => {
+  const start = personFieldsOf(roles, layout, leaderId)!;
+  assert.deepEqual(seatOfFields(roles, layout, leaderId, start), layout.leader, "the fields as opened change nothing");
 
-  const back = backToTeamRecord(layer, arcSpot);
-  assert.deepEqual(back.spots, {}, "the spot holds no edit");
-  const page = editedTeamPage(build, team, back).page;
-  assert.deepEqual(page.orgChart.leaders, fromRoles.orgChart.leaders, "the arc shows the roles again");
-  assert.equal(page.orgChart.leader?.role, "President", "the leader's edit stays");
-  assert.equal(page.header.intro, "Edited intro.");
+  const renamed = { ...start, role: "President", name: `  ${start.name}  ` };
+  assert.deepEqual(seatOfFields(roles, layout, leaderId, renamed)?.overrides, { role: "President" }, "an unchanged name is no override");
 
-  assert.deepEqual(backToTeamRecord(back, "leader").leader, {});
+  // The team leader cannot be taken off the page; a place on the arc can.
+  assert.deepEqual(seatOfFields(roles, layout, leaderId, { ...start, shown: false }), layout.leader);
+  const arc = personFieldsOf(roles, layout, arcId)!;
+  assert.equal(seatOfFields(roles, layout, arcId, { ...arc, shown: false }), null);
+  assert.equal(withPersonFields(roles, layout, arcId, { ...arc, shown: false }).arc.length, layout.arc.length - 1);
+
+  // Another person in the place takes their own name, and the place is bound to the seat they hold; the role on the page stays the place's.
+  const swapped = withPerson(roles, arc, someoneElse.id);
+  assert.equal(swapped.name, someoneElse.name);
+  const seat = seatOfFields(roles, layout, arcId, swapped)!;
+  assert.deepEqual(seat.binding, bindingFor(someoneElse, roles));
+  const page = pageOf({ layout: withPersonFields(roles, layout, arcId, swapped), text });
+  assert.equal(page.orgChart.leaders[0]?.name, someoneElse.name);
+  assert.equal(page.orgChart.leaders[0]?.role, arc.role);
+});
+
+test("a place can be bound to any seat of the team record, a division lead the Team tree draws under a head included", () => {
+  const lead = roles.people.find((p) => p.placement.role === "divisions" && p.placement.memberships.some((m) => m.role === "lead"))!;
+  const head = roles.people.find((p) => p.placement.role === "head")!;
+  for (const person of [lead, head]) {
+    const fields = withPerson(roles, personFieldsOf(roles, layout, arcId)!, person.id);
+    const seat = seatOfFields(roles, layout, arcId, fields)!;
+    assert.equal(seat.binding.kind, person === lead ? "division-lead" : "department-head");
+    const edited = withPersonFields(roles, layout, arcId, fields);
+    assert.equal(spotRecord(roles, edited, arcId)?.person.id, person.id, "the place shows the seat's holder");
+    assert.equal(pageOf({ layout: edited, text }).orgChart.leaders[0]?.name, person.name);
+  }
+});
+
+test("Back to the team record removes that place's overrides and leaves every other edit", () => {
+  const leaderFields = personFieldsOf(roles, layout, leaderId)!;
+  const arcFields = personFieldsOf(roles, layout, arcId)!;
+  const content = { layout, text: { ...text, intro: "Edited intro." } };
+  let edited = withPersonFields(roles, content.layout, leaderId, { ...leaderFields, role: "President" });
+  edited = withPersonFields(roles, edited, arcId, { ...arcFields, name: "Someone Else", role: "Captain" });
+  const page = pageOf({ ...content, layout: edited });
+  assert.equal(page.orgChart.leader?.role, "President");
+  assert.equal(page.orgChart.leaders[0]?.name, "Someone Else");
+  assert.equal(editCount(roles, edited, layout), 2);
+
+  const back = backToTeamRecord(edited, arcId);
+  assert.deepEqual(back.arc, layout.arc, "the place holds no override");
+  const after = pageOf({ ...content, layout: back });
+  assert.deepEqual(after.orgChart.leaders, fromRoles.orgChart.leaders, "the arc shows the roles again");
+  assert.equal(after.orgChart.leader?.role, "President", "the leader's edit stays");
+  assert.equal(after.header.intro, "Edited intro.");
+
+  // The team leader's place goes back to the team leader, whoever it was bound to.
+  const rebound = withPersonFields(roles, back, leaderId, withPerson(roles, leaderFields, someoneElse.id));
+  assert.equal(pageOf({ ...content, layout: rebound }).orgChart.leader?.name, someoneElse.name);
+  assert.deepEqual(backToTeamRecord(rebound, leaderId), layout);
+  assert.equal(editCount(roles, layout, layout), 0);
 });

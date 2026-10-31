@@ -13,7 +13,11 @@ import type { DepartmentHead, DivisionLead, HeaderStats, Leader, Member, Person,
 // team: an edit whose spot is gone from the roles build is kept and skipped,
 // and it shows again if the spot comes back. Only the editor or Reset to team
 // removes an edit. Pure: the database, the seed and the editor all lay it on
-// the same way.
+// the same way. Since issue #851 the editor edits the stored layout of page
+// seats (./team-layout.ts) and writes only the layer's intro text, figures
+// and group photo (`TeamPageText`); the layer's people fields stay as they
+// were, read only by the snapshot (ADR 0019 Decision 7) and the check of the
+// photos in use.
 
 /** The arc holds up to eight leaders. */
 export const ARC_LEADERS = 8;
@@ -124,6 +128,24 @@ export type TeamPageLayer = {
   /** The group photo over the core members; null keeps the hand-typed one. */
   readonly groupPhoto: GroupPhoto | null;
 };
+
+/**
+ * The part of the layer the Team page editor still writes (issue #851): the
+ * intro text, the figures and the group photo. The page seats live in the
+ * layout (./team-layout.ts).
+ */
+export type TeamPageText = Pick<TeamPageLayer, "intro" | "figures" | "groupPhoto">;
+
+/** The layer's intro text, figures and group photo, with no key for figures it leaves alone. */
+export function textOf(layer: TeamPageText): TeamPageText {
+  return { intro: layer.intro, ...(layer.figures !== undefined && { figures: layer.figures }), groupPhoto: layer.groupPhoto };
+}
+
+/** `layer` with `text`'s intro, figures and group photo, every other part as it was. */
+export function withText(layer: TeamPageLayer, text: TeamPageText): TeamPageLayer {
+  const { figures: _old, ...rest } = layer;
+  return { ...rest, ...textOf(text) };
+}
 
 export const NO_TEAM_LAYER: TeamPageLayer = {
   leader: {},
@@ -530,6 +552,18 @@ const isFigure: Check = (value) => hasShape(value, { value: isText(TEAM_PAGE_FIG
 /** Always four figures: the header's row has no room to add one and none to leave empty. */
 const isFigures: Check = (value) => Array.isArray(value) && value.length === 4 && value.every(isFigure);
 
+/** The checks of the intro text, the figures and the group photo, one each. */
+const textChecks = (ownsUpload: OwnsUpload): Readonly<Record<keyof TeamPageText, Check>> => ({
+  intro: (v) => v === null || isText(TEAM_PAGE_INTRO_MAX)(v),
+  figures: isFigures,
+  groupPhoto: (v) => v === null || isGroupPhoto(ownsUpload)(v),
+});
+
+/** The intro text, figures and group photo as the editor sends them (issue #851): checked as a layer checks them. */
+export function isTeamPageText(value: unknown, ownsUpload: OwnsUpload): value is TeamPageText {
+  return hasShape(value, textChecks(ownsUpload), ["intro", "groupPhoto"]);
+}
+
 /**
  * A layer this code could have written: every part present, each edit well
  * formed, every added id used once. `figures` alone may be absent, as layers
@@ -546,9 +580,7 @@ export function isTeamPageLayer(value: unknown, ownsUpload: OwnsUpload): value i
         addedLeaders: isListOf(isAddedLeader, 50),
         departments: (v) => isRecord(v) && Object.entries(v).every(([key, edit]) => isIdText(key) && isDepartmentEdit(edit)),
         addedDepartments: isListOf(isAddedDepartment, 50),
-        intro: (v) => v === null || isText(TEAM_PAGE_INTRO_MAX)(v),
-        figures: isFigures,
-        groupPhoto: (v) => v === null || isGroupPhoto(ownsUpload)(v),
+        ...textChecks(ownsUpload),
       },
       ["leader", "spots", "addedLeaders", "departments", "addedDepartments", "intro", "groupPhoto"],
     )

@@ -12,8 +12,8 @@ import { openDashboard } from "@/lib/dashboard/open";
 import type { Order } from "@/lib/dashboard/orders";
 import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { isPublishStep, type ContentItem, type PublishStep, type Versioned } from "@/lib/content/versioned";
-import type { TeamPageLayer } from "@/lib/about/team-layer";
 import type { TeamPageSaved } from "@/lib/about/team-page-editor";
+import type { TeamPageContent } from "@/lib/about/team-page-stored";
 import type { PersonPhoto } from "@/lib/about/types";
 import type { Partner, PartnerTier } from "@/lib/partners";
 import type { MeasuredLogo } from "@/lib/partners-editor";
@@ -185,26 +185,27 @@ export async function reorderFaqs(faqIds: readonly number[]): Promise<WriteResul
   return result;
 }
 
-// The Team page's visual layer (issue #283) and advisors (board 80d, issue
-// #286), behind the same site-content gate. Save draft and Reset to team
-// change only the draft; Publish changes what /about/the-team shows, so it
-// renders the page again. None of them writes a role, division, department,
-// scope or member.
+// The Team page's layout and text (issues #283 and #851) and advisors (board
+// 80d, issue #286), behind the same site-content gate. Save draft and Reset
+// to team change only the draft; Publish changes what /about/the-team shows,
+// so it renders the page again. None of them writes a role, division,
+// department, scope or member.
 
 /**
- * Save draft or Publish the whole layer and the Advisors panel's rows, in
- * page order, as the editor holds them: one write, so either both land or
- * neither does (issue #321), and one render of the page on Publish.
+ * Save draft or Publish the whole content (the layout and the intro text,
+ * figures and group photo) and the Advisors panel's rows, in page order, as
+ * the editor holds them: one write, so either both land or neither does
+ * (issue #321), and one render of the page on Publish.
  */
-export async function saveTeamPage(step: PublishStep, layer: unknown, advisors: unknown): Promise<WriteResult<TeamPageSaved>> {
+export async function saveTeamPage(step: PublishStep, content: unknown, advisors: unknown): Promise<WriteResult<TeamPageSaved>> {
   if (!isPublishStep(step)) return refused("Save a draft or publish.");
-  const result = await write("team-page", (data) => data.teamPage.save(step, layer, advisors));
+  const result = await write("team-page", (data) => data.teamPage.save(step, content, advisors));
   if (result.ok && step === "publish") revalidatePath("/about/the-team");
   return result;
 }
 
-/** Reset to team (board 80h): a draft with every edit gone except the intro text and the group photo. */
-export async function resetTeamPageLayer(): Promise<WriteResult<Versioned<TeamPageLayer>>> {
+/** Reset to team (board 80h): a draft whose layout is rebuilt from the team, with the intro text, figures and group photo kept. */
+export async function resetTeamPageLayer(): Promise<WriteResult<Versioned<TeamPageContent>>> {
   return write("team-page", (data) => data.teamPage.reset());
 }
 

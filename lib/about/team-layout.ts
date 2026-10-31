@@ -6,6 +6,7 @@ import {
   DEPARTMENT_KINDS,
   defaultHeadTitle,
   divisionLabel,
+  ledDivisionOf,
   roleIn,
   type BoardFlag,
   type BoardRole,
@@ -25,6 +26,7 @@ import {
   type Spot,
   type SpotEdit,
   type TeamPageLayer,
+  type TeamPageText,
 } from "./team-layer";
 import { byName, personOf, titleOf, type TeamPerson } from "./team-person";
 import { carouselOf, coreMembersOf, drawnTeamPage, teamBuildOf, type TeamRoles } from "./team-roles";
@@ -43,7 +45,8 @@ import type { DepartmentHead, DivisionLead, Leader, Member, Person, PersonPhoto,
 // active role no drawn page seat shows (#846 R1.1). The intro text, the
 // figures and the group photo stay in the visual layer (./team-layer.ts).
 // Pure. Each stored layer version keeps its layout beside it, and the public
-// page draws it (./team-page-stored.ts, issue #850).
+// page draws it (./team-page-stored.ts, issue #850); the Team page editor
+// edits it (./team-page-edit.ts, ./team-page-add.ts, issue #851).
 
 /**
  * The seat of the team record a page seat shows the holder of. It reuses the
@@ -132,7 +135,7 @@ function seatExists(binding: PlaceBinding, roles: TeamRoles): boolean {
 }
 
 /** Who holds a bound seat now, with the text the seat reads under their name. */
-type Holding = { readonly person: TeamPerson; readonly title: string };
+export type Holding = { readonly person: TeamPerson; readonly title: string };
 
 /**
  * The holder of a bound seat now and the seat's own text: the team leader's
@@ -142,7 +145,7 @@ type Holding = { readonly person: TeamPerson; readonly title: string };
  * else their own page title. Null when the seat has no holder or is gone, or
  * the person holds no active role.
  */
-function holdingOf(binding: PlaceBinding, roles: TeamRoles, headOf?: string): Holding | null {
+export function holdingOf(binding: PlaceBinding, roles: TeamRoles, headOf?: string): Holding | null {
   if (!seatExists(binding, roles)) return null;
   const first = (test: (p: TeamPerson) => boolean) => roles.people.filter(test).sort(byName)[0];
   switch (binding.kind) {
@@ -197,6 +200,64 @@ export function withTeamSeatMoved(layout: TeamLayout, from: number, to: number):
     leader: layout.leader === null ? null : moved(layout.leader),
     arc: layout.arc.map(moved),
     departments: layout.departments.map((block) => ({ ...block, head: moved(block.head), leads: block.leads.map(moved) })),
+  };
+}
+
+// What the editor needs of a layout (issue #851).
+
+/** Every page seat of the layout: the team leader's, the arc's, then each block's head and leads. */
+export function layoutSeats(layout: TeamLayout): PageSeat[] {
+  return [...(layout.leader === null ? [] : [layout.leader]), ...layout.arc, ...layout.departments.flatMap((b) => [b.head, ...b.leads])];
+}
+
+/** The id the next page seat or block the editor adds takes: after every id the layout holds. */
+export function nextSeatId(layout: TeamLayout): number {
+  return idsOf(layout).reduce((last, id) => Math.max(last, id), 0) + 1;
+}
+
+/** Whether two bindings name the same seat or person. */
+export function sameBinding(a: PlaceBinding, b: PlaceBinding): boolean {
+  return JSON.stringify(a, Object.keys(a).sort()) === JSON.stringify(b, Object.keys(b).sort());
+}
+
+/** The seat `person` holds on the team record, when they hold one: the team leader's, a team-level seat, a head, or the lead of the oldest division they lead. */
+function seatOf(person: TeamPerson, roles: TeamRoles): SeatBinding | null {
+  const { placement } = person;
+  if (placement.role === "team-leader") return { kind: "team-leader" };
+  if (placement.role === "board") return teamLevelBinding(placement.seat);
+  if (placement.role === "head") return { kind: "department-head", departmentId: placement.departmentId };
+  const divisionId = ledDivisionOf(placement);
+  if (divisionId === null) return null;
+  return { kind: "division-lead", divisionId, place: leadsOf(roles, divisionId).findIndex((p) => p.id === person.id) };
+}
+
+/**
+ * What a page seat is bound to when the editor picks `person` for it: the
+ * seat they hold, wherever the Team tree places it, so the place follows that
+ * seat on a hand-over (ADR 0019); a person who holds no seat, or one the seat
+ * would not show (a co-holder drawn first), is bound to themselves (Owner
+ * decision, #846 R4.1).
+ */
+export function bindingFor(person: TeamPerson, roles: TeamRoles): PlaceBinding {
+  const seat = seatOf(person, roles);
+  return seat !== null && holdingOf(seat, roles)?.person.id === person.id ? seat : { kind: "person", memberId: person.id };
+}
+
+/** The division lead seats of a department as the team record has them: its divisions in order, each one's leads by name. */
+export function departmentLeadBindings(departmentId: number, roles: TeamRoles): SeatBinding[] {
+  return roles.org.divisions
+    .filter((d) => d.departmentId === departmentId)
+    .flatMap((division) => leadsOf(roles, division.id).map((_, place): SeatBinding => ({ kind: "division-lead", divisionId: division.id, place })));
+}
+
+/** The layout with each override photo put through `swap`, everything else as it was. */
+export function withLayoutPhotos(layout: TeamLayout, swap: (photo: PersonPhoto) => PersonPhoto): TeamLayout {
+  const on = (seat: PageSeat): PageSeat =>
+    seat.overrides.photo === undefined ? seat : { ...seat, overrides: { ...seat.overrides, photo: swap(seat.overrides.photo) } };
+  return {
+    leader: layout.leader === null ? null : on(layout.leader),
+    arc: layout.arc.map(on),
+    departments: layout.departments.map((block) => ({ ...block, head: on(block.head), leads: block.leads.map(on) })),
   };
 }
 
@@ -284,12 +345,7 @@ export function resolveLayout(layout: TeamLayout, roles: TeamRoles): ResolvedTea
  * (`drawnTeamPage`). A section no drawn place fills is drawn empty, never
  * from `base` (ADR 0019 Decision 9).
  */
-export function layoutPageOf(
-  roles: TeamRoles,
-  layout: TeamLayout,
-  text: Pick<TeamPageLayer, "intro" | "figures" | "groupPhoto">,
-  base: TeamPage,
-): TeamPage {
+export function layoutPageOf(roles: TeamRoles, layout: TeamLayout, text: TeamPageText, base: TeamPage): TeamPage {
   const resolved = resolveLayout(layout, roles);
   return drawnTeamPage(
     resolved,
@@ -305,8 +361,7 @@ export function layoutPageOf(
 
 /** Every photo the layout sets, on any page seat. */
 export function layoutPhotos(layout: TeamLayout): PersonPhoto[] {
-  const seats = [...(layout.leader === null ? [] : [layout.leader]), ...layout.arc, ...layout.departments.flatMap((b) => [b.head, ...b.leads])];
-  return seats.flatMap((seat) => seat.overrides.photo ?? []);
+  return layoutSeats(layout).flatMap((seat) => seat.overrides.photo ?? []);
 }
 
 // The first layout: today's page, snapshotted.
