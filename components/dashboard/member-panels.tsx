@@ -27,6 +27,7 @@ import {
   checkMemberPhoto,
   linkedLogin,
   saveInputOn,
+  savedOn,
   SHOWN_ROW,
   type AddLookup,
   type AddMemberErrors,
@@ -1025,7 +1026,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   const [pending, setPending] = useState(false);
   // An empty login already holds the corrected email: Save asks to link it, then saves again (issue #860).
   const [linkOffer, setLinkOffer] = useState<{ readonly offer: LoginLinkOffer; readonly answer: HeadMoveAnswer | null } | null>(null);
-  // The row Save writes onto: once Link login lands, every later Save of this form, a retry included, sends what it opened with.
+  // The row Save writes onto: once Link login lands, every later Save of this form, a retry included, sends what that row was last given.
   const [basis, setBasis] = useState<SaveBasis>(SHOWN_ROW);
 
   const setName = (key: keyof PersonName, value: string) => {
@@ -1071,6 +1072,8 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         toast.error("Could not save the details", { description: result.error });
         return;
       }
+      // The details landed: the next Save of this form, a retry or one after reopening it, compares with what was just sent.
+      setBasis(savedOn(on, { details: checked.value.details, ...(checked.value.name ?? {}) }));
       for (const place of person === null ? [] : places) {
         const choice = choiceFor(place);
         const to = moveToOf(place, choice, departments);

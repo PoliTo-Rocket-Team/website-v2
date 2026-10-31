@@ -8,7 +8,7 @@ import { addRows, changeRows, databaseWrites, logRowsSinceSeed, tableRows, testD
 import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 import type { DashboardData } from "./data";
-import { linkedLogin, saveInputOn, type DetailsTarget, type OpenedSent, type SaveBasis } from "./division-members";
+import { linkedLogin, saveInputOn, savedOn, type DetailsTarget, type OpenedSent, type SaveBasis } from "./division-members";
 import { membersModelOf } from "./members-view";
 import { openDashboard } from "./open";
 import { LOGIN_LINK_REFUSALS, loginLinkQuestion, SIGN_IN_EMAIL_REFUSALS, takenBy, type LoginLinkOffer } from "./sign-in-email";
@@ -212,6 +212,9 @@ describe("Edit details links an empty login to the member it belongs to (issue #
     return teamActions.saveMemberDetails(PERSON, MA, saveInputOn(basis, { title: "Member", details: { ...details, ...changed }, ...name, signInEmail: REAL }));
   }
 
+  /** What a Save sends: the form as it opened with `changed` typed over it. */
+  const typedOver = (form: OpenedSent, changed: Partial<OpenedSent["details"]>): OpenedSent => ({ ...form, details: { ...form.details, ...changed } });
+
   test("Save offers the login, with the day it first signed in, and the confirmation asks to link it to the member", async () => {
     await seededEmptyLogin();
     const sent = await offer();
@@ -265,19 +268,38 @@ describe("Edit details links an empty login to the member it belongs to (issue #
     const form = await opened();
     const sent = await offer();
     assert.deepEqual((await link("operations lead", sent)).answer, { ok: true });
-    // The form keeps one basis from the link on: the follow-up Save, then the retries once a step after it failed and left the form open.
-    const basis = linkedLogin(form);
+    // The follow-up Save, then the retries once a step after it failed and left the form open; each Save moves the basis as the form does.
+    let basis = linkedLogin(form);
     for (const [round, changed] of [
       ["the follow-up Save", { country: "France" }],
       ["a retry of the same Save", { country: "France" }],
       ["a retry with one more change", { country: "France", gender: "Female" }],
     ] as const) {
       assert.deepEqual(await followUpSave(basis, form, changed), { ok: true }, round);
+      basis = savedOn(basis, typedOver(form, changed));
       const login = await userRow(LOGIN_USER);
       assert.equal(login?.phone, "+39 333 222 2222", `${round}: the login's own phone is neither overwritten nor cleared`);
       assert.equal(login?.country, "France", `${round}: a field the viewer changed is written`);
     }
     assert.equal((await userRow(LOGIN_USER))?.gender, "Female", "the retry's own change is written");
+  });
+
+  test("a field set back to its opening value on a later Save after Link login is written, and the login's own fields still survive", async () => {
+    await seededEmptyLogin();
+    const form = await opened();
+    assert.equal(form.details.country, "Italy", "the form opens with the record row's country");
+    const sent = await offer();
+    assert.deepEqual((await link("operations lead", sent)).answer, { ok: true });
+    // The follow-up Save writes France; a move after it fails, or the drawer closes and reopens on the same form.
+    const first = { country: "France" } as const;
+    assert.deepEqual(await followUpSave(linkedLogin(form), form, first), { ok: true });
+    assert.equal((await userRow(LOGIN_USER))?.country, "France");
+    // The viewer sets the country back to what the form opened with and saves again.
+    const basis = savedOn(linkedLogin(form), typedOver(form, first));
+    assert.deepEqual(await followUpSave(basis, form, { country: "Italy" }), { ok: true });
+    const login = await userRow(LOGIN_USER);
+    assert.equal(login?.country, "Italy", "the value set back is written, not dropped behind a success");
+    assert.equal(login?.phone, "+39 333 222 2222", "the login's own phone is still neither overwritten nor cleared");
   });
 
   test("an address held by an account that has a member record keeps the refusal, naming who", async () => {
