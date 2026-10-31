@@ -197,11 +197,12 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
             {next === null ? (
               several ? (
                 <ul className={`${LIST} mt-2.5 divide-y divide-hairline`}>
-                  {seat.holders.map((h) => (
+                  {seat.holders.map((h, i) => (
                     <li key={h.id} className="flex items-center gap-3 px-3.5 py-2.5">
                       <Avatar size="md" accent person={h} />
                       <span className="min-w-0 flex-1 truncate text-[14px] text-prt-text">{h.name}</span>
-                      <RowMenu label={`Actions for ${h.name}`}>
+                      {/* The first holder's menu holds Replace, so a Save with nobody picked focuses it (issue #927). */}
+                      <RowMenu label={`Actions for ${h.name}`} name={i === 0 ? "next" : undefined}>
                         <MenuItem onSelect={() => replace(h)} icon={<RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />} detail="The others keep the seat">
                           Replace {h.name}
                         </MenuItem>
