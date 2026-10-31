@@ -64,7 +64,7 @@ function Bar({ banner, placement }: { banner: Banner; placement: Placement }) {
     if (pending !== null) return;
     setPending("stop");
     setError(null);
-    const failed = await failureOf(() => authClient.$fetch("/view-as/stop", { method: "POST" }));
+    const failed = await failureOf(() => authClient.$fetch("/view-as/stop", { method: "POST", body: {} }));
     if (failed !== null) {
       setError(viewAsFailureLine("stop", failed));
       setPending(null);
