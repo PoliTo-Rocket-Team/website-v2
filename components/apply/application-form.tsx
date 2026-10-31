@@ -160,7 +160,8 @@ export function ApplicationForm({
           <Field label="Date of birth" error={errors.dateOfBirth}>
             {(id, describedBy) => (
               <div className="relative">
-                <Calendar aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" />
+                {/* Chrome, Edge and Safari hide their own picker button under this icon; Firefox draws its own and offers no way to hide it, so there the field shows Firefox's alone (issue #895). */}
+                <Calendar aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted supports-[-moz-appearance:none]:hidden" />
                 <input
                   id={id}
                   name="dateOfBirth"
@@ -169,7 +170,7 @@ export function ApplicationForm({
                   defaultValue={defaults.dateOfBirth}
                   aria-invalid={errors.dateOfBirth !== undefined}
                   aria-describedby={describedBy}
-                  className={`${inputClass(errors.dateOfBirth)} relative pl-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0`}
+                  className={`${inputClass(errors.dateOfBirth)} relative pl-10 supports-[-moz-appearance:none]:pl-3.5 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0`}
                 />
               </div>
             )}

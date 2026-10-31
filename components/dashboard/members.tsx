@@ -19,17 +19,27 @@ export function MembersView({
   teamAddresses,
   editable,
   exportable,
+  askedDivision,
 }: {
   directory: MemberDirectory;
   aliases: MemberAliases;
   teamAddresses: MemberTeamAddresses;
   editable: boolean;
   exportable: boolean;
+  /** The division `?division=` names, chosen in the division select where the page holds it (issue #903). */
+  askedDivision: number | null;
 }) {
   const page = membersModelOf(directory);
   return page === null ? (
     <PageHeader title="Members" intro="" phone="bar" />
   ) : (
-    <ScopedMembersView page={page} aliases={aliases} teamAddresses={teamAddresses} editable={editable} exportable={exportable} />
+    <ScopedMembersView
+      page={page}
+      aliases={aliases}
+      teamAddresses={teamAddresses}
+      editable={editable}
+      exportable={exportable}
+      askedDivision={askedDivision}
+    />
   );
 }

@@ -45,7 +45,7 @@ async function bannerOf(name: string) {
   signInAs(accountOf(name).userId);
   const opening = await openDashboard();
   assert.equal(opening.kind, "open", `${name}: the dashboard opens`);
-  const page = membersModelOf(await (opening as { data: DashboardData }).data.members(null));
+  const page = membersModelOf(await (opening as { data: DashboardData }).data.members());
   assert.ok(page !== null, `${name}: the Members page opens`);
   return shownMembers(page, NO_MEMBERS_FILTER).joining.find((j) => j.joining.applicationId === JOINING)?.joining;
 }

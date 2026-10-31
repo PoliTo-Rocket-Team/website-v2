@@ -1039,14 +1039,14 @@ async function navCountsOf(identity: Identity): Promise<NavCounts> {
 /**
  * The Members page: the whole team with every member field for each
  * full-access seat, the team leader, the operations lead and the IT lead alike
- * (boards 73 to 73c, issue #418); for a division lead one of their divisions,
- * with the people waiting for Confirm NDA and the people joining it
- * (./database-team.ts). Every page opens the same Edit details panel for each
- * person the viewer may edit (issue #584), the team leader's included (Owner
- * decision, 2026-10-19, issue #444).
+ * (boards 73 to 73c, issue #418); for a division lead every division they
+ * reach (issue #903), with the people waiting for Confirm NDA and the people
+ * joining each (./database-team.ts). Every page opens the same Edit details
+ * panel for each person the viewer may edit (issue #584), the team leader's
+ * included (Owner decision, 2026-10-19, issue #444).
  */
-async function membersOf(identity: Identity, divisionId: number | null): Promise<MemberDirectory> {
-  return opensWholeTeam(identity) ? readWholeTeamMembers(identity) : readDivisionMembers(identity, divisionId);
+async function membersOf(identity: Identity): Promise<MemberDirectory> {
+  return opensWholeTeam(identity) ? readWholeTeamMembers(identity) : readDivisionMembers(identity);
 }
 
 /**
@@ -1090,7 +1090,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     hasShownApplications: () => hasShownApplications(identity),
     overview: async () => overviewOfSections(overviewSectionsOf(identity)),
     overviewSections: () => overviewSectionsOf(identity),
-    members: (divisionId) => membersOf(identity, divisionId ?? null),
+    members: () => membersOf(identity),
     findForAdd: (divisionId, query) => findForAdd(identity, divisionId, query),
     findPeople: (query) => findPeople(identity, query),
     findMoveTargets: (personId) => findMoveTargets(identity, personId),

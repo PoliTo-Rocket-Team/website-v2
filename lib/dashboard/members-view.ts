@@ -1,12 +1,13 @@
-import { departmentLine, type DepartmentMembers, type DepartmentPerson } from "./department-members";
+import { departmentLine, peopleIn, type DepartmentMembers, type DepartmentPerson } from "./department-members";
 import {
-  headcountLine,
+  headcount,
   matchesPerson,
   type DivisionHeader,
   type DivisionMembers,
   type DivisionPerson,
   type MemberPosition,
   type PersonPosition,
+  type ReachMembers,
   type WaitingPerson,
 } from "./division-members";
 import type { DivisionQueue, Joining, MemberDirectory } from "./team";
@@ -88,11 +89,9 @@ export type MembersAdd =
 
 export type MembersModel = {
   readonly tools: readonly MembersTool[];
-  /** The line under the title. */
-  readonly intro: string;
-  /** A line about what the viewer cannot change here: "Leads are changed by the Head of Aerodynamics". */
-  readonly notice: string | null;
-  /** The selects' options: only the departments and divisions the viewer's rows come from. */
+  /** The line under the title while no select narrows the page: the viewer's whole scope (`membersHeader`). */
+  readonly scopeLine: string;
+  /** The selects' options: only the departments and divisions in the viewer's scope. */
   readonly units: readonly MembersUnit[];
   /** Everyone once, heads and leads first. */
   readonly everyone: readonly MemberEntry[];
@@ -103,11 +102,6 @@ export type MembersModel = {
    * held divisions' own, and on the whole team every open division's (issue #584).
    */
   readonly queues: readonly MembersQueue[];
-  /**
-   * The other divisions a division lead reaches, each loaded as its own page
-   * (`?division=`); null when there is only one.
-   */
-  readonly switcher: { readonly current: number; readonly options: readonly { readonly id: number; readonly name: string }[] } | null;
   readonly add: MembersAdd | null;
   /** Whether the member panel offers Edit details. */
   readonly panelEdits: boolean;
@@ -140,8 +134,8 @@ export function membersModelOf(directory: MemberDirectory): MembersModel | null 
       return wholeTeamModel(directory);
     case "department":
       return departmentModel(directory);
-    case "division":
-      return divisionModel(directory);
+    case "divisions":
+      return reachModel(directory);
     case "none":
       return null;
   }
@@ -172,13 +166,11 @@ export function wholeTeamModel(
     return header === undefined ? [] : [{ header, waiting: q.waiting, joining: q.joining, editable: q.editable }];
   });
   return model({
-    intro: wholeTeamLine(page),
-    notice: null,
+    scopeLine: wholeTeamLine(page),
     units: page.departments.map((d) => ({ name: d.name, divisions: d.divisions })),
     everyone: page.people.map((p) => ({ ...p, actions: actionsOf(p) })),
     divisions: [],
     queues,
-    switcher: null,
     add: page.divisions.length === 0 ? null : { kind: "department", department: "the team", divisions: page.divisions },
     panelEdits: true,
   });
@@ -188,31 +180,76 @@ export function wholeTeamModel(
 export function departmentModel(page: DepartmentMembers): MembersModel {
   const headers = page.tabs.map((t) => t.division);
   return model({
-    intro: departmentLine(page),
-    notice: null,
+    scopeLine: departmentLine(page),
     units: [{ name: page.department.name, divisions: headers.map(unitDivision) }],
     everyone: page.everyone.map((p: DepartmentPerson) => entryOf(p, actionsOf(p))),
     divisions: page.tabs.map((tab) => sliceOf(tab)),
-    switcher: null,
     add: headers.length === 0 ? null : { kind: "department", department: page.department.name, divisions: headers },
     panelEdits: true,
   });
 }
 
-/** A division lead's page (boards 61e to 61h2): one division they reach. A grant at Can view offers no change (issue #351). */
-export function divisionModel(page: DivisionMembers): MembersModel {
-  const { division } = page;
-  const slice = sliceOf(page);
+/**
+ * A division lead's page (boards 61e to 61h2, issue #903): every division they
+ * reach, their own and every one a grant gives them, all at once, so a
+ * whole-team grant lists the whole team. A grant at Can view offers no change
+ * (issue #351).
+ */
+export function reachModel(page: ReachMembers): MembersModel {
+  const slices = page.divisions.map(sliceOf);
+  const headers = page.divisions.map((d) => d.division);
+  const addable = page.divisions.filter((d) => d.editable).map((d) => d.division);
+  const everyone = everyoneOnce(slices);
+  const [only] = slices;
   return model({
-    intro: [division.name, division.code, headcountLine(page)].filter(Boolean).join(" · "),
-    notice: division.leadsHint,
-    units: [{ name: division.department, divisions: [unitDivision(division)] }],
-    everyone: slice.people,
-    divisions: [slice],
-    switcher: page.divisions.length > 1 ? { current: division.id, options: page.divisions } : null,
-    add: page.editable ? { kind: "division", division } : null,
-    panelEdits: page.editable,
+    scopeLine: slices.length === 1 && only !== undefined ? divisionLine(only.header, only.people, only.waiting.length) : `Your divisions · ${peopleIn(everyone.length, slices.length)}`,
+    units: unitsOf(headers),
+    everyone,
+    divisions: slices,
+    add: addOf(addable),
+    panelEdits: addable.length > 0,
   });
+}
+
+/** The departments and divisions of `headers`, each department once, in the order they first come. */
+function unitsOf(headers: readonly DivisionHeader[]): MembersUnit[] {
+  return [...new Set(headers.map((h) => h.department))].map((name) => ({
+    name,
+    divisions: headers.filter((h) => h.department === name).map(unitDivision),
+  }));
+}
+
+/** Add member on a lead's page: the one division they may add to, a choice where they may add to several, or none. */
+function addOf(divisions: readonly DivisionHeader[]): MembersAdd | null {
+  const [first] = divisions;
+  if (first === undefined) return null;
+  if (divisions.length === 1) return { kind: "division", division: first };
+  const departments = new Set(divisions.map((d) => d.department));
+  return { kind: "department", department: departments.size === 1 ? first.department : "the team", divisions };
+}
+
+/**
+ * Everyone in the held divisions once, as the first division that may change
+ * them lists them (else the first that lists them): leads first, then by
+ * division and name, as a department head's page orders them.
+ */
+function everyoneOnce(slices: readonly MembersDivision[]): MemberEntry[] {
+  const rows = new Map<number, { readonly entry: MemberEntry; readonly at: number }>();
+  slices.forEach((slice, at) => {
+    for (const entry of slice.people) {
+      const held = rows.get(entry.id);
+      if (held === undefined || (held.entry.actions === null && entry.actions !== null)) rows.set(entry.id, { entry, at });
+    }
+  });
+  return [...rows.values()]
+    .sort((a, b) => Number(b.entry.role === "division-lead") - Number(a.entry.role === "division-lead") || a.at - b.at || a.entry.name.localeCompare(b.entry.name))
+    .map((r) => r.entry);
+}
+
+/** "Mission Analysis Division · MA · 2 leads, 7 members": a division as the table lists it, those waiting included. */
+function divisionLine(division: Pick<DivisionHeader, "id" | "name" | "code">, people: readonly MemberEntry[], waiting: number): string {
+  const leads = people.filter((p) => p.divisions.some((d) => d.divisionId === division.id && d.role === "lead")).length;
+  return [division.name, division.code, headcount(leads, people.length + waiting)].filter(Boolean).join(" · ");
 }
 
 function unitDivision(d: DivisionHeader): MembersUnit["divisions"][number] {
@@ -268,6 +305,40 @@ export type MembersFilter = {
 };
 
 export const NO_MEMBERS_FILTER: MembersFilter = { department: null, divisionId: null, query: "" };
+
+/**
+ * Where the selects start (issue #903): on the division `asked` names
+ * (`?division=`) and its department, where the scope holds it; on the one
+ * division a one-division scope holds, so the selects name it and never read
+ * "All …"; else on "All …", which is the viewer's whole scope.
+ */
+export function startingFilter(page: Pick<MembersModel, "units">, asked: number | null): MembersFilter {
+  const held = page.units.flatMap((u) => u.divisions.map((d) => ({ department: u.name, divisionId: d.id })));
+  const start = held.find((d) => d.divisionId === asked) ?? (held.length === 1 ? held[0] : undefined);
+  return start === undefined ? NO_MEMBERS_FILTER : { ...start, query: "" };
+}
+
+/** The line under the title and the notice under the selects, for what the selects leave. */
+export type MembersHeader = {
+  readonly intro: string;
+  /** What the viewer cannot change in the division shown: "Leads are changed by the Head of Aerodynamics". */
+  readonly notice: string | null;
+};
+
+/**
+ * The header for what the table shows (issue #903): the viewer's whole scope
+ * while no select narrows it, else the chosen department or division, counted
+ * as the selects leave it. The search does not change it.
+ */
+export function membersHeader(page: MembersModel, filter: Pick<MembersFilter, "department" | "divisionId">): MembersHeader {
+  const shown = shownMembers(page, { ...filter, query: "" });
+  const held = page.divisions.length === 1 ? page.divisions[0] : page.divisions.find((d) => d.header.id === shown.division?.id);
+  const notice = held?.header.leadsHint ?? null;
+  if (shown.division !== null) return { intro: divisionLine(shown.division, shown.people, shown.waiting.length), notice };
+  const unit = page.units.find((u) => u.name === filter.department);
+  if (unit !== undefined) return { intro: `${unit.name} Department · ${peopleIn(shown.people.length, unit.divisions.length)}`, notice };
+  return { intro: page.scopeLine, notice };
+}
 
 /** The division select's options: every division of the chosen department, or of every department when none is chosen. */
 export function divisionOptions(units: readonly MembersUnit[], department: string | null): MembersUnit["divisions"] {

@@ -1,7 +1,7 @@
 import type { positionTypeEnum } from "@/db/schema/public";
 import { academicYearStart, shortAcademicYearLabel } from "@/lib/about/academic-year-copy";
 import type { DepartmentMembers } from "./department-members";
-import type { DivisionMembers, PersonPosition, WaitingPerson } from "./division-members";
+import type { PersonPosition, ReachMembers, WaitingPerson } from "./division-members";
 import type { WholeTeamMembers } from "./team-members";
 import type { FlaggedSeat } from "./viewer";
 
@@ -434,9 +434,9 @@ export type DivisionQueue = {
 /**
  * Who a viewer's Members page lists: the whole team with every member field
  * for each full-access seat, the team leader, the operations lead and the IT
- * lead alike (boards 73 to 73c, issues #252 and #418); one division for a
- * division lead, with every division they are in and what the lead may do to
- * each (boards 61e to 61h2, issue #231); every division of the department for
+ * lead alike (boards 73 to 73c, issues #252 and #418); every division a
+ * division lead reaches, all at once, with what the lead may do to each
+ * (boards 61e to 61h2, issues #231 and #903); every division of the department for
  * its head (boards 69 to 69c, issue #235); and nothing for anyone else. On
  * the whole team, `positions` holds what the one Edit details panel may
  * change for each person the viewer may edit (`positionsOf`), and `queues`
@@ -450,7 +450,7 @@ export type MemberDirectory =
       /** The members whose sign-in email the viewer may correct in Edit details (issue #741, ./sign-in-email.ts). */
       readonly correctsSignInEmail: readonly number[];
     } & WholeTeamMembers)
-  | ({ readonly scope: "division" } & DivisionMembers)
+  | ({ readonly scope: "divisions" } & ReachMembers)
   | ({ readonly scope: "department" } & DepartmentMembers)
   | { readonly scope: "none" };
 
