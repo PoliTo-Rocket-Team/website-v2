@@ -24,7 +24,7 @@ const member = (divisionId: number) => inDivisions([{ divisionId, role: "member"
 /** A team-level seat's placement, from its role row: flagged as `flag`, or a further seat (null). */
 const seat = (roleId: number, title: string, flag: BoardFlag | null, since = "2024-10-01"): RosterEntry["placement"] => ({
   role: "board",
-  seat: { roleId, title, flag, since },
+  seat: { roleId, title, flag, type: "core", since },
   memberships: NO_MEMBERSHIPS,
 });
 const head = (departmentId: number, title: string): RosterEntry["placement"] => ({ role: "head", departmentId, title, memberships: NO_MEMBERSHIPS });

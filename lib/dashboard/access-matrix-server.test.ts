@@ -2985,7 +2985,7 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
     const leader = await openAs("team leader");
     const tree = (await leader.teamTree()).board.map((b) => [b.person.id, b.title]);
     assert.deepEqual(tree.at(-1), [EXTRA.mover, "Safety Officer"], "after the flagged seats on the Team tree");
-    const structure = (await leader.teamStructure())?.board.map((s) => [s.holder.id, s.title, s.flag]);
+    const structure = (await leader.teamStructure())?.board.map((s) => [s.holders[0].id, s.title, s.flag]);
     assert.deepEqual(structure?.at(-1), [EXTRA.mover, "Safety Officer", null], "and on Edit team tree's seat row");
     const arc = teamBuildOf(await databaseTeamRoles()).arc.map((l) => [l.person.id, l.role]);
     assert.deepEqual(arc.at(-1), [EXTRA.mover, "Safety Officer"], "and on the public Team page's arc");
@@ -3139,7 +3139,7 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
     await seedFixture();
     const rows = async (name: string) => {
       const structure = await (await openAs(name)).teamStructure();
-      return { board: structure?.board.map((s) => [s.roleId, s.holder.id, s.title]), editable: structure?.departmentsEditable };
+      return { board: structure?.board.map((s) => [s.roleId, s.holders.map((h) => h.id), s.title]), editable: structure?.departmentsEditable };
     };
     const leader = await rows("team leader");
     const head = await rows("department head");

@@ -117,6 +117,16 @@ export type NewHolderRow = {
 export type HolderAddPlan = { readonly seat: Seat; readonly holders: readonly number[]; readonly row: NewHolderRow };
 
 /**
+ * Why someone on the team cannot be added to a seat `holders` hold, or null:
+ * they hold this exact seat already (issue #837). The one refusal Add another
+ * holder's picker shows before save (issue #869) and `addedHolder` gives on
+ * the server, so the two never differ.
+ */
+export function holderAddRefusal(person: { readonly id: number; readonly name: string }, holders: readonly number[]): string | null {
+  return holders.includes(person.id) ? `${person.name} holds this seat now.` : null;
+}
+
+/**
  * The rule every seat shares once the actor may add a holder: the person is
  * on the team and does not hold this exact seat already. Any other seat,
  * role and division they hold stays (Owner decision, issue #837), and every
@@ -134,6 +144,7 @@ export function addedHolder(input: {
   const person = team.find((p) => p.id === add.personId);
   if (person === undefined) return { ok: false, error: "They are not on the team." };
   const holders = holdersOfSeat(seat, active, org);
-  if (holders.includes(person.id)) return { ok: false, error: `${person.name} holds this seat now.` };
+  const refusal = holderAddRefusal(person, holders);
+  if (refusal !== null) return { ok: false, error: refusal };
   return { ok: true, value: { seat, holders, row: { ...row, personId: person.id } } };
 }

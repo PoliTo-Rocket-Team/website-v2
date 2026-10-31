@@ -5,7 +5,16 @@ import Link from "next/link";
 import { Check, Lock, Pencil, Plus } from "lucide-react";
 import type { DivisionMembers, WaitingPerson } from "@/lib/dashboard/division-members";
 import { divisionLabel, matchesQuery } from "@/lib/dashboard/team";
-import { editViewIntro, type StructureDepartment, type StructureDivision, type StructureLeader, type StructurePerson, type StructureSeat, type TeamStructure } from "@/lib/dashboard/team-structure";
+import {
+  editViewIntro,
+  type Holders,
+  type StructureDepartment,
+  type StructureDivision,
+  type StructureLeader,
+  type StructurePerson,
+  type StructureSeat,
+  type TeamStructure,
+} from "@/lib/dashboard/team-structure";
 import { Avatar } from "./avatar";
 import { DepartmentDrawer, type DepartmentDrawerTarget } from "./department-drawers";
 import { SearchField } from "./search-field";
@@ -31,11 +40,12 @@ import { TeamLeaderDrawer } from "./team-leader-drawer";
 // department (77e) and its Close department step (77f); Add department opens
 // New department (77d). Done returns to the tree. There is no closed-divisions
 // list: a closed division never opens again. The Team Leader box opens "Hand
-// over your role" (77i, issue #253) for the team leader alone; it is locked
-// for everyone else, the operations lead and the IT lead included. Under it,
-// the seat row (issue #627): a box per team-level seat that opens Change
-// holder, and Add seat at its end, for the team leader and full access; a head
-// sees the same seat boxes, which open nothing.
+// over your role" (77i, issue #253) for a team leader; for full access it
+// opens Add another holder (issue #869), and it is locked for everyone else.
+// Under it, the seat row (issue #627): a box per team-level seat that opens
+// Change holder and Add another holder, and Add seat at its end, for the team
+// leader and full access; a head sees the same seat boxes, which open
+// nothing. A seat with several holders (epic #861) names each in its box.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const BOX = `relative block w-full rounded-xl border px-3 py-2.5 text-left transition-colors duration-300 ease-out ${FOCUS}`;
@@ -151,8 +161,14 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
       {structure.departmentsEditable && <DepartmentDrawer target={department} structure={structure} onClose={() => setDepartment(null)} onTarget={setDepartment} />}
       {structure.departmentsEditable && <SeatDrawer target={seat} structure={structure} onClose={() => setSeat(null)} />}
       <EditDetailsDrawer target={editing} onClose={() => setEditing(null)} />
-      {structure.leader?.handsOver && (
-        <TeamLeaderDrawer key={handOver.round} open={handOver.open} leader={structure.leader} onClose={() => setHandOver((h) => ({ ...h, open: false }))} />
+      {structure.leader && opensLeader(structure.leader, structure.departmentsEditable) && (
+        <TeamLeaderDrawer
+          key={handOver.round}
+          open={handOver.open}
+          leader={structure.leader}
+          addsHolder={structure.departmentsEditable}
+          onClose={() => setHandOver((h) => ({ ...h, open: false }))}
+        />
       )}
     </DrawerPage>
   );
@@ -191,7 +207,7 @@ function StructureCanvas({
   // The seat row (issue #627): a box per team-level seat, built like the Team Leader box, then Add seat where the viewer may add one.
   const seats: { key: string; node: ReactNode }[] = structure.board.map((s) => ({
     key: `s${s.roleId}`,
-    node: <SeatBox seat={s} editable={structure.departmentsEditable} found={matches(query, [s.holder.name, s.title])} onOpen={() => onSeat(s.roleId)} />,
+    node: <SeatBox seat={s} editable={structure.departmentsEditable} found={matches(query, [...s.holders.map((h) => h.name), s.title])} onOpen={() => onSeat(s.roleId)} />,
   }));
   if (structure.departmentsEditable) {
     seats.push({
@@ -251,7 +267,7 @@ function StructureCanvas({
       <div ref={row} className="md:mx-auto md:w-max">
         {leader && (
           <div className="flex flex-col items-center">
-            <LeaderBox leader={leader} found={matches(query, [leader.name])} onHandOver={onHandOver} />
+            <LeaderBox leader={leader} editable={structure.departmentsEditable} found={matches(query, leader.holders.map((h) => h.name))} onOpen={onHandOver} />
             <span aria-hidden className="hidden h-4 border-l border-border-strong md:block" />
           </div>
         )}
@@ -294,21 +310,51 @@ function Bus({ first, last }: { first: boolean; last: boolean }) {
   );
 }
 
+/** The frame the Team Leader box and the seat boxes share: 200 wide, at least 112 tall, taller for each holder past the first. */
+function seatFrame(found: boolean, yours: boolean): string {
+  return `relative flex min-h-[112px] w-[200px] flex-col items-center justify-center rounded-xl border px-3 py-3 text-center ${boxMark(found, yours)}`;
+}
+
 /**
- * A seat box on the seat row (issue #627), built like the Team Leader box:
- * the holder's name and the seat's stored title. For the team leader and full
- * access a button that opens Change holder, with a pencil; for a head it
- * opens nothing.
+ * Who holds a seat, in a Team Leader or seat box, over the seat's name: one
+ * holder's photo and name, centred; several holders one row each, their
+ * photo beside their name (epic #861, issue #869).
  */
-function SeatBox({ seat, editable, found, onOpen }: { seat: StructureSeat; editable: boolean; found: boolean; onOpen: () => void }) {
-  const frame = `relative flex h-[112px] w-[200px] flex-col items-center justify-center rounded-xl border px-3 text-center ${boxMark(found, seat.yours)}`;
-  const body = (
+function SeatHolders({ holders, caption }: { holders: Holders; caption: string }) {
+  if (holders.length === 1) {
+    const [holder] = holders;
+    return (
+      <>
+        <Avatar size="ml" accent person={holder} />
+        <span className="mt-2 max-w-full truncate text-[14px] font-semibold text-prt-text">{holder.name}</span>
+        <span className="max-w-full truncate text-[12px] text-prt-muted">{caption}</span>
+      </>
+    );
+  }
+  return (
     <>
-      <Avatar size="ml" accent person={seat.holder} />
-      <span className="mt-2 max-w-full truncate text-[14px] font-semibold text-prt-text">{seat.holder.name}</span>
-      <span className="max-w-full truncate text-[12px] text-prt-muted">{seat.title}</span>
+      <ul className="flex w-full flex-col gap-1.5 pr-4">
+        {holders.map((holder) => (
+          <li key={holder.id} className="flex min-w-0 items-center gap-2 text-left">
+            <Avatar size="sm" accent person={holder} />
+            <span className="min-w-0 truncate text-[13px] font-semibold text-prt-text">{holder.name}</span>
+          </li>
+        ))}
+      </ul>
+      <span className="mt-2 max-w-full truncate text-[12px] text-prt-muted">{caption}</span>
     </>
   );
+}
+
+/**
+ * A seat box on the seat row (issue #627), built like the Team Leader box:
+ * every holder (epic #861) and the seat's stored title. For the team leader
+ * and full access a button that opens Change holder and Add another holder,
+ * with a pencil; for a head it opens nothing.
+ */
+function SeatBox({ seat, editable, found, onOpen }: { seat: StructureSeat; editable: boolean; found: boolean; onOpen: () => void }) {
+  const frame = seatFrame(found, seat.yours);
+  const body = <SeatHolders holders={seat.holders} caption={seat.title} />;
   if (!editable) {
     return (
       <div data-found={found || undefined} className={frame}>
@@ -330,23 +376,29 @@ function SeatBox({ seat, editable, found, onOpen }: { seat: StructureSeat; edita
   );
 }
 
+/** Whether the Team Leader box opens its panel: for a team leader ("Hand over your role"), and for full access (Add another holder). */
+function opensLeader(leader: StructureLeader, editable: boolean): boolean {
+  return leader.handsOver !== null || editable;
+}
+
 /**
- * The Team Leader box (boards 77b, 77i): for the team leader a button that
- * opens "Hand over your role", with a pencil; for everyone else locked, with a
- * lock and the reason, since only the team leader hands this role over.
+ * The Team Leader box (boards 77b, 77i): every team leader (epic #861). For a
+ * team leader a button that opens "Hand over your role", and for the team
+ * leader and full access Add another holder (issue #869), with a pencil; for
+ * everyone else locked, with a lock and the reason.
  */
-function LeaderBox({ leader, found, onHandOver }: { leader: StructureLeader; found: boolean; onHandOver: () => void }) {
-  const frame = `relative flex h-[112px] w-[200px] flex-col items-center justify-center rounded-xl border px-3 text-center ${boxMark(found, leader.yours)}`;
-  const body = (
-    <>
-      <Avatar size="ml" accent person={leader} />
-      <span className="mt-2 max-w-full truncate text-[14px] font-semibold text-prt-text">{leader.name}</span>
-      <span className="text-[12px] text-prt-muted">Team Leader</span>
-    </>
-  );
-  if (leader.handsOver) {
+function LeaderBox({ leader, editable, found, onOpen }: { leader: StructureLeader; editable: boolean; found: boolean; onOpen: () => void }) {
+  const frame = seatFrame(found, leader.yours);
+  const body = <SeatHolders holders={leader.holders} caption={leader.holders.length > 1 ? "Team Leaders" : "Team Leader"} />;
+  if (opensLeader(leader, editable)) {
     return (
-      <button type="button" data-found={found || undefined} onClick={onHandOver} aria-label="Hand over your role" className={`${frame} transition-colors duration-300 ease-out hover:border-accent ${FOCUS}`}>
+      <button
+        type="button"
+        data-found={found || undefined}
+        onClick={onOpen}
+        aria-label={leader.handsOver !== null ? "Hand over your role" : "Add another Team Leader"}
+        className={`${frame} transition-colors duration-300 ease-out ${leader.yours ? "hover:border-accent" : "hover:border-border-strong"} ${FOCUS}`}
+      >
         {body}
         <PencilMark />
       </button>
@@ -385,15 +437,20 @@ function DepartmentColumn({
   // A head's view (66t-b): their own department reads normally, every other one is dimmed and read-only.
   // A lead's: the department holding a division they lead reads normally (issue #594).
   const dimmed = !editable && !department.divisionsEditable && department.divisions.every((d) => d.page === null);
-  const found = matches(query, [department.name, department.head?.name]);
+  const { heads } = department;
+  const found = matches(query, [department.name, ...heads.map((h) => h.name)]);
   const box = (
     <>
       <span className={`block truncate pr-5 font-mono text-[10px] uppercase tracking-[0.2em] ${dimmed ? "text-dim" : "text-prt-muted"}`}>{department.name}</span>
-      <BoxPerson
-        person={department.head}
-        name={department.head?.name ?? "No head"}
-        line={department.head ? `Head · ${peopleLine(department.size)}` : peopleLine(department.size)}
-      />
+      {heads.length > 1 ? (
+        <BoxPeople people={heads} line={`Heads · ${peopleLine(department.size)}`} />
+      ) : (
+        <BoxPerson
+          person={heads[0] ?? null}
+          name={heads[0]?.name ?? "No head"}
+          line={heads.length > 0 ? `Head · ${peopleLine(department.size)}` : peopleLine(department.size)}
+        />
+      )}
     </>
   );
   const frame = `${BOX} ${boxMark(found, department.yours)}`;
@@ -441,6 +498,25 @@ function BoxPerson({ person, name, line }: { person: StructurePerson | null; nam
         <span className="block truncate text-[13px] font-semibold leading-tight text-prt-text">{name}</span>
         <span className="mt-0.5 block truncate text-[12px] text-prt-muted">{line}</span>
       </span>
+    </span>
+  );
+}
+
+/**
+ * Several people a department box names, its heads (epic #861, issue #869):
+ * one row each, their photo beside their name, as `BoxPerson` sets one, and
+ * the count line once under them.
+ */
+function BoxPeople({ people, line }: { people: readonly StructurePerson[]; line: string }) {
+  return (
+    <span className="mt-1 block">
+      {people.map((person) => (
+        <span key={person.id} className="mt-1.5 flex items-center gap-2.5 first:mt-0">
+          <Avatar size="sm" accent person={person} />
+          <span className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-tight text-prt-text">{person.name}</span>
+        </span>
+      ))}
+      <span className="mt-1.5 block truncate text-[12px] text-prt-muted">{line}</span>
     </span>
   );
 }

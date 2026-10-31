@@ -45,9 +45,20 @@ export type BoardRole = {
   readonly title: string;
   /** The full-access seat its row is flagged as; null for any further team-level seat. */
   readonly flag: BoardFlag | null;
+  /** The row's type: with the stored title, it tells one unflagged seat from another (epic #861). */
+  readonly type: RoleType;
   /** `started_at`: further seats are drawn by it. */
   readonly since: string;
 };
+
+/**
+ * Which seat a team-level row is, as its holders share it (epic #861): a
+ * flagged row by its flag, any other by its type and stored title, as
+ * `seatOfTeamRow` (./seat-holders.ts) reads the rows Add another holder writes.
+ */
+export function boardSeatKey(seat: BoardRole): string {
+  return seat.flag !== null ? `flag:${seat.flag}` : `type:${seat.type ?? ""}:${seat.title}`;
+}
 
 /** "Project Manager", "Chief of Propulsion": the seat's stored title, or its default name when none is stored. */
 export function boardTitleOf(seat: BoardRole): string {
@@ -581,7 +592,7 @@ export function roleBeyondDivisions(role: RoleSeat, org: OrgChart): RoleBeyondDi
   if (role.divisionId !== null) return null;
   if (role.type === "advisor") return { kind: "advisor", departmentId: role.departmentId };
   if (role.departmentId !== null) return { kind: "department", departmentId: role.departmentId };
-  return { kind: "board", seat: { roleId: role.id, title: role.title.trim(), flag: boardFlagOf(role.fullAccess), since: role.since } };
+  return { kind: "board", seat: { roleId: role.id, title: role.title.trim(), flag: boardFlagOf(role.fullAccess), type: role.type, since: role.since } };
 }
 
 /** Whether the row is a team-level seat: what `roleBeyondDivisions` reads as `board`, by type and place alone. */

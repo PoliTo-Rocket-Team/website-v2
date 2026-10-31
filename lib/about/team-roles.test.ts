@@ -17,7 +17,7 @@ let roleIds = 0;
 /** A team-level seat's placement: flagged as `flag`, or a further seat (null), titled `title` as stored. */
 const seat = (flag: BoardFlag | null, title = flag === null ? "" : BOARD_FLAG_TITLES[flag], started = since): Placement => ({
   role: "board",
-  seat: { roleId: ++roleIds, title, flag, since: started },
+  seat: { roleId: ++roleIds, title, flag, type: "core", since: started },
   memberships: NO_MEMBERSHIPS,
 });
 const head = (departmentId: number, led: readonly number[] = [], title = ""): Placement => ({

@@ -33,7 +33,7 @@ const org: OrgChart = {
 
 const team: TeamPerson[] = [
   { id: 14, name: "Alessandro Greco", emails: ["alessandro@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "team-leader", title: "" }] },
-  { id: 1, name: "Giulia Romano", emails: ["giulia@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "board", seat: { roleId: 3, title: "Head of Operations", flag: null, since: "2024-10-01" } }] },
+  { id: 1, name: "Giulia Romano", emails: ["giulia@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "board", seat: { roleId: 3, title: "Head of Operations", flag: null, type: "core", since: "2024-10-01" } }] },
   { id: 7, name: "Sara Conti", emails: ["sara@prt.it"], memberships: membershipsOf([{ divisionId: 1, role: "member", since: "2024-10-01" }]), beyond: [] },
 ];
 

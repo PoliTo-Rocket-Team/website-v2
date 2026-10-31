@@ -54,7 +54,7 @@ const build = (actor: TeamActor | null, selfId: number | null = null) =>
 test("the team leader and full access edit every department and division, and add departments (board 77b)", () => {
   const structure = build({ kind: "team" })!;
   assert.equal(structure.departmentsEditable, true);
-  assert.equal(structure.leader?.name, "Matteo Rinaldi");
+  assert.deepEqual(structure.leader?.holders.map((h) => h.name), ["Matteo Rinaldi"]);
   assert.ok(structure.departments.every((d) => d.divisionsEditable && d.divisions.every((v) => v.page !== null)));
   assert.deepEqual(editableDivisionIds({ kind: "team" }, org), [1, 2, 3, 4]);
 });
@@ -126,32 +126,75 @@ test("only the viewer's own boxes are marked theirs: the leader's for the leader
 
 test("each box counts its people once: the head and someone in two divisions count once in a department", () => {
   const [aero, structures] = build({ kind: "team" })!.departments;
-  assert.equal(aero.head?.name, "Chiara Ferri");
-  assert.deepEqual(aero.head?.divisions, ["Mission Analysis"]);
+  assert.deepEqual(aero.heads.map((h) => [h.name, h.divisions]), [["Chiara Ferri", ["Mission Analysis"]]]);
   assert.equal(aero.size, 1 + 3, "Chiara, then Marco, Sara and Paolo");
   const mission = aero.divisions[0];
   assert.deepEqual([mission.lead?.name, mission.size, mission.openPositions], ["Marco Bianchi", 3, 2]);
   assert.deepEqual(mission.page?.waiting.map((w) => w.email), ["new@x.it"], "Close division reads who waits for their NDA");
-  assert.equal(structures.head, null);
+  assert.deepEqual(structures.heads, []);
   assert.equal(structures.size, 2);
 });
 
 test("each box carries its person's stored photo: the leader, a seat holder, a head and a lead; null where none is stored (issue #622)", () => {
   const photo = (id: number) => `https://blob.example/members/${id}.jpg`;
-  const holder = record(7, "Luca Moretti", [], [{ kind: "board", seat: { roleId: 70, title: "", flag: "chief-engineer", since: "2024-10-01" } }]);
+  const holder = record(7, "Luca Moretti", [], [{ kind: "board", seat: { roleId: 70, title: "", flag: "chief-engineer", type: "core", since: "2024-10-01" } }]);
   const pictured = [...records, holder].map((r) => (r.id === 6 ? r : { ...r, photoUrl: photo(r.id) }));
   const structure = teamStructure({ records: pictured, org, actor: { kind: "team" }, selfId: null, seat: null, waiting: {}, joining: {}, openPositions: {} })!;
   const [aero, structures] = structure.departments;
-  assert.equal(structure.leader?.photoUrl, photo(1));
+  assert.deepEqual(structure.leader?.holders.map((h) => h.photoUrl), [photo(1)]);
   assert.deepEqual(
-    structure.board.map((s) => [s.holder.id, s.holder.photoUrl]),
-    [[7, photo(7)]],
+    structure.board.map((s) => s.holders.map((h) => [h.id, h.photoUrl])),
+    [[[7, photo(7)]]],
   );
-  assert.equal(aero.head?.photoUrl, photo(2));
+  assert.deepEqual(aero.heads.map((h) => h.photoUrl), [photo(2)]);
   assert.deepEqual(
     aero.divisions.map((v) => v.lead?.photoUrl),
     [photo(3), photo(5)],
   );
   const manufacturing = structures.divisions.find((v) => v.id === 4);
   assert.deepEqual([manufacturing?.lead?.id, manufacturing?.lead?.photoUrl], [6, null], "a lead with no stored photo carries null");
+});
+
+// Epic #861, issue #869: a seat may have several holders, and every box names each of them.
+test("several team leaders, several heads and a seat with two holders: each box names every holder (#869)", () => {
+  const board = (roleId: number, title: string, flag: "project-manager" | null, type: "core" | "lead" = "core"): RoleBeyondDivisions => ({
+    kind: "board",
+    seat: { roleId, title, flag, type, since: `2024-10-${String(roleId).padStart(2, "0")}` },
+  });
+  const several = [
+    ...records,
+    // A second team leader, a second head of Aerodynamics who is also in Optimization, and two holders of each seat.
+    record(8, "Alessia Gallo", [], [{ kind: "team-leader", title: "" }]),
+    record(9, "Bruno Esposito", [[2, "member"]], [{ kind: "head", departmentId: 1, title: "" }]),
+    record(10, "Elena Ricci", [], [board(11, "", "project-manager")]),
+    record(11, "Fabio Greco", [], [board(12, "Project Manager", "project-manager")]),
+    record(12, "Giorgia Fontana", [], [board(13, "Safety Officer", null)]),
+    record(13, "Ivo Marino", [], [board(14, "Safety Officer", null)]),
+    // Same title, another type: another seat, as the server reads it (`seatOfTeamRow`).
+    record(14, "Laura Costa", [], [board(15, "Safety Officer", null, "lead")]),
+  ];
+  const build = (selfId: number | null, seat: "team-leader" | null = null) =>
+    teamStructure({ records: several, org, actor: { kind: "team" }, selfId, seat, waiting: {}, joining: {}, openPositions: {} })!;
+  const structure = build(null);
+
+  assert.deepEqual(structure.leader?.holders.map((h) => h.name), ["Alessia Gallo", "Matteo Rinaldi"], "both team leaders, by name");
+  const [aero] = structure.departments;
+  assert.deepEqual(aero.heads.map((h) => [h.name, h.divisions]), [["Bruno Esposito", ["Optimization and Analysis"]], ["Chiara Ferri", ["Mission Analysis"]]]);
+  assert.equal(aero.size, 2 + 3, "both heads once each, then Marco, Sara and Paolo; Bruno's Optimization place does not count him twice");
+  assert.deepEqual(
+    structure.board.map((s) => [s.roleId, s.title, s.flag, s.holders.map((h) => h.name)]),
+    [
+      [11, "Project Manager", "project-manager", ["Elena Ricci", "Fabio Greco"]],
+      [13, "Safety Officer", null, ["Giorgia Fontana", "Ivo Marino"]],
+      [15, "Safety Officer", null, ["Laura Costa"]],
+    ],
+    "one box per seat, its holders in seat order; its row is the first holder's",
+  );
+
+  const second = build(8, "team-leader");
+  assert.deepEqual([second.leader?.yours, second.leader?.handsOver?.id], [true, 8], "a second team leader is marked and hands over their own role");
+  assert.deepEqual([build(1, "team-leader").leader?.handsOver?.id], [1]);
+  assert.equal(build(9).departments[0].yours, true, "a second head's department is theirs");
+  assert.deepEqual(build(13).board.map((s) => s.yours), [false, true, false], "a second holder's seat is theirs");
+  assert.equal(build(13).leader?.handsOver, null, "only a team leader hands over the role");
 });
