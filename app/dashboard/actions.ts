@@ -386,6 +386,17 @@ export async function markTeamAddressRemovalDone(removalId: number): Promise<Wri
   return result;
 }
 
+/**
+ * Mark done or Keep address on a personal PRT email removal (issue #931): the
+ * row leaves, and Mark done clears the member's PRT email.
+ */
+export async function answerPrtEmailRemoval(removalId: number, answer: unknown): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(removalId)) return refused("Unknown PRT email removal.");
+  const result = await write("overview", (data) => data.answerPrtEmailRemoval(removalId, answer));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
 /** Cancel request in the member drawer (board 94b). */
 export async function cancelAliasRequest(requestId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(requestId)) return refused("Unknown PRT email request.");

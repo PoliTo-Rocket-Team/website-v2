@@ -540,6 +540,13 @@
       "when": 1795713600000,
       "tag": "0078_sync_auth_users_skip_held_and_closed_rows",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1795800000000,
+      "tag": "0079_prt_email_removals",
+      "breakpoints": true
     }
   ]
 }

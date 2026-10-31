@@ -442,6 +442,7 @@ for (const [shape, lastRecordedTag] of [
         "logs_changed_by_acting_account_users_id_fk",
         "members_nda_confirmed_by_acting_account_users_id_fk",
         "orders_reviewed_by_acting_account_users_id_fk",
+        "prt_email_removals_answered_by_acting_account_users_id_fk",
         "scopes_given_by_acting_account_users_id_fk",
         "team_address_removals_done_by_acting_account_users_id_fk",
         "team_address_removals_removed_by_acting_account_users_id_fk",
@@ -856,4 +857,54 @@ test("0078 keeps every row, applies again, and a new login takes over a free row
     { id: "returning", email: "free@example.com", first_name: "Imported" },
     { id: "second", email: "shared@example.com", first_name: null },
   ]);
+});
+
+// Personal PRT email removals (issue #931): one new type, one new table with
+// its keys, indexes, check and audit trigger, one new function and three new
+// deferred triggers on `roles`. Nothing existing is dropped or rewritten, and
+// nobody who left before it gets a removal.
+const PRT_EMAIL_REMOVALS_TAG = "0079_prt_email_removals";
+
+test("0079_prt_email_removals.sql drops, renames and rewrites nothing, and its header links the issue", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${PRT_EMAIL_REMOVALS_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/931/);
+});
+
+test("0079 keeps every row, opens nothing for who left before it, applies again, and judges a role write as it commits", async () => {
+  const { db, apply } = await databaseBefore(PRT_EMAIL_REMOVALS_TAG);
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id, prt_email) values (1, 'one@politorocketteam.it'), (2, 'two@politorocketteam.it'), (3, null);
+    insert into roles (id, member_id, division_id, title, started_at, leaved_at, type) values
+      (1, 1, null, 'Member', '2025-10-01', null, 'core'),
+      (2, 2, null, 'Member', '2024-10-01', '2025-09-30', 'core'),
+      (3, 3, null, 'Member', '2025-10-01', null, 'core');
+    set session_replication_role = origin;
+  `);
+  const before = await db.query(`select * from roles order by id`);
+  await apply();
+  await apply();
+  assert.deepEqual((await db.query(`select * from roles order by id`)).rows, before.rows, "every role row is kept");
+  assert.deepEqual((await db.query(`select * from prt_email_removals`)).rows, [], "nobody who left before it gets one");
+  const triggers = await db.query<{ name: string }>(`select tgname as name from pg_trigger where tgrelid = 'public.roles'::regclass and tgname like 'settle_prt_email_removals%' order by 1`);
+  assert.deepEqual(
+    triggers.rows.map((r) => r.name),
+    ["settle_prt_email_removals_on_delete", "settle_prt_email_removals_on_insert", "settle_prt_email_removals_on_update"],
+  );
+  const open = async () => (await db.query(`select member_id, address, outcome from prt_email_removals order by id`)).rows;
+
+  // A hand-over to an advisor role in one write: the member still holds a role when it commits.
+  await db.exec(`begin; update roles set leaved_at = '2026-10-31' where id = 1; insert into roles (id, member_id, title, type) values (4, 1, 'Advisor', 'advisor'); commit;`);
+  assert.deepEqual(await open(), []);
+  // A member with no PRT email leaves: nothing.
+  await db.exec(`update roles set leaved_at = '2026-10-31' where id = 3`);
+  assert.deepEqual(await open(), []);
+  // The last role ends: one open removal, and a delete of an old role after it opens none.
+  await db.exec(`update roles set leaved_at = '2026-10-31' where id = 4`);
+  await db.exec(`delete from roles where id = 2`);
+  assert.deepEqual(await open(), [{ member_id: 1, address: "one@politorocketteam.it", outcome: null }]);
+  // A role started again cancels it.
+  await db.exec(`insert into roles (id, member_id, title, type) values (5, 1, 'Member', 'core')`);
+  assert.deepEqual(await open(), [{ member_id: 1, address: "one@politorocketteam.it", outcome: "cancelled" }]);
 });

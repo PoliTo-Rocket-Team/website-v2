@@ -20,6 +20,7 @@ import {
   orders,
   projects,
   projectVersions,
+  prtEmailRemovals,
   recruitmentSetting,
   roles,
   scopes,
@@ -509,6 +510,9 @@ const addTeamAddressRemoval = async () => {
     { id: TEAM_ADDRESS_REMOVAL, addressId: TEAM_ADDRESS, address: "structures@politorocketteam.it", fromMember: IDS.person(DM), removedBy: IDS.lead(DM) },
   ]);
 };
+/** An open removal of the PRT email of DM's member, as the database opens one when they leave (issue #931). */
+const PRT_EMAIL_REMOVAL = 1;
+const addPrtEmailRemoval = () => addRows(prtEmailRemovals, [{ id: PRT_EMAIL_REMOVAL, memberId: IDS.person(DM), address: "person.dm@politorocketteam.it" }]);
 const changesDM = (area: "positions" | "applications" | "members") => (r: MatrixRow) => r.expect.changes[area].includes(DM);
 const reaches = (page: Expect["pages"][number]) => (r: MatrixRow) => r.expect.pages.includes(page);
 const fullAccess = (r: MatrixRow) => r.expect.wholeTeamMembers;
@@ -770,6 +774,13 @@ const ACTION_CASES: readonly ActionCase[] = [
   {
     action: "actions.markTeamAddressRemovalDone",
     run: async () => (await addTeamAddressRemoval(), actions.markTeamAddressRemovalDone(TEAM_ADDRESS_REMOVAL)),
+    may: (r) => r.expect.aliases.answers,
+    control: by("IT lead"),
+  },
+  // Who answers a personal PRT email removal is the alias rule too (issue #931): Mark done and Keep address alike.
+  {
+    action: "actions.answerPrtEmailRemoval",
+    run: async () => (await addPrtEmailRemoval(), actions.answerPrtEmailRemoval(PRT_EMAIL_REMOVAL, "removed")),
     may: (r) => r.expect.aliases.answers,
     control: by("IT lead"),
   },
