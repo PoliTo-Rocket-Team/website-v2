@@ -1,9 +1,9 @@
-// What both migration entry points run on a database (issue #850): every
+// What every migration entry point runs on a database (issue #850): every
 // pending migration in drizzle/, then the post-migration steps, which are
 // TypeScript because no SQL may rebuild what they derive. `pnpm db:migrate`
-// (./migrate.ts) and the preview build (./preview-build.ts, under its lock)
-// call this and nothing else, so neither can run the migrations without the
-// steps. Each step changes only rows it has not filled yet, so a second run
+// (./migrate.ts) and the preview and production builds (./preview-build.ts,
+// each under its lock) call this and nothing else, so none can run the
+// migrations without the steps. Each step changes only rows it has not filled yet, so a second run
 // writes nothing.
 
 import { drizzle } from "drizzle-orm/postgres-js";

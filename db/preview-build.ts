@@ -19,6 +19,7 @@
 // never seeds or migrates.
 
 import postgres, { type Sql } from "postgres";
+import { failureLogOf } from "@/lib/seed/failure-log";
 import { appliedMigrations, journalEntries } from "@/lib/seed/journal";
 import { prepareBuildDatabase, type PreviewBuildSteps, type ProductionBuildSteps } from "@/lib/seed/preview-build";
 import { RESEED_SERVED, runReseed } from "@/lib/seed/reseed";
@@ -202,8 +203,10 @@ async function main() {
   }
 }
 
+// The raw error is never printed: it can carry a connection string
+// (lib/seed/failure-log.ts).
 main().catch((error) => {
   console.error("Build database step failed");
-  console.error(error);
+  console.error(failureLogOf(error, [process.env.DATABASE_URL, process.env.DATABASE_URL_UNPOOLED]));
   process.exit(1);
 });
