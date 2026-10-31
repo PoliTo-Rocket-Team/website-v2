@@ -1,13 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Unlink } from "lucide-react";
+import { CircleCheck, Merge, Plus, Unlink } from "lucide-react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
-import { linkErrorMessage, mayRemove, unlinkErrorMessage, type LinkedGoogleAccount } from "@/lib/dashboard/google-accounts";
+import { LINK_FAILED, mayRemove, unlinkErrorMessage, type GoogleAccountsNotice, type LinkedGoogleAccount } from "@/lib/dashboard/google-accounts";
+import { LOGIN_MERGE_REFUSAL_MESSAGES, MERGE_TICKET_STATE_KEY } from "@/lib/dashboard/login-merge";
 import { Card } from "./account-parts";
 import { ConfirmDialog } from "./confirm-dialog";
 import { GHOST_PILL } from "./page-header";
+
+/** A refusal shown in the card, with no merge to offer. */
+const refusal = (message: string): GoogleAccountsNotice => ({ tone: "refused", message, offersMerge: false });
 
 /**
  * The "Google accounts" section of My profile and My account (issue #906):
@@ -15,40 +19,70 @@ import { GHOST_PILL } from "./page-header";
  * "Add another Google account" sends them through Google's own sign-in, which
  * proves they hold it, and back to `returnTo`; Remove asks first, and the last
  * account has none (lib/dashboard/google-accounts.ts). View as draws the page
- * as the person sees it (issue #653), and the server refuses both changes
- * there; the refusal shows here. `linkError` is what Google's return said
- * went wrong, already in words; null when nothing did.
+ * as the person sees it (issue #653), and the server refuses every change
+ * there; the refusal shows here. `notice` is what the return from Google came
+ * to, already in words; null when there was none.
+ *
+ * When the added Google account already has its own login, the notice offers
+ * to merge that login (issue #907): after a confirm step, the person signs in
+ * with that Google account once more, carrying a merge ticket, and comes back
+ * here with the merge done or refused (lib/login-merge-plugin.ts).
  */
 export function GoogleAccountsCard({
   accounts: stored,
   returnTo,
-  linkError,
+  notice: returned,
 }: {
   accounts: readonly LinkedGoogleAccount[];
   returnTo: string;
-  linkError: string | null;
+  notice: GoogleAccountsNotice | null;
 }) {
   // The list lives in this card once a removal answers; nothing else on the page reads it.
   const [accounts, setAccounts] = useState(stored);
-  const [error, setError] = useState(linkError);
+  const [notice, setNotice] = useState(returned);
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<LinkedGoogleAccount | null>(null);
+  const [confirmingMerge, setConfirmingMerge] = useState(false);
   const [pending, setPending] = useState(false);
 
   const add = async () => {
     setAdding(true);
-    setError(null);
+    setNotice(null);
     try {
       // On success the browser leaves for Google; only a refusal comes back here.
       const { error: refused } = await authClient.linkSocial({ provider: "google", callbackURL: returnTo, errorCallbackURL: returnTo });
       if (refused) {
-        setError(refused.message ?? linkErrorMessage("unknown"));
+        setNotice(refusal(refused.message ?? LINK_FAILED));
         setAdding(false);
       }
     } catch {
-      setError(linkErrorMessage("unknown"));
+      setNotice(refusal(LINK_FAILED));
       setAdding(false);
     }
+  };
+
+  const merge = async () => {
+    setPending(true);
+    try {
+      const ticketed = await authClient.$fetch<{ ticket: string }>("/google-accounts/merge-ticket", { method: "POST" });
+      if (ticketed.error || !ticketed.data) {
+        setNotice(refusal(ticketed.error?.message ?? LOGIN_MERGE_REFUSAL_MESSAGES.failed));
+      } else {
+        // On success the browser leaves for Google; only a refusal comes back here.
+        const { error: refused } = await authClient.signIn.social({
+          provider: "google",
+          callbackURL: returnTo,
+          errorCallbackURL: returnTo,
+          additionalData: { [MERGE_TICKET_STATE_KEY]: ticketed.data.ticket },
+        });
+        if (!refused) return;
+        setNotice(refusal(refused.message ?? LOGIN_MERGE_REFUSAL_MESSAGES.failed));
+      }
+    } catch {
+      setNotice(refusal(LOGIN_MERGE_REFUSAL_MESSAGES.failed));
+    }
+    setConfirmingMerge(false);
+    setPending(false);
   };
 
   const remove = async () => {
@@ -96,12 +130,27 @@ export function GoogleAccountsCard({
           ))}
         </ul>
       )}
-      {error !== null && (
-        <p role="alert" className="border-t border-hairline px-5 py-3.5 text-[13px] leading-relaxed text-danger md:px-6">
-          {error}
-        </p>
+      {notice !== null && (
+        <div className="border-t border-hairline px-5 py-3.5 md:px-6">
+          {notice.tone === "done" ? (
+            <p role="status" className="flex items-start gap-2 text-[13px] leading-relaxed text-success">
+              <CircleCheck aria-hidden className="mt-[3px] h-[14px] w-[14px] shrink-0" strokeWidth={1.75} />
+              {notice.message}
+            </p>
+          ) : (
+            <p role="alert" className="text-[13px] leading-relaxed text-danger">
+              {notice.message}
+            </p>
+          )}
+          {notice.offersMerge && (
+            <button type="button" onClick={() => setConfirmingMerge(true)} className={`${GHOST_PILL} mt-3 h-10 w-full px-4 text-[14px] font-semibold md:w-auto`}>
+              <Merge aria-hidden className="h-4 w-4" strokeWidth={2} />
+              Merge that login into this account
+            </button>
+          )}
+        </div>
       )}
-      <div className={`px-5 py-4 md:px-6 ${accounts.length > 0 || error !== null ? "border-t border-hairline" : ""}`}>
+      <div className={`px-5 py-4 md:px-6 ${accounts.length > 0 || notice !== null ? "border-t border-hairline" : ""}`}>
         <button type="button" onClick={add} disabled={adding} aria-busy={adding} className={`${GHOST_PILL} h-10 w-full px-4 text-[14px] font-semibold md:w-auto`}>
           <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
           Add another Google account
@@ -118,6 +167,17 @@ export function GoogleAccountsCard({
         danger
         pending={pending}
         onConfirm={remove}
+      />
+      <ConfirmDialog
+        open={confirmingMerge}
+        onOpenChange={(open) => !pending && setConfirmingMerge(open)}
+        icon={<Merge className="h-[18px] w-[18px]" strokeWidth={1.75} />}
+        title="Merge that login into this account?"
+        description="Its applications, their files and its Google accounts move to this account, and that login is closed. A login that holds another member's record is never merged. Google asks you to sign in with that Google account to confirm it is yours."
+        cancelLabel="Not now"
+        confirmLabel="Continue to Google"
+        pending={pending}
+        onConfirm={merge}
       />
     </Card>
   );

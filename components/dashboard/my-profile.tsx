@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { DashboardLanding } from "@/lib/dashboard/access";
 import type { YourDetails } from "@/lib/dashboard/details";
+import type { GoogleAccountsNotice } from "@/lib/dashboard/google-accounts";
 import {
   checkPhoto,
   DELETE_MEMBER_ACCOUNT_COPY,
@@ -48,13 +49,13 @@ type Actions = {
 export function MyProfileView({
   profile,
   alias = null,
-  linkError = null,
+  googleAccountsNotice = null,
   ...actions
 }: {
   profile: MyProfile;
   alias?: OwnAlias | null;
-  /** What went wrong adding a Google account, in words, when Google sent the person back with an error (issue #906). */
-  linkError?: string | null;
+  /** What the return from Google came to, in words: a refused link (issue #906) or a merge's outcome (issue #907). */
+  googleAccountsNotice?: GoogleAccountsNotice | null;
 } & Actions) {
   const router = useRouter();
   return (
@@ -79,7 +80,7 @@ export function MyProfileView({
           }}
         />
         <AccountCard signIn={profile.signIn} />
-        <GoogleAccountsCard accounts={profile.googleAccounts} returnTo="/dashboard/profile" linkError={linkError} />
+        <GoogleAccountsCard accounts={profile.googleAccounts} returnTo="/dashboard/profile" notice={googleAccountsNotice} />
         <LeaveOrDelete
           leave={profile.leave}
           handOver={profile.handOver}

@@ -6,11 +6,13 @@ import { admin } from "better-auth/plugins/admin";
 import { getDb } from "@/db/client";
 import { breakGlassSignInOf, readBreakGlassEmails, type BreakGlassSignIn } from "@/lib/break-glass";
 import { recordGoogleAccountChange } from "@/lib/dashboard/database-google-accounts";
+import { mergeLogin } from "@/lib/dashboard/database-login-merge";
 import { recordBreakGlassSignIn } from "@/lib/dashboard/database-sign-in";
 import { recordViewAs, viewAsRefusal } from "@/lib/dashboard/database-view-as";
 import { devTesterPlugin, type TesterDirectory } from "@/lib/dev-tester-plugin";
 import { testerSignInOn } from "@/lib/dev-tester";
 import { googleAccountDatabaseHooks, googleAccountsPlugin, type GoogleAccountLog } from "@/lib/google-accounts-plugin";
+import { loginMergePlugin, type LoginMerger } from "@/lib/login-merge-plugin";
 import { impersonatorOf } from "@/lib/session-user";
 import {
   VIEW_AS_ACCESS,
@@ -68,10 +70,13 @@ const databaseSignIns: SignInLog = { record: recordBreakGlassSignIn };
 /** Where each link and unlink of a Google account is logged (issue #906). */
 const databaseGoogleAccounts: GoogleAccountLog = { record: recordGoogleAccountChange };
 
+/** Where an empty second login is judged and merged (issue #907). */
+const databaseLogins: LoginMerger = { merge: mergeLogin };
+
 /**
  * getAuth() over any database adapter; tests pass an in-memory one, and may
- * pass a View as gate, a tester directory, a sign-in log and a Google account
- * log that read no database.
+ * pass a View as gate, a tester directory, a sign-in log, a Google account
+ * log and a login merger that read no database.
  */
 export function createAuth(
   database: BetterAuthOptions["database"],
@@ -79,6 +84,7 @@ export function createAuth(
   testers: TesterDirectory = databaseTesters,
   signIns: SignInLog = databaseSignIns,
   googleAccounts: GoogleAccountLog = databaseGoogleAccounts,
+  logins: LoginMerger = databaseLogins,
 ) {
   return betterAuth({
     baseURL: authBaseUrl as string,
@@ -154,6 +160,9 @@ export function createAuth(
       }),
       viewAsPlugin(viewAs),
       googleAccountsPlugin(googleAccounts),
+      // A Google account another login holds merges that login in when it
+      // is empty (issue #907), over the same Google sign-in and redirect URI.
+      loginMergePlugin(logins),
       // Tester sign-in as any seeded person (issues #129, #608, #653): registered under `next dev` and
       // on a preview of the shared `preview` database only, so production
       // and every other environment keep the plugins above alone.

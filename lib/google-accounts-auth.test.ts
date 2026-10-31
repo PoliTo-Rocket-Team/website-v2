@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { GOOGLE_ACCOUNT_REFUSAL_MESSAGES, type GoogleAccountEntry } from "./dashboard/google-accounts";
+import { LOGIN_MERGE_REFUSAL_MESSAGES, MERGE_TICKET_STATE_KEY } from "./dashboard/login-merge";
 import { BASE, envRestorer, Jar, ORIGIN, SEAT_DIRECTORY, seededMemoryDb, setEnv, TEST_ENV, type MemoryDb } from "./dev-tester-fixture";
 import { ONLY_THROUGH_GOOGLE_SIGN_IN, type GoogleAccountLog } from "./google-accounts-plugin";
+import type { LoginMerger } from "./login-merge-plugin";
 import { seatOf } from "./seeded-accounts";
 import type { ViewAsGate } from "./view-as-plugin";
 
@@ -52,6 +54,30 @@ function standInGoogle(accounts: Map<string, Google>): void {
   }) as typeof fetch;
 }
 
+/** A merge the stand-in merger was asked for (issue #907). */
+type MergeRequest = Parameters<LoginMerger["merge"]>[0];
+
+/**
+ * The database's merge as the test plays it: it refuses a login named in
+ * `holdsMember`, as one that holds a member record, and otherwise moves the
+ * merged login's accounts to the login that asked and ends its sessions, as
+ * lib/dashboard/database-login-merge.ts does (lib/dashboard/login-merge-server.test.ts
+ * runs that one on the migrated database).
+ */
+function standInMerger(db: MemoryDb, requests: MergeRequest[], holdsMember: Set<string>): LoginMerger {
+  return {
+    merge: async (request) => {
+      requests.push(request);
+      if (request.viewingAs) return { kind: "refused", refusal: "view-as" };
+      if (request.userId === request.fromUserId) return { kind: "refused", refusal: "self" };
+      if (holdsMember.has(request.fromUserId)) return { kind: "refused", refusal: "member" };
+      for (const account of db.account) if (account.userId === request.fromUserId) account.userId = request.userId;
+      db.session = db.session.filter((session) => session.userId !== request.fromUserId);
+      return { kind: "merged", email: "merged@example.com" };
+    },
+  };
+}
+
 async function setUp() {
   setEnv({ ...TEST_ENV, AUTH_GOOGLE_ID: "test-client-id", AUTH_GOOGLE_SECRET: "test-client-secret", NODE_ENV: "development", VERCEL_ENV: undefined });
   const google = new Map<string, Google>([
@@ -62,9 +88,11 @@ async function setUp() {
   const entries: GoogleAccountEntry[] = [];
   const log: GoogleAccountLog = { record: async (entry) => void entries.push(entry) };
   const db = seededMemoryDb();
+  const merges: MergeRequest[] = [];
+  const holdsMember = new Set<string>();
   const { createAuth } = await import("./auth");
-  const auth = createAuth(memoryAdapter(db), OPEN_GATE, SEAT_DIRECTORY, undefined, log);
-  return { auth, db, google, entries };
+  const auth = createAuth(memoryAdapter(db), OPEN_GATE, SEAT_DIRECTORY, undefined, log, standInMerger(db, merges, holdsMember));
+  return { auth, db, google, entries, merges, holdsMember };
 }
 
 type Auth = Awaited<ReturnType<typeof setUp>>["auth"];
@@ -218,4 +246,97 @@ test("inside View as, linking and removing are refused before Better Auth acts, 
   }
   assert.deepEqual(rowsOf(db, MEMBER.id).map((a) => a.accountId), [FIRST.sub]);
   assert.deepEqual(entries, []);
+});
+
+// Merging an empty second login (issue #907) ---------------------------------------
+
+/** A Google account whose first sign-in made a login of its own, with nothing on it. */
+const EMPTY: Google = { sub: "google-empty", email: "empty.login@example.com" };
+
+/** The login the browser's session is on now; null when it has none. */
+async function whoIs(auth: Auth, jar: Jar): Promise<string | null> {
+  const read = (await (await auth.handler(new Request(`${BASE}/get-session`, { headers: jar.headers() }))).json()) as { user?: { id: string } } | null;
+  return read?.user?.id ?? null;
+}
+
+/** A merge ticket for the login the browser is signed in to. */
+async function ticketFor(auth: Auth, jar: Jar): Promise<string> {
+  const answer = await post(auth, jar, "/google-accounts/merge-ticket", {});
+  assert.equal(answer.status, 200);
+  return ((await answer.json()) as { ticket: string }).ticket;
+}
+
+/** The merge's Google trip, as the section starts it: a Google sign-in carrying `ticket`, as the account `code` names; answers where the person lands. */
+async function mergeTrip(auth: Auth, jar: Jar, code: string, ticket: string): Promise<string> {
+  const started = await post(auth, jar, "/sign-in/social", {
+    provider: "google",
+    callbackURL: "/dashboard/profile",
+    errorCallbackURL: "/dashboard/profile",
+    additionalData: { [MERGE_TICKET_STATE_KEY]: ticket },
+  });
+  assert.equal(started.status, 200);
+  return returnFromGoogle(auth, jar, started, code);
+}
+
+const sessionsOf = (db: MemoryDb, userId: string) => db.session.filter((s) => s.userId === userId).length;
+
+test("adding a Google account an empty login holds merges that login: the person stays on their own login, and that Google account then signs in to it", async () => {
+  const { auth, db, google, merges } = await setUp();
+  google.set("empty", EMPTY);
+  const empty = await signInWithGoogle(auth, "empty");
+  assert.notEqual(empty.userId, MEMBER.id);
+  const { jar } = await signInWithGoogle(auth, "first");
+  assert.equal(await link(auth, jar, "empty"), "/dashboard/profile?error=account_already_linked_to_different_user", "Better Auth refuses it on its own");
+
+  assert.equal(await mergeTrip(auth, jar, "empty", await ticketFor(auth, jar)), "/dashboard/profile?google_merge=merged");
+  assert.deepEqual(merges, [{ userId: MEMBER.id, fromUserId: empty.userId, viewingAs: false }]);
+  assert.equal(await whoIs(auth, jar), MEMBER.id, "still signed in as themselves");
+  assert.equal(sessionsOf(db, empty.userId), 0, "the merged login's sessions ended, the one the trip opened too");
+  assert.equal((await signInWithGoogle(auth, "empty")).userId, MEMBER.id, "the merged Google account signs in to their own login");
+});
+
+test("a login that holds another member's record is refused: the person stays on their own login, and nothing moves", async () => {
+  const { auth, db, google, holdsMember } = await setUp();
+  google.set("other", { sub: "google-other", email: OTHER.email });
+  const other = await signInWithGoogle(auth, "other");
+  holdsMember.add(other.userId);
+  const { jar } = await signInWithGoogle(auth, "first");
+  const before = sessionsOf(db, other.userId);
+
+  assert.equal(await mergeTrip(auth, jar, "other", await ticketFor(auth, jar)), "/dashboard/profile?google_merge=member");
+  assert.equal(await whoIs(auth, jar), MEMBER.id);
+  assert.deepEqual(rowsOf(db, other.userId).map((a) => a.accountId), ["google-other"]);
+  assert.equal(sessionsOf(db, other.userId), before, "the session the trip opened on that login ended");
+});
+
+test("a merge ticket holds once, and only for the login that asked for it", async () => {
+  const { auth, google, merges } = await setUp();
+  google.set("empty", EMPTY);
+  await signInWithGoogle(auth, "empty");
+  const asker = await signInWithGoogle(auth, "first");
+  google.set("other", { sub: "google-other", email: OTHER.email });
+  const stranger = await signInWithGoogle(auth, "other");
+
+  const strangers = await ticketFor(auth, stranger.jar);
+  assert.equal(await mergeTrip(auth, asker.jar, "empty", strangers), "/dashboard/profile?google_merge=expired", "another login's ticket");
+  assert.equal(await whoIs(auth, asker.jar), MEMBER.id);
+
+  const own = await ticketFor(auth, asker.jar);
+  assert.equal(await mergeTrip(auth, asker.jar, "empty", own), "/dashboard/profile?google_merge=merged");
+  google.set("empty-again", { sub: "google-empty-again", email: "empty.again@example.com" });
+  await signInWithGoogle(auth, "empty-again");
+  assert.equal(await mergeTrip(auth, asker.jar, "empty-again", own), "/dashboard/profile?google_merge=expired", "a spent ticket");
+  assert.equal(merges.length, 1, "only the one ticket that held reached the merge");
+  assert.equal(await whoIs(auth, asker.jar), MEMBER.id);
+});
+
+test("inside View as, no merge ticket is given", async () => {
+  const { auth } = await setUp();
+  await signInWithGoogle(auth, "first");
+  const jar = new Jar();
+  jar.take(await auth.handler(new Request(`${BASE}/dev-tester/sign-in?tester=${ACTING.key}`)));
+  assert.equal((await post(auth, jar, "/admin/impersonate-user", { userId: MEMBER.id })).status, 200);
+  const refused = await post(auth, jar, "/google-accounts/merge-ticket", {});
+  assert.equal(refused.status, 403);
+  assert.equal(((await refused.json()) as { message: string }).message, LOGIN_MERGE_REFUSAL_MESSAGES["view-as"]);
 });
