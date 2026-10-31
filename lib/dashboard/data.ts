@@ -18,7 +18,6 @@ import type { CreatedPosition } from "./new-position";
 import type { ApplicationsPage, PositionsPage } from "./recruitment";
 import type { YourDetails } from "./details";
 import type { AddLookup, DetailsTarget } from "./division-members";
-import type { DetailsSaved } from "./sign-in-email";
 import type { TeamSearch } from "./division-edit";
 import type { MoveLookup } from "./member-move";
 import type { TeamStructure } from "./team-structure";
@@ -499,17 +498,11 @@ export interface TeamWrites {
    * Edit details or Fill details (board 61g, issue #584): the details of
    * anyone the viewer may edit, and the title in `divisionId`, which they
    * must reach and the person be in; null for someone in no division the
-   * viewer reaches (a seat), whose title is not set here. A corrected sign-in
-   * email an empty login already holds writes nothing and answers the offer
-   * Link login confirms (issue #860).
+   * viewer reaches (a seat), whose title is not set here. A changed sign-in
+   * email lands in the same batch, moving the member record onto another
+   * login where it must (issue #864, ./sign-in-email.ts).
    */
-  saveMemberDetails(target: DetailsTarget, divisionId: number | null, input: unknown): Promise<WriteResult<DetailsSaved>>;
-  /**
-   * Link login (issue #860): an empty login takes the member record its
-   * offer names, in one audited batch, and the row the record leaves is
-   * closed. Full access only; refused when either row changed since.
-   */
-  linkLogin(input: unknown): Promise<WriteResult<null>>;
+  saveMemberDetails(target: DetailsTarget, divisionId: number | null, input: unknown): Promise<WriteResult<null>>;
   /** The photo in Edit details, for anyone the viewer may edit: a square JPEG under 500 KB, or null to remove it. */
   setMemberPhoto(personId: number, photo: Upload | null): Promise<WriteResult<null>>;
   /**

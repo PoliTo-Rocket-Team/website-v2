@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, Link2, Lock, Mail, MailX, Upload, UserMinus, UserPlus, X } from "lucide-react";
+import { AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, Lock, Mail, MailX, Upload, UserMinus, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { addMember, findForAdd, linkLogin, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
-import { loginLinkQuestion, type LoginLinkOffer } from "@/lib/dashboard/sign-in-email";
+import { addMember, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
 import { cancelAliasRequest, removeTeamAddress, requestAlias, requestTeamAddress } from "@/app/dashboard/actions";
 import { ALIAS_FORM_HINT, aliasPrefill, checkAliasAddress, personalRequestChoice, TEAM_DOMAIN, type MemberAlias } from "@/lib/dashboard/alias-request";
 import type { Permission } from "@/lib/dashboard/team";
@@ -25,16 +24,12 @@ import {
   checkAddMember,
   checkMemberEdit,
   checkMemberPhoto,
-  linkedLogin,
-  saveInputOn,
-  savedOn,
-  SHOWN_ROW,
   type AddLookup,
   type AddMemberErrors,
   type DivisionHeader,
   type DivisionPerson,
+  type LandedSent,
   type MemberPosition,
-  type SaveBasis,
   type TeamMatch,
   type WaitingPerson,
 } from "@/lib/dashboard/division-members";
@@ -986,7 +981,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   const waiting = target.kind === "waiting" ? target.waiting : null;
   const name = person?.name ?? waiting?.name ?? waiting?.email ?? "";
   const email = person?.signInEmail ?? waiting?.email ?? "";
-  // Full access corrects a mistyped sign-in email while no sign-in account holds it (issue #741); the server sets the flag.
+  // Full access changes a member's sign-in email in one Save (issues #741, #864); the server sets the flag.
   const correctsEmail = target.kind === "person" ? target.actions.correctsSignInEmail : target.waiting.correctsSignInEmail;
   const title = position?.title ?? null;
   // The division whose role title the form sets: the waiting person's, or the person's titled one; none for a seat.
@@ -1024,10 +1019,9 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   const [asking, setAsking] = useState<Asking | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
-  // An empty login already holds the corrected email: Save asks to link it, then saves again (issue #860).
-  const [linkOffer, setLinkOffer] = useState<{ readonly offer: LoginLinkOffer; readonly answer: HeadMoveAnswer | null } | null>(null);
-  // The row Save writes onto: once Link login lands, every later Save of this form, a retry included, sends what that row was last given.
-  const [basis, setBasis] = useState<SaveBasis>(SHOWN_ROW);
+  // What this form's last Save wrote, once one did: a retry then writes only what changed since, so a record
+  // that Save moved onto another login keeps that login's own fields (issue #864).
+  const [landed, setLanded] = useState<LandedSent | null>(null);
 
   const setName = (key: keyof PersonName, value: string) => {
     setNames((n) => (n === null ? n : { ...n, [key]: value }));
@@ -1041,20 +1035,21 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   })[0];
 
   /** The details as Save sends them: a moved place's title goes with its move, so the details keep the one it had. */
-  const checkedDetails = (on: SaveBasis = basis) => {
+  const checkedDetails = () => {
     // The sign-in email is sent only when corrected, so a save that leaves it as shown asks for no correction.
     const corrected = correctsEmail && signInEmail.trim().toLowerCase() !== email.toLowerCase();
-    const input = saveInputOn(on, {
+    const input = {
       title: titledMove === null ? draft.title : (startTitle ?? ""),
       details: detailsOf(draft),
       ...names,
       ...(corrected ? { signInEmail } : {}),
-    });
+      ...(landed === null ? {} : { landed }),
+    };
     return { input, checked: checkMemberEdit(input, title?.kind === "seat" && titledMove === null ? "required" : "optional") };
   };
 
-  const save = async (answer: HeadMoveAnswer | null, on: SaveBasis = basis) => {
-    const { input, checked } = checkedDetails(on);
+  const save = async (answer: HeadMoveAnswer | null) => {
+    const { input, checked } = checkedDetails();
     if (!checked.ok) return setErrors(checked.errors);
     setPending(true);
     try {
@@ -1064,16 +1059,10 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         input,
       );
       if (!result.ok) {
-        if ("offer" in result) {
-          setConfirming(false);
-          setLinkOffer({ offer: result.offer, answer });
-          return;
-        }
         toast.error("Could not save the details", { description: result.error });
         return;
       }
-      // The details landed: the next Save of this form, a retry or one after reopening it, compares with what was just sent.
-      setBasis(savedOn(on, { details: checked.value.details, ...(checked.value.name ?? {}) }));
+      setLanded({ details: checked.value.details, ...(checked.value.name ?? {}) });
       for (const place of person === null ? [] : places) {
         const choice = choiceFor(place);
         const to = moveToOf(place, choice, departments);
@@ -1109,32 +1098,6 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
     } finally {
       setPending(false);
     }
-  };
-
-  /** Link login: the empty login takes the record, then Save runs again, now on an address that row already holds. */
-  const link = async () => {
-    if (linkOffer === null) return;
-    const { offer, answer } = linkOffer;
-    setPending(true);
-    try {
-      const linked = await linkLogin({ memberId: offer.memberId, fromUserId: offer.fromUserId, loginUserId: offer.loginUserId, email: offer.email });
-      setLinkOffer(null);
-      if (!linked.ok) {
-        toast.error("Could not link the login", { description: linked.error });
-        return;
-      }
-    } catch (err) {
-      setLinkOffer(null);
-      toast.error("Could not link the login", { description: err instanceof Error ? err.message : "Please try again." });
-      return;
-    } finally {
-      setPending(false);
-    }
-    // The record now sits on the login's row: this Save and every one after it send what the form opened with,
-    // so only the fields the viewer changed overwrite that row's own, a retry after a failed Save included.
-    const onLogin = linkedLogin({ details: person?.details ?? NO_MEMBER_DETAILS, ...(position?.name ?? {}) });
-    setBasis(onLogin);
-    await save(answer, onLogin);
   };
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
@@ -1334,49 +1297,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
           onConfirm={(answer) => void save(answer)}
         />
       )}
-      {linkOffer !== null && (
-        <LinkLoginConfirm offer={linkOffer.offer} member={name} pending={pending} onCancel={() => setLinkOffer(null)} onConfirm={() => void link()} />
-      )}
     </>
-  );
-}
-
-/**
- * The confirmation Save opens when the corrected sign-in email is an empty
- * login's (issue #860): that login first signed in with no team record, and
- * Link login gives it this member's record. Cancel keeps the form as it is.
- */
-function LinkLoginConfirm({
-  offer,
-  member,
-  pending,
-  onCancel,
-  onConfirm,
-}: {
-  offer: LoginLinkOffer;
-  member: string;
-  pending: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  const { title, description } = loginLinkQuestion(offer, member, new Date().getFullYear());
-  return (
-    <ConfirmDialog
-      open
-      onOpenChange={(next) => !next && onCancel()}
-      icon={<Link2 className="h-5 w-5" strokeWidth={1.75} />}
-      title={title}
-      description={
-        <>
-          <p>{description}</p>
-          <p className="mt-2">They see their own dashboard the next time they sign in with it. Their old account, which never signed in, is closed.</p>
-        </>
-      }
-      cancelLabel="Cancel"
-      confirmLabel="Link login"
-      pending={pending}
-      onConfirm={onConfirm}
-    />
   );
 }
 

@@ -1,28 +1,41 @@
 import { opensWholeTeam } from "./members-view";
 import type { ViewerStanding } from "./viewer";
-import { shortDate } from "./write";
 
-// Correcting a sign-in email in Edit details and Fill details (Owner
-// decision, 2026-10-25, issue #741). Someone added with a mistyped address is
-// never linked to their sign-in: the `sync_auth_users` trigger
-// (drizzle/0001) links a new sign-in account to the `public.users` row with
-// the same address. Full access may correct that address, and only on a user
-// row no sign-in account holds yet, so the address an account signs in with,
-// which identity and access read, is never changed here.
+// Changing a sign-in email in Edit details and Fill details. Someone added
+// with a mistyped address is never linked to their sign-in: the
+// `sync_auth_users` trigger (drizzle/0001) links a new sign-in account to the
+// `public.users` row with the same address, so a wrong stored address can
+// even hand the member's record to a stranger who signs in with it. Full
+// access may change the address (Owner decision, 2026-10-25, issue #741), in
+// one plain Save with no confirmation step (Owner decision, 2026-10-31,
+// issue #864):
 //
-// When the corrected address already signed in on its own, that first
-// sign-in made a second user row with no member record. Full access may then
-// link that login to the member instead (Owner decision, 2026-10-30, issue
-// #860): the member record moves onto the login's row, and the row it leaves,
-// which no sign-in ever held, is closed.
+// - When a sign-in account holds the member's user row, or another login
+//   with no member record already holds the new address, the member record
+//   moves off that row (`RecordMove`). The row it leaves is detached, and a
+//   login on it is signed out at once: every session of it ends.
+// - Otherwise the row keeps the record and takes the new address, so the
+//   person lands on it at their first sign-in.
+//
+// The address a sign-in account signs in with, in `better_auth."user"`, is
+// never changed here.
 
 /**
- * Whether `viewer` may correct the sign-in email of a person whose user row
- * is `linked` to a sign-in account: full access only, by the Members export's
- * whole-team rule (`mayExportMembers`), and never once they sign in.
+ * Whose sign-in email this is: a member's, on the user row that holds their
+ * member record, or the one of someone waiting for Confirm NDA, whose user
+ * row holds no record yet.
  */
-export function correctsSignInEmail(viewer: ViewerStanding, linked: boolean): boolean {
-  return opensWholeTeam(viewer) && !linked;
+export type SignInEmailOwner = "member" | "waiting";
+
+/**
+ * Whether `viewer` may change the sign-in email of `owner`, whose user row is
+ * `linked` to a sign-in account: full access only, by the Members export's
+ * whole-team rule (`mayExportMembers`). A member's always, since the record
+ * can move off a login; someone waiting's only before they sign in, since
+ * they hold no record to move.
+ */
+export function correctsSignInEmail(viewer: ViewerStanding, owner: SignInEmailOwner, linked: boolean): boolean {
+  return opensWholeTeam(viewer) && (owner === "member" || !linked);
 }
 
 export const SIGN_IN_EMAIL_REFUSALS = {
@@ -30,6 +43,7 @@ export const SIGN_IN_EMAIL_REFUSALS = {
   signedIn: "They already sign in with this email, so it cannot be changed here.",
   taken: "Someone else on the team already uses this email.",
   noUser: "Their sign-in email could not be found.",
+  changed: "Something changed since this opened. Close it and save again.",
 } as const;
 
 /** The refusal for an address another user row holds, naming who when the row has a name. */
@@ -37,7 +51,7 @@ export function takenBy(name: string | null): string {
   return name === null ? SIGN_IN_EMAIL_REFUSALS.taken : `${name} already uses this email.`;
 }
 
-/** The user row a correction is aimed at, as stored. */
+/** The user row a change is aimed at, as stored. */
 export type SignInEmailRow = {
   readonly id: string;
   readonly email: string;
@@ -50,13 +64,11 @@ export type SignInEmailRow = {
 /** Another user row that holds an address, as stored. */
 export type EmailHolderRow = {
   readonly userId: string;
-  /** The address the row holds, as stored. */
-  readonly email: string;
   /** Their first and last name on the row; null when it has none. */
   readonly name: string | null;
   readonly member: number | null;
-  /** The day (YYYY-MM-DD, team time) its sign-in account was made, which is its first sign-in; null when no sign-in account holds it. */
-  readonly firstSignIn: string | null;
+  /** Whether a sign-in account holds the row. */
+  readonly linked: boolean;
   /** Whether the row was closed (`users.deleted_at`). */
   readonly deleted: boolean;
   /** Whether the row waits for Confirm NDA in a division, which makes it a member when it lands. */
@@ -66,55 +78,50 @@ export type EmailHolderRow = {
 };
 
 /**
- * The day an empty login first signed in: a sign-in account on an open row
- * with no member record, not waiting to join and not a break-glass account.
- * Null for any other row: a link is offered for an empty login only.
+ * Whether the row is an empty login: a sign-in account on an open row with
+ * no member record, not waiting to join and not a break-glass account. Only
+ * an empty login may take a member record.
  */
-export function emptyLoginSince(holder: EmailHolderRow): string | null {
-  if (holder.member !== null || holder.deleted || holder.waiting || holder.breakGlass) return null;
-  return holder.firstSignIn;
+export function isEmptyLogin(holder: EmailHolderRow): boolean {
+  return holder.linked && holder.member === null && !holder.deleted && !holder.waiting && !holder.breakGlass;
 }
 
-/** What Edit details offers when the corrected address is an empty login: everything the confirmation names and the link checks again. */
-export type LoginLinkOffer = {
+/**
+ * Where a moving member record lands: the empty login that already holds the
+ * new address, or a new user row with no sign-in account that holds it, which
+ * the sync trigger links at that address's first sign-in.
+ */
+export type RecordDestination = { readonly kind: "login"; readonly userId: string } | { readonly kind: "new-row" };
+
+/**
+ * A member record moving off the user row `from` because its sign-in email
+ * changed. The row it leaves no longer holds the record. When a sign-in
+ * account holds that row, the row stays open as that login's own and every
+ * session of it ends; when none does, the row is closed (`deleted_at`),
+ * never deleted.
+ */
+export type RecordMove = {
   readonly memberId: number;
-  /** The member's user row now, which no sign-in account holds. */
-  readonly fromUserId: string;
-  /** The empty login's user row. */
-  readonly loginUserId: string;
+  readonly from: { readonly userId: string; readonly linked: boolean };
+  readonly to: RecordDestination;
+  /** The new sign-in email, trimmed and lower case. */
   readonly email: string;
-  /** The day (YYYY-MM-DD) the login first signed in. */
-  readonly firstSignIn: string;
 };
 
-/** The confirmation Link login opens with (issue #860): the question, and when the login first signed in. */
-export function loginLinkQuestion(offer: LoginLinkOffer, memberName: string, thisYear: number): { readonly title: string; readonly description: string } {
-  return {
-    title: `Link that login to ${memberName}?`,
-    description: `${offer.email} already signed in on ${shortDate(offer.firstSignIn, thisYear)} with no team record.`,
-  };
-}
-
-/** What Save reads when an empty login holds the address and nothing was written: shown only where the offer is not. */
-export const LINK_OFFERED = "This email already signs in with no team record.";
-
-/** What Edit details' Save comes to: saved, or nothing written and an empty login offered to Link login. */
-export type DetailsSaved = { readonly kind: "saved" } | { readonly kind: "link-offered"; readonly offer: LoginLinkOffer };
-
-/** What a sent correction comes to: nothing to write, the one write, an empty login to link, or a refusal. */
+/** What a sent change comes to: nothing to write, the address written on the row, the record moved, or a refusal. */
 export type SignInEmailCorrection =
   | { readonly kind: "unchanged" }
   | { readonly kind: "write"; readonly userId: string; readonly email: string }
-  | { readonly kind: "link"; readonly offer: LoginLinkOffer }
+  | { readonly kind: "move"; readonly move: RecordMove }
   | { readonly kind: "refused"; readonly error: string };
 
 /**
- * The correction `sent` (already checked by `checkMemberEdit`, so trimmed and
+ * The change `sent` (already checked by `checkMemberEdit`, so trimmed and
  * lower case) asks for on `row`. `holders` are the other user rows that hold
  * the address, compared case-insensitively. Sending the address the row
- * already holds changes nothing, so it is allowed to anyone. An address one
- * empty login alone holds is offered as a link for a member; any other holder
- * refuses, naming who.
+ * already holds changes nothing, so it is allowed to anyone. A member's
+ * record moves onto an address one empty login alone holds, and off a row a
+ * sign-in account holds; any other holder refuses, naming who.
  */
 export function planSignInEmailCorrection(
   viewer: ViewerStanding,
@@ -126,53 +133,14 @@ export function planSignInEmailCorrection(
   if (row === null) return { kind: "refused", error: SIGN_IN_EMAIL_REFUSALS.noUser };
   if (row.email.trim().toLowerCase() === sent) return { kind: "unchanged" };
   if (!opensWholeTeam(viewer)) return { kind: "refused", error: SIGN_IN_EMAIL_REFUSALS.notFullAccess };
-  if (row.linked) return { kind: "refused", error: SIGN_IN_EMAIL_REFUSALS.signedIn };
+  if (row.member === null && row.linked) return { kind: "refused", error: SIGN_IN_EMAIL_REFUSALS.signedIn };
   const [holder, ...others] = holders;
-  if (holder === undefined) return { kind: "write", userId: row.id, email: sent };
-  const since = others.length === 0 ? emptyLoginSince(holder) : null;
-  if (since === null || row.member === null) {
-    const named = holders.find((h) => emptyLoginSince(h) === null) ?? holder;
-    return { kind: "refused", error: takenBy(named.name) };
-  }
-  return { kind: "link", offer: { memberId: row.member, fromUserId: row.id, loginUserId: holder.userId, email: sent, firstSignIn: since } };
-}
-
-export const LOGIN_LINK_REFUSALS = {
-  notFullAccess: "Only full access may link a login.",
-  changed: "Something changed since this opened. Close it and save again.",
-} as const;
-
-/** The link Link login sends back: the offer's three ids and the address the confirmation named. */
-export type LoginLinkRequest = Pick<LoginLinkOffer, "memberId" | "fromUserId" | "loginUserId" | "email">;
-
-/** The request in `input`, as Link login sends it; null for anything else. */
-export function checkLoginLink(input: unknown): LoginLinkRequest | null {
-  if (typeof input !== "object" || input === null) return null;
-  const { memberId, fromUserId, loginUserId, email } = input as Record<string, unknown>;
-  if (!Number.isInteger(memberId) || (memberId as number) <= 0) return null;
-  if (typeof fromUserId !== "string" || fromUserId === "" || typeof loginUserId !== "string" || loginUserId === "" || fromUserId === loginUserId) return null;
-  if (typeof email !== "string" || email.trim() === "") return null;
-  return { memberId: memberId as number, fromUserId, loginUserId, email: email.trim().toLowerCase() };
-}
-
-/**
- * Whether Link login may still land on what the database reads now: full
- * access, the member's row still `from` with no sign-in, and the login still
- * an empty one holding the address the confirmation named. The write checks
- * the stored facts again inside its batch.
- */
-export function planLoginLink(
-  viewer: ViewerStanding,
-  request: LoginLinkRequest,
-  from: SignInEmailRow | null,
-  login: EmailHolderRow | null,
-): { readonly kind: "link"; readonly request: LoginLinkRequest } | { readonly kind: "refused"; readonly error: string } {
-  if (!opensWholeTeam(viewer)) return { kind: "refused", error: LOGIN_LINK_REFUSALS.notFullAccess };
-  const fromHolds = from !== null && from.id === request.fromUserId && from.member === request.memberId && !from.linked;
-  const loginEmpty =
-    login !== null &&
-    login.userId === request.loginUserId &&
-    login.email.trim().toLowerCase() === request.email &&
-    emptyLoginSince(login) !== null;
-  return fromHolds && loginEmpty ? { kind: "link", request } : { kind: "refused", error: LOGIN_LINK_REFUSALS.changed };
+  const moving = (to: RecordDestination, memberId: number): SignInEmailCorrection => ({
+    kind: "move",
+    move: { memberId, from: { userId: row.id, linked: row.linked }, to, email: sent },
+  });
+  if (holder === undefined) return row.member !== null && row.linked ? moving({ kind: "new-row" }, row.member) : { kind: "write", userId: row.id, email: sent };
+  if (row.member !== null && others.length === 0 && isEmptyLogin(holder)) return moving({ kind: "login", userId: holder.userId }, row.member);
+  const named = holders.find((h) => !isEmptyLogin(h)) ?? holder;
+  return { kind: "refused", error: takenBy(named.name) };
 }

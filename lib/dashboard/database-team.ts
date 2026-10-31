@@ -46,6 +46,7 @@ import {
   lookupForAdd,
   positionsOf,
   SEAT_TITLE_REQUIRED,
+  shownEditOf,
   type AddLookup,
   type AddStanding,
   type DetailsTarget,
@@ -120,10 +121,11 @@ import {
 import { refreshAfter } from "@/lib/cache-tags";
 import { mayChangePositionIn } from "./position-access";
 import { readsRecruitmentIn } from "./application-documents";
-import { readTeamSnapshot, recordsOf, seatsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
+import { editorViewOf, readTeamSnapshot, recordsOf, seatsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
-import { correctsSignInEmail, SIGN_IN_EMAIL_REFUSALS, type DetailsSaved } from "./sign-in-email";
-import { correctionWrites, linkLogin, planCorrection, signedIn } from "./database-sign-in-email";
+import { correctsSignInEmail, SIGN_IN_EMAIL_REFUSALS } from "./sign-in-email";
+import { correctionWrites, planCorrection, signedIn } from "./database-sign-in-email";
+import { isGuardFailure } from "@/lib/db-guard";
 
 // The Members page's reads and writes on the database (Dashboard v2 boards 59
 // to 59e, issue #172; boards 61e to 61h2, issue #231): who is in the lead's
@@ -390,7 +392,7 @@ function waitingPerson(identity: DashboardIdentity, row: WaitingRow): WaitingPer
   return {
     joinId: row.join_id,
     email: row.email,
-    correctsSignInEmail: correctsSignInEmail(identity, row.linked),
+    correctsSignInEmail: correctsSignInEmail(identity, "waiting", row.linked),
     name: [row.first_name, row.last_name].filter(Boolean).join(" ") || null,
     title: row.title,
     details: waitingDetails(row),
@@ -553,11 +555,11 @@ export async function readWholeTeamMembers(identity: DashboardIdentity): Promise
   };
 }
 
-/** The members whose sign-in email the viewer may correct in Edit details (issue #741): none unless full access, and never one who signs in. */
+/** The members whose sign-in email the viewer may change in Edit details (issues #741, #864): every member for full access, none for anyone else. */
 async function readSignInEmailCorrectable(identity: DashboardIdentity): Promise<number[]> {
-  if (!correctsSignInEmail(identity, false)) return [];
+  if (!correctsSignInEmail(identity, "member", true)) return [];
   const rows = await getDb().select({ member: users.member, linked: signedIn }).from(users).where(isNotNull(users.member));
-  return rows.flatMap((r) => (r.member !== null && correctsSignInEmail(identity, r.linked) ? [r.member] : []));
+  return rows.flatMap((r) => (r.member !== null && correctsSignInEmail(identity, "member", r.linked) ? [r.member] : []));
 }
 
 /** Add member's field (boards 61h, 69c): the team, searched by name or email, and who is waiting here. */
@@ -1091,17 +1093,15 @@ async function saveMemberDetails(
   target: DetailsTarget,
   divisionId: number | null,
   input: unknown,
-): Promise<WriteResult<DetailsSaved>> {
+): Promise<WriteResult<null>> {
   const checked = checkMemberEdit(input);
   if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
-  const { title, name: sentName, signInEmail } = checked.value;
-  // What the viewer changed, when the form says what it opened with (Save after Link login, issue #860); else all it sent.
-  const edited = editedFields(checked.value);
-  const columns = columnsFromMemberDetails(edited.details);
+  const { title, details, name, signInEmail } = checked.value;
+  const columns = columnsFromMemberDetails(details);
 
   if (target.kind === "waiting") {
     // Someone waiting keeps the name they were added with; only Edit details renames, once they are on the team.
-    if (sentName !== null) return refused("Their name is set once they join.");
+    if (name !== null) return refused("Their name is set once they join.");
     if (divisionId === null || (await actingOn(identity, divisionId)) === null) return refused(NOT_IN_SCOPE);
     const [join] = await getDb()
       .select({ user_id: teamJoins.userId })
@@ -1111,17 +1111,17 @@ async function saveMemberDetails(
     if (!join) return refused("They are not waiting to join this division.");
     const correction = await planCorrection(identity, signInEmail, eq(users.id, join.user_id));
     if (correction.kind === "refused") return refused(correction.error);
-    // Someone waiting holds no member record, so no link is ever planned for them.
-    if (correction.kind === "link") return refused(SIGN_IN_EMAIL_REFUSALS.taken);
+    // Someone waiting holds no member record, so no move is ever planned for them.
     await runAuditBatch((db) => [
       db.update(teamJoins).set({ title, ...columns.member }).where(eq(teamJoins.id, target.joinId)),
       db.update(users).set({ ...columns.user, updatedAt: sql`now()` }).where(eq(users.id, join.user_id)),
       ...correctionWrites(db, correction),
     ]);
-    return written({ kind: "saved" });
+    return written(null);
   }
 
-  const { org } = await readTeamSnapshot();
+  const snapshot = await readTeamSnapshot();
+  const { org } = snapshot;
   const actor = await readActor(identity, org);
   const active = await rolesTheViewerChanges(identity, actor, target.id);
   if (actor === null || active === null) return refused(NOT_IN_SCOPE);
@@ -1138,26 +1138,36 @@ async function saveMemberDetails(
   }
   const correction = await planCorrection(identity, signInEmail, eq(users.member, target.id));
   if (correction.kind === "refused") return refused(correction.error);
-  // The address is an empty login's: nothing is written, and Edit details asks to link it (issue #860).
-  if (correction.kind === "link") return written({ kind: "link-offered", offer: correction.offer });
-  await runAuditBatch((db) => [
-    db
-      .update(users)
-      .set({ ...columns.user, ...edited.name, updatedAt: sql`now()` })
-      .where(eq(users.member, target.id)),
-    ...(Object.keys(columns.member).length === 0 ? [] : [db.update(members).set(columns.member).where(eq(members.memberId, target.id))]),
-    ...(titled.length === 0
-      ? []
-      : [
-          db
-            .update(roles)
-            .set({ title: title ?? "" })
-            .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
-        ]),
-    ...correctionWrites(db, correction),
-  ]);
+  // The record can move onto a login whose own fields the form never showed (issue #864), so the user columns written are
+  // only those the viewer changed: on the Save that moves it, against the record's row as the form showed it; on a retry
+  // of the same open form, against what its last Save wrote. The members row never moves.
+  const opened = correction.kind === "move" ? editorViewOf(snapshot, target.id) : null;
+  const edited = editedFields(checked.value, opened === null ? checked.value.landed : shownEditOf(opened.details, opened.name));
+  const userColumns = { ...columnsFromMemberDetails(edited.details).user, ...edited.name };
+  try {
+    // The change lands before the user row's details: after a move, they are written onto the row that now holds the record (issue #864).
+    await runAuditBatch((db) => [
+      db.update(members).set(columns.member).where(eq(members.memberId, target.id)),
+      ...correctionWrites(db, correction),
+      db
+        .update(users)
+        .set({ ...userColumns, updatedAt: sql`now()` })
+        .where(eq(users.member, target.id)),
+      ...(titled.length === 0
+        ? []
+        : [
+            db
+              .update(roles)
+              .set({ title: title ?? "" })
+              .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
+          ]),
+    ]);
+  } catch (error) {
+    if (isGuardFailure(error)) return refused(SIGN_IN_EMAIL_REFUSALS.changed);
+    throw error;
+  }
   done();
-  return written({ kind: "saved" });
+  return written(null);
 }
 
 /** The photo in Edit details (board 61g): a square JPEG under 500 KB in the public store, or none; for anyone the viewer may edit. */
@@ -1953,11 +1963,6 @@ export function databaseTeamWrites(
     removeFromDivision: (personId, divisionId) => removeFromDivision(identity, personId, divisionId),
     moveMember: (input) => moveMember(identity, input),
     saveMemberDetails: (target, divisionId, input) => saveMemberDetails(identity, target, divisionId, input),
-    linkLogin: async (input) => {
-      const linked = await linkLogin(identity, input);
-      if (linked.ok) done();
-      return linked;
-    },
     setMemberPhoto: (personId, photo) => setMemberPhoto(identity, personId, photo),
     createDivision: (departmentId, input) => createDivision(identity, departmentId, input),
     saveDivision: (divisionId, input) => saveDivision(identity, divisionId, input),
