@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, Lock, Mail, MailX, Upload, UserMinus, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
@@ -65,7 +65,7 @@ import { ConfirmDialog, SHEET_BUTTONS, SHEET_CANCEL, SHEET_CONTENT, SHEET_OVERLA
 import { Drawer, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { fieldSummaryOf, type FormSummary, type SummaryField } from "@/lib/dashboard/error-summary";
 import { focusField } from "./error-summary";
-import { Field, inputClass, LOCKED_INPUT } from "./field";
+import { Field, GroupLabel, inputClass, LOCKED_INPUT } from "./field";
 import { PersonCombobox } from "./person-combobox";
 import { Toggle } from "./controls";
 import { EYEBROW, GHOST_PILL } from "./page-header";
@@ -189,12 +189,15 @@ export function PersonDrawer<P extends PanelPerson>({
   person,
   alias,
   teamAddresses,
+  googleEmails,
   movesWith,
   editable,
   onClose,
   onEdit,
 }: {
   person: P | null;
+  /** The other Google accounts they sign in with, as the page read them for this viewer (issue #908); empty for none. */
+  googleEmails: readonly string[];
   /** Their email alias, their PRT email, as the viewer sees it (epic #538, issue #563); null when it was not read. */
   alias: MemberAlias | null;
   /**
@@ -256,6 +259,7 @@ export function PersonDrawer<P extends PanelPerson>({
               movesWith={movesWith}
             />
             <Fact label="Personal email" value={p.signInEmail} copy="Email" wrap stack />
+            <GoogleEmailsFact emails={googleEmails} />
             <Fact label="Phone" value={memberDetailText(d, "phone")} hidden />
             <Fact label="Discord" value={memberDetailText(d, "discord")} copy="Discord" />
             <Fact label="LinkedIn" value={memberDetailText(d, "linkedin")} />
@@ -307,6 +311,33 @@ function AddressText({ address }: { address: string }) {
       <wbr />
       <span className="whitespace-nowrap">{address.slice(at)}</span>
     </span>
+  );
+}
+
+/**
+ * The other Google accounts a member signs in with (issue #908), under the
+ * personal email, which stays the one sign-in address: one per line with its
+ * copy button, as the PRT emails row lists its addresses. Left out when they
+ * have none.
+ */
+function GoogleEmailsFact({ emails }: { emails: readonly string[] }) {
+  if (emails.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-start gap-x-3 md:flex-nowrap">
+      <dt className={`${factLabel(true)} md:py-1`}>Also signs in with</dt>
+      <dd className="min-w-0 flex-1">
+        <ul className="flex w-full flex-col gap-1">
+          {emails.map((email) => (
+            <li key={email} className="flex items-start gap-x-3">
+              <span className="min-w-0 flex-1 py-1">
+                <AddressText address={email} />
+              </span>
+              <CopyButton value={email} what="Email" />
+            </li>
+          ))}
+        </ul>
+      </dd>
+    </div>
   );
 }
 
@@ -834,7 +865,12 @@ function SpecialRequestForm({
  * to join a division (Fill details).
  */
 export type EditTarget =
-  | { readonly kind: "person"; readonly actions: MemberActions }
+  | {
+      readonly kind: "person";
+      readonly actions: MemberActions;
+      /** The other Google accounts they sign in with, as the Members page read them (issue #908); empty for none. */
+      readonly googleEmails: readonly string[];
+    }
   | { readonly kind: "waiting"; readonly waiting: WaitingPerson; readonly division: DivisionHeader };
 
 type Draft = Record<MemberDetailKey, string> & { title: string };
@@ -961,6 +997,30 @@ function DetailInput({
   );
 }
 
+/**
+ * Edit details' other Google accounts (issue #908): under the personal email,
+ * which stays the one sign-in email and the only one Save may correct, each
+ * account locked on its own line, since only the member adds or removes them
+ * (My profile's Google accounts). Left out when they have none.
+ */
+function GoogleEmailsField({ emails }: { emails: readonly string[] }) {
+  const labelId = useId();
+  if (emails.length === 0) return null;
+  return (
+    <div role="group" aria-labelledby={labelId} className="min-w-0 sm:col-span-2">
+      <GroupLabel id={labelId} label="Also signs in with" hint="linked Google accounts" />
+      <ul className="flex flex-col gap-2">
+        {emails.map((email) => (
+          <li key={email} className={LOCKED_INPUT}>
+            <span className="min-w-0 flex-1 truncate">{email}</span>
+            <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** Edit details' Contact details in the order it shows them; the sign-in email sits after the PRT email. */
 const CONTACT_DETAILS: readonly MemberDetailKey[] = ["prtEmail", "phone", "discord", "linkedin"];
 /** Its Studies and Personal details, in order. */
@@ -1042,6 +1102,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   const waiting = target.kind === "waiting" ? target.waiting : null;
   const name = person?.name ?? waiting?.name ?? waiting?.email ?? "";
   const email = person?.signInEmail ?? waiting?.email ?? "";
+  const googleEmails = target.kind === "person" ? target.googleEmails : [];
   // Full access changes a member's sign-in email in one Save (issues #741, #864); the server sets the flag.
   const correctsEmail = target.kind === "person" ? target.actions.correctsSignInEmail : target.waiting.correctsSignInEmail;
   const title = position?.title ?? null;
@@ -1416,6 +1477,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
                 )
               }
             </Field>
+            <GoogleEmailsField emails={googleEmails} />
             <DetailInput name="phone" draft={draft} errors={errors} set={set} />
             <DetailInput name="discord" draft={draft} errors={errors} set={set} />
             <DetailInput name="linkedin" draft={draft} errors={errors} set={set} className="sm:col-span-2" />

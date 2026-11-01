@@ -1182,6 +1182,49 @@ test("0081 strips the secret keys from stored Better Auth log rows, keeps every 
   assert.equal(await definition(), function_, "a second run leaves the trigger function as it was");
 });
 
+// The Google account's email on each linked account (epic #902, issue #906):
+// one nullable column and a fill from the login's own email, with the audit
+// trigger off for the fill alone so no token is copied into `logs`. The fill
+// is the one statement that changes rows, so the file is pinned to it.
+const ACCOUNT_EMAIL_TAG = "0085_account_google_email";
+
+test("0085_account_google_email.sql adds the nullable email column and fills it, and nothing else", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${ACCOUNT_EMAIL_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), [
+    `UPDATE "better_auth"."account" SET "email" = "user"."email" FROM "better_auth"."user" WHERE "user"."id" = "account"."userId" AND "account"."email" IS NULL`,
+  ]);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/902/);
+});
+
+test("0085 fills each existing account's email from its login, copies no token into logs, keeps every other value and applies again", async () => {
+  const { db, apply } = await databaseBefore(ACCOUNT_EMAIL_TAG);
+  await db.exec(`
+    insert into better_auth."user" (id, name, email, "emailVerified") values ('u-1', 'Sara Conti', 'sara@example.com', true), ('u-2', 'Luca Neri', 'luca@example.com', true);
+    insert into better_auth.account (id, "accountId", "providerId", "userId", "accessToken", "refreshToken", "idToken", "updatedAt") values
+      ('a-1', 'g-1', 'google', 'u-1', 'access-1', 'refresh-1', 'id-1', now()),
+      ('a-2', 'g-2', 'google', 'u-2', 'access-2', null, 'id-2', now());
+  `);
+  const columns = `id, "accountId", "providerId", "userId", "accessToken", "refreshToken", "idToken", scope, "createdAt", "updatedAt"`;
+  const before = await db.query(`select ${columns} from better_auth.account order by id`);
+  const logs = async () => (await db.query<{ n: number }>(`select count(*)::int as n from public.logs`)).rows[0].n;
+  const logged = await logs();
+  await apply();
+  await db.exec(`update better_auth.account set email = 'kept@example.com' where id = 'a-2'`);
+  const afterEdit = await logs();
+  await apply();
+  assert.deepEqual((await db.query(`select id, email from better_auth.account order by id`)).rows, [
+    { id: "a-1", email: "sara@example.com" },
+    { id: "a-2", email: "kept@example.com" },
+  ], "the fill reads the login's email, and a second run leaves an email already set");
+  assert.deepEqual((await db.query(`select ${columns} from better_auth.account order by id`)).rows, before.rows, "no other value changes");
+  assert.equal(afterEdit, logged + 1, "the fill logged nothing; the audit trigger is on again after it");
+  assert.equal(await logs(), afterEdit, "the second run logged nothing either");
+  const column = await db.query(
+    `select data_type, is_nullable from information_schema.columns where table_schema = 'better_auth' and table_name = 'account' and column_name = 'email'`,
+  );
+  assert.deepEqual(column.rows, [{ data_type: "text", is_nullable: "YES" }]);
+});
+
 // A first sign-in finds its imported record whatever the letter case or stray
 // spaces (issue #920, https://github.com/PoliTo-Rocket-Team/website-v2/issues/920):
 // the sign-in sync matches `lower(trim(email))`, as the session repair does,

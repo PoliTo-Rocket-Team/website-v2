@@ -10,7 +10,8 @@ import {
   type ReachMembers,
   type WaitingPerson,
 } from "./division-members";
-import type { DivisionQueue, Joining, MemberDirectory } from "./team";
+import type { MemberGoogleEmails } from "./google-accounts";
+import type { DivisionQueue, Joining, ListedGoogleEmails, MemberDirectory } from "./team";
 import type { MemberTeamAddresses } from "./team-address";
 import { wholeTeamLine, withPicks, type ColumnPicks, type TeamMember, type WholeTeamMembers } from "./team-members";
 import type { ViewerStanding } from "./viewer";
@@ -105,7 +106,18 @@ export type MembersModel = {
   readonly add: MembersAdd | null;
   /** Whether the member panel offers Edit details. */
   readonly panelEdits: boolean;
+  /**
+   * The linked Google emails of the people listed (issue #908): the member
+   * panel and Edit details show them beside the sign-in email, and the search
+   * matches them. Read with the page, so only its viewers get them.
+   */
+  readonly googleEmails: MemberGoogleEmails;
 };
+
+/** The linked Google emails the page holds for one person, beside their sign-in email; none when they have no other. */
+export function googleEmailsOf(page: Pick<MembersModel, "googleEmails">, personId: number): readonly string[] {
+  return page.googleEmails[personId] ?? [];
+}
 
 /**
  * Whether the viewer's Members page is the whole team: true for every
@@ -151,11 +163,12 @@ export function membersModelOf(directory: MemberDirectory): MembersModel | null 
  * (Owner decision, 2026-10-22, issue #584).
  */
 export function wholeTeamModel(
-  page: WholeTeamMembers & {
-    readonly positions: readonly PersonPosition[];
-    readonly queues: readonly DivisionQueue[];
-    readonly correctsSignInEmail: readonly number[];
-  },
+  page: WholeTeamMembers &
+    ListedGoogleEmails & {
+      readonly positions: readonly PersonPosition[];
+      readonly queues: readonly DivisionQueue[];
+      readonly correctsSignInEmail: readonly number[];
+    },
 ): MembersModel {
   const actionsOf = (person: EditPerson): MemberActions | null => {
     const position = page.positions.find((e) => e.id === person.id);
@@ -173,11 +186,12 @@ export function wholeTeamModel(
     queues,
     add: page.divisions.length === 0 ? null : { kind: "department", department: "the team", divisions: page.divisions },
     panelEdits: true,
+    googleEmails: page.googleEmails,
   });
 }
 
 /** A department head's page (boards 69 to 69c): every division of the department, each as its lead's page. */
-export function departmentModel(page: DepartmentMembers): MembersModel {
+export function departmentModel(page: DepartmentMembers & ListedGoogleEmails): MembersModel {
   const headers = page.tabs.map((t) => t.division);
   return model({
     scopeLine: departmentLine(page),
@@ -186,6 +200,7 @@ export function departmentModel(page: DepartmentMembers): MembersModel {
     divisions: page.tabs.map((tab) => sliceOf(tab)),
     add: headers.length === 0 ? null : { kind: "department", department: page.department.name, divisions: headers },
     panelEdits: true,
+    googleEmails: page.googleEmails,
   });
 }
 
@@ -195,7 +210,7 @@ export function departmentModel(page: DepartmentMembers): MembersModel {
  * whole-team grant lists the whole team. A grant at Can view offers no change
  * (issue #351).
  */
-export function reachModel(page: ReachMembers): MembersModel {
+export function reachModel(page: ReachMembers & ListedGoogleEmails): MembersModel {
   const slices = page.divisions.map(sliceOf);
   const headers = page.divisions.map((d) => d.division);
   const addable = page.divisions.filter((d) => d.editable).map((d) => d.division);
@@ -208,6 +223,7 @@ export function reachModel(page: ReachMembers): MembersModel {
     divisions: slices,
     add: addOf(addable),
     panelEdits: addable.length > 0,
+    googleEmails: page.googleEmails,
   });
 }
 
@@ -386,7 +402,8 @@ export function membersTableRows(shown: Pick<ShownMembers, "people" | "waiting">
  * from it); otherwise the selects narrow everyone. A division left chosen
  * from another department reads as all divisions. The search also matches
  * every shared team address a person holds (issue #800), read from the
- * Team addresses rows the page already carries for the side view.
+ * Team addresses rows the page already carries for the side view, and every
+ * linked Google email the page holds for them (issue #908).
  */
 export function shownMembers(
   page: MembersModel,
@@ -403,7 +420,7 @@ export function shownMembers(
     (p) =>
       (filter.department === null || p.divisionIds.some(inDepartment)) &&
       (divisionId === null || slice !== null || p.divisionIds.includes(divisionId)) &&
-      matchesPerson(p, filter.query, heldBy(p.id)),
+      matchesPerson(p, filter.query, [...heldBy(p.id), ...googleEmailsOf(page, p.id)]),
   );
   const queues = page.queues.filter((q) => (divisionId === null ? inDepartment(q.header.id) : q.header.id === divisionId));
   return {

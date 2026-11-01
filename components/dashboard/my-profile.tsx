@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { DashboardLanding } from "@/lib/dashboard/access";
 import type { YourDetails } from "@/lib/dashboard/details";
+import type { GoogleAccountsNotice } from "@/lib/dashboard/google-accounts";
 import {
   checkPhoto,
   DELETE_MEMBER_ACCOUNT_COPY,
@@ -26,6 +27,7 @@ import { AccountCard, Card, DANGER_GHOST_PILL, DANGER_PILL, DangerBox, DangerRow
 import { ConfirmDialog } from "./confirm-dialog";
 import { Drawer } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
+import { GoogleAccountsCard } from "./google-accounts";
 import { HandOverDialog, handOverRowText } from "./hand-over-dialog";
 import { GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PHOTO_ACCEPT, PhotoCropDialog } from "./photo-crop-dialog";
@@ -45,13 +47,20 @@ type Actions = {
 
 // Board 55 (55m on phones): a team member's own profile. The photo at the two
 // sizes the site shows it, the details their lead sets with their LinkedIn,
-// "Your details", how they sign in, and Leave or delete. Props in, nothing
+// "Your details", how they sign in and the Google accounts they sign in with
+// (issue #906), and Leave or delete. Props in, nothing
 // fetched; every change lives in this page's state once the write answers.
 export function MyProfileView({
   profile,
   alias = null,
+  googleAccountsNotice = null,
   ...actions
-}: { profile: MyProfile; alias?: OwnAlias | null } & Actions) {
+}: {
+  profile: MyProfile;
+  alias?: OwnAlias | null;
+  /** What the return from Google came to, in words: a refused link (issue #906) or a merge's outcome (issue #907). */
+  googleAccountsNotice?: GoogleAccountsNotice | null;
+} & Actions) {
   const router = useRouter();
   return (
     <>
@@ -81,6 +90,7 @@ export function MyProfileView({
           }}
         />
         <AccountCard signIn={profile.signIn} />
+        <GoogleAccountsCard accounts={profile.googleAccounts} returnTo="/dashboard/profile" notice={googleAccountsNotice} />
         <LeaveOrDelete
           leave={profile.leave}
           handOver={profile.handOver}
