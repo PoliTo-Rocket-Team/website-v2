@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronDown, LocateFixed, Maximize2, Minus, Pencil, Plus } from "lucide-react";
-import { departmentsOnPath, divisionLabel, divisionsOnPath, matchesQuery, type TeamTree, type TreeHolders, type TreePerson } from "@/lib/dashboard/team";
+import { departmentsOnPath, divisionLabel, divisionsOnPath, matchesQuery, viewersSeat, type TeamTree, type TreeHolders, type TreePerson } from "@/lib/dashboard/team";
 import { boxOf, headCaption, layoutTeamTree, leadCaption, leaderCaption, seatCaption, type Box, type TreeLayout, type TreeNode } from "@/lib/dashboard/tree-layout";
 import { Avatar } from "./avatar";
 import { SearchField } from "./search-field";
@@ -555,7 +555,7 @@ function SeatRow({
   const n = board.length;
   // Each card's middle, as a share of the row; the trunk runs down the row's middle.
   const middleOf = (i: number) => ((i + 0.5) / n) * 100;
-  const mine = board.findIndex((s) => s.holders.some((p) => p.self));
+  const mine = board.findIndex((s) => viewersSeat(s.holders));
   const top = hasLeader ? "top-3" : "top-0";
   return (
     <div className="relative">

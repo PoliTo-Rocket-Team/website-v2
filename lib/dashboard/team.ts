@@ -244,6 +244,29 @@ export type Placement =
   /** In one or more divisions; none yet when they were added to the roster and not placed. */
   | { readonly role: "divisions"; readonly memberships: Memberships };
 
+/** A seat someone holds beside their placement: a team-level seat, or a department's head with the title its row carries. */
+export type FurtherSeat =
+  | { readonly kind: "board"; readonly seat: BoardRole }
+  | { readonly kind: "head"; readonly departmentId: number; readonly title: string };
+
+/**
+ * The team-level seats and department heads among someone's roles beyond
+ * their divisions (`beyond`) other than the one `placement` draws them in. A
+ * head row that names no department on the chart heads nothing, so it is left
+ * out. The team leader always draws them, so it is never a further seat.
+ */
+export function furtherSeatsOf(placement: Placement, beyond: readonly RoleBeyondDivisions[]): FurtherSeat[] {
+  const drawnInSeat = placement.role === "board" ? placement.seat.roleId : null;
+  const drawnInHead = placement.role === "head" ? placement.departmentId : null;
+  return beyond.flatMap((role): FurtherSeat[] => {
+    if (role.kind === "board") return role.seat.roleId === drawnInSeat ? [] : [{ kind: "board", seat: role.seat }];
+    if (role.kind === "head" && role.departmentId !== null && role.departmentId !== drawnInHead) {
+      return [{ kind: "head", departmentId: role.departmentId, title: role.title }];
+    }
+    return [];
+  });
+}
+
 /** How the Members page and the tree name someone's place: a division lead when they lead any division. */
 export type TeamRole = "team-leader" | "board" | "head" | "division-lead" | "member";
 
@@ -300,6 +323,12 @@ export type RosterEntry = {
   /** Their stored profile photo (`members.picture`); null when none is stored, and the PRT mark is drawn. */
   readonly photoUrl: string | null;
   readonly placement: Placement;
+  /**
+   * Every team-level seat and department head they hold beside `placement`
+   * (`furtherSeatsOf`): the Team tree draws them on each of those cards too
+   * (issue #929), never as their first place.
+   */
+  readonly furtherSeats: readonly FurtherSeat[];
   /** The title under their name on the public Team page, when one is set. */
   readonly pageTitle: string | null;
   /** The year they joined the team. */
@@ -1021,6 +1050,16 @@ export function divisionsOnPath(path: TreePath | null): ReadonlySet<number> {
   return new Set((path ?? []).flatMap((p) => (p.kind === "division" ? [p.divisionId] : [])));
 }
 
+/**
+ * Whether the viewer holds this seat or head card as their first place,
+ * whichever co-holder they are. A further seat or head they also hold draws
+ * them on its card but is not on their path (issue #929), so the path keeps
+ * to the one seat they are placed at.
+ */
+export function viewersSeat(holders: readonly TreePerson[]): boolean {
+  return holders.some((p) => p.self && p.first);
+}
+
 /** Where the viewer is drawn on a built tree, their first place first; null when nowhere. */
 function pathOf(leaders: TreeHolders, board: readonly TreeSeat[], departments: readonly TreeDepartment[]): TreePath | null {
   const places: { readonly place: TreePlace; readonly first: boolean }[] = [];
@@ -1029,10 +1068,14 @@ function pathOf(leaders: TreeHolders, board: readonly TreeSeat[], departments: r
     const me = people.find((p) => p.self);
     if (me) places.push({ place, first: me.first });
   };
-  at({ kind: "leader" }, leaders);
-  for (const seat of board) at({ kind: "board" }, seat.holders);
+  /** Adds a seat's or head's `place` when it is the viewer's first place (`viewersSeat`). */
+  const atSeat = (place: TreePlace, holders: readonly TreePerson[]) => {
+    if (viewersSeat(holders)) places.push({ place, first: true });
+  };
+  atSeat({ kind: "leader" }, leaders);
+  for (const seat of board) atSeat({ kind: "board" }, seat.holders);
   for (const department of departments) {
-    at({ kind: "head", departmentId: department.id }, department.heads);
+    atSeat({ kind: "head", departmentId: department.id }, department.heads);
     for (const division of department.divisions) {
       at({ kind: "division", departmentId: department.id, divisionId: division.id }, [...division.leads, ...division.members]);
     }
@@ -1046,7 +1089,9 @@ function pathOf(leaders: TreeHolders, board: readonly TreeSeat[], departments: r
  * divisions with nobody in them are left out. Each division lists everyone in
  * it, so someone in several divisions is drawn in each (Owner decision,
  * 2026-10-19, on #398); their first place is their seat, else their home
- * division (`homeDivision`).
+ * division (`homeDivision`). Someone holding several seats or heads is on
+ * each of those cards too (issue #929), first only at the seat they are
+ * placed at, and counted once in every size.
  */
 export function buildTeamTree(
   roster: readonly RosterEntry[],
@@ -1069,14 +1114,20 @@ export function buildTeamTree(
     self: entry.id === selfId,
     first: firstDivision(entry) === divisionId,
   });
+  /** Them on a further seat or head card (`RosterEntry.furtherSeats`): drawn there, never their first place. */
+  const further = (entry: RosterEntry): TreePerson => ({ ...node(entry, null), first: false });
   /** The order co-holders sit in on one card, and members in a list: by name, then id, so nothing reshuffles between loads. */
   const byName = (a: { readonly id: number; readonly name: string }, b: { readonly id: number; readonly name: string }) =>
     a.name.localeCompare(b.name) || a.id - b.id;
 
   const departments = org.departments.flatMap((department): TreeDepartment[] => {
-    const heads = roster
-      .flatMap((e) => (e.placement.role === "head" && e.placement.departmentId === department.id ? [{ ...node(e, null), title: headTitleOf(e.placement.title, department.name) }] : []))
-      .sort(byName);
+    /** Each head of it once: placed there, else the first further head row they hold on it. */
+    const headOf = (e: RosterEntry): TreeHead[] => {
+      if (e.placement.role === "head" && e.placement.departmentId === department.id) return [{ ...node(e, null), title: headTitleOf(e.placement.title, department.name) }];
+      const seat = e.furtherSeats.find((s) => s.kind === "head" && s.departmentId === department.id);
+      return seat?.kind === "head" ? [{ ...further(e), title: headTitleOf(seat.title, department.name) }] : [];
+    };
+    const heads = roster.flatMap(headOf).sort(byName);
     const isHead = (e: RosterEntry) => heads.some((h) => h.id === e.id);
     const divisions = org.divisions
       .filter((d) => d.departmentId === department.id)
@@ -1101,7 +1152,13 @@ export function buildTeamTree(
   });
 
   const leaders = roster.filter((e) => e.placement.role === "team-leader").sort(byName).map((e) => node(e, null));
-  const board = seatsOf(roster.flatMap((e) => (e.placement.role === "board" ? [{ seat: e.placement.seat, person: node(e, null) }] : [])), byName);
+  const board = seatsOf(
+    roster.flatMap((e) => [
+      ...(e.placement.role === "board" ? [{ seat: e.placement.seat, person: node(e, null) }] : []),
+      ...e.furtherSeats.flatMap((s) => (s.kind === "board" ? [{ seat: s.seat, person: further(e) }] : [])),
+    ]),
+    byName,
+  );
   return {
     season,
     leaders,
@@ -1116,14 +1173,21 @@ export function buildTeamTree(
  * The team-level seats, each once with every holder (issue #916): rows are
  * one seat when `boardSeatKey` says so, as `seatOfTeamRow` groups them. A
  * seat sits in seat order by its earliest row, which also gives its title.
+ * Someone holding two rows of one seat is on its card once, as their first
+ * place when either row is.
  */
 function seatsOf(held: readonly { readonly seat: BoardRole; readonly person: TreePerson }[], order: (a: TreePerson, b: TreePerson) => number): TreeSeat[] {
   const seats = new Map<string, { readonly seat: BoardRole; readonly holders: TreePerson[] }>();
   for (const { seat, person } of [...held].sort((a, b) => bySeatOrder(a.seat, b.seat))) {
     const key = boardSeatKey(seat);
     const known = seats.get(key);
-    if (known) known.holders.push(person);
-    else seats.set(key, { seat, holders: [person] });
+    if (!known) {
+      seats.set(key, { seat, holders: [person] });
+      continue;
+    }
+    const twice = known.holders.findIndex((p) => p.id === person.id);
+    if (twice < 0) known.holders.push(person);
+    else if (person.first) known.holders[twice] = person;
   }
   return [...seats].map(([key, { seat, holders }]): TreeSeat => {
     // Never empty: a seat enters the map with its first holder.

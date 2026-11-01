@@ -14,6 +14,7 @@ import { normalizeLinkedin } from "./self";
 import { viewAsSiteOf, type ViewAsSite } from "./view-as";
 import { SEAT_OF_FLAG, type SeatFlag } from "./viewer";
 import {
+  furtherSeatsOf,
   headDepartmentOf,
   isTeamSeat,
   membershipsIn,
@@ -251,7 +252,7 @@ function rolesByMember(snapshot: TeamSnapshot): Map<number, RoleRow[]> {
   return byMember;
 }
 
-/** Everyone with an active role, placed by all of them (`placementOf`). */
+/** Everyone with an active role, placed by all of them (`placementOf`), with every further seat and head they hold (`furtherSeatsOf`). */
 export function rosterOf(snapshot: TeamSnapshot): RosterEntry[] {
   const people = new Map(snapshot.people.map((p) => [p.member_id, p]));
   return [...rolesByMember(snapshot)].flatMap(([memberId, memberRoles]): RosterEntry[] => {
@@ -259,12 +260,14 @@ export function rosterOf(snapshot: TeamSnapshot): RosterEntry[] {
     const person = people.get(memberId);
     const named = nameOf(person);
     if (active.length === 0 || !named) return [];
+    const placement = placementOf(active, snapshot.org);
     return [
       {
         id: memberId,
         ...named,
         photoUrl: person?.picture ?? null,
-        placement: placementOf(active, snapshot.org),
+        placement,
+        furtherSeats: furtherSeatsOf(placement, active.flatMap((role) => roleBeyondDivisions(roleSeat(role), snapshot.org) ?? [])),
         pageTitle: active[0].title || null,
         joined: Math.min(...memberRoles.map((r) => yearOf(r.started_at))),
         program: person?.program ?? null,

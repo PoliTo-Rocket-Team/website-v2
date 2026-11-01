@@ -1,4 +1,4 @@
-import { departmentsOnPath, divisionLabel, divisionsOnPath, type TeamTree, type TreeHead, type TreeHolders, type TreePerson } from "./team";
+import { departmentsOnPath, divisionLabel, divisionsOnPath, viewersSeat, type TeamTree, type TreeHead, type TreeHolders, type TreePerson } from "./team";
 
 // Where every card, row and line of the Team tree canvas sits (board 54c),
 // in canvas pixels at 100% zoom. The tree reads top-down: the team leader,
@@ -234,13 +234,14 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
   const boardBus = bottom(leaderBox) + BOARD_BUS_DROP;
   const boardLeft = centre - boardWidth / 2;
   let boardBottom = boardY + CARD.h;
-  tree.board.forEach(({ title, holders }, i) => {
-    const mine = holders.some((p) => p.self);
+  tree.board.forEach(({ key, title, holders }, i) => {
+    const mine = viewersSeat(holders);
     const subtitle = seatCaption(title);
     const h = holdersCardHeight(holders, title, subtitle, CARD.w, CARD.h);
     const box: Box = { x: boardLeft + i * (CARD.w + BOARD_GAP), y: boardY, w: CARD.w, h };
     boardBottom = Math.max(boardBottom, bottom(box));
-    nodes.push({ kind: "card", key: `board-${holders[0].id}`, level: "board", ...box, holders, title, subtitle, onPath: mine });
+    // Keyed by the seat, not a holder: one person can hold two seats (issue #929).
+    nodes.push({ kind: "card", key: `board-${key}`, level: "board", ...box, holders, title, subtitle, onPath: mine });
     if (hasLeader) edges.push(elbow(leaderBox, box, boardBus, mine));
   });
 
