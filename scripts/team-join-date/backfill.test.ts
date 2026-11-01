@@ -14,7 +14,7 @@ import type { BackfillDb } from "./snapshot";
 
 const db = testDb as unknown as BackfillDb;
 
-const ANNA = 9601; // on the current sheet, which carries the column too
+const ANNA = 9601; // on the current sheet, which carries the column too, and earlier on the 2022-2023 sheet
 const BRUNO = 9602; // found by his PRT address alone
 const CARLA = 9603; // already holds the roster's join day
 const DORA = 9604; // already holds a different join day: kept
@@ -22,12 +22,15 @@ const ELIO = 9605; // left and came back: two Quitters rows
 const SHARED_A = 9606; // two members one address finds
 const SHARED_B = 9607;
 const GINO = 9608; // a join day stored month/day
+const LUCA = 9609; // only on the 2022-2023 sheet, found by his student address
 
 /** The Excel day serial of a day, as a date cell stores it. */
 const serialOf = (day: string) => String((Date.parse(`${day}T00:00:00Z`) - Date.UTC(1899, 11, 30)) / 86_400_000);
 
 const CURRENT_HEADER = ["First Name", "Last Name", "Personal Mail", "Joined the Team on"];
 const QUITTERS_HEADER = ["Left the Team on:", "Joined the Team on:", "First Name", "Last Name", "Personal Mail", "PRT email"];
+/** The 2022-2023 sheet, as the import read it: the join day is its "Date of joining" column. */
+const HEADER_2022 = ["Number", "First Name", "Last Name", "St. ID", "Gmail", "poli email", "Subteam", "A", "Team Role", "Date of joining"];
 
 const ROSTER = rosterOf([
   { name: "2025-2026", rows: [CURRENT_HEADER, ["Anna", "Example", "ANNA@Example.com", "15/11/2023"], ["Nora", "Example", "nora@example.com", ""]] },
@@ -60,6 +63,18 @@ const ROSTER = rosterOf([
       ["15/02/2024", "01/10/2023", "Ivo", "Example", "", ""],
     ],
   },
+  {
+    name: "2022-2023",
+    rows: [
+      HEADER_2022,
+      // Row 2: Anna joined earlier than the current sheet says: the earlier day wins.
+      ["1", "Anna", "Example", "S000001", "anna@example.com", "", "Avionics", "Software", "Member", "20/10/2022"],
+      // Row 3: Luca is on this sheet alone, found by his student address.
+      ["2", "Luca", "Example", "S000002", "", "luca@studenti.example.com", "Avionics", "Software", "Member", "3/10/2022"],
+      // Row 4: Elio's day here does not read: skipped, and his Quitters rows still date him.
+      ["3", "Elio", "Example", "S000003", "elio@example.com", "", "Avionics", "Software", "Member", "TBD"],
+    ],
+  },
   { name: "Stats", rows: [["anything"]] },
 ]);
 
@@ -74,6 +89,7 @@ async function world(): Promise<void> {
       { memberId: SHARED_A },
       { memberId: SHARED_B, prtEmail: "shared@example.com" },
       { memberId: GINO },
+      { memberId: LUCA },
     ]);
     await addRows(users, [
       { id: "imported:anna", email: "anna@example.com", member: ANNA },
@@ -82,6 +98,7 @@ async function world(): Promise<void> {
       { id: "imported:elio", email: "elio@example.com", member: ELIO },
       { id: "imported:shared", email: "shared@example.com", member: SHARED_A },
       { id: "imported:gino", email: "gino@example.com", member: GINO },
+      { id: "imported:luca", email: "luca@studenti.example.com", member: LUCA },
     ]);
   });
 }
@@ -89,9 +106,20 @@ async function world(): Promise<void> {
 const joinDays = async () =>
   Object.fromEntries(((await tableRows(members)) as (typeof members.$inferSelect)[]).map((m) => [m.memberId, m.joinedTeamOn]));
 
-test("the roster reads every sheet with a Joined the Team on column, and leaves the others out", () => {
-  assert.deepEqual(ROSTER.read, ["2025-2026", "Quitters"]);
-  assert.deepEqual(ROSTER.skipped, ['2024-2025: no "Joined the Team on" column', 'Stats: no "Joined the Team on" column']);
+test("the roster reads every sheet with a Joined the Team on or Date of joining column, and leaves the others out", () => {
+  assert.deepEqual(ROSTER.read, ["2025-2026", "Quitters", "2022-2023"]);
+  assert.deepEqual(ROSTER.skipped, [
+    '2024-2025: no "Joined the Team on" or "Date of joining" column',
+    'Stats: no "Joined the Team on" or "Date of joining" column',
+  ]);
+  assert.deepEqual(
+    ROSTER.rows.filter((r) => r.at.sheet === "2022-2023").map((r) => [r.at.row, r.value.joinedOn]),
+    [
+      [2, "20/10/2022"],
+      [3, "3/10/2022"],
+      [4, "TBD"],
+    ],
+  );
 });
 
 test("a dry run plans each member's earliest join day by row, skips what it cannot place, prints no personal value, and writes nothing", async () => {
@@ -101,40 +129,51 @@ test("a dry run plans each member's earliest join day by row, skips what it cann
   assert.deepEqual(
     plan.sets.map((s) => [s.memberId, s.day]).sort(([a], [b]) => Number(a) - Number(b)),
     [
-      [ANNA, "2023-11-15"],
+      [ANNA, "2022-10-20"],
       [BRUNO, "2022-10-01"],
       [ELIO, "2021-10-10"],
       [GINO, "2024-02-03"],
+      [LUCA, "2022-10-03"],
     ],
   );
   assert.deepEqual(
-    plan.skipped.map((s) => [s.kind, s.at.row]),
+    plan.skipped.map((s) => [s.kind, s.at.sheet, s.at.row]),
     [
-      ["no-member", 8],
-      ["ambiguous-member", 9],
-      ["date-unreadable", 10],
-      ["dates-out-of-order", 11],
-      ["no-email", 13],
-      ["stored-differs", 5],
+      ["no-member", "Quitters", 8],
+      ["ambiguous-member", "Quitters", 9],
+      ["date-unreadable", "Quitters", 10],
+      ["dates-out-of-order", "Quitters", 11],
+      ["no-email", "Quitters", 13],
+      ["date-unreadable", "2022-2023", 4],
+      ["stored-differs", "Quitters", 5],
     ],
   );
   assert.equal(plan.alreadyStored, 1);
   assert.equal(plan.noJoinDate, 1);
-  assert.equal(plan.severalDays, 1);
+  assert.equal(plan.severalDays, 2);
   assert.match(report, /^Team join date backfill \(issue #948\): dry run, nothing written$/m);
-  assert.match(report, /^Members to date: 4$/m);
+  assert.match(report, /^Members to date: 5$/m);
+  assert.match(report, /^ {2}2025-2026 row 2, 2022-2023 row 2: 2022-10$/m);
   assert.match(report, /^ {2}Quitters row 6, Quitters row 7: 2021-10$/m);
+  assert.match(report, /^ {2}2022-2023 row 3: 2022-10$/m);
   assert.match(report, /^ {2}\[stored-differs\] Quitters row 5: /m);
   assert.match(report, /^ {2}Quitters row 12 › field joinedOn$/m);
-  for (const personal of ["Anna", "Example", "example.com", "Bruno", String(ANNA), "2023-11-15"]) assert.ok(!report.includes(personal), `the report prints no ${personal}`);
+  for (const personal of ["Anna", "Example", "example.com", "Bruno", "Luca", "S000002", String(ANNA), "2022-10-20"]) assert.ok(!report.includes(personal), `the report prints no ${personal}`);
 });
 
 test("a real run stores each planned join day, changes nothing else, and a second run plans nothing", async () => {
   await world();
   const before = await joinDays();
   const { written } = await runBackfill({ mode: "backfill", file: "roster.xlsx", roster: ROSTER, db });
-  assert.deepEqual(written, { members: 4 });
-  assert.deepEqual(await joinDays(), { ...before, [ANNA]: "2023-11-15", [BRUNO]: "2022-10-01", [ELIO]: "2021-10-10", [GINO]: "2024-02-03" });
+  assert.deepEqual(written, { members: 5 });
+  assert.deepEqual(await joinDays(), {
+    ...before,
+    [ANNA]: "2022-10-20",
+    [BRUNO]: "2022-10-01",
+    [ELIO]: "2021-10-10",
+    [GINO]: "2024-02-03",
+    [LUCA]: "2022-10-03",
+  });
   assert.deepEqual(new Set((await databaseWrites()).map((w) => `${w.kind} ${w.table}`)), new Set(["update members"]));
   const again = await runBackfill({ mode: "backfill", file: "roster.xlsx", roster: ROSTER, db });
   assert.deepEqual(again.plan.sets, []);

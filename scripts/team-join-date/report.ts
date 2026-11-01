@@ -33,7 +33,7 @@ export function renderReport({ file, roster, plan, written }: ReportInput): stri
   const lines: string[] = [];
   lines.push(`Team join date backfill (issue #948): ${dry ? "dry run, nothing written" : "real run"}`);
   lines.push(`Workbook: ${file}`);
-  lines.push(`Read (sheets with a "Joined the Team on" column): ${roster.read.length === 0 ? "none" : roster.read.join(", ")}`);
+  lines.push(`Read (sheets with a "Joined the Team on" or "Date of joining" column): ${roster.read.length === 0 ? "none" : roster.read.join(", ")}`);
   if (roster.skipped.length > 0) lines.push(`Not read: ${roster.skipped.join("; ")}`);
   lines.push(`Sheet rows with no name, left out: ${roster.namelessRows}`);
   lines.push(`Rows read: ${roster.rows.length}`);

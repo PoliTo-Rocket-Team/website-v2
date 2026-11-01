@@ -19,7 +19,7 @@
 import type { AccessSection } from "./access-summary";
 import type { ApplicantOverview } from "./applicant-overview";
 import type { AlumniOverview } from "./my-alumni";
-import type { RoleType } from "./team";
+import { joinedTeamDayOf, type RoleType } from "./team";
 import { seatOf, type FlaggedSeat, type FullAccessSeat, type ViewerStanding } from "./viewer";
 
 export type Link = { readonly label: string; readonly href: string };
@@ -333,15 +333,12 @@ const monthYear = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numer
 
 /**
  * The header's "In the team since" line (issue #948): the day the member
- * joined the team (`members.joined_team_on`, from the roster's "Joined the Team
- * on" column), as month and year. Owner decision, 2026-11-01: it is never a
- * role's start, since the roster's role starts are academic-year placeholders;
- * with no stored join day the line is hidden.
+ * joined the team (`joinedTeamDayOf`, the rule the Members page's year reads
+ * too), as month and year; hidden with no stored join day.
  */
 export function teamSinceOf(joinedTeamOn: string | null): string | null {
-  if (joinedTeamOn === null) return null;
-  const day = new Date(`${joinedTeamOn.slice(0, 10)}T00:00:00Z`);
-  return Number.isNaN(day.getTime()) ? null : `In the team since ${monthYear.format(day)}`;
+  const day = joinedTeamDayOf(joinedTeamOn);
+  return day === null ? null : `In the team since ${monthYear.format(day)}`;
 }
 
 export type ChecklistItem = {

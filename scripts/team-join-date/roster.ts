@@ -2,10 +2,14 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readWorkbook, type Sheet } from "./xlsx";
 
-// Reads the roster workbook's "Joined the Team on" column (issue #948). Every
-// sheet whose header names that column is read, whatever the sheet is called:
-// the import read it on the `Quitters` sheet, and any other sheet that carries
-// it is read the same way. A row gives the person's emails, the day they
+// Reads the day each person joined the team from the roster workbook (issue
+// #948): its "Joined the Team on" column, and the 2022-2023 sheet's "Date of
+// joining" column, which gives the same day. Every sheet whose header names
+// either is read, whatever the sheet is called: the import read the first on
+// the `Quitters` sheet and the second on the 2022-2023 sheet, and any other
+// sheet that carries one is read the same way. A row with both reads "Joined
+// the Team on". A person several rows find keeps the earliest day that reads
+// (./plan.ts). A row gives the person's emails, the day they
 // joined, and the day they left when the sheet has that column too (it only
 // decides which date cell was stored month/day). Columns are found by their
 // header text, never by position, as the import found them
@@ -24,7 +28,7 @@ const JOIN_SHEET = {
   studentEmail: { aliases: ["Polito Student Email", "poli email", "poli_email"] },
   phdEmail: { aliases: ["Polito PhD email"] },
   prtEmail: { aliases: ["PRT Domain @politorocketteam.it", "PRT Specific email @politorocketteam.it", "PRT email"] },
-  joinedOn: { aliases: ["Joined the Team on"], required: true },
+  joinedOn: { aliases: ["Joined the Team on", "Date of joining"], required: true },
   leftOn: { aliases: ["Left the Team on"] },
 } as const satisfies Readonly<Record<string, FieldSpec>>;
 
@@ -40,7 +44,7 @@ export type At = { readonly sheet: string; readonly row: number };
 export type JoinRow = { readonly at: At; readonly value: Readonly<Record<JoinField, string>> };
 
 export type Roster = {
-  /** The sheets read: those whose header names "Joined the Team on". */
+  /** The sheets read: those whose header names "Joined the Team on" or "Date of joining". */
   readonly read: readonly string[];
   /** The sheets left out. */
   readonly skipped: readonly string[];
@@ -89,7 +93,7 @@ function cell(located: Located, row: readonly string[], field: JoinField): strin
   return "";
 }
 
-/** The roster the sheets of one workbook give: every named row of every sheet with a "Joined the Team on" column. */
+/** The roster the sheets of one workbook give: every named row of every sheet with a join day column. */
 export function rosterOf(sheets: readonly Sheet[]): Roster {
   const read: string[] = [];
   const skipped: string[] = [];
@@ -98,7 +102,7 @@ export function rosterOf(sheets: readonly Sheet[]): Roster {
   for (const sheet of sheets) {
     const located = locate(sheet.rows);
     if (located === null) {
-      skipped.push(`${sheet.name}: no "Joined the Team on" column`);
+      skipped.push(`${sheet.name}: no "Joined the Team on" or "Date of joining" column`);
       continue;
     }
     read.push(sheet.name);

@@ -147,8 +147,9 @@ export const members = pgTable("members", {
   teamFrom: integer("team_from"),
   teamTo: integer("team_to"),
   // The day the member joined the team, from the roster's "Joined the Team
-  // on" column (issue #948). The Overview's "In the team since" line reads it
-  // and nothing else; null hides that line.
+  // on" and "Date of joining" columns (issue #948). The Overview's "In the
+  // team since" line and the Members page's joined year read it and never a
+  // role's start; null hides both.
   joinedTeamOn: date("joined_team_on", { mode: "string" }),
   // When the member said they set up their alias, the address in
   // `prt_email` (issue #542).

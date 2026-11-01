@@ -6,9 +6,10 @@ done with the import tool (`scripts/import`, removed by PR #847).
 
 The Overview's "In the team since" line shows the day a member joined the team, stored in
 `members.joined_team_on` (migration `0086_members_joined_team_on`). It never shows a role's start:
-the roster's role starts are academic-year placeholders (owner decision, 2026-11-01). The import
-read the roster's "Joined the Team on" column only to date roles and stored it nowhere, so this
-fills the new column from that column. A member with no stored day shows no line.
+the roster's role starts are academic-year placeholders (owner decision, 2026-11-01). The Members
+page's "joined" year reads the same stored day. The import read the roster's "Joined the Team on"
+and "Date of joining" columns only to date roles and stored them nowhere, so this fills the new
+column from those columns. A member with no stored day shows no line.
 
 ## How to run it
 
@@ -51,9 +52,10 @@ ID, and no database id.
 
 ## Rules
 
-- Every sheet whose header names "Joined the Team on" is read (the `Quitters` sheet, and any other
-  sheet that has the column). Columns are found by header text; case, spacing and a trailing colon
-  do not count.
+- Every sheet whose header names "Joined the Team on" or "Date of joining" is read (the `Quitters`
+  sheet, the `2022-2023` sheet, and any other sheet that has one of them). A row with both reads
+  "Joined the Team on". Columns are found by header text; case, spacing and a trailing colon do not
+  count.
 - A date reads day first: an Excel date cell, `dd/mm/yyyy`, `d/m/yyyy`, `dd.mm.yyyy` or
   `yyyy-mm-dd`. When the row also has a "Left the Team on" day and the join day falls after it,
   one date cell (never typed text) whose day is 12 or less is read with day and month swapped, as
@@ -61,7 +63,9 @@ ID, and no database id.
   puts in order is skipped.
 - A row's member is found by its emails (lower case): an account's email, or a member's PRT
   address. No member, or two, skips the row. A row with no email is skipped.
-- A member several rows find (someone who left and came back) gets the earliest join day.
+- A member several rows find (someone who left and came back, or who is on the `2022-2023` sheet
+  and on `Quitters`) gets the earliest join day that reads. A row whose day does not read is
+  skipped and reported; the member's other rows still count.
 - A member who already has a join day keeps it. The same day counts as done; a different one is
   reported and left as it is.
 - The write sets `members.joined_team_on` only, and only while it is still empty.
@@ -72,7 +76,8 @@ ID, and no database id.
 
 `backfill.test.ts` runs the backfill on a fake roster built in memory (every name invented, every
 email on `example.com`) and the in-memory Postgres the other tests use. It covers which sheets are
-read, a member found by account email or PRT address, a member who left and came back, a stored day
+read (the 2022-2023 sheet's "Date of joining" included), a member found by account email or PRT
+address, a member who left and came back, a member on the 2022-2023 sheet and on `Quitters`, a stored day
 kept (the same and a different one), no member, two members, an unreadable date, dates out of
 order, a swapped date cell, a row with no email, idempotency, and what a failed run prints before
 and after its commit.

@@ -45,6 +45,7 @@ function person(memberId: number, firstName: string): Person {
     level_of_study: null,
     team_from: null,
     team_to: null,
+    joined_team_on: null,
     phone: null,
     mobile_number: null,
     discord: null,
