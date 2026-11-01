@@ -4,6 +4,7 @@ import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { usePhoneGrouping } from "@/components/use-phone-grouping";
+import { PHONE_PLACEHOLDER } from "@/lib/phone";
 import { DEGREE_PROGRAMMES, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
 import {
   DETAIL_FIELDS,
@@ -197,7 +198,7 @@ function DetailsDrawer({
 }
 
 const PLACEHOLDERS: Partial<Record<DetailKey, string>> = {
-  phone: "+39 333 123 4567",
+  phone: PHONE_PLACEHOLDER,
   politoId: "s312456",
   linkedin: "linkedin.com/in/your-name",
 };

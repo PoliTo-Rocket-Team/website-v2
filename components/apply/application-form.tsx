@@ -6,6 +6,7 @@ import { useId, useRef, useState, type ChangeEvent, type DragEvent, type FocusEv
 import { toast } from "sonner";
 import { RocketLaunch } from "@/components/landing/rocket-arrow";
 import { usePhoneGrouping } from "@/components/use-phone-grouping";
+import { PHONE_PLACEHOLDER } from "@/lib/phone";
 import {
   DEGREE_PROGRAMMES,
   GENDERS,
@@ -155,7 +156,7 @@ export function ApplicationForm({
             hint="with country code"
             type="tel"
             autoComplete="tel"
-            placeholder="+39 351 234 5678"
+            placeholder={PHONE_PLACEHOLDER}
             defaultValue={defaults.phone}
             errors={errors}
             {...phone}
@@ -330,6 +331,7 @@ function TextField({
   placeholder?: string;
   onChange?: (e: ChangeEvent<HTMLInputElement>) => void;
   onFocus?: (e: FocusEvent<HTMLInputElement>) => void;
+  onBlur?: (e: FocusEvent<HTMLInputElement>) => void;
 }) {
   const error = errors[name];
   return (

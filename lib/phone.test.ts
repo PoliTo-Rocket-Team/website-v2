@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { groupPhone, groupPhoneEdit } from "./phone";
+import { groupPhone, groupPhoneEdit, phoneOnEnter, phoneOnLeave } from "./phone";
 
 describe("phone grouping (issue #953)", () => {
   test("groups the digits the country's way, with single spaces only", () => {
@@ -23,5 +23,13 @@ describe("phone grouping (issue #953)", () => {
   test("Backspace over a space takes the digit before it, so the space does not come straight back", () => {
     const edit = groupPhoneEdit("+39 389 123 4567", "+39 389123 4567", 7, "backward");
     assert.deepEqual(edit, { value: "+39 381 234 567", caret: 6 });
+  });
+
+  test("an empty field gets its + on entry and is empty again when left at just that", () => {
+    assert.equal(phoneOnEnter(""), "+");
+    assert.equal(phoneOnEnter("3891234567"), "3891234567");
+    assert.equal(phoneOnLeave("+"), "");
+    assert.equal(phoneOnLeave(" + "), "");
+    assert.equal(phoneOnLeave("+39"), "+39");
   });
 });

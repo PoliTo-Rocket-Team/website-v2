@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, type ChangeEvent, type FocusEvent } from "react";
-import { groupPhoneEdit, type DeleteDirection } from "@/lib/phone";
+import { groupPhoneEdit, phoneOnEnter, phoneOnLeave, type DeleteDirection } from "@/lib/phone";
 
 function deleteDirection(event: Event): DeleteDirection | null {
   const type = event instanceof InputEvent ? event.inputType : "";
@@ -15,13 +15,25 @@ function deleteDirection(event: Event): DeleteDirection | null {
  * #953), for the application form, Edit details and Your details alike. Each
  * edit writes the grouped value into the field, keeps the caret among the same
  * digits, and hands the value to `onValue` for a form that holds it in state.
- * Nothing runs until the person edits, so a stored phone shows as it is.
+ * Nothing runs until the person edits, so a stored phone shows as it is. An
+ * empty field gets its `+` on entry and loses it again if left at just that.
  */
 export function usePhoneGrouping(onValue?: (value: string) => void) {
   const last = useRef<string | null>(null);
+  const put = (input: HTMLInputElement, value: string) => {
+    if (value === input.value) return;
+    input.value = value;
+    onValue?.(value);
+  };
   return {
     onFocus: (e: FocusEvent<HTMLInputElement>) => {
-      last.current = e.currentTarget.value;
+      const input = e.currentTarget;
+      put(input, phoneOnEnter(input.value));
+      last.current = input.value;
+    },
+    onBlur: (e: FocusEvent<HTMLInputElement>) => {
+      const input = e.currentTarget;
+      put(input, phoneOnLeave(input.value));
     },
     onChange: (e: ChangeEvent<HTMLInputElement>) => {
       const input = e.currentTarget;

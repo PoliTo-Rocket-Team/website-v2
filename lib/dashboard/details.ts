@@ -6,6 +6,7 @@ import {
   STUDY_PROGRAMMES,
   type FormDefaults,
 } from "@/lib/apply/application-form";
+import { phoneOnLeave } from "@/lib/phone";
 import { nameRule, namesThemselves } from "./person-name";
 import { normalizeLinkedin } from "./self";
 import { isOffTeam, type ViewerKind } from "./viewer";
@@ -138,7 +139,8 @@ const PHONE = /^\+[0-9][0-9 ]{5,18}[0-9]$/;
  * form opened with (issue #887). Sent back unchanged, it is kept whatever its
  * format: phones imported from the old roster often have no country code, and
  * a save that leaves the phone alone must not fail on it. A changed phone is
- * empty or starts with + and the country code. A form that opened empty
+ * empty or starts with + and the country code; the lone `+` an empty field
+ * gets on entry (issue #953) counts as empty. A form that opened empty
  * passes "".
  */
 function phoneRule(opened: string) {
@@ -146,6 +148,7 @@ function phoneRule(opened: string) {
   return z
     .string()
     .trim()
+    .transform(phoneOnLeave)
     .refine((phone) => phone === "" || phone === kept || PHONE.test(phone), "Start with + and the country code.");
 }
 

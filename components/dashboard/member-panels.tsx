@@ -7,6 +7,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { usePhoneGrouping } from "@/components/use-phone-grouping";
+import { PHONE_PLACEHOLDER } from "@/lib/phone";
 import { addMember, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
 import { cancelAliasRequest, removeTeamAddress, requestAlias, requestTeamAddress } from "@/app/dashboard/actions";
 import { ALIAS_FORM_HINT, aliasPrefill, checkAliasAddress, personalRequestChoice, TEAM_DOMAIN, type MemberAlias } from "@/lib/dashboard/alias-request";
@@ -927,7 +928,7 @@ function SelectBox({
 const PLACEHOLDERS: Partial<Record<MemberDetailKey, string>> = {
   prtEmail: "name@politorocketteam.it",
   linkedin: "linkedin.com/in/...",
-  phone: "+39 333 123 4567",
+  phone: PHONE_PLACEHOLDER,
   discord: "username",
   politoId: "s312456",
   country: "Italy",
