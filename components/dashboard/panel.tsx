@@ -4,6 +4,13 @@ import Link from "next/link";
 /** The dashboard card: panel fill, hairline edge, 12px corners (boards 40 to 46). */
 export const PANEL = "rounded-xl border border-hairline bg-panel/60";
 
+/**
+ * The Overview figure row's one gap: between its cards, and between the row
+ * and the panels under it, so the two stay equal (Owner decision, 2026-11-01,
+ * issue #897).
+ */
+export const FIGURE_GAP = "gap-3 md:gap-4";
+
 // A titled panel: a header row over a hairline, then its rows, each on its own
 // hairline. With `phoneCards`, phones drop the frame (boards 56m, the phone
 // rule "tables become stacked cards"): the title sits on the page and each row

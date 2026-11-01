@@ -58,7 +58,7 @@ import { MarkTeamAddressMoved } from "./team-address-reroute";
 import { MarkTeamAddressRemoved } from "./team-address-removal";
 import { AnswerPrtEmailRemoval } from "./prt-email-removal";
 import { departmentLabel } from "@/lib/dashboard/recruitment";
-import { PANEL, Panel, RowAction } from "./panel";
+import { FIGURE_GAP, PANEL, Panel, RowAction } from "./panel";
 
 // The Overview page: one view for every team seat (issue #593), the personal
 // panels of board 52 around the board the seat's scope reads (40 for the
@@ -83,7 +83,7 @@ export function OverviewView({ overview, readyCards = [] }: { overview: Overview
 /** The panels' two columns from lg: a wide one and a 400px one. */
 const COLUMNS = "lg:grid-cols-[minmax(0,1fr)_400px]";
 
-const GRID = `mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-4 ${COLUMNS}`;
+const GRID = `grid grid-cols-[minmax(0,1fr)] items-start gap-4 ${COLUMNS}`;
 
 /**
  * The figure row: two to a line, four from xl. Two figures over panels in
@@ -92,11 +92,19 @@ const GRID = `mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-4 ${COLUMNS}`;
  */
 function figureRow(count: number, overColumns: boolean): string {
   const columns = count === 2 && overColumns ? COLUMNS : "xl:grid-cols-4";
-  return `mt-5 grid grid-cols-2 gap-3 md:mt-6 md:gap-4 ${columns}`;
+  return `grid grid-cols-2 ${FIGURE_GAP} ${columns}`;
 }
 
 /** Off the team the panels stack, full width, under the person (boards 50e, 50f, 56). */
-const STACK = "mt-6 flex min-w-0 flex-col gap-4";
+const STACK = "flex min-w-0 flex-col gap-4";
+
+/**
+ * A panel block's top margin: its own, or none when it opens right under
+ * the figure row, whose `FIGURE_GAP` places it (issue #897).
+ */
+function blockTop(underFigures: boolean, own: string): string {
+  return underFigures ? "" : own;
+}
 
 /**
  * How the lead's Overview reads on phones: board 40m keeps everything; board
@@ -186,19 +194,26 @@ export function OverviewBodySection({ board, panels }: { board: ScopeBoard; pane
   const parts = boardParts(board);
   const { access } = panels;
   const compact = parts.phone === "board-56m";
+  const underFigures = board.stats.length > 0;
+  const body =
+    panels.layout === "leader-columns" ? (
+      <LeaderColumns board={board} parts={parts} panels={panels} underFigures={underFigures} />
+    ) : (
+      <BoardFirst board={board} parts={parts} panels={panels} underFigures={underFigures} />
+    );
   return (
     <>
-      {board.stats.length > 0 && (
-        <div className={figureRow(board.stats.length, opensOnColumns({ board, parts, panels }))}>
-          {board.stats.map((stat, index) => (
-            <StatCard key={stat.label} stat={stat} compact={compact} hiddenOnPhone={compact && index >= 2} />
-          ))}
+      {underFigures ? (
+        <div className={`mt-5 flex flex-col md:mt-6 ${FIGURE_GAP}`}>
+          <div className={figureRow(board.stats.length, opensOnColumns({ board, parts, panels }))}>
+            {board.stats.map((stat, index) => (
+              <StatCard key={stat.label} stat={stat} compact={compact} hiddenOnPhone={compact && index >= 2} />
+            ))}
+          </div>
+          {body}
         </div>
-      )}
-      {panels.layout === "leader-columns" ? (
-        <LeaderColumns board={board} parts={parts} panels={panels} />
       ) : (
-        <BoardFirst board={board} parts={parts} panels={panels} />
+        body
       )}
 
       {access.kind === "lines" && <AccessPanel access={access.lines} />}
@@ -257,12 +272,15 @@ function leaderSides({ board, parts, panels }: BodyProps): { left: boolean; righ
   };
 }
 
-function LeaderColumns({ board, parts, panels }: BodyProps) {
+/** The panels' layout, told whether it opens right under the figure row. */
+type PlacedBodyProps = BodyProps & { underFigures: boolean };
+
+function LeaderColumns({ board, parts, panels, underFigures }: PlacedBodyProps) {
   const { checklist, rosters } = panels;
   const { left, right } = leaderSides({ board, parts, panels });
   if (!left && !right) return null;
   return (
-    <div className={left && right ? GRID : STACK}>
+    <div className={`${blockTop(underFigures, "mt-6")} ${left && right ? GRID : STACK}`}>
       {left && <ScopePanels board={board} parts={parts} checklist={checklist} />}
       {right && (
         <div className="flex min-w-0 flex-col gap-4">
@@ -300,21 +318,27 @@ function opensOnColumns(props: BodyProps): boolean {
   return checklist !== null && rosters.length > 0;
 }
 
-function BoardFirst({ board, parts, panels }: BodyProps) {
+function BoardFirst({ board, parts, panels, underFigures }: PlacedBodyProps) {
   const { checklist, rosters } = panels;
   const { left, activity } = boardFirstSides({ board, parts, panels });
+  const first = left || activity;
+  const second = checklist !== null || rosters.length > 0;
+  if (!first && !second) return null;
+  const pair = checklist !== null && rosters.length > 0;
+  const secondTop = pair ? "mt-6" : "mt-5 md:mt-6";
+  // One element, so the figure row's gap stands above it once.
   return (
-    <>
-      {(left || activity) && (
-        <div className={left && !activity ? STACK : GRID}>
+    <div>
+      {first && (
+        <div className={`${blockTop(underFigures, "mt-6")} ${left && !activity ? STACK : GRID}`}>
           {left && <ScopePanels board={board} parts={parts} checklist={null} />}
           {activity && (
             <ActivityPanel activity={board.activity} compact={parts.phone === "board-56m"} className={left ? "" : "lg:col-start-2"} />
           )}
         </div>
       )}
-      {(checklist !== null || rosters.length > 0) && (
-        <div className={checklist !== null && rosters.length > 0 ? GRID : "mt-5 md:mt-6"}>
+      {second && (
+        <div className={`${first ? secondTop : blockTop(underFigures, secondTop)} ${pair ? GRID : ""}`}>
           {checklist !== null && <ChecklistPanel checklist={checklist} />}
           {rosters.length > 0 && (
             <div className="flex min-w-0 flex-col gap-4">
@@ -325,7 +349,7 @@ function BoardFirst({ board, parts, panels }: BodyProps) {
           )}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
