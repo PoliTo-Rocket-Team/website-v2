@@ -93,7 +93,7 @@ import {
 } from "./outreach";
 import { PARTNER_ROWS, PARTNER_VERSION_ROWS } from "./partners";
 import { PROJECT_ROWS, PROJECT_VERSION_ROWS } from "./projects";
-import { ADDED_BY_EMAIL, ADDED_USER_ROWS, IT_LEAD, MEMBER_ROWS, ROLE_ROWS, PLAIN_SEAT_PEOPLE, SIGN_IN_ROWS, TEAM_JOIN_ROWS, USER_ROWS } from "./people";
+import { ADDED_BY_EMAIL, ADDED_USER_ROWS, GOOGLE_ACCOUNT_ROWS, IT_LEAD, MEMBER_ROWS, ROLE_ROWS, PLAIN_SEAT_PEOPLE, SIGN_IN_ROWS, TEAM_JOIN_ROWS, USER_ROWS } from "./people";
 import { APPLICATION_FILE_ROWS, APPLICATION_ROWS, APPLICATION_STATUS_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
 import { DEPARTMENT_ROWS, DIVISION_ROWS } from "./structure";
 import {
@@ -871,6 +871,19 @@ export const SEED_CASES: readonly SeedCase[] = [
         join.addedBy != null &&
         activeIn(data, join.divisionId).some((r) => r.memberId === join.addedBy && r.type === "lead")
       );
+    },
+  },
+  {
+    area: "people",
+    case: "Every tester login has its own Google account, and the member seat has a second one with a different email",
+    data: "invented",
+    rows: "`better_auth.account` provider `google`, one per sign-in row under its email, and a second for the member seat",
+    exercisedBy: `${issue(906)}, ${issue(908)}`,
+    holds: () => {
+      const google = GOOGLE_ACCOUNT_ROWS.rows.filter((a) => a.providerId === "google");
+      const ownAccount = SIGN_IN_ROWS.rows.every((login) => google.filter((a) => a.userId === login.id && a.email === login.email).length === 1);
+      const memberEmails = google.filter((a) => a.userId === PLAIN_SEAT_PEOPLE.member).map((a) => a.email);
+      return ownAccount && memberEmails.length === 2 && new Set(memberEmails).size === 2;
     },
   },
   {

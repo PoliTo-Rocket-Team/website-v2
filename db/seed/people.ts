@@ -1,6 +1,7 @@
 // The people-and-roles seed (issues #304, #326): every person with a `users`
 // row, their member rows, every role they hold or held, and a sign-in row for
-// each of them and for the admin testers (issues #129, #653). One more person
+// each of them and for the admin testers (issues #129, #653), each with its
+// Google account and the member seat with a second one (issue #942). One more person
 // was added to a division by email and has not signed in (issue #746), so
 // they have a `team_joins` row and no sign-in row.
 //
@@ -21,7 +22,7 @@
 // user ids keep the numbers the old SQL seed used; the recruitment module
 // names them.
 
-import { betterAuthUsers, members, roles, teamJoins, users } from "@/db/schema";
+import { betterAuthAccounts, betterAuthUsers, members, roles, teamJoins, users } from "@/db/schema";
 import { clearedUser, CLEARED_MEMBER } from "@/lib/dashboard/anonymize";
 import type { PlainSeat } from "@/lib/dashboard/viewer";
 import { ADMIN_TESTERS, SEATS, SEED_EMAIL_DOMAIN, seatOf } from "@/lib/seeded-accounts";
@@ -469,6 +470,61 @@ export const SIGN_IN_RESET: SeedStatement = {
   params: [],
 };
 
+/** What every seeded Google account's id and subject start with: made up, so no real Google account has one. */
+const SEED_GOOGLE_ACCOUNT = "seed-google-";
+
+/**
+ * The member seat's second Google account (issue #942): another invented
+ * address on the reserved domain, so their Google accounts list shows two
+ * rows, Remove is offered, and Members shows "Also signs in with".
+ */
+export const MEMBER_SEAT_SECOND_GOOGLE_EMAIL = `${seatOf("member").email.replace(`@${SEED_EMAIL_DOMAIN}`, "")}.second@${SEED_EMAIL_DOMAIN}`;
+
+/**
+ * A Google account linked to a seeded login, as Better Auth stores one
+ * (issue #942): its id and subject are made up from the login's id, and it
+ * holds no token, scope or password.
+ */
+function googleAccountRow(userId: string, email: string, which: "first" | "second") {
+  const key = which === "first" ? userId : `${userId}-second`;
+  return {
+    id: `${SEED_GOOGLE_ACCOUNT}${key}`,
+    accountId: `${SEED_GOOGLE_ACCOUNT}subject-${key}`,
+    providerId: "google",
+    userId,
+    email,
+    accessToken: null,
+    refreshToken: null,
+    idToken: null,
+    accessTokenExpiresAt: null,
+    refreshTokenExpiresAt: null,
+    scope: null,
+    password: null,
+    createdAt: SIGN_IN_MADE_AT,
+    updatedAt: SIGN_IN_MADE_AT,
+  };
+}
+
+/**
+ * Every seeded login's own Google account, under the login's email, and the
+ * member seat's second one, so a preview shows every state of the Google
+ * accounts screens (#906, #908).
+ */
+export const GOOGLE_ACCOUNT_ROWS = rowsOf(betterAuthAccounts, [
+  ...SIGN_IN_ROWS.rows.map((login) => googleAccountRow(login.id, login.email, "first")),
+  googleAccountRow(seatOf("member").id, MEMBER_SEAT_SECOND_GOOGLE_EMAIL, "second"),
+]);
+
+/**
+ * Matches the Google accounts the seed makes and nothing else. Removing a
+ * seeded login removes its accounts anyway (`userId` cascades); this also
+ * names them by their made-up id, so a developer's own account stays.
+ */
+export const GOOGLE_ACCOUNT_RESET: SeedStatement = {
+  sql: `DELETE FROM better_auth.account WHERE id LIKE '${SEED_GOOGLE_ACCOUNT}%'`,
+  params: [],
+};
+
 /**
  * The `sync_auth_users` trigger set each seeded account's `users.updated_at`
  * to now when its sign-in row went in; these set it back to what the `users`
@@ -507,7 +563,10 @@ export const people = tableSeedModule({
   // `team_joins` points at `users`, so emptying `users` empties it anyway.
   owns: [members, users, roles, teamJoins],
   // Only the seed's own sign-in rows: a developer's own account stays.
-  keyed: [{ table: betterAuthUsers, reset: SIGN_IN_RESET }],
-  rows: [MEMBER_ROWS, USER_ROWS, ADDED_USER_ROWS, ROLE_ROWS, TEAM_JOIN_ROWS, SIGN_IN_ROWS],
+  keyed: [
+    { table: betterAuthAccounts, reset: GOOGLE_ACCOUNT_RESET },
+    { table: betterAuthUsers, reset: SIGN_IN_RESET },
+  ],
+  rows: [MEMBER_ROWS, USER_ROWS, ADDED_USER_ROWS, ROLE_ROWS, TEAM_JOIN_ROWS, SIGN_IN_ROWS, GOOGLE_ACCOUNT_ROWS],
   afterInsert: [ADMIN_TESTER_UPDATED_AT_FIX, PEOPLE_UPDATED_AT_FIX],
 });
