@@ -8,6 +8,7 @@ import { departmentsOnPath, divisionLabel, divisionsOnPath, viewersSeat, type Te
 // place they are drawn (issue #862).
 // No name or label is cut off: a long one wraps, and its card or row, and
 // everything under it, moves down to fit (Owner decision, 2026-10-19, on #398).
+// The cards of one level row all take the tallest one's height (issue #897).
 
 export type Box = { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
 
@@ -170,6 +171,16 @@ function holdersCardHeight(holders: TreeHolders, title: string, subtitle: string
   return Math.max(least, Math.ceil(HOLDER_ROWS.down + names + gaps + subtitleH));
 }
 
+/**
+ * How tall every card in one level row is drawn (the board seats, the
+ * department heads, the division leads): the tallest card's height, so cards
+ * side by side end on one line and what hangs under them starts on one line
+ * (issue #897). No card is drawn shorter than its own text needs.
+ */
+function levelHeight(heights: readonly number[], least: number): number {
+  return Math.max(least, ...heights);
+}
+
 /** How tall a member row is drawn: one line, or taller to show the whole name. */
 function rowHeight(person: TreePerson): number {
   const style = person.self ? ROW_NAME_SELF : ROW_NAME;
@@ -233,36 +244,45 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
   const boardY = bottom(leaderBox) + LEADER_TO_BOARD;
   const boardBus = bottom(leaderBox) + BOARD_BUS_DROP;
   const boardLeft = centre - boardWidth / 2;
-  let boardBottom = boardY + CARD.h;
+  const seatH = levelHeight(
+    tree.board.map(({ title, holders }) => holdersCardHeight(holders, title, seatCaption(title), CARD.w, CARD.h)),
+    CARD.h,
+  );
+  const boardBottom = boardY + seatH;
   tree.board.forEach(({ key, title, holders }, i) => {
     const mine = viewersSeat(holders);
-    const subtitle = seatCaption(title);
-    const h = holdersCardHeight(holders, title, subtitle, CARD.w, CARD.h);
-    const box: Box = { x: boardLeft + i * (CARD.w + BOARD_GAP), y: boardY, w: CARD.w, h };
-    boardBottom = Math.max(boardBottom, bottom(box));
+    const box: Box = { x: boardLeft + i * (CARD.w + BOARD_GAP), y: boardY, w: CARD.w, h: seatH };
     // Keyed by the seat, not a holder: one person can hold two seats (issue #929).
-    nodes.push({ kind: "card", key: `board-${key}`, level: "board", ...box, holders, title, subtitle, onPath: mine });
+    nodes.push({ kind: "card", key: `board-${key}`, level: "board", ...box, holders, title, subtitle: seatCaption(title), onPath: mine });
     if (hasLeader) edges.push(elbow(leaderBox, box, boardBus, mine));
   });
 
   const headY = boardBottom + BOARD_TO_HEADS;
   const headBus = headY - HEAD_BUS_RISE;
-  const heads = columns.map(({ department }) => {
-    const subtitle = headCaption(department.heads);
-    return { subtitle, h: holdersCardHeight(department.heads, department.name, subtitle, CARD.w, CARD.h) };
-  });
-  const headsBottom = headY + Math.max(CARD.h, ...heads.map((c) => c.h));
+  const headH = levelHeight(
+    columns.map(({ department }) => holdersCardHeight(department.heads, department.name, headCaption(department.heads), CARD.w, CARD.h)),
+    CARD.h,
+  );
+  const headsBottom = headY + headH;
   const leadY = headsBottom + HEADS_TO_LEADS;
   const leadBus = headsBottom + LEAD_BUS_DROP;
+  // The division leads of every department share one row, so they share its height.
+  const leadH = levelHeight(
+    columns.flatMap(({ department }) =>
+      department.divisions.map((division) =>
+        holdersCardHeight(division.leads, divisionLabel(division.name), leadCaption(division.name, division.leads), LEAD_CARD.w, LEAD_CARD.h),
+      ),
+    ),
+    LEAD_CARD.h,
+  );
 
   let height = tree.board.length > 0 ? boardBottom : bottom(leaderBox);
   let ownColumn: Box | null = null;
 
   let left = (width - headsWidth) / 2;
-  for (const [i, { department, width: columnWidth, leadsWidth }] of columns.entries()) {
+  for (const { department, width: columnWidth, leadsWidth } of columns) {
     const onDepartment = pathDepartments.has(department.id);
-    const head = heads[i];
-    const headBox: Box = { x: left + columnWidth / 2 - CARD.w / 2, y: headY, w: CARD.w, h: head.h };
+    const headBox: Box = { x: left + columnWidth / 2 - CARD.w / 2, y: headY, w: CARD.w, h: headH };
     nodes.push({
       kind: "card",
       key: `head-${department.id}`,
@@ -270,7 +290,7 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
       ...headBox,
       holders: department.heads,
       title: department.name,
-      subtitle: head.subtitle,
+      subtitle: headCaption(department.heads),
       onPath: onDepartment,
     });
     // The trunk runs from the leader past the board seats to every head.
@@ -282,7 +302,7 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
       const onDivision = pathDivisions.has(division.id);
       const title = divisionLabel(division.name);
       const subtitle = leadCaption(division.name, division.leads);
-      const leadBox: Box = { x: slotLeft, y: leadY, w: LEAD_CARD.w, h: holdersCardHeight(division.leads, title, subtitle, LEAD_CARD.w, LEAD_CARD.h) };
+      const leadBox: Box = { x: slotLeft, y: leadY, w: LEAD_CARD.w, h: leadH };
       slotLeft += LEAD_CARD.w + COLUMN_GAP;
       nodes.push({ kind: "card", key: `lead-${division.id}`, level: "lead", ...leadBox, holders: division.leads, title, subtitle, onPath: onDivision });
       edges.push(elbow(headBox, leadBox, leadBus, onDivision));
