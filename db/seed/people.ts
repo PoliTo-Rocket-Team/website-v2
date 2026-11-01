@@ -18,7 +18,12 @@
 // tester (issue #653): each plain seat of lib/seeded-accounts.ts is one of
 // these people. Two seats lib/about/team.ts leaves empty are invented on
 // public people: a Test Engineer leads Test Bench, and the head of
-// Operations holds the operations lead's full-access seat. The applicants'
+// Operations holds the operations lead's full-access seat. Two invented
+// roles give public people a second seat (issue #944), so the Team tree
+// draws one person on several cards: the Project Manager also holds a
+// second team-level seat, and the Chief Engineer also heads R&D beside its
+// head. Both stay on their flagged seat, so the Team page draws them where
+// it did. The applicants'
 // user ids keep the numbers the old SQL seed used; the recruitment module
 // names them.
 
@@ -150,6 +155,8 @@ export const IT_LEAD = publicMember("Huseyin Gulec");
 /** The two board seats beside the team leader (board 54c), which the Team page draws on its arc (issue #311). */
 export const PROJECT_MANAGER = publicMember("Riccardo Savio");
 export const CHIEF_ENGINEER = publicMember("Andrea Manzo");
+/** The Project Manager's second team-level seat (invented, issue #944): a seat in no unit with no full-access flag. */
+export const SECOND_SEAT_TITLE = "Launch Campaign Manager";
 /** Head of Operations (lib/about/team.ts), who holds the operations lead's full-access seat on that role (invented: the public data flags no seat). */
 export const OPERATIONS_HEAD = publicMember("Rocco Bellon");
 /** A Test Engineer (lib/about/team.ts) who also leads Test Bench (invented: team.ts names no Test Bench lead): the division-lead plain seat. */
@@ -310,7 +317,7 @@ export const MEMBER_SEAT_ALIAS: string = (() => {
 
 export const USER_ROWS = rowsOf(users, [...PEOPLE.map(userRow), ...ADMIN_TESTER_USERS]);
 
-const { propulsion, structures, aerodynamics, recovery, electronics, operations } = DEPARTMENT;
+const { propulsion, structures, aerodynamics, recovery, electronics, operations, research } = DEPARTMENT;
 const D = DIVISION;
 
 /** The two board seats' flags, by holder: their team-level role row carries it, as migration 0047 marked the real rows (issue #625). */
@@ -364,6 +371,13 @@ export const ROLE_ROWS = rowsOf(roles, [
   // waiting hand-over (./hand-overs.ts) and the manual alias requests
   // (./aliases.ts).
   { memberId: TEST_BENCH_LEAD, deptId: propulsion, divisionId: D.testBench, title: "Test Bench Lead", startedAt: PUBLIC_ROLES_START, type: "lead" },
+
+  // People who hold more than one seat (issue #944), invented: team.ts gives
+  // no one two. Neither row carries a full-access flag, and each holder's
+  // flagged board seat ranks first, so the Team page still draws them on it
+  // and nowhere else; the Team tree draws them on the further card too.
+  { memberId: PROJECT_MANAGER, title: SECOND_SEAT_TITLE, startedAt: PUBLIC_ROLES_START, type: "core" },
+  { memberId: CHIEF_ENGINEER, deptId: research, title: "Co-Head of R&D", startedAt: PUBLIC_ROLES_START, type: "head" },
 ]);
 
 for (const seat of SEATS) {
