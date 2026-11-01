@@ -388,6 +388,14 @@ export interface DashboardData {
    */
   markTeamAddressRemovalDone(removalId: number): Promise<WriteResult<null>>;
   /**
+   * Mark done (`"removed"`) or Keep address (`"kept"`) on an open personal
+   * PRT email removal (issue #931), checked by `planPrtEmailRemovalAnswer`:
+   * only the team leader, the operations lead and the IT lead. Mark done
+   * clears the member's PRT email; Keep address leaves it. Either closes the
+   * removal; a second answer is refused and writes nothing.
+   */
+  answerPrtEmailRemoval(removalId: number, answer: unknown): Promise<WriteResult<null>>;
+  /**
    * The team addresses the viewer holds and whether they set each up
    * (`ownTeamAddressesOf`, ./team-address.ts), for the Overview's ready
    * cards (board 94f's, for a team address); none off the team. It reads the

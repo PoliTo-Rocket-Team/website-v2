@@ -267,6 +267,8 @@ const TABLE_RANK = [
   "departments",
   "divisions",
   "roles",
+  // Its Mark done clears the member's PRT email too; the answer is the change.
+  "prt_email_removals",
   "members",
   "outreach_post_versions",
   "outreach_summit_versions",
@@ -650,6 +652,24 @@ const SENTENCES: Readonly<Record<string, Sentence>> = {
         return { sentence: `Cancelled the team email request for ${person}`, area };
       default:
         return { sentence: `Changed the team email request for ${person}`, area };
+    }
+  },
+
+  // A personal PRT email removal (issue #931): the database opens it when the member leaves, an approver answers it.
+  prt_email_removals(row, data, d) {
+    const area = "members";
+    const person = d.member(int(data, "member_id"));
+    const address = text(data, "address") ?? "the PRT email";
+    if (row.operation === "INSERT") return { sentence: `Asked to remove ${address} of ${person}`, area };
+    switch (text(data, "outcome")) {
+      case "removed":
+        return { sentence: `Removed ${address} of ${person}`, area };
+      case "kept":
+        return { sentence: `Kept ${address} for ${person}`, area };
+      case "cancelled":
+        return { sentence: `Cancelled the removal of ${address} of ${person}`, area };
+      default:
+        return { sentence: `Changed the removal of ${address} of ${person}`, area };
     }
   },
 

@@ -769,6 +769,38 @@ export const teamAddressRemovals = pgTable("team_address_removals", {
   openAddress: check("team_address_removals_open_address", sql`${table.doneAt} is not null or ${table.addressId} is not null`),
 }));
 
+/** How a personal PRT email removal closed (lib/dashboard/prt-email-removal.ts); null while it is open. */
+export const prtEmailRemovalOutcomeEnum = pgEnum("prt_email_removal_outcome", ["removed", "kept", "cancelled"]);
+
+/**
+ * A personal PRT email removal (issue #931, drizzle/0084): a member whose
+ * `members.prt_email` is set held no active role any more, so the alias
+ * approvers delete the mailbox in Google Workspace and press Mark done, which
+ * clears the PRT email, or press Keep address, which leaves it. A role other
+ * than an advisor role started again before either closes it as cancelled;
+ * an advisor role leaves it open. The database opens and
+ * cancels these itself, when a `roles` write commits (drizzle/0084), so every
+ * way of leaving the team is covered. One address has at most one open
+ * removal in any letter case (`prt_email_removals_one_open`).
+ * lib/dashboard/prt-email-removal.ts owns the rules.
+ */
+export const prtEmailRemovals = pgTable("prt_email_removals", {
+  id: serial("id").primaryKey(),
+  memberId: integer("member_id").references(() => members.memberId, { onDelete: "set null" }),
+  address: text("address").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  outcome: prtEmailRemovalOutcomeEnum("outcome"),
+  answeredBy: integer("answered_by").references(() => members.memberId, { onDelete: "set null" }),
+  answeredByActingAccount: actingAccount("answered_by_acting_account"),
+  answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }),
+}, (table) => ({
+  oneOpen: uniqueIndex("prt_email_removals_one_open").on(sql`lower(${table.address})`).where(sql`${table.outcome} is null`),
+  memberIdx: index("prt_email_removals_member_idx").on(table.memberId),
+  answered: check("prt_email_removals_answered", sql`(${table.outcome} is null) = (${table.answeredAt} is null)`),
+}));
+
 // The Alumni page (issue #257). The page is built from the roles; an entry
 // holds only how one person shows on it, so a fix never writes a role, a
 // division or access. A member's entry is keyed by their member row and made

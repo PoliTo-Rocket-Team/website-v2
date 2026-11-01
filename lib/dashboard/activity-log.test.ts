@@ -108,6 +108,15 @@ test("the rows one write stored at once read as one change, said by the row that
   assert.deepEqual(sentences(entries), ["Moved Applicant D to Interview for Role Z"]);
 });
 
+test("a personal PRT email removal's answer reads as itself, not as the PRT email it clears (issue #931)", () => {
+  const at = "2026-10-25T09:00:00.000Z";
+  const removal = (outcome: string) =>
+    row({ table: "prt_email_removals", operation: "UPDATE", at, before: { member_id: 4, address: "e@team.test", outcome: null }, after: { member_id: 4, address: "e@team.test", outcome } });
+  const cleared = row({ table: "members", operation: "UPDATE", at, before: { member_id: 4, prt_email: "e@team.test" }, after: { member_id: 4, prt_email: null } });
+  assert.deepEqual(sentences(read([cleared, removal("removed")])), ["Removed e@team.test of Person E"]);
+  assert.deepEqual(sentences(read([removal("kept")])), ["Kept e@team.test for Person E"]);
+});
+
 test("a sign-in email change names the old and the new address, whether the address changed on the row or the record moved rows (issue #864)", () => {
   const at = "2026-10-25T09:00:00.000Z";
   const users = (operation: string, before: Record<string, unknown> | null, after: Record<string, unknown>) => row({ table: "users", operation, at, before, after });
