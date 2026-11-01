@@ -75,7 +75,8 @@ An admin column comes later. **Planned**, no issue yet.
     seat, but a grant one kept from a seat held before becoming team leader can still be removed,
     through Edit access or Remove all access (see "4. Orders");
   - every holder of an alias approver seat (the team leader, the operations lead, the IT lead)
-    sees each waiting PRT email request, team address request, routing item and removal, and
+    sees each waiting PRT email request, team address request, routing item and removal, the
+    personal PRT email removals of members who left included, and
     either holder may answer it or mark it done;
   - a head's hand-over request goes to every team leader, and a lead's to every head of the
     lead's department; the sender is never one of them, and either approver may answer;
@@ -984,6 +985,26 @@ personal PRT email, and the PRT emails section above sets how it reads.
   created.
 - The alias is created by hand in Google Workspace. The site creates nothing there and sends no
   email.
+- When a member with a PRT email leaves the team, the approvers are asked to remove it (issue
+  #931, `lib/dashboard/prt-email-removal.ts`, Owner decisions of 2026-10-31). Leaving is any
+  write after which the member holds no active role: Leave the team, Move to alumni, a hand-over
+  or a replace that ends their last role, the end of their last advisor role. The database opens
+  the removal as that write commits (`drizzle/0084`), so every way of leaving is covered, and
+  the leave is never refused because of it. A member with no PRT email gets none.
+- The same leave cancels the member's own open PRT email request, if one is open. The
+  cancellation shows in the Activity log under who made the leave.
+- A member who stays on as an advisor (division, department or team) keeps the address and any
+  open PRT email request; the removal opens, and the request is cancelled, when their last
+  advisor role ends.
+- One address has at most one open removal, in any letter case (`prt_email_removals_one_open`).
+  A member who rejoins the team before it is answered has it cancelled. A member who takes an
+  advisor role again leaves it open: the approvers answer it with Keep address or Mark done.
+- Each open removal is one "Remove … from …" item on the approvers' Overview, every holder of
+  each seat, drawn as a team address removal's, with Keep address and Mark done. Mark done is
+  pressed once the mailbox is deleted in Google Workspace: it clears the member's PRT email.
+  Keep address closes it and leaves the PRT email; that leave asks no more, and a later leave
+  asks again. Either answer is final and shows in the Activity log under who gave it; a second
+  answer, from another approver, is refused and writes nothing.
 
 ### Team addresses
 

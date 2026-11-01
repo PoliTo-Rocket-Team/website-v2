@@ -32,6 +32,7 @@ import {
   isAnswerTeamAddress,
   isDismissNotice,
   isMarkRemovalDone,
+  isAnswerPrtEmailRemoval,
   isMarkRerouteDone,
   type AttentionAction,
   type AttentionItem,
@@ -55,6 +56,7 @@ import { AnswerTeamAddress } from "./answer-team-address";
 import { DismissNotice } from "./dismiss-notice";
 import { MarkTeamAddressMoved } from "./team-address-reroute";
 import { MarkTeamAddressRemoved } from "./team-address-removal";
+import { AnswerPrtEmailRemoval } from "./prt-email-removal";
 import { departmentLabel } from "@/lib/dashboard/recruitment";
 import { PANEL, Panel, RowAction } from "./panel";
 
@@ -514,6 +516,7 @@ function AttentionButton({ action, chip = false }: { action: AttentionAction; ch
   if (isAnswerTeamAddress(action)) return <AnswerTeamAddress action={action} chip={chip} />;
   if (isMarkRerouteDone(action)) return <MarkTeamAddressMoved action={action} chip={chip} />;
   if (isMarkRemovalDone(action)) return <MarkTeamAddressRemoved action={action} chip={chip} />;
+  if (isAnswerPrtEmailRemoval(action)) return <AnswerPrtEmailRemoval action={action} chip={chip} />;
   return isDismissNotice(action) ? (
     <DismissNotice noticeId={action.dismissNotice} label={action.label} chip={chip} />
   ) : (
@@ -528,6 +531,7 @@ function attentionKey(item: AttentionItem): string {
   if (isAnswerTeamAddress(item.action)) return `team-address-${item.action.answerTeamAddress}`;
   if (isMarkRerouteDone(item.action)) return `team-address-reroute-${item.action.markRerouteDone}`;
   if (isMarkRemovalDone(item.action)) return `team-address-removal-${item.action.markRemovalDone}`;
+  if (isAnswerPrtEmailRemoval(item.action)) return `prt-email-removal-${item.action.answerPrtEmailRemoval}`;
   return isDismissNotice(item.action) ? `notice-${item.action.dismissNotice}` : item.title;
 }
 
@@ -544,10 +548,11 @@ const ATTENTION_ICONS: Readonly<Record<AttentionKind, LucideIcon>> = {
   "prt-email-request": AtSign,
   "team-address-reroute": AtSign,
   "team-address-removal": AtSign,
+  "prt-email-removal": AtSign,
 };
 
 /** The rows the viewer answers on the row itself, drawn on the accent tint. */
-const ANSWERED_HERE = ["hand-over", "prt-email-request", "team-address-reroute", "team-address-removal"] as const satisfies readonly AttentionKind[];
+const ANSWERED_HERE = ["hand-over", "prt-email-request", "team-address-reroute", "team-address-removal", "prt-email-removal"] as const satisfies readonly AttentionKind[];
 
 function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boolean; hiddenOnPhone: boolean }) {
   return (

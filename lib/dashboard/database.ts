@@ -107,6 +107,7 @@ import {
   removeTeamAddress,
   requestTeamAddress,
 } from "./database-team-address";
+import { answerPrtEmailRemoval, readPrtEmailRemovalAttention } from "./database-prt-email-removal";
 import { NO_TEAM_ADDRESSES } from "./team-address";
 import { upcomingInterviews } from "./interview-slots";
 import { BREAK_GLASS_STANDING, SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, hasOwnProfile, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type BreakGlassStanding, type ViewerStanding } from "./viewer";
@@ -950,7 +951,8 @@ async function readMemberAccess(identity: Identity): Promise<NonNullable<AccessF
  * department or the team leader, whatever their Overview's shape. The open
  * alias requests follow them for the three approver seats (board 94c, epic
  * #538), then the open team address requests (epic #578, issue #788) and
- * the open team address routing items (issue #789) and removals (issue #797). Whoever decides orders (`decideRightOfStanding`), whatever the
+ * the open team address routing items (issue #789) and removals (issue #797),
+ * and the personal PRT emails of members who left (issue #931). Whoever decides orders (`decideRightOfStanding`), whatever the
  * shape, then gets what waits for their decision across the team
  * (`leaderAttention`, issue #592); nobody else's Overview reads the team's
  * orders for it. The team leader alone also gets the count of acceptance
@@ -970,9 +972,10 @@ function overviewSectionsOf(identity: Identity): OverviewSections {
     readTeamAddressAttention(identity, now),
     readTeamAddressRerouteAttention(identity, now),
     readTeamAddressRemovalAttention(identity, now),
+    readPrtEmailRemovalAttention(identity, now),
     isTeamLeader(identity) ? readAcceptanceEmailCount().then(acceptanceEmailsAttention) : null,
     teamOrders?.then((orders) => leaderAttention({ orders, now })) ?? [],
-  ]).then(([scope, handOvers, aliases, teamAddressRequests, reroutes, removals, acceptance, decisions]) => ({
+  ]).then(([scope, handOvers, aliases, teamAddressRequests, reroutes, removals, prtEmailRemovals, acceptance, decisions]) => ({
     ...scope,
     attention: [
       ...handOvers,
@@ -980,6 +983,7 @@ function overviewSectionsOf(identity: Identity): OverviewSections {
       ...teamAddressRequests,
       ...reroutes,
       ...removals,
+      ...prtEmailRemovals,
       ...(acceptance === null ? [] : [acceptance]),
       ...decisions,
       ...scope.attention,
@@ -1112,6 +1116,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     markTeamAddressRerouteDone: (rerouteId) => markTeamAddressRerouteDone(identity, rerouteId),
     removeTeamAddress: (addressId) => removeTeamAddress(identity, addressId),
     markTeamAddressRemovalDone: (removalId) => markTeamAddressRemovalDone(identity, removalId),
+    answerPrtEmailRemoval: (removalId, answer) => answerPrtEmailRemoval(identity, removalId, answer),
     myTeamAddresses: () => readOwnTeamAddresses(identity),
     confirmTeamAddressSetUp: (addressId) => confirmTeamAddressSetUp(identity, addressId),
     requestAlias: (input) => requestAlias(identity, input),
