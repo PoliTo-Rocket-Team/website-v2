@@ -62,6 +62,15 @@ test("both dashboard forms take a grouped phone, keep an untouched one, and stil
   }
 });
 
+test("both dashboard forms save the lone + an empty phone field gets on entry as no phone", () => {
+  const yourDetails = parseDetailsChange({ ...applicant, phone: "+" }, "member", "");
+  assert.ok(yourDetails.ok);
+  assert.equal(yourDetails.value.phone, "");
+  const editDetails = parseMemberDetails({ ...NO_MEMBER_DETAILS, phone: "+" }, "");
+  assert.ok(editDetails.ok);
+  assert.equal(editDetails.value.phone, "");
+});
+
 test("a member's save never writes the name their lead set or the LinkedIn the Details card saves", () => {
   const saved = parseDetailsChange({ ...applicant, firstName: "Someone", lastName: "Else", linkedin: "linkedin.com/in/other" }, "member", "");
   assert.ok(saved.ok);

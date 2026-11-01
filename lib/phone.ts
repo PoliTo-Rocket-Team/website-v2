@@ -23,6 +23,22 @@ export function groupPhone(typed: string): string {
     .trim();
 }
 
+/** The example every phone field shows while empty. */
+export const PHONE_PLACEHOLDER = "+39 389 123 4567";
+
+/**
+ * Every phone starts with `+`, so an empty field gets one when the person
+ * enters it and they type the country code next. Any other value is theirs.
+ */
+export function phoneOnEnter(value: string): string {
+  return value === "" ? "+" : value;
+}
+
+/** A field holding only the `+` it was given on entry is empty. */
+export function phoneOnLeave(value: string): string {
+  return value.trim() === "+" ? "" : value;
+}
+
 /** A phone field's value after an edit, and where its caret goes. */
 export type PhoneEdit = { readonly value: string; readonly caret: number };
 
