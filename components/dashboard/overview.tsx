@@ -80,7 +80,20 @@ export function OverviewView({ overview, readyCards = [] }: { overview: Overview
   }
 }
 
-const GRID = "mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px]";
+/** The panels' two columns from lg: a wide one and a 400px one. */
+const COLUMNS = "lg:grid-cols-[minmax(0,1fr)_400px]";
+
+const GRID = `mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-4 ${COLUMNS}`;
+
+/**
+ * The figure row: two to a line, four from xl. Two figures over panels in
+ * two columns take the panels' columns from lg, so their edges line up
+ * (issue #897).
+ */
+function figureRow(count: number, overColumns: boolean): string {
+  const columns = count === 2 && overColumns ? COLUMNS : "xl:grid-cols-4";
+  return `mt-5 grid grid-cols-2 gap-3 md:mt-6 md:gap-4 ${columns}`;
+}
 
 /** Off the team the panels stack, full width, under the person (boards 50e, 50f, 56). */
 const STACK = "mt-6 flex min-w-0 flex-col gap-4";
@@ -176,7 +189,7 @@ export function OverviewBodySection({ board, panels }: { board: ScopeBoard; pane
   return (
     <>
       {board.stats.length > 0 && (
-        <div className="mt-5 grid grid-cols-2 gap-3 md:mt-6 md:gap-4 xl:grid-cols-4">
+        <div className={figureRow(board.stats.length, opensOnColumns({ board, parts, panels }))}>
           {board.stats.map((stat, index) => (
             <StatCard key={stat.label} stat={stat} compact={compact} hiddenOnPhone={compact && index >= 2} />
           ))}
@@ -237,10 +250,16 @@ function ScopePanels({ board, parts, checklist }: Pick<BodyProps, "board" | "par
 // the roster of their own unit, then recent activity, which phones on boards
 // 56m and 62m drop. With one column empty the other takes the whole width,
 // so no empty column is left (Owner decision, 2026-10-21).
+function leaderSides({ board, parts, panels }: BodyProps): { left: boolean; right: boolean } {
+  return {
+    left: hasScopePanels({ board, parts }) || panels.checklist !== null,
+    right: panels.rosters.length > 0 || board.activity.length > 0,
+  };
+}
+
 function LeaderColumns({ board, parts, panels }: BodyProps) {
   const { checklist, rosters } = panels;
-  const left = hasScopePanels({ board, parts }) || checklist !== null;
-  const right = rosters.length > 0 || board.activity.length > 0;
+  const { left, right } = leaderSides({ board, parts, panels });
   if (!left && !right) return null;
   return (
     <div className={left && right ? GRID : STACK}>
@@ -262,10 +281,28 @@ function LeaderColumns({ board, parts, panels }: BodyProps) {
 // roster on its own once every step of the page is done, issue #641). With
 // no recent activity the panels take the whole width, so no empty column is
 // left on the right (Owner decision, 2026-10-21).
+function boardFirstSides({ board, parts }: BodyProps): { left: boolean; activity: boolean } {
+  return { left: hasScopePanels({ board, parts }), activity: board.activity.length > 0 };
+}
+
+/**
+ * Whether the first panels under the figures sit in GRID's two columns from
+ * lg, as `LeaderColumns` and `BoardFirst` lay them out.
+ */
+function opensOnColumns(props: BodyProps): boolean {
+  const { checklist, rosters } = props.panels;
+  if (props.panels.layout === "leader-columns") {
+    const { left, right } = leaderSides(props);
+    return left && right;
+  }
+  const { left, activity } = boardFirstSides(props);
+  if (left || activity) return activity;
+  return checklist !== null && rosters.length > 0;
+}
+
 function BoardFirst({ board, parts, panels }: BodyProps) {
   const { checklist, rosters } = panels;
-  const left = hasScopePanels({ board, parts });
-  const activity = board.activity.length > 0;
+  const { left, activity } = boardFirstSides({ board, parts, panels });
   return (
     <>
       {(left || activity) && (

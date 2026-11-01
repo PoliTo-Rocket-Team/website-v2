@@ -124,6 +124,23 @@ test("a long name or subtitle wraps: its box grows and pushes the rows under it 
   assertApart(long);
 });
 
+test("the lead cards of one row share the tallest one's height, so their member lists start on one line (#897)", () => {
+  // Aerodynamics has two divisions: Mission Analysis, led by a name that wraps, and Optimization and Analysis, led by a short one.
+  const longName = "Maria Alessandra Benedetta Castelnuovo di Sant'Agata";
+  const plain = layoutTeamTree(buildTeamTree(roster, org, "2026–27", null));
+  const layout = layoutTeamTree(
+    buildTeamTree([...roster.map((p) => (p.id === 5 ? { ...p, name: longName } : p)), person(12, "Nadia Russo", member(11))], org, "2026–27", null),
+  );
+  const node = (key: string) => layout.nodes.find((n) => n.key === key)!;
+  const [wraps, short] = [node("lead-10"), node("lead-11")];
+  assert.equal(short.h, wraps.h, "both lead cards are as tall as the taller one");
+  assert.ok(wraps.h > plain.nodes.find((n) => n.key === "lead-10")!.h, "the wrapped name's card still grows to show it all");
+  const [missionRow, optimizationRow] = [node("row-10-6"), node("row-11-12")];
+  assert.equal(optimizationRow.y, missionRow.y, "the first member row under each lead starts at the same y");
+  assert.ok(missionRow.y > wraps.y + wraps.h, "and below the lead cards");
+  assertApart(layout);
+});
+
 test("member rows take the plain width and each division column is the lead card's width", () => {
   const layout = layoutTeamTree(buildTeamTree([...roster, both, leadsOne], org, "2026–27", 6));
   const rows = layout.nodes.filter((n) => n.kind === "row");
@@ -274,11 +291,12 @@ const card = (layout: ReturnType<typeof layoutTeamTree>, key: string) => {
 test("a card with one holder lays out as before #916: the same height, under its unit's key", () => {
   const layout = layoutTeamTree(buildTeamTree(roster, org, "2026–27", 6));
   // The heights the one-holder cards had before #916: a long name or title wraps, so some are past the smallest card.
+  // Since #897 a card takes its level row's tallest height: the Project Manager's seat matches the Chief Engineer's.
   assert.deepEqual(
     ["leader-1", "board-flag:project-manager", "head-1", "lead-10"].map((key) => [key, card(layout, key).h, card(layout, key).holders.length]),
     [
       ["leader-1", 59, 1],
-      ["board-flag:project-manager", 52, 1],
+      ["board-flag:project-manager", 59, 1],
       ["head-1", 56, 1],
       ["lead-10", 72, 1],
     ],
