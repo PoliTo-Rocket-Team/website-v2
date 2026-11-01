@@ -563,6 +563,13 @@
       "breakpoints": true
     },
     {
+      "idx": 82,
+      "version": "7",
+      "when": 1796059200000,
+      "tag": "0082_repair_division_name_suffix",
+      "breakpoints": true
+    },
+    {
       "idx": 83,
       "version": "7",
       "when": 1796145600000,

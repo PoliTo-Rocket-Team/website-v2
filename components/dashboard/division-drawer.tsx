@@ -7,8 +7,9 @@ import { addMember, createDivision, findPeople, saveDivision } from "@/app/dashb
 import {
   divisionCodeError,
   divisionNameError,
+  divisionTitle,
   normalizeDivisionCode,
-  storedDivisionName,
+  renamesDivision,
   type DivisionSave,
   type OldLead,
   type RemovedLeadOutcome,
@@ -191,7 +192,7 @@ function DrawerForm({
   const codeShown = codeError !== null && (draft.code !== "" || showErrors);
 
   const original = draftOf(target);
-  const nameChanged = target.kind === "edit" && storedDivisionName(draft.name) !== storedDivisionName(original.name);
+  const nameChanged = target.kind === "edit" && renamesDivision(draft.name, original.name);
   const codeChanged = target.kind === "edit" && code !== normalizeDivisionCode(original.code);
   const changes = Number(nameChanged) + Number(codeChanged) + draft.added.length + draft.removed.length;
 
@@ -242,7 +243,7 @@ function DrawerForm({
           setConfirming(false);
           return;
         }
-        toast.success(`${storedDivisionName(draft.name)} is open`);
+        toast.success(`${divisionTitle(draft.name)} is open`);
       } else {
         const result = await saveDivision(divisionId!, save);
         if (!result.ok) {
@@ -435,7 +436,7 @@ function DrawerForm({
         onOpenChange={setConfirming}
         pending={pending}
         target={target}
-        name={storedDivisionName(draft.name)}
+        name={divisionTitle(draft.name)}
         original={original}
         code={code}
         nameChanged={nameChanged}
