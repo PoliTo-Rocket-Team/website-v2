@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Pencil } from "lucide-react";
 import { toast } from "sonner";
+import { usePhoneGrouping } from "@/components/use-phone-grouping";
 import { DEGREE_PROGRAMMES, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
 import {
   DETAIL_FIELDS,
@@ -142,6 +143,7 @@ function DetailsDrawer({
     setDraft((d) => ({ ...d, [key]: value }));
     setErrors((errs) => ({ ...errs, [key]: undefined }));
   };
+  const phone = usePhoneGrouping((value) => set("phone", value));
 
   return (
     <Drawer
@@ -181,7 +183,7 @@ function DetailsDrawer({
                 <input
                   {...common}
                   type={key === "birthDate" ? "date" : key === "phone" ? "tel" : "text"}
-                  onChange={(e) => set(key, e.target.value)}
+                  {...(key === "phone" ? phone : { onChange: (e: ChangeEvent<HTMLInputElement>) => set(key, e.target.value) })}
                   placeholder={PLACEHOLDERS[key]}
                   autoComplete={AUTOCOMPLETE[key]}
                 />
