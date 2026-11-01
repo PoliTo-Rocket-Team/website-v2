@@ -1736,7 +1736,7 @@ describe("a division lead with no scope row edits their own division in the Team
   test("Edit division saves a new name and a new code on the led division", async () => {
     await writes("rename and recode MA", async () => teamActions.saveDivision(IDS.division(MA), await save(MA, { name: "Flight Analysis", code: "FLA" })));
     const division = (await tableRows(divisions)).find((d) => d.id === IDS.division(MA))!;
-    assert.deepEqual([division.name, division.code], ["Flight Analysis Division", "FLA"]);
+    assert.deepEqual([division.name, division.code], ["Flight Analysis", "FLA"]);
   });
 
   test("Edit division adds a lead, replaces a lead and removes a lead on the led division", async () => {
