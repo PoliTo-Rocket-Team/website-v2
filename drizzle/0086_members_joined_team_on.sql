@@ -1,0 +1,15 @@
+-- The day each member joined the team (issue #948,
+-- https://github.com/PoliTo-Rocket-Team/website-v2/issues/948). The Overview's
+-- "In the team since" line shows the date the member joined the team, never a
+-- role's start (owner decision, 2026-11-01): the roster's role starts are
+-- academic-year placeholders. The team import read the roster's "Joined the
+-- Team on" column only to date roles and stored it nowhere, so this adds the
+-- place to keep it. The one-time backfill in scripts/team-join-date fills it
+-- from the roster workbook; the owner runs it.
+--
+-- Expand only: one new nullable column. Nothing is dropped, renamed, filled or
+-- made not-null, so the older preview code that reads the shared preview
+-- database while this runs reads the same rows.
+--
+-- Safe to run again: the column is added only when missing.
+ALTER TABLE "members" ADD COLUMN IF NOT EXISTS "joined_team_on" date;

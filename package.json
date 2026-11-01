@@ -17,6 +17,7 @@
     "db:migrate": "tsx db/migrate.ts",
     "db:seed": "tsx db/seed.ts",
     "db:alumni-repair": "tsx scripts/alumni-repair/cli.ts",
+    "db:team-join-date": "tsx scripts/team-join-date/cli.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
