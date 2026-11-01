@@ -49,7 +49,7 @@ function row(r: Omit<RoleSeat, "id" | "fullAccess"> & Partial<Pick<RoleSeat, "fu
 }
 
 function person(id: number, name: string, placement: RosterEntry["placement"]): RosterEntry {
-  return { id, name, email: `${name.split(" ")[0].toLowerCase()}@prt.it`, photoUrl: null, placement, pageTitle: null, joined: 2024, program: null, study: null, access: [] };
+  return { id, name, email: `${name.split(" ")[0].toLowerCase()}@prt.it`, photoUrl: null, placement, furtherSeats: [], pageTitle: null, joined: 2024, program: null, study: null, access: [] };
 }
 
 const lead = (divisionId: number, since = "2024-10-01") => inDivisions([{ divisionId, role: "lead", since }]);

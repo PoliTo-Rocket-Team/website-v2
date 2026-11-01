@@ -1,4 +1,4 @@
-import type { BoardRole, Placement, RoleBeyondDivisions, RosterEntry } from "@/lib/dashboard/team";
+import type { BoardRole, FurtherSeat, RosterEntry } from "@/lib/dashboard/team";
 import type { Person, PersonPhoto } from "./types";
 
 // Someone on this year's team as the Team page reads them (issue #282), and
@@ -23,31 +23,13 @@ export type TeamPerson = Pick<RosterEntry, "id" | "name" | "placement" | "pageTi
   readonly teamEmail: string | null;
 };
 
-/** A seat someone holds beside their placement: a team-level seat, or a department's head with the title its row carries. */
-export type FurtherSeat =
-  | { readonly kind: "board"; readonly seat: BoardRole }
-  | { readonly kind: "head"; readonly departmentId: number; readonly title: string };
+// The seats someone holds beside their placement are read where the roster
+// reads them (lib/dashboard/team.ts), so the Team page and the dashboard's
+// Team tree share one rule (issue #929).
+export { furtherSeatsOf, type FurtherSeat } from "@/lib/dashboard/team";
 
 /** A department's head someone holds, with the title its row carries. */
 export type HeadSeat = Extract<FurtherSeat, { readonly kind: "head" }>;
-
-/**
- * The team-level seats and department heads among someone's roles beyond
- * their divisions (`beyond`) other than the one `placement` draws them in. A
- * head row that names no department on the chart heads nothing, so it is left
- * out. The team leader always draws them, so it is never a further seat.
- */
-export function furtherSeatsOf(placement: Placement, beyond: readonly RoleBeyondDivisions[]): FurtherSeat[] {
-  const drawnInSeat = placement.role === "board" ? placement.seat.roleId : null;
-  const drawnInHead = placement.role === "head" ? placement.departmentId : null;
-  return beyond.flatMap((role): FurtherSeat[] => {
-    if (role.kind === "board") return role.seat.roleId === drawnInSeat ? [] : [{ kind: "board", seat: role.seat }];
-    if (role.kind === "head" && role.departmentId !== null && role.departmentId !== drawnInHead) {
-      return [{ kind: "head", departmentId: role.departmentId, title: role.title }];
-    }
-    return [];
-  });
-}
 
 /** Every team-level seat someone holds: the one they are drawn in first, then the rest. */
 export function teamSeatsOf(p: TeamPerson): BoardRole[] {

@@ -19,7 +19,7 @@ const org: OrgChart = {
 };
 
 function person(id: number, name: string, placement: RosterEntry["placement"]): RosterEntry {
-  return { id, name, email: `${id}@prt.it`, photoUrl: null, placement, pageTitle: null, joined: 2024, program: null, study: null, access: [] };
+  return { id, name, email: `${id}@prt.it`, photoUrl: null, placement, furtherSeats: [], pageTitle: null, joined: 2024, program: null, study: null, access: [] };
 }
 
 const lead = (divisionId: number) => inDivisions([{ divisionId, role: "lead", since: "2024-10-01" }]);
@@ -253,7 +253,7 @@ test("the path of a viewer in three divisions across two departments reaches all
 test("a seat's path stops at the seat: the leader, a board seat and a head (#862)", () => {
   const onPath = (selfId: number) => layoutTeamTree(buildTeamTree(roster, org, "2026–27", selfId)).nodes.filter((n) => n.onPath).map((n) => n.key);
   assert.deepEqual(onPath(1), ["leader-1"]);
-  assert.deepEqual(onPath(2), ["leader-1", "board-2"]);
+  assert.deepEqual(onPath(2), ["leader-1", "board-flag:chief-engineer"]);
   assert.deepEqual(onPath(4), ["leader-1", "head-1"]);
 });
 
@@ -275,10 +275,10 @@ test("a card with one holder lays out as before #916: the same height, under its
   const layout = layoutTeamTree(buildTeamTree(roster, org, "2026–27", 6));
   // The heights the one-holder cards had before #916: a long name or title wraps, so some are past the smallest card.
   assert.deepEqual(
-    ["leader-1", "board-3", "head-1", "lead-10"].map((key) => [key, card(layout, key).h, card(layout, key).holders.length]),
+    ["leader-1", "board-flag:project-manager", "head-1", "lead-10"].map((key) => [key, card(layout, key).h, card(layout, key).holders.length]),
     [
       ["leader-1", 59, 1],
-      ["board-3", 52, 1],
+      ["board-flag:project-manager", 52, 1],
       ["head-1", 56, 1],
       ["lead-10", 72, 1],
     ],
@@ -291,21 +291,21 @@ test("two team leaders, two holders of a seat, two heads and two leads each shar
   const layout = layoutTeamTree(buildTeamTree([...roster, ...coHolders], org, "2026–27", null));
   const names = (key: string) => card(layout, key).holders.map((p) => p.name);
   assert.deepEqual(names("leader-1"), ["Alessandro Greco", "Zeno Russo"]);
-  assert.deepEqual(names("board-3"), ["Lorenzo Gallo", "Marta Riva"]);
+  assert.deepEqual(names("board-flag:project-manager"), ["Lorenzo Gallo", "Marta Riva"]);
   assert.deepEqual(names("head-1"), ["Chiara Rinaldi", "Silvia Moro"]);
   assert.deepEqual(names("lead-10"), ["Marco Bianchi", "Sara Villa"]);
   assert.equal(layout.nodes.filter((n) => n.kind === "card").length, plain.nodes.filter((n) => n.kind === "card").length, "no card of its own for a co-holder");
   assert.deepEqual(
-    [card(layout, "leader-1").subtitle, card(layout, "board-3").subtitle, card(layout, "head-1").subtitle, card(layout, "lead-10").subtitle],
+    [card(layout, "leader-1").subtitle, card(layout, "board-flag:project-manager").subtitle, card(layout, "head-1").subtitle, card(layout, "lead-10").subtitle],
     ["Team Leaders", "Project Manager", "Head of Aerodynamics", "Mission Analysis · Leads"],
   );
-  for (const key of ["leader-1", "board-3", "head-1", "lead-10"]) assert.ok(card(layout, key).h > card(plain, key).h, `${key} grows for its second holder`);
+  for (const key of ["leader-1", "board-flag:project-manager", "head-1", "lead-10"]) assert.ok(card(layout, key).h > card(plain, key).h, `${key} grows for its second holder`);
   // Everything under a taller card moves down with it.
   const row = layout.nodes.find((n) => n.key === "row-10-6")!;
   assert.ok(row.y >= card(layout, "lead-10").y + card(layout, "lead-10").h);
   assert.ok(card(layout, "lead-10").y > card(layout, "head-1").y + card(layout, "head-1").h);
-  assert.ok(card(layout, "head-1").y > card(layout, "board-3").y + card(layout, "board-3").h);
-  assert.ok(card(layout, "board-3").y > card(layout, "leader-1").y + card(layout, "leader-1").h);
+  assert.ok(card(layout, "head-1").y > card(layout, "board-flag:project-manager").y + card(layout, "board-flag:project-manager").h);
+  assert.ok(card(layout, "board-flag:project-manager").y > card(layout, "leader-1").y + card(layout, "leader-1").h);
   assertApart(layout);
 });
 
@@ -313,7 +313,7 @@ test("the path, the you mark and Find someone reach the second holder of a card 
   const all = [...roster, ...coHolders];
   for (const [selfId, key, onPathKeys] of [
     [30, "leader-1", ["leader-1"]],
-    [31, "board-3", ["leader-1", "board-3"]],
+    [31, "board-flag:project-manager", ["leader-1", "board-flag:project-manager"]],
     [32, "head-1", ["leader-1", "head-1"]],
     [33, "lead-10", ["leader-1", "head-1", "lead-10"]],
   ] as const) {
