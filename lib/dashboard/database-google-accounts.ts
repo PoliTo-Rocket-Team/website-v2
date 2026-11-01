@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { betterAuthAccounts, betterAuthUsers, logs, users } from "@/db/schema";
 import { failUnless, isGuardFailure } from "@/lib/db-guard";
@@ -79,20 +79,53 @@ export async function recordGoogleAccountChange(entry: GoogleAccountEntry): Prom
 
 const isGoogle = eq(betterAuthAccounts.providerId, "google");
 
+/** An email as the sign-in matches it (drizzle/0080): letter case and stray spaces aside. */
+const emailKey = (email: SQL) => sql`lower(trim(${email}))`;
+
+/**
+ * The statements of one removal that read the login's sign-in email (issue
+ * #949). Each is read in the batch after the row lock and before the delete,
+ * so all of them see the removed account still there.
+ */
+function signInEmailMove(userId: string, accountRowId: string) {
+  const ofLogin = and(eq(betterAuthAccounts.userId, userId), isGoogle);
+  /** True when the removed account's email is the login's sign-in email. */
+  const moves = sql`exists (select 1 from ${betterAuthAccounts}, ${betterAuthUsers}
+    where ${and(ofLogin, eq(betterAuthAccounts.id, accountRowId), eq(betterAuthUsers.id, userId))}
+      and ${emailKey(sql`${betterAuthAccounts.email}`)} = ${emailKey(sql`${betterAuthUsers.email}`)})`;
+  /** The oldest Google account the login keeps that has an email, as `readLinkedGoogleAccounts` orders them. */
+  const next = sql`select ${betterAuthAccounts.id} as "id", trim(${betterAuthAccounts.email}) as "email" from ${betterAuthAccounts}
+    where ${and(ofLogin, ne(betterAuthAccounts.id, accountRowId))} and nullif(trim(${betterAuthAccounts.email}), '') is not null
+    order by ${betterAuthAccounts.createdAt}, ${betterAuthAccounts.id} limit 1`;
+  const nextEmail = sql`(select "email" from (${next}) as "next")`;
+  /** True when another login, or another open person row, already has the new email. */
+  const taken = sql`(exists (select 1 from ${betterAuthUsers} where ${ne(betterAuthUsers.id, userId)} and ${emailKey(sql`${betterAuthUsers.email}`)} = lower(${nextEmail}))
+    or exists (select 1 from ${users} where ${and(ne(users.id, userId), isNull(users.deletedAt))} and ${emailKey(sql`${users.email}`)} = lower(${nextEmail})))`;
+  return { moves, next, nextEmail, taken };
+}
+
 /**
  * Removes one linked Google account and writes its Activity log entry, in one
  * batch that never leaves the login without a Google account (epic #902). The
  * batch first locks the login's `better_auth.user` row, so two removals on one
  * login run one after the other; Read Committed reads each later statement
- * afresh, so the guard after the lock sees what a removal before it committed.
- * The guard then needs the account still on this login and another Google
- * account beside it, and a guard that fails writes nothing. Answers null when
- * the account was removed, or why it was not.
+ * afresh, so the guards after the lock see what a removal before it committed.
+ * The first guard needs the account still on this login and another Google
+ * account beside it.
+ *
+ * When the removed account's email is the login's sign-in email, that email
+ * moves to the oldest remaining Google account's email in the same batch
+ * (issue #949), and the move gets its own Activity log entry; the
+ * `sync_auth_users` trigger (drizzle/0080) carries it to `users.email`. The
+ * second guard needs that email to exist and to be free: no other login and no
+ * other open person row has it. A guard that fails writes nothing. Answers
+ * null when the account was removed, or why it was not.
  */
 export async function removeGoogleAccount(removal: GoogleAccountRemoval): Promise<GoogleAccountRefusal | null> {
   const db = getDb();
   const { userId, accountRowId } = removal;
   const ofLogin = and(eq(betterAuthAccounts.userId, userId), isGoogle);
+  const email = signInEmailMove(userId, accountRowId);
   try {
     await db.batch([
       db.select({ id: betterAuthUsers.id }).from(betterAuthUsers).where(eq(betterAuthUsers.id, userId)).for("update"),
@@ -101,13 +134,24 @@ export async function removeGoogleAccount(removal: GoogleAccountRemoval): Promis
         sql`exists (select 1 from ${betterAuthAccounts} where ${and(ofLogin, eq(betterAuthAccounts.id, accountRowId))})
           and exists (select 1 from ${betterAuthAccounts} where ${and(ofLogin, ne(betterAuthAccounts.id, accountRowId))})`,
       ),
+      failUnless(db, sql`not ${email.moves} or (${email.nextEmail} is not null and not ${email.taken})`),
+      // The move's entry is written before the move: after it, the removed account's email is no longer the login's.
+      db.execute(sql`insert into ${logs} (${sql.identifier(logs.schemaName.name)}, ${sql.identifier(logs.tableName.name)}, ${sql.identifier(logs.operation.name)},
+          ${sql.identifier(logs.recordId.name)}, ${sql.identifier(logs.newData.name)}, ${sql.identifier(logs.changedBy.name)})
+        select 'better_auth', 'account', ${GOOGLE_ACCOUNT_OPERATIONS["sign-in-email"]}, "next"."id", jsonb_build_object('email', "next"."email"), ${userId}
+        from (${email.next}) as "next" where ${email.moves}`),
+      db
+        .update(betterAuthUsers)
+        .set({ email: sql`${email.nextEmail}`, updatedAt: sql`now()` })
+        .where(and(eq(betterAuthUsers.id, userId), email.moves)),
       db.delete(betterAuthAccounts).where(and(ofLogin, eq(betterAuthAccounts.id, accountRowId))),
       db.insert(logs).values(entryRow({ event: "unlink", ...removal })),
     ]);
   } catch (error) {
     if (!isGuardFailure(error)) throw error;
     const accounts = await linkedGoogleAccountsOf(userId);
-    return accounts.some((account) => account.id === accountRowId) ? "last" : "not-yours";
+    if (!accounts.some((account) => account.id === accountRowId)) return "not-yours";
+    return accounts.length > 1 ? "sign-in-email" : "last";
   }
   return null;
 }

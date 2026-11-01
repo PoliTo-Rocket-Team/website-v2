@@ -32,10 +32,17 @@ export function GoogleAccountsCard({
   accounts: stored,
   returnTo,
   notice: returned,
+  onRemoved,
 }: {
   accounts: readonly LinkedGoogleAccount[];
   returnTo: string;
   notice: GoogleAccountsNotice | null;
+  /**
+   * Called once a removal lands. Removing the account whose email is the
+   * sign-in email moves that email (issue #949), so the page reads its data
+   * again and its Sign-in card shows the new one.
+   */
+  onRemoved: () => void;
 }) {
   // The list lives in this card once a removal answers; nothing else on the page reads it.
   const [accounts, setAccounts] = useState(stored);
@@ -97,6 +104,7 @@ export function GoogleAccountsCard({
       setAccounts((now) => now.filter((account) => account.id !== removing.id));
       setRemoving(null);
       toast.success("Google account removed");
+      onRemoved();
     } catch {
       toast.error("Could not remove the Google account", { description: unlinkErrorMessage(null) });
     } finally {

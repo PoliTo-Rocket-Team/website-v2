@@ -90,7 +90,7 @@ export function MyProfileView({
           }}
         />
         <AccountCard signIn={profile.signIn} />
-        <GoogleAccountsCard accounts={profile.googleAccounts} returnTo="/dashboard/profile" notice={googleAccountsNotice} />
+        <GoogleAccountsCard accounts={profile.googleAccounts} returnTo="/dashboard/profile" notice={googleAccountsNotice} onRemoved={() => router.refresh()} />
         <LeaveOrDelete
           leave={profile.leave}
           handOver={profile.handOver}

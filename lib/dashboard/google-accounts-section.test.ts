@@ -16,7 +16,7 @@ import { googleAccountsNoticeOf, type GoogleAccountsNotice, type LinkedGoogleAcc
 const account = (googleId: string) => ({ id: `row-${googleId}`, googleId, email: `${googleId}@example.com` });
 
 function rendered(accounts: readonly LinkedGoogleAccount[], notice: GoogleAccountsNotice | null = null): string {
-  return renderToStaticMarkup(createElement(GoogleAccountsCard, { accounts, returnTo: "/dashboard/profile", notice }));
+  return renderToStaticMarkup(createElement(GoogleAccountsCard, { accounts, returnTo: "/dashboard/profile", notice, onRemoved: () => {} }));
 }
 
 const removes = (html: string) => [...html.matchAll(/aria-label="Remove ([^"]+)"/g)].map((m) => m[1]);

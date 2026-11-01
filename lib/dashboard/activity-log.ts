@@ -1,4 +1,4 @@
-import { googleAccountEventOf, googleAccountSentence } from "./google-accounts";
+import { googleAccountEventOf, googleAccountSentence, signInAccountRemovalSentence, type GoogleAccountEvent } from "./google-accounts";
 import { formatEuro } from "./orders";
 import { matchesQuery } from "./team";
 import { VIEW_AS_OPERATIONS } from "./view-as";
@@ -618,10 +618,17 @@ const SENTENCES: Readonly<Record<string, Sentence>> = {
     return { sentence: `Updated the details of ${person}`, area };
   },
 
-  // A Google account linked to or removed from the writer's own login (issue #906).
-  account(row, data) {
+  // A Google account linked to or removed from the writer's own login (issue
+  // #906); a removal that moved the sign-in email (issue #949) names both.
+  account(row, data, d) {
     const event = googleAccountEventOf(row.operation);
-    return { sentence: event === null ? "Changed their sign-in accounts" : googleAccountSentence(event, text(data, "email")), area: "account" };
+    if (event === null) return { sentence: "Changed their sign-in accounts", area: "account" };
+    const stored = (wanted: GoogleAccountEvent) => d.rows("account").find((r) => googleAccountEventOf(r.operation) === wanted);
+    const [removed, moved] = [stored("unlink"), stored("sign-in-email")];
+    if (removed !== undefined && moved !== undefined) {
+      return { sentence: signInAccountRemovalSentence(text(dataOf(removed), "email"), text(dataOf(moved), "email")), area: "account" };
+    }
+    return { sentence: googleAccountSentence(event, text(data, "email")), area: "account" };
   },
 
   team_leaves(row, data, d) {

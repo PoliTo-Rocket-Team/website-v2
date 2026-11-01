@@ -57,9 +57,11 @@ function standInGoogle(accounts: Map<string, Google>): void {
 /**
  * The database's Google account store as the test plays it: a link is logged,
  * and a removal deletes the row and logs it unless no other Google account
- * stays on the login, as lib/dashboard/database-google-accounts.ts does in one
- * transaction (lib/dashboard/google-accounts-unlink-server.test.ts runs that
- * one on the migrated database, two removals at once included).
+ * stays on the login, and moves the sign-in email to the next account's when
+ * it was the removed account's (issue #949), as
+ * lib/dashboard/database-google-accounts.ts does in one transaction
+ * (lib/dashboard/google-accounts-unlink-server.test.ts runs that one on the
+ * migrated database, two removals at once and a taken email included).
  */
 function standInStore(db: MemoryDb, entries: GoogleAccountEntry[]): GoogleAccountStore {
   return {
@@ -68,6 +70,9 @@ function standInStore(db: MemoryDb, entries: GoogleAccountEntry[]): GoogleAccoun
       const rows = db.account.filter((a) => a.userId === removal.userId && a.providerId === "google");
       if (!rows.some((a) => a.id === removal.accountRowId)) return "not-yours";
       if (rows.length < 2) return "last";
+      const login = db.user.find((u) => u.id === removal.userId);
+      const next = rows.find((a) => a.id !== removal.accountRowId && typeof a.email === "string");
+      if (login !== undefined && next !== undefined && login.email === removal.email) login.email = next.email;
       db.account = db.account.filter((a) => a.id !== removal.accountRowId);
       entries.push({ event: "unlink", ...removal });
       return null;
@@ -253,6 +258,23 @@ test("removing a linked account works and is logged once; the last one, a strang
   assert.equal(((await last.json()) as { message: string }).message, GOOGLE_ACCOUNT_REFUSAL_MESSAGES.last);
   assert.deepEqual(rowsOf(db, MEMBER.id).map((a) => a.accountId), [FIRST.sub], "the last account stays");
   assert.equal(entries.length, 1, "a refusal logs nothing");
+});
+
+test("removing the account the login signs in with moves the sign-in email: the session shows it at once, and the other account still opens the login", async () => {
+  const { auth, db } = await setUp();
+  const { jar } = await signInWithGoogle(auth, "first");
+  await link(auth, jar, "second");
+
+  const removed = await post(auth, jar, "/unlink-account", { providerId: "google", accountId: FIRST.sub });
+  assert.equal(removed.status, 200);
+  assert.equal(db.user.find((u) => u.id === MEMBER.id)?.email, SECOND.email, "the store moved the sign-in email");
+
+  // The same browser, with its session cookie cache as the removal's answer left it.
+  const session = await auth.handler(new Request(`${BASE}/get-session`, { headers: jar.headers() }));
+  const read = (await session.json()) as { user: { email: string }; email: string };
+  assert.deepEqual([read.user.email, read.email], [SECOND.email, SECOND.email], "the session no longer serves the removed account's email");
+
+  assert.equal((await signInWithGoogle(auth, "second")).userId, MEMBER.id, "the remaining account opens the same login");
 });
 
 test("inside View as, linking and removing are refused before Better Auth acts, and nothing is logged", async () => {

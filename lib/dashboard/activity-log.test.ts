@@ -246,6 +246,17 @@ test("a Google account linked or removed reads as one sentence in the Account ar
   assert.ok(entries.every((e) => e.change.kind === "write" && e.change.area === "account" && e.who.kind === "self" && e.who.name === "Applicant D"));
 });
 
+test("removing the account the login signs in with reads as one change naming the removal and the moved sign-in email, in the Account area (issue #949)", () => {
+  const at = "2026-10-25T09:00:00.000Z";
+  const google = (operation: string, recordId: string, email: string) => row({ schema: "better_auth", table: "account", operation, recordId, by: "acct-d", at, after: { email } });
+  const entries = read([
+    google("GOOGLE_ACCOUNT_SIGN_IN_EMAIL", "row-2", "second@example.com"),
+    google("GOOGLE_ACCOUNT_UNLINK", "row-1", "first@example.com"),
+  ]);
+  assert.deepEqual(sentences(entries), ["Removed the Google account first@example.com and changed their sign-in email to second@example.com"]);
+  assert.ok(entries.every((e) => e.change.kind === "write" && e.change.area === "account" && e.who.kind === "self"));
+});
+
 test("a write stored under no account is left out", () => {
   assert.deepEqual(read([row({ table: "orders", operation: "INSERT", by: null, after: { name: "Sheet" } })]), []);
 });
