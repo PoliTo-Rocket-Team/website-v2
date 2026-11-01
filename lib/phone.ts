@@ -24,7 +24,8 @@ export function groupPhone(typed: string): string {
 }
 
 /** The example every phone field shows while empty. */
-export const PHONE_PLACEHOLDER = "+39 389 123 4567";
+// No Italian phone starts with 1 after +39, so this example reaches nobody.
+export const PHONE_PLACEHOLDER = "+39 123 456 7890";
 
 /**
  * Every phone starts with `+`, so an empty field gets one when the person
