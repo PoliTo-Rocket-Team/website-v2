@@ -17,6 +17,7 @@ import {
   furtherSeatsOf,
   headDepartmentOf,
   isTeamSeat,
+  joinedYearOf,
   membershipsIn,
   membershipsOfRoles,
   roleBeyondDivisions,
@@ -61,6 +62,8 @@ type PersonRow = {
   /** The years on the team their lead gave when moving them to alumni (issue #172). */
   team_from: number | null;
   team_to: number | null;
+  /** The day they joined the team (`members.joined_team_on`, issue #948); null when none is stored. */
+  joined_team_on: string | null;
   // The Members page's private details (issue #231, board 61f).
   phone: string | null;
   mobile_number: string | null;
@@ -129,6 +132,7 @@ export async function queryTeamSnapshot(db: SnapshotDb): Promise<TeamSnapshot> {
         level_of_study: users.levelOfStudy,
         team_from: members.teamFrom,
         team_to: members.teamTo,
+        joined_team_on: members.joinedTeamOn,
         phone: users.phone,
         mobile_number: members.mobileNumber,
         discord: members.discord,
@@ -242,10 +246,6 @@ export function memberNamesOf(snapshot: TeamSnapshot): ReadonlyMap<number, strin
   }));
 }
 
-function yearOf(date: string): number {
-  return Number(date.slice(0, 4));
-}
-
 function rolesByMember(snapshot: TeamSnapshot): Map<number, RoleRow[]> {
   const byMember = new Map<number, RoleRow[]>();
   for (const role of snapshot.roles) byMember.set(role.member_id, [...(byMember.get(role.member_id) ?? []), role]);
@@ -269,7 +269,8 @@ export function rosterOf(snapshot: TeamSnapshot): RosterEntry[] {
         placement,
         furtherSeats: furtherSeatsOf(placement, active.flatMap((role) => roleBeyondDivisions(roleSeat(role), snapshot.org) ?? [])),
         pageTitle: active[0].title || null,
-        joined: Math.min(...memberRoles.map((r) => yearOf(r.started_at))),
+        // The stored team join day, never a role's start (issue #948).
+        joined: joinedYearOf(person?.joined_team_on ?? null),
         program: person?.program ?? null,
         study: person?.level_of_study ?? null,
         access: snapshot.scopes

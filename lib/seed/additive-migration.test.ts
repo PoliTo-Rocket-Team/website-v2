@@ -1345,3 +1345,27 @@ test("after 0080 a first sign-in on a free row that applications, files and audi
   assert.deepEqual(after.applications, before.applications, "every application still points at the unchanged row");
   assert.deepEqual(after.files, before.files, "every uploaded file still points at the unchanged row");
 });
+
+// The team join date (issue #948): one nullable column on `members`, nothing
+// filled. The owner's one-time backfill (scripts/team-join-date) fills it.
+const JOINED_TEAM_ON_TAG = "0086_members_joined_team_on";
+
+test("0086_members_joined_team_on.sql drops, renames and rewrites nothing, and its header links the issue", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${JOINED_TEAM_ON_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "joined_team_on" date;/);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/948/);
+});
+
+test("0086 keeps every member's values, leaves the new date empty, and applies again", async () => {
+  const { db, apply } = await databaseBefore(JOINED_TEAM_ON_TAG);
+  await db.exec(`insert into members (member_id, prt_email, team_from, team_to) values (1, 'one@politorocketteam.it', null, null), (2, null, 2022, 2024);`);
+  const before = (await db.query(`select * from members order by member_id`)).rows;
+  await apply();
+  await apply();
+  const after = (await db.query<Record<string, unknown>>(`select * from members order by member_id`)).rows;
+  assert.deepEqual(
+    after.map(({ joined_team_on, ...rest }) => [rest, joined_team_on]),
+    before.map((row) => [row, null]),
+  );
+});

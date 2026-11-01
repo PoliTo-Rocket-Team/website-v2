@@ -316,6 +316,24 @@ export type OrgChart = {
   readonly divisions: readonly OrgDivision[];
 };
 
+/**
+ * The day a member joined the team, as stored (`members.joined_team_on`, from
+ * the roster's "Joined the Team on" column, issue #948); null when none is
+ * stored or it does not read as a day. Owner decision, 2026-11-01: every
+ * place that shows when a member joined reads this and never a role's start,
+ * since the roster's role starts are academic-year placeholders.
+ */
+export function joinedTeamDayOf(stored: string | null): Date | null {
+  if (stored === null) return null;
+  const day = new Date(`${stored.slice(0, 10)}T00:00:00Z`);
+  return Number.isNaN(day.getTime()) ? null : day;
+}
+
+/** The year a member joined the team (`joinedTeamDayOf`); null when no join day is stored. */
+export function joinedYearOf(stored: string | null): number | null {
+  return joinedTeamDayOf(stored)?.getUTCFullYear() ?? null;
+}
+
 /** One person on this year's team, as both sides of the data interface read them. */
 export type RosterEntry = {
   readonly id: number;
@@ -332,8 +350,8 @@ export type RosterEntry = {
   readonly furtherSeats: readonly FurtherSeat[];
   /** The title under their name on the public Team page, when one is set. */
   readonly pageTitle: string | null;
-  /** The year they joined the team. */
-  readonly joined: number;
+  /** The year they joined the team (`joinedYearOf`); null when no join day is stored. */
+  readonly joined: number | null;
   /** "Aerospace Eng." */
   readonly program: string | null;
   /** "MSc · year 1" */
@@ -416,7 +434,8 @@ export type MemberRow = {
   readonly department: string | null;
   /** The line under the department; null when there is none. */
   readonly division: string | null;
-  readonly joined: number;
+  /** The year they joined the team; null when no join day is stored. */
+  readonly joined: number | null;
   readonly program: string | null;
   readonly study: string | null;
   readonly pageTitle: string | null;
@@ -890,6 +909,15 @@ export const FIRST_SEASON = 2010;
 /** "2024 – 2026" for the years field. */
 export function yearsLabel(from: number, to: number): string {
   return from === to ? String(from) : `${from} – ${to}`;
+}
+
+/**
+ * What Move to alumni's years field opens with: from the year they joined
+ * the team to this year; empty for the lead to fill in when no join day is
+ * stored (issue #948), never a year read off a role.
+ */
+export function departureYearsOf(joined: number | null, thisYear: number): string {
+  return joined === null ? "" : yearsLabel(Math.min(joined, thisYear), thisYear);
 }
 
 /** The years field as the lead typed it: "2024 – 2026", "2024-2026", or one year. */

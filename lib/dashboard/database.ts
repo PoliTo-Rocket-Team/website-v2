@@ -51,6 +51,7 @@ import {
   overviewLayoutOf,
   overviewOfSections,
   pageChecklistOf,
+  teamSinceOf,
   type AttentionItem,
   type DepartmentOverview,
   type DepartmentRosterRow,
@@ -150,6 +151,8 @@ type IdentityFields = {
   linkedin: string | null;
   memberId: number | null;
   picture: string | null;
+  /** The day they joined the team (`members.joined_team_on`, issue #948); null when none is stored. */
+  joinedTeamOn: string | null;
   /**
    * The role a single-division page names (`primaryRole`): their highest, the
    * oldest of those. Pages that still show one division read it (#231).
@@ -192,6 +195,7 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
         linkedin: users.linkedin,
         member_id: users.member,
         picture: members.picture,
+        joined_team_on: members.joinedTeamOn,
         // The email the account signs in with, which the break-glass setting names (issue #646).
         sign_in_email: betterAuthUsers.email,
       })
@@ -245,6 +249,7 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
     linkedin: user.linkedin,
     memberId: user.member_id,
     picture: user.picture,
+    joinedTeamOn: user.joined_team_on,
   };
   // The break-glass admin stands as the team leader, with or without a member row or a role (issue #646).
   const breakGlass = isBreakGlassEmail(user.sign_in_email);
@@ -742,15 +747,14 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
   };
 }
 
-const monthYear = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
-
 /** Who leads board 52, from the identity alone: it needs no read of its own. */
 function personHeaderOf(identity: Identity): PersonHeader {
   const role = identity.role;
   return {
     name: identity.name,
     line: [role?.title ?? "Member", role?.divisionName, role?.departmentName].filter(Boolean).join(" · "),
-    since: role ? `In the team since ${monthYear.format(new Date(`${role.startedAt}T00:00:00Z`))}` : null,
+    // The day they joined the team, never a role's start (issue #948).
+    since: teamSinceOf(identity.joinedTeamOn),
     edit: { label: "Edit profile", href: "/dashboard/profile" },
     // The photo the sidebar shows, `DashboardViewer.photoUrl` (issue #599).
     photoUrl: identity.picture,

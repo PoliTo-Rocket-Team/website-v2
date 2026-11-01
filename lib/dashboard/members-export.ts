@@ -46,7 +46,8 @@ export const MEMBERS_EXPORT_COLUMNS: readonly ExportColumn[] = [
   // The table's Department cell (issue #767); a head's Divisions cell stays empty, as heading adds no division.
   { header: "Department", value: (p) => p.departments.join("; ") },
   { header: "Divisions", value: divisionsText },
-  { header: "Member since", value: (p) => String(p.since) },
+  // A member with no stored join day shows nothing (issue #948).
+  { header: "Member since", value: (p) => (p.since === null ? "" : String(p.since)) },
   // The member's team address, their email alias once one is created (issue #563).
   { header: "PRT email", value: detail("prtEmail") },
   { header: "Personal email", value: (p) => p.signInEmail },

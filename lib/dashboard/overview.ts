@@ -19,7 +19,7 @@
 import type { AccessSection } from "./access-summary";
 import type { ApplicantOverview } from "./applicant-overview";
 import type { AlumniOverview } from "./my-alumni";
-import type { RoleType } from "./team";
+import { joinedTeamDayOf, type RoleType } from "./team";
 import { seatOf, type FlaggedSeat, type FullAccessSeat, type ViewerStanding } from "./viewer";
 
 export type Link = { readonly label: string; readonly href: string };
@@ -328,6 +328,18 @@ export type PersonHeader = {
   /** The viewer's stored photo, the one the sidebar shows (`DashboardViewer.photoUrl`); null draws the PRT mark (issue #599). */
   readonly photoUrl: string | null;
 };
+
+const monthYear = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+
+/**
+ * The header's "In the team since" line (issue #948): the day the member
+ * joined the team (`joinedTeamDayOf`, the rule the Members page's year reads
+ * too), as month and year; hidden with no stored join day.
+ */
+export function teamSinceOf(joinedTeamOn: string | null): string | null {
+  const day = joinedTeamDayOf(joinedTeamOn);
+  return day === null ? null : `In the team since ${monthYear.format(day)}`;
+}
 
 export type ChecklistItem = {
   readonly label: string;

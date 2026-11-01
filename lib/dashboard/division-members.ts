@@ -71,8 +71,8 @@ export type DivisionPerson = {
   /** The account they sign in with, or the email they were added with: locked in Edit details. */
   readonly signInEmail: string;
   readonly photoUrl: string | null;
-  /** The year they joined the team. */
-  readonly since: number;
+  /** The year they joined the team; null when no join day is stored (issue #948). */
+  readonly since: number | null;
   /** Their role in this division. */
   readonly role: DivisionRole;
   /** Their title in this division; the Role column shows it, or "Division Lead". */
@@ -297,7 +297,8 @@ export type PersonRecord = {
   readonly storedName: PersonName;
   readonly signInEmail: string;
   readonly photoUrl: string | null;
-  readonly since: number;
+  /** The year they joined the team; null when no join day is stored (issue #948). */
+  readonly since: number | null;
   readonly memberships: Memberships;
   /** Every role they hold in no division (team leader, board seat, department): "Leaves the team" ends these too. */
   readonly beyondDivisions: readonly RoleBeyondDivisions[];
@@ -638,7 +639,7 @@ export function lookupForAdd(
       storedName: NO_NAME,
       signInEmail: c.emails[0] ?? "",
       photoUrl: c.photoUrl,
-      since: 0,
+      since: null,
       memberships: c.memberships,
       beyondDivisions: [],
       titles: {},
