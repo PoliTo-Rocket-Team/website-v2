@@ -1,4 +1,5 @@
 import type { DetailsEditor, YourDetails } from "./details";
+import type { LinkedGoogleAccount } from "./google-accounts";
 import type { HandOverOffer } from "./hand-over-request";
 import type { OwnPrtEmail } from "./own-prt-email";
 import type { RoleType } from "./team";
@@ -66,6 +67,8 @@ export type MyProfile = {
   /** The public URL of the photo; null shows the PRT mark. */
   readonly photoUrl: string | null;
   readonly signIn: SignIn;
+  /** Every Google account they sign in with, oldest first, in the "Google accounts" section (issue #906). */
+  readonly googleAccounts: readonly LinkedGoogleAccount[];
   readonly leave: LeaveState;
   readonly details: YourDetails;
   /**
@@ -86,6 +89,8 @@ export type MyAccount = {
   /** Their stored photo, the one the sidebar shows (`DashboardViewer.photoUrl`, issue #656); null shows the PRT mark. */
   readonly photoUrl: string | null;
   readonly signIn: SignIn;
+  /** Every Google account they sign in with, oldest first, in the "Google accounts" section (issue #906). */
+  readonly googleAccounts: readonly LinkedGoogleAccount[];
   readonly details: YourDetails;
   /** Applications not withdrawn yet, whatever their status: what "Also withdraw all my applications" withdraws (issue #831). */
   readonly unwithdrawnApplications: number;

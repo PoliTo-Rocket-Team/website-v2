@@ -97,6 +97,7 @@ import {
   ADDED_BY_EMAIL,
   ADDED_USER_ROWS,
   CHIEF_ENGINEER,
+  GOOGLE_ACCOUNT_ROWS,
   IT_LEAD,
   MEMBER_ROWS,
   PROJECT_MANAGER,
@@ -916,6 +917,19 @@ export const SEED_CASES: readonly SeedCase[] = [
         join.addedBy != null &&
         activeIn(data, join.divisionId).some((r) => r.memberId === join.addedBy && r.type === "lead")
       );
+    },
+  },
+  {
+    area: "people",
+    case: "Every tester login has its own Google account, and the member seat has a second one with a different email",
+    data: "invented",
+    rows: "`better_auth.account` provider `google`, one per sign-in row under its email, and a second for the member seat",
+    exercisedBy: `${issue(906)}, ${issue(908)}`,
+    holds: () => {
+      const google = GOOGLE_ACCOUNT_ROWS.rows.filter((a) => a.providerId === "google");
+      const ownAccount = SIGN_IN_ROWS.rows.every((login) => google.filter((a) => a.userId === login.id && a.email === login.email).length === 1);
+      const memberEmails = google.filter((a) => a.userId === PLAIN_SEAT_PEOPLE.member).map((a) => a.email);
+      return ownAccount && memberEmails.length === 2 && new Set(memberEmails).size === 2;
     },
   },
   {

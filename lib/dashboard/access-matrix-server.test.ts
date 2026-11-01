@@ -2315,9 +2315,10 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
       const [header, ...rows] = readSheet(body);
       assert.deepEqual(header, EXPECTED_EXPORT_HEADER, `${name}: the header row`);
       assert.deepEqual(rows.map((r) => r[0]).sort(), directory.people.map((p) => p.name).sort(), `${name}: one row per member`);
-      // Each unit's private details, phone and Discord, are in the file.
+      // Each unit's private details, phone and Discord, are in the file. Who waits to join is not a member,
+      // and the file lists each member's sign-in email alone, never their linked Google emails (issue #908).
       const text = rows.flat().join("\n");
-      for (const u of ALL) for (const m of MARKERS.members(u).filter((x) => !x.startsWith("join-"))) assert.ok(text.includes(m), `${name}: ${m}`);
+      for (const u of ALL) for (const m of MARKERS.members(u).filter((x) => !x.startsWith("join-") && !x.startsWith("gacct-"))) assert.ok(text.includes(m), `${name}: ${m}`);
     }
   });
 
