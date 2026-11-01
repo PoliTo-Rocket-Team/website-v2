@@ -93,7 +93,21 @@ import {
 } from "./outreach";
 import { PARTNER_ROWS, PARTNER_VERSION_ROWS } from "./partners";
 import { PROJECT_ROWS, PROJECT_VERSION_ROWS } from "./projects";
-import { ADDED_BY_EMAIL, ADDED_USER_ROWS, GOOGLE_ACCOUNT_ROWS, IT_LEAD, MEMBER_ROWS, ROLE_ROWS, PLAIN_SEAT_PEOPLE, SIGN_IN_ROWS, TEAM_JOIN_ROWS, USER_ROWS } from "./people";
+import {
+  ADDED_BY_EMAIL,
+  ADDED_USER_ROWS,
+  CHIEF_ENGINEER,
+  GOOGLE_ACCOUNT_ROWS,
+  IT_LEAD,
+  MEMBER_ROWS,
+  PROJECT_MANAGER,
+  ROLE_ROWS,
+  PLAIN_SEAT_PEOPLE,
+  SECOND_SEAT_TITLE,
+  SIGN_IN_ROWS,
+  TEAM_JOIN_ROWS,
+  USER_ROWS,
+} from "./people";
 import { APPLICATION_FILE_ROWS, APPLICATION_ROWS, APPLICATION_STATUS_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
 import { DEPARTMENT_ROWS, DIVISION_ROWS } from "./structure";
 import {
@@ -771,14 +785,16 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "people",
-    case: "A head in every open department",
+    case: "A head placed in every open department, one each; a board seat who also heads one is placed on the seat",
     data: "invented",
     rows: "`roles` type `head`",
-    exercisedBy: issue(252),
-    holds: (data) =>
-      data.departments
+    exercisedBy: `${issue(252)}, ${issue(944)}`,
+    holds: (data) => {
+      const { people } = teamRolesOf(data);
+      return data.departments
         .filter((d) => (d.closedAt ?? null) === null)
-        .every((d) => data.roles.filter((r) => r.type === "head" && r.deptId === d.id && isActive(r)).length === 1),
+        .every((d) => people.filter((p) => p.placement.role === "head" && p.placement.departmentId === d.id).length === 1);
+    },
   },
   {
     area: "people",
@@ -809,6 +825,36 @@ export const SEED_CASES: readonly SeedCase[] = [
       [...onTeam(data)].some(
         (m) => new Set(data.roles.filter((r) => r.memberId === m && isActive(r) && r.divisionId != null).map((r) => r.divisionId)).size >= 2,
       ),
+  },
+  {
+    area: "people",
+    case: "Someone on two team-level seats: the Project Manager also holds a second seat, with no full-access flag, and stays on the flagged one",
+    data: "invented",
+    rows: `\`roles\` in no department or division of member ${PROJECT_MANAGER}, title "${SECOND_SEAT_TITLE}"; sign-in key \`riccardo.savio\``,
+    exercisedBy: `${issue(929)}, ${issue(944)}`,
+    holds: (data) => {
+      const person = teamRolesOf(data).people.find((p) => p.id === PROJECT_MANAGER);
+      return (
+        person?.placement.role === "board" &&
+        person.placement.seat.fullAccess !== null &&
+        person.furtherSeats.some((s) => s.kind === "board" && s.seat.title === SECOND_SEAT_TITLE && s.seat.fullAccess === null)
+      );
+    },
+  },
+  {
+    area: "people",
+    case: "Someone on a team-level seat who also heads an open department: the Chief Engineer co-heads R&D and stays on the seat",
+    data: "invented",
+    rows: `\`roles\` of member ${CHIEF_ENGINEER}: the flagged seat and a head row on department 8; sign-in key \`andrea.manzo\``,
+    exercisedBy: `${issue(929)}, ${issue(944)}`,
+    holds: (data) => {
+      const { org, people } = teamRolesOf(data);
+      const person = people.find((p) => p.id === CHIEF_ENGINEER);
+      return (
+        person?.placement.role === "board" &&
+        person.furtherSeats.some((s) => s.kind === "head" && org.departments.some((d) => d.id === s.departmentId))
+      );
+    },
   },
   {
     area: "people",
