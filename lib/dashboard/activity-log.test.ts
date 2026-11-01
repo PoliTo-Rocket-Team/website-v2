@@ -234,6 +234,18 @@ test("Give access with several areas names them all; a change made during View a
   assert.deepEqual(entry.who, { kind: "as", id: "acct-b", name: "Person B", actingTitle: "Seat Title", actingId: "acct-c", actingName: "Person C" });
 });
 
+test("a Google account linked or removed reads as one sentence in the Account area, under the person, naming its email (issue #906)", () => {
+  const google = (operation: string, email: string | null, at: string) =>
+    row({ schema: "better_auth", table: "account", operation, recordId: "row-1", by: "acct-d", at, after: { email } });
+  const entries = read([
+    google("GOOGLE_ACCOUNT_LINK", "second@example.com", "2026-10-25T09:00:00.000Z"),
+    google("GOOGLE_ACCOUNT_UNLINK", "second@example.com", "2026-10-25T10:00:00.000Z"),
+    google("GOOGLE_ACCOUNT_LINK", null, "2026-10-25T08:00:00.000Z"),
+  ]);
+  assert.deepEqual(sentences(entries), ["Removed the Google account second@example.com", "Linked the Google account second@example.com", "Linked a Google account"]);
+  assert.ok(entries.every((e) => e.change.kind === "write" && e.change.area === "account" && e.who.kind === "self" && e.who.name === "Applicant D"));
+});
+
 test("a write stored under no account is left out", () => {
   assert.deepEqual(read([row({ table: "orders", operation: "INSERT", by: null, after: { name: "Sheet" } })]), []);
 });

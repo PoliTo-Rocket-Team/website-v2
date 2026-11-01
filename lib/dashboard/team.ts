@@ -2,6 +2,7 @@ import type { positionTypeEnum } from "@/db/schema/public";
 import { academicYearStart, shortAcademicYearLabel } from "@/lib/about/academic-year-copy";
 import type { DepartmentMembers } from "./department-members";
 import type { PersonPosition, ReachMembers, WaitingPerson } from "./division-members";
+import type { MemberGoogleEmails } from "./google-accounts";
 import type { WholeTeamMembers } from "./team-members";
 import type { FlaggedSeat } from "./viewer";
 
@@ -470,6 +471,8 @@ export type DivisionQueue = {
  * the whole team, `positions` holds what the one Edit details panel may
  * change for each person the viewer may edit (`positionsOf`), and `queues`
  * every open division's people waiting for Confirm NDA and joining (issue #584).
+ * Every page that lists people carries their linked Google emails
+ * (`ListedGoogleEmails`); a page that lists no one carries none.
  */
 export type MemberDirectory =
   | ({
@@ -478,10 +481,18 @@ export type MemberDirectory =
       readonly queues: readonly DivisionQueue[];
       /** The members whose sign-in email the viewer may correct in Edit details (issue #741, ./sign-in-email.ts). */
       readonly correctsSignInEmail: readonly number[];
-    } & WholeTeamMembers)
-  | ({ readonly scope: "divisions" } & ReachMembers)
-  | ({ readonly scope: "department" } & DepartmentMembers)
+    } & WholeTeamMembers &
+      ListedGoogleEmails)
+  | ({ readonly scope: "divisions" } & ReachMembers & ListedGoogleEmails)
+  | ({ readonly scope: "department" } & DepartmentMembers & ListedGoogleEmails)
   | { readonly scope: "none" };
+
+/**
+ * The linked Google emails of the people a Members page lists (issue #908),
+ * read with the page itself, so they reach exactly the viewers who see those
+ * people's emails.
+ */
+export type ListedGoogleEmails = { readonly googleEmails: MemberGoogleEmails };
 
 /** A viewer with no division to list. */
 export const NO_MEMBERS: MemberDirectory = { scope: "none" };

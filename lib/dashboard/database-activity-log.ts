@@ -13,6 +13,7 @@ import {
   type LogRow,
 } from "./activity-log";
 import { readActingTitles } from "./database-acting-account";
+import { GOOGLE_ACCOUNT_OPERATIONS } from "./google-accounts";
 import { roleLabelOf } from "./role-label";
 import { VIEW_AS_OPERATIONS } from "./view-as";
 
@@ -30,6 +31,7 @@ const HEAVY_KEYS = sql.raw(
 export async function readActivityLog(now: Date): Promise<ActivityLogPage> {
   const since = new Date(now.getTime() - ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const viewAsOps = Object.values(VIEW_AS_OPERATIONS);
+  const googleAccountOps = Object.values(GOOGLE_ACCOUNT_OPERATIONS);
   const stored = sql`coalesce(${logs.newData}, ${logs.oldData})`;
   const rows: LogRow[] = (
     await getDb()
@@ -54,6 +56,10 @@ export async function readActivityLog(now: Date): Promise<ActivityLogPage> {
           or(
             and(eq(logs.schemaName, "public"), isNotNull(logs.changedBy)),
             and(eq(logs.schemaName, "better_auth"), eq(logs.tableName, "session"), inArray(logs.operation, viewAsOps)),
+            // A Google account linked or removed (issue #906): the entry ./database-google-accounts.ts
+            // writes, which holds the account's email alone. The audit trigger's own rows on
+            // `better_auth.account` carry its tokens and are never read here.
+            and(eq(logs.schemaName, "better_auth"), eq(logs.tableName, "account"), inArray(logs.operation, googleAccountOps)),
           ),
         ),
       )
