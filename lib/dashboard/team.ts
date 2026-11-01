@@ -316,7 +316,6 @@ export type OrgChart = {
   readonly divisions: readonly OrgDivision[];
 };
 
-/** One person on this year's team, as both sides of the data interface read them. */
 /**
  * The day a member joined the team, as stored (`members.joined_team_on`, from
  * the roster's "Joined the Team on" column, issue #948); null when none is
@@ -335,6 +334,7 @@ export function joinedYearOf(stored: string | null): number | null {
   return joinedTeamDayOf(stored)?.getUTCFullYear() ?? null;
 }
 
+/** One person on this year's team, as both sides of the data interface read them. */
 export type RosterEntry = {
   readonly id: number;
   readonly name: string;
