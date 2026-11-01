@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useTransition, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, Lock, Mail, MailX, Upload, UserMinus, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { usePhoneGrouping } from "@/components/use-phone-grouping";
 import { addMember, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
 import { cancelAliasRequest, removeTeamAddress, requestAlias, requestTeamAddress } from "@/app/dashboard/actions";
 import { ALIAS_FORM_HINT, aliasPrefill, checkAliasAddress, personalRequestChoice, TEAM_DOMAIN, type MemberAlias } from "@/lib/dashboard/alias-request";
@@ -961,6 +962,7 @@ function DetailInput({
   className?: string;
 }) {
   const error = errors[name];
+  const phone = usePhoneGrouping((value) => set("phone", value));
   return (
     <Field label={DETAIL_LABEL[name]} error={error} className={className}>
       {(id, describedBy) =>
@@ -988,7 +990,7 @@ function DetailInput({
             aria-describedby={describedBy}
             aria-invalid={error !== undefined}
             placeholder={PLACEHOLDERS[name]}
-            onChange={(e) => set(name, e.target.value)}
+            {...(name === "phone" ? phone : { onChange: (e: ChangeEvent<HTMLInputElement>) => set(name, e.target.value) })}
             className={inputClass(error)}
           />
         )

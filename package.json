@@ -46,6 +46,7 @@
     "drizzle-kit": "catalog:",
     "drizzle-orm": "catalog:",
     "eslint-config-next": "catalog:",
+    "libphonenumber-js": "catalog:",
     "lucide-react": "catalog:",
     "next": "catalog:",
     "next-themes": "catalog:",

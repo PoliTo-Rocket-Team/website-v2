@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyFormDefaults, editableDetailKeys, NO_DETAILS, parseDetailsChange, type YourDetails } from "./details";
+import { groupPhone } from "../phone";
+import { applyFormDefaults, editableDetailKeys, NO_DETAILS, NO_MEMBER_DETAILS, parseDetailsChange, parseMemberDetails, type YourDetails } from "./details";
 
 // "Your details" on My account and My profile (issues #183, #201): the save
 // writes only the fields its editor may, each checked as the apply form
@@ -40,6 +41,24 @@ test("Your details keeps an unchanged phone whatever its format, and checks a ch
     assert.equal(kept.value.phone, opened);
     assert.deepEqual(save("3890247023"), { ok: false, errors: { phone: "Start with + and the country code." } }, editor);
     assert.ok(save("+39 389 024 7022").ok, editor);
+  }
+});
+
+// Issue #953: the phone fields group the digits as the person types.
+test("both dashboard forms take a grouped phone, keep an untouched one, and still ask a changed one for the country code", () => {
+  const opened = "3890247022";
+  const yourDetails = (phone: string) => parseDetailsChange({ ...applicant, phone }, "member", opened);
+  const editDetails = (phone: string) => parseMemberDetails({ ...NO_MEMBER_DETAILS, phone }, opened);
+  for (const save of [yourDetails, editDetails]) {
+    const grouped = save(groupPhone("+393891234567"));
+    assert.ok(grouped.ok);
+    assert.equal(grouped.value.phone, "+39 389 123 4567");
+
+    const untouched = save(opened);
+    assert.ok(untouched.ok);
+    assert.equal(untouched.value.phone, opened);
+
+    assert.deepEqual(save(groupPhone("3891234567")), { ok: false, errors: { phone: "Start with + and the country code." } });
   }
 });
 
