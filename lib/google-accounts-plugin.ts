@@ -1,5 +1,6 @@
 import type { BetterAuthOptions, BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
+import { setSessionCookie } from "better-auth/cookies";
 import {
   GOOGLE_ACCOUNT_REFUSAL_MESSAGES,
   googleAccountRefusal,
@@ -29,6 +30,9 @@ import { impersonatorOf } from "@/lib/session-user";
 //                                   as the delete and its log entry; two
 //                                   removals at once cannot both pass a check
 //                                   read before either deleted (epic #902).
+//   an unlink that lands            writes the session cookie again from
+//                                   the login row, since the removal may
+//                                   have moved its sign-in email (#949).
 //
 // Both go through the same redirect URI sign-in uses,
 // `<BETTER_AUTH_URL>/api/auth/callback/google`, so Google's console needs no
@@ -93,6 +97,7 @@ const REFUSAL_STATUS: Readonly<Record<GoogleAccountRefusal, "FORBIDDEN" | "BAD_R
   "view-as": "FORBIDDEN",
   "not-yours": "BAD_REQUEST",
   last: "BAD_REQUEST",
+  "sign-in-email": "BAD_REQUEST",
 };
 
 /** The answer a refused change gets, in the rules' own words. */
@@ -150,6 +155,19 @@ function refuseUnless(change: GoogleAccountChange, state: GoogleAccountsState): 
   if (refusal !== null) throw refused(refusal);
 }
 
+/**
+ * Writes the session cookie again with the login as the database now has it.
+ * A removal can move the login's sign-in email (issue #949), and the session
+ * cookie cache would otherwise keep the old one for up to its whole lifetime.
+ */
+async function refreshSessionUser(ctx: HookContext): Promise<void> {
+  const session = await getSessionFromCtx(ctx);
+  if (session === null) return;
+  const user = await ctx.context.internalAdapter.findUserById(session.user.id);
+  if (user === null) return;
+  await setSessionCookie(ctx, { session: session.session, user });
+}
+
 const ONLY_GOOGLE = "Only a Google account can be added or removed.";
 export const ONLY_THROUGH_GOOGLE_SIGN_IN = "Add a Google account through Google sign-in.";
 
@@ -188,6 +206,15 @@ export function googleAccountsPlugin() {
             const googleId = typeof ctx.body?.accountId === "string" ? ctx.body.accountId : "";
             // A first answer from the list read now; the store checks again as it deletes.
             refuseUnless({ kind: "remove", googleId }, state);
+          }),
+        },
+      ],
+      after: [
+        {
+          matcher: (ctx) => ctx.path === UNLINK,
+          handler: createAuthMiddleware(async (ctx) => {
+            if (ctx.context.returned instanceof APIError) return;
+            await refreshSessionUser(ctx);
           }),
         },
       ],

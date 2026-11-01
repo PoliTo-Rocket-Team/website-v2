@@ -2,11 +2,11 @@ import "./access-matrix/install-real-session";
 
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
-import { betterAuthAccounts, betterAuthUsers } from "@/db/schema";
+import { betterAuthAccounts, betterAuthUsers, users } from "@/db/schema";
 import { BASE, Jar, TEST_ENV } from "@/lib/dev-tester-fixture";
 import type { GoogleAccountStore } from "@/lib/google-accounts-plugin";
 import { seatOf } from "@/lib/seeded-accounts";
-import { addRows, logRowsSinceSeed, resetDatabase, tableRows } from "./access-matrix/test-database";
+import { addRows, changeRows, logRowsSinceSeed, resetDatabase, tableRows } from "./access-matrix/test-database";
 import { recordGoogleAccountChange, removeGoogleAccount } from "./database-google-accounts";
 import { GOOGLE_ACCOUNT_OPERATIONS, GOOGLE_ACCOUNT_REFUSAL_MESSAGES } from "./google-accounts";
 
@@ -124,6 +124,80 @@ test("a removal beside another account lands with its one log entry, and then th
   assert.equal(((await last.json()) as { message: string }).message, GOOGLE_ACCOUNT_REFUSAL_MESSAGES.last);
   assert.deepEqual((await googleRows()).map((a) => a.accountId), ["google-first"]);
   assert.deepEqual((await unlinkEntries()).map((row) => row.newData), [{ email: "second.address@example.com" }]);
+});
+
+const SECOND_EMAIL = "second.address@example.com";
+
+/** The login's sign-in email, and the email of its person row. */
+async function signInEmails(): Promise<[unknown, unknown]> {
+  const login = (await tableRows(betterAuthUsers)).find((u) => u.id === PERSON.id);
+  const person = (await tableRows(users)).find((u) => u.id === PERSON.id);
+  return [login?.email, person?.email];
+}
+
+const emailEntries = async () => (await logRowsSinceSeed()).filter((row) => row.operation === GOOGLE_ACCOUNT_OPERATIONS["sign-in-email"]);
+
+const removalOf = (googleId: string, email: string | null) => ({ userId: PERSON.id, accountRowId: `row-${googleId}`, email });
+
+test("removing the account whose email is the sign-in email moves that email to the oldest remaining account's, in letter case aside, and logs the move once", async () => {
+  await seeded();
+  await changeRows(betterAuthUsers, { id: PERSON.id }, { email: ` ${PERSON.email.toUpperCase()}` });
+  await addRows(betterAuthAccounts, [
+    { id: "row-google-third", accountId: "google-third", providerId: "google", userId: PERSON.id, email: "third.address@example.com", createdAt: new Date("2026-10-31T10:00:00Z"), updatedAt: new Date("2026-10-31T10:00:00Z") },
+  ]);
+
+  assert.equal(await removeGoogleAccount(removalOf("google-first", PERSON.email)), null);
+
+  assert.deepEqual(await signInEmails(), [SECOND_EMAIL, SECOND_EMAIL], "the oldest remaining account's email, on the login and its person row");
+  assert.deepEqual((await emailEntries()).map((row) => [row.recordId, row.newData, row.changedBy]), [["row-google-second", { email: SECOND_EMAIL }, PERSON.id]]);
+  assert.equal((await unlinkEntries()).length, 1);
+  assert.deepEqual((await googleRows()).map((a) => a.accountId).sort(), ["google-second", "google-third"]);
+});
+
+test("removing an account whose email is not the sign-in email leaves the sign-in email as it was, and logs no move", async () => {
+  await seeded();
+  const before = await signInEmails();
+  assert.equal(await removeGoogleAccount(removalOf("google-second", SECOND_EMAIL)), null);
+  assert.deepEqual(await signInEmails(), before);
+  assert.equal(before[0], PERSON.email);
+  assert.deepEqual(await emailEntries(), []);
+  assert.equal((await unlinkEntries()).length, 1);
+});
+
+test("the sign-in email does not move onto another login's or another open person's email, nor to no email: the removal is refused and writes nothing", async () => {
+  const takenBy: Record<string, () => Promise<void>> = {
+    "another login": () => addRows(betterAuthUsers, [{ id: "other-login", name: "Other", email: SECOND_EMAIL, emailVerified: true }]),
+    "another open person row": () => addRows(users, [{ id: "other-person", email: ` ${SECOND_EMAIL.toUpperCase()} ` }]),
+    "no email on the remaining account": () => changeRows(betterAuthAccounts, { id: "row-google-second" }, { email: null }),
+  };
+  for (const [why, take] of Object.entries(takenBy)) {
+    await seeded();
+    await take();
+    const before = await signInEmails();
+    assert.equal(await removeGoogleAccount(removalOf("google-first", PERSON.email)), "sign-in-email", why);
+    assert.deepEqual(await signInEmails(), before, `${why}: the sign-in email stays`);
+    assert.deepEqual((await googleRows()).map((a) => a.accountId).sort(), ["google-first", "google-second"], `${why}: nothing is deleted`);
+    assert.deepEqual([(await emailEntries()).length, (await unlinkEntries()).length], [0, 0], `${why}: nothing is logged`);
+  }
+});
+
+test("a removal refused for its sign-in email answers in the rules' words over the real Better Auth instance", async () => {
+  await seeded();
+  await addRows(betterAuthUsers, [{ id: "other-login", name: "Other", email: SECOND_EMAIL, emailVerified: true }]);
+  const auth = app.auth.getAuth();
+  const jar = await signedIn(auth);
+  const refused = await unlink(auth, jar, "google-first");
+  assert.equal(refused.status, 400);
+  assert.equal(((await refused.json()) as { message: string }).message, GOOGLE_ACCOUNT_REFUSAL_MESSAGES["sign-in-email"]);
+});
+
+test("after the removal moves the sign-in email, the same browser's session reads the new one without waiting for its cookie cache", async () => {
+  await seeded();
+  const auth = app.auth.getAuth();
+  const jar = await signedIn(auth);
+  assert.equal((await unlink(auth, jar, "google-first")).status, 200);
+  const session = (await (await call(auth, "/get-session", jar)).json()) as { user: { email: string } };
+  assert.equal(session.user.email, SECOND_EMAIL);
 });
 
 test("the database's removal refuses the last Google account, and an account no longer on the login, writing nothing", async () => {

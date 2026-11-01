@@ -33,13 +33,21 @@ export type GoogleAccountsState = {
 /** A change the person asks for: add one more Google account, or remove one of theirs by Google's id. */
 export type GoogleAccountChange = { readonly kind: "link" } | { readonly kind: "remove"; readonly googleId: string };
 
-export const GOOGLE_ACCOUNT_REFUSALS = ["view-as", "not-yours", "last"] as const;
+/**
+ * Why a change is refused. `sign-in-email` is the database's alone (issue
+ * #949): the removed account's email is the login's sign-in email, and the
+ * oldest remaining Google account has no email it could move to, or another
+ * login or person already uses that email.
+ */
+export const GOOGLE_ACCOUNT_REFUSALS = ["view-as", "not-yours", "last", "sign-in-email"] as const;
 export type GoogleAccountRefusal = (typeof GOOGLE_ACCOUNT_REFUSALS)[number];
 
 export const GOOGLE_ACCOUNT_REFUSAL_MESSAGES: Readonly<Record<GoogleAccountRefusal, string>> = {
   "view-as": "Google accounts cannot be added or removed during View as.",
   "not-yours": "That Google account is not linked to your account.",
   last: "You cannot remove your last Google account: you sign in with it.",
+  "sign-in-email":
+    "You cannot remove this Google account yet: its email is your sign-in email, and the email of your other Google account is unknown or already used by another account.",
 };
 
 /**
@@ -165,23 +173,26 @@ export function unlinkErrorMessage(message: string | null | undefined): string {
 
 // The Activity log -----------------------------------------------------------------
 
-export const GOOGLE_ACCOUNT_EVENTS = ["link", "unlink", "merge"] as const;
+export const GOOGLE_ACCOUNT_EVENTS = ["link", "unlink", "merge", "sign-in-email"] as const;
 export type GoogleAccountEvent = (typeof GOOGLE_ACCOUNT_EVENTS)[number];
 
 /**
  * The `logs.operation` each change is stored under: a link or an unlink on
  * the `better_auth.account` row it names, a merge (issue #907) beside them,
- * naming the merged login's user id.
+ * naming the merged login's user id, and the sign-in email moving to another
+ * account's email when the account it was is removed (issue #949), on the
+ * row of the account whose email the login now has.
  */
 export const GOOGLE_ACCOUNT_OPERATIONS: Readonly<Record<GoogleAccountEvent, string>> = {
   link: "GOOGLE_ACCOUNT_LINK",
   unlink: "GOOGLE_ACCOUNT_UNLINK",
   merge: "GOOGLE_ACCOUNT_MERGE",
+  "sign-in-email": "GOOGLE_ACCOUNT_SIGN_IN_EMAIL",
 };
 
 /** One link or unlink as the Activity log keeps it: whose login, which account row, and its email. No token is ever part of it. */
 export type GoogleAccountEntry = {
-  readonly event: Exclude<GoogleAccountEvent, "merge">;
+  readonly event: "link" | "unlink";
   readonly userId: string;
   readonly accountRowId: string;
   readonly email: string | null;
@@ -190,11 +201,27 @@ export type GoogleAccountEntry = {
 /** One Google account to remove: whose login, which account row, and its email for the unlink's entry. */
 export type GoogleAccountRemoval = Omit<GoogleAccountEntry, "event">;
 
-/** The Activity log's sentence for a link, an unlink or a merge; `email` is the Google account's, or for a merge the merged login's. */
+/**
+ * The Activity log's sentence for a link, an unlink, a merge or a moved
+ * sign-in email; `email` is the Google account's, for a merge the merged
+ * login's, and for a moved sign-in email the new one.
+ */
 export function googleAccountSentence(event: GoogleAccountEvent, email: string | null): string {
   if (event === "merge") return email === null ? "Merged another login into their account" : `Merged the login ${email} into their account`;
+  if (event === "sign-in-email") return email === null ? "Changed their sign-in email" : `Changed their sign-in email to ${email}`;
   const account = email === null ? "a Google account" : `the Google account ${email}`;
   return event === "link" ? `Linked ${account}` : `Removed ${account}`;
+}
+
+/**
+ * The Activity log's one sentence for a removal that moved the sign-in email
+ * (issue #949): both entries are stored in one transaction, so they read as
+ * one change. `removed` is the removed account's email, `signInEmail` the new
+ * sign-in email.
+ */
+export function signInAccountRemovalSentence(removed: string | null, signInEmail: string | null): string {
+  const moved = googleAccountSentence("sign-in-email", signInEmail);
+  return `${googleAccountSentence("unlink", removed)} and ${moved.charAt(0).toLowerCase()}${moved.slice(1)}`;
 }
 
 /** The event a stored `logs.operation` is, or null when it is no Google account change. */
