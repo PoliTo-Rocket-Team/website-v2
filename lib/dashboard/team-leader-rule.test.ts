@@ -138,7 +138,7 @@ const HEAD: TeamActor = { kind: "head", departmentIds: [1] };
 const LEAD: TeamActor = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] };
 
 test("members: the team leader edits and removes anyone; a head only in their department; a lead only in their division(s)", () => {
-  assert.equal(opensWholeTeam(teamLeader.standing), true, "the whole team, with Edit details on every row");
+  assert.equal(opensWholeTeam({ ...teamLeader.standing, wholeTeamAreas: [] }), true, "the whole team, with Edit details on every row");
   for (const unit of [MA, OA, DM]) assert.equal(changes(teamLeader, "members", unit), true);
   assert.deepEqual([MA, OA, DM].map((u) => changes(head, "members", u)), [true, true, false]);
   assert.deepEqual([MA, OA, DM].map((u) => changes(lead, "members", u)), [true, false, false]);

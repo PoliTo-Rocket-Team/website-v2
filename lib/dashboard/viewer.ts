@@ -299,6 +299,28 @@ export function areasGrantedBy(grants: readonly AreaGrant[]): GrantArea[] {
   return GRANT_AREAS.filter((area) => grants.some((g) => g.target === area || g.target === "all"));
 }
 
+/**
+ * The areas a `team` scope row grants across the whole team (issue #956), in
+ * `GRANT_AREAS` order: a row on one of them grants it there, and a row on
+ * `all` grants every one, at either level. Read off the stored rows, before
+ * `unitRowsOf` turns such a row into one per open department, since that is
+ * the last place "whole team" is still said. "Approve orders" is no area
+ * here.
+ */
+export function wholeTeamAreasOf(scopes: readonly ScopeRef[]): GrantArea[] {
+  const targets = scopes.flatMap((s) => (s.scope === "team" ? [s.target] : []));
+  return GRANT_AREAS.filter((area) => targets.includes("all") || targets.includes(area));
+}
+
+/**
+ * Whether the viewer has full access (issue #238): a full-access seat, an
+ * `org` or `admin` scope row, or the break-glass standing. The rules kept to
+ * full access alone read this, never an area grant's reach.
+ */
+export function isFullAccess(viewer: ViewerStanding): boolean {
+  return viewer.kind === "operations-lead";
+}
+
 /** The full-access seat the viewer holds; null for anyone else, and for full access from a scope row alone. */
 export function seatOf(viewer: ViewerStanding): FullAccessSeat | null {
   return viewer.kind === "operations-lead" ? viewer.seat : null;

@@ -14,7 +14,7 @@ import type { MemberGoogleEmails } from "./google-accounts";
 import type { DivisionQueue, Joining, ListedGoogleEmails, MemberDirectory } from "./team";
 import type { MemberTeamAddresses } from "./team-address";
 import { wholeTeamLine, withPicks, type ColumnPicks, type TeamMember, type WholeTeamMembers } from "./team-members";
-import type { ViewerStanding } from "./viewer";
+import { isFullAccess, readsArea, type GrantArea, type ViewerStanding } from "./viewer";
 
 // The Members page as one view for every role that opens it (Owner decision,
 // 2026-10-19, issues #408 and #418): the team leader, the operations lead, the
@@ -122,11 +122,15 @@ export function googleEmailsOf(page: Pick<MembersModel, "googleEmails">, personI
 /**
  * Whether the viewer's Members page is the whole team: true for every
  * full-access seat, the team leader, the operations lead and the IT lead
- * alike, and for full access from a scope row (issue #418). Anyone else reads
- * the units their roles reach, built where the data is read.
+ * alike, and for full access from a scope row (issue #418); and for anyone on
+ * the team who holds a Members grant across the whole team, a `team` row on
+ * `members` or `all` at either level (issue #956). What such a grant holder
+ * may change there still follows the grant's level, and it gives no full
+ * access (`isFullAccess`). Anyone else reads the units their roles and grants
+ * reach, built where the data is read.
  */
-export function opensWholeTeam(viewer: ViewerStanding): boolean {
-  return viewer.kind === "operations-lead";
+export function opensWholeTeam(viewer: ViewerStanding & { readonly wholeTeamAreas: readonly GrantArea[] }): boolean {
+  return isFullAccess(viewer) || (readsArea(viewer, "members") && viewer.wholeTeamAreas.includes("members"));
 }
 
 /** Everyone the page may open the member drawer for, each once: whose email alias it reads (epic #538). */
@@ -178,13 +182,16 @@ export function wholeTeamModel(
     const header = page.divisions.find((d) => d.id === q.divisionId);
     return header === undefined ? [] : [{ header, waiting: q.waiting, joining: q.joining, editable: q.editable }];
   });
+  // Add member offers the divisions whose queue the viewer changes: every one for full access, only the
+  // grant's reach for a whole-team Members grant, none at Can view (issue #956).
+  const addable = page.divisions.filter((d) => queues.some((q) => q.editable && q.header.id === d.id));
   return model({
     scopeLine: wholeTeamLine(page),
     units: page.departments.map((d) => ({ name: d.name, divisions: d.divisions })),
     everyone: page.people.map((p) => ({ ...p, actions: actionsOf(p) })),
     divisions: [],
     queues,
-    add: page.divisions.length === 0 ? null : { kind: "department", department: "the team", divisions: page.divisions },
+    add: addable.length === 0 ? null : { kind: "department", department: "the team", divisions: addable },
     panelEdits: true,
     googleEmails: page.googleEmails,
   });

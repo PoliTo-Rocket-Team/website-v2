@@ -39,7 +39,13 @@ const DETAILS = { phone: "", politoId: "", programme: "", level: "", country: ""
 
 const FULL_ACCESS = ["operations lead", "team leader"];
 // Each may edit the person's other details in Mission Analysis, never their sign-in email.
-const MAY_EDIT_DETAILS_ONLY = ["division lead", "department head", "member with a members grant across the division"];
+const MAY_EDIT_DETAILS_ONLY = [
+  "division lead",
+  "department head",
+  "member with a members grant across the division",
+  // A whole-team Members grant opens the whole team's page, and the sign-in email stays full access's (issue #956).
+  "member with a members grant across the team",
+];
 
 const emailOf = async (userId: string) => (await tableRows(users)).find((u) => u.id === userId)?.email;
 const userRow = async (userId: string) => (await tableRows(users)).find((u) => u.id === userId);
@@ -515,7 +521,8 @@ describe("Edit details offers the field from one flag the server sets (issues #7
   test("set for full access on every member, signed in or not, and on someone waiting until they sign in; for nobody else", async () => {
     await seedFixture();
     assert.deepEqual(await flagsOf("operations lead"), { person: true, waiting: true });
-    for (const viewer of ["division lead", "department head"]) assert.deepEqual(await flagsOf(viewer), { person: false, waiting: false }, viewer);
+    const others = ["division lead", "department head", "member with a members grant across the team", "member with a members grant (Can view) across the team"];
+    for (const viewer of others) assert.deepEqual(await flagsOf(viewer), { person: false, waiting: false }, viewer);
     await seededSignedIn(PERSON_USER);
     assert.equal((await flagsOf("operations lead")).person, true, "a member who signs in keeps the field");
     await seededSignedIn(WAITING_USER);
