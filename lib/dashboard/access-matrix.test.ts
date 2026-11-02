@@ -6,10 +6,12 @@ import { maySiteContent } from "@/lib/content/gate";
 import { canReach, DASHBOARD_PAGES, NAV_GROUPS, sidebarFor, type DashboardPageKey } from "./access";
 import { mayOpenApplication, readsRecruitment, readsRecruitmentIn } from "./application-documents";
 import { overviewAreasOf } from "./division-overview";
+import { mayExportMembers } from "./members-export";
 import { opensWholeTeam } from "./members-view";
 import { ordersScopeOf, type OrdersScopeRow } from "./orders";
 import { mayChangePositionIn } from "./position-access";
-import { GRANT_AREAS, isOffTeam, ledDivisionIds, mayChange, readsArea, readsAreaIn } from "./viewer";
+import { correctsSignInEmail } from "./sign-in-email";
+import { GRANT_AREAS, isFullAccess, isOffTeam, ledDivisionIds, mayChange, readsArea, readsAreaIn } from "./viewer";
 import { ALL, CHANGE_AREAS, CONTENT, ORG, PAGE_OF_AREA, SCOPES, SIGNED_OUT, TEAM_BASE, UNITS, unitsWhere, VIEWERS, type Unit, type Viewer } from "./access-matrix/matrix";
 import { aliasAttentionFor, answersAliasRequests, managesMember, planAliasRequest, type AliasRequest, type AliasTeamPerson } from "./alias-request";
 import { ownAliasOf, planAliasSetUp, showsAliasCard } from "./alias-setup";
@@ -96,6 +98,9 @@ describe("site content, the recruitment switch, Orders and the whole-team Member
       assert.equal(scope !== null, expect.ordersPage, `${name}: Orders page`);
       if (scope !== null) assert.ok(canReach(viewer, "orders"), `${name}: an Orders page they cannot reach`);
       assert.equal(opensWholeTeam(viewer), expect.wholeTeamMembers, `${name}: whole-team Members`);
+      assert.equal(isFullAccess(viewer), expect.fullAccess, `${name}: full access`);
+      assert.equal(mayExportMembers(viewer), expect.fullAccess, `${name}: Members export`);
+      assert.equal(correctsSignInEmail(viewer, "member", false), expect.fullAccess, `${name}: sign-in email change`);
     });
   }
 });
@@ -119,7 +124,8 @@ describe("grants are independent (issue #477)", () => {
     for (const { name, viewer } of holders) {
       assert.equal(viewer.kind, "member", name);
       assert.equal(canReach(viewer, "division-access"), false, `${name}: Access page`);
-      assert.equal(opensWholeTeam(viewer), false, name);
+      // A whole-team Members grant opens the whole team's page (issue #956), and still never full access.
+      assert.equal(isFullAccess(viewer), false, name);
       assert.ok(overviewAreasOf(viewer).length < GRANT_AREAS.length, `${name}: reads every area as a lead does`);
     }
   });

@@ -6,6 +6,7 @@ import {
   isOffTeam,
   unitRowsOf,
   viewerStandingOf,
+  wholeTeamAreasOf,
   type ActiveRoleRef,
   type AreaGrant,
   type ChangeArea,
@@ -77,6 +78,8 @@ export const row = (scope: ScopeUnitRow["scope"], target: ScopeUnitRow["target"]
 export type Viewer = ViewerStanding & {
   readonly roles: readonly RecruitmentRole[];
   readonly grants: readonly AreaGrant[];
+  /** The areas a `team` row grants across the whole team (`wholeTeamAreasOf`, issue #956); none off the team. */
+  readonly wholeTeamAreas: readonly GrantArea[];
   /** The active roles as stored, before an alumnus's are dropped. */
   readonly heldRoles: readonly Role[];
   readonly rawRows: readonly ScopeUnitRow[];
@@ -95,6 +98,7 @@ export function viewerOf(roles: readonly Role[], rows: readonly ScopeUnitRow[] =
     ...standing,
     roles: offTeam ? [] : roles,
     grants: offTeam ? [] : areaGrantsOf(unitRows),
+    wholeTeamAreas: offTeam ? [] : wholeTeamAreasOf(rows),
     heldRoles: roles,
     rawRows: rows,
     onAlumniRecord,
@@ -105,7 +109,7 @@ export function viewerOf(roles: readonly Role[], rows: readonly ScopeUnitRow[] =
 
 /** The break-glass admin as `readIdentity` reads it (issue #646): the team leader's standing, from no member row, role or scope row. */
 export function breakGlassViewer(): Viewer {
-  return { ...BREAK_GLASS_STANDING, roles: [], grants: [], heldRoles: [], rawRows: [], onAlumniRecord: false, headDepartment: null, breakGlass: true };
+  return { ...BREAK_GLASS_STANDING, roles: [], grants: [], wholeTeamAreas: [], heldRoles: [], rawRows: [], onAlumniRecord: false, headDepartment: null, breakGlass: true };
 }
 
 // The matrix ------------------------------------------------------------------
@@ -133,7 +137,14 @@ export type Expect = {
   readonly siteContent: boolean;
   readonly switchesRecruitment: boolean;
   readonly ordersPage: boolean;
+  /** Whether the Members page is the whole team (`opensWholeTeam`): full access, or a Members grant across the whole team (issue #956). */
   readonly wholeTeamMembers: boolean;
+  /**
+   * Whether the viewer has full access (`isFullAccess`): what the Members
+   * export (issue #539), the sign-in email change (issues #741, #864) and the
+   * team's structure key on. A whole-team Members grant is not it (issue #956).
+   */
+  readonly fullAccess: boolean;
   /**
    * Email alias requests (epic #538): the units whose member the viewer may
    * request an alias for (Request alias in the drawer and on the server), the
@@ -174,6 +185,7 @@ const FULL_ACCESS: Expect = {
   switchesRecruitment: true,
   ordersPage: true,
   wholeTeamMembers: true,
+  fullAccess: true,
   aliases: FULL_ACCESS_ALIASES,
   decidesOrders: false,
 };
@@ -186,6 +198,7 @@ export const PLAIN_MEMBER: Expect = {
   switchesRecruitment: false,
   ordersPage: false,
   wholeTeamMembers: false,
+  fullAccess: false,
   aliases: NO_ALIASES,
   decidesOrders: false,
 };
@@ -339,9 +352,44 @@ export const VIEWERS: readonly MatrixRow[] = [
     Object.entries(SCOPES).map(([scope, s]): MatrixRow => ({
       name: `member with a ${area} grant across the ${scope}`,
       viewer: viewerOf([MEMBER_ROLE], [row(s.kind, area, "edit", s.at)]),
-      expect: singleGrant(area, s.units),
+      // A Members grant across the whole team opens the whole team's Members page (issue #956).
+      expect: { ...singleGrant(area, s.units), wholeTeamMembers: area === "members" && s.kind === "team" },
     })),
   ),
+  // The same at Can view (issue #956): the whole team's Members page, and no change on it.
+  {
+    name: "member with a members grant (Can view) across the team",
+    viewer: viewerOf([MEMBER_ROLE], [row("team", "members", "view")]),
+    expect: { ...singleGrant("members", ALL), changes: { positions: NONE, applications: NONE, members: NONE }, wholeTeamMembers: true },
+  },
+  // A lead's or a head's whole-team Members grant opens the whole team's page too (issue #956); at Can view
+  // it changes nothing beyond what their role changes.
+  {
+    name: "division lead with a members grant (Can view) across the team",
+    viewer: viewerOf([role("lead", 1, 1)], [row("team", "members", "view")]),
+    expect: {
+      ...PLAIN_MEMBER,
+      aliases: leadsOrHeads(["MA"]),
+      pages: [...TEAM_BASE, ...LEADING],
+      reads: { ...everywhere(["MA"]), members: ALL },
+      changes: changing(["MA"]),
+      ordersPage: true,
+      wholeTeamMembers: true,
+    },
+  },
+  {
+    name: "department head with a members grant (Can view) across the team",
+    viewer: viewerOf([role("head", null, 1)], [row("team", "members", "view")]),
+    expect: {
+      ...PLAIN_MEMBER,
+      aliases: leadsOrHeads(AERODYNAMICS),
+      pages: [...TEAM_BASE, ...LEADING],
+      reads: { ...everywhere(AERODYNAMICS), members: ALL },
+      changes: changing(AERODYNAMICS),
+      ordersPage: true,
+      wholeTeamMembers: true,
+    },
+  },
   // A grant at Can view reads and changes nothing.
   {
     name: "member with a Positions grant (Can view) in MA",

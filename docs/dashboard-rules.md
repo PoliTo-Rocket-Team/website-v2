@@ -564,6 +564,12 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
 - There is no separate Department page. The Members page shows member data only: it holds no
   structure tools. Divisions and departments are created, edited and closed in the Team tree's
   edit view (see Team structure below, #251). The department head's view is below (#235).
+- A Members grant across the whole team (a `team` scope row on Members, or on every area, at Can
+  view or Can edit) opens the same whole-team Members page full access gets, for a member, a
+  division lead or a department head alike (Owner decision, 2026-11-02, #956). What its holder may
+  change there still follows the grant's level and their role: nothing at Can view, and at Can
+  edit only what the grant changes today. It gives no full access: the Members export and the
+  sign-in email change stay with full access only (#539, #741, #864).
 - The table shows each person's divisions as code chips. A division in another department shows
   the department's name instead. Each person's role is their title in this division, or "Division
   Lead".

@@ -111,7 +111,7 @@ import {
 import { answerPrtEmailRemoval, readPrtEmailRemovalAttention } from "./database-prt-email-removal";
 import { NO_TEAM_ADDRESSES } from "./team-address";
 import { upcomingInterviews } from "./interview-slots";
-import { BREAK_GLASS_STANDING, SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, hasOwnProfile, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type BreakGlassStanding, type ViewerStanding } from "./viewer";
+import { BREAK_GLASS_STANDING, SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, hasOwnProfile, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, wholeTeamAreasOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type BreakGlassStanding, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 import { BREAK_GLASS_TITLE } from "./acting-account";
 import { primaryRoleOf, roleLabelOf } from "./role-label";
@@ -165,6 +165,13 @@ type IdentityFields = {
   departmentIds: number[];
   /** Each area grant they hold, with its area and level: what a recruitment change checks (`mayChange`, issue #160). */
   grants: readonly AreaGrant[];
+  /**
+   * The areas a `team` scope row grants across the whole team (`wholeTeamAreasOf`,
+   * issue #956): `grants` holds such a row as one grant per open department,
+   * so this keeps that it is the whole team. A Members grant here opens the
+   * whole team's Members page (`opensWholeTeam`). None off the team.
+   */
+  wholeTeamAreas: readonly GrantArea[];
 };
 
 /**
@@ -253,7 +260,7 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
   };
   // The break-glass admin stands as the team leader, with or without a member row or a role (issue #646).
   const breakGlass = isBreakGlassEmail(user.sign_in_email);
-  const noUnits = { role: null, roles: [], divisionIds: [], departmentIds: [], grants: [] };
+  const noUnits = { role: null, roles: [], divisionIds: [], departmentIds: [], grants: [], wholeTeamAreas: [] };
   if (user.member_id === null) {
     if (breakGlass) return { ...base, ...noUnits, ...BREAK_GLASS_STANDING };
     return { ...base, ...noUnits, breakGlass, ...viewerStandingOf(null) };
@@ -276,6 +283,7 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
     divisionIds: [...units.divisionIds],
     departmentIds: [...units.departmentIds],
     grants: areaGrantsOf(unitRows),
+    wholeTeamAreas: wholeTeamAreasOf(scopeRows),
   };
   if (breakGlass) return { ...base, ...held, ...BREAK_GLASS_STANDING };
 
@@ -1047,7 +1055,8 @@ async function navCountsOf(identity: Identity): Promise<NavCounts> {
 /**
  * The Members page: the whole team with every member field for each
  * full-access seat, the team leader, the operations lead and the IT lead alike
- * (boards 73 to 73c, issue #418); for a division lead every division they
+ * (boards 73 to 73c, issue #418), and for anyone holding a Members grant
+ * across the whole team (`opensWholeTeam`, issue #956); for a division lead every division they
  * reach (issue #903), with the people waiting for Confirm NDA and the people
  * joining each (./database-team.ts). Every page opens the same Edit details
  * panel for each person the viewer may edit (issue #584), the team leader's

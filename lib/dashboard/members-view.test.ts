@@ -24,7 +24,7 @@ import {
 import { membershipsOf, type DivisionQueue, type DivisionRole, type Joining, type OrgChart, type RoleBeyondDivisions, type TeamActor } from "./team";
 import type { TeamAddressLine } from "./team-address";
 import { wholeTeamMembers } from "./team-members";
-import type { ViewerStanding } from "./viewer";
+import { GRANT_AREAS, wholeTeamAreasOf, type GrantArea, type ScopeRef, type ViewerStanding } from "./viewer";
 
 // Issue #408: the team leader, a department head and a division lead open
 // one Members view with the same tools; only the rows and the actions their
@@ -119,13 +119,57 @@ test("the operations lead and the IT lead open the whole team like the team lead
   const seats = ["team-leader", "operations-lead", "it-lead", null] as const;
   for (const seat of seats) {
     const viewer: ViewerStanding = { kind: "operations-lead", seat, siteContent: false, approveOrders: false };
-    assert.equal(opensWholeTeam(viewer), true, String(seat));
+    assert.equal(opensWholeTeam({ ...viewer, wholeTeamAreas: [] }), true, String(seat));
   }
   for (const kind of ["department-head", "division-lead"] as const) {
-    assert.equal(opensWholeTeam({ kind, siteContent: false, approveOrders: false }), false, kind);
+    assert.equal(opensWholeTeam({ kind, siteContent: false, approveOrders: false, wholeTeamAreas: [] }), false, kind);
   }
   const tools = [leaderPage(), seatPage(8), seatPage(9), headPage(), leadPage()].map((page) => page.tools);
   for (const set of tools) assert.deepEqual(set, MEMBERS_TOOLS);
+});
+
+test("a Members grant across the whole team opens the whole team, at either level and from a row on every area (#956)", () => {
+  const team = (target: ScopeRef["target"], level: ScopeRef["level"] = "edit") => wholeTeamAreasOf([{ scope: "team", target, level }]);
+  const member = (grantedAreas: readonly GrantArea[], wholeTeamAreas: readonly GrantArea[]) =>
+    opensWholeTeam({ kind: "member", grantedAreas, siteContent: false, approveOrders: false, wholeTeamAreas });
+  assert.deepEqual(team("members", "view"), ["members"]);
+  assert.deepEqual(team("all", "view"), GRANT_AREAS);
+  assert.deepEqual(team("approve_orders"), [], "Approve orders is no area");
+  assert.equal(member(["members"], team("members")), true, "Can edit");
+  assert.equal(member(["members"], team("members", "view")), true, "Can view");
+  assert.equal(member([...GRANT_AREAS], team("all")), true, "a row on every area");
+  assert.equal(member(["members"], []), false, "a Members grant over a department or a division");
+  for (const area of ["positions", "applications", "orders"] as const) assert.equal(member([area], team(area)), false, `a whole-team ${area} grant`);
+  for (const kind of ["department-head", "division-lead"] as const) {
+    assert.equal(opensWholeTeam({ kind, siteContent: false, approveOrders: false, wholeTeamAreas: team("members") }), true, kind);
+  }
+  // Off the team, a row that outlived the roles opens nothing.
+  assert.equal(opensWholeTeam({ kind: "alumni", siteContent: false, approveOrders: false, wholeTeamAreas: team("members") }), false);
+});
+
+test("the whole team read through a grant at Can view offers no change: no row action and no Add member (#956)", () => {
+  const viewOnly = membersModelOf({
+    scope: "whole-team",
+    positions: positionsOf(records, org, null, 2),
+    queues: queues.map((q) => ({ ...q, editable: false })),
+    correctsSignInEmail: [],
+    ...wholeTeamMembers({ records, org, selfId: 2 }),
+    googleEmails: NO_GOOGLE_EMAILS,
+  })!;
+  assert.equal(viewOnly.everyone.length, 7, "the whole team, the team leader and the head included");
+  assert.ok(viewOnly.everyone.every((p) => p.actions === null));
+  assert.ok(viewOnly.queues.every((q) => !q.editable));
+  assert.equal(viewOnly.add, null);
+  // A grant that changes some divisions offers Add member there alone.
+  const some = membersModelOf({
+    scope: "whole-team",
+    positions: [],
+    queues: queues.map((q) => ({ ...q, editable: q.divisionId === 3 })),
+    correctsSignInEmail: [],
+    ...wholeTeamMembers({ records, org, selfId: 2 }),
+    googleEmails: NO_GOOGLE_EMAILS,
+  })!;
+  assert.deepEqual(some.add?.kind === "department" ? some.add.divisions.map((d) => d.id) : null, [3]);
 });
 
 test("every full-access seat, the team leader included, opens Edit details on every row but their own (#418, #444, #584)", () => {

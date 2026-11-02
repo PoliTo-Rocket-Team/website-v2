@@ -515,7 +515,7 @@ const PRT_EMAIL_REMOVAL = 1;
 const addPrtEmailRemoval = () => addRows(prtEmailRemovals, [{ id: PRT_EMAIL_REMOVAL, memberId: IDS.person(DM), address: "person.dm@politorocketteam.it" }]);
 const changesDM = (area: "positions" | "applications" | "members") => (r: MatrixRow) => r.expect.changes[area].includes(DM);
 const reaches = (page: Expect["pages"][number]) => (r: MatrixRow) => r.expect.pages.includes(page);
-const fullAccess = (r: MatrixRow) => r.expect.wholeTeamMembers;
+const fullAccess = (r: MatrixRow) => r.expect.fullAccess;
 const isMember = (r: MatrixRow) => r.viewer.kind === "member" || r.viewer.kind === "alumni" || r.viewer.kind === "non-member";
 /** Grants are independent: a member never acts as a lead, so no member makes a lead's or a head's change. */
 const leadsOnly = (r: MatrixRow) => (fullAccess(r) ? true : isMember(r) ? false : undefined);
@@ -2261,12 +2261,14 @@ describe("Confirm join is decided by the Applications area, and the whole team l
   test("every whole-team viewer sees every division's waiting rows, with Confirm NDA, and its joining banners where they read Applications", async () => {
     const full = (VIEWERS as readonly MatrixRow[]).filter((r) => r.expect.wholeTeamMembers);
     assert.ok(full.length >= 5, "the full-access seats are in the matrix");
+    assert.ok(full.some((r) => !r.expect.fullAccess), "and a whole-team Members grant (issue #956)");
     for (const { name, expect } of full) {
       const shown = (await shownOf(name))!;
       for (const u of ALL) {
         const waiting = shown.waiting.find((w) => w.waiting.joinId === IDS.join(u));
         assert.ok(waiting !== undefined, `${name}: the waiting row in ${u}`);
-        assert.equal(waiting.editable, true, `${name}: Confirm NDA, Cancel add and Fill details in ${u}`);
+        // What the row offers follows what the viewer changes on Members, not the whole team's page (issue #956).
+        assert.equal(waiting.editable, expect.changes.members.includes(u), `${name}: Confirm NDA, Cancel add and Fill details in ${u}`);
         const joining = shown.joining.some((j) => j.joining.applicationId === IDS.joining(u));
         assert.equal(joining, expect.reads.applications.includes(u), `${name}: the joining banner in ${u}`);
       }
@@ -2274,6 +2276,54 @@ describe("Confirm join is decided by the Applications area, and the whole team l
     // And the writes behind the waiting row take it: Confirm NDA from the whole team.
     const nda = await attempt(accountOf("operations lead").userId, () => teamActions.confirmNda(IDS.join(DM)));
     assert.deepEqual(nda.answer, { ok: true });
+  });
+});
+
+describe("a Members grant across the whole team opens the whole team's Members page, and no full access (issue #956)", () => {
+  const GRANT_ROWS = [
+    "member with a members grant across the team",
+    "member with a members grant (Can view) across the team",
+    "division lead with a members grant (Can view) across the team",
+    "department head with a members grant (Can view) across the team",
+  ];
+  /** People with no division role: the team leader, a full-access seat and the Structures head. */
+  const ABOVE_DIVISIONS = [...["team leader", "operations lead"].map((name) => accountOf(name).memberId!), EXTRA.head];
+
+  test("each grant row reads the whole team, the people above the divisions included, and offers only what it changes", async () => {
+    for (const name of GRANT_ROWS) {
+      const { expect } = VIEWERS.find((r) => r.name === name)!;
+      assert.equal(expect.wholeTeamMembers && !expect.fullAccess, true, `${name}: the matrix row`);
+      const directory = await (await open(name)).members();
+      assert.ok(directory.scope === "whole-team", `${name}: the whole team, not ${directory.scope}`);
+      const listed = directory.people.map((p) => p.id);
+      for (const id of ABOVE_DIVISIONS) assert.ok(listed.includes(id), `${name}: lists member ${id}`);
+      for (const u of ALL) assert.ok(listed.includes(IDS.person(u)), `${name}: lists the member of ${u}`);
+      // What the page offers follows what they change on Members, never the whole page.
+      const offered = new Set(directory.positions.map((p) => p.id));
+      for (const u of ALL) assert.equal(offered.has(IDS.person(u)), expect.changes.members.includes(u), `${name}: Edit details for the member of ${u}`);
+      for (const q of directory.queues) {
+        const u = ALL.find((x) => IDS.division(x) === q.divisionId);
+        if (u !== undefined) assert.equal(q.editable, expect.changes.members.includes(u), `${name}: the queue of ${u}`);
+      }
+      assert.deepEqual(directory.correctsSignInEmail, [], `${name}: no sign-in email change`);
+    }
+  });
+
+  test("at Can view the whole team offers no change at all", async () => {
+    const directory = await (await open("member with a members grant (Can view) across the team")).members();
+    assert.ok(directory.scope === "whole-team");
+    assert.deepEqual(directory.positions, []);
+    assert.ok(directory.queues.every((q) => !q.editable));
+  });
+
+  test("a Members grant over a department or a division keeps its own page, and a whole-team grant on another area opens none", async () => {
+    for (const name of ["member with a members grant across the department", "member with a members grant across the division"]) {
+      assert.equal((await (await open(name)).members()).scope, "divisions", name);
+    }
+    for (const area of ["positions", "applications", "orders"]) {
+      const name = `member with a ${area} grant across the team`;
+      assert.equal((await (await open(name)).members()).scope, "none", name);
+    }
   });
 });
 
@@ -2292,7 +2342,7 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
     assert.deepEqual([signedOut.response.status, signedOut.writes], [401, 0], "signed out");
     assert.equal(signedOut.response.headers.get("Content-Disposition"), null, "signed out: a file");
     for (const { name, expect } of VIEWERS) {
-      if (expect.wholeTeamMembers) continue;
+      if (expect.fullAccess) continue;
       const { response, body, writes } = await exported(accountOf(name).userId);
       assert.deepEqual([response.status, writes], [403, 0], name);
       assert.equal(response.headers.get("Content-Disposition"), null, `${name}: a file`);
@@ -2301,7 +2351,7 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
   });
 
   test("every full-access viewer gets the dated .xlsx of the whole team with every field", async () => {
-    const full = VIEWERS.filter((r) => r.expect.wholeTeamMembers);
+    const full = VIEWERS.filter((r) => r.expect.fullAccess);
     assert.ok(full.length >= 5, "the full-access seats are in the matrix");
     for (const { name } of full) {
       const data = await open(name);
