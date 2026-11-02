@@ -74,3 +74,13 @@ export function writeLedger(file: string, ledger: Ledger): void {
   writeFileSync(temporary, ledgerText(ledger));
   renameSync(temporary, file);
 }
+
+/** Writes a ledger to a file that must not exist yet: a seeded ledger never replaces one a run wrote. */
+export function writeNewLedger(file: string, ledger: Ledger): void {
+  try {
+    writeFileSync(file, ledgerText(ledger), { flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new LedgerError(`The ledger ${file} already exists; seeding writes a new ledger only.`);
+    throw error;
+  }
+}

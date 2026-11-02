@@ -36,11 +36,27 @@ preview's and production's are two files. A run without its ledger takes the imp
 for someone else's and skips them, and finds each added post's title already taken, so it adds no
 second post.
 
+### Seeding the ledger from the first round
+
+The first round of this import (on the preview database only) kept no ledger. Its real-run report
+is the record of what it wrote, so `--mode seed-ledger` builds that database's ledger from it. It
+reads the report, the current source and the database (selects only), and writes a new ledger
+file; it refuses a ledger file that already exists. Each first-round post is matched to a source
+key by its title, or, for an added post the source has retitled, by its date when exactly one source
+post not matched by title has it. A post is seeded only while its draft is as the first round left
+it: the title, body and added gallery photos the report printed, and for a stored post every other
+field as its published version has it; for an added post, the date, place, tags, summary and lead
+the report printed. Any other draft is not seeded, so the run leaves it alone. The seeding prints
+each first-round post, seeded with its key or not with why.
+
 ## How to run it
 
 Agents never run it against production.
 
 ```sh
+# 0. Only on a database the first round wrote to, and only once: seed its ledger from that round's report.
+IMPORT_DATABASE_URL='<database url>' pnpm db:outreach-instagram <source-file> --mode seed-ledger --first-round-report <outside-the-repo>/<first-round report> --ledger <outside-the-repo>/outreach-instagram-ledger-<database>.json
+
 # 1. Dry run: prints the full list, writes and uploads nothing.
 IMPORT_DATABASE_URL='<database url>' pnpm db:outreach-instagram <source-file> --photos <export-dir> --ledger <outside-the-repo>/outreach-instagram-ledger-<database>.json --report <outside-the-repo>/outreach-instagram-dry-run.txt
 
@@ -52,14 +68,21 @@ IMPORT_DATABASE_URL='<database url>' IMPORT_BLOB_TOKEN='<public store token>' pn
 - `--photos <export-dir>`: the Instagram export's directory (the one holding `media/` and
   `your_instagram_activity/`). The source names each photo by its path inside it. The tool reads
   those files as data and refuses a path that leaves the directory. Nothing in the export is run.
+  The dry run and the import need it.
 - `--ledger <file>`: this database's ledger. A first run names a file that does not exist yet.
 - `--mode dry-run` (the default) reads the source, the ledger, the photos and the database, and
-  prints the report. `--mode import` uploads the photos and writes.
-- `--database-url <url>`, or `IMPORT_DATABASE_URL` set for this one command: both modes need it.
+  prints the report. `--mode import` uploads the photos and writes. `--mode seed-ledger` writes a
+  new ledger from `--first-round-report <file>`, the first round's real-run report (above).
+- `--database-url <url>`, or `IMPORT_DATABASE_URL` set for this one command: every mode needs it.
   The tool loads no `.env` file and never reads `DATABASE_URL`.
 - `--blob-token <token>`, or `IMPORT_BLOB_TOKEN` set for this one command: the read-write token of
-  the public Vercel Blob store the site's photos are served from (`PUBLIC_BLOB_READ_WRITE_TOKEN`).
-  An import needs it. The tool never reads `BLOB_READ_WRITE_TOKEN`.
+  the public Vercel Blob store the site's photos are served from. An import needs it. It reads
+  `vercel_blob_rw_<store id>_<secret>`, as the store's page on Vercel shows it (Storage, the store,
+  its `.env.local` tab); space at either end is dropped. Any other value is refused before anything
+  is read, with what was expected, and the value is never printed. The value the dashboard lists
+  for an encrypted environment variable, and an OIDC token, both start `eyJ` and are refused. The
+  store's answer must be a URL on that store's public host, so a private store's token fails at the
+  first upload. The tool never reads `BLOB_READ_WRITE_TOKEN`.
 - `--report <file>`: also writes the report to this file. Keep it outside the repo.
 
 A real run shapes every photo first; one photo the store would not take stops it before any
@@ -131,4 +154,7 @@ the text, key and path checks, the dry-run list, the skips, a photo the store wo
 drafts, new posts and tags a first run writes with every stored version unchanged, a second run
 that replaces the import's own drafts and reuses its post while leaving others' drafts alone, a
 draft edited since, a run without its ledger, and what a failed run prints before and after its
-commit.
+commit. It also builds a fake first-round report for what a first run wrote and checks the seeded
+ledger is that run's own (a retitled added post matched by its date), that the next run then updates
+the drafts and adds no post, that a draft changed since is not seeded, that a report of another
+shape is refused, that a seeded ledger never replaces a file, and which store tokens are taken.

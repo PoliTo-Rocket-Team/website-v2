@@ -63,16 +63,41 @@ export async function storePhoto(store: PhotoStore, photo: CheckedPhoto, newName
   return url as `https://${string}`;
 }
 
+/** A value given as the store token that is not a Vercel Blob read-write token. */
+export class BlobTokenError extends Error {}
+
+/** A Vercel Blob read-write token, checked: the token itself and the id of the store it opens. */
+export type BlobToken = { readonly token: string; readonly storeId: string };
+
+const READ_WRITE_TOKEN = /^vercel_blob_rw_([A-Za-z0-9]+)_(\S+)$/;
+
+/**
+ * `value` as a Vercel Blob read-write token: `vercel_blob_rw_<storeId>_<secret>`,
+ * the shape the Blob SDK reads a store id from (its fourth `_` part), with the
+ * space a pasted value may carry at either end dropped. Any other value is a
+ * `BlobTokenError` that says what was expected and never repeats the value.
+ */
+export function blobTokenOf(value: string): BlobToken {
+  const token = value.trim();
+  const match = READ_WRITE_TOKEN.exec(token);
+  if (match !== null) return { token, storeId: match[1] };
+  const expected = "The Blob token must be the public store's read-write token, which reads vercel_blob_rw_<store id>_<secret>.";
+  const got = token.startsWith("eyJ")
+    ? "The value given starts like an encoded JSON value (an OIDC token, or an environment value as the Vercel dashboard lists it), not a read-write token."
+    : token.startsWith("vercel_blob_")
+      ? "The value given is a Vercel Blob token of another kind, or is cut short."
+      : "The value given does not have that shape.";
+  throw new BlobTokenError(`${expected} ${got} Copy the token from the public store's page on Vercel (Storage, the store, its .env.local tab).`);
+}
+
 /**
  * The public store a Vercel Blob read-write token opens, as the team data
- * import read one (removed in #847). Its store id is the token's fourth `_`
- * part (`vercel_blob_rw_<storeId>_<secret>`), as the Blob SDK reads it. Each
- * upload passes the token, `access: "public"` and the content type, as
- * `uploadPublicFile` does with the deployment's credential.
+ * import read one (removed in #847). Each upload passes the token,
+ * `access: "public"` and the content type, as `uploadPublicFile` does with
+ * the deployment's credential; the store's answer must be a URL on that
+ * store's public host (`storePhoto`), so a private store's token fails there.
  */
-export async function blobPhotoStore(token: string): Promise<PhotoStore> {
-  const storeId = /^vercel_blob_rw_([A-Za-z0-9]+)_/.exec(token)?.[1];
-  if (storeId === undefined) throw new Error("The storage token is not a Vercel Blob read-write token.");
+export async function blobPhotoStore({ token, storeId }: BlobToken): Promise<PhotoStore> {
   const { put } = await import("@vercel/blob");
   return {
     host: publicStoreHost(storeId),

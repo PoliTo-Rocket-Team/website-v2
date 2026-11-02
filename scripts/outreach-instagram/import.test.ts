@@ -4,11 +4,15 @@ import sharp from "sharp";
 import { outreachPosts, outreachPostTags, outreachPostVersions, outreachTags } from "@/db/schema";
 import { addRows, changeRows, databaseWrites, restore, tableRows, testDb } from "@/lib/dashboard/access-matrix/test-database";
 import { publicPathnameOfUrl, publicStoreHost } from "@/lib/storage/pathname";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { FailedAfterUpload, failureReport } from "./failure";
-import { emptyLedger, ledgerText, type Ledger } from "./ledger";
-import type { PhotoReader, PhotoStore } from "./photos";
+import { emptyLedger, LedgerError, ledgerText, readLedger, writeNewLedger, type Ledger } from "./ledger";
+import { blobTokenOf, BlobTokenError, type PhotoReader, type PhotoStore } from "./photos";
 import { runImport, type RunOptions } from "./run";
-import type { ImportDb } from "./snapshot";
+import { FirstRoundError, parseFirstRound, renderSeed, seedLedger } from "./seed";
+import { readSnapshot, type ImportDb } from "./snapshot";
 import { captionMarkIn, sourceOf, SourceError, type Source } from "./source";
 
 // The outreach Instagram import (issue #886) over a fake source built in
@@ -359,4 +363,115 @@ test("a run that fails after uploading says nothing was written and how many fil
   const fail = { name: "writing the ledger", act: () => Promise.reject(new Error("EACCES: permission denied")) };
   const real = await runImport(options({ mode: "import", store: fakeStore() }), [fail]).then(() => "no failure", failureReport);
   assert.match(real, /^Outreach Instagram import was written: its transaction committed\. Then writing the ledger failed\.\n {2}EACCES: permission denied$/);
+});
+
+// The first round of the import kept no ledger; its real-run report is all
+// that says what it wrote. These build that report, in that round's shape,
+// for what a first run here wrote.
+
+const blockText = (b: Source["added"][number]["body"][number]) => `      ${b.kind === "highlight" ? `[highlight ${b.label}] ${b.text}` : `[${b.kind}] ${b.text}`}`;
+const photoText = (p: Source["added"][number]["gallery"][number]) => `      ${p.file}: ${p.alt}${p.caption === undefined ? "" : ` (caption: ${p.caption})`}`;
+
+/** The first round's real-run report for the drafts and posts `ledger` names, written from `source`. */
+function firstRoundReport(source: Source, ledger: Ledger): string {
+  const drafts = source.existing.filter((e) => ledger.has(e.key));
+  const added = source.added.filter((a) => ledger.has(a.key));
+  return [
+    "Outreach Instagram import (issue #886): real run",
+    "Source: first-round.json",
+    `Drafts for stored posts, written: ${drafts.length}`,
+    ...drafts.flatMap((e) => [
+      `  "${e.title}" (post ${ledger.get(e.key)?.postId}), dated 2023-03-14: 1 gallery photos kept, ${e.gallery.length} added`,
+      "    body:",
+      ...e.body.map(blockText),
+      "    gallery photos added:",
+      ...e.gallery.map(photoText),
+    ]),
+    `New posts, each a draft, written: ${added.length}`,
+    ...added.flatMap((a) => [
+      `  "${a.title}", ${a.date}, ${a.place}; tags: ${a.tags.join(", ")}; site order 99`,
+      `    summary: ${a.summary.text}`,
+      ...(a.summary.phone === undefined ? [] : [`    summary on phones: ${a.summary.phone}`]),
+      `    lead: ${a.lead}`,
+      "    body:",
+      ...a.body.map(blockText),
+      "    gallery (the first is also the cover):",
+      ...a.gallery.map(photoText),
+    ]),
+    "Skipped: 1",
+    '  [has-draft] "Luna e Italia" (post 12): the post already has a draft; a new one would overwrite it',
+    "Photo files: 3; uploaded: 3",
+    "",
+  ].join("\n");
+}
+
+test("a ledger seeded from the first round's report is the one that round would have written, so the next run updates its drafts and adds no post", async () => {
+  const ledger = await firstRun();
+  const report = firstRoundReport(SOURCE, ledger);
+  const writes = await databaseWrites();
+
+  const seed = seedLedger(parseFirstRound(report), SOURCE, await readSnapshot(db));
+  assert.deepEqual([...seed.ledger], [...ledger]);
+  assert.deepEqual(seed.rows.map((r) => [r.kind, r.post.title]), [["seeded", "Pi Day Fair"], ["seeded", "Example launch"]]);
+  assert.deepEqual(await databaseWrites(), writes, "seeding only reads the database");
+
+  // The current source retitled the added post: it is matched by its date, the one source post that has it.
+  const retitled: Source = { ...SOURCE, added: [{ ...SOURCE.added[0], title: "Example launch, longer" }, ...SOURCE.added.slice(1)] };
+  const byDate = seedLedger(parseFirstRound(report), retitled, await readSnapshot(db));
+  assert.deepEqual([...byDate.ledger], [...ledger]);
+  const printed = renderSeed("first-round.txt", "ledger.json", byDate);
+  assert.match(printed, /^First-round posts: 2; seeded: 2; not seeded: 0$/m);
+  assert.match(printed, /^ {2}\[seeded\] "Example launch" -> example-launch \(post \d+, matched by date\)$/m);
+
+  const postsBefore = await tableRows(outreachPosts);
+  const { written } = await runImport(options({ mode: "import", store: fakeStore(), source: retitled, ledger: byDate.ledger, newName: () => crypto.randomUUID() }));
+  assert.deepEqual(written, { drafts: 0, redrafts: 2, added: 0, tags: 0, uploaded: 3 });
+  assert.deepEqual(await tableRows(outreachPosts), postsBefore, "no post is added");
+  assert.equal((await versions()).find((v) => v.postId === ledger.get("example-launch")?.postId)?.title, "Example launch, longer");
+});
+
+test("a first-round draft changed since is not seeded, and a report that is not a first round's real run is refused", async () => {
+  const ledger = await firstRun();
+  const report = firstRoundReport(SOURCE, ledger);
+  const piDay = await postIdOf("Pi Day Fair");
+  await changeRows(outreachPostVersions, { postId: piDay, version: "draft" }, { lead: "The owner changed the draft." });
+  await changeRows(outreachPostVersions, { postId: ledger.get("example-launch")!.postId, version: "draft" }, { place: "Milano, Italy" });
+
+  const seed = seedLedger(parseFirstRound(report), SOURCE, await readSnapshot(db));
+  assert.deepEqual([...seed.ledger], []);
+  assert.deepEqual(
+    seed.rows.map((r) => [r.kind, r.post.title, "detail" in r ? r.detail : undefined]),
+    [
+      ["changed-since", "Pi Day Fair", `post ${piDay}, its lead differs from the published version`],
+      ["changed-since", "Example launch", `post ${ledger.get("example-launch")!.postId}, its date, place, tags, summary or lead changed`],
+    ],
+  );
+  const { plan } = await runImport(options({ ledger: seed.ledger }));
+  assert.ok(plan.skipped.some((s) => s.kind === "has-draft" && s.title === "Pi Day Fair"), "the run leaves the changed draft alone");
+
+  assert.throws(() => parseFirstRound(report.replace("real run", "dry run, nothing written or uploaded")), (e: unknown) => e instanceof FirstRoundError && /not a real run's report/.test(e.message));
+  assert.throws(() => parseFirstRound(report.replace("    body:", "    an unexpected line")), (e: unknown) => e instanceof FirstRoundError && /cannot read: {5}an unexpected line/.test(e.message));
+});
+
+test("a seeded ledger goes to a new file only", () => {
+  const file = join(mkdtempSync(join(tmpdir(), "outreach-instagram-")), "ledger.json");
+  const ledger: Ledger = new Map([["pi-day", { postId: 10, fingerprint: "a".repeat(64) }]]);
+  writeNewLedger(file, ledger);
+  assert.deepEqual([...readLedger(file)], [...ledger]);
+  assert.throws(() => writeNewLedger(file, emptyLedger), (e: unknown) => e instanceof LedgerError && /already exists/.test(e.message));
+  assert.equal(readFileSync(file, "utf8"), ledgerText(ledger), "the ledger there is kept");
+});
+
+test("the store token is a Vercel Blob read-write token; any other value is refused without being repeated", () => {
+  assert.deepEqual(blobTokenOf("  vercel_blob_rw_AbC123xyz_s3cretPart0987 \n"), { token: "vercel_blob_rw_AbC123xyz_s3cretPart0987", storeId: "AbC123xyz" });
+  const refused = (value: string, why: RegExp) =>
+    assert.throws(
+      () => blobTokenOf(value),
+      (e: unknown) => e instanceof BlobTokenError && /must be the public store's read-write token, which reads vercel_blob_rw_<store id>_<secret>/.test(e.message) && why.test(e.message) && (value.trim() === "" || !e.message.includes(value.trim())),
+    );
+  refused("eyJ2IjoiZmFrZSJ9", /starts like an encoded JSON value/);
+  refused("vercel_blob_rw_AbC123xyz", /another kind, or is cut short/);
+  refused("vercel_blob_client_AbC123xyz_fake", /another kind, or is cut short/);
+  refused("not-a-token", /does not have that shape/);
+  refused("", /does not have that shape/);
 });
