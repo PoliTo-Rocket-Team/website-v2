@@ -1,13 +1,21 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { KeyRound, Lock } from "lucide-react";
 import {
+  advisingDetail,
   advisorOptionDetail,
+  advisorScopes,
+  advisorScopeTitle,
   BECOME_AN_ADVISOR,
+  defaultAdvisorScope,
   fullAccessMovesLine,
   steppingDown,
+  type AdvisorScope,
   type HandOverOutcome,
+  type ScopeNames,
   type SteppedDownFrom,
+  type SteppedDownKind,
 } from "@/lib/dashboard/hand-over";
 import type { Permission } from "@/lib/dashboard/team";
 import type { FullAccessSeat } from "@/lib/dashboard/viewer";
@@ -28,6 +36,8 @@ export type ChoiceOption<T extends string> = {
   readonly danger?: boolean;
   /** Open, or locked with the reason the detail line shows instead. */
   readonly permission?: Permission;
+  /** What the option asks once it is picked, under its detail: where an advisor advises (issue #900). */
+  readonly more?: ReactNode;
 };
 
 /**
@@ -59,25 +69,68 @@ export function RadioChoice<T extends string>({
           const permission = o.permission ?? { allowed: true };
           const disabled = !permission.allowed;
           const checked = value === o.value;
-          const frame = cards ? `rounded-xl border ${checked ? "border-accent bg-accent/[0.05]" : "border-hairline"}` : "";
+          const frame = cards ? `overflow-hidden rounded-xl border ${checked ? "border-accent bg-accent/[0.05]" : "border-hairline"}` : "";
           return (
-            <label
-              key={o.value}
-              className={`flex items-start gap-3 px-3.5 py-3 transition-colors duration-300 ease-out ${frame} ${disabled ? "cursor-not-allowed" : "cursor-pointer hover:bg-white-5"}`}
-            >
-              <input type="radio" name={name} value={o.value} checked={checked} disabled={disabled} onChange={() => onChange(o.value)} className="peer sr-only" />
-              <span
-                aria-hidden
-                className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 ${FOCUS_RING} ${checked ? "border-accent" : "border-white-10"}`}
+            <div key={o.value} className={frame}>
+              <label
+                className={`flex items-start gap-3 px-3.5 py-3 transition-colors duration-300 ease-out ${disabled ? "cursor-not-allowed" : "cursor-pointer hover:bg-white-5"}`}
               >
-                {checked && <span className="h-2 w-2 rounded-full bg-accent" />}
-              </span>
-              <span className="min-w-0">
-                <span className={`flex items-center gap-1.5 text-[14px] ${disabled ? "text-prt-muted" : o.danger && !cards ? "text-danger" : "text-prt-text"}`}>
-                  {disabled && <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
-                  {o.title}
+                <input type="radio" name={name} value={o.value} checked={checked} disabled={disabled} onChange={() => onChange(o.value)} className="peer sr-only" />
+                <span
+                  aria-hidden
+                  className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 ${FOCUS_RING} ${checked ? "border-accent" : "border-white-10"}`}
+                >
+                  {checked && <span className="h-2 w-2 rounded-full bg-accent" />}
                 </span>
-                <span className="block text-[12px] leading-snug text-prt-muted">{permission.allowed ? o.detail : permission.reason}</span>
+                <span className="min-w-0">
+                  <span className={`flex items-center gap-1.5 text-[14px] ${disabled ? "text-prt-muted" : o.danger && !cards ? "text-danger" : "text-prt-text"}`}>
+                    {disabled && <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
+                    {o.title}
+                  </span>
+                  <span className="block text-[12px] leading-snug text-prt-muted">{permission.allowed ? o.detail : permission.reason}</span>
+                </span>
+              </label>
+              {checked && o.more !== undefined && <div className="pb-3 pl-11 pr-3.5">{o.more}</div>}
+            </div>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+const SCOPE_FOCUS = "peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent";
+
+/** Where an advisor advises, as a drawer keeps it: the scope picked, and the names of the places its scopes offer. */
+export type AdvisorScopeField = {
+  /** Null until the editor picks one: the role's default is shown picked (`defaultAdvisorScope`). */
+  readonly value: AdvisorScope | null;
+  readonly names: ScopeNames;
+  readonly onChange: (scope: AdvisorScope) => void;
+};
+
+/**
+ * "Where does Marco advise?" (issue #900): the scopes `from` offers
+ * (`advisorScopes`), one pill each, the default picked until another is.
+ * It shows under the advisor option once that option is picked.
+ */
+export function AdvisorScopePicker({ name, person, from, field }: { name: string; person: string; from: SteppedDownKind; field: AdvisorScopeField }) {
+  const picked = field.value ?? defaultAdvisorScope(from);
+  return (
+    <fieldset>
+      <legend className="mb-2 text-[12px] text-text-2">Where does {person.split(" ")[0] ?? person} advise?</legend>
+      <div className="flex flex-wrap gap-2">
+        {advisorScopes(from).map((scope) => {
+          const checked = scope === picked;
+          return (
+            <label key={scope} className="cursor-pointer">
+              <input type="radio" name={`${name}-scope`} value={scope} checked={checked} onChange={() => field.onChange(scope)} className="peer sr-only" />
+              <span
+                className={`inline-flex h-8 items-center rounded-full border px-3 text-[13px] transition-colors duration-300 ease-out ${SCOPE_FOCUS} ${
+                  checked ? "border-accent bg-accent/[0.05] text-prt-text" : "border-hairline text-text-2 hover:text-prt-text"
+                }`}
+              >
+                {advisorScopeTitle(scope, field.names)}
               </span>
             </label>
           );
@@ -85,6 +138,33 @@ export function RadioChoice<T extends string>({
       </div>
     </fieldset>
   );
+}
+
+/**
+ * The one advisor option of a "What happens to …?" list (issue #900):
+ * `title` is "Become an advisor" on a hand-over and "Stays as an advisor"
+ * where Remove offers it; its detail names the place picked, and, once
+ * picked, it asks where they advise (`AdvisorScopePicker`).
+ */
+export function advisorOption({
+  name,
+  person,
+  from,
+  title,
+  field,
+}: {
+  name: string;
+  person: string;
+  from: SteppedDownKind;
+  title: string;
+  field: AdvisorScopeField;
+}): ChoiceOption<"advisor"> {
+  return {
+    value: "advisor",
+    title,
+    detail: advisingDetail(from, field.value ?? defaultAdvisorScope(from), field.names),
+    more: <AdvisorScopePicker name={name} person={person} from={from} field={field} />,
+  };
 }
 
 /**
@@ -107,8 +187,10 @@ export function FullAccessMoves({ className = "", ...words }: Parameters<typeof 
 
 /**
  * "Become an advisor" / "Leave the team" for a lead, head or seat holder who
- * is replaced (boards 68b4 and 77e, issue #627): an advisor in `unit`, whose
- * access ends, or Alumni.
+ * is replaced (boards 68b4 and 77e, issue #627): an advisor, whose access
+ * ends, or Alumni. With `scope` (the Team tree's drawers, issue #900), picking
+ * the advisor asks where they advise; without it (a Members page move) they
+ * advise in `unit`.
  * No third option, and neither is picked at first. When the role carries a
  * full-access seat, the note under it says the seat moves (`FullAccessMoves`).
  */
@@ -122,6 +204,7 @@ export function HandOverChoice({
   seat,
   successor,
   onChange,
+  scope,
 }: {
   name: string;
   /** Whose next step it is: "Marco Bianchi". */
@@ -138,6 +221,8 @@ export function HandOverChoice({
   /** Who takes the role over: "Pietro Ricci". */
   successor: string;
   onChange: (outcome: HandOverOutcome) => void;
+  /** Where they advise, picked once "Become an advisor" is (issue #900). */
+  scope?: AdvisorScopeField;
 }) {
   return (
     <>
@@ -147,7 +232,9 @@ export function HandOverChoice({
         value={value}
         onChange={onChange}
         options={[
-          { value: "advisor", title: BECOME_AN_ADVISOR, detail: advisorOptionDetail(handed, unit, "they") },
+          scope === undefined
+            ? { value: "advisor", title: BECOME_AN_ADVISOR, detail: advisorOptionDetail(handed, unit, "they") }
+            : advisorOption({ name, person, from: handed, title: BECOME_AN_ADVISOR, field: scope }),
           { value: "leave", title: "Leave the team", detail: "Moves to Alumni; their access ends", danger: true, permission: leave },
         ]}
       />

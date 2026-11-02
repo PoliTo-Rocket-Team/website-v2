@@ -259,11 +259,11 @@ export async function addSeat(input: unknown): Promise<TeamActionResult> {
   return answered(await writes.addSeat(input));
 }
 
-/** Remove seat (issue #643): the seat `roleId` ends with no successor; its holder stays on the team. */
-export async function removeSeat(roleId: number): Promise<TeamActionResult> {
+/** Remove seat (issue #643): the seat `roleId` ends with no successor; its holder stays on the team, or stays as an advisor (issue #900). */
+export async function removeSeat(roleId: number, input?: unknown): Promise<TeamActionResult> {
   const writes = await writesOn("team-tree");
   if (!writes || !isId(roleId)) return REFUSED;
-  return answered(await writes.removeSeat(roleId));
+  return answered(await writes.removeSeat(roleId, input));
 }
 
 // Add another holder (epic #861, issue #868): one more person holds a seat,

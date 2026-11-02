@@ -4,8 +4,15 @@ import { test } from "node:test";
 import type { TeamPerson } from "./division-edit";
 import {
   advising,
+  advisingAt,
   advisingIn,
+  advisingLine,
   advisorAfterDivisionCloses,
+  advisorPlace,
+  advisorScopes,
+  defaultAdvisorScope,
+  SCOPE_NOT_OFFERED,
+  steppingDownAt,
   advisorInDestinationDetail,
   advisorOptionDetail,
   advisorsStayLine,
@@ -40,6 +47,32 @@ const team: TeamPerson[] = [
 const teamLeader: HandOverViewer = { seat: "team-leader", selfId: 14 };
 const operationsLead: HandOverViewer = { seat: "operations-lead", selfId: 1 };
 const itLead: HandOverViewer = { seat: "it-lead", selfId: 2 };
+
+test("where a former lead, head or seat holder may advise: the scopes each offers, the default, and the place each names (#900)", () => {
+  const lead = { kind: "lead", divisionId: 3, departmentId: 2 } as const;
+  const head = { kind: "head", departmentId: 2 } as const;
+  const seat = { kind: "team-seat" } as const;
+  const cases = [
+    [lead, ["division", "department", "team"], [{ kind: "division", divisionId: 3 }, { kind: "department", departmentId: 2 }, { kind: "team" }]],
+    [head, ["department", "team"], [{ kind: "department", departmentId: 2 }, { kind: "team" }]],
+    [seat, ["team"], [{ kind: "team" }]],
+  ] as const;
+  for (const [role, scopes, places] of cases) {
+    assert.deepEqual(advisorScopes(role), scopes, role.kind);
+    assert.equal(defaultAdvisorScope(role), scopes[0], `${role.kind}: its own unit is the default`);
+    assert.deepEqual(
+      scopes.map((scope) => advisorPlace(role, scope)),
+      places,
+      `${role.kind}: each scope names its place`,
+    );
+    assert.deepEqual(advisingAt(role, null), { ok: true, value: { kind: "advisor", place: places[0], access: "ends" } }, `${role.kind}: no scope is today's place`);
+  }
+  // A scope the role has no unit for is never a place, and the rule refuses it.
+  assert.equal(advisorPlace(head, "division"), null);
+  assert.deepEqual(advisingAt(seat, "department"), { ok: false, error: SCOPE_NOT_OFFERED });
+  assert.deepEqual(steppingDownAt(head, "leave", "team"), { ok: true, value: { kind: "leave" } }, "leaving reads no scope");
+  assert.equal(advisingLine(lead, "department", { division: "Design & Manufacturing", department: "Structures" }), "stays in Structures with the Advisor role; their access ends");
+});
 
 test("every hand-over ends as an advisor in the person's own unit or on Alumni, never as a member", () => {
   assert.deepEqual(steppingDown({ kind: "lead", divisionId: 1 }, "advisor"), { kind: "advisor", place: { kind: "division", divisionId: 1 }, access: "ends" });

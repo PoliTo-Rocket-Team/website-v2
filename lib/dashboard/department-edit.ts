@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { TeamPerson } from "./division-edit";
 import type { PersonRecord } from "./division-members";
-import { advisingIn, HAND_OVER_OUTCOMES, steppingDown, type HandOverOutcome, type SteppingDown, type Unit } from "./hand-over";
+import { ADVISOR_SCOPES, advisingIn, HAND_OVER_OUTCOMES, steppingDownAt, type AdvisorScope, type HandOverOutcome, type SteppingDown, type Unit } from "./hand-over";
 import { addedHolder, type ActiveRoleRow, type HolderAdd, type HolderAddPlan } from "./seat-holders";
 import { beyondTitle, defaultHeadTitle, divisionLabel, type OrgChart, type TeamActor } from "./team";
 
@@ -71,9 +71,16 @@ export type DepartmentCreate = {
  * department from now on, the head they replace (`from`, issue #872), and
  * what that head does next. `from` may be null only while the department has
  * at most one head; the outcome is null only when nothing was picked; the
- * rules refuse either while it is needed.
+ * rules refuse either while it is needed. `scope` is where the head advises
+ * with "Become an advisor" (issue #900): its department or the whole team;
+ * null is the department, as before.
  */
-export type HeadChange = { readonly to: number; readonly from: number | null; readonly outcome: HandOverOutcome | null };
+export type HeadChange = {
+  readonly to: number;
+  readonly from: number | null;
+  readonly outcome: HandOverOutcome | null;
+  readonly scope?: AdvisorScope | null;
+};
 
 /** What Save changes on Edit department sends (board 77e): the name, the code, and a new head when Change head picked one; no kind (issue #856). */
 export type DepartmentSave = { readonly name: string; readonly code: string; readonly head: HeadChange | null };
@@ -115,7 +122,10 @@ const createSchema = z.object({ name, code, heads: z.array(id).max(5) });
 const saveSchema = z.object({
   name,
   code,
-  head: z.object({ to: id, from: id.nullable().default(null), outcome: z.enum(HAND_OVER_OUTCOMES).nullable() }).nullable().default(null),
+  head: z
+    .object({ to: id, from: id.nullable().default(null), outcome: z.enum(HAND_OVER_OUTCOMES).nullable(), scope: z.enum(ADVISOR_SCOPES).nullable().default(null) })
+    .nullable()
+    .default(null),
 });
 const unit = z.discriminatedUnion("kind", [z.object({ kind: z.literal("department"), departmentId: id }), z.object({ kind: z.literal("division"), divisionId: id })]);
 const closeSchema = z.object({
@@ -198,8 +208,9 @@ export type DepartmentSavePlan = {
  * department already; any other seat they hold stays (as in New department),
  * and they keep every role and division they hold; the one head they replace
  * (`HeadChange.from`, picked among several, issue #872) becomes an advisor
- * in this department or leaves the team, as the editor picked, and nothing is
- * picked for them (`steppingDown`). Every other head stays. `headIds` are the
+ * in this department or on the whole team (issue #900), or leaves the team,
+ * as the editor picked, and nothing is picked for them (`steppingDownAt`).
+ * Every other head stays. `headIds` are the
  * people who head it now.
  */
 export function planDepartmentSave(input: {
@@ -283,7 +294,9 @@ function planHeadChange(change: HeadChange, departmentId: number, heads: readonl
   if (!from.ok) return no(from.error);
   if (from.value === null) return yes({ to: next.id, replaces: null });
   if (change.outcome === null) return no("Choose what happens to the head: Become an advisor or Leave the team.");
-  return yes({ to: next.id, replaces: { memberId: from.value, steppingDown: steppingDown({ kind: "head", departmentId }, change.outcome) } });
+  const step = steppingDownAt({ kind: "head", departmentId }, change.outcome, change.scope ?? null);
+  if (!step.ok) return no(step.error);
+  return yes({ to: next.id, replaces: { memberId: from.value, steppingDown: step.value } });
 }
 
 // Close department (Owner decision, 2026-10-19): the department and every one
