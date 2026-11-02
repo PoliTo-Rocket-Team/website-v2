@@ -59,14 +59,24 @@ export function makeLeadPermission(role: DivisionRoleChange): Permission | null 
 }
 
 /**
+ * Whether they may stop leading one division: locked for its only lead, since
+ * a division keeps at least one (`planDivisionSave`); open for anyone else.
+ * Edit details' Member choice under As (issue #965) and Becomes an advisor
+ * both read it.
+ */
+export function stepDownPermission(role: Pick<DivisionRoleChange, "role" | "leads">): Permission {
+  return role.role === "lead" && role.leads < 2 ? locked(ONE_LEAD_NEEDED) : OPEN;
+}
+
+/**
  * Becomes an advisor in one division: locked for someone who advises there
  * already, where the viewer may not change who leads it, and for its only
- * lead, since a division keeps at least one (`planDivisionSave`); else open.
+ * lead (`stepDownPermission`); else open.
  */
 export function becomeAdvisorPermission(role: DivisionRoleChange): Permission {
   if (role.advisor) return locked(`Already an advisor in ${role.short}`);
   if (!role.change.allowed) return role.change;
-  return role.role === "lead" && role.leads < 2 ? locked(ONE_LEAD_NEEDED) : OPEN;
+  return stepDownPermission(role);
 }
 
 /** What the person steps down from when they become an advisor in a division: their lead role, or their member role. */

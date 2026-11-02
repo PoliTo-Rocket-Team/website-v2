@@ -183,7 +183,7 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
         />
       )}
       {structure.departmentsEditable && <SeatDrawer target={seat} structure={structure} onClose={() => setSeat(null)} />}
-      <EditDetailsDrawer target={editing} onClose={() => setEditing(null)} />
+      <EditDetailsDrawer target={editing} openedFrom="team-tree" onClose={() => setEditing(null)} />
       {structure.leader && opensLeader(structure.leader, structure.departmentsEditable) && (
         <TeamLeaderDrawer
           key={handOver.round}

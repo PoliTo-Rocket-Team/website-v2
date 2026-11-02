@@ -278,23 +278,31 @@ describe("the Team tree and the Members page offer the same member actions", () 
     await ui.unmount();
   });
 
-  test("Members page, Edit details: switching a lead to member asks the Team tree's What happens to them?", async () => {
+  test("Members page, Edit details: the only lead's Member is locked; with another lead, switching to member asks What happens to them?", async () => {
     const page = await dmPage();
     const lead = personIn(page, LEAD);
     const actions = divisionActionsOf(lead);
     assert.ok(actions, "the team leader edits the lead");
     const { act, createElement } = await import("react");
     const { EditDetailsDrawer } = await import("@/components/dashboard/member-panels");
-    const ui = await mount(createElement(EditDetailsDrawer, { target: { kind: "person", actions, googleEmails: [] }, onClose: () => {} }));
-    const question = `What happens to ${lead.name.split(" ")[0]}?`;
-    assert.ok(!ui.text().includes(question), "not asked while they stay a lead");
+    const sole = await mount(createElement(EditDetailsDrawer, { target: { kind: "person", actions, googleEmails: [] }, openedFrom: "members", onClose: () => {} }));
     // Becomes an advisor is in Edit details too, so the Members table and phone views reach it.
     const advisor = [...window.document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Becomes an advisor");
     assert.ok(advisor, "Edit details offers Becomes an advisor");
     assert.equal(advisor.disabled, true, "locked: they are the division's only lead");
-    assert.ok(ui.text().includes("A division needs at least one lead."), "with the reason");
+    assert.ok(sole.text().includes("A division needs at least one lead."), "with the reason");
+    const soleAs = [...window.document.querySelectorAll("select")].find((s) => s.value === "lead");
+    assert.equal(soleAs?.querySelector<HTMLOptionElement>('option[value="member"]')?.disabled, true, "Member is locked under As for the only lead");
+    await sole.unmount();
+
+    // A second lead in the division opens Member, and the step-down question with it.
+    const shared = { ...actions, position: { ...actions.position, roles: actions.position.roles.map((r) => ({ ...r, leads: 2 })) } };
+    const ui = await mount(createElement(EditDetailsDrawer, { target: { kind: "person", actions: shared, googleEmails: [] }, openedFrom: "members", onClose: () => {} }));
+    const question = `What happens to ${lead.name.split(" ")[0]}?`;
+    assert.ok(!ui.text().includes(question), "not asked while they stay a lead");
     const as = [...window.document.querySelectorAll("select")].find((s) => s.value === "lead");
     assert.ok(as, "the As box shows Division lead");
+    assert.equal(as.querySelector<HTMLOptionElement>('option[value="member"]')?.disabled, false, "Member is open with another lead");
     await act(() => {
       Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")!.set!.call(as, "member");
       as.dispatchEvent(new window.Event("change", { bubbles: true }));

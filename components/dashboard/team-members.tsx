@@ -266,7 +266,7 @@ export function ScopedMembersView({
         onClose={() => setOpenId(null)}
         onEdit={editPerson}
       />
-      <EditDetailsDrawer target={editing} onClose={() => setEditing(null)} />
+      <EditDetailsDrawer target={editing} openedFrom="members" onClose={() => setEditing(null)} />
       {add !== null && <AddMemberDrawer open={adding} onOpenChange={setAdding} target={add} />}
       <MemberDialogs asking={asking} onClose={() => setAsking(null)} />
     </DrawerPage>

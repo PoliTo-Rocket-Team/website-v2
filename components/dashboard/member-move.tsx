@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useId, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { ArrowRightLeft, ArrowUpRight, Building2, Check, ChevronDown, TriangleAlert } from "lucide-react";
+import { ArrowRightLeft, ArrowUpRight, Building2, Check, ChevronDown, Lock, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { findMoveTargets, moveMember } from "@/app/dashboard/team-actions";
 import type { HandOverOutcome } from "@/lib/dashboard/hand-over";
 import { headsAfterMove, titleOnMove, type HeadsAfterMove, type MovablePlace, type MoveDepartment, type MoveTo } from "@/lib/dashboard/member-move";
+import type { Permission } from "@/lib/dashboard/team";
 import { andList } from "@/lib/dashboard/team-structure";
 import { Chips } from "./division-chips";
 import { ConfirmDialog } from "./confirm-dialog";
@@ -125,23 +126,30 @@ export function useMoveTargets(personId: number | null): readonly MoveDepartment
  * The Division (or Move to, for a head) box and the As box (boards 98a,
  * 98b). `taken` are the person's other divisions, which they cannot move
  * into. Changing the unit starts them as a member there (Owner decision,
- * 2026-10-24).
+ * 2026-10-24). `stepDown` says whether Member is open in the division they
+ * are in now (`stepDownPermission`): its only lead sees it locked, with the
+ * reason under the boxes (issue #965).
  */
 export function MoveFields({
   place,
   departments,
   value,
   taken,
+  stepDown = { allowed: true },
   onChange,
 }: {
   place: MovablePlace;
   departments: readonly MoveDepartment[];
   value: MoveChoice;
   taken: readonly number[];
+  stepDown?: Permission;
   onChange: (choice: MoveChoice) => void;
 }) {
+  const reasonId = useId();
   const start = choiceOf(place);
   const changed = value.unit.kind !== start.unit.kind || value.unit.id !== start.unit.id;
+  // Member in the division they are in now is a step-down for its lead; in any other it is where a move starts them.
+  const memberLock = !changed && !stepDown.allowed ? stepDown.reason : null;
   const department = departmentOf(departments, value.unit);
   const division = value.unit.kind === "division" ? department?.divisions.find((v) => v.id === value.unit.id) : undefined;
   // Before the targets arrive, the box offers what they are now.
@@ -151,7 +159,7 @@ export function MoveFields({
     value.unit.kind === "department"
       ? [{ value: "head", label: `Head of ${unitLabel(departments, place, value.unit)}`, disabled: false }]
       : [
-          { value: "member", label: "Member", disabled: false },
+          { value: "member", label: "Member", disabled: memberLock !== null },
           { value: "lead", label: "Division lead", disabled: !leadAllowed },
           ...(place.kind === "head" && department ? [{ value: "head" as const, label: `Head of ${department.name}`, disabled: !headAllowed }] : []),
         ];
@@ -161,72 +169,81 @@ export function MoveFields({
     onChange({ unit, as: back ? start.as : unit.kind === "department" ? "head" : "member" });
   };
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_150px] gap-3">
-      <Field label={place.kind === "head" ? "Move to" : "Division"}>
-        {(id) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              id={id}
-              className={`${inputClass()} flex items-center gap-2.5 text-left data-[state=open]:border-accent ${changed ? "border-accent" : ""} ${FOCUS}`}
-            >
-              <span className="min-w-0 truncate">{unitLabel(departments, place, value.unit)}</span>
-              <ChevronDown aria-hidden className="ml-auto h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-            </DropdownMenuTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuPrimitive.Content
-                align="start"
-                sideOffset={6}
-                className="z-50 max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto rounded-xl border border-hairline bg-panel p-1.5 text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0"
+    <div>
+      <div className="grid grid-cols-[minmax(0,1fr)_150px] gap-3">
+        <Field label={place.kind === "head" ? "Move to" : "Division"}>
+          {(id) => (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                id={id}
+                className={`${inputClass()} flex items-center gap-2.5 text-left data-[state=open]:border-accent ${changed ? "border-accent" : ""} ${FOCUS}`}
               >
-                <DropdownMenuPrimitive.RadioGroup value={`${value.unit.kind === "department" ? "d" : "v"}${value.unit.id}`} onValueChange={pick}>
-                  {departments.map((d) => (
-                    <DropdownMenuPrimitive.Group key={d.id} className="py-1 first:pt-0">
-                      <DropdownMenuPrimitive.Label className="px-2.5 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-[0.3em] text-dim">{d.name}</DropdownMenuPrimitive.Label>
-                      {place.kind === "head" && d.headable && (
-                        <MoveItem value={`d${d.id}`} disabled={false}>
-                          <Building2 aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-                          <span className="min-w-0 truncate">{d.name}</span>
-                          <span className="shrink-0 text-[12px] text-prt-muted">department</span>
-                        </MoveItem>
-                      )}
-                      {d.divisions.map((v) => {
-                        const own = place.kind === "division" && v.id === place.divisionId;
-                        const isTaken = !own && taken.includes(v.id);
-                        return (
-                          <MoveItem key={v.id} value={`v${v.id}`} disabled={isTaken}>
-                            {v.code !== null && <Chips chips={[{ divisionId: v.id, label: v.code, code: true }]} />}
-                            <span className="min-w-0 truncate">{v.name}</span>
-                            {isTaken && <span className="shrink-0 text-[12px] text-prt-muted">already in</span>}
+                <span className="min-w-0 truncate">{unitLabel(departments, place, value.unit)}</span>
+                <ChevronDown aria-hidden className="ml-auto h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
+              </DropdownMenuTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuPrimitive.Content
+                  align="start"
+                  sideOffset={6}
+                  className="z-50 max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto rounded-xl border border-hairline bg-panel p-1.5 text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0"
+                >
+                  <DropdownMenuPrimitive.RadioGroup value={`${value.unit.kind === "department" ? "d" : "v"}${value.unit.id}`} onValueChange={pick}>
+                    {departments.map((d) => (
+                      <DropdownMenuPrimitive.Group key={d.id} className="py-1 first:pt-0">
+                        <DropdownMenuPrimitive.Label className="px-2.5 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-[0.3em] text-dim">{d.name}</DropdownMenuPrimitive.Label>
+                        {place.kind === "head" && d.headable && (
+                          <MoveItem value={`d${d.id}`} disabled={false}>
+                            <Building2 aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
+                            <span className="min-w-0 truncate">{d.name}</span>
+                            <span className="shrink-0 text-[12px] text-prt-muted">department</span>
                           </MoveItem>
-                        );
-                      })}
-                    </DropdownMenuPrimitive.Group>
-                  ))}
-                </DropdownMenuPrimitive.RadioGroup>
-              </DropdownMenuPrimitive.Content>
-            </DropdownMenuPortal>
-          </DropdownMenu>
-        )}
-      </Field>
-      <Field label="As">
-        {(id) => (
-          <div className="relative">
-            <select
-              id={id}
-              value={value.as}
-              onChange={(e) => onChange({ ...value, as: e.target.value as MoveChoice["as"] })}
-              className={`${inputClass()} cursor-pointer appearance-none truncate pr-10`}
-            >
-              {options.map((o) => (
-                <option key={o.value} value={o.value} disabled={o.disabled} className="bg-panel text-prt-text">
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
-          </div>
-        )}
-      </Field>
+                        )}
+                        {d.divisions.map((v) => {
+                          const own = place.kind === "division" && v.id === place.divisionId;
+                          const isTaken = !own && taken.includes(v.id);
+                          return (
+                            <MoveItem key={v.id} value={`v${v.id}`} disabled={isTaken}>
+                              {v.code !== null && <Chips chips={[{ divisionId: v.id, label: v.code, code: true }]} />}
+                              <span className="min-w-0 truncate">{v.name}</span>
+                              {isTaken && <span className="shrink-0 text-[12px] text-prt-muted">already in</span>}
+                            </MoveItem>
+                          );
+                        })}
+                      </DropdownMenuPrimitive.Group>
+                    ))}
+                  </DropdownMenuPrimitive.RadioGroup>
+                </DropdownMenuPrimitive.Content>
+              </DropdownMenuPortal>
+            </DropdownMenu>
+          )}
+        </Field>
+        <Field label="As">
+          {(id) => (
+            <div className="relative">
+              <select
+                id={id}
+                aria-describedby={memberLock === null ? undefined : reasonId}
+                value={value.as}
+                onChange={(e) => onChange({ ...value, as: e.target.value as MoveChoice["as"] })}
+                className={`${inputClass()} cursor-pointer appearance-none truncate pr-10`}
+              >
+                {options.map((o) => (
+                  <option key={o.value} value={o.value} disabled={o.disabled} className="bg-panel text-prt-text">
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
+            </div>
+          )}
+        </Field>
+      </div>
+      {memberLock !== null && (
+        <p id={reasonId} className="mt-2 flex items-center gap-1.5 text-[12px] leading-snug text-prt-muted">
+          <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+          <span>Member is locked. {memberLock}</span>
+        </p>
+      )}
     </div>
   );
 }
@@ -248,9 +265,11 @@ function MoveItem({ value, disabled, children }: { value: string; disabled: bool
 
 /**
  * The line under the boxes in Edit details (boards 98a, 98b): what Save does
- * with the move, and that the same move is on the Team tree, linked there.
+ * with the move, and that the same move is on the Team tree, linked there
+ * when `treeLink`: not when Edit details was opened from the Team tree
+ * (issue #965).
  */
-export function MoveHint({ place, moving }: { place: MovablePlace; moving: boolean }) {
+export function MoveHint({ place, moving, treeLink }: { place: MovablePlace; moving: boolean; treeLink: boolean }) {
   const words =
     place.kind === "head"
       ? moving
@@ -261,11 +280,16 @@ export function MoveHint({ place, moving }: { place: MovablePlace; moving: boole
         : "Pick another division to move them on Save.";
   return (
     <p className="mt-3 text-[13px] text-prt-muted">
-      {words}{" "}
-      <Link href={TEAM_TREE_EDIT} className={`inline-flex items-center gap-1 rounded-sm text-prt-muted transition-colors duration-300 ease-out hover:text-accent ${FOCUS}`}>
-        Also on the Team tree
-        <ArrowUpRight aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={1.75} />
-      </Link>
+      {words}
+      {treeLink && (
+        <>
+          {" "}
+          <Link href={TEAM_TREE_EDIT} className={`inline-flex items-center gap-1 rounded-sm text-prt-muted transition-colors duration-300 ease-out hover:text-accent ${FOCUS}`}>
+            Also on the Team tree
+            <ArrowUpRight aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={1.75} />
+          </Link>
+        </>
+      )}
     </p>
   );
 }
