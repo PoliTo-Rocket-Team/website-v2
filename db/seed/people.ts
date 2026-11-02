@@ -1,6 +1,7 @@
 // The people-and-roles seed (issues #304, #326): every person with a `users`
 // row, their member rows, every role they hold or held, and a sign-in row for
-// each of them and for the admin testers (issues #129, #653). One more person
+// each of them and for the admin testers (issues #129, #653), each with its
+// Google account and the member seat with a second one (issue #942). One more person
 // was added to a division by email and has not signed in (issue #746), so
 // they have a `team_joins` row and no sign-in row.
 //
@@ -17,11 +18,16 @@
 // tester (issue #653): each plain seat of lib/seeded-accounts.ts is one of
 // these people. Two seats lib/about/team.ts leaves empty are invented on
 // public people: a Test Engineer leads Test Bench, and the head of
-// Operations holds the operations lead's full-access seat. The applicants'
+// Operations holds the operations lead's full-access seat. Two invented
+// roles give public people a second seat (issue #944), so the Team tree
+// draws one person on several cards: the Project Manager also holds a
+// second team-level seat, and the Chief Engineer also heads R&D beside its
+// head. Both stay on their flagged seat, so the Team page draws them where
+// it did. The applicants'
 // user ids keep the numbers the old SQL seed used; the recruitment module
 // names them.
 
-import { betterAuthUsers, members, roles, teamJoins, users } from "@/db/schema";
+import { betterAuthAccounts, betterAuthUsers, members, roles, teamJoins, users } from "@/db/schema";
 import { clearedUser, CLEARED_MEMBER } from "@/lib/dashboard/anonymize";
 import type { PlainSeat } from "@/lib/dashboard/viewer";
 import { ADMIN_TESTERS, SEATS, SEED_EMAIL_DOMAIN, seatOf } from "@/lib/seeded-accounts";
@@ -149,6 +155,8 @@ export const IT_LEAD = publicMember("Huseyin Gulec");
 /** The two board seats beside the team leader (board 54c), which the Team page draws on its arc (issue #311). */
 export const PROJECT_MANAGER = publicMember("Riccardo Savio");
 export const CHIEF_ENGINEER = publicMember("Andrea Manzo");
+/** The Project Manager's second team-level seat (invented, issue #944): a seat in no unit with no full-access flag. */
+export const SECOND_SEAT_TITLE = "Launch Campaign Manager";
 /** Head of Operations (lib/about/team.ts), who holds the operations lead's full-access seat on that role (invented: the public data flags no seat). */
 export const OPERATIONS_HEAD = publicMember("Rocco Bellon");
 /** A Test Engineer (lib/about/team.ts) who also leads Test Bench (invented: team.ts names no Test Bench lead): the division-lead plain seat. */
@@ -309,7 +317,7 @@ export const MEMBER_SEAT_ALIAS: string = (() => {
 
 export const USER_ROWS = rowsOf(users, [...PEOPLE.map(userRow), ...ADMIN_TESTER_USERS]);
 
-const { propulsion, structures, aerodynamics, recovery, electronics, operations } = DEPARTMENT;
+const { propulsion, structures, aerodynamics, recovery, electronics, operations, research } = DEPARTMENT;
 const D = DIVISION;
 
 /** The two board seats' flags, by holder: their team-level role row carries it, as migration 0047 marked the real rows (issue #625). */
@@ -363,6 +371,13 @@ export const ROLE_ROWS = rowsOf(roles, [
   // waiting hand-over (./hand-overs.ts) and the manual alias requests
   // (./aliases.ts).
   { memberId: TEST_BENCH_LEAD, deptId: propulsion, divisionId: D.testBench, title: "Test Bench Lead", startedAt: PUBLIC_ROLES_START, type: "lead" },
+
+  // People who hold more than one seat (issue #944), invented: team.ts gives
+  // no one two. Neither row carries a full-access flag, and each holder's
+  // flagged board seat ranks first, so the Team page still draws them on it
+  // and nowhere else; the Team tree draws them on the further card too.
+  { memberId: PROJECT_MANAGER, title: SECOND_SEAT_TITLE, startedAt: PUBLIC_ROLES_START, type: "core" },
+  { memberId: CHIEF_ENGINEER, deptId: research, title: "Co-Head of R&D", startedAt: PUBLIC_ROLES_START, type: "head" },
 ]);
 
 for (const seat of SEATS) {
@@ -469,6 +484,61 @@ export const SIGN_IN_RESET: SeedStatement = {
   params: [],
 };
 
+/** What every seeded Google account's id and subject start with: made up, so no real Google account has one. */
+const SEED_GOOGLE_ACCOUNT = "seed-google-";
+
+/**
+ * The member seat's second Google account (issue #942): another invented
+ * address on the reserved domain, so their Google accounts list shows two
+ * rows, Remove is offered, and Members shows "Also signs in with".
+ */
+export const MEMBER_SEAT_SECOND_GOOGLE_EMAIL = `${seatOf("member").email.replace(`@${SEED_EMAIL_DOMAIN}`, "")}.second@${SEED_EMAIL_DOMAIN}`;
+
+/**
+ * A Google account linked to a seeded login, as Better Auth stores one
+ * (issue #942): its id and subject are made up from the login's id, and it
+ * holds no token, scope or password.
+ */
+function googleAccountRow(userId: string, email: string, which: "first" | "second") {
+  const key = which === "first" ? userId : `${userId}-second`;
+  return {
+    id: `${SEED_GOOGLE_ACCOUNT}${key}`,
+    accountId: `${SEED_GOOGLE_ACCOUNT}subject-${key}`,
+    providerId: "google",
+    userId,
+    email,
+    accessToken: null,
+    refreshToken: null,
+    idToken: null,
+    accessTokenExpiresAt: null,
+    refreshTokenExpiresAt: null,
+    scope: null,
+    password: null,
+    createdAt: SIGN_IN_MADE_AT,
+    updatedAt: SIGN_IN_MADE_AT,
+  };
+}
+
+/**
+ * Every seeded login's own Google account, under the login's email, and the
+ * member seat's second one, so a preview shows every state of the Google
+ * accounts screens (#906, #908).
+ */
+export const GOOGLE_ACCOUNT_ROWS = rowsOf(betterAuthAccounts, [
+  ...SIGN_IN_ROWS.rows.map((login) => googleAccountRow(login.id, login.email, "first")),
+  googleAccountRow(seatOf("member").id, MEMBER_SEAT_SECOND_GOOGLE_EMAIL, "second"),
+]);
+
+/**
+ * Matches the Google accounts the seed makes and nothing else. Removing a
+ * seeded login removes its accounts anyway (`userId` cascades); this also
+ * names them by their made-up id, so a developer's own account stays.
+ */
+export const GOOGLE_ACCOUNT_RESET: SeedStatement = {
+  sql: `DELETE FROM better_auth.account WHERE id LIKE '${SEED_GOOGLE_ACCOUNT}%'`,
+  params: [],
+};
+
 /**
  * The `sync_auth_users` trigger set each seeded account's `users.updated_at`
  * to now when its sign-in row went in; these set it back to what the `users`
@@ -507,7 +577,10 @@ export const people = tableSeedModule({
   // `team_joins` points at `users`, so emptying `users` empties it anyway.
   owns: [members, users, roles, teamJoins],
   // Only the seed's own sign-in rows: a developer's own account stays.
-  keyed: [{ table: betterAuthUsers, reset: SIGN_IN_RESET }],
-  rows: [MEMBER_ROWS, USER_ROWS, ADDED_USER_ROWS, ROLE_ROWS, TEAM_JOIN_ROWS, SIGN_IN_ROWS],
+  keyed: [
+    { table: betterAuthAccounts, reset: GOOGLE_ACCOUNT_RESET },
+    { table: betterAuthUsers, reset: SIGN_IN_RESET },
+  ],
+  rows: [MEMBER_ROWS, USER_ROWS, ADDED_USER_ROWS, ROLE_ROWS, TEAM_JOIN_ROWS, SIGN_IN_ROWS, GOOGLE_ACCOUNT_ROWS],
   afterInsert: [ADMIN_TESTER_UPDATED_AT_FIX, PEOPLE_UPDATED_AT_FIX],
 });

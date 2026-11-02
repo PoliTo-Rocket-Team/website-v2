@@ -552,8 +552,9 @@ export function answeredLine(answer: Answer): string {
 
 /**
  * Give or remove "Approve orders" (issue #233). Only the team leader does
- * either, and any number of people may hold it at once. The team leader
- * already decides, so they are never given it.
+ * either, and any number of people may hold it at once. A team leader
+ * already decides, so they are never given it; a grant one kept from a seat
+ * held before becoming team leader can still be removed (epic #861).
  */
 export type ApproveOrdersChange = { readonly personId: number; readonly holds: boolean };
 
@@ -580,7 +581,8 @@ export function checkApproveOrdersChange(
   if (!parsed.success) return { ok: false, error: "Unknown person." };
   const { personId, holds } = parsed.data;
   if (!facts.team.includes(personId)) return { ok: false, error: "Give Approve orders only to someone on the team." };
-  if (facts.teamLeaders.includes(personId)) return { ok: false, error: "The team leader already approves orders." };
+  // Only giving is refused: a grant a team leader kept from a seat held before (epic #861) can still go.
+  if (holds && facts.teamLeaders.includes(personId)) return { ok: false, error: "The team leader already approves orders." };
   const holdsNow = facts.holders.includes(personId);
   if (holds === holdsNow) return { ok: false, error: holds ? "They already hold Approve orders." : "They do not hold Approve orders." };
   return { ok: true, value: { personId, holds } };

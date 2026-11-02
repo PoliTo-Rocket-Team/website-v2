@@ -18,8 +18,9 @@ The six people:
 - **Member**: on the team.
 - **Division lead**: leads one or more divisions.
 - **Department head**: heads a department and all its divisions.
-- **Full access**: the team leader, the operations lead, the IT lead, the Project Manager and the
-  Chief Engineer. They see and act on the whole team (see "Full access" below).
+- **Full access**: the team leader, the operations lead, the IT lead, the Project Manager, the
+  Chief Engineer and the Logistics lead (#885). They see and act on the whole team (see "Full
+  access" below).
 
 An **advisor** (#253) is someone who handed over a role and stayed in the team (see "Handing
 over a role" below). The Advisor role leads nothing and heads nothing: it is never counted as a
@@ -58,19 +59,56 @@ An admin column comes later. **Planned**, no issue yet.
 - **Every viewer lands on the Overview** (#317). A non-member with nothing shown sees their name,
   their sign-in address and "No applications right now" (board 50f). Before #317 they landed on
   the My applications empty state (#179).
+- **Every seat may have several active holders** (Owner decision on epic
+  [#861](https://github.com/PoliTo-Rocket-Team/website-v2/issues/861), 2026-10-30): the team
+  leader seat, each full-access seat, each department's head seat and every other team-level
+  seat. Each holder, a co-holder when there are several, has the seat's full rights, exactly as a
+  sole holder has them; there is no per-holder tier. The database refuses no second active holder:
+  migration 0077 dropped the one-holder indexes migration 0062 had added (#667), and changed no
+  row. A hand-over or Change holder ends the holder's own row by choice, not because the database
+  refuses a second one.
+- **What goes to a seat goes to every holder of it** (epic #861,
+  [#870](https://github.com/PoliTo-Rocket-Team/website-v2/issues/870)). Each rule reads the
+  viewer's own seat, never "the" holder, so with several holders each one sees and may act:
+  - every team leader decides orders, sees the orders waiting for a decision, and gives and
+    removes "Approve orders"; no team leader is given "Approve orders", since each decides by the
+    seat, but a grant one kept from a seat held before becoming team leader can still be removed,
+    through Edit access or Remove all access (see "4. Orders");
+  - every holder of an alias approver seat (the team leader, the operations lead, the IT lead)
+    sees each waiting PRT email request, team address request, routing item and removal, the
+    personal PRT email removals of members who left included, and
+    either holder may answer it or mark it done;
+  - a head's hand-over request goes to every team leader, and a lead's to every head of the
+    lead's department; the sender is never one of them, and either approver may answer;
+  - every other "Needs your attention" row and count meant for a seat, such as the team leader's
+    count of acceptance emails to send, is read off the viewer's own seat, so each holder gets it;
+  - a routing item for a team address that moves with a seat names a current holder of it: the
+    member the item names while they still hold the seat, else the newest holder. While the
+    address's holder still holds the seat, beside any co-holder, nothing moves.
 - **Full access** comes from the role alone, with no scope row (Owner decisions, 2026-10-11,
-  #238; Owner decision, 2026-10-21, #485). Five seats hold it:
+  #238; Owner decision, 2026-10-21, #485; Owner decision, 2026-10-31,
+  [#885](https://github.com/PoliTo-Rocket-Team/website-v2/issues/885)). Six seats hold it:
   - the **team leader**: the role of type `president`;
   - the **operations lead** and the **IT lead**: each seat's role carries a full-access flag
-    (`roles.full_access`, migration 0018), set once in the data. The seat is never read from a
-    department or division code, or from a title, because codes change.
+    (`roles.full_access`, migration 0018), set once in the data. These seats are never read from
+    a department or division code, or from a title, because codes change.
   - the **Project Manager** and the **Chief Engineer** (#485): each board seat's role carries the
     same flag (migration 0047, which marked the active board roles titled exactly "Project
     Manager" and "Chief Engineer" once). The code reads only the flag. Access follows the role:
-    ending the role ends it. No dashboard flow sets the flag on a new holder's role yet, as for
-    the operations lead and the IT lead.
+    ending the role ends it. A hand-over moves the flag to the successor's role, and Add another
+    holder (#868, under "Team structure") copies it onto the new holder's role; no other flow
+    sets it.
+  - the **Logistics lead** (#885): every active lead of the open Logistics division (Operations
+    department), the division the recruitment manager rule finds (see "Recruitment"). This seat
+    is the one read from its division and not from a flag: it has no `roles.full_access` value,
+    and no row is ever flagged as it, so team address "Moves with" and the flag a hand-over moves
+    never offer or write it. The access follows the lead role: it starts when someone becomes a
+    Logistics lead and ends when the role ends (hand-over, leaving, removal), with no scope row
+    written or removed. Every co-holder holds it. While Logistics is closed or has no lead, nobody
+    holds it. A member of Logistics, or someone whose only Logistics link is an area grant, does
+    not hold it. The Access page lists it as "Logistics Lead".
   - Someone in two seats shows as the higher one: the team leader, the IT lead, the operations
-    lead, the Project Manager, then the Chief Engineer.
+    lead, the Project Manager, the Chief Engineer, then the Logistics lead.
   - Full access reaches every page in the table, in every department and every division. On
     Access and Orders it sees and acts on the whole team, and it can give any access to anyone.
   - An `admin` or `org` scope row still gives full access, as before.
@@ -334,8 +372,16 @@ grilling session #745, recorded in the 2026-10-25 status-list amendment of
   They see every division's applications and may make every move a lead may make on them,
   team-wide: "NDA received" and Confirm join included
   ([Owner decision, 2026-10-25](https://github.com/PoliTo-Rocket-Team/website-v2/issues/194#issuecomment-6396490285)).
-  Their Positions page and Members page stay their own division's. While the Logistics division is
-  closed, nobody is the recruitment manager (#194).
+  While the Logistics division is closed, nobody is the recruitment manager (#194).
+  - The recruitment manager may open and close recruitment: their Positions page shows the
+    site-wide recruitment switch, with the same warning step full access sees, and the server
+    accepts it from them (Owner decision, 2026-10-31, #875).
+  - Since [#885](https://github.com/PoliTo-Rocket-Team/website-v2/issues/885) (Owner decision,
+    2026-10-31) the same lead seat is a full-access seat, the Logistics lead (see "Full access"
+    above). Every page, Positions and Members included, covers the whole team for them, and
+    they hold every other full-access right. This replaces the narrower rule of #194 and #875,
+    where the role gained only team-wide Applications moves and the recruitment switch. Deciding
+    orders and the Activity log stay apart, as for the other full-access seats.
 - Confirm join, and setting "NDA received", is the last step of the application, so the
   Applications area decides it wherever it appears (#584, Owner decision, 2026-10-22). On the
   Applications page and on the Members page's "{name} is joining" banner it shows, and the server
@@ -428,9 +474,10 @@ These rules come from the Owner decisions of 2026-10-16 on #253 (boards 77i, 77e
   - **Leave the team:** every role and every access ends and they move to Alumni, as Leaves
     the team does.
 - Who hands over which role:
-  - **Team leader:** only the current team leader, from the Team Leader box in the Team tree's
-    edit view (board 77i). The box is locked for everyone else, the operations lead and the IT
-    lead included, and the server refuses them.
+  - **Team leader:** only a current team leader, their own role, from the Team Leader box in the
+    Team tree's edit view (board 77i). Full access opens the box only to add another team leader
+    (#869), with no hand-over in it; it is locked for everyone else, and the server refuses a
+    hand-over by anyone but a team leader.
   - **Department head:** the team leader or full access, with Change head in Edit department
     (board 77e).
   - **Division lead:** the department's head, the team leader, full access or a lead of the
@@ -443,6 +490,27 @@ These rules come from the Owner decisions of 2026-10-16 on #253 (boards 77i, 77e
 - The team leader's own powers (deciding orders by default, giving "Approve orders", handing the
   role over) belong to the role, so they move to the new team leader on save.
 - The person who takes over keeps every role they already hold.
+- **A co-holder's hand-over** (epic #861,
+  [#872](https://github.com/PoliTo-Rocket-Team/website-v2/issues/872)): when a seat has several
+  holders, a hand-over or replacement by one of them ends that holder's row only. Every other
+  holder keeps the seat and its full rights, on every seat kind:
+  - **Team leader:** any team leader hands over their own place from the Team Leader box. The
+    other team leaders stay team leaders.
+  - **Full-access seat and any other team-level seat:** Change holder and Remove act on the
+    holder picked on that holder's own row in the seat's panel. Remove ends that row only; the
+    seat leaves the Team tree only with its last holder.
+  - **Department head:** Change head replaces the one head picked on that head's row in Edit
+    department; with several heads, a save that names none is refused. A confirmed hand-over
+    request from one head ends only that head's row. A move that makes someone head of a
+    department with several heads replaces the one head picked in the move's confirm.
+  - The successor may not already hold that exact seat, by any holder's row: the server refuses
+    them on each seat kind with the reason Add another holder gives ("{name} holds this seat
+    now.", or "{name} already heads this department."), and writes nothing.
+  - The drawers name which holder a replace or remove applies to: with several holders, each
+    holder's row has its own Replace (and, on a team-level seat, Remove), and the confirm says
+    the other holders stay.
+  - A team address tied to the seat and held by a holder who stays gets no routing item (#789):
+    only the address of the holder who hands over moves, to the successor.
 - A lead taken off with Remove and no replacement is not a hand-over: Remove keeps its three
   outcomes (see Divisions below).
 - **A role holder's own request from My profile** (#262, boards 55d and 62c; Owner decisions of
@@ -496,6 +564,13 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
 - There is no separate Department page. The Members page shows member data only: it holds no
   structure tools. Divisions and departments are created, edited and closed in the Team tree's
   edit view (see Team structure below, #251). The department head's view is below (#235).
+- A Members grant across the whole team (a `team` scope row on Members, or on every area, at Can
+  view or Can edit) opens the same whole-team Members page full access gets, for a member, a
+  division lead or a department head alike (Owner decision, 2026-11-02, #956). What its holder may
+  change there follows the grant's level: at Can view nothing beyond what their role changes, and
+  at Can edit everyone on Members, as full access does (Owner decision, 2026-11-02, #957; see
+  Access). It gives no full access: the Members export and the sign-in email change stay with full
+  access only (#539, #741, #864).
 - The table shows each person's divisions as code chips. A division in another department shows
   the department's name instead. Each person's role is their title in this division, or "Division
   Lead".
@@ -670,20 +745,29 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
 - A division's pencil opens Edit division (below), with **Close division** in its footer for its
   department's head, the team leader and full access; a lead's Edit division has none. Add
   division opens New division in the department of the column it is under.
-- The **Team Leader box** on top opens "Hand over your role" (board 77i, #253) for the team leader
-  alone, with a pencil. For everyone else, full access included, it shows a lock and opens
-  nothing (see "Handing over a role" above).
+- Every box for a seat names every holder of it (epic #861, issue #869): the Team Leader box
+  every team leader, a department box every head, and a seat box every holder. One holder is
+  drawn as before; several are one row each, their photo beside their name, over the seat's
+  name ("Team Leaders", "Heads · 12 people"). A department counts each person once, every head
+  included.
+- The **Team Leader box** on top opens its panel, with a pencil, for a team leader and for full
+  access. A team leader's is "Hand over your role" (board 77i, #253), which hands over their own
+  role. Both list every team leader and offer **Add another holder** (below). For everyone else
+  it shows a lock and opens nothing (see "Handing over a role" above).
 - The **seat row** (#627) sits directly under the Team Leader box and above the department
-  columns: one box per team-level seat, built like the Team Leader box, with the holder's name
-  and the seat's stored title, in the Team tree's seat order. Everyone who opens the edit view
-  sees the same row. A row too wide for the frame shrinks to fit it, as the department row does.
+  columns: one box per team-level seat, built like the Team Leader box, with every holder's name
+  and the seat's stored title, in the Team tree's seat order. A seat is what its rows share, as
+  Add another holder reads it (below). Everyone who opens the edit view sees the same row. A row
+  too wide for the frame shrinks to fit it, as the department row does.
   - For the team leader and full access, each seat box has a pencil and opens **Change
-    holder**, and the row ends in **+ Add seat**, in the Add department style. For a head the
-    boxes open nothing and there is no Add seat. The server refuses both writes to everyone
-    but the team leader and full access.
+    holder** with **Add another holder** beside it, and the row ends in **+ Add seat**, in the
+    Add department style. For a head the boxes open nothing and there is no Add seat. The server
+    refuses these writes to everyone but the team leader and full access.
   - **Change holder** picks who holds the seat from the team. As in Change head, a person who
     holds another seat may be picked and keeps it; their seat shows on the row as information.
-    Only the holder themself cannot be picked ("Holds it now"). The successor keeps their
+    Only a holder of this seat cannot be picked ("{name} holds this seat now.", #872). With
+    several holders, each holder's row has its own Replace and Remove, which act on that holder
+    alone (see "A co-holder's hand-over" above). The successor keeps their
     divisions. The holder gets "What happens to {name}?": Become an advisor (on the whole
     team, their access ends) or Leave the team, with neither picked at first. On save the
     holder's seat role ends and the successor's starts with the same title and the same
@@ -696,6 +780,31 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
     active role in no department and no division with that title and no full-access flag, so a
     new seat gives no access of its own. It shows on the Team tree's seat row, this row and the
     public Team page's arc. Ending a seat with no successor is not offered.
+- **Add another holder** (epic #861, issues #868 and #869) gives a seat one more holder beside the
+  ones it has, on every seat kind. The Team tree offers it beside the replace action: in the Team
+  Leader panel, in a seat's Change holder panel and under Change head in Edit department (when
+  the department has a head). It picks one person from the team; anyone who holds that exact seat
+  is listed but cannot be picked, with the reason the server gives ("{name} holds this seat
+  now.", `holderAddRefusal`). The save asks "are you sure" first, and then the seat's box names
+  the new holder. The rules (`lib/dashboard/seat-holders.ts`):
+  - Only the team leader and full access may add a holder; a department head, a division lead
+    and a member are refused, and a refusal writes nothing.
+  - The person is on the team and does not hold that exact seat already. Someone who holds a
+    different seat may be added and keeps it, with every role and division they hold.
+  - A seat is what its rows share: the team leader seat by the `president` type, a full-access
+    seat by its `roles.full_access` flag on whatever row carries it, a department's head seat by
+    the department (`headDepartmentOf`), and any other team-level seat by its type and stored
+    title.
+  - The new holder's role copies the seat. A new team leader gets a `president` row with the
+    title the first team leader row stores ("Team Leader" when blank). A new holder of a
+    team-level seat, flagged or not, gets that seat row's type, title and full-access flag, so a
+    second Project Manager gets full access. A new head gets a head row on the department,
+    titled as a new head's is ("Head of {department}"), with no full-access flag: a seat kept on
+    another head's row is that seat's, not the head's.
+  - Adding a holder ends no row: every holder keeps the seat, in one audited batch.
+  - A new team leader and a new head get the automatic alias request a hand-over gives (#543).
+    A team address tied to the seat gets a routing item only when its holder holds the seat no
+    more (#789): beside a holder who still holds it, nothing moves.
 
 #### Departments
 
@@ -713,7 +822,9 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
   code or kind, after an "are you sure" that lists each change.
 - **Change head** (board 77e, #253), under the head in Edit department, picks the new head from
   the team. As in New department, a person who holds another seat may be picked and keeps it.
-  Only the current head cannot be picked ("Heads it now"). The new head keeps their divisions. The head they replace gets "What happens to {name}?":
+  Only a current head cannot be picked ("Heads it now"). With several heads, Change head is each
+  head's own Replace, and the new head replaces that head alone; the others stay (#872). The new
+  head keeps their divisions. The head they replace gets "What happens to {name}?":
   Become an advisor (in this department) or Leave the team, with neither picked at first. The
   change is saved with Save changes, after the same "are you sure".
 - **Close department** (board 77f), from Edit department's footer:
@@ -881,6 +992,26 @@ personal PRT email, and the PRT emails section above sets how it reads.
   created.
 - The alias is created by hand in Google Workspace. The site creates nothing there and sends no
   email.
+- When a member with a PRT email leaves the team, the approvers are asked to remove it (issue
+  #931, `lib/dashboard/prt-email-removal.ts`, Owner decisions of 2026-10-31). Leaving is any
+  write after which the member holds no active role: Leave the team, Move to alumni, a hand-over
+  or a replace that ends their last role, the end of their last advisor role. The database opens
+  the removal as that write commits (`drizzle/0084`), so every way of leaving is covered, and
+  the leave is never refused because of it. A member with no PRT email gets none.
+- The same leave cancels the member's own open PRT email request, if one is open. The
+  cancellation shows in the Activity log under who made the leave.
+- A member who stays on as an advisor (division, department or team) keeps the address and any
+  open PRT email request; the removal opens, and the request is cancelled, when their last
+  advisor role ends.
+- One address has at most one open removal, in any letter case (`prt_email_removals_one_open`).
+  A member who rejoins the team before it is answered has it cancelled. A member who takes an
+  advisor role again leaves it open: the approvers answer it with Keep address or Mark done.
+- Each open removal is one "Remove … from …" item on the approvers' Overview, every holder of
+  each seat, drawn as a team address removal's, with Keep address and Mark done. Mark done is
+  pressed once the mailbox is deleted in Google Workspace: it clears the member's PRT email.
+  Keep address closes it and leaves the PRT email; that leave asks no more, and a later leave
+  asks again. Either answer is final and shows in the Activity log under who gave it; a second
+  answer, from another approver, is refused and writes nothing.
 
 ### Team addresses
 
@@ -1023,6 +1154,21 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
     sidebar and only those areas' figures and rows on the Overview. The server refuses every
     read and action outside them, application files included. Access is no area, so no grant
     opens it.
+  - **A grant across the whole team acts as full access within its own area, and only there**
+    (Owner decision, 2026-11-02, #957). At Can edit its holder, a member, a division lead or a
+    department head alike, changes that area for the whole team as full access does: on Members
+    they move a seat holder or a head, set a seat's title, and use Leaves the team for someone
+    with a role beyond every division. The Positions and Applications pages read as the team
+    ("Every role in the team.", "Applications for every role in the team."), at either level. A
+    whole-team Members grant, at either level, counts everyone with an active role in "Your
+    access", and in the Members figure of a member's or a lead's Overview; a head's Overview
+    stays their department's. At Can view it shows the
+    whole area and changes nothing beyond what the holder's role already changes. The grant opens
+    no other area (#471), and these powers stay with full access only: the Members export (#539),
+    the sign-in email change (#741, #864), the recruitment switch (#621), the Activity log (#238,
+    #727), deciding orders (#592), the Access page (#471), PRT email alias and team address
+    requests (#538, #721), and the Team tree's structure edits (departments, divisions, seats and
+    their holders).
 - A person holds each area at one level or not at all. In both drawers each area has a tick; a
   ticked area takes its own level, and an unticked area means no access.
 - Delegation limit: a lead gives only an area they hold, and only up to their own level in it.
@@ -1085,8 +1231,9 @@ These rules come from #230 (boards 65, 65b, 65c and 65m).
 These rules come from #238 and #247 (boards 71 and 71b).
 
 - The full-access seats are the team leader, the operations lead, the IT lead, the Project
-  Manager and the Chief Engineer (#485). On the Full access tab each shows under its label:
-  "Team leader", "Operations lead", "IT lead", "Project Manager", "Chief Engineer".
+  Manager, the Chief Engineer (#485) and the Logistics lead (#885). On the Full access tab each
+  shows under its label: "Team leader", "Operations lead", "IT lead", "Project Manager", "Chief
+  Engineer", "Logistics Lead". The Full access tab counts and lists every active Logistics lead.
 - Full access holds every area at Can edit across the whole team, Content included: "YOUR ACCESS ·
   Full access, whole team", with one "Every area · Can edit" chip, and "Approve orders" for the
   team leader.
@@ -1112,6 +1259,9 @@ These rules come from #238 and #247 (boards 71 and 71b).
   Content or an area elsewhere on the team is a grant. Full-access seats take no other grant,
   since their role holds every area, but the team leader can give them "Approve orders" and
   remove it (#635): Give access lists them for the team leader only, and only with that checkbox.
+  Another team leader is never listed in Give access and never given it: they decide by the seat
+  (#870). A grant they kept from a seat held before becoming team leader can still be removed,
+  through Edit access or Remove all access.
 
 ## 4. Orders
 

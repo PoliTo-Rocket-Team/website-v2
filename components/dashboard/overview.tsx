@@ -32,6 +32,7 @@ import {
   isAnswerTeamAddress,
   isDismissNotice,
   isMarkRemovalDone,
+  isAnswerPrtEmailRemoval,
   isMarkRerouteDone,
   type AttentionAction,
   type AttentionItem,
@@ -55,8 +56,9 @@ import { AnswerTeamAddress } from "./answer-team-address";
 import { DismissNotice } from "./dismiss-notice";
 import { MarkTeamAddressMoved } from "./team-address-reroute";
 import { MarkTeamAddressRemoved } from "./team-address-removal";
+import { AnswerPrtEmailRemoval } from "./prt-email-removal";
 import { departmentLabel } from "@/lib/dashboard/recruitment";
-import { PANEL, Panel, RowAction } from "./panel";
+import { FIGURE_GAP, PANEL, Panel, RowAction } from "./panel";
 
 // The Overview page: one view for every team seat (issue #593), the personal
 // panels of board 52 around the board the seat's scope reads (40 for the
@@ -78,10 +80,31 @@ export function OverviewView({ overview, readyCards = [] }: { overview: Overview
   }
 }
 
-const GRID = "mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px]";
+/** The panels' two columns from lg: a wide one and a 400px one. */
+const COLUMNS = "lg:grid-cols-[minmax(0,1fr)_400px]";
+
+const GRID = `grid grid-cols-[minmax(0,1fr)] items-start gap-4 ${COLUMNS}`;
+
+/**
+ * The figure row: two to a line, four from xl. Two figures over panels in
+ * two columns take the panels' columns from lg, so their edges line up
+ * (issue #897).
+ */
+function figureRow(count: number, overColumns: boolean): string {
+  const columns = count === 2 && overColumns ? COLUMNS : "xl:grid-cols-4";
+  return `grid grid-cols-2 ${FIGURE_GAP} ${columns}`;
+}
 
 /** Off the team the panels stack, full width, under the person (boards 50e, 50f, 56). */
-const STACK = "mt-6 flex min-w-0 flex-col gap-4";
+const STACK = "flex min-w-0 flex-col gap-4";
+
+/**
+ * A panel block's top margin: its own, or none when it opens right under
+ * the figure row, whose `FIGURE_GAP` places it (issue #897).
+ */
+function blockTop(underFigures: boolean, own: string): string {
+  return underFigures ? "" : own;
+}
 
 /**
  * How the lead's Overview reads on phones: board 40m keeps everything; board
@@ -171,19 +194,26 @@ export function OverviewBodySection({ board, panels }: { board: ScopeBoard; pane
   const parts = boardParts(board);
   const { access } = panels;
   const compact = parts.phone === "board-56m";
+  const underFigures = board.stats.length > 0;
+  const body =
+    panels.layout === "leader-columns" ? (
+      <LeaderColumns board={board} parts={parts} panels={panels} underFigures={underFigures} />
+    ) : (
+      <BoardFirst board={board} parts={parts} panels={panels} underFigures={underFigures} />
+    );
   return (
     <>
-      {board.stats.length > 0 && (
-        <div className="mt-5 grid grid-cols-2 gap-3 md:mt-6 md:gap-4 xl:grid-cols-4">
-          {board.stats.map((stat, index) => (
-            <StatCard key={stat.label} stat={stat} compact={compact} hiddenOnPhone={compact && index >= 2} />
-          ))}
+      {underFigures ? (
+        <div className={`mt-5 flex flex-col md:mt-6 ${FIGURE_GAP}`}>
+          <div className={figureRow(board.stats.length, opensOnColumns({ board, parts, panels }))}>
+            {board.stats.map((stat, index) => (
+              <StatCard key={stat.label} stat={stat} compact={compact} hiddenOnPhone={compact && index >= 2} />
+            ))}
+          </div>
+          {body}
         </div>
-      )}
-      {panels.layout === "leader-columns" ? (
-        <LeaderColumns board={board} parts={parts} panels={panels} />
       ) : (
-        <BoardFirst board={board} parts={parts} panels={panels} />
+        body
       )}
 
       {access.kind === "lines" && <AccessPanel access={access.lines} />}
@@ -235,13 +265,22 @@ function ScopePanels({ board, parts, checklist }: Pick<BodyProps, "board" | "par
 // the roster of their own unit, then recent activity, which phones on boards
 // 56m and 62m drop. With one column empty the other takes the whole width,
 // so no empty column is left (Owner decision, 2026-10-21).
-function LeaderColumns({ board, parts, panels }: BodyProps) {
+function leaderSides({ board, parts, panels }: BodyProps): { left: boolean; right: boolean } {
+  return {
+    left: hasScopePanels({ board, parts }) || panels.checklist !== null,
+    right: panels.rosters.length > 0 || board.activity.length > 0,
+  };
+}
+
+/** The panels' layout, told whether it opens right under the figure row. */
+type PlacedBodyProps = BodyProps & { underFigures: boolean };
+
+function LeaderColumns({ board, parts, panels, underFigures }: PlacedBodyProps) {
   const { checklist, rosters } = panels;
-  const left = hasScopePanels({ board, parts }) || checklist !== null;
-  const right = rosters.length > 0 || board.activity.length > 0;
+  const { left, right } = leaderSides({ board, parts, panels });
   if (!left && !right) return null;
   return (
-    <div className={left && right ? GRID : STACK}>
+    <div className={`${blockTop(underFigures, "mt-6")} ${left && right ? GRID : STACK}`}>
       {left && <ScopePanels board={board} parts={parts} checklist={checklist} />}
       {right && (
         <div className="flex min-w-0 flex-col gap-4">
@@ -260,22 +299,46 @@ function LeaderColumns({ board, parts, panels }: BodyProps) {
 // roster on its own once every step of the page is done, issue #641). With
 // no recent activity the panels take the whole width, so no empty column is
 // left on the right (Owner decision, 2026-10-21).
-function BoardFirst({ board, parts, panels }: BodyProps) {
+function boardFirstSides({ board, parts }: BodyProps): { left: boolean; activity: boolean } {
+  return { left: hasScopePanels({ board, parts }), activity: board.activity.length > 0 };
+}
+
+/**
+ * Whether the first panels under the figures sit in GRID's two columns from
+ * lg, as `LeaderColumns` and `BoardFirst` lay them out.
+ */
+function opensOnColumns(props: BodyProps): boolean {
+  const { checklist, rosters } = props.panels;
+  if (props.panels.layout === "leader-columns") {
+    const { left, right } = leaderSides(props);
+    return left && right;
+  }
+  const { left, activity } = boardFirstSides(props);
+  if (left || activity) return activity;
+  return checklist !== null && rosters.length > 0;
+}
+
+function BoardFirst({ board, parts, panels, underFigures }: PlacedBodyProps) {
   const { checklist, rosters } = panels;
-  const left = hasScopePanels({ board, parts });
-  const activity = board.activity.length > 0;
+  const { left, activity } = boardFirstSides({ board, parts, panels });
+  const first = left || activity;
+  const second = checklist !== null || rosters.length > 0;
+  if (!first && !second) return null;
+  const pair = checklist !== null && rosters.length > 0;
+  const secondTop = pair ? "mt-6" : "mt-5 md:mt-6";
+  // One element, so the figure row's gap stands above it once.
   return (
-    <>
-      {(left || activity) && (
-        <div className={left && !activity ? STACK : GRID}>
+    <div>
+      {first && (
+        <div className={`${blockTop(underFigures, "mt-6")} ${left && !activity ? STACK : GRID}`}>
           {left && <ScopePanels board={board} parts={parts} checklist={null} />}
           {activity && (
             <ActivityPanel activity={board.activity} compact={parts.phone === "board-56m"} className={left ? "" : "lg:col-start-2"} />
           )}
         </div>
       )}
-      {(checklist !== null || rosters.length > 0) && (
-        <div className={checklist !== null && rosters.length > 0 ? GRID : "mt-5 md:mt-6"}>
+      {second && (
+        <div className={`${first ? secondTop : blockTop(underFigures, secondTop)} ${pair ? GRID : ""}`}>
           {checklist !== null && <ChecklistPanel checklist={checklist} />}
           {rosters.length > 0 && (
             <div className="flex min-w-0 flex-col gap-4">
@@ -286,7 +349,7 @@ function BoardFirst({ board, parts, panels }: BodyProps) {
           )}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -514,6 +577,7 @@ function AttentionButton({ action, chip = false }: { action: AttentionAction; ch
   if (isAnswerTeamAddress(action)) return <AnswerTeamAddress action={action} chip={chip} />;
   if (isMarkRerouteDone(action)) return <MarkTeamAddressMoved action={action} chip={chip} />;
   if (isMarkRemovalDone(action)) return <MarkTeamAddressRemoved action={action} chip={chip} />;
+  if (isAnswerPrtEmailRemoval(action)) return <AnswerPrtEmailRemoval action={action} chip={chip} />;
   return isDismissNotice(action) ? (
     <DismissNotice noticeId={action.dismissNotice} label={action.label} chip={chip} />
   ) : (
@@ -528,6 +592,7 @@ function attentionKey(item: AttentionItem): string {
   if (isAnswerTeamAddress(item.action)) return `team-address-${item.action.answerTeamAddress}`;
   if (isMarkRerouteDone(item.action)) return `team-address-reroute-${item.action.markRerouteDone}`;
   if (isMarkRemovalDone(item.action)) return `team-address-removal-${item.action.markRemovalDone}`;
+  if (isAnswerPrtEmailRemoval(item.action)) return `prt-email-removal-${item.action.answerPrtEmailRemoval}`;
   return isDismissNotice(item.action) ? `notice-${item.action.dismissNotice}` : item.title;
 }
 
@@ -544,10 +609,11 @@ const ATTENTION_ICONS: Readonly<Record<AttentionKind, LucideIcon>> = {
   "prt-email-request": AtSign,
   "team-address-reroute": AtSign,
   "team-address-removal": AtSign,
+  "prt-email-removal": AtSign,
 };
 
 /** The rows the viewer answers on the row itself, drawn on the accent tint. */
-const ANSWERED_HERE = ["hand-over", "prt-email-request", "team-address-reroute", "team-address-removal"] as const satisfies readonly AttentionKind[];
+const ANSWERED_HERE = ["hand-over", "prt-email-request", "team-address-reroute", "team-address-removal", "prt-email-removal"] as const satisfies readonly AttentionKind[];
 
 function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boolean; hiddenOnPhone: boolean }) {
   return (

@@ -20,6 +20,7 @@ import {
   orders,
   projects,
   projectVersions,
+  prtEmailRemovals,
   recruitmentSetting,
   roles,
   scopes,
@@ -133,7 +134,7 @@ const READS: readonly Read[] = [
   // The page streams the Overview by section (issue #397): every section is swept, as it arrives.
   { path: "overviewSections", whole: (answer) => overviewOfSections(answer as OverviewSections) },
   { path: "myAlumni" },
-  { path: "members", args: [[null], ...ALL.map((u) => [IDS.division(u)])] },
+  { path: "members" },
   { path: "findForAdd", args: ALL.map((u) => [IDS.division(u), "person"]) },
   { path: "findPeople", args: [["person"]] },
   { path: "findMoveTargets", args: ALL.map((u) => [IDS.person(u)]) },
@@ -260,6 +261,14 @@ describe("figures about applications come only where the viewer reads Applicatio
   }
 });
 
+/** Whether the viewer holds a `team` row on `area`: a grant across the whole team (issues #956, #957). */
+const holdsWholeTeam = (row: MatrixRow, area?: string) =>
+  row.viewer.rawRows.some((r) => r.scope === "team" && r.target !== "approve_orders" && (area === undefined || r.target === area));
+
+/** The intro of every matrix row holding a whole-team grant on `area`, whatever their role and level (issue #957). */
+const wholeTeamIntros = (area: "positions" | "applications", intro: string): Record<string, string> =>
+  Object.fromEntries((VIEWERS as readonly MatrixRow[]).filter((r) => holdsWholeTeam(r, area)).map((r) => [r.name, intro]));
+
 // The intro each Positions grant holder's page reads: the places the grant names, never their own division (Mission Analysis).
 const GRANT_INTROS: Readonly<Record<string, string>> = {
   "member with a positions grant across the division": "Roles in the Mission Analysis.",
@@ -268,6 +277,8 @@ const GRANT_INTROS: Readonly<Record<string, string>> = {
   "member with a positions grant across the team": "Every role in the team.",
   "member with a Positions grant (Can view) in MA": "Roles in the Mission Analysis.",
   "member with a Positions grant (Can edit) in MA and (Can view) in DM": "Roles in the Design & Manufacturing and the Mission Analysis.",
+  // A whole-team Positions grant reads as the team for a lead and a head too, at either level (issue #957).
+  ...wholeTeamIntros("positions", "Every role in the team."),
 };
 
 describe("the Positions page offers only what the viewer may do (issue #487)", () => {
@@ -301,6 +312,8 @@ const APPLICATIONS_GRANT_INTROS: Readonly<Record<string, string>> = {
   "member with a applications grant across the team": "Applications for every role in the team.",
   "member with an Applications grant (Can view) across the team": "Applications for every role in the team.",
   "member with an Applications grant (Can edit) in MA and (Can view) in DM": "Applications for roles in the Design & Manufacturing and the Mission Analysis.",
+  // A whole-team Applications grant reads as the team for a lead and a head too, at either level (issue #957).
+  ...wholeTeamIntros("applications", "Applications for every role in the team."),
 };
 
 describe("the Applications page offers a move only where the viewer may make it (issue #577)", () => {
@@ -509,9 +522,12 @@ const addTeamAddressRemoval = async () => {
     { id: TEAM_ADDRESS_REMOVAL, addressId: TEAM_ADDRESS, address: "structures@politorocketteam.it", fromMember: IDS.person(DM), removedBy: IDS.lead(DM) },
   ]);
 };
+/** An open removal of the PRT email of DM's member, as the database opens one when they leave (issue #931). */
+const PRT_EMAIL_REMOVAL = 1;
+const addPrtEmailRemoval = () => addRows(prtEmailRemovals, [{ id: PRT_EMAIL_REMOVAL, memberId: IDS.person(DM), address: "person.dm@politorocketteam.it" }]);
 const changesDM = (area: "positions" | "applications" | "members") => (r: MatrixRow) => r.expect.changes[area].includes(DM);
 const reaches = (page: Expect["pages"][number]) => (r: MatrixRow) => r.expect.pages.includes(page);
-const fullAccess = (r: MatrixRow) => r.expect.wholeTeamMembers;
+const fullAccess = (r: MatrixRow) => r.expect.fullAccess;
 const isMember = (r: MatrixRow) => r.viewer.kind === "member" || r.viewer.kind === "alumni" || r.viewer.kind === "non-member";
 /** Grants are independent: a member never acts as a lead, so no member makes a lead's or a head's change. */
 const leadsOnly = (r: MatrixRow) => (fullAccess(r) ? true : isMember(r) ? false : undefined);
@@ -642,6 +658,15 @@ const ACTION_CASES: readonly ActionCase[] = [
   { action: "team-actions.addSeat", run: () => teamActions.addSeat({ personId: EXTRA.mover, title: "Safety Officer" }), may: fullAccess, control: by("team leader") },
   // Remove seat (issue #643): the same viewers as the rest of the seat row.
   { action: "team-actions.removeSeat", run: async () => teamActions.removeSeat(await seatRowOf("Project Manager")), may: fullAccess, control: by("team leader") },
+  // Add another holder (epic #861, issue #868): the same viewers as the rest of the seat row, on every seat kind.
+  { action: "team-actions.addTeamLeader", run: () => teamActions.addTeamLeader({ personId: EXTRA.mover }), may: fullAccess, control: by("team leader") },
+  {
+    action: "team-actions.addSeatHolder",
+    run: async () => teamActions.addSeatHolder(await seatRowOf("Project Manager"), { personId: EXTRA.mover }),
+    may: fullAccess,
+    control: by("team leader"),
+  },
+  { action: "team-actions.addDepartmentHead", run: () => teamActions.addDepartmentHead(IDS.department(DM), { personId: EXTRA.mover }), may: fullAccess, control: by("team leader") },
 
   // The Alumni page: site content under the Content grant (issue #589). The
   // control is a member holding Content at Can edit, so each write is proven
@@ -705,6 +730,9 @@ const ACTION_CASES: readonly ActionCase[] = [
 
   // The viewer's own pages: only their own rows.
   { action: "actions.saveLinkedin", run: () => actions.saveLinkedin("https://www.linkedin.com/in/someone"), may: reaches("my-profile"), control: by("member") },
+  // The viewer's own PRT email and their own request for one (issue #921); no matrix viewer has either yet.
+  { action: "actions.savePrtEmail", run: () => actions.savePrtEmail("viewer.own@politorocketteam.it"), may: reaches("my-profile"), control: by("member") },
+  { action: "actions.requestOwnAlias", run: () => actions.requestOwnAlias("viewer.own@politorocketteam.it"), may: reaches("my-profile"), control: by("member") },
   { action: "actions.uploadPhoto", run: () => actions.uploadPhoto(form({ photo: PHOTO() })), may: reaches("my-profile"), control: by("member") },
   { action: "actions.removePhoto", run: () => actions.removePhoto(), may: reaches("my-profile"), control: by("member") },
   { action: "actions.leaveTeam", run: () => actions.leaveTeam("Moving on", false), may: reaches("my-profile"), control: by("member") },
@@ -761,6 +789,13 @@ const ACTION_CASES: readonly ActionCase[] = [
   {
     action: "actions.markTeamAddressRemovalDone",
     run: async () => (await addTeamAddressRemoval(), actions.markTeamAddressRemovalDone(TEAM_ADDRESS_REMOVAL)),
+    may: (r) => r.expect.aliases.answers,
+    control: by("IT lead"),
+  },
+  // Who answers a personal PRT email removal is the alias rule too (issue #931): Mark done and Keep address alike.
+  {
+    action: "actions.answerPrtEmailRemoval",
+    run: async () => (await addPrtEmailRemoval(), actions.answerPrtEmailRemoval(PRT_EMAIL_REMOVAL, "removed")),
     may: (r) => r.expect.aliases.answers,
     control: by("IT lead"),
   },
@@ -852,7 +887,7 @@ describe("the break-glass admin makes every action the matrix lets the team lead
 
   test("the cases cover the Access page, order decisions and the seats", () => {
     const covered = teamLeaderCases.map((c) => c.action);
-    for (const action of ["actions.saveAccess", "actions.removeGrant", "actions.decideOrder", "actions.markOrdered", "team-actions.changeSeatHolder", "team-actions.addSeat", "team-actions.removeSeat"]) {
+    for (const action of ["actions.saveAccess", "actions.removeGrant", "actions.decideOrder", "actions.markOrdered", "team-actions.changeSeatHolder", "team-actions.addSeat", "team-actions.removeSeat", "team-actions.addTeamLeader", "team-actions.addSeatHolder", "team-actions.addDepartmentHead"]) {
       assert.ok(covered.includes(action), action);
     }
   });
@@ -1713,7 +1748,7 @@ describe("a division lead with no scope row edits their own division in the Team
   test("Edit division saves a new name and a new code on the led division", async () => {
     await writes("rename and recode MA", async () => teamActions.saveDivision(IDS.division(MA), await save(MA, { name: "Flight Analysis", code: "FLA" })));
     const division = (await tableRows(divisions)).find((d) => d.id === IDS.division(MA))!;
-    assert.deepEqual([division.name, division.code], ["Flight Analysis Division", "FLA"]);
+    assert.deepEqual([division.name, division.code], ["Flight Analysis", "FLA"]);
   });
 
   test("Edit division adds a lead, replaces a lead and removes a lead on the led division", async () => {
@@ -1921,7 +1956,7 @@ describe("Edit details sets a seat's title: the team leader and full access only
     );
     const opening = await openDashboard();
     assert.equal(opening.kind, "open");
-    const roster = await (opening as { data: DashboardData }).data.members(null);
+    const roster = await (opening as { data: DashboardData }).data.members();
     const row = roster.scope === "whole-team" ? roster.people.find((p) => p.id === EXTRA.head) : undefined;
     assert.deepEqual([row?.role, row?.roleLabel], ["head", RENAMED]);
   });
@@ -1951,7 +1986,7 @@ describe("Edit details sets a seat's title: the team leader and full access only
     for (const round of [1, 2]) {
       const opening = await openDashboard();
       assert.equal(opening.kind, "open");
-      const roster = await (opening as { data: DashboardData }).data.members(null);
+      const roster = await (opening as { data: DashboardData }).data.members();
       const title = roster.scope === "whole-team" ? roster.positions.find((p) => p.id === leaderId)?.title : undefined;
       assert.deepEqual(title, { kind: "seat", value: CUSTOM }, `round ${round}: the Role input starts at the stored title`);
       // The Role left as shown: the value the panel starts at.
@@ -2129,7 +2164,7 @@ describe("a rename sets a member's first and last name: leads, heads, the team l
 
   test("Edit details starts at the stored names, and after a rename the public Team page shows the new name", async () => {
     const leader = await open("team leader");
-    const roster = await leader.members(null);
+    const roster = await leader.members();
     const position = roster.scope === "whole-team" ? roster.positions.find((p) => p.id === IDS.person(DM)) : undefined;
     assert.deepEqual(position?.name, { firstName: "Person", lastName: DM });
     const { answer } = await renameAs("team leader", IDS.person(DM), IDS.division(DM));
@@ -2206,7 +2241,7 @@ describe("Confirm join is decided by the Applications area, and the whole team l
   const unitOfJoining = (applicationId: number) => ALL.find((u) => IDS.joining(u) === applicationId);
   /** What the viewer's Members page shows with no select or search: its joining banners and its waiting rows. */
   const shownOf = async (name: string) => {
-    const page = membersModelOf(await (await open(name)).members(null));
+    const page = membersModelOf(await (await open(name)).members());
     return page === null ? null : shownMembers(page, NO_MEMBERS_FILTER);
   };
 
@@ -2238,12 +2273,14 @@ describe("Confirm join is decided by the Applications area, and the whole team l
   test("every whole-team viewer sees every division's waiting rows, with Confirm NDA, and its joining banners where they read Applications", async () => {
     const full = (VIEWERS as readonly MatrixRow[]).filter((r) => r.expect.wholeTeamMembers);
     assert.ok(full.length >= 5, "the full-access seats are in the matrix");
+    assert.ok(full.some((r) => !r.expect.fullAccess), "and a whole-team Members grant (issue #956)");
     for (const { name, expect } of full) {
       const shown = (await shownOf(name))!;
       for (const u of ALL) {
         const waiting = shown.waiting.find((w) => w.waiting.joinId === IDS.join(u));
         assert.ok(waiting !== undefined, `${name}: the waiting row in ${u}`);
-        assert.equal(waiting.editable, true, `${name}: Confirm NDA, Cancel add and Fill details in ${u}`);
+        // What the row offers follows what the viewer changes on Members, not the whole team's page (issue #956).
+        assert.equal(waiting.editable, expect.changes.members.includes(u), `${name}: Confirm NDA, Cancel add and Fill details in ${u}`);
         const joining = shown.joining.some((j) => j.joining.applicationId === IDS.joining(u));
         assert.equal(joining, expect.reads.applications.includes(u), `${name}: the joining banner in ${u}`);
       }
@@ -2251,6 +2288,135 @@ describe("Confirm join is decided by the Applications area, and the whole team l
     // And the writes behind the waiting row take it: Confirm NDA from the whole team.
     const nda = await attempt(accountOf("operations lead").userId, () => teamActions.confirmNda(IDS.join(DM)));
     assert.deepEqual(nda.answer, { ok: true });
+  });
+});
+
+describe("a Members grant across the whole team opens the whole team's Members page, and no full access (issue #956)", () => {
+  const GRANT_ROWS = [
+    "member with a members grant across the team",
+    "member with a members grant (Can view) across the team",
+    "division lead with a members grant (Can view) across the team",
+    "department head with a members grant (Can view) across the team",
+  ];
+  /** People with no division role: the team leader, a full-access seat and the Structures head. */
+  const ABOVE_DIVISIONS = [...["team leader", "operations lead"].map((name) => accountOf(name).memberId!), EXTRA.head];
+
+  test("each grant row reads the whole team, the people above the divisions included, and offers only what it changes", async () => {
+    for (const name of GRANT_ROWS) {
+      const { expect } = VIEWERS.find((r) => r.name === name)!;
+      assert.equal(expect.wholeTeamMembers && !expect.fullAccess, true, `${name}: the matrix row`);
+      const directory = await (await open(name)).members();
+      assert.ok(directory.scope === "whole-team", `${name}: the whole team, not ${directory.scope}`);
+      const listed = directory.people.map((p) => p.id);
+      for (const id of ABOVE_DIVISIONS) assert.ok(listed.includes(id), `${name}: lists member ${id}`);
+      for (const u of ALL) assert.ok(listed.includes(IDS.person(u)), `${name}: lists the member of ${u}`);
+      // What the page offers follows what they change on Members, never the whole page.
+      const offered = new Set(directory.positions.map((p) => p.id));
+      for (const u of ALL) assert.equal(offered.has(IDS.person(u)), expect.changes.members.includes(u), `${name}: Edit details for the member of ${u}`);
+      for (const q of directory.queues) {
+        const u = ALL.find((x) => IDS.division(x) === q.divisionId);
+        if (u !== undefined) assert.equal(q.editable, expect.changes.members.includes(u), `${name}: the queue of ${u}`);
+      }
+      assert.deepEqual(directory.correctsSignInEmail, [], `${name}: no sign-in email change`);
+    }
+  });
+
+  test("at Can view the whole team offers no change at all", async () => {
+    const directory = await (await open("member with a members grant (Can view) across the team")).members();
+    assert.ok(directory.scope === "whole-team");
+    assert.deepEqual(directory.positions, []);
+    assert.ok(directory.queues.every((q) => !q.editable));
+  });
+
+  test("a Members grant over a department or a division keeps its own page, and a whole-team grant on another area opens none", async () => {
+    for (const name of ["member with a members grant across the department", "member with a members grant across the division"]) {
+      assert.equal((await (await open(name)).members()).scope, "divisions", name);
+    }
+    for (const area of ["positions", "applications", "orders"]) {
+      const name = `member with a ${area} grant across the team`;
+      assert.equal((await (await open(name)).members()).scope, "none", name);
+    }
+  });
+});
+
+// A whole-team grant at Can edit acts as full access within its own area,
+// and only there (Owner decision, 2026-11-02, issue #957). Each matrix row
+// holding a `team` row on an area, at either level, makes one Members write
+// only the team may make, one Team tree structure write, and reads the
+// Team tree's edit view; the Positions and Applications headers are pinned by
+// the intro tables above.
+
+describe("a whole-team grant acts as full access within its own area, and the Team tree's structure stays as it is (issue #957)", () => {
+  const GRANT_ROWS = (VIEWERS as readonly MatrixRow[]).filter((r) => holdsWholeTeam(r));
+  /** The same viewer without the grant: the matrix row holding their roles and no scope row. */
+  const plainOf = (row: MatrixRow) =>
+    ({ "division-lead": "division lead", "department-head": "department head", member: "member" })[row.viewer.kind as "division-lead" | "department-head" | "member"];
+  /** What the edit view lets the viewer change: the department pencils and seats, each department's divisions, each division's pencil. */
+  const editableOf = (s: TeamStructure) => ({
+    departmentsEditable: s.departmentsEditable,
+    departments: s.departments.map((d) => ({ id: d.id, divisionsEditable: d.divisionsEditable, pages: d.divisions.filter((v) => v.page !== null).map((v) => v.id) })),
+  });
+  /** A full-access seat with no division role: Leaves the team for them is the team's alone (`mayLeaveTeam`). */
+  const seatHolder = () => accountOf("Project Manager").memberId!;
+
+  test("every holder, area and level is in the matrix, and only the Can edit Members rows change Members as the team", () => {
+    assert.ok(GRANT_ROWS.length >= 24, `${GRANT_ROWS.length} whole-team grant rows`);
+    for (const { name, viewer, expect } of GRANT_ROWS) {
+      assert.equal(
+        expect.membersAsTeam,
+        viewer.rawRows.some((r) => r.scope === "team" && r.target === "members" && r.level === "edit"),
+        `${name}: Members as the team`,
+      );
+      assert.equal(expect.fullAccess, false, `${name}: full access`);
+    }
+  });
+
+  test("Leaves the team for a seat holder lands exactly where the viewer changes Members as the team", async () => {
+    const control = await attempt(accountOf("team leader").userId, () => teamActions.moveToAlumni(seatHolder(), "2024 – 2026", null));
+    assert.ok(!isRefusal(control.answer) && control.writes.length > 0, `the team leader: ${JSON.stringify(control.answer)}`);
+    for (const { name, expect } of GRANT_ROWS) {
+      const { answer, writes } = await attempt(accountOf(name).userId, () => teamActions.moveToAlumni(seatHolder(), "2024 – 2026", null));
+      assert.equal(!isRefusal(answer), expect.membersAsTeam, `${name}: ${JSON.stringify(answer)}`);
+      assert.equal(writes.length > 0, expect.membersAsTeam, `${name}: the writes`);
+    }
+  });
+
+  test("a new department is refused for every grant row, and writes nothing", async () => {
+    const run = () => teamActions.createDepartment({ name: "Avionics", code: "AVI", kind: "technical", heads: [EXTRA.mover] });
+    const control = await attempt(accountOf("team leader").userId, run);
+    assert.ok(!isRefusal(control.answer), `the team leader: ${JSON.stringify(control.answer)}`);
+    for (const { name } of GRANT_ROWS) {
+      const { answer, writes } = await attempt(accountOf(name).userId, run);
+      assert.ok(isRefusal(answer), `${name}: not refused: ${JSON.stringify(answer)}`);
+      assert.deepEqual(writes, [], `${name}: wrote`);
+    }
+  });
+
+  test("the Team tree's edit view answers each grant row as it answers the same viewer without the grant", async () => {
+    for (const row of GRANT_ROWS) {
+      const plain = plainOf(row);
+      const withGrant = await (await open(row.name)).teamStructure();
+      const without = await (await open(plain)).teamStructure();
+      assert.equal(withGrant === null, without === null, `${row.name}: an edit view, against ${plain}`);
+      if (withGrant !== null && without !== null) {
+        assert.deepEqual(editableOf(withGrant), editableOf(without), `${row.name}: the divisions they edit, against ${plain}`);
+      }
+    }
+  });
+
+  test("the Overview's Members figure counts everyone with an active role for a member's or a lead's whole-team Members grant", async () => {
+    const rows = GRANT_ROWS.filter((r) => holdsWholeTeam(r, "members") && r.viewer.kind !== "department-head");
+    assert.ok(rows.length >= 4, "a member and a lead, at each level");
+    for (const { name } of rows) {
+      const data = await open(name);
+      const active = new Set((await tableRows(roles)).filter((r) => r.leavedAt == null).map((r) => r.memberId));
+      const board = (await data.overview()) as TeamSideOverview;
+      const figure = board.stats.find((s) => s.label === "Team");
+      assert.equal(figure?.value, String(active.size), `${name}: the Team figure`);
+      const access = board.access.kind === "lines" ? board.access.lines.find((l) => l.area === "members") : undefined;
+      assert.ok(access !== undefined && access.area === "members", `${name}: a Members line under Your access`);
+      assert.equal(access.people, active.size, `${name}: Your access counts`);
+    }
   });
 });
 
@@ -2269,7 +2435,7 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
     assert.deepEqual([signedOut.response.status, signedOut.writes], [401, 0], "signed out");
     assert.equal(signedOut.response.headers.get("Content-Disposition"), null, "signed out: a file");
     for (const { name, expect } of VIEWERS) {
-      if (expect.wholeTeamMembers) continue;
+      if (expect.fullAccess) continue;
       const { response, body, writes } = await exported(accountOf(name).userId);
       assert.deepEqual([response.status, writes], [403, 0], name);
       assert.equal(response.headers.get("Content-Disposition"), null, `${name}: a file`);
@@ -2278,11 +2444,11 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
   });
 
   test("every full-access viewer gets the dated .xlsx of the whole team with every field", async () => {
-    const full = VIEWERS.filter((r) => r.expect.wholeTeamMembers);
+    const full = VIEWERS.filter((r) => r.expect.fullAccess);
     assert.ok(full.length >= 5, "the full-access seats are in the matrix");
     for (const { name } of full) {
       const data = await open(name);
-      const directory = await data.members(null);
+      const directory = await data.members();
       assert.ok(directory.scope === "whole-team", `${name}: the whole team`);
       const { response, body, writes } = await exported(accountOf(name).userId);
       assert.equal(response.status, 200, name);
@@ -2292,15 +2458,16 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
       const [header, ...rows] = readSheet(body);
       assert.deepEqual(header, EXPECTED_EXPORT_HEADER, `${name}: the header row`);
       assert.deepEqual(rows.map((r) => r[0]).sort(), directory.people.map((p) => p.name).sort(), `${name}: one row per member`);
-      // Each unit's private details, phone and Discord, are in the file.
+      // Each unit's private details, phone and Discord, are in the file. Who waits to join is not a member,
+      // and the file lists each member's sign-in email alone, never their linked Google emails (issue #908).
       const text = rows.flat().join("\n");
-      for (const u of ALL) for (const m of MARKERS.members(u).filter((x) => !x.startsWith("join-"))) assert.ok(text.includes(m), `${name}: ${m}`);
+      for (const u of ALL) for (const m of MARKERS.members(u).filter((x) => !x.startsWith("join-") && !x.startsWith("gacct-"))) assert.ok(text.includes(m), `${name}: ${m}`);
     }
   });
 
   test("a member the page's filters would hide is still in the file", async () => {
     const data = await open("team leader");
-    const directory = await data.members(null);
+    const directory = await data.members();
     assert.ok(directory.scope === "whole-team");
     const person = directory.people.find((p) => p.id === IDS.person(DM))!;
     const filters = [
@@ -2332,7 +2499,7 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
     signInAs(accountOf("team leader").userId);
     const opening = await openDashboard();
     assert.equal(opening.kind, "open");
-    const directory = await (opening as { data: DashboardData }).data.members(null);
+    const directory = await (opening as { data: DashboardData }).data.members();
     assert.ok(directory.scope === "whole-team", "the team leader reads the whole team");
     const lead = directory.people.find((p) => p.id === IDS.lead(DM));
     assert.ok(lead !== undefined, "the DM lead is on the team");
@@ -2450,7 +2617,7 @@ describe("View as: on production only the IT lead seat starts it, on a preview o
     assert.equal(await viewAsRefusal(start(itLead.userId, adminTester), PREVIEW), null, "an admin tester on a preview");
     assert.equal(await viewAsRefusal(start(member.userId, itLead.userId), PREVIEW), null, "the IT lead on a preview");
     // On production an account that holds the IT lead seat may use View as, so nobody views as it. The
-    // database keeps one active IT lead (issue #667), so it is a second account of the IT lead's own member.
+    // fixture keeps one active IT lead, so it is a second account of the IT lead's own member.
     const secondAccount = "it-lead-second-account";
     await addRows(users, [{ id: secondAccount, email: `${secondAccount}@team.test`, firstName: "Viewer", lastName: secondAccount, member: itLead.memberId, createdAt: "2025-10-01" }]);
     await addRows(betterAuthUsers, [{ id: secondAccount, name: secondAccount, email: `${secondAccount}@team.test`, emailVerified: true, role: "user" }]);
@@ -2530,7 +2697,7 @@ describe("a write made while viewing as someone records both people, from the se
     assert.deepEqual(await teamActions.confirmNda(IDS.join(DM)), { ok: true });
     const joined = (await tableRows(members)).find((m) => m.ndaConfirmedByActingAccount !== null)!;
     assert.deepEqual({ by: joined.ndaConfirmedBy, acting: joined.ndaConfirmedByActingAccount }, { by: teamLeader.memberId, acting: itLead.userId });
-    assert.ok(JSON.stringify(await data.members(null)).includes(asTeamLeader), "Members shows who confirmed the NDA");
+    assert.ok(JSON.stringify(await data.members()).includes(asTeamLeader), "Members shows who confirmed the NDA");
     assert.deepEqual(await loggedWriters(), [{ userId: teamLeader.userId, actingAccountId: itLead.userId }], "every write is logged with the acting account");
   });
 
@@ -2754,7 +2921,7 @@ describe("a renamed role title changes no access, no seat and no headship (issue
           await rename("Chief Engineer", RENAMED);
         }
       });
-      return (await data.teamTree()).board.map((b) => [b.person.id, b.title]);
+      return (await data.teamTree()).board.map((b) => [b.holders[0].id, b.title]);
     };
     const [pm, ce] = [accountOf("Project Manager").memberId, accountOf("Chief Engineer").memberId];
     const before = await seats(false);
@@ -2777,7 +2944,7 @@ describe("a renamed role title changes no access, no seat and no headship (issue
     const data = await openAfter("team leader", () =>
       addRows(roles, [{ id: 7_000, memberId: IDS.person("MA"), title: "Head of R&D", startedAt: "2020-10-01", type: "core" }]),
     );
-    const board = (await data.teamTree()).board.map((b) => [b.person.id, b.title]);
+    const board = (await data.teamTree()).board.map((b) => [b.holders[0].id, b.title]);
     const [pm, ce] = [accountOf("Project Manager").memberId, accountOf("Chief Engineer").memberId];
     // The flagged seats first, whatever the further seat's start date.
     assert.deepEqual(board.slice(0, 2), [
@@ -2809,14 +2976,14 @@ describe("a renamed role title changes no access, no seat and no headship (issue
     assert.deepEqual(await teamActions.saveMemberDetails({ kind: "person", id: IDS.person("MA") }, IDS.division("MA"), SAVE), { ok: true });
     assert.ok(isRefusal(await answerOf(() => teamActions.saveMemberDetails({ kind: "person", id: IDS.person(DM) }, IDS.division(DM), SAVE))));
     // The team leader's roster and Team tree read them as Aerodynamics' head, under the stored title:
-    // the fixture keeps one active head per department (issue #667), and it is them.
+    // the fixture keeps one active head per department, and it is them.
     const leader = await openAfter("team leader", () => rename(name, "Chief of Aerodynamics"));
-    const roster = await leader.members(null);
+    const roster = await leader.members();
     assert.equal(roster.scope, "whole-team");
     const row = roster.scope === "whole-team" ? roster.people.find((p) => p.id === head) : undefined;
     assert.deepEqual([row?.role, row?.roleLabel, row?.departmentIds], ["head", "Chief of Aerodynamics", [IDS.department("MA")]]);
     const aerodynamics = (await leader.teamTree()).departments.find((d) => d.id === IDS.department("MA"));
-    assert.deepEqual([aerodynamics?.head?.id, aerodynamics?.head?.title], [head, "Chief of Aerodynamics"]);
+    assert.deepEqual(aerodynamics?.heads.map((h) => [h.id, h.title]), [[head, "Chief of Aerodynamics"]]);
   });
 
   test("the Access page's line under a renamed head and a renamed Chief Engineer, and Close department's head label, read the stored title", async () => {
@@ -2928,7 +3095,7 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
     assert.equal(successor.viewer.kind, "operations-lead", "the successor has full access");
     const former = await openAs("Project Manager");
     assert.notEqual(former.viewer.kind, "operations-lead", "the old holder has full access no more");
-    const board = (await (await openAs("team leader")).teamTree()).board.map((b) => [b.person.id, b.title]);
+    const board = (await (await openAs("team leader")).teamTree()).board.map((b) => [b.holders[0].id, b.title]);
     assert.deepEqual(board[0], [EXTRA.mover, seat.title], "the successor is on the seat row in the seat's place");
     assert.ok(!board.some(([id]) => id === pm), "the old holder holds the seat no more");
   });
@@ -2974,9 +3141,9 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
       [["Safety Officer", null, "core"]],
     );
     const leader = await openAs("team leader");
-    const tree = (await leader.teamTree()).board.map((b) => [b.person.id, b.title]);
+    const tree = (await leader.teamTree()).board.map((b) => [b.holders[0].id, b.title]);
     assert.deepEqual(tree.at(-1), [EXTRA.mover, "Safety Officer"], "after the flagged seats on the Team tree");
-    const structure = (await leader.teamStructure())?.board.map((s) => [s.holder.id, s.title, s.flag]);
+    const structure = (await leader.teamStructure())?.board.map((s) => [s.holders[0].id, s.title, s.flag]);
     assert.deepEqual(structure?.at(-1), [EXTRA.mover, "Safety Officer", null], "and on Edit team tree's seat row");
     const arc = teamBuildOf(await databaseTeamRoles()).arc.map((l) => [l.person.id, l.role]);
     assert.deepEqual(arc.at(-1), [EXTRA.mover, "Safety Officer"], "and on the public Team page's arc");
@@ -3006,7 +3173,7 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
   /** Whether the seat row `roleId` is on the Team tree, Edit team tree's seat row and the public Team page's arc. */
   async function seatShown(roleId: number, holder: number) {
     const leader = await openAs("team leader");
-    const tree = (await leader.teamTree()).board.some((b) => b.person.id === holder);
+    const tree = (await leader.teamTree()).board.some((b) => b.holders.some((p) => p.id === holder));
     const row = ((await leader.teamStructure())?.board ?? []).some((s) => s.roleId === roleId);
     const arc = teamBuildOf(await databaseTeamRoles()).arc.some((l) => l.person.id === holder);
     return { tree, row, arc };
@@ -3034,7 +3201,7 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
     assert.deepEqual(await seatShown(seatId, pm!), { tree: false, row: false, arc: false }, "the seat is gone from both trees and the Team page");
 
     const leader = await openAs("team leader");
-    const roster = await leader.members(null);
+    const roster = await leader.members();
     assert.ok(roster.scope === "whole-team" && roster.people.some((p) => p.id === pm), "they are on the roster");
     assert.ok(!(await leader.alumni()).rows.some((r) => r.key === `m${pm}`), "they are not on Alumni");
     assert.notEqual((await openAs("Project Manager")).viewer.kind, "operations-lead", "the seat's full access ended with it");
@@ -3130,7 +3297,7 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
     await seedFixture();
     const rows = async (name: string) => {
       const structure = await (await openAs(name)).teamStructure();
-      return { board: structure?.board.map((s) => [s.roleId, s.holder.id, s.title]), editable: structure?.departmentsEditable };
+      return { board: structure?.board.map((s) => [s.roleId, s.holders.map((h) => h.id), s.title]), editable: structure?.departmentsEditable };
     };
     const leader = await rows("team leader");
     const head = await rows("department head");

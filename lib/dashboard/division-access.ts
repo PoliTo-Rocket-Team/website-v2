@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { checkApproveOrdersChange, type ApproveOrdersChange } from "./orders";
 import { boardFlagOf } from "./team";
-import type { FullAccessSeat } from "./viewer";
+import { isFlaggedSeat, type FullAccessSeat } from "./viewer";
 
 // The Access page (boards 60, 60b, 60c and 60m for a division lead, issues
 // #145 and #213; boards 65, 65b and 65m for a department head, issue #230;
@@ -434,17 +434,19 @@ export const SEAT_LABELS: Readonly<Record<FullAccessSeat, string>> = {
   "it-lead": "IT lead",
   "project-manager": "Project Manager",
   "chief-engineer": "Chief Engineer",
+  "logistics-lead": "Logistics Lead",
 };
 
 /**
  * The line under a full-access person's name: a team-level seat's (the
  * Project Manager's, the Chief Engineer's) role title as stored on its
  * flagged row, the seat's name for a blank one; any other seat's name
- * (`SEAT_LABELS`), as that seat is not its row's title (issue #625).
+ * (`SEAT_LABELS`), as that seat is not its row's title (issue #625). The
+ * Logistics lead has no flagged row, so it reads its name (issue #885).
  */
 export function seatLine(seat: FullAccessSeat, storedTitle: string): string {
   const stored = storedTitle.trim();
-  const teamLevel = seat !== "team-leader" && boardFlagOf(seat) !== null;
+  const teamLevel = isFlaggedSeat(seat) && boardFlagOf(seat) !== null;
   return teamLevel && stored !== "" ? stored : SEAT_LABELS[seat];
 }
 
@@ -455,6 +457,20 @@ export function seatLine(seat: FullAccessSeat, storedTitle: string): string {
  */
 export function canGiveApproveOrders(seat: FullAccessSeat | null): boolean {
   return seat === "team-leader";
+}
+
+/** Whether the person holds the team leader's seat: one of its holders, as each of several is (epic #861). */
+export function isTeamLeaderPerson(person: AccessPerson): boolean {
+  return person.role.kind === "full" && person.role.seat === "team-leader";
+}
+
+/**
+ * Every holder of the team leader's seat among `people` (epic #861). Each
+ * already decides orders by the seat, so none is given "Approve orders"
+ * (`checkApproveOrdersChange`, ./orders.ts).
+ */
+export function teamLeadersIn(people: readonly AccessPerson[]): number[] {
+  return people.filter(isTeamLeaderPerson).map((p) => p.id);
 }
 
 /** Someone the team leader gave "Approve orders", with who gave it and when. */
@@ -608,11 +624,13 @@ export function placesFor(unit: AccessUnit, person: AccessPerson): AccessPlace[]
  * viewer, leads and heads included, to whom the viewer can give some area in
  * some place. A full-access seat, whose role holds every area, is listed
  * only to the team leader, who can give them "Approve orders" (issue #635);
- * a co-lead whose role already holds all the viewer could give is never listed.
+ * another holder of the team leader's seat, who decides orders by it, is
+ * never listed (epic #861), and neither is a co-lead whose role already holds
+ * all the viewer could give.
  */
 export function grantablePeople(access: Pick<AccessPage, "unit" | "people" | "approveOrders">): AccessPerson[] {
   return access.people.filter((person) =>
-    (person.role.kind === "full" && access.approveOrders.canGive) ||
+    (person.role.kind === "full" && !isTeamLeaderPerson(person) && access.approveOrders.canGive) ||
     placesFor(access.unit, person).some((place) => {
       const held = heldIn(access.unit, place);
       return targetsAt(place).some((t) => heldLevel(held, t) !== null && !roleCovers(person, place, t));
@@ -728,8 +746,8 @@ function checkApproveOrders(access: AccessFacts, personId: number, holds: boolea
     {
       byTeamLeader: access.approveOrders.canGive,
       team: access.people.map((p) => p.id),
-      // The team leader is the viewer, never one of `people`.
-      teamLeaders: [],
+      // The viewer is never one of `people`; every other holder of the team leader's seat is (epic #861).
+      teamLeaders: teamLeadersIn(access.people),
       holders: access.approveOrders.holders.map((h) => h.person.id),
     },
     { personId, holds },

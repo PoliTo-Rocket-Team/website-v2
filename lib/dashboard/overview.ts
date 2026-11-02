@@ -19,7 +19,7 @@
 import type { AccessSection } from "./access-summary";
 import type { ApplicantOverview } from "./applicant-overview";
 import type { AlumniOverview } from "./my-alumni";
-import type { RoleType } from "./team";
+import { joinedTeamDayOf, type RoleType } from "./team";
 import { seatOf, type FlaggedSeat, type FullAccessSeat, type ViewerStanding } from "./viewer";
 
 export type Link = { readonly label: string; readonly href: string };
@@ -46,6 +46,9 @@ export type Stat = {
  * for an approver to move it (./team-address.ts).
  * "team-address-removal": a team address someone removed, waiting for an
  * approver to turn its routing off (./team-address.ts, issue #797).
+ * "prt-email-removal": the personal PRT email of a member who left the team,
+ * waiting for an approver to delete it or keep it (./prt-email-removal.ts,
+ * issue #931).
  */
 export type AttentionKind =
   | "acceptance-emails"
@@ -59,7 +62,8 @@ export type AttentionKind =
   | "hand-over"
   | "prt-email-request"
   | "team-address-reroute"
-  | "team-address-removal";
+  | "team-address-removal"
+  | "prt-email-removal";
 
 /** A row's button that dismisses the stored notice it shows (./notices.ts). */
 export type DismissNotice = { readonly label: string; readonly dismissNotice: number };
@@ -108,8 +112,23 @@ export type MarkRerouteDone = { readonly markRerouteDone: number; readonly addre
  */
 export type MarkRemovalDone = { readonly markRemovalDone: number; readonly address: string; readonly member: string };
 
+/**
+ * A row's Keep address and Mark done on an open personal PRT email removal
+ * (issue #931, ./prt-email-removal.ts): the address and the member who left.
+ * Only the approver seats get these rows (`prtEmailRemovalAttentionFor`).
+ */
+export type AnswerPrtEmailRemoval = { readonly answerPrtEmailRemoval: number; readonly address: string; readonly member: string };
+
 /** Where a row's button goes, the notice it dismisses, or the request it answers. */
-export type AttentionAction = Link | DismissNotice | AnswerHandOver | AnswerAlias | AnswerTeamAddress | MarkRerouteDone | MarkRemovalDone;
+export type AttentionAction =
+  | Link
+  | DismissNotice
+  | AnswerHandOver
+  | AnswerAlias
+  | AnswerTeamAddress
+  | MarkRerouteDone
+  | MarkRemovalDone
+  | AnswerPrtEmailRemoval;
 
 export function isDismissNotice(action: AttentionAction): action is DismissNotice {
   return "dismissNotice" in action;
@@ -133,6 +152,10 @@ export function isMarkRerouteDone(action: AttentionAction): action is MarkRerout
 
 export function isMarkRemovalDone(action: AttentionAction): action is MarkRemovalDone {
   return "markRemovalDone" in action;
+}
+
+export function isAnswerPrtEmailRemoval(action: AttentionAction): action is AnswerPrtEmailRemoval {
+  return "answerPrtEmailRemoval" in action;
 }
 
 export type AttentionItem = {
@@ -305,6 +328,18 @@ export type PersonHeader = {
   /** The viewer's stored photo, the one the sidebar shows (`DashboardViewer.photoUrl`); null draws the PRT mark (issue #599). */
   readonly photoUrl: string | null;
 };
+
+const monthYear = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+
+/**
+ * The header's "In the team since" line (issue #948): the day the member
+ * joined the team (`joinedTeamDayOf`, the rule the Members page's year reads
+ * too), as month and year; hidden with no stored join day.
+ */
+export function teamSinceOf(joinedTeamOn: string | null): string | null {
+  const day = joinedTeamDayOf(joinedTeamOn);
+  return day === null ? null : `In the team since ${monthYear.format(day)}`;
+}
 
 export type ChecklistItem = {
   readonly label: string;

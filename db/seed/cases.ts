@@ -43,8 +43,7 @@ import { isAdvisorVersion, publicAdvisors, type AdvisorItem } from "@/lib/about/
 import { academicYearOfDay, alumniOf, listed, type AlumniRecord, type Alumnus } from "@/lib/about/alumni-record";
 import { team as teamRecord } from "@/lib/about/team";
 import { applyLayer, isTeamPageLayer, NO_TEAM_LAYER, NO_UPLOADS, resetLayer, type ShownTeam, type TeamBuild, type TeamPageLayer } from "@/lib/about/team-layer";
-import type { TeamPerson as PagePerson } from "@/lib/about/team-person";
-import { teamBuildOf, teamPageFromRoles, type TeamRoles } from "@/lib/about/team-roles";
+import { teamBuildOf, teamPageFromRoles } from "@/lib/about/team-roles";
 import { publicItems, statusOf, versionedFromRows, type ContentItem, type VersionKind } from "@/lib/content/versioned";
 import { BUILT_IN_STATUS_KEYS, isBuiltInStatusKey, type BuiltInStatusKey } from "@/lib/dashboard/application-status";
 import { storedApplicationState } from "@/lib/dashboard/stored-application";
@@ -66,7 +65,7 @@ import type { TeamPerson } from "@/lib/dashboard/division-edit";
 import { steppingDown } from "@/lib/dashboard/hand-over";
 import { attentionOf, noticeOf } from "@/lib/dashboard/notices";
 import { handOverAttentionFor, hasLapsed, successorsFor, type HandOverRequest, type RequestedRole } from "@/lib/dashboard/hand-over-request";
-import { isTeamSeat, membershipsOfRoles, roleBeyondDivisions, type OrgChart, type Placement, type RoleSeat } from "@/lib/dashboard/team";
+import { membershipsOfRoles, roleBeyondDivisions, type RoleSeat } from "@/lib/dashboard/team";
 import {
   kindOfPlainSeat,
   seatOf,
@@ -94,7 +93,21 @@ import {
 } from "./outreach";
 import { PARTNER_ROWS, PARTNER_VERSION_ROWS } from "./partners";
 import { PROJECT_ROWS, PROJECT_VERSION_ROWS } from "./projects";
-import { ADDED_BY_EMAIL, ADDED_USER_ROWS, IT_LEAD, MEMBER_ROWS, ROLE_ROWS, PLAIN_SEAT_PEOPLE, SIGN_IN_ROWS, TEAM_JOIN_ROWS, USER_ROWS } from "./people";
+import {
+  ADDED_BY_EMAIL,
+  ADDED_USER_ROWS,
+  CHIEF_ENGINEER,
+  GOOGLE_ACCOUNT_ROWS,
+  IT_LEAD,
+  MEMBER_ROWS,
+  PROJECT_MANAGER,
+  ROLE_ROWS,
+  PLAIN_SEAT_PEOPLE,
+  SECOND_SEAT_TITLE,
+  SIGN_IN_ROWS,
+  TEAM_JOIN_ROWS,
+  USER_ROWS,
+} from "./people";
 import { APPLICATION_FILE_ROWS, APPLICATION_ROWS, APPLICATION_STATUS_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
 import { DEPARTMENT_ROWS, DIVISION_ROWS } from "./structure";
 import {
@@ -106,6 +119,7 @@ import {
   TEAM_PAGE_ADVISOR_VERSION_ROWS,
   TEAM_PAGE_LAYER_ROWS,
 } from "./team-page";
+import { isActive, onTeam, orgOf, seatOfRole, teamRolesOf } from "./team-roles";
 
 /** Every row the typed modules insert, by table. */
 export type SeedData = {
@@ -188,31 +202,7 @@ export const SEED_CURRENT_YEAR = 2026;
 
 type Role = SeedData["roles"][number];
 
-/**
- * A seeded role row of `data` as `RoleSeat`, the way lib/dashboard/team-database.ts
- * reads a stored one. A row seeded with no id gets the one a fresh database
- * gives it: its place in `data.roles`, from 1.
- */
-function seatOfRole(data: SeedData, role: Role): RoleSeat {
-  return {
-    id: role.id ?? data.roles.indexOf(role) + 1,
-    type: role.type ?? null,
-    divisionId: role.divisionId ?? null,
-    since: role.startedAt!,
-    departmentId: role.deptId ?? null,
-    title: role.title,
-    fullAccess: role.fullAccess == null ? null : SEAT_OF_FLAG[role.fullAccess],
-  };
-}
-
-export function isActive(role: Role): boolean {
-  return (role.leavedAt ?? null) === null;
-}
-
-/** The member ids that hold a role now. */
-export function onTeam(data: SeedData): Set<number> {
-  return new Set(data.roles.filter(isActive).flatMap((r) => (r.memberId == null ? [] : [r.memberId])));
-}
+export { isActive, onTeam, orgOf, teamRolesOf };
 
 /**
  * The standing the dashboard reads for one seeded user, the way `readIdentity`
@@ -236,11 +226,16 @@ export function standingOfUser(data: SeedData, userId: string): ViewerStanding |
     }));
   const activeRoles = data.roles
     .filter((r) => r.memberId === memberId && isActive(r))
-    .map((r) => ({
-      type: r.type ?? null,
-      divisionId: r.divisionId ?? null,
-      fullAccess: r.fullAccess == null ? null : SEAT_OF_FLAG[r.fullAccess],
-    }));
+    .map((r) => {
+      const division = data.divisions.find((d) => d.id === r.divisionId);
+      return {
+        type: r.type ?? null,
+        divisionId: r.divisionId ?? null,
+        divisionCode: division?.code ?? null,
+        divisionClosedAt: division?.closedAt ?? null,
+        fullAccess: r.fullAccess == null ? null : SEAT_OF_FLAG[r.fullAccess],
+      };
+    });
   const onAlumniRecord = activeRoles.length === 0 && alumnusOf(data, memberId) !== undefined;
   return viewerStandingOf({ scopes: unitRowsOf(scopeRows, openDepartmentIds), activeRoles, onAlumniRecord });
 }
@@ -440,16 +435,6 @@ export function rocketsOf(record: ProjectRecord): { card: string; page: string |
 
 // Hand-overs (issue #308), read through the hand-over rules
 // (lib/dashboard/hand-over-request.ts) the way the database source reads them.
-
-/** The open org chart, as the team snapshot reads it (lib/dashboard/team-database.ts). */
-export function orgOf(data: SeedData): OrgChart {
-  return {
-    departments: data.departments.filter((d) => (d.closedAt ?? null) === null).map((d) => ({ id: d.id!, name: d.name, code: d.code ?? null, kind: d.kind ?? "technical" })),
-    divisions: data.divisions
-      .filter((d) => (d.closedAt ?? null) === null)
-      .flatMap((d) => (d.deptId == null ? [] : [{ id: d.id!, name: d.name, departmentId: d.deptId, code: d.code ?? null }])),
-  };
-}
 
 /**
  * Everyone on the team as the hand-over rules read them, as `teamPeopleOf`
@@ -674,54 +659,8 @@ function outreachVersionsOf(data: SeedData): OutreachDraft[] {
 }
 
 // The Team page (issue #311), read back the way lib/about/team-data.ts reads
-// it: the roles placed as the team snapshot places them, with the published
-// layer laid on.
-
-/** A role's rank when the roster picks where someone sits, as lib/dashboard/team-database.ts ranks it. */
-function placementRank(role: Role): number {
-  if (role.type === "president") return 0;
-  if (isTeamSeat({ type: role.type ?? null, departmentId: role.deptId ?? null, divisionId: role.divisionId ?? null })) return 1;
-  const ranks: Readonly<Record<string, number>> = { head: 2, lead: 3, core: 4, advisor: 4 };
-  return ranks[role.type ?? ""] ?? 5;
-}
-
-/** Where someone's active roles put them, highest first, as `placementOf` in lib/dashboard/team-database.ts. */
-function placementOfRoles(data: SeedData, active: readonly Role[], org: OrgChart): Placement {
-  const [top] = active;
-  const open = active.filter((r) => org.divisions.some((d) => d.id === r.divisionId)).map((r) => seatOfRole(data, r));
-  const beside = () => membershipsOfRoles(open.filter((r) => roleBeyondDivisions(r, org) === null));
-  const seat = roleBeyondDivisions(seatOfRole(data, top), org);
-  if (seat?.kind === "team-leader") return { role: "team-leader", memberships: beside() };
-  if (seat?.kind === "board") return { role: "board", seat: seat.seat, memberships: beside() };
-  if (seat?.kind === "head") {
-    const { departmentId, title } = seat;
-    if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId, title, memberships: beside() };
-  }
-  return { role: "divisions", memberships: membershipsOfRoles(open) };
-}
-
-/** The team as the Team page reads it from the seeded rows. */
-export function teamRolesOf(data: SeedData): TeamRoles {
-  const org = orgOf(data);
-  const people = [...onTeam(data)].flatMap((memberId): PagePerson[] => {
-    const active = data.roles.filter((r) => r.memberId === memberId && isActive(r)).sort((a, b) => placementRank(a) - placementRank(b));
-    const user = data.users.find((u) => u.member === memberId);
-    const member = data.members.find((m) => m.memberId === memberId);
-    if (user === undefined) return [];
-    return [
-      {
-        id: memberId,
-        name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email,
-        placement: placementOfRoles(data, active, org),
-        pageTitle: active[0].title || null,
-        photo: member?.picture ?? null,
-        linkedin: user.linkedin ?? null,
-        teamEmail: member?.prtEmail ?? null,
-      },
-    ];
-  });
-  return { org, people };
-}
+// it: the roles placed as the team snapshot places them (./team-roles.ts),
+// with the published version drawn.
 
 /** The published visual layer, or null when no row holds a layer this code could have written. */
 export function publishedTeamPageLayerOf(data: SeedData): TeamPageLayer | null {
@@ -846,14 +785,16 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "people",
-    case: "A head in every open department",
+    case: "A head placed in every open department, one each; a board seat who also heads one is placed on the seat",
     data: "invented",
     rows: "`roles` type `head`",
-    exercisedBy: issue(252),
-    holds: (data) =>
-      data.departments
+    exercisedBy: `${issue(252)}, ${issue(944)}`,
+    holds: (data) => {
+      const { people } = teamRolesOf(data);
+      return data.departments
         .filter((d) => (d.closedAt ?? null) === null)
-        .every((d) => data.roles.filter((r) => r.type === "head" && r.deptId === d.id && isActive(r)).length === 1),
+        .every((d) => people.filter((p) => p.placement.role === "head" && p.placement.departmentId === d.id).length === 1);
+    },
   },
   {
     area: "people",
@@ -884,6 +825,36 @@ export const SEED_CASES: readonly SeedCase[] = [
       [...onTeam(data)].some(
         (m) => new Set(data.roles.filter((r) => r.memberId === m && isActive(r) && r.divisionId != null).map((r) => r.divisionId)).size >= 2,
       ),
+  },
+  {
+    area: "people",
+    case: "Someone on two team-level seats: the Project Manager also holds a second seat, with no full-access flag, and stays on the flagged one",
+    data: "invented",
+    rows: `\`roles\` in no department or division of member ${PROJECT_MANAGER}, title "${SECOND_SEAT_TITLE}"; sign-in key \`riccardo.savio\``,
+    exercisedBy: `${issue(929)}, ${issue(944)}`,
+    holds: (data) => {
+      const person = teamRolesOf(data).people.find((p) => p.id === PROJECT_MANAGER);
+      return (
+        person?.placement.role === "board" &&
+        person.placement.seat.fullAccess !== null &&
+        person.furtherSeats.some((s) => s.kind === "board" && s.seat.title === SECOND_SEAT_TITLE && s.seat.fullAccess === null)
+      );
+    },
+  },
+  {
+    area: "people",
+    case: "Someone on a team-level seat who also heads an open department: the Chief Engineer co-heads R&D and stays on the seat",
+    data: "invented",
+    rows: `\`roles\` of member ${CHIEF_ENGINEER}: the flagged seat and a head row on department 8; sign-in key \`andrea.manzo\``,
+    exercisedBy: `${issue(929)}, ${issue(944)}`,
+    holds: (data) => {
+      const { org, people } = teamRolesOf(data);
+      const person = people.find((p) => p.id === CHIEF_ENGINEER);
+      return (
+        person?.placement.role === "board" &&
+        person.furtherSeats.some((s) => s.kind === "head" && org.departments.some((d) => d.id === s.departmentId))
+      );
+    },
   },
   {
     area: "people",
@@ -946,6 +917,19 @@ export const SEED_CASES: readonly SeedCase[] = [
         join.addedBy != null &&
         activeIn(data, join.divisionId).some((r) => r.memberId === join.addedBy && r.type === "lead")
       );
+    },
+  },
+  {
+    area: "people",
+    case: "Every tester login has its own Google account, and the member seat has a second one with a different email",
+    data: "invented",
+    rows: "`better_auth.account` provider `google`, one per sign-in row under its email, and a second for the member seat",
+    exercisedBy: `${issue(906)}, ${issue(908)}`,
+    holds: () => {
+      const google = GOOGLE_ACCOUNT_ROWS.rows.filter((a) => a.providerId === "google");
+      const ownAccount = SIGN_IN_ROWS.rows.every((login) => google.filter((a) => a.userId === login.id && a.email === login.email).length === 1);
+      const memberEmails = google.filter((a) => a.userId === PLAIN_SEAT_PEOPLE.member).map((a) => a.email);
+      return ownAccount && memberEmails.length === 2 && new Set(memberEmails).size === 2;
     },
   },
   {

@@ -3,12 +3,28 @@ import { test } from "node:test";
 import { departmentMembers } from "./department-members";
 import { NO_NAME } from "./person-name";
 import { NO_MEMBER_DETAILS } from "./details";
-import { divisionMembers, positionsOf, type PersonRecord, type WaitingPerson } from "./division-members";
-import { MEMBERS_TOOLS, membersModelOf, NO_MEMBERS_FILTER, opensWholeTeam, shownMembers, type MemberEntry, type MembersModel } from "./members-view";
+import { positionsOf, reachMembers, type PersonRecord, type WaitingPerson } from "./division-members";
+import { NO_GOOGLE_EMAILS, type MemberGoogleEmails } from "./google-accounts";
+import {
+  divisionOptions,
+  googleEmailsOf,
+  MEMBERS_TOOLS,
+  membersHeader,
+  membersModelOf,
+  membersTableRows,
+  NO_MEMBERS_FILTER,
+  opensWholeTeam,
+  shownMembers,
+  startingFilter,
+  type MemberEntry,
+  type MembersFilter,
+  type MembersModel,
+  type MembersTableRow,
+} from "./members-view";
 import { membershipsOf, type DivisionQueue, type DivisionRole, type Joining, type OrgChart, type RoleBeyondDivisions, type TeamActor } from "./team";
 import type { TeamAddressLine } from "./team-address";
 import { wholeTeamMembers } from "./team-members";
-import type { ViewerStanding } from "./viewer";
+import { GRANT_AREAS, wholeTeamAreasOf, type GrantArea, type ScopeRef, type ViewerStanding } from "./viewer";
 
 // Issue #408: the team leader, a department head and a division lead open
 // one Members view with the same tools; only the rows and the actions their
@@ -64,14 +80,14 @@ const queues: readonly DivisionQueue[] = [
   { divisionId: 3, waiting: [elena], joining: [paolo], editable: true },
 ];
 
-function leaderPage(): MembersModel {
-  return seatPage(7);
+function leaderPage(googleEmails: MemberGoogleEmails = NO_GOOGLE_EMAILS): MembersModel {
+  return seatPage(7, googleEmails);
 }
 
 // Every full-access seat's whole team, the team leader's included (issue #444): the one Edit details panel's position for each person (issue #584).
-function seatPage(selfId: number): MembersModel {
+function seatPage(selfId: number, googleEmails: MemberGoogleEmails = NO_GOOGLE_EMAILS): MembersModel {
   const positions = positionsOf(records, org, { kind: "team" }, selfId);
-  return membersModelOf({ scope: "whole-team", positions, queues, correctsSignInEmail: [], ...wholeTeamMembers({ records, org, selfId }) })!;
+  return membersModelOf({ scope: "whole-team", positions, queues, correctsSignInEmail: [], ...wholeTeamMembers({ records, org, selfId }), googleEmails })!;
 }
 
 /** Where a row's menu and Edit details may remove someone from; null where the row offers no change. */
@@ -79,14 +95,18 @@ function removalsOf(entry: MemberEntry) {
   return entry.actions?.position.removals ?? null;
 }
 
-function headPage(): MembersModel {
+function headPage(googleEmails: MemberGoogleEmails = NO_GOOGLE_EMAILS): MembersModel {
   const page = departmentMembers({ records, org, departmentId: 1, actor: { kind: "head", departmentIds: [1] }, selfId: 6, waiting: { 1: [elena] }, joining: {} })!;
-  return membersModelOf({ scope: "department", ...page })!;
+  return membersModelOf({ scope: "department", ...page, googleEmails })!;
 }
 
-function leadPage(actor: TeamActor | null = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] }): MembersModel {
-  const page = divisionMembers({ records, org, divisionId: 1, actor, selfId: 1, reach: [1], waiting: [elena], joining: [] })!;
-  return membersModelOf({ scope: "division", ...page })!;
+function leadPage(
+  actor: TeamActor | null = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] },
+  divisionIds: readonly number[] = [1],
+  googleEmails: MemberGoogleEmails = NO_GOOGLE_EMAILS,
+): MembersModel {
+  const page = reachMembers({ records, org, divisionIds, actor, selfId: 1, waiting: { 1: [elena] }, joining: {} });
+  return membersModelOf({ scope: "divisions", ...page, googleEmails })!;
 }
 
 test("the team leader, a head and a division lead get the same Members tools, the list view included", () => {
@@ -99,13 +119,57 @@ test("the operations lead and the IT lead open the whole team like the team lead
   const seats = ["team-leader", "operations-lead", "it-lead", null] as const;
   for (const seat of seats) {
     const viewer: ViewerStanding = { kind: "operations-lead", seat, siteContent: false, approveOrders: false };
-    assert.equal(opensWholeTeam(viewer), true, String(seat));
+    assert.equal(opensWholeTeam({ ...viewer, wholeTeamAreas: [] }), true, String(seat));
   }
   for (const kind of ["department-head", "division-lead"] as const) {
-    assert.equal(opensWholeTeam({ kind, siteContent: false, approveOrders: false }), false, kind);
+    assert.equal(opensWholeTeam({ kind, siteContent: false, approveOrders: false, wholeTeamAreas: [] }), false, kind);
   }
   const tools = [leaderPage(), seatPage(8), seatPage(9), headPage(), leadPage()].map((page) => page.tools);
   for (const set of tools) assert.deepEqual(set, MEMBERS_TOOLS);
+});
+
+test("a Members grant across the whole team opens the whole team, at either level and from a row on every area (#956)", () => {
+  const team = (target: ScopeRef["target"], level: ScopeRef["level"] = "edit") => wholeTeamAreasOf([{ scope: "team", target, level }]);
+  const member = (grantedAreas: readonly GrantArea[], wholeTeamAreas: readonly GrantArea[]) =>
+    opensWholeTeam({ kind: "member", grantedAreas, siteContent: false, approveOrders: false, wholeTeamAreas });
+  assert.deepEqual(team("members", "view"), ["members"]);
+  assert.deepEqual(team("all", "view"), GRANT_AREAS);
+  assert.deepEqual(team("approve_orders"), [], "Approve orders is no area");
+  assert.equal(member(["members"], team("members")), true, "Can edit");
+  assert.equal(member(["members"], team("members", "view")), true, "Can view");
+  assert.equal(member([...GRANT_AREAS], team("all")), true, "a row on every area");
+  assert.equal(member(["members"], []), false, "a Members grant over a department or a division");
+  for (const area of ["positions", "applications", "orders"] as const) assert.equal(member([area], team(area)), false, `a whole-team ${area} grant`);
+  for (const kind of ["department-head", "division-lead"] as const) {
+    assert.equal(opensWholeTeam({ kind, siteContent: false, approveOrders: false, wholeTeamAreas: team("members") }), true, kind);
+  }
+  // Off the team, a row that outlived the roles opens nothing.
+  assert.equal(opensWholeTeam({ kind: "alumni", siteContent: false, approveOrders: false, wholeTeamAreas: team("members") }), false);
+});
+
+test("the whole team read through a grant at Can view offers no change: no row action and no Add member (#956)", () => {
+  const viewOnly = membersModelOf({
+    scope: "whole-team",
+    positions: positionsOf(records, org, null, 2),
+    queues: queues.map((q) => ({ ...q, editable: false })),
+    correctsSignInEmail: [],
+    ...wholeTeamMembers({ records, org, selfId: 2 }),
+    googleEmails: NO_GOOGLE_EMAILS,
+  })!;
+  assert.equal(viewOnly.everyone.length, 7, "the whole team, the team leader and the head included");
+  assert.ok(viewOnly.everyone.every((p) => p.actions === null));
+  assert.ok(viewOnly.queues.every((q) => !q.editable));
+  assert.equal(viewOnly.add, null);
+  // A grant that changes some divisions offers Add member there alone.
+  const some = membersModelOf({
+    scope: "whole-team",
+    positions: [],
+    queues: queues.map((q) => ({ ...q, editable: q.divisionId === 3 })),
+    correctsSignInEmail: [],
+    ...wholeTeamMembers({ records, org, selfId: 2 }),
+    googleEmails: NO_GOOGLE_EMAILS,
+  })!;
+  assert.deepEqual(some.add?.kind === "department" ? some.add.divisions.map((d) => d.id) : null, [3]);
 });
 
 test("every full-access seat, the team leader included, opens Edit details on every row but their own (#418, #444, #584)", () => {
@@ -184,7 +248,14 @@ test("the search matches a held team address and the personal PRT email, not an 
     r.id === 3 ? { ...r, details: { ...NO_MEMBER_DETAILS, prtEmail: "davide.russo@team.example", phone: "+39 333 123 4567" } } : r,
   );
   const positions = positionsOf(withDetails, org, { kind: "team" }, 7);
-  const leader = membersModelOf({ scope: "whole-team", positions, queues, correctsSignInEmail: [], ...wholeTeamMembers({ records: withDetails, org, selfId: 7 }) })!;
+  const leader = membersModelOf({
+    scope: "whole-team",
+    positions,
+    queues,
+    correctsSignInEmail: [],
+    ...wholeTeamMembers({ records: withDetails, org, selfId: 7 }),
+    googleEmails: NO_GOOGLE_EMAILS,
+  })!;
   let nextId = 0;
   const line = (address: string): TeamAddressLine => ({ id: ++nextId, address, purpose: "", movesWith: null, removal: "none" });
   const teamAddresses = {
@@ -211,6 +282,29 @@ test("the search matches a held team address and the personal PRT email, not an 
   assert.deepEqual(names("3331234"), ["Davide Russo"]);
   // Without the address rows, a team address finds no one: only the page's rows carry them.
   assert.deepEqual(shownMembers(leader, { ...NO_MEMBERS_FILTER, query: "logistics" }).people, []);
+});
+
+// Issue #908: a member's linked Google emails, read with the page, are found
+// by the search on every role's page, as a team address is (#800).
+test("the search finds a member by a linked Google email on every role's page, never someone else (#908)", () => {
+  // Lena (2) also signs in with a second Gmail; Davide (3) with a work one.
+  const linked: MemberGoogleEmails = { 2: ["lena.f.private@gmail.com"], 3: ["d.russo@studenti.example"] };
+  const names = (page: MembersModel, query: string) => shownMembers(page, { ...NO_MEMBERS_FILTER, query }).people.map((p) => p.name);
+  for (const [role, page] of [
+    ["team leader", leaderPage(linked)],
+    ["department head", headPage(linked)],
+    ["division lead", leadPage(undefined, undefined, linked)],
+    ["division lead under a Can view grant", leadPage(null, undefined, linked)],
+  ] as const) {
+    assert.deepEqual(names(page, "lena.f.private@gmail.com"), ["Lena Fischer"], role);
+    assert.deepEqual(names(page, "LENA.F.PRIVATE"), ["Lena Fischer"], `${role}: in part, any case`);
+    assert.deepEqual(names(page, "studenti.example"), ["Davide Russo"], role);
+    assert.deepEqual(names(page, "lena@gmail.com"), ["Lena Fischer"], `${role}: the sign-in email still matches`);
+    assert.deepEqual(googleEmailsOf(page, 2), ["lena.f.private@gmail.com"], `${role}: the panels read the same list`);
+    assert.deepEqual(googleEmailsOf(page, 1), [], `${role}: no other Google account, nothing listed`);
+  }
+  // A page read with no linked emails finds no one by them.
+  assert.deepEqual(names(leaderPage(), "lena.f.private"), []);
 });
 
 // Issue #584: one Edit details panel for every viewer who may edit someone.
@@ -255,7 +349,7 @@ test("a seat on the whole team opens the same panel, its seat title editable, wi
 test("every team-level seat's title is an editable value as stored; only a role with no seat title stays fixed (#626)", () => {
   const seat = (roleId: number, title: string, flag: "project-manager" | "chief-engineer" | null): RoleBeyondDivisions => ({
     kind: "board",
-    seat: { roleId, title, flag, since: "2024-10-01" },
+    seat: { roleId, title, fullAccess: flag, type: "core", since: "2024-10-01" },
   });
   const seats = [
     record(20, "Paola Marino", [], [seat(1, "", "project-manager")]),
@@ -285,4 +379,104 @@ test("the whole team lists every division's people waiting for their NDA and joi
   assert.deepEqual([dm.waiting.map((w) => w.waiting.joinId), dm.joining.map((j) => j.joining.name)], [[9], ["Paolo Neri"]]);
   // The selects still narrow the whole team's people, not a division's own list.
   assert.deepEqual(dm.people.map((p) => p.name).sort(), ["Davide Russo", "Federica Leone"]);
+});
+
+function tableLabels(rows: readonly MembersTableRow[]): string[] {
+  return rows.map((r) => (r.kind === "waiting" ? `waiting ${r.entry.waiting.email}` : r.person.name));
+}
+
+test("the Table lists the List view's waiting people first, above every member row in any order, and the column filters narrow members only (#890)", () => {
+  const leader = leaderPage();
+  const all = shownMembers(leader, NO_MEMBERS_FILTER);
+  const rows = membersTableRows(all, {});
+  assert.deepEqual(
+    rows.filter((r) => r.kind === "waiting").map((r) => (r.kind === "waiting" ? r.entry : null)),
+    all.waiting,
+  );
+  assert.equal(tableLabels(rows)[0], "waiting elena@x.it");
+  // Member rows in another order than the page's own: the waiting row still leads.
+  const reordered = membersTableRows({ ...all, people: [...all.people].reverse() }, {});
+  assert.deepEqual(tableLabels(reordered), ["waiting elena@x.it", ...[...all.people].reverse().map((p) => p.name)]);
+  // A column filter no member matches leaves the waiting row listed.
+  const leadRole = all.people.find((p) => p.name === "Marco Bianchi")!.roleLabel;
+  const picked = membersTableRows(all, { role: [leadRole] });
+  assert.equal(tableLabels(picked)[0], "waiting elena@x.it");
+  assert.ok(picked.length > 1 && picked.length - 1 < all.people.length);
+  assert.ok(picked.slice(1).every((r) => r.kind === "member" && r.person.roleLabel === leadRole));
+  assert.deepEqual(tableLabels(membersTableRows(all, { role: ["No such role"] })), ["waiting elena@x.it"]);
+  // The search narrows waiting rows exactly as in the List view.
+  const searched = shownMembers(leader, { ...NO_MEMBERS_FILTER, query: "nobody-matches" });
+  assert.deepEqual(membersTableRows(searched, {}), []);
+});
+
+// Issue #903: the page opens on the viewer's whole scope, the selects offer
+// only what is in it, and the header line says what the table shows.
+
+/** What one viewer's page shows for one select state: the people, the select options, and the header. */
+function seen(page: MembersModel, filter: MembersFilter) {
+  const shown = shownMembers(page, filter);
+  return {
+    people: shown.people.map((p) => p.name),
+    departments: page.units.map((u) => u.name),
+    divisions: divisionOptions(page.units, filter.department).map((d) => d.code),
+    header: membersHeader(page, filter),
+    // The Table's member rows and the List's (and the phone cards') are the same people.
+    table: membersTableRows(shown, {}).flatMap((r) => (r.kind === "member" ? [r.person.name] : [])),
+  };
+}
+
+test("a division lead with a whole-team Members grant opens on every reached division at once, with no chip row (#903)", () => {
+  const page = leadPage({ kind: "lead", divisionIds: [1, 2, 3], ledDivisionIds: [1] }, [1, 2, 3]);
+  assert.ok(!("switcher" in page), "the model carries no division switch");
+  const start = startingFilter(page, null);
+  assert.deepEqual(start, NO_MEMBERS_FILTER, "both selects on All …");
+  const all = seen(page, start);
+  assert.deepEqual(all.people, ["Marco Bianchi", "Laura Greco", "Federica Leone", "Davide Russo", "Lena Fischer"], "members of more than one division");
+  assert.deepEqual(all.table, all.people);
+  assert.deepEqual(all.departments, ["Aerodynamics", "Structures"]);
+  assert.deepEqual(all.divisions, ["MA", "OA", "DM"]);
+  assert.deepEqual(all.header, { intro: "Your divisions · 5 people in 3 divisions", notice: null });
+
+  const aero = seen(page, { ...NO_MEMBERS_FILTER, department: "Aerodynamics" });
+  assert.deepEqual(aero.divisions, ["MA", "OA"]);
+  assert.equal(aero.header.intro, "Aerodynamics Department · 4 people in 2 divisions");
+  assert.deepEqual(aero.table, aero.people);
+
+  // `?division=` for a reached division opens on it; one outside the reach opens the whole scope.
+  const asked = startingFilter(page, 3);
+  assert.deepEqual(asked, { department: "Structures", divisionId: 3, query: "" });
+  const dm = seen(page, asked);
+  assert.deepEqual(dm.people, ["Federica Leone", "Davide Russo"]);
+  assert.equal(dm.header.intro, "Design & Manufacturing Division · DM · 1 lead, 2 members");
+  assert.deepEqual(startingFilter(page, 99), NO_MEMBERS_FILTER);
+  assert.deepEqual(page.add?.kind, "department", "Add member offers each division they may add to");
+});
+
+test("a department head opens on the whole department, with its divisions only in the selects (#903)", () => {
+  const page = headPage();
+  const start = startingFilter(page, null);
+  assert.deepEqual(start, NO_MEMBERS_FILTER);
+  const all = seen(page, start);
+  assert.deepEqual(all.people, ["Marco Bianchi", "Laura Greco", "Davide Russo", "Lena Fischer"]);
+  assert.deepEqual([all.departments, all.divisions], [["Aerodynamics"], ["MA", "OA"]]);
+  assert.deepEqual(all.header, { intro: "Aerodynamics Department · 4 people in 2 divisions", notice: null });
+  const oa = seen(page, startingFilter(page, 2));
+  assert.deepEqual(oa.people, ["Laura Greco", "Lena Fischer"]);
+  assert.equal(oa.header.intro, "Optimization and Analysis Division · OA · 1 lead, 2 members");
+  assert.deepEqual(startingFilter(page, 3), NO_MEMBERS_FILTER, "a division outside the department");
+});
+
+test("a one-division lead's selects name their division and department, never All … (#903)", () => {
+  const page = leadPage();
+  const start = startingFilter(page, null);
+  assert.deepEqual(start, { department: "Aerodynamics", divisionId: 1, query: "" });
+  assert.deepEqual(startingFilter(page, 3), start, "a division outside the reach opens the whole scope");
+  const own = seen(page, start);
+  assert.deepEqual(own.people, ["Marco Bianchi", "Davide Russo", "Lena Fischer"]);
+  assert.deepEqual(own.table, own.people);
+  assert.deepEqual([own.departments, own.divisions], [["Aerodynamics"], ["MA"]]);
+  assert.deepEqual(own.header, { intro: "Mission Analysis Division · MA · 1 lead, 4 members", notice: null });
+  // A Members grant on one division: the same page, with who changes its leads.
+  const granted = leadPage({ kind: "lead", divisionIds: [1], ledDivisionIds: [] });
+  assert.equal(membersHeader(granted, startingFilter(granted, null)).notice, "Leads are changed by the Head of Aerodynamics");
 });

@@ -26,30 +26,54 @@ export type Person = {
   email?: string;
 };
 
-/** A leader in the org chart: a person and the role under the name. */
-export type Leader = Person & { role: string };
+/**
+ * Someone who holds a seat beside the person its place shows first (issue
+ * #880): drawn next to them, with their own photo, name and contacts, and
+ * the place's role under the name.
+ */
+export type CoHolder = Person & { role: string };
 
-/** The org chart: the university, the team leader under it, then up to eight leaders on the arc. */
+/** A place's further holders, in order: one or more, never an empty list. */
+export type CoHolders = readonly [CoHolder, ...CoHolder[]];
+
+/**
+ * A leader in the org chart: a person and the role under the name. A seat
+ * with several holders draws the others beside them (`coHolders`); a seat
+ * with one has none.
+ */
+export type Leader = Person & { role: string; coHolders?: CoHolders };
+
+/**
+ * The org chart: the university, the team leader under it, then up to eight
+ * leaders on the arc. A stored layout whose team leader seat has no holder
+ * draws no team leader, and one whose arc seats have none draws no arc (ADR
+ * 0019 Decision 9); the hand-typed ./team.ts fills both.
+ */
 export type OrgChart = {
   eyebrow: string;
   title: string;
   university: { name: string; logo: Photo };
-  leader: Leader;
+  leader: Leader | null;
   /**
    * In reading order. On desktop the first half sits left of the centre and
    * the rest right of it, each half from the centre outward; on phones they
    * fill a two-column grid in this order.
    */
-  leaders: UpTo<Leader, 8>;
+  leaders: readonly [] | UpTo<Leader, 8>;
 };
 
 /** The lead of one division, under the head of its department. */
 export type DivisionLead = Person & { division: string };
 
-/** A department head, with the leads of the department's divisions under them. */
+/**
+ * A department head, with the leads of the department's divisions under them.
+ * A department with several heads draws the others beside them
+ * (`coHolders`), over the one set of leads.
+ */
 export type DepartmentHead = Person & {
   kind: "head";
   role: string;
+  coHolders?: CoHolders;
   leads: readonly DivisionLead[];
 };
 
@@ -69,7 +93,8 @@ export type DepartmentGroup = { name: string; members: UpTo<GroupMember, 10> };
 export type Departments = {
   title: string;
   intro: string;
-  groups: UpTo<DepartmentGroup, 5>;
+  /** None while no department head on the stored layout has a holder (ADR 0019 Decision 9): the page then leaves the section out. */
+  groups: readonly [] | UpTo<DepartmentGroup, 5>;
 };
 
 /** Principal advisors (faculty, the founder) have their role in accent; specialists in grey. */
@@ -108,7 +133,8 @@ export type CoreMembers = {
   title: string;
   /** A photo in public/team/, or one uploaded in the Team page editor (issue #510). */
   groupPhoto: { src: PersonPhoto; alt: string };
-  members: readonly [Member, ...Member[]];
+  /** None while the stored layout shows everyone with an active role (ADR 0019 Decision 9): the section then draws its heading and group photo alone. */
+  members: readonly Member[];
 };
 
 export type HeaderStat = { value: string; label: Copy };
@@ -136,4 +162,16 @@ export type TeamPage = {
   advisors: Advisors;
   inNumbers: InNumbers;
   coreMembers: CoreMembers;
+};
+
+/**
+ * A Team page that fills every section the page always draws: a team leader,
+ * one leader on the arc, one department group and one core member at least.
+ * The hand-typed ./team.ts is one, and so is every page the editor's working
+ * layer may draw (`teamPageOf`, ./team-roles.ts).
+ */
+export type FilledTeamPage = Omit<TeamPage, "orgChart" | "departments" | "coreMembers"> & {
+  orgChart: Omit<OrgChart, "leader" | "leaders"> & { leader: Leader; leaders: UpTo<Leader, 8> };
+  departments: Omit<Departments, "groups"> & { groups: UpTo<DepartmentGroup, 5> };
+  coreMembers: Omit<CoreMembers, "members"> & { members: readonly [Member, ...Member[]] };
 };

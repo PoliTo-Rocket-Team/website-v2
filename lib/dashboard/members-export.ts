@@ -1,8 +1,7 @@
 import writeXlsxFile from "write-excel-file/node";
 import { memberDetailText, type MemberDetailKey } from "./details";
-import { opensWholeTeam } from "./members-view";
 import type { TeamMember } from "./team-members";
-import type { ViewerStanding } from "./viewer";
+import { isFullAccess, type ViewerStanding } from "./viewer";
 
 // The Members page's "Export to Excel" (Owner decision, 2026-10-22, issue
 // #539): one .xlsx with every member of the team and every field the member
@@ -12,12 +11,13 @@ import type { ViewerStanding } from "./viewer";
 // may run it.
 
 /**
- * Who may export: full access, the viewers whose Members page is the whole
- * team (every full-access seat, and full access from a scope row). Everyone
- * else is refused, on the page and on the server alike.
+ * Who may export: full access alone (every full-access seat, and full access
+ * from a scope row). A whole-team Members grant opens the whole team's page
+ * and still exports nothing (issue #956). Everyone else is refused, on the
+ * page and on the server alike.
  */
 export function mayExportMembers(viewer: ViewerStanding): boolean {
-  return opensWholeTeam(viewer);
+  return isFullAccess(viewer);
 }
 
 /** One column of the file: its header and what a member holds in it, "" for nothing. */
@@ -46,7 +46,8 @@ export const MEMBERS_EXPORT_COLUMNS: readonly ExportColumn[] = [
   // The table's Department cell (issue #767); a head's Divisions cell stays empty, as heading adds no division.
   { header: "Department", value: (p) => p.departments.join("; ") },
   { header: "Divisions", value: divisionsText },
-  { header: "Member since", value: (p) => String(p.since) },
+  // A member with no stored join day shows nothing (issue #948).
+  { header: "Member since", value: (p) => (p.since === null ? "" : String(p.since)) },
   // The member's team address, their email alias once one is created (issue #563).
   { header: "PRT email", value: detail("prtEmail") },
   { header: "Personal email", value: (p) => p.signInEmail },

@@ -4,6 +4,7 @@
 // Nothing here is a real secret or reads .env.
 
 import { memoryAdapter } from "better-auth/adapters/memory";
+import type { SiteRows } from "./auth";
 import type { TesterDirectory } from "./dev-tester-plugin";
 import type { ViewAsGate } from "./view-as-plugin";
 import { PREVIEW_ENDPOINT } from "./seed/target";
@@ -92,10 +93,13 @@ export const SEAT_DIRECTORY: TesterDirectory = {
   memberUserId: async (memberId) => SEATS.find((seat) => seat.memberId === memberId)?.id ?? null,
 };
 
+/** A site-row repair that reads no database: the in-memory database has no `public.users` (issue #910). */
+export const NO_SITE_ROWS: SiteRows = { ensure: async () => {} };
+
 /** The auth instance getAuth() builds, over an in-memory database, under the environment set now. */
 export async function memoryAuth(db: MemoryDb = seededMemoryDb(), viewAs?: ViewAsGate, testers: TesterDirectory = SEAT_DIRECTORY) {
   const { createAuth } = await import("./auth");
-  return createAuth(memoryAdapter(db), viewAs, testers);
+  return createAuth(memoryAdapter(db), { ...(viewAs === undefined ? {} : { viewAs }), testers, siteRows: NO_SITE_ROWS });
 }
 
 /** The cookies a browser keeps across calls: each Set-Cookie line replaces one, and an expired one is gone. */

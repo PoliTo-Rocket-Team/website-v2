@@ -146,6 +146,11 @@ export const members = pgTable("members", {
   // on the team as their lead gave them. Why they left goes to team_leaves.
   teamFrom: integer("team_from"),
   teamTo: integer("team_to"),
+  // The day the member joined the team, from the roster's "Joined the Team
+  // on" and "Date of joining" columns (issue #948). The Overview's "In the
+  // team since" line and the Members page's joined year read it and never a
+  // role's start; null hides both.
+  joinedTeamOn: date("joined_team_on", { mode: "string" }),
   // When the member said they set up their alias, the address in
   // `prt_email` (issue #542).
   emailAliasSetUpAt: timestamp("email_alias_set_up_at", { withTimezone: true, mode: "string" }),
@@ -231,21 +236,11 @@ export const roles = pgTable("roles", {
   // Marks the operations lead's, the IT lead's (issue #238), the Project
   // Manager's and the Chief Engineer's (issue #485) seats; null on every
   // other role. The team leader is the `president` type and needs none.
+  // Every seat may have several active holders (epic #861): the team leader,
+  // each full-access seat and each department's head. drizzle/0077 dropped
+  // the one-holder indexes drizzle/0062 had added (issue #667).
   fullAccess: fullAccessSeatEnum("full_access"),
-}, (table) => ({
-  // One active holder per seat (issue #667, drizzle/0062): one team leader,
-  // one holder of each full-access seat and one head per department. Only
-  // active rows count, so ended rows beside an active one are kept.
-  oneActiveTeamLeader: uniqueIndex("roles_one_active_team_leader")
-    .on(table.type)
-    .where(sql`${table.leavedAt} is null and ${table.type} = 'president'`),
-  oneActiveFullAccessSeat: uniqueIndex("roles_one_active_full_access_seat")
-    .on(table.fullAccess)
-    .where(sql`${table.leavedAt} is null and ${table.fullAccess} is not null`),
-  oneActiveDepartmentHead: uniqueIndex("roles_one_active_department_head")
-    .on(table.deptId)
-    .where(sql`${table.leavedAt} is null and ${table.type} = 'head' and ${table.deptId} is not null`),
-}));
+});
 
 export const orders = pgTable("orders", {
   id: serial("id").primaryKey(),
@@ -779,6 +774,38 @@ export const teamAddressRemovals = pgTable("team_address_removals", {
   openAddress: check("team_address_removals_open_address", sql`${table.doneAt} is not null or ${table.addressId} is not null`),
 }));
 
+/** How a personal PRT email removal closed (lib/dashboard/prt-email-removal.ts); null while it is open. */
+export const prtEmailRemovalOutcomeEnum = pgEnum("prt_email_removal_outcome", ["removed", "kept", "cancelled"]);
+
+/**
+ * A personal PRT email removal (issue #931, drizzle/0084): a member whose
+ * `members.prt_email` is set held no active role any more, so the alias
+ * approvers delete the mailbox in Google Workspace and press Mark done, which
+ * clears the PRT email, or press Keep address, which leaves it. A role other
+ * than an advisor role started again before either closes it as cancelled;
+ * an advisor role leaves it open. The database opens and
+ * cancels these itself, when a `roles` write commits (drizzle/0084), so every
+ * way of leaving the team is covered. One address has at most one open
+ * removal in any letter case (`prt_email_removals_one_open`).
+ * lib/dashboard/prt-email-removal.ts owns the rules.
+ */
+export const prtEmailRemovals = pgTable("prt_email_removals", {
+  id: serial("id").primaryKey(),
+  memberId: integer("member_id").references(() => members.memberId, { onDelete: "set null" }),
+  address: text("address").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  outcome: prtEmailRemovalOutcomeEnum("outcome"),
+  answeredBy: integer("answered_by").references(() => members.memberId, { onDelete: "set null" }),
+  answeredByActingAccount: actingAccount("answered_by_acting_account"),
+  answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }),
+}, (table) => ({
+  oneOpen: uniqueIndex("prt_email_removals_one_open").on(sql`lower(${table.address})`).where(sql`${table.outcome} is null`),
+  memberIdx: index("prt_email_removals_member_idx").on(table.memberId),
+  answered: check("prt_email_removals_answered", sql`(${table.outcome} is null) = (${table.answeredAt} is null)`),
+}));
+
 // The Alumni page (issue #257). The page is built from the roles; an entry
 // holds only how one person shows on it, so a fix never writes a role, a
 // division or access. A member's entry is keyed by their member row and made
@@ -1144,10 +1171,16 @@ export const outreachSummitVersions = pgTable(
 // the published version /about/the-team lays on the roles build and an
 // optional draft, one row each. It holds what an editor changed on the page
 // (lib/about/team-layer.ts), never a role, division, department or access.
+// Each version also keeps the page's layout of page seats (issue #850, ADR
+// 0019, lib/about/team-layout.ts). It is null on a row written before the
+// layout existed, until the post-migration step fills it
+// (lib/about/team-layout-fill.ts); the page reads such a row's layout from
+// its layer meanwhile (lib/about/team-page-stored.ts).
 export const teamPageLayerVersions = pgTable("team_page_layer_versions", {
   id: serial("id").primaryKey(),
   version: contentVersionEnum("version").notNull().unique("team_page_layer_versions_version_unique"),
   layer: jsonb("layer").notNull(),
+  layout: jsonb("layout"),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
     .defaultNow()
     .notNull(),

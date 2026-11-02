@@ -5,7 +5,9 @@ import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
+import { BREAK_GLASS_SIGN_IN_OPERATION } from "../break-glass";
 import { BUILT_IN_STATUSES } from "../dashboard/application-status";
+import { VIEW_AS_OPERATIONS } from "../dashboard/view-as";
 import { nonAdditiveStatements } from "./journal";
 
 // Every preview build applies pending migrations to the shared preview
@@ -204,10 +206,11 @@ test("0060 and 0061 apply again over a database that already holds them", async 
   assert.equal(constraints.rows[0].count, 8, "each acting-account foreign key exists once");
 });
 
-// One active holder per seat (issue #667) only creates partial unique
-// indexes on `roles`: no column, type or row changes. What the indexes refuse
-// is run in lib/dashboard/roles-one-active-seat-server.test.ts.
+// One active holder per seat (issue #667) only created partial unique
+// indexes on `roles`: no column, type or row changes. 0077 drops them again
+// (epic #861), so in the migrated database no seat index stands.
 const SEAT_TAG = "0062_roles_one_active_seat_holder";
+const SEVERAL_HOLDERS_TAG = "0077_roles_several_seat_holders";
 
 test("0062_roles_one_active_seat_holder.sql only creates indexes, and its header links the issue", () => {
   const sql = readFileSync(resolve(process.cwd(), `drizzle/${SEAT_TAG}.sql`), "utf8");
@@ -221,7 +224,13 @@ test("0062_roles_one_active_seat_holder.sql only creates indexes, and its header
   assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/667/);
 });
 
-test("0062 keeps every existing role row as it was, and applies again over a database that already holds it", async () => {
+/** The `roles_one_active_*` indexes the database holds, by name. */
+async function seatIndexes(db: PGlite): Promise<string[]> {
+  const indexes = await db.query<{ name: string }>(`select indexname as name from pg_indexes where tablename = 'roles' and indexname like 'roles_one_active_%' order by 1`);
+  return indexes.rows.map((r) => r.name);
+}
+
+test("0062 and then 0077 keep every existing role row as it was, each applies again, and the migrated database holds no seat index", async () => {
   const { db, apply } = await databaseBefore(SEAT_TAG);
   await db.exec(`
     set session_replication_role = replica;
@@ -235,9 +244,60 @@ test("0062 keeps every existing role row as it was, and applies again over a dat
   const before = await db.query(`select * from roles order by id`);
   await apply();
   await apply();
+  assert.deepEqual(await seatIndexes(db), ["roles_one_active_department_head", "roles_one_active_full_access_seat", "roles_one_active_team_leader"], "0062 creates them");
+  const drop = readFileSync(resolve(process.cwd(), `drizzle/${SEVERAL_HOLDERS_TAG}.sql`), "utf8");
+  const runDrop = async () => {
+    for (const statement of drop.split("--> statement-breakpoint")) if (statement.trim()) await db.exec(statement);
+  };
+  await runDrop();
+  await runDrop();
   assert.deepEqual((await db.query(`select * from roles order by id`)).rows, before.rows);
-  const indexes = await db.query<{ name: string }>(`select indexname as name from pg_indexes where tablename = 'roles' and indexname like 'roles_one_active_%' order by 1`);
-  assert.deepEqual(indexes.rows.map((r) => r.name), ["roles_one_active_department_head", "roles_one_active_full_access_seat", "roles_one_active_team_leader"]);
+  assert.deepEqual(await seatIndexes(db), [], "0077 drops them");
+});
+
+// Several holders of one seat (epic #861, issue #867). Not additive, by
+// design: it drops the three one-holder indexes of 0062 and nothing else, so
+// it is pinned to exactly those three statements and any further drop or
+// rewrite fails here.
+test("0077_roles_several_seat_holders.sql drops the three 0062 indexes and nothing else, and its header links the epic", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${SEVERAL_HOLDERS_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), [
+    'DROP INDEX IF EXISTS "roles_one_active_team_leader"',
+    'DROP INDEX IF EXISTS "roles_one_active_full_access_seat"',
+    'DROP INDEX IF EXISTS "roles_one_active_department_head"',
+  ]);
+  const statements = sql
+    .split("--> statement-breakpoint")
+    .map((s) => s.replace(/--.*$/gm, "").trim())
+    .filter(Boolean);
+  assert.equal(statements.length, 3, "no other statement");
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/861/);
+});
+
+test("0077 keeps every role row, lets each seat take a second active holder, and applies again over a database that already ran it", async () => {
+  const { db, apply } = await databaseBefore(SEVERAL_HOLDERS_TAG);
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id) values (1), (2), (3), (4);
+    insert into departments (id, name) values (1, 'Aerodynamics');
+    insert into roles (id, member_id, dept_id, title, started_at, leaved_at, type, full_access) values
+      (1, 1, 1, 'Head', '2025-10-01', null, 'head', null),
+      (2, 2, null, 'Team Leader', '2025-10-01', null, 'president', null),
+      (3, 3, null, 'IT Lead', '2025-10-01', null, 'core', 'it_lead');
+    set session_replication_role = origin;
+  `);
+  const before = await db.query(`select * from roles order by id`);
+  await assert.rejects(db.exec(`insert into roles (id, member_id, title, type) values (9, 4, 'Team Leader', 'president')`), Error, "0062 still refuses a second team leader");
+  await apply();
+  await apply();
+  assert.deepEqual((await db.query(`select * from roles order by id`)).rows, before.rows, "every role row is kept");
+  await db.exec(`
+    insert into roles (id, member_id, dept_id, title, type, full_access) values
+      (4, 4, 1, 'Head', 'head', null),
+      (5, 4, null, 'Team Leader', 'president', null),
+      (6, 4, null, 'IT Lead', 'core', 'it_lead');
+  `);
+  assert.deepEqual(await seatIndexes(db), []);
 });
 
 // The notice acting account (issue #628) adds one nullable column to
@@ -384,6 +444,7 @@ for (const [shape, lastRecordedTag] of [
         "logs_changed_by_acting_account_users_id_fk",
         "members_nda_confirmed_by_acting_account_users_id_fk",
         "orders_reviewed_by_acting_account_users_id_fk",
+        "prt_email_removals_answered_by_acting_account_users_id_fk",
         "scopes_given_by_acting_account_users_id_fk",
         "team_address_removals_done_by_acting_account_users_id_fk",
         "team_address_removals_removed_by_acting_account_users_id_fk",
@@ -741,4 +802,570 @@ test("0075 succeeds and leaves every member as it was on a database whose member
   const before = await db.query(`select * from members order by member_id`);
   await apply();
   assert.deepEqual((await db.query(`select * from members order by member_id`)).rows, before.rows);
+});
+
+// The Team page's own layout (issue #850, ADR 0019): one nullable column
+// beside each stored layer version. The post-migration step that fills it is
+// TypeScript (lib/about/team-layout-fill.ts), so the migration changes no row.
+const TEAM_PAGE_LAYOUT_TAG = "0076_team_page_layout";
+
+test("0076_team_page_layout.sql only adds the nullable layout column, applies again and leaves every stored layer version as it was", async () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${TEAM_PAGE_LAYOUT_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  const { db, apply } = await databaseBefore(TEAM_PAGE_LAYOUT_TAG);
+  await db.exec(`insert into team_page_layer_versions (version, layer) values ('published', '{"intro":"Kept"}'), ('draft', '{"intro":"Draft"}')`);
+  const before = await db.query(`select id, version, layer, updated_at from team_page_layer_versions order by id`);
+  await apply();
+  await apply();
+  assert.deepEqual((await db.query(`select id, version, layer, updated_at from team_page_layer_versions order by id`)).rows, before.rows);
+  assert.deepEqual((await db.query(`select layout from team_page_layer_versions order by id`)).rows, [{ layout: null }, { layout: null }]);
+  const column = await db.query(
+    `select data_type, is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'team_page_layer_versions' and column_name = 'layout'`,
+  );
+  assert.deepEqual(column.rows, [{ data_type: "jsonb", is_nullable: "YES" }]);
+});
+
+// The sign-in sync takes over only a free, open row (issue #910): the
+// function only refuses an email match it made before, so it changes no
+// stored row, and a row it still matches is taken over as before.
+const FREE_ROWS_TAG = "0078_sync_auth_users_skip_held_and_closed_rows";
+
+test("0078_sync_auth_users_skip_held_and_closed_rows.sql drops, renames and rewrites nothing, and its header links the issue", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${FREE_ROWS_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/910/);
+});
+
+test("0078 keeps every row, applies again, and a new login takes over a free row with its email but never a held or closed one", async () => {
+  const { db, apply } = await databaseBefore(FREE_ROWS_TAG);
+  const login = (id: string, email: string) => `insert into better_auth."user" (id, name, email, "emailVerified") values ('${id}', '${id}', '${email}', true)`;
+  await db.exec(`
+    ${login("held", "held@example.com")};
+    update users set email = 'shared@example.com' where id = 'held';
+    insert into users (id, email, first_name) values ('added:free', 'free@example.com', 'Imported');
+    insert into users (id, email, first_name, deleted_at) values ('closed', 'closed@example.com', 'Closed', now());
+  `);
+  const before = await db.query(`select * from users order by id`);
+  await apply();
+  await apply();
+  assert.deepEqual((await db.query(`select * from users order by id`)).rows, before.rows, "every row is kept");
+
+  await db.exec(`${login("second", "shared@example.com")}; ${login("returning", "free@example.com")}; ${login("reopening", "closed@example.com")};`);
+  const rows = await db.query<{ id: string; email: string; first_name: string | null }>(`select id, email, first_name from users order by id`);
+  assert.deepEqual(rows.rows, [
+    { id: "closed", email: "closed@example.com", first_name: "Closed" },
+    { id: "held", email: "shared@example.com", first_name: null },
+    { id: "reopening", email: "closed@example.com", first_name: null },
+    { id: "returning", email: "free@example.com", first_name: "Imported" },
+    { id: "second", email: "shared@example.com", first_name: null },
+  ]);
+});
+
+// A first sign-in never fails on a refused take-over (issue #917,
+// https://github.com/PoliTo-Rocket-Team/website-v2/issues/917): when
+// applications, uploaded files or audit rows point at the free row the
+// sign-in sync would take over, the database refuses the id change, and the
+// login now gets a fresh row instead of failing. The function replacement
+// changes no stored row.
+const REFUSED_TAKE_OVER_TAG = "0079_sync_auth_users_fresh_row_on_refused_take_over";
+
+test("0079_sync_auth_users_fresh_row_on_refused_take_over.sql drops, renames and rewrites nothing, and its header links the issue", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${REFUSED_TAKE_OVER_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/917/);
+});
+
+test("0079 keeps every row, applies again, and a first sign-in on a free row that applications, files and audit rows point at succeeds on a fresh row, leaving those rows as they were", async () => {
+  const { db, apply } = await databaseBefore(REFUSED_TAKE_OVER_TAG);
+  const login = (id: string, email: string) => `insert into better_auth."user" (id, name, email, "emailVerified") values ('${id}', '${id}', '${email}', true)`;
+  await db.exec(`
+    insert into users (id, email, first_name) values ('applicant', 'applicant@example.com', 'Imported');
+    insert into applications (user_id) values ('applicant');
+    insert into application_files (r2_key, original_filename, user_id) values ('applications/applicant/cv.pdf', 'cv.pdf', 'applicant');
+    insert into logs (schema_name, table_name, operation, record_id, changed_by) values ('public', 'users', 'UPDATE', 'applicant', 'applicant');
+  `);
+  const snapshot = async () => ({
+    users: (await db.query<{ id: string }>(`select * from users order by id`)).rows,
+    applications: (await db.query(`select * from applications order by id`)).rows,
+    files: (await db.query(`select * from application_files order by id`)).rows,
+    logs: (await db.query(`select * from logs order by id`)).rows,
+  });
+  const before = await snapshot();
+  await apply();
+  await apply();
+  assert.deepEqual(await snapshot(), before, "every row is kept");
+
+  await db.exec(login("new-login", "applicant@example.com"));
+  const rows = await db.query<{ id: string; email: string; first_name: string | null }>(`select id, email, first_name from users order by id`);
+  assert.deepEqual(rows.rows, [
+    { id: "applicant", email: "applicant@example.com", first_name: "Imported" },
+    { id: "new-login", email: "applicant@example.com", first_name: null },
+  ]);
+  const after = await snapshot();
+  assert.deepEqual(after.users.find((u) => u.id === "applicant"), before.users.find((u) => u.id === "applicant"), "the matched row is unchanged");
+  assert.deepEqual(after.applications, before.applications, "every application still points at the unchanged row");
+  assert.deepEqual(after.files, before.files, "every uploaded file still points at the unchanged row");
+  for (const row of before.logs) assert.ok(after.logs.some((l) => JSON.stringify(l) === JSON.stringify(row)), "every audit row is kept as it was");
+});
+
+test("after 0079 the sign-in sync still matches its own id, takes over a free unreferenced row, skips held and closed rows, and makes a fresh row on no match", async () => {
+  const { db, apply } = await databaseBefore(REFUSED_TAKE_OVER_TAG);
+  await apply();
+  const login = (id: string, email: string) => `insert into better_auth."user" (id, name, email, "emailVerified") values ('${id}', '${id}', '${email}', true)`;
+  await db.exec(`
+    ${login("held", "held@example.com")};
+    update users set email = 'shared@example.com' where id = 'held';
+    insert into users (id, email, first_name) values ('own', 'old@example.com', 'Own');
+    insert into users (id, email, first_name) values ('added:free', 'free@example.com', 'Imported');
+    insert into users (id, email, first_name, deleted_at) values ('closed', 'closed@example.com', 'Closed', now());
+  `);
+  await db.exec(`
+    ${login("own", "own@example.com")};
+    ${login("second", "shared@example.com")};
+    ${login("returning", "free@example.com")};
+    ${login("reopening", "closed@example.com")};
+    ${login("stranger", "stranger@example.com")};
+  `);
+  const rows = await db.query<{ id: string; email: string; first_name: string | null }>(`select id, email, first_name from users order by id`);
+  assert.deepEqual(rows.rows, [
+    { id: "closed", email: "closed@example.com", first_name: "Closed" },
+    { id: "held", email: "shared@example.com", first_name: null },
+    { id: "own", email: "own@example.com", first_name: "Own" },
+    { id: "reopening", email: "closed@example.com", first_name: null },
+    { id: "returning", email: "free@example.com", first_name: "Imported" },
+    { id: "second", email: "shared@example.com", first_name: null },
+    { id: "stranger", email: "stranger@example.com", first_name: null },
+  ]);
+});
+
+// Personal PRT email removals (issue #931): one new type, one new table with
+// its keys, indexes, check and audit trigger, one new function and three new
+// deferred triggers on `roles`. Nothing existing is dropped or rewritten, and
+// nobody who left before it gets a removal. The one UPDATE the check finds is
+// inside the new trigger function's body: it cancels a leaving member's open
+// alias request when a later role write commits, and the migration itself runs
+// it on no row (the test below applies it twice and compares the rows).
+const PRT_EMAIL_REMOVALS_TAG = "0084_prt_email_removals";
+
+test("0084_prt_email_removals.sql drops, renames and rewrites nothing, and its header links the issue", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${PRT_EMAIL_REMOVALS_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), [
+    "UPDATE public.alias_requests SET outcome = 'cancelled', answered_at = now() WHERE member_id = person AND outcome IS NULL",
+  ]);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/931/);
+});
+
+test("0084 keeps every row, opens nothing for who left before it, applies again, and judges a role write as it commits", async () => {
+  const { db, apply } = await databaseBefore(PRT_EMAIL_REMOVALS_TAG);
+  await db.exec(`
+    set session_replication_role = replica;
+    insert into members (member_id, prt_email) values (1, 'one@politorocketteam.it'), (2, 'two@politorocketteam.it'), (3, null);
+    insert into roles (id, member_id, division_id, title, started_at, leaved_at, type) values
+      (1, 1, null, 'Member', '2025-10-01', null, 'core'),
+      (2, 2, null, 'Member', '2024-10-01', '2025-09-30', 'core'),
+      (3, 3, null, 'Member', '2025-10-01', null, 'core');
+    insert into alias_requests (member_id) values (2), (3);
+    set session_replication_role = origin;
+  `);
+  const before = await db.query(`select * from roles order by id`);
+  const requestsBefore = await db.query(`select * from alias_requests order by id`);
+  await apply();
+  await apply();
+  assert.deepEqual((await db.query(`select * from roles order by id`)).rows, before.rows, "every role row is kept");
+  assert.deepEqual((await db.query(`select * from alias_requests order by id`)).rows, requestsBefore.rows, "every request is kept, one of who left before it too");
+  assert.deepEqual((await db.query(`select * from prt_email_removals`)).rows, [], "nobody who left before it gets one");
+  const triggers = await db.query<{ name: string }>(`select tgname as name from pg_trigger where tgrelid = 'public.roles'::regclass and tgname like 'settle_prt_email_removals%' order by 1`);
+  assert.deepEqual(
+    triggers.rows.map((r) => r.name),
+    ["settle_prt_email_removals_on_delete", "settle_prt_email_removals_on_insert", "settle_prt_email_removals_on_update"],
+  );
+  const open = async () => (await db.query(`select member_id, address, outcome from prt_email_removals order by id`)).rows;
+  const requests = async () => (await db.query(`select member_id, outcome from alias_requests where member_id = 3 order by id`)).rows;
+
+  // A hand-over to an advisor role in one write: the member still holds a role when it commits.
+  await db.exec(`begin; update roles set leaved_at = '2026-10-31' where id = 1; insert into roles (id, member_id, title, type) values (4, 1, 'Advisor', 'advisor'); commit;`);
+  assert.deepEqual(await open(), []);
+  // A member with no PRT email stays on as an advisor: the open request is kept.
+  await db.exec(`begin; update roles set leaved_at = '2026-10-31' where id = 3; insert into roles (id, member_id, title, type) values (6, 3, 'Advisor', 'advisor'); commit;`);
+  assert.deepEqual(await requests(), [{ member_id: 3, outcome: null }]);
+  // Their last advisor role ends: no removal (no PRT email), and the open request is cancelled.
+  await db.exec(`update roles set leaved_at = '2026-10-31' where id = 6`);
+  assert.deepEqual(await open(), []);
+  assert.deepEqual(await requests(), [{ member_id: 3, outcome: "cancelled" }]);
+  // The last role ends: one open removal, and a delete of an old role after it opens none.
+  await db.exec(`update roles set leaved_at = '2026-10-31' where id = 4`);
+  await db.exec(`delete from roles where id = 2`);
+  assert.deepEqual(await open(), [{ member_id: 1, address: "one@politorocketteam.it", outcome: null }]);
+  // An advisor role taken again leaves it open.
+  await db.exec(`insert into roles (id, member_id, title, type) values (5, 1, 'Advisor', 'advisor')`);
+  assert.deepEqual(await open(), [{ member_id: 1, address: "one@politorocketteam.it", outcome: null }]);
+  // Rejoining the team cancels it.
+  await db.exec(`insert into roles (id, member_id, title, type) values (7, 1, 'Member', 'core')`);
+  assert.deepEqual(await open(), [{ member_id: 1, address: "one@politorocketteam.it", outcome: "cancelled" }]);
+});
+
+// The audit log keeps no Better Auth secret (issue #937,
+// https://github.com/PoliTo-Rocket-Team/website-v2/issues/937): the trigger
+// leaves each Better Auth table's secret keys out of the row it stores, and
+// the copies already stored lose them. Every value below is a made-up
+// placeholder, so a leftover copy shows up as the text "placeholder-".
+const AUTH_SECRETS_TAG = "0081_audit_log_skip_auth_secrets";
+
+const SECRET_KEYS: Readonly<Record<string, readonly string[]>> = {
+  account: ["accessToken", "refreshToken", "idToken", "password"],
+  session: ["token"],
+  verification: ["value"],
+};
+
+/** An insert, an update and a delete on each Better Auth table that holds a secret. */
+const AUTH_WRITES = `
+  insert into better_auth."user" (id, name, email, "emailVerified") values ('u-1', 'Sara Conti', 'sara@example.com', true);
+  insert into better_auth.account (id, "accountId", "providerId", "userId", "accessToken", "refreshToken", "idToken", password, "updatedAt")
+    values ('a-1', 'google-1', 'google', 'u-1', 'placeholder-access', 'placeholder-refresh', 'placeholder-id', 'placeholder-password', now());
+  update better_auth.account set "accessToken" = 'placeholder-access-2', scope = 'email' where id = 'a-1';
+  delete from better_auth.account where id = 'a-1';
+  insert into better_auth.session (id, "expiresAt", token, "updatedAt", "userId")
+    values ('s-1', now() + interval '7 days', 'placeholder-session', now(), 'u-1');
+  update better_auth.session set token = 'placeholder-session-2', "ipAddress" = '127.0.0.1' where id = 's-1';
+  delete from better_auth.session where id = 's-1';
+  insert into better_auth.verification (id, identifier, value, "expiresAt", "updatedAt")
+    values ('v-1', 'state-1', 'placeholder-state', now() + interval '10 minutes', now());
+  update better_auth.verification set value = 'placeholder-state-2' where id = 'v-1';
+  delete from better_auth.verification where id = 'v-1';
+`;
+
+type StoredData = Record<string, unknown> | null;
+
+/** Every `logs` row, with its data both as stored text and as read back. */
+async function storedLogs(db: PGlite) {
+  const rows = await db.query<{
+    id: number;
+    schema_name: string;
+    table_name: string;
+    operation: string;
+    record_id: string | null;
+    old_text: string | null;
+    new_text: string | null;
+    old_data: StoredData;
+    new_data: StoredData;
+    changed_at: string;
+    changed_by: string | null;
+    changed_by_acting_account: string | null;
+  }>(`
+    select id, schema_name, table_name, operation, record_id, old_data::text as old_text, new_data::text as new_text,
+      old_data, new_data, changed_at::text as changed_at, changed_by, changed_by_acting_account
+    from logs order by id
+  `);
+  return rows.rows;
+}
+
+test("0081_audit_log_skip_auth_secrets.sql drops, renames and deletes nothing: it only strips each table's secret keys from Better Auth log rows", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${AUTH_SECRETS_TAG}.sql`), "utf8");
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/937/);
+  const changed = nonAdditiveStatements(sql);
+  assert.deepEqual(
+    changed.map((s) => /WHERE "schema_name" = 'better_auth' AND "table_name" = '(\w+)' AND /.exec(s)?.[1]),
+    ["account", "session", "verification"],
+    "three scrubs, one per table, each only over that table's Better Auth log rows",
+  );
+  for (const statement of changed) {
+    const table = /"table_name" = '(\w+)'/.exec(statement)?.[1] ?? "";
+    assert.match(statement, /^UPDATE "public"\."logs" SET /);
+    assert.doesNotMatch(statement, /\b(DROP|RENAME|DELETE)\b/i);
+    const [set] = statement.split(" WHERE ");
+    assert.deepEqual([...set.matchAll(/"(\w+)" = CASE/g)].map(([, column]) => column), ["old_data", "new_data"], "only the two data columns change");
+    const removed = [...set.matchAll(/" - (ARRAY\[[^\]]*\]|'\w+')/g)].map(([, keys]) => [...keys.matchAll(/'(\w+)'/g)].map(([, key]) => key));
+    assert.deepEqual(removed, [SECRET_KEYS[table], SECRET_KEYS[table]], `each data column loses exactly the ${table} secret keys`);
+  }
+});
+
+test("after 0081 the audit trigger stores no Better Auth secret on an insert, update or delete, and keeps every other key", async () => {
+  const { db, apply } = await databaseBefore(AUTH_SECRETS_TAG);
+  await apply();
+  await db.exec(AUTH_WRITES);
+
+  const rows = (await storedLogs(db)).filter((r) => r.schema_name === "better_auth" && r.table_name in SECRET_KEYS);
+  assert.deepEqual(
+    rows.map((r) => `${r.table_name} ${r.operation}`),
+    ["account", "session", "verification"].flatMap((table) => ["INSERT", "UPDATE", "DELETE"].map((op) => `${table} ${op}`)),
+    "the trigger still logs every write to the three tables",
+  );
+  for (const row of rows) {
+    for (const data of [row.old_data, row.new_data]) {
+      if (data === null) continue;
+      for (const key of SECRET_KEYS[row.table_name]) assert.ok(!(key in data), `${row.table_name} ${row.operation} stores no ${key}`);
+      assert.equal(data.id, row.record_id, "the row's id is kept");
+    }
+  }
+  const account = rows.find((r) => r.table_name === "account" && r.operation === "UPDATE");
+  assert.deepEqual([account?.new_data?.userId, account?.new_data?.providerId, account?.new_data?.scope], ["u-1", "google", "email"]);
+  const session = rows.find((r) => r.table_name === "session" && r.operation === "UPDATE");
+  assert.deepEqual([session?.new_data?.userId, session?.new_data?.ipAddress], ["u-1", "127.0.0.1"]);
+  const verification = rows.find((r) => r.table_name === "verification" && r.operation === "DELETE");
+  assert.equal(verification?.old_data?.identifier, "state-1");
+  for (const row of await storedLogs(db)) assert.doesNotMatch(`${row.old_text} ${row.new_text}`, /placeholder-/, "no log row holds a secret");
+});
+
+test("after 0081 a write to a public table is still logged whole, with its writer and acting account", async () => {
+  const { db, apply } = await databaseBefore(AUTH_SECRETS_TAG);
+  await apply();
+  await db.exec(`
+    insert into better_auth."user" (id, name, email, "emailVerified") values
+      ('person', 'Sara Conti', 'sara@example.com', true),
+      ('it-lead', 'Marco Bianchi', 'marco@example.com', true);
+  `);
+  const asPerson = (write: string) =>
+    db.exec(`begin; select set_config('request.jwt.claim.sub', 'person', true); select set_config('request.acting_account', 'it-lead', true); ${write}; commit;`);
+  const department = async () => (await db.query<{ data: StoredData }>(`select to_jsonb(d) as data from departments d where id = (select max(id) from departments)`)).rows[0].data;
+
+  await asPerson(`insert into public.departments (name) values ('Avionics')`);
+  const inserted = await department();
+  await asPerson(`update public.departments set name = 'Avionics and software' where name = 'Avionics'`);
+  const updated = await department();
+
+  const rows = (await storedLogs(db)).filter((r) => r.table_name === "departments");
+  assert.deepEqual(
+    rows.map(({ operation, old_data, new_data, changed_by, changed_by_acting_account }) => ({ operation, old_data, new_data, changed_by, changed_by_acting_account })),
+    [
+      { operation: "INSERT", old_data: null, new_data: inserted, changed_by: "person", changed_by_acting_account: "it-lead" },
+      { operation: "UPDATE", old_data: inserted, new_data: updated, changed_by: "person", changed_by_acting_account: "it-lead" },
+    ],
+  );
+});
+
+test("0081 strips the secret keys from stored Better Auth log rows, keeps every other row, column and key as it was, and applies again changing nothing", async () => {
+  const { db, apply } = await databaseBefore(AUTH_SECRETS_TAG);
+  // The trigger as 0061 left it stores the secrets whole.
+  await db.exec(AUTH_WRITES);
+  await db.exec(`begin; select set_config('request.jwt.claim.sub', 'u-1', true); insert into public.departments (name) values ('Recovery'); commit;`);
+  await db.query(
+    `insert into logs (schema_name, table_name, operation, record_id, new_data, changed_by) values
+      ('better_auth', 'session', $1, 's-2', '{"personId": "u-1", "actingAccountId": "u-1"}', 'u-1'),
+      ('better_auth', 'session', $2, 's-2', '{"personId": "u-1", "actingAccountId": "u-1"}', 'u-1'),
+      ('better_auth', 'session', $3, 's-3', '{"userId": "u-1"}', 'u-1')`,
+    [VIEW_AS_OPERATIONS.start, VIEW_AS_OPERATIONS.stop, BREAK_GLASS_SIGN_IN_OPERATION],
+  );
+  const before = await storedLogs(db);
+  assert.ok(before.some((r) => `${r.old_text} ${r.new_text}`.includes("placeholder-")), "the old trigger stored the secrets");
+
+  await apply();
+  const after = await storedLogs(db);
+
+  assert.deepEqual(after.map((r) => r.id), before.map((r) => r.id), "no log row is deleted");
+  for (const [i, was] of before.entries()) {
+    const now = after[i];
+    const keys = was.schema_name === "better_auth" ? (SECRET_KEYS[was.table_name] ?? []) : [];
+    const strip = (data: StoredData) => (data === null ? null : Object.fromEntries(Object.entries(data).filter(([key]) => !keys.includes(key))));
+    const rest = ({ old_text, new_text, old_data, new_data, ...columns }: typeof was) => columns;
+    assert.deepEqual(rest(now), rest(was), `log row ${was.id} keeps every other column`);
+    assert.deepEqual([now.old_data, now.new_data], [strip(was.old_data), strip(was.new_data)], `log row ${was.id} loses only its secret keys`);
+    const heldSecret = [was.old_data, was.new_data].some((data) => data !== null && keys.some((key) => key in data));
+    if (!heldSecret) assert.deepEqual([now.old_text, now.new_text], [was.old_text, was.new_text], `log row ${was.id} is stored byte for byte as it was`);
+  }
+  for (const row of after) assert.doesNotMatch(`${row.old_text} ${row.new_text}`, /placeholder-/, "no log row holds a secret");
+
+  const kept = (r: (typeof after)[number]) => r.table_name === "departments" || r.operation === BREAK_GLASS_SIGN_IN_OPERATION || Object.values(VIEW_AS_OPERATIONS).includes(r.operation);
+  assert.deepEqual(after.filter(kept), before.filter(kept), "the public row, the View as rows and the break-glass row are unchanged");
+  const viewAs = await db.query<{ operation: string; new_data: StoredData }>(
+    `select operation, new_data from logs where schema_name = 'better_auth' and table_name = 'session' and operation = any($1) order by id`,
+    [Object.values(VIEW_AS_OPERATIONS)],
+  );
+  assert.deepEqual(viewAs.rows, [
+    { operation: VIEW_AS_OPERATIONS.start, new_data: { personId: "u-1", actingAccountId: "u-1" } },
+    { operation: VIEW_AS_OPERATIONS.stop, new_data: { personId: "u-1", actingAccountId: "u-1" } },
+  ], "the Activity log still reads the View as start and stop");
+
+  const definition = async () => (await db.query<{ def: string }>(`select pg_get_functiondef('public.log_db_changes'::regproc) as def`)).rows[0].def;
+  const function_ = await definition();
+  await apply();
+  assert.deepEqual(await storedLogs(db), after, "a second run changes no log row");
+  assert.equal(await definition(), function_, "a second run leaves the trigger function as it was");
+});
+
+// The Google account's email on each linked account (epic #902, issue #906):
+// one nullable column and a fill from the login's own email, with the audit
+// trigger off for the fill alone so no token is copied into `logs`. The fill
+// is the one statement that changes rows, so the file is pinned to it.
+const ACCOUNT_EMAIL_TAG = "0085_account_google_email";
+
+test("0085_account_google_email.sql adds the nullable email column and fills it, and nothing else", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${ACCOUNT_EMAIL_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), [
+    `UPDATE "better_auth"."account" SET "email" = "user"."email" FROM "better_auth"."user" WHERE "user"."id" = "account"."userId" AND "account"."email" IS NULL`,
+  ]);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/902/);
+});
+
+test("0085 fills each existing account's email from its login, copies no token into logs, keeps every other value and applies again", async () => {
+  const { db, apply } = await databaseBefore(ACCOUNT_EMAIL_TAG);
+  await db.exec(`
+    insert into better_auth."user" (id, name, email, "emailVerified") values ('u-1', 'Sara Conti', 'sara@example.com', true), ('u-2', 'Luca Neri', 'luca@example.com', true);
+    insert into better_auth.account (id, "accountId", "providerId", "userId", "accessToken", "refreshToken", "idToken", "updatedAt") values
+      ('a-1', 'g-1', 'google', 'u-1', 'access-1', 'refresh-1', 'id-1', now()),
+      ('a-2', 'g-2', 'google', 'u-2', 'access-2', null, 'id-2', now());
+  `);
+  const columns = `id, "accountId", "providerId", "userId", "accessToken", "refreshToken", "idToken", scope, "createdAt", "updatedAt"`;
+  const before = await db.query(`select ${columns} from better_auth.account order by id`);
+  const logs = async () => (await db.query<{ n: number }>(`select count(*)::int as n from public.logs`)).rows[0].n;
+  const logged = await logs();
+  await apply();
+  await db.exec(`update better_auth.account set email = 'kept@example.com' where id = 'a-2'`);
+  const afterEdit = await logs();
+  await apply();
+  assert.deepEqual((await db.query(`select id, email from better_auth.account order by id`)).rows, [
+    { id: "a-1", email: "sara@example.com" },
+    { id: "a-2", email: "kept@example.com" },
+  ], "the fill reads the login's email, and a second run leaves an email already set");
+  assert.deepEqual((await db.query(`select ${columns} from better_auth.account order by id`)).rows, before.rows, "no other value changes");
+  assert.equal(afterEdit, logged + 1, "the fill logged nothing; the audit trigger is on again after it");
+  assert.equal(await logs(), afterEdit, "the second run logged nothing either");
+  const column = await db.query(
+    `select data_type, is_nullable from information_schema.columns where table_schema = 'better_auth' and table_name = 'account' and column_name = 'email'`,
+  );
+  assert.deepEqual(column.rows, [{ data_type: "text", is_nullable: "YES" }]);
+});
+
+// A first sign-in finds its imported record whatever the letter case or stray
+// spaces (issue #920, https://github.com/PoliTo-Rocket-Team/website-v2/issues/920):
+// the sign-in sync matches `lower(trim(email))`, as the session repair does,
+// and takes over none of several free rows that match. The function
+// replacement changes no stored row.
+const EMAIL_CASE_TAG = "0080_sync_auth_users_email_case";
+
+/** Every migration up to and including 0080 applied, with a way to add a login. */
+async function databaseWithEmailCase() {
+  const { db, apply } = await databaseBefore(EMAIL_CASE_TAG);
+  await apply();
+  const login = (id: string, email: string) => db.exec(`insert into better_auth."user" (id, name, email, "emailVerified") values ('${id}', '${id}', '${email}', true)`);
+  const rows = async () => (await db.query<{ id: string; email: string; first_name: string | null }>(`select id, email, first_name from users order by id`)).rows;
+  return { db, login, rows };
+}
+
+test("0080_sync_auth_users_email_case.sql drops, renames and rewrites nothing, and its header links the issue", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${EMAIL_CASE_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/920/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION public\.sync_auth_users\(\)/);
+});
+
+test("0080 keeps every row on a database that already holds rows, and applies again", async () => {
+  const { db, apply } = await databaseBefore(EMAIL_CASE_TAG);
+  await db.exec(`
+    insert into better_auth."user" (id, name, email, "emailVerified") values ('held', 'held', 'held@example.com', true);
+    insert into users (id, email, first_name) values ('added:free', 'Mover@mail.test', 'Imported');
+    insert into users (id, email, first_name, deleted_at) values ('closed', 'closed@example.com', 'Closed', now());
+    insert into applications (user_id) values ('added:free');
+  `);
+  const snapshot = async () => ({
+    users: (await db.query(`select * from users order by id`)).rows,
+    applications: (await db.query(`select * from applications order by id`)).rows,
+  });
+  const before = await snapshot();
+  await apply();
+  await apply();
+  assert.deepEqual(await snapshot(), before, "every row is kept");
+});
+
+test("after 0080 a first sign-in takes over a free row whose email differs only in letter case", async () => {
+  const { db, login, rows } = await databaseWithEmailCase();
+  await db.exec(`insert into users (id, email, first_name) values ('added:mover', 'Mover@mail.test', 'Imported')`);
+  await login("mover", "mover@mail.test");
+  assert.deepEqual(await rows(), [{ id: "mover", email: "mover@mail.test", first_name: "Imported" }]);
+  const withId = await db.query(`select id from users where id = 'mover'`);
+  assert.equal(withId.rows.length, 1, "no second row has the login's id");
+});
+
+test("after 0080 a first sign-in takes over a free row whose email has leading and trailing spaces", async () => {
+  const { db, login, rows } = await databaseWithEmailCase();
+  await db.exec(`insert into users (id, email, first_name) values ('added:mover', '  mover@mail.test  ', 'Imported')`);
+  await login("mover", "mover@mail.test");
+  assert.deepEqual(await rows(), [{ id: "mover", email: "mover@mail.test", first_name: "Imported" }]);
+});
+
+test("after 0080 a first sign-in matching two free rows takes over neither and gets a fresh row", async () => {
+  const { db, login, rows } = await databaseWithEmailCase();
+  await db.exec(`
+    insert into users (id, email, first_name) values ('added:upper', 'Mover@mail.test', 'Upper');
+    insert into users (id, email, first_name) values ('added:lower', 'mover@mail.test', 'Lower');
+  `);
+  await login("mover", "mover@mail.test");
+  assert.deepEqual(await rows(), [
+    { id: "added:lower", email: "mover@mail.test", first_name: "Lower" },
+    { id: "added:upper", email: "Mover@mail.test", first_name: "Upper" },
+    { id: "mover", email: "mover@mail.test", first_name: null },
+  ]);
+});
+
+test("after 0080 the sign-in sync still matches its own id first, skips held and closed rows, and makes a fresh row on no match", async () => {
+  const { db, login, rows } = await databaseWithEmailCase();
+  await login("held", "held@example.com");
+  await db.exec(`
+    update users set email = 'Shared@example.com' where id = 'held';
+    insert into users (id, email, first_name) values ('own', 'old@example.com', 'Own');
+    insert into users (id, email, first_name) values ('added:own-email', 'own@example.com', 'Other');
+    insert into users (id, email, first_name, deleted_at) values ('closed', 'Closed@example.com', 'Closed', now());
+  `);
+  await login("own", "own@example.com");
+  await login("second", "shared@example.com");
+  await login("reopening", "closed@example.com");
+  await login("stranger", "stranger@example.com");
+  assert.deepEqual(await rows(), [
+    { id: "added:own-email", email: "own@example.com", first_name: "Other" },
+    { id: "closed", email: "Closed@example.com", first_name: "Closed" },
+    { id: "held", email: "Shared@example.com", first_name: null },
+    { id: "own", email: "own@example.com", first_name: "Own" },
+    { id: "reopening", email: "closed@example.com", first_name: null },
+    { id: "second", email: "shared@example.com", first_name: null },
+    { id: "stranger", email: "stranger@example.com", first_name: null },
+  ]);
+});
+
+test("after 0080 a first sign-in on a free row that applications, files and audit rows point at gets a fresh row, leaving the matched row as it was", async () => {
+  const { db, login } = await databaseWithEmailCase();
+  await db.exec(`
+    insert into users (id, email, first_name) values ('applicant', 'Applicant@example.com', 'Imported');
+    insert into applications (user_id) values ('applicant');
+    insert into application_files (r2_key, original_filename, user_id) values ('applications/applicant/cv.pdf', 'cv.pdf', 'applicant');
+    insert into logs (schema_name, table_name, operation, record_id, changed_by) values ('public', 'users', 'UPDATE', 'applicant', 'applicant');
+  `);
+  const snapshot = async () => ({
+    users: (await db.query<{ id: string }>(`select * from users order by id`)).rows,
+    applications: (await db.query(`select * from applications order by id`)).rows,
+    files: (await db.query(`select * from application_files order by id`)).rows,
+  });
+  const before = await snapshot();
+  await login("new-login", "applicant@example.com");
+  const after = await snapshot();
+  assert.deepEqual(after.users.find((u) => u.id === "applicant"), before.users.find((u) => u.id === "applicant"), "the matched row is unchanged");
+  assert.deepEqual(
+    after.users.map((u) => u.id),
+    ["applicant", "new-login"],
+    "the login gets a fresh row",
+  );
+  assert.deepEqual(after.applications, before.applications, "every application still points at the unchanged row");
+  assert.deepEqual(after.files, before.files, "every uploaded file still points at the unchanged row");
+});
+
+// The team join date (issue #948): one nullable column on `members`, nothing
+// filled. The owner's one-time backfill (scripts/team-join-date) fills it.
+const JOINED_TEAM_ON_TAG = "0086_members_joined_team_on";
+
+test("0086_members_joined_team_on.sql drops, renames and rewrites nothing, and its header links the issue", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${JOINED_TEAM_ON_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "joined_team_on" date;/);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/948/);
+});
+
+test("0086 keeps every member's values, leaves the new date empty, and applies again", async () => {
+  const { db, apply } = await databaseBefore(JOINED_TEAM_ON_TAG);
+  await db.exec(`insert into members (member_id, prt_email, team_from, team_to) values (1, 'one@politorocketteam.it', null, null), (2, null, 2022, 2024);`);
+  const before = (await db.query(`select * from members order by member_id`)).rows;
+  await apply();
+  await apply();
+  const after = (await db.query<Record<string, unknown>>(`select * from members order by member_id`)).rows;
+  assert.deepEqual(
+    after.map(({ joined_team_on, ...rest }) => [rest, joined_team_on]),
+    before.map((row) => [row, null]),
+  );
 });

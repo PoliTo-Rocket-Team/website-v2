@@ -9,7 +9,7 @@ import { userCardRole, viewerStandingOf } from "./viewer";
 // line (app/dashboard/layout.tsx), which on the team is `roleLabelOf`.
 
 function bannerRoleOf(roles: readonly ViewAsRole[]): string {
-  const standing = viewerStandingOf({ scopes: [], activeRoles: roles.map((r) => ({ type: r.type, divisionId: 17, fullAccess: r.seat })) });
+  const standing = viewerStandingOf({ scopes: [], activeRoles: roles.map((r) => ({ type: r.type, divisionId: 17, divisionCode: null, divisionClosedAt: null, fullAccess: r.seat })) });
   return userCardRole({ ...standing, name: "Elif Kaya", role: roleLabelOf(roles), photoUrl: null, hasOwnProfile: true }, false);
 }
 

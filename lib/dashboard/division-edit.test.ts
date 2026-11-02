@@ -6,8 +6,10 @@ import {
   divisionClosing,
   divisionCodeError,
   divisionRowWrites,
+  divisionTitle,
   peopleInDivision,
   planDivisionSave,
+  renamesDivision,
   searchTeam,
   storedDivisionName,
   type DivisionRow,
@@ -51,7 +53,7 @@ const team: FoundPerson[] = [
   person(5, "Davide Russo", [[1, "member"], [3, "member"]]),
   person(6, "Chiara Rinaldi", [], [{ kind: "head", departmentId: 1, title: "Head of Aerodynamics" }]),
   person(7, "Alessandro Greco", [], [{ kind: "team-leader", title: "" }]),
-  person(8, "Federica Moretti", [[3, "member"]], [{ kind: "board", seat: { roleId: 28, title: "Chief Engineer", flag: "chief-engineer", since: "2025-10-01" } }]),
+  person(8, "Federica Moretti", [[3, "member"]], [{ kind: "board", seat: { roleId: 28, title: "Chief Engineer", fullAccess: "chief-engineer", type: "core", since: "2025-10-01" } }]),
 ];
 
 const head: TeamActor = { kind: "head", departmentIds: [1] };
@@ -211,13 +213,36 @@ test("every division write touches only lead and member rows: a seat kept on the
   assert.deepEqual(divisionRowWrites({ ...picked.plan, joinAsLead: [], promote: [6, 7] }, 1, seatRows).toLead, [105], "a seat row never becomes a lead's");
 });
 
-test("a code change is planned as one, and the name is kept with 'Division'", () => {
+test("a code change is planned as one, and a rename stores the name without 'Division' (#938)", () => {
   const result = plan({ name: "Mission Design", code: "MD" });
   assert.ok(result.ok);
   assert.equal(result.plan.code, "MD");
   assert.equal(result.plan.codeChanged, true);
-  assert.equal(result.plan.name, "Mission Design Division");
-  assert.equal(storedDivisionName("Flight Dynamics Division"), "Flight Dynamics Division");
+  assert.equal(result.plan.nameChanged, true);
+  assert.equal(result.plan.name, "Mission Design");
+  assert.equal(storedDivisionName("  Flight   Dynamics Division "), "Flight Dynamics", "trimmed, one space, a typed 'Division' removed");
+  assert.equal(divisionTitle("Flight Dynamics"), "Flight Dynamics Division", "the drawer says it with 'Division', on screen only");
+});
+
+test("a save that keeps the name does not rename the division, even when the stored name ends in 'Division' (#938)", () => {
+  // Mission Analysis is stored as "Mission Analysis Division" here, as the drawer's save used to leave it.
+  for (const typed of ["Mission Analysis", " Mission  Analysis ", "Mission Analysis Division"]) {
+    const kept = plan({ name: typed, newLeads: [3] });
+    assert.ok(kept.ok);
+    assert.equal(kept.plan.nameChanged, false, `"${typed}" is the same name`);
+  }
+  const plain: DivisionSubject = { kind: "open", division: { ...org.divisions[0], name: "Mission Analysis" } };
+  const same = plan({}, plain);
+  assert.ok(same.ok && !same.plan.nameChanged && same.plan.name === "Mission Analysis");
+  assert.equal(renamesDivision("Mission Analysis", "Mission Analysis Division"), false);
+  assert.equal(renamesDivision("Mission Design", "Mission Analysis"), true);
+});
+
+test("New division stores the name without 'Division', a typed one removed (#938)", () => {
+  const created = plan({ name: "Flight Dynamics Division", code: "FD", newLeads: [3] }, { kind: "new", departmentId: 1 });
+  assert.ok(created.ok);
+  assert.equal(created.plan.name, "Flight Dynamics");
+  assert.equal(created.plan.nameChanged, false, "a new division is inserted with its name, not renamed");
 });
 
 test("Close division is refused while anyone is in it, people waiting for their NDA included", () => {
@@ -264,4 +289,18 @@ test("the pickers search the whole team, the team leader, board and heads includ
   const narrowed = searchTeam("l", team, org);
   assert.ok(narrowed.kind === "people" && narrowed.people.length < team.length && narrowed.people.every((p) => p.name.toLowerCase().includes("l")));
   assert.equal(plan({ name: "Flight Dynamics", code: "FD", newLeads: [3], emails: ["sara@prt.it"] }, { kind: "new", departmentId: 1 }).ok, false, "a team address is a person, not a new email");
+});
+
+test("a picked person carries every seat they hold, not only the first (#857)", () => {
+  const twoSeats = person(9, "Giulia Ferri", [[1, "member"]], [
+    { kind: "head", departmentId: 2, title: "Head of Structures" },
+    { kind: "advisor", departmentId: 1 },
+  ]);
+  const found = searchTeam("giulia", [twoSeats], org);
+  assert.ok(found.kind === "people");
+  assert.deepEqual(found.people[0].seats, ["Head of Structures", "Advisor"]);
+  assert.equal(found.people[0].role, "Head of Structures", "their role is still the first seat");
+  const unseated = searchTeam("sara", team, org);
+  assert.ok(unseated.kind === "people");
+  assert.deepEqual(unseated.people[0].seats, [], "a member with no seat carries none");
 });

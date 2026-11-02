@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
 import { SEAT_LABELS } from "./division-access";
+import { holderAddRefusal } from "./seat-holders";
 import type { FlaggedSeat, FullAccessSeat } from "./viewer";
 
 // Handing over a role (issue #253, boards 77i, 77e and 68b4; Owner decision,
@@ -96,7 +97,7 @@ export const ONE_SUCCESSOR_FOR_SEAT = "This lead holds a full-access seat. Name 
  * seat follows the role. `outgoing` are the role rows the hand-over ends;
  * when one of them carries a seat, the successor's role row carries the same
  * seat, written in the same batch that ends the outgoing rows, which end with
- * it. So the predecessor holds the seat no more and one active row holds it.
+ * it. So the predecessor holds the seat no more and the successor holds it.
  * `successors` are the people who take the role over: a seat goes to exactly
  * one, so a hand-over with more than one (a division save naming two new
  * leads) is refused rather than guessing, and one with none would drop the
@@ -114,8 +115,16 @@ export function seatHandOver(outgoing: readonly SeatRow[], successors: readonly 
 /** A role handed over from a unit: a division's lead or a department's head. The team leader's role is the team-leader seat itself. */
 export type UnitRole = Exclude<HandedRole, { readonly kind: "team-leader" }>;
 
-/** A full-access seat as it sits on the team: the person whose role row carries it, and the role it is handed over with. */
-export type HeldSeat = { readonly seat: FlaggedSeat; readonly personId: number; readonly role: UnitRole };
+/**
+ * A full-access seat a lead or head role carries: a flagged seat (`FlaggedSeat`)
+ * or the Logistics lead, read from the lead role's division (`DivisionSeat`,
+ * issue #891). Only the wording reads it; a hand-over moves a flag alone
+ * (`SeatMove`).
+ */
+export type UnitSeat = Exclude<FullAccessSeat, "team-leader">;
+
+/** A full-access seat as it sits on the team: the person whose role carries it, and the role it is handed over with. */
+export type HeldSeat = { readonly seat: UnitSeat; readonly personId: number; readonly role: UnitRole };
 
 function sameUnitRole(a: UnitRole, b: UnitRole): boolean {
   return a.kind === "lead" ? b.kind === "lead" && a.divisionId === b.divisionId : b.kind === "head" && a.departmentId === b.departmentId;
@@ -124,7 +133,8 @@ function sameUnitRole(a: UnitRole, b: UnitRole): boolean {
 /**
  * The full-access seat `personId` hands over with `handed`: the team
  * leader's role is the team-leader seat, and a lead or head role carries the
- * seat its row is flagged as (`seats`, read off the roles), or none.
+ * seat `seats` holds for it (read off the roles: the row's flag, or the
+ * Logistics lead for a lead of the open Logistics division), or none.
  */
 export function seatOfHandedRole(seats: readonly HeldSeat[], personId: number, handed: HandedRole): FullAccessSeat | null {
   if (handed.kind === "team-leader") return "team-leader";
@@ -289,20 +299,27 @@ export type TeamLeaderHandOverPlan = { readonly from: number; readonly to: numbe
 
 /**
  * "Hand over the role" as the rules allow it, or the first reason it is
- * refused: only the current team leader; the one who takes over is someone
- * else on the team. They become the team leader on save, with its powers
- * (deciding orders, giving "Approve orders", handing the role over), and keep
- * every role they already hold.
+ * refused: only a current team leader, who hands over their own place;
+ * `leaders` are every team leader now (epic #861). The one who takes over is
+ * someone else on the team who is not a team leader already
+ * (`holderAddRefusal`, issue #872). They become a team leader on save, with
+ * its powers (deciding orders, giving "Approve orders", handing the role
+ * over), and keep every role they already hold. Only the viewer's own team
+ * leader row ends: every other team leader keeps the seat.
  */
 export function planTeamLeaderHandOver(input: {
   readonly viewer: HandOverViewer;
-  readonly leaderId: number | null;
+  readonly leaders: readonly number[];
   readonly handOver: TeamLeaderHandOver;
   readonly team: readonly TeamPerson[];
 }): Checked<TeamLeaderHandOverPlan> {
-  const { viewer, leaderId, handOver, team } = input;
-  if (!mayHandOverTeamLeader(viewer, leaderId) || leaderId === null) return { ok: false, error: ONLY_TEAM_LEADER };
-  if (handOver.to === leaderId) return { ok: false, error: "Pick who takes over from you." };
-  if (!team.some((p) => p.id === handOver.to)) return { ok: false, error: "They are not on the team." };
-  return { ok: true, value: { from: leaderId, to: handOver.to, steppingDown: steppingDown({ kind: "team-leader" }, handOver.outcome) } };
+  const { viewer, leaders, handOver, team } = input;
+  const from = viewer.selfId !== null && leaders.includes(viewer.selfId) ? viewer.selfId : null;
+  if (from === null || !mayHandOverTeamLeader(viewer, from)) return { ok: false, error: ONLY_TEAM_LEADER };
+  if (handOver.to === from) return { ok: false, error: "Pick who takes over from you." };
+  const next = team.find((p) => p.id === handOver.to);
+  if (next === undefined) return { ok: false, error: "They are not on the team." };
+  const refusal = holderAddRefusal(next, leaders);
+  if (refusal !== null) return { ok: false, error: refusal };
+  return { ok: true, value: { from, to: next.id, steppingDown: steppingDown({ kind: "team-leader" }, handOver.outcome) } };
 }

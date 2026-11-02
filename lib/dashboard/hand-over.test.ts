@@ -33,7 +33,7 @@ const org: OrgChart = {
 
 const team: TeamPerson[] = [
   { id: 14, name: "Alessandro Greco", emails: ["alessandro@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "team-leader", title: "" }] },
-  { id: 1, name: "Giulia Romano", emails: ["giulia@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "board", seat: { roleId: 3, title: "Head of Operations", flag: null, since: "2024-10-01" } }] },
+  { id: 1, name: "Giulia Romano", emails: ["giulia@prt.it"], memberships: membershipsOf([]), beyond: [{ kind: "board", seat: { roleId: 3, title: "Head of Operations", fullAccess: null, type: "core", since: "2024-10-01" } }] },
   { id: 7, name: "Sara Conti", emails: ["sara@prt.it"], memberships: membershipsOf([{ divisionId: 1, role: "member", since: "2024-10-01" }]), beyond: [] },
 ];
 
@@ -58,25 +58,37 @@ test("only the current team leader may hand over the Team Leader role: the opera
   assert.equal(mayHandOverTeamLeader({ seat: "team-leader", selfId: 9 }, 14), false, "the seat alone is not the role held now");
   const handOver = { to: 7, outcome: "advisor" } as const;
   for (const viewer of [operationsLead, itLead, { seat: null, selfId: 7 }]) {
-    assert.deepEqual(planTeamLeaderHandOver({ viewer, leaderId: 14, handOver, team }), { ok: false, error: "Only the team leader can hand over this role." });
+    assert.deepEqual(planTeamLeaderHandOver({ viewer, leaders: [14], handOver, team }), { ok: false, error: "Only the team leader can hand over this role." });
   }
 });
 
 test("the team leader hands over to someone else on the team, and picks what they do next", () => {
-  assert.deepEqual(planTeamLeaderHandOver({ viewer: teamLeader, leaderId: 14, handOver: { to: 7, outcome: "advisor" }, team }), {
+  assert.deepEqual(planTeamLeaderHandOver({ viewer: teamLeader, leaders: [14], handOver: { to: 7, outcome: "advisor" }, team }), {
     ok: true,
     value: { from: 14, to: 7, steppingDown: { kind: "advisor", place: { kind: "team" }, access: "keeps-full-access" } },
   });
-  const leaves = planTeamLeaderHandOver({ viewer: teamLeader, leaderId: 14, handOver: { to: 7, outcome: "leave" }, team });
+  const leaves = planTeamLeaderHandOver({ viewer: teamLeader, leaders: [14], handOver: { to: 7, outcome: "leave" }, team });
   assert.ok(leaves.ok && leaves.value.steppingDown.kind === "leave");
-  assert.deepEqual(planTeamLeaderHandOver({ viewer: teamLeader, leaderId: 14, handOver: { to: 14, outcome: "advisor" }, team }), { ok: false, error: "Pick who takes over from you." });
-  assert.deepEqual(planTeamLeaderHandOver({ viewer: teamLeader, leaderId: 14, handOver: { to: 99, outcome: "advisor" }, team }), { ok: false, error: "They are not on the team." });
+  assert.deepEqual(planTeamLeaderHandOver({ viewer: teamLeader, leaders: [14], handOver: { to: 14, outcome: "advisor" }, team }), { ok: false, error: "Pick who takes over from you." });
+  assert.deepEqual(planTeamLeaderHandOver({ viewer: teamLeader, leaders: [14], handOver: { to: 99, outcome: "advisor" }, team }), { ok: false, error: "They are not on the team." });
   assert.equal(checkTeamLeaderHandOver({ to: 7, outcome: "member" }).ok, false, "no third option");
   assert.equal(checkTeamLeaderHandOver({ to: 7 }).ok, false, "nothing is picked for them");
 });
 
+test("with two team leaders, either hands over their own place to someone who is not a team leader already (issue #872)", () => {
+  const coLeader: HandOverViewer = { seat: "team-leader", selfId: 1 };
+  assert.deepEqual(planTeamLeaderHandOver({ viewer: coLeader, leaders: [14, 1], handOver: { to: 7, outcome: "advisor" }, team }), {
+    ok: true,
+    value: { from: 1, to: 7, steppingDown: { kind: "advisor", place: { kind: "team" }, access: "keeps-full-access" } },
+  });
+  assert.deepEqual(planTeamLeaderHandOver({ viewer: teamLeader, leaders: [14, 1], handOver: { to: 1, outcome: "advisor" }, team }), {
+    ok: false,
+    error: "Giulia Romano holds this seat now.",
+  });
+});
+
 test("after the hand-over the new person is the team leader seat; the former one, a team advisor, keeps full access but not the seat", () => {
-  const role = (type: ActiveRoleRef["type"], divisionId: number | null = null): ActiveRoleRef => ({ type, divisionId, fullAccess: null });
+  const role = (type: ActiveRoleRef["type"], divisionId: number | null = null): ActiveRoleRef => ({ type, divisionId, divisionCode: null, divisionClosedAt: null, fullAccess: null });
   const newLeader = viewerStandingOf({ scopes: [], activeRoles: [role("core", 1), role("president")] });
   assert.equal(isTeamLeader(newLeader), true);
   assert.equal(decideRightOf({ teamLeader: isTeamLeader(newLeader), approveOrders: false }), "team-leader", "decides orders and gives Approve orders");
@@ -128,7 +140,7 @@ test("no hand-over, replacement or close path writes the Team page's advisory bo
 });
 
 test("an advisor is never counted as a lead or a head", () => {
-  const advisor = (divisionId: number | null): ActiveRoleRef => ({ type: "advisor", divisionId, fullAccess: null });
+  const advisor = (divisionId: number | null): ActiveRoleRef => ({ type: "advisor", divisionId, divisionCode: null, divisionClosedAt: null, fullAccess: null });
   assert.equal(divisionRoleOf("advisor"), "member");
   assert.equal(viewerKindOf({ scopes: [], activeRoles: [advisor(1)] }), "member", "an advisor in a division is no division lead");
   assert.equal(viewerKindOf({ scopes: [], activeRoles: [advisor(null)] }), "member", "a team advisor is no department head");

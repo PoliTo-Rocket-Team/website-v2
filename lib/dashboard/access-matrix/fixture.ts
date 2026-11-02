@@ -4,6 +4,7 @@ import {
   applicationFiles,
   applications,
   applyPositions,
+  betterAuthAccounts,
   betterAuthUsers,
   dashboardNotices,
   departments,
@@ -47,8 +48,12 @@ export const MARKERS = {
   title: (u: Unit) => [`role-${lower(u)}-title`],
   /** Who applied, what they answered, their files and interviews. */
   applications: (u: Unit) => [`appl-${lower(u)}`, `answer-${lower(u)}`, `cv-${lower(u)}`, `letter-${lower(u)}`],
-  /** A person's private details on the Members page, and who waits to join. Their team email is public on the Team page, so no marker. */
-  members: (u: Unit) => [`mob-${lower(u)}`, `disc-${lower(u)}`, `join-${lower(u)}`],
+  /**
+   * A person's private details on the Members page, the other Google account
+   * the unit's lead signs in with (issue #908), and who waits to join. Their team email is
+   * public on the Team page, so no marker.
+   */
+  members: (u: Unit) => [`mob-${lower(u)}`, `disc-${lower(u)}`, `gacct-${lower(u)}`, `join-${lower(u)}`],
   /** An order's item and reason. */
   orders: (u: Unit) => [`ord-${lower(u)}`],
 } as const satisfies Record<GrantArea | "title", (u: Unit) => readonly string[]>;
@@ -116,9 +121,10 @@ function titleOf(r: Role): string {
 type RoleRow = typeof roles.$inferInsert;
 
 /**
- * The seats a role row holds that only one active role may hold
- * (drizzle/0062, issue #667): the team leader's, a full-access seat, a
- * department's head.
+ * The seats a role row holds that the fixture gives one active role each:
+ * the team leader's, a full-access seat, a department's head. The database
+ * takes several holders of a seat (drizzle/0077, epic #861); the fixture
+ * keeps one, so each matrix viewer's seat is read as theirs alone.
  */
 function seatsOf(r: Pick<RoleRow, "type" | "deptId" | "fullAccess">): string[] {
   return [
@@ -131,7 +137,7 @@ function seatsOf(r: Pick<RoleRow, "type" | "deptId" | "fullAccess">): string[] {
 /**
  * Each matrix viewer's role rows, split by seat. Several viewers hold one
  * seat (the operations lead with and without Approve orders, the department
- * head with each grant), and the database keeps one active holder per seat.
+ * head with each grant), and the fixture keeps one active holder per seat.
  * The first viewer in the matrix to hold a seat sits in it in the fixture;
  * a later one's row is `benched`, kept out of the fixture until they sign in
  * (`seatSignedIn`).
@@ -168,7 +174,7 @@ const VIEWER_ROLES = (() => {
 /**
  * Puts a signed-in matrix viewer in the seat they share with an earlier
  * viewer: the seat's holder's role row is removed and theirs added, so the
- * database still has one active holder and it is them. The fake session
+ * fixture still has one active holder and it is them. The fake session
  * (./fakes/current-user.ts) calls this as each server call reads who is
  * signed in. A viewer already seated, or whose row a test has changed, is
  * left as it is.
@@ -189,8 +195,8 @@ export async function seatSignedIn(userId: string): Promise<void> {
 
 /**
  * Moves the full-access seat `flag` onto role row `rowId`: the flag comes
- * off the row holding it (a matrix viewer's), so one active row holds it
- * (drizzle/0062). A test's setup, as `changeRows` is.
+ * off the row holding it (a matrix viewer's), so one active row holds it,
+ * as the fixture keeps it. A test's setup, as `changeRows` is.
  */
 export async function moveSeatOnto(rowId: number, flag: SeatFlag): Promise<void> {
   await changeRows(roles, { fullAccess: flag }, { fullAccess: null });
@@ -242,6 +248,12 @@ async function seedUnit(u: Unit): Promise<void> {
   const lead = IDS.lead(u);
   await addRows(members, [{ memberId: lead, ndaSignedAt: SINCE }]);
   await addRows(users, [{ id: `lead-${l}`, email: `lead-${l}@mail.test`, firstName: "Lead", lastName: u, member: lead, createdAt: SINCE }]);
+  // The lead signs in with Google as that email, and with a second Google account linked to it (issue #908).
+  await addRows(betterAuthUsers, [{ id: `lead-${l}`, name: `Lead ${u}`, email: `lead-${l}@mail.test`, emailVerified: true }]);
+  await addRows(betterAuthAccounts, [
+    { id: `account-${l}-1`, accountId: `google-${l}-1`, providerId: "google", userId: `lead-${l}`, email: `lead-${l}@mail.test`, createdAt: new Date(SINCE), updatedAt: new Date(SINCE) },
+    { id: `account-${l}-2`, accountId: `google-${l}-2`, providerId: "google", userId: `lead-${l}`, email: `gacct-${l}@mail.test`, createdAt: new Date(NOW), updatedAt: new Date(NOW) },
+  ]);
   await addRows(roles, [{ id: 5_000 + lead, memberId: lead, divisionId, title: "Division Lead", startedAt: SINCE, type: "lead" }]);
   // DM's lead has sent one, waiting for the team leader: Structures has no head.
   if (u === "DM") await addRows(handOverRequests, [{ id: IDS.handOver(u), fromId: lead, role: "lead", divisionId, toId: person, outcome: "advisor", createdAt: daysAgo(1) }]);

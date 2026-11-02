@@ -7,10 +7,13 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FullAccessMoves, HandOverChoice } from "@/components/dashboard/hand-over-choice";
 import type { DashboardData } from "./data";
+import { divisions } from "@/db/schema";
 import { accountOf, EXTRA, IDS, moveSeatOnto, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
+import { changeRows } from "./access-matrix/test-database";
 import { seatOfHandedRole, type HandedRole } from "./hand-over";
 import { openDashboard } from "./open";
+import { RECRUITMENT_MANAGER_DIVISION_CODE } from "./recruitment-manager";
 import { FLAG_OF_SEAT, type FlaggedSeat, type FullAccessSeat } from "./viewer";
 
 // Every hand-over and replacement screen for a role that carries a
@@ -120,6 +123,70 @@ describe("the approver's row on the Overview", () => {
     const overview = await (await dashboardOf("head-str", null)).overview();
     const row = overview.attention.find((a) => a.kind === "hand-over")!;
     assert.ok(!row.detail.includes("full access"), row.detail);
+  });
+});
+
+describe("the Logistics lead, a seat read from its division (issue #891)", () => {
+  /**
+   * A freshly seeded database where DM is the Logistics division (code `LGS`),
+   * closed on `closedAt` when one is given, and `userId`'s dashboard on it. No
+   * role row is flagged: Lead DM holds the Logistics lead seat by the division.
+   */
+  async function logisticsDashboardOf(userId: string, closedAt: string | null = null): Promise<DashboardData> {
+    await seedFixture();
+    await changeRows(divisions, { id: DM }, { code: RECRUITMENT_MANAGER_DIVISION_CODE, closedAt });
+    signInAs(userId);
+    const opening = await openDashboard();
+    assert.equal(opening.kind, "open");
+    return (opening as { data: DashboardData }).data;
+  }
+
+  test("lead replace: the lead of the open Logistics division hands over the Logistics lead seat, and the choice says it moves", async () => {
+    const structure = (await (await logisticsDashboardOf(TEAM_LEADER)).teamStructure())!;
+    const seat = seatOfHandedRole(structure.seats, LEAD, { kind: "lead", divisionId: DM });
+    assert.equal(seat, "logistics-lead");
+    const html = choice(seat, { kind: "lead", divisionId: DM }, "Lead DM", "Person DM");
+    assert.ok(html.includes("Person DM becomes Logistics Lead and gets full access. Lead DM loses full access."), html);
+  });
+
+  test("My profile: the Logistics lead is offered the hand-over with the seat, and the dialog says it moves", async () => {
+    const offer = (await (await logisticsDashboardOf("lead-dm")).myProfile())!.handOver!;
+    assert.equal(offer.seat, "logistics-lead");
+    const note = renderToStaticMarkup(createElement(FullAccessMoves, { seat: offer.seat, successor: "Person DM", from: null, step: null }));
+    assert.ok(note.includes("Person DM becomes Logistics Lead and gets full access. You lose full access."), note);
+  });
+
+  test("the approver's row: a request for the Logistics lead role says, before Confirm, that full access moves", async () => {
+    const overview = await (await logisticsDashboardOf("head-str")).overview();
+    const row = overview.attention.find((a) => a.kind === "hand-over")!;
+    assert.ok(row.detail.endsWith("Person DM becomes Logistics Lead and gets full access. Lead loses full access."), row.detail);
+  });
+
+  test("a member of Logistics and a head handing over a department hold no Logistics lead seat", async () => {
+    const structure = (await (await logisticsDashboardOf(TEAM_LEADER)).teamStructure())!;
+    assert.deepEqual(
+      structure.seats.filter((s) => s.seat === "logistics-lead"),
+      [{ seat: "logistics-lead", personId: LEAD, role: { kind: "lead", divisionId: DM } }],
+      "only the lead of Logistics holds the Logistics lead seat",
+    );
+    assert.equal(seatOfHandedRole(structure.seats, IDS.person("DM"), { kind: "lead", divisionId: DM }), null);
+    assert.equal(seatOfHandedRole(structure.seats, EXTRA.head, { kind: "head", departmentId: STRUCTURES }), null);
+  });
+
+  test("the lead of a closed Logistics division holds no seat", async () => {
+    const structure = (await (await logisticsDashboardOf(TEAM_LEADER, "2026-10-30")).teamStructure())!;
+    assert.equal(seatOfHandedRole(structure.seats, LEAD, { kind: "lead", divisionId: DM }), null);
+    assert.deepEqual(structure.seats.filter((s) => s.seat === "logistics-lead"), []);
+  });
+
+  test("a flag on the Logistics lead's row still names the flagged seat", async () => {
+    await seedFixture();
+    await moveSeatOnto(LEAD_ROW, FLAG_OF_SEAT["it-lead"]);
+    await changeRows(divisions, { id: DM }, { code: RECRUITMENT_MANAGER_DIVISION_CODE });
+    signInAs(TEAM_LEADER);
+    const opening = await openDashboard();
+    const structure = (await (opening as { data: DashboardData }).data.teamStructure())!;
+    assert.equal(seatOfHandedRole(structure.seats, LEAD, { kind: "lead", divisionId: DM }), "it-lead");
   });
 });
 

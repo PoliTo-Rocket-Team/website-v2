@@ -1,7 +1,8 @@
 import type { positionTypeEnum } from "@/db/schema/public";
 import { academicYearStart, shortAcademicYearLabel } from "@/lib/about/academic-year-copy";
 import type { DepartmentMembers } from "./department-members";
-import type { DivisionMembers, PersonPosition, WaitingPerson } from "./division-members";
+import type { PersonPosition, ReachMembers, WaitingPerson } from "./division-members";
+import type { MemberGoogleEmails } from "./google-accounts";
 import type { WholeTeamMembers } from "./team-members";
 import type { FlaggedSeat } from "./viewer";
 
@@ -43,19 +44,39 @@ export type BoardRole = {
   readonly roleId: number;
   /** Its stored title, trimmed; blank when none is stored. */
   readonly title: string;
-  /** The full-access seat its row is flagged as; null for any further team-level seat. */
-  readonly flag: BoardFlag | null;
+  /**
+   * The full-access seat its row is flagged as, any of them (the operations
+   * lead's and the IT lead's included); null for any further team-level seat.
+   * The board flag the seat row draws is read from it (`boardFlagOf`).
+   */
+  readonly fullAccess: FlaggedSeat | null;
+  /** The row's type: with the stored title, it tells one unflagged seat from another (epic #861). */
+  readonly type: RoleType;
   /** `started_at`: further seats are drawn by it. */
   readonly since: string;
 };
 
+/**
+ * Which seat a team-level row is, as its holders share it (epic #861): a
+ * flagged row by its full-access flag, whichever seat it is, any other by its
+ * type and stored title, as `seatOfTeamRow` (./seat-holders.ts) reads the rows
+ * Add another holder writes. A flagged key never equals an unflagged one.
+ */
+export function boardSeatKey(seat: BoardRole): string {
+  return seat.fullAccess !== null ? `flag:${seat.fullAccess}` : `type:${seat.type ?? ""}:${seat.title}`;
+}
+
 /** "Project Manager", "Chief of Propulsion": the seat's stored title, or its default name when none is stored. */
 export function boardTitleOf(seat: BoardRole): string {
   if (seat.title !== "") return seat.title;
-  return seat.flag === null ? BOARD_SEAT_FALLBACK : BOARD_FLAG_TITLES[seat.flag];
+  const flag = boardFlagOf(seat.fullAccess);
+  return flag === null ? BOARD_SEAT_FALLBACK : BOARD_FLAG_TITLES[flag];
 }
 
-const flagRank = (seat: BoardRole) => (seat.flag === null ? BOARD_FLAGS.length : BOARD_FLAGS.indexOf(seat.flag));
+const flagRank = (seat: BoardRole) => {
+  const flag = boardFlagOf(seat.fullAccess);
+  return flag === null ? BOARD_FLAGS.length : BOARD_FLAGS.indexOf(flag);
+};
 
 /** The seat row's order: the flagged Project Manager, the flagged Chief Engineer, then every other team-level seat by start date. */
 export function bySeatOrder(a: BoardRole, b: BoardRole): number {
@@ -224,6 +245,29 @@ export type Placement =
   /** In one or more divisions; none yet when they were added to the roster and not placed. */
   | { readonly role: "divisions"; readonly memberships: Memberships };
 
+/** A seat someone holds beside their placement: a team-level seat, or a department's head with the title its row carries. */
+export type FurtherSeat =
+  | { readonly kind: "board"; readonly seat: BoardRole }
+  | { readonly kind: "head"; readonly departmentId: number; readonly title: string };
+
+/**
+ * The team-level seats and department heads among someone's roles beyond
+ * their divisions (`beyond`) other than the one `placement` draws them in. A
+ * head row that names no department on the chart heads nothing, so it is left
+ * out. The team leader always draws them, so it is never a further seat.
+ */
+export function furtherSeatsOf(placement: Placement, beyond: readonly RoleBeyondDivisions[]): FurtherSeat[] {
+  const drawnInSeat = placement.role === "board" ? placement.seat.roleId : null;
+  const drawnInHead = placement.role === "head" ? placement.departmentId : null;
+  return beyond.flatMap((role): FurtherSeat[] => {
+    if (role.kind === "board") return role.seat.roleId === drawnInSeat ? [] : [{ kind: "board", seat: role.seat }];
+    if (role.kind === "head" && role.departmentId !== null && role.departmentId !== drawnInHead) {
+      return [{ kind: "head", departmentId: role.departmentId, title: role.title }];
+    }
+    return [];
+  });
+}
+
 /** How the Members page and the tree name someone's place: a division lead when they lead any division. */
 export type TeamRole = "team-leader" | "board" | "head" | "division-lead" | "member";
 
@@ -272,6 +316,24 @@ export type OrgChart = {
   readonly divisions: readonly OrgDivision[];
 };
 
+/**
+ * The day a member joined the team, as stored (`members.joined_team_on`, from
+ * the roster's "Joined the Team on" column, issue #948); null when none is
+ * stored or it does not read as a day. Owner decision, 2026-11-01: every
+ * place that shows when a member joined reads this and never a role's start,
+ * since the roster's role starts are academic-year placeholders.
+ */
+export function joinedTeamDayOf(stored: string | null): Date | null {
+  if (stored === null) return null;
+  const day = new Date(`${stored.slice(0, 10)}T00:00:00Z`);
+  return Number.isNaN(day.getTime()) ? null : day;
+}
+
+/** The year a member joined the team (`joinedTeamDayOf`); null when no join day is stored. */
+export function joinedYearOf(stored: string | null): number | null {
+  return joinedTeamDayOf(stored)?.getUTCFullYear() ?? null;
+}
+
 /** One person on this year's team, as both sides of the data interface read them. */
 export type RosterEntry = {
   readonly id: number;
@@ -280,10 +342,16 @@ export type RosterEntry = {
   /** Their stored profile photo (`members.picture`); null when none is stored, and the PRT mark is drawn. */
   readonly photoUrl: string | null;
   readonly placement: Placement;
+  /**
+   * Every team-level seat and department head they hold beside `placement`
+   * (`furtherSeatsOf`): the Team tree draws them on each of those cards too
+   * (issue #929), never as their first place.
+   */
+  readonly furtherSeats: readonly FurtherSeat[];
   /** The title under their name on the public Team page, when one is set. */
   readonly pageTitle: string | null;
-  /** The year they joined the team. */
-  readonly joined: number;
+  /** The year they joined the team (`joinedYearOf`); null when no join day is stored. */
+  readonly joined: number | null;
   /** "Aerospace Eng." */
   readonly program: string | null;
   /** "MSc · year 1" */
@@ -366,7 +434,8 @@ export type MemberRow = {
   readonly department: string | null;
   /** The line under the department; null when there is none. */
   readonly division: string | null;
-  readonly joined: number;
+  /** The year they joined the team; null when no join day is stored. */
+  readonly joined: number | null;
   readonly program: string | null;
   readonly study: string | null;
   readonly pageTitle: string | null;
@@ -414,13 +483,15 @@ export type DivisionQueue = {
 /**
  * Who a viewer's Members page lists: the whole team with every member field
  * for each full-access seat, the team leader, the operations lead and the IT
- * lead alike (boards 73 to 73c, issues #252 and #418); one division for a
- * division lead, with every division they are in and what the lead may do to
- * each (boards 61e to 61h2, issue #231); every division of the department for
+ * lead alike (boards 73 to 73c, issues #252 and #418); every division a
+ * division lead reaches, all at once, with what the lead may do to each
+ * (boards 61e to 61h2, issues #231 and #903); every division of the department for
  * its head (boards 69 to 69c, issue #235); and nothing for anyone else. On
  * the whole team, `positions` holds what the one Edit details panel may
  * change for each person the viewer may edit (`positionsOf`), and `queues`
  * every open division's people waiting for Confirm NDA and joining (issue #584).
+ * Every page that lists people carries their linked Google emails
+ * (`ListedGoogleEmails`); a page that lists no one carries none.
  */
 export type MemberDirectory =
   | ({
@@ -429,10 +500,18 @@ export type MemberDirectory =
       readonly queues: readonly DivisionQueue[];
       /** The members whose sign-in email the viewer may correct in Edit details (issue #741, ./sign-in-email.ts). */
       readonly correctsSignInEmail: readonly number[];
-    } & WholeTeamMembers)
-  | ({ readonly scope: "division" } & DivisionMembers)
-  | ({ readonly scope: "department" } & DepartmentMembers)
+    } & WholeTeamMembers &
+      ListedGoogleEmails)
+  | ({ readonly scope: "divisions" } & ReachMembers & ListedGoogleEmails)
+  | ({ readonly scope: "department" } & DepartmentMembers & ListedGoogleEmails)
   | { readonly scope: "none" };
+
+/**
+ * The linked Google emails of the people a Members page lists (issue #908),
+ * read with the page itself, so they reach exactly the viewers who see those
+ * people's emails.
+ */
+export type ListedGoogleEmails = { readonly googleEmails: MemberGoogleEmails };
 
 /** A viewer with no division to list. */
 export const NO_MEMBERS: MemberDirectory = { scope: "none" };
@@ -581,7 +660,7 @@ export function roleBeyondDivisions(role: RoleSeat, org: OrgChart): RoleBeyondDi
   if (role.divisionId !== null) return null;
   if (role.type === "advisor") return { kind: "advisor", departmentId: role.departmentId };
   if (role.departmentId !== null) return { kind: "department", departmentId: role.departmentId };
-  return { kind: "board", seat: { roleId: role.id, title: role.title.trim(), flag: boardFlagOf(role.fullAccess), since: role.since } };
+  return { kind: "board", seat: { roleId: role.id, title: role.title.trim(), fullAccess: role.fullAccess, type: role.type, since: role.since } };
 }
 
 /** Whether the row is a team-level seat: what `roleBeyondDivisions` reads as `board`, by type and place alone. */
@@ -694,7 +773,7 @@ function beyondLabel(role: RoleBeyondDivisions, org: OrgChart): string {
     case "team-leader":
       return "the team leader";
     case "board":
-      return role.seat.title === "" && role.seat.flag === null ? "on the board" : boardTitleOf(role.seat);
+      return role.seat.title === "" && boardFlagOf(role.seat.fullAccess) === null ? "on the board" : boardTitleOf(role.seat);
     case "head": {
       const name = departmentNameOf(role.departmentId, org);
       return role.title === "" && name === null ? "a department head" : headTitleOf(role.title, name);
@@ -832,6 +911,15 @@ export function yearsLabel(from: number, to: number): string {
   return from === to ? String(from) : `${from} – ${to}`;
 }
 
+/**
+ * What Move to alumni's years field opens with: from the year they joined
+ * the team to this year; empty for the lead to fill in when no join day is
+ * stored (issue #948), never a year read off a role.
+ */
+export function departureYearsOf(joined: number | null, thisYear: number): string {
+  return joined === null ? "" : yearsLabel(Math.min(joined, thisYear), thisYear);
+}
+
 /** The years field as the lead typed it: "2024 – 2026", "2024-2026", or one year. */
 export function parseYears(text: string): { from: number; to: number } | null {
   const match = /^\s*(\d{4})\s*(?:[-–—]\s*(\d{4}))?\s*$/.exec(text);
@@ -916,19 +1004,30 @@ export type TreePerson = {
   /**
    * Whether this is their first place: their seat, else the division they
    * are first in by `homeDivision` (their highest role, then their earliest
-   * division). "Find someone", "Show me" and the viewer's path go only here.
+   * division). "Find someone" and "Show me" go only here; the viewer's path
+   * runs to every place they are drawn (issue #862).
    */
   readonly first: boolean;
 };
 
+/**
+ * Who holds one seat or leads one unit on the tree, drawn together on its one
+ * card (epic #861, issue #916): by name, then id, so the card never reshuffles
+ * between loads. Empty for a unit nobody holds.
+ */
+export type TreeHolders<P extends TreePerson = TreePerson> = readonly P[];
+
+/** A team-level seat always has someone in it: a seat nobody holds is not on the roster. */
+export type TreeSeatHolders = readonly [TreePerson, ...TreePerson[]];
+
 export type TreeDivision = {
   readonly id: number;
   readonly name: string;
-  /** Its lead; when several lead it, one whose first place it is, and the others are listed with the members. */
-  readonly lead: TreePerson | null;
-  /** Everyone else in it, by name, whatever other divisions or seat they hold. */
+  /** Every lead it has, all on its card; none for a division with no lead. */
+  readonly leads: TreeHolders;
+  /** Everyone else in it, by name, whatever other divisions or seat they hold. A lead is never listed here too. */
   readonly members: readonly TreePerson[];
-  /** Everyone in it, lead included. */
+  /** Everyone in it, leads included. */
   readonly size: number;
 };
 
@@ -938,34 +1037,100 @@ export type TreeHead = TreePerson & { readonly title: string };
 export type TreeDepartment = {
   readonly id: number;
   readonly name: string;
-  readonly head: TreeHead | null;
+  /** Every head it has, all on its card; none for a department with no head. */
+  readonly heads: TreeHolders<TreeHead>;
   readonly divisions: readonly TreeDivision[];
-  /** Everyone in it, head included. */
+  /** Everyone in it, heads included. */
   readonly size: number;
 };
 
-/** Someone in a team-level seat, under the team leader and over the heads: the seat's role and its title (`boardTitleOf`). */
-export type TreeBoardMember = { readonly roleId: number; readonly title: string; readonly person: TreePerson };
+/**
+ * One team-level seat, under the team leader and over the heads: every holder
+ * of it on one card (issue #916), the seat told apart as `seatOfTeamRow`
+ * (./seat-holders.ts) tells it (`boardSeatKey`), and its title (`boardTitleOf`).
+ */
+export type TreeSeat = { readonly key: string; readonly title: string; readonly holders: TreeSeatHolders };
 
 export type TeamTree = {
   /** "2026–27" */
   readonly season: string;
-  readonly leader: TreePerson | null;
-  /** The team-level seats in seat order (`bySeatOrder`): the Project Manager, the Chief Engineer, then any other by start date. */
-  readonly board: readonly TreeBoardMember[];
+  /** Every team leader, all on the one card; none when nobody holds the seat. */
+  readonly leaders: TreeHolders;
+  /** The team-level seats in seat order (`bySeatOrder`, by each seat's earliest row): the Project Manager, the Chief Engineer, then any other by start date. */
+  readonly board: readonly TreeSeat[];
   readonly departments: readonly TreeDepartment[];
   /** Everyone on the roster. */
   readonly size: number;
-  /** The viewer's place, for the highlighted path; null when they are not in a division or department. */
-  readonly path: { readonly departmentId: number; readonly divisionId: number | null } | null;
+  /** Every place the viewer is drawn, for the highlighted path; null when they are drawn nowhere on the tree. */
+  readonly path: TreePath | null;
 };
+
+/** One place the viewer is drawn on the tree: their seat, a department they head, or a division they are in. */
+export type TreePlace =
+  | { readonly kind: "leader" }
+  | { readonly kind: "board" }
+  | { readonly kind: "head"; readonly departmentId: number }
+  | { readonly kind: "division"; readonly departmentId: number; readonly divisionId: number };
+
+/**
+ * The viewer's highlighted path: every place they are drawn, so someone in
+ * several divisions has the path run to each (issue #862). Their first place
+ * comes first; never empty.
+ */
+export type TreePath = readonly [TreePlace, ...TreePlace[]];
+
+/** The departments the viewer's path runs to: one they head, or one holding a division they are in. */
+export function departmentsOnPath(path: TreePath | null): ReadonlySet<number> {
+  return new Set((path ?? []).flatMap((p) => (p.kind === "head" || p.kind === "division" ? [p.departmentId] : [])));
+}
+
+/** The divisions the viewer's path runs to: every drawn division they are in. */
+export function divisionsOnPath(path: TreePath | null): ReadonlySet<number> {
+  return new Set((path ?? []).flatMap((p) => (p.kind === "division" ? [p.divisionId] : [])));
+}
+
+/**
+ * Whether the viewer holds this seat or head card as their first place,
+ * whichever co-holder they are. A further seat or head they also hold draws
+ * them on its card but is not on their path (issue #929), so the path keeps
+ * to the one seat they are placed at.
+ */
+export function viewersSeat(holders: readonly TreePerson[]): boolean {
+  return holders.some((p) => p.self && p.first);
+}
+
+/** Where the viewer is drawn on a built tree, their first place first; null when nowhere. */
+function pathOf(leaders: TreeHolders, board: readonly TreeSeat[], departments: readonly TreeDepartment[]): TreePath | null {
+  const places: { readonly place: TreePlace; readonly first: boolean }[] = [];
+  /** Adds `place` when the viewer is any of `people` there, whichever co-holder they are. */
+  const at = (place: TreePlace, people: readonly TreePerson[]) => {
+    const me = people.find((p) => p.self);
+    if (me) places.push({ place, first: me.first });
+  };
+  /** Adds a seat's or head's `place` when it is the viewer's first place (`viewersSeat`). */
+  const atSeat = (place: TreePlace, holders: readonly TreePerson[]) => {
+    if (viewersSeat(holders)) places.push({ place, first: true });
+  };
+  atSeat({ kind: "leader" }, leaders);
+  for (const seat of board) atSeat({ kind: "board" }, seat.holders);
+  for (const department of departments) {
+    atSeat({ kind: "head", departmentId: department.id }, department.heads);
+    for (const division of department.divisions) {
+      at({ kind: "division", departmentId: department.id, divisionId: division.id }, [...division.leads, ...division.members]);
+    }
+  }
+  const [head, ...rest] = [...places.filter((p) => p.first), ...places.filter((p) => !p.first)].map((p) => p.place);
+  return head ? [head, ...rest] : null;
+}
 
 /**
  * The tree of this year's roster as `selfId` sees it. Departments and
  * divisions with nobody in them are left out. Each division lists everyone in
  * it, so someone in several divisions is drawn in each (Owner decision,
  * 2026-10-19, on #398); their first place is their seat, else their home
- * division (`homeDivision`).
+ * division (`homeDivision`). Someone holding several seats or heads is on
+ * each of those cards too (issue #929), first only at the seat they are
+ * placed at, and counted once in every size.
  */
 export function buildTeamTree(
   roster: readonly RosterEntry[],
@@ -988,52 +1153,86 @@ export function buildTeamTree(
     self: entry.id === selfId,
     first: firstDivision(entry) === divisionId,
   });
-  const byName = (a: RosterEntry, b: RosterEntry) => a.name.localeCompare(b.name);
+  /** Them on a further seat or head card (`RosterEntry.furtherSeats`): drawn there, never their first place. */
+  const further = (entry: RosterEntry): TreePerson => ({ ...node(entry, null), first: false });
+  /** The order co-holders sit in on one card, and members in a list: by name, then id, so nothing reshuffles between loads. */
+  const byName = (a: { readonly id: number; readonly name: string }, b: { readonly id: number; readonly name: string }) =>
+    a.name.localeCompare(b.name) || a.id - b.id;
 
   const departments = org.departments.flatMap((department): TreeDepartment[] => {
-    const head = roster.find((e) => e.placement.role === "head" && e.placement.departmentId === department.id);
+    /** Each head of it once: placed there, else the first further head row they hold on it. */
+    const headOf = (e: RosterEntry): TreeHead[] => {
+      if (e.placement.role === "head" && e.placement.departmentId === department.id) return [{ ...node(e, null), title: headTitleOf(e.placement.title, department.name) }];
+      const seat = e.furtherSeats.find((s) => s.kind === "head" && s.departmentId === department.id);
+      return seat?.kind === "head" ? [{ ...further(e), title: headTitleOf(seat.title, department.name) }] : [];
+    };
+    const heads = roster.flatMap(headOf).sort(byName);
+    const isHead = (e: RosterEntry) => heads.some((h) => h.id === e.id);
     const divisions = org.divisions
       .filter((d) => d.departmentId === department.id)
       .flatMap((division): TreeDivision[] => {
         const inDivision = roster.filter((e) => isIn(e.placement, division.id));
         if (inDivision.length === 0) return [];
-        const leads = inDivision.filter((e) => roleIn(membershipsIn(e.placement), division.id) === "lead");
-        const lead = leads.find((e) => firstDivision(e) === division.id) ?? leads[0];
-        const members = inDivision.filter((e) => e !== lead).sort(byName);
+        const leads = (e: RosterEntry) => roleIn(membershipsIn(e.placement), division.id) === "lead";
         return [
           {
             id: division.id,
             name: division.name,
-            lead: lead ? node(lead, division.id) : null,
-            members: members.map((e) => node(e, division.id)),
+            leads: inDivision.filter(leads).sort(byName).map((e) => node(e, division.id)),
+            members: inDivision.filter((e) => !leads(e)).sort(byName).map((e) => node(e, division.id)),
             size: inDivision.length,
           },
         ];
       });
-    // Someone in two of its divisions counts once, and its head once, also when they lead one of them.
-    const people = new Set(roster.filter((e) => e !== head && divisions.some((d) => isIn(e.placement, d.id))).map((e) => e.id));
-    const size = (head ? 1 : 0) + people.size;
-    const shownHead = head?.placement.role === "head" ? { ...node(head, null), title: headTitleOf(head.placement.title, department.name) } : null;
-    return size === 0 ? [] : [{ id: department.id, name: department.name, head: shownHead, divisions, size }];
+    // Someone in two of its divisions counts once, and each head once, also when they lead one of them.
+    const people = new Set(roster.filter((e) => !isHead(e) && divisions.some((d) => isIn(e.placement, d.id))).map((e) => e.id));
+    const size = heads.length + people.size;
+    return size === 0 ? [] : [{ id: department.id, name: department.name, heads, divisions, size }];
   });
 
-  const leader = roster.find((e) => e.placement.role === "team-leader");
-  const board = roster
-    .flatMap((e) => (e.placement.role === "board" ? [{ seat: e.placement.seat, entry: e }] : []))
-    .sort((a, b) => bySeatOrder(a.seat, b.seat))
-    .map(({ seat, entry }): TreeBoardMember => ({ roleId: seat.roleId, title: boardTitleOf(seat), person: node(entry, null) }));
-  const me = roster.find((e) => e.id === selfId);
-  const myDivision = me ? firstDivision(me) : null;
-  const myDepartment =
-    me?.placement.role === "head" ? me.placement.departmentId : (org.divisions.find((d) => d.id === myDivision)?.departmentId ?? null);
+  const leaders = roster.filter((e) => e.placement.role === "team-leader").sort(byName).map((e) => node(e, null));
+  const board = seatsOf(
+    roster.flatMap((e) => [
+      ...(e.placement.role === "board" ? [{ seat: e.placement.seat, person: node(e, null) }] : []),
+      ...e.furtherSeats.flatMap((s) => (s.kind === "board" ? [{ seat: s.seat, person: further(e) }] : [])),
+    ]),
+    byName,
+  );
   return {
     season,
-    leader: leader ? node(leader, null) : null,
+    leaders,
     board,
     departments,
     size: roster.length,
-    path: myDepartment !== null ? { departmentId: myDepartment, divisionId: myDivision } : null,
+    path: pathOf(leaders, board, departments),
   };
+}
+
+/**
+ * The team-level seats, each once with every holder (issue #916): rows are
+ * one seat when `boardSeatKey` says so, as `seatOfTeamRow` groups them. A
+ * seat sits in seat order by its earliest row, which also gives its title.
+ * Someone holding two rows of one seat is on its card once, as their first
+ * place when either row is.
+ */
+function seatsOf(held: readonly { readonly seat: BoardRole; readonly person: TreePerson }[], order: (a: TreePerson, b: TreePerson) => number): TreeSeat[] {
+  const seats = new Map<string, { readonly seat: BoardRole; readonly holders: TreePerson[] }>();
+  for (const { seat, person } of [...held].sort((a, b) => bySeatOrder(a.seat, b.seat))) {
+    const key = boardSeatKey(seat);
+    const known = seats.get(key);
+    if (!known) {
+      seats.set(key, { seat, holders: [person] });
+      continue;
+    }
+    const twice = known.holders.findIndex((p) => p.id === person.id);
+    if (twice < 0) known.holders.push(person);
+    else if (person.first) known.holders[twice] = person;
+  }
+  return [...seats].map(([key, { seat, holders }]): TreeSeat => {
+    // Never empty: a seat enters the map with its first holder.
+    const [first, ...rest] = holders.sort(order);
+    return { key, title: boardTitleOf(seat), holders: [first, ...rest] };
+  });
 }
 
 /** A division as the tree names it: "Mission Analysis Division" reads "Mission Analysis" (board 54c). */

@@ -27,8 +27,8 @@ export type TeamMember = {
   /** The account they sign in with: the list's line under the name. */
   readonly signInEmail: string;
   readonly photoUrl: string | null;
-  /** The year they joined the team. */
-  readonly since: number;
+  /** The year they joined the team; null when no join day is stored (issue #948). */
+  readonly since: number | null;
   /** Where they rank: team leader, board seat, head, division lead, then member. */
   readonly role: TeamRole;
   /** The Role column: a seat's or a head's stored title ("Head of Aerodynamics"), "Division Lead", their title, or "Member". */

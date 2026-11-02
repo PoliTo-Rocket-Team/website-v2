@@ -43,7 +43,7 @@ const team: TeamPerson[] = [
 const fullAccess: TeamActor = { kind: "team" };
 const head: TeamActor = { kind: "head", departmentIds: [1] };
 const lead: TeamActor = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] };
-const propulsion: DepartmentCreate = { name: "Propulsion", code: "PR", heads: [1], kind: "technical" };
+const propulsion: DepartmentCreate = { name: "Propulsion", code: "PR", heads: [1] };
 
 const create = (save: Partial<DepartmentCreate>, actor: TeamActor | null = fullAccess) => planDepartmentCreate({ actor, org, save: { ...propulsion, ...save }, team });
 
@@ -51,7 +51,7 @@ test("only the team leader or full access creates, edits or closes a department;
   assert.ok(create({}).ok);
   for (const actor of [head, lead, null]) {
     assert.equal(create({}, actor).ok, false, JSON.stringify(actor));
-    assert.equal(planDepartmentSave({ actor, org, departmentId: 1, team, headIds: [6], save: { name: "Aero", code: "AE", head: null, kind: "technical" } }).ok, false);
+    assert.equal(planDepartmentSave({ actor, org, departmentId: 1, team, headIds: [6], save: { name: "Aero", code: "AE", head: null } }).ok, false);
     assert.equal(planDepartmentClose({ actor, org, departmentId: 1, close: { people: [] }, people: [], waiting: {} }).ok, false);
   }
 });
@@ -64,25 +64,25 @@ test("New department needs a name, a 2 or 3 letter code no open department uses,
   assert.deepEqual(create({ heads: [] }), { ok: false, error: "A department needs exactly one head." });
   assert.deepEqual(create({ heads: [1, 7] }), { ok: false, error: "A department needs exactly one head." });
   assert.deepEqual(create({ heads: [99] }), { ok: false, error: "They are not on the team." });
-  const typed = checkDepartmentCreate({ name: "Propulsion Department", code: " pr ", kind: "technical", heads: [1] });
+  const typed = checkDepartmentCreate({ name: "Propulsion Department", code: " pr ", heads: [1] });
   assert.ok(typed.ok);
-  assert.deepEqual(create(typed.value), { ok: true, value: { name: "Propulsion", code: "PR", kind: "technical", headId: 1 } }, "stored without 'Department', code in capitals");
-  assert.equal(checkDepartmentCreate({ name: "Propulsion", code: "PR", kind: "technical" }).ok, false, "no head list at all is refused in its shape");
+  assert.deepEqual(create(typed.value), { ok: true, value: { name: "Propulsion", code: "PR", headId: 1 } }, "stored without 'Department', code in capitals");
+  assert.equal(checkDepartmentCreate({ name: "Propulsion", code: "PR" }).ok, false, "no head list at all is refused in its shape");
 });
 
 test("New department's head may hold other seats (issue #837): another department's head, the team leader, an advisor or a division member", () => {
   for (const headId of [6, 7, 8, 9]) {
-    assert.deepEqual(create({ heads: [headId] }), { ok: true, value: { name: "Propulsion", code: "PR", kind: "technical", headId } }, `person ${headId}`);
+    assert.deepEqual(create({ heads: [headId] }), { ok: true, value: { name: "Propulsion", code: "PR", headId } }, `person ${headId}`);
   }
 });
 
 test("Edit department saves a new name or code under the same rules, for an open department", () => {
-  const renamed = planDepartmentSave({ actor: fullAccess, org, departmentId: 1, team, headIds: [6], save: { name: "Aerodynamics and Flight", code: "AF", head: null, kind: "technical" } });
-  assert.deepEqual(renamed, { ok: true, value: { name: "Aerodynamics and Flight", code: "AF", kind: "technical", nameChanged: true, codeChanged: true, head: null } });
-  const same = planDepartmentSave({ actor: fullAccess, org, departmentId: 1, team, headIds: [6], save: { name: "Aerodynamics", code: "AE", head: null, kind: "technical" } });
+  const renamed = planDepartmentSave({ actor: fullAccess, org, departmentId: 1, team, headIds: [6], save: { name: "Aerodynamics and Flight", code: "AF", head: null } });
+  assert.deepEqual(renamed, { ok: true, value: { name: "Aerodynamics and Flight", code: "AF", nameChanged: true, codeChanged: true, head: null } });
+  const same = planDepartmentSave({ actor: fullAccess, org, departmentId: 1, team, headIds: [6], save: { name: "Aerodynamics", code: "AE", head: null } });
   assert.ok(same.ok && !same.value.nameChanged && !same.value.codeChanged, "its own code stays allowed");
-  assert.equal(planDepartmentSave({ actor: fullAccess, org, departmentId: 1, team, headIds: [6], save: { name: "Aerodynamics", code: "ST", head: null, kind: "technical" } }).ok, false);
-  assert.deepEqual(planDepartmentSave({ actor: fullAccess, org, departmentId: 9, team, headIds: [], save: { name: "Gone", code: "GN", head: null, kind: "technical" } }), { ok: false, error: "That department is closed." });
+  assert.equal(planDepartmentSave({ actor: fullAccess, org, departmentId: 1, team, headIds: [6], save: { name: "Aerodynamics", code: "ST", head: null } }).ok, false);
+  assert.deepEqual(planDepartmentSave({ actor: fullAccess, org, departmentId: 9, team, headIds: [], save: { name: "Gone", code: "GN", head: null } }), { ok: false, error: "That department is closed." });
   assert.equal(departmentCodeError("AE", org.departments, 1), null);
 });
 
@@ -187,8 +187,11 @@ test("Close department sends people only to an open unit outside it where they h
 
 // Change head (issue #253, board 77e): handing the head role over.
 
-const changeHead = (head: { to: number; outcome: HandOverOutcome | null } | null, headIds: readonly number[] = [6], actor: TeamActor | null = fullAccess) =>
-  planDepartmentSave({ actor, org, departmentId: 1, team, headIds, save: { name: "Aerodynamics", code: "AE", head, kind: "technical" } });
+const changeHead = (
+  head: { to: number; from?: number | null; outcome: HandOverOutcome | null } | null,
+  headIds: readonly number[] = [6],
+  actor: TeamActor | null = fullAccess,
+) => planDepartmentSave({ actor, org, departmentId: 1, team, headIds, save: { name: "Aerodynamics", code: "AE", head: head === null ? null : { from: null, ...head } } });
 
 test("Change head: the replaced head becomes an advisor in the department or leaves the team; nothing leaves them as a member", () => {
   assert.deepEqual(changeHead({ to: 1, outcome: "advisor" }), {
@@ -196,42 +199,61 @@ test("Change head: the replaced head becomes an advisor in the department or lea
     value: {
       name: "Aerodynamics",
       code: "AE",
-      kind: "technical",
       nameChanged: false,
       codeChanged: false,
-      head: { to: 1, from: [6], steppingDown: { kind: "advisor", place: { kind: "department", departmentId: 1 }, access: "ends" } },
+      head: { to: 1, replaces: { memberId: 6, steppingDown: { kind: "advisor", place: { kind: "department", departmentId: 1 }, access: "ends" } } },
     },
   });
   const leaves = changeHead({ to: 1, outcome: "leave" });
   assert.ok(leaves.ok);
-  assert.deepEqual(leaves.value.head?.steppingDown, { kind: "leave" });
+  assert.deepEqual(leaves.value.head?.replaces?.steppingDown, { kind: "leave" });
   assert.deepEqual(changeHead({ to: 1, outcome: null }), { ok: false, error: "Choose what happens to the head: Become an advisor or Leave the team." });
-  assert.equal(checkDepartmentSave({ name: "Aerodynamics", code: "AE", kind: "technical", head: { to: 1, outcome: "member" } }).ok, false, "only advisor or leave");
+  assert.equal(checkDepartmentSave({ name: "Aerodynamics", code: "AE", head: { to: 1, outcome: "member" } }).ok, false, "only advisor or leave");
 });
 
 test("Change head picks anyone on the team but the head it has now (issue #837); a department with no head needs no outcome", () => {
   assert.deepEqual(changeHead({ to: 6, outcome: "advisor" }), { ok: false, error: "Chiara Rinaldi already heads this department." });
   assert.deepEqual(changeHead({ to: 99, outcome: "advisor" }), { ok: false, error: "They are not on the team." });
   // Chiara heads Aerodynamics; she takes Structures over from Marco and keeps her head seat there.
-  const otherHead = planDepartmentSave({ actor: fullAccess, org, departmentId: 2, team, headIds: [1], save: { name: "Structures", code: "ST", head: { to: 6, outcome: "advisor" }, kind: "technical" } });
+  const otherHead = planDepartmentSave({
+    actor: fullAccess,
+    org,
+    departmentId: 2,
+    team,
+    headIds: [1],
+    save: { name: "Structures", code: "ST", head: { to: 6, from: null, outcome: "advisor" } },
+  });
   assert.ok(otherHead.ok && otherHead.value.head?.to === 6, "another department's head");
   for (const to of [7, 8, 9]) {
     const changed = changeHead({ to, outcome: "advisor" });
-    assert.ok(changed.ok && changed.value.head?.to === to && changed.value.head.from.includes(6), `person ${to}: the team leader, an advisor, a division member`);
+    assert.ok(changed.ok && changed.value.head?.to === to && changed.value.head.replaces?.memberId === 6, `person ${to}: the team leader, an advisor, a division member`);
   }
   const first = changeHead({ to: 1, outcome: null }, []);
   assert.ok(first.ok);
-  assert.deepEqual(first.value.head, { to: 1, from: [], steppingDown: null });
+  assert.deepEqual(first.value.head, { to: 1, replaces: null });
   for (const actor of [head, lead, null]) assert.equal(changeHead({ to: 1, outcome: "advisor" }, [6], actor).ok, false, "only the team leader and full access");
-  const sent = checkDepartmentSave({ name: "Aerodynamics", code: "AE", kind: "technical" });
+  const sent = checkDepartmentSave({ name: "Aerodynamics", code: "AE" });
   assert.ok(sent.ok && sent.value.head === null, "a save with no head field changes no head");
 });
 
-test("New department and Edit department carry the kind the team leader picked; a missing or unknown kind is refused (issue #325)", () => {
-  const created = create({ kind: "operations" });
-  assert.ok(created.ok && created.value.kind === "operations");
-  const saved = planDepartmentSave({ actor: fullAccess, org, departmentId: 1, team, headIds: [6], save: { name: "Aerodynamics", code: "AE", head: null, kind: "operations" } });
-  assert.ok(saved.ok && saved.value.kind === "operations");
-  assert.equal(checkDepartmentCreate({ name: "Propulsion", code: "PR", kind: "outreach", heads: [1] }).ok, false);
-  assert.equal(checkDepartmentSave({ name: "Aerodynamics", code: "AE", head: null }).ok, false);
+test("with two heads, Change head replaces only the head picked; a successor who heads it already is refused (issue #872)", () => {
+  const changed = changeHead({ to: 7, from: 9, outcome: "advisor" }, [6, 9]);
+  assert.ok(changed.ok);
+  assert.equal(changed.value.head?.replaces?.memberId, 9, "only the picked head steps down");
+  assert.deepEqual(changeHead({ to: 7, outcome: "advisor" }, [6, 9]), { ok: false, error: "Pick which head the new head replaces." });
+  assert.deepEqual(changeHead({ to: 7, from: 8, outcome: "advisor" }, [6, 9]), { ok: false, error: "They do not head this department now." });
+  assert.equal(changeHead({ to: 9, from: 6, outcome: "advisor" }, [6, 9]).ok, false, "the other head heads it already");
+  assert.equal(changeHead({ to: 7, from: 6, outcome: "advisor" }, []).ok, false, "no head to replace");
+});
+
+test("New department and Edit department send no kind, and a kind sent anyway is not kept (issue #856)", () => {
+  const created = checkDepartmentCreate({ name: "Propulsion", code: "PR", kind: "operations", heads: [1] });
+  assert.ok(created.ok);
+  assert.equal("kind" in created.value, false);
+  assert.equal("kind" in (create(created.value) as { value: object }).value, false);
+  const saved = checkDepartmentSave({ name: "Aerodynamics", code: "AE", head: null, kind: "operations" });
+  assert.ok(saved.ok);
+  assert.equal("kind" in saved.value, false);
+  const planned = planDepartmentSave({ actor: fullAccess, org, departmentId: 1, team, headIds: [6], save: saved.value });
+  assert.ok(planned.ok && !("kind" in planned.value));
 });

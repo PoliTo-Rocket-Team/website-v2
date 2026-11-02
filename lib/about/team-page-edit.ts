@@ -1,77 +1,95 @@
 import { textLength } from "@/lib/content/text";
 import {
-  applyLayer,
   isLinkedinHandle,
   TEAM_PAGE_FIGURE_LABEL_MAX,
   TEAM_PAGE_FIGURE_VALUE_MAX,
   TEAM_PAGE_INTRO_MAX,
   TEAM_PAGE_TEXT_MAX,
-  type ArcSpot,
   type GroupPhoto,
-  type PersonEdit,
-  type ShownTeam,
-  type SpotEdit,
-  type TeamBuild,
-  type TeamPageLayer,
+  type TeamPageText,
 } from "./team-layer";
+import {
+  bindingFor,
+  holdingOf,
+  layoutPageOf,
+  resolveLayout,
+  sameBinding,
+  type DepartmentBlock,
+  type LayoutGroup,
+  type PageSeat,
+  type PlaceBinding,
+  type PlaceShows,
+  type ResolvedTeam,
+  type SeatOverrides,
+  type TeamLayout,
+} from "./team-layout";
+import type { TeamPageContent } from "./team-page-stored";
 import { linkedinHandleOf, personOf, type TeamPerson } from "./team-person";
-import { teamPageOf, withLayerText } from "./team-roles";
+import type { TeamRoles } from "./team-roles";
 import type { HeaderStat, HeaderStats, PersonPhoto, Photo, TeamPage } from "./types";
 
-// The Team page editor's own steps (boards 80, 80b and 80h, issue #284): the
-// page as the working layer draws it, the Edit person panel's fields for a
-// spot and the edit they make, Back to the team record, the intro text and
-// the group photo, and how many edits Reset to team removes. Pure: the
-// editor holds the layer and sends it whole to the layer actions
-// (./team-page-editor.ts), which check it again.
+// The Team page editor's own steps (boards 80, 80b and 80h, issues #284 and
+// #851): the page as the working layout draws it, the Edit person panel's
+// fields for a page seat and the seat they make, Back to the team record, the
+// intro text and the group photo, and how many edits Reset to team removes.
+// The panel picks a person; the page seat is bound to the seat they hold, or
+// to them when they hold none (`bindingFor`). Pure: the editor holds the
+// layout and the text and sends them whole to the save
+// (./team-page-editor.ts), which checks them again.
 
-/** A spot the Edit person panel opens (board 80b): the team leader, or a place on the arc the roles fill. */
-export type PersonSpot = "leader" | ArcSpot;
+/** The page the working content draws, as the public page draws it (`layoutPageOf`), and what each page seat shows on it. */
+export type EditedTeamPage = { readonly page: TeamPage; readonly resolved: ResolvedTeam };
 
-/** The page the working layer draws, and where each person on it came from; `shown` is null when the roles cannot fill the page. */
-export type EditedTeamPage = { readonly page: TeamPage; readonly shown: ShownTeam | null };
-
-/** The page with `layer` laid on the roles build, onto `base`; as the public page draws it (`publicTeamPage`). */
-export function editedTeamPage(build: TeamBuild, base: TeamPage, layer: TeamPageLayer): EditedTeamPage {
-  const shown = applyLayer(build, layer);
-  const page = teamPageOf(build, shown, base);
-  return page === null ? { page: withLayerText(base, layer), shown: null } : { page, shown };
+/** The page `content` draws on the team record `roles`, onto `base`: the public page as it would draw the same version. */
+export function editedTeamPage(roles: TeamRoles, base: TeamPage, content: TeamPageContent): EditedTeamPage {
+  return { page: layoutPageOf(roles, content.layout, content.text, base), resolved: resolveLayout(content.layout, roles) };
 }
 
-/** What the roles put in a spot: the "Team record" lines of board 80b. */
+/** Who the seat a page seat is bound to puts there, and the text it reads: the "Team record" lines of board 80b. */
 export type SpotRecord = { readonly person: TeamPerson; readonly role: string };
 
-export function spotRecord(build: TeamBuild, spot: PersonSpot): SpotRecord | null {
-  if (spot === "leader") return build.leader;
-  return build.arc.find((built) => built.spot === spot) ?? null;
+/** The page seat the Edit person panel opens (board 80b): the team leader's, or one on the arc. */
+function personSeat(layout: TeamLayout, id: number): PageSeat | undefined {
+  return layout.leader?.id === id ? layout.leader : layout.arc.find((seat) => seat.id === id);
 }
 
-/** The edit a spot holds; an empty one when it holds none. */
-export function spotEditOf(layer: TeamPageLayer, spot: PersonSpot): SpotEdit {
-  return spot === "leader" ? layer.leader : (layer.spots[spot] ?? {});
+/** Whether page seat `id` is the team leader's, which is always on the page. */
+export function isLeaderSeat(layout: TeamLayout, id: number): boolean {
+  return layout.leader?.id === id;
 }
 
-export function isEdited(layer: TeamPageLayer, spot: PersonSpot): boolean {
-  return Object.keys(spotEditOf(layer, spot)).length > 0;
+export function spotRecord(roles: TeamRoles, layout: TeamLayout, id: number): SpotRecord | null {
+  const seat = personSeat(layout, id);
+  const holding = seat === undefined ? null : holdingOf(seat.binding, roles);
+  return holding === null ? null : { person: holding.person, role: holding.title };
+}
+
+/** The team leader's binding: what their page seat goes back to. */
+const TEAM_LEADER: PlaceBinding = { kind: "team-leader" };
+
+/** Whether a page seat shows anything but its seat's record: an override, or the team leader's place bound to another seat. */
+export function isEdited(layout: TeamLayout, id: number): boolean {
+  const seat = personSeat(layout, id);
+  if (seat === undefined) return false;
+  return Object.keys(seat.overrides).length > 0 || (isLeaderSeat(layout, id) && !sameBinding(seat.binding, TEAM_LEADER));
+}
+
+/** `layout` with page seat `id` replaced by `seat`, or taken off the arc when `seat` is null. */
+function withPersonSeat(layout: TeamLayout, id: number, seat: PageSeat | null): TeamLayout {
+  if (isLeaderSeat(layout, id)) return seat === null ? layout : { ...layout, leader: seat };
+  return { ...layout, arc: layout.arc.flatMap((s) => (s.id !== id ? [s] : seat === null ? [] : [seat])) };
 }
 
 /**
- * `layer` with `edit` at the spot. An empty edit removes the spot's edit:
- * that is Back to the team record. The team leader cannot be hidden, so a
- * `hidden` for them is dropped.
+ * Back to the team record (board 80b): the page seat shows its seat's holder
+ * with no override, and the team leader's place is bound to the team leader
+ * again. A place on the arc keeps the seat it is bound to: the layout keeps
+ * no earlier binding to go back to.
  */
-export function withSpotEdit(layer: TeamPageLayer, spot: PersonSpot, edit: SpotEdit): TeamPageLayer {
-  if (spot === "leader") {
-    const { hidden: _hidden, ...leader } = edit;
-    return { ...layer, leader };
-  }
-  const { [spot]: _old, ...spots } = layer.spots;
-  return { ...layer, spots: Object.keys(edit).length === 0 ? spots : { ...spots, [spot]: edit } };
-}
-
-/** Back to the team record (board 80b): the spot shows what the roles put there. */
-export function backToTeamRecord(layer: TeamPageLayer, spot: PersonSpot): TeamPageLayer {
-  return withSpotEdit(layer, spot, {});
+export function backToTeamRecord(layout: TeamLayout, id: number): TeamLayout {
+  const seat = personSeat(layout, id);
+  if (seat === undefined) return layout;
+  return withPersonSeat(layout, id, { ...seat, binding: isLeaderSeat(layout, id) ? TEAM_LEADER : seat.binding, overrides: {} });
 }
 
 /** The Edit person panel as the editor fills it (board 80b). */
@@ -88,30 +106,30 @@ export type PersonFields = {
   readonly linkedin: string;
 };
 
-function memberOf(build: TeamBuild, id: number): TeamPerson | undefined {
-  return build.people.find((p) => p.id === id);
+function memberOf(roles: TeamRoles, id: number): TeamPerson | undefined {
+  return roles.people.find((p) => p.id === id);
 }
 
-/** The panel's fields for a spot as the layer shows it now; null when the roles no longer fill the spot. */
-export function personFieldsOf(build: TeamBuild, layer: TeamPageLayer, spot: PersonSpot): PersonFields | null {
-  const record = spotRecord(build, spot);
-  if (record === null) return null;
-  const edit = spotEditOf(layer, spot);
-  const person = (edit.person === undefined ? undefined : memberOf(build, edit.person)) ?? record.person;
-  const own = personOf(person);
+/** The panel's fields for a page seat as the layout shows it now; null when its seat has no holder, so the page does not draw it. */
+export function personFieldsOf(roles: TeamRoles, layout: TeamLayout, id: number): PersonFields | null {
+  const seat = personSeat(layout, id);
+  const record = spotRecord(roles, layout, id);
+  if (seat === undefined || record === null) return null;
+  const { overrides } = seat;
+  const own = personOf(record.person);
   return {
-    shown: edit.hidden !== true,
-    person: person.id,
-    name: edit.name ?? own.name,
-    role: edit.role ?? record.role,
-    photo: edit.photo ?? null,
-    linkedin: edit.linkedin ?? own.linkedin ?? "",
+    shown: true,
+    person: record.person.id,
+    name: overrides.name ?? own.name,
+    role: overrides.role ?? record.role,
+    photo: overrides.photo ?? null,
+    linkedin: overrides.linkedin ?? own.linkedin ?? "",
   };
 }
 
-/** Another person in the spot: their own name, photo and LinkedIn; the role on the page stays. */
-export function withPerson(build: TeamBuild, fields: PersonFields, id: number): PersonFields {
-  const person = memberOf(build, id);
+/** Another person in the place: their own name, photo and LinkedIn; the role on the page stays. */
+export function withPerson(roles: TeamRoles, fields: PersonFields, id: number): PersonFields {
+  const person = memberOf(roles, id);
   if (person === undefined) return fields;
   const own = personOf(person);
   return { ...fields, person: id, name: own.name, photo: null, linkedin: own.linkedin ?? "" };
@@ -142,26 +160,78 @@ export function hasErrors(errors: PersonFieldErrors): boolean {
 }
 
 /**
- * The edit the panel's fields make at the spot: only what differs from the
- * team record, so a field put back as the roles have it is no edit. A blank
- * name, role or LinkedIn reads as the record's.
+ * The overrides a place's fields make for `person` on `binding`: only what
+ * differs from what the binding reads by itself, so a field put back as the
+ * record has it is no override. A blank name, role or LinkedIn reads as the
+ * record's.
  */
-export function editOfFields(build: TeamBuild, spot: PersonSpot, fields: PersonFields): SpotEdit {
-  const record = spotRecord(build, spot);
-  if (record === null) return {};
-  const person = memberOf(build, fields.person) ?? record.person;
+export function overridesOf(
+  roles: TeamRoles,
+  binding: PlaceBinding,
+  person: TeamPerson,
+  fields: Pick<PersonFields, "name" | "role" | "photo" | "linkedin">,
+  headOf?: string,
+): SeatOverrides {
   const own = personOf(person);
+  const title = holdingOf(binding, roles, headOf)?.title ?? "";
   const name = fields.name.trim();
   const role = fields.role.trim();
   const linkedin = linkedinHandle(fields.linkedin);
-  const edit: PersonEdit = {
-    ...(person.id !== record.person.id && { person: person.id }),
+  return {
     ...(name !== "" && name !== own.name && { name }),
-    ...(role !== "" && role !== record.role && { role }),
+    ...(role !== "" && role !== title && { role }),
     ...(fields.photo !== null && { photo: fields.photo }),
     ...(linkedin !== "" && linkedin !== (own.linkedin ?? "") && { linkedin }),
   };
-  return spot !== "leader" && !fields.shown ? { ...edit, hidden: true } : edit;
+}
+
+/**
+ * The binding of a place that showed `holder` once the editor picks `person`
+ * for it: the binding it has while they are the one it shows, else the seat
+ * they hold as a place that `shows` that many people binds it (`bindingFor`).
+ */
+export function rebound(
+  roles: TeamRoles,
+  binding: PlaceBinding,
+  holder: TeamPerson | undefined,
+  person: TeamPerson,
+  shows: PlaceShows = "every-holder",
+): PlaceBinding {
+  return holder?.id === person.id ? binding : bindingFor(person, roles, shows);
+}
+
+/**
+ * The page seat the panel's fields make of page seat `id`: bound as the
+ * person picked asks (`rebound`), with only the overrides that differ from
+ * the record; null for a place on the arc taken off the page. The team
+ * leader's place is always on the page.
+ */
+export function seatOfFields(roles: TeamRoles, layout: TeamLayout, id: number, fields: PersonFields): PageSeat | null {
+  const seat = personSeat(layout, id);
+  if (seat === undefined) return null;
+  if (!fields.shown && !isLeaderSeat(layout, id)) return null;
+  const holder = spotRecord(roles, layout, id)?.person;
+  const person = memberOf(roles, fields.person) ?? holder;
+  if (person === undefined) return seat;
+  const binding = rebound(roles, seat.binding, holder, person);
+  return { id, binding, overrides: overridesOf(roles, binding, person, fields) };
+}
+
+/** `layout` with the panel's fields kept at page seat `id`; a place on the arc taken off the page leaves the layout. */
+export function withPersonFields(roles: TeamRoles, layout: TeamLayout, id: number, fields: PersonFields): TeamLayout {
+  return withPersonSeat(layout, id, seatOfFields(roles, layout, id, fields));
+}
+
+/** Whether the panel's fields change page seat `id`. */
+export function changesSeat(roles: TeamRoles, layout: TeamLayout, id: number, fields: PersonFields): boolean {
+  const seat = personSeat(layout, id);
+  const next = seatOfFields(roles, layout, id, fields);
+  return seat !== undefined && (next === null || !sameBinding(next.binding, seat.binding) || !sameOverrides(next.overrides, seat.overrides));
+}
+
+/** Whether two page seats override the same fields with the same values. */
+export function sameOverrides(a: SeatOverrides, b: SeatOverrides): boolean {
+  return a.name === b.name && a.role === b.role && a.photo === b.photo && a.linkedin === b.linkedin;
 }
 
 /** A photo the editor can pick, and whose it is. */
@@ -173,13 +243,13 @@ function uniqueBySrc<P extends PersonPhoto>(choices: readonly PhotoChoice<P>[]):
 }
 
 /** Every photo the site already holds for a person: each member's own, then the hand-typed record's. */
-export function personPhotoChoices(build: TeamBuild, base: TeamPage): PhotoChoice[] {
-  const own = build.people.flatMap((p) => {
+export function personPhotoChoices(people: readonly TeamPerson[], base: TeamPage): PhotoChoice[] {
+  const own = people.flatMap((p) => {
     const { photo } = personOf(p);
     return photo === undefined ? [] : [{ src: photo, label: p.name }];
   });
   const typed = [
-    base.orgChart.leader,
+    ...(base.orgChart.leader === null ? [] : [base.orgChart.leader]),
     ...base.orgChart.leaders,
     ...base.departments.groups.flatMap((g) => g.members.flatMap((m) => [m, ...(m.kind === "head" ? m.leads : [])])),
     ...base.advisors.people,
@@ -190,15 +260,15 @@ export function personPhotoChoices(build: TeamBuild, base: TeamPage): PhotoChoic
 const isSitePhoto = (src: PersonPhoto): src is Photo => src.startsWith("/team/");
 
 /** The photos the group photo may be: the site's own photos in public/team/, the record's group photo first. */
-export function groupPhotoChoices(build: TeamBuild, base: TeamPage): PhotoChoice[] {
+export function groupPhotoChoices(people: readonly TeamPerson[], base: TeamPage): PhotoChoice[] {
   const group: PhotoChoice = { src: base.coreMembers.groupPhoto.src, label: base.coreMembers.groupPhoto.alt };
-  const site = personPhotoChoices(build, base).filter((c): c is PhotoChoice<Photo> => isSitePhoto(c.src));
+  const site = personPhotoChoices(people, base).filter((c): c is PhotoChoice<Photo> => isSitePhoto(c.src));
   return uniqueBySrc<PersonPhoto>([group, ...site]);
 }
 
-/** The group photo the page shows under the layer. */
-export function groupPhotoOf(base: TeamPage, layer: TeamPageLayer): GroupPhoto {
-  return layer.groupPhoto ?? base.coreMembers.groupPhoto;
+/** The group photo the page shows under the layer's text. */
+export function groupPhotoOf(base: TeamPage, text: TeamPageText): GroupPhoto {
+  return text.groupPhoto ?? base.coreMembers.groupPhoto;
 }
 
 /**
@@ -229,25 +299,25 @@ export function groupPhotoRow(site: readonly PhotoChoice[], uploads: readonly Pe
 }
 
 /** A group photo put back as the record has it is no edit. */
-export function withGroupPhoto(base: TeamPage, layer: TeamPageLayer, photo: GroupPhoto): TeamPageLayer {
+export function withGroupPhoto(base: TeamPage, text: TeamPageText, photo: GroupPhoto): TeamPageText {
   const original = base.coreMembers.groupPhoto;
   const same = photo.src === original.src && photo.alt.trim() === original.alt;
-  return { ...layer, groupPhoto: same ? null : { src: photo.src, alt: photo.alt.trim() } };
+  return { ...text, groupPhoto: same ? null : { src: photo.src, alt: photo.alt.trim() } };
 }
 
 /** The intro as typed in place; blank or as the record has it is no edit. */
-export function withIntro(base: TeamPage, layer: TeamPageLayer, text: string): TeamPageLayer {
-  const intro = text.trim();
-  return { ...layer, intro: intro === "" || intro === base.header.intro ? null : intro };
+export function withIntro(base: TeamPage, text: TeamPageText, typed: string): TeamPageText {
+  const intro = typed.trim();
+  return { ...text, intro: intro === "" || intro === base.header.intro ? null : intro };
 }
 
 export function introError(text: string): string | undefined {
   return textLength(text.trim()) > TEAM_PAGE_INTRO_MAX ? `Up to ${TEAM_PAGE_INTRO_MAX} characters.` : undefined;
 }
 
-/** The four figures under the intro as the page shows them under the layer (issue #510). */
-export function figuresOf(base: TeamPage, layer: TeamPageLayer): HeaderStats {
-  return layer.figures ?? base.header.stats;
+/** The four figures under the intro as the page shows them under the layer's text (issue #510). */
+export function figuresOf(base: TeamPage, text: TeamPageText): HeaderStats {
+  return text.figures ?? base.header.stats;
 }
 
 const trimmedFigure = ({ value, label }: HeaderStat): HeaderStat => {
@@ -261,10 +331,10 @@ const sameFigure = (a: HeaderStat, b: HeaderStat) => a.value === b.value && a.la
  * The figures as typed in place: each trimmed, a blank phone label showing the
  * desktop one, and all four as the record has them is no edit.
  */
-export function withFigures(base: TeamPage, layer: TeamPageLayer, figures: HeaderStats): TeamPageLayer {
+export function withFigures(base: TeamPage, text: TeamPageText, figures: HeaderStats): TeamPageText {
   const [a, b, c, d] = figures;
   const typed: HeaderStats = [trimmedFigure(a), trimmedFigure(b), trimmedFigure(c), trimmedFigure(d)];
-  const { figures: _old, ...rest } = layer;
+  const { figures: _old, ...rest } = text;
   return typed.every((f, i) => sameFigure(f, base.header.stats[i])) ? rest : { ...rest, figures: typed };
 }
 
@@ -290,28 +360,86 @@ export function figureErrors(figures: HeaderStats): readonly FigureErrors[] {
 }
 
 /** Why the intro block cannot be saved as typed; undefined when it can. */
-export function introBlockError(base: TeamPage, layer: TeamPageLayer): string | undefined {
-  const intro = introError(layer.intro ?? "");
+export function introBlockError(base: TeamPage, text: TeamPageText): string | undefined {
+  const intro = introError(text.intro ?? "");
   if (intro !== undefined) return `Intro text: ${intro}`;
-  return figureErrors(figuresOf(base, layer)).some((e) => Object.keys(e).length > 0) ? "Figures: fix the highlighted fields." : undefined;
+  return figureErrors(figuresOf(base, text)).some((e) => Object.keys(e).length > 0) ? "Figures: fix the highlighted fields." : undefined;
 }
 
 /**
- * How many edits Reset to team removes (board 80h): one per edited spot,
- * added leader, added department and added division lead, and one per
- * department name, hiding and order. The intro text, its figures and the
- * group photo stay, so they do not count.
+ * How many of `seats` differ from `record`, matched by binding: a seat with a
+ * binding `record` lacks or other overrides than the record's seat of that
+ * binding, and a binding of `record` no seat holds.
  */
-export function editCount(layer: TeamPageLayer): number {
-  const departments = Object.values(layer.departments).reduce(
-    (n, d) => n + (d?.name === undefined ? 0 : 1) + (d?.hidden ? 1 : 0) + (d?.leadOrder === undefined ? 0 : 1) + (d?.addedLeads?.length ?? 0),
-    0,
-  );
-  return (
-    (Object.keys(layer.leader).length > 0 ? 1 : 0) +
-    Object.keys(layer.spots).length +
-    layer.addedLeaders.length +
-    layer.addedDepartments.length +
-    departments
-  );
+function seatEdits(seats: readonly PageSeat[], record: readonly PageSeat[]): number {
+  const changed = seats.filter((seat) => {
+    const own = record.find((r) => sameBinding(r.binding, seat.binding));
+    return own === undefined || !sameOverrides(seat.overrides, own.overrides);
+  });
+  const gone = record.filter((r) => !seats.some((seat) => sameBinding(seat.binding, r.binding)));
+  return changed.length + gone.length;
+}
+
+/**
+ * Whether the bindings both lists hold come in the same order, each as often
+ * in one list as in the other: a binding held twice, as two lead rows picking
+ * the same person make it, is a change Reset to team undoes.
+ */
+function sameOrder(bindings: readonly PlaceBinding[], record: readonly PlaceBinding[]): boolean {
+  const common = (list: readonly PlaceBinding[], other: readonly PlaceBinding[]) => list.filter((b) => other.some((o) => sameBinding(o, b)));
+  const a = common(bindings, record);
+  const b = common(record, bindings);
+  return a.length === b.length && a.every((binding, i) => sameBinding(binding, b[i]));
+}
+
+const bindingsOf = (seats: readonly PageSeat[]) => seats.map((seat) => seat.binding);
+
+/**
+ * How many edits Reset to team removes (board 80h): `layout` against
+ * `record`, the layout Reset to team writes. One per page seat drawn with
+ * other overrides than the record's seat of its binding, or bound where the
+ * record has none, one per place of the record the layout no longer draws,
+ * one per department block added or gone, one per block's name, its group,
+ * how it draws its leads and its leads' order, one per group added, gone or
+ * renamed, and one each for the arc's order, the blocks' order and the
+ * groups' order. Only drawn seats count: one whose seat has no holder shows
+ * nothing to reset. The intro text, its figures and the group photo stay, so
+ * they do not count. Reset to team keeps the stored group list and each
+ * department's group (`teamRecordLayout`), so a group counts only where the
+ * working layout moved off what is stored.
+ */
+export function editCount(roles: TeamRoles, layout: TeamLayout, record: TeamLayout): number {
+  const drawn = (seats: readonly PageSeat[]) => seats.filter((seat) => holdingOf(seat.binding, roles) !== null);
+  const drawnBlocks = (of: TeamLayout) => of.departments.filter((b) => holdingOf(b.head.binding, roles, b.name) !== null);
+  const leader = seatEdits(drawn(layout.leader === null ? [] : [layout.leader]), drawn(record.leader === null ? [] : [record.leader]));
+  const arc = seatEdits(drawn(layout.arc), drawn(record.arc)) + (sameOrder(bindingsOf(drawn(layout.arc)), bindingsOf(drawn(record.arc))) ? 0 : 1);
+  const blocks = drawnBlocks(layout);
+  const departments = blocks.reduce((n, block) => {
+    const own = record.departments.find((r) => sameBinding(r.head.binding, block.head.binding));
+    if (own === undefined) return n + 1;
+    const leads = drawn(block.leads);
+    return (
+      n +
+      (block.name === own.name ? 0 : 1) +
+      (block.group === own.group ? 0 : 1) +
+      (block.leadsDrawn === own.leadsDrawn ? 0 : 1) +
+      (sameOverrides(block.head.overrides, own.head.overrides) ? 0 : 1) +
+      seatEdits(leads, own.leads) +
+      (sameOrder(bindingsOf(leads), bindingsOf(own.leads)) ? 0 : 1)
+    );
+  }, 0);
+  const goneBlocks = record.departments.filter((r) => !blocks.some((b) => sameBinding(b.head.binding, r.head.binding))).length;
+  const heads = (of: readonly DepartmentBlock[]) => of.map((b) => b.head.binding);
+  const blockOrder = sameOrder(heads(blocks), heads(drawnBlocks(record))) ? 0 : 1;
+  return leader + arc + departments + goneBlocks + blockOrder + groupEdits(layout.groups, record.groups);
+}
+
+/** How many of `groups` differ from `record`'s, matched by id: one per group added, gone or renamed, and one for their order. */
+function groupEdits(groups: readonly LayoutGroup[], record: readonly LayoutGroup[]): number {
+  const changed = groups.filter((g) => record.find((r) => r.id === g.id)?.name !== g.name).length;
+  const gone = record.filter((r) => !groups.some((g) => g.id === r.id)).length;
+  const ids = (list: readonly LayoutGroup[], other: readonly LayoutGroup[]) => list.filter((g) => other.some((o) => o.id === g.id)).map((g) => g.id);
+  const kept = ids(groups, record);
+  const order = kept.every((id, i) => id === ids(record, groups)[i]) ? 0 : 1;
+  return changed + gone + order;
 }

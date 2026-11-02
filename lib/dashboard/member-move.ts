@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Checked } from "./department-edit";
+import { replacedHead, type Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
 import type { PersonRecord } from "./division-members";
 import { HAND_OVER_OUTCOMES, ONE_SUCCESSOR_FOR_SEAT, seatHandOver, steppingDown, type HandOverOutcome, type SeatMove, type SteppingDown } from "./hand-over";
@@ -28,8 +28,8 @@ import {
 // they are and add them where they go, and a lead's place is changed only by
 // whoever may change that division's leads. A department head is moved, or
 // made a head, only by the team leader and full access, who manage
-// departments; a department never has two heads, and one left with none
-// stays empty until a head is picked. A team-level seat is never moved here:
+// departments; a head's move ends only their own rows, so any other heads
+// stay, and a department left with none stays empty until a head is picked. A team-level seat is never moved here:
 // its holder changes on the Team tree.
 
 /** Where a move takes someone from: a division they are a lead or member of, or the department they head. */
@@ -139,8 +139,8 @@ export type MoveDepartment = {
   readonly id: number;
   readonly name: string;
   readonly code: string | null;
-  /** Who heads it now: a move that makes someone its head replaces them. */
-  readonly head: MovePerson | null;
+  /** Every head of it now, by name: a move that makes someone its head replaces one of them, and the others stay (issue #872). */
+  readonly heads: readonly MovePerson[];
   /** Whether the viewer may make someone its head: the team leader and full access. */
   readonly headable: boolean;
   readonly divisions: readonly MoveDivision[];
@@ -151,6 +151,19 @@ export type MoveDepartment = {
    */
   readonly successors: readonly MovePerson[];
 };
+
+/**
+ * Who heads a department once `personId` stops heading it (issue #879): no
+ * one when they are its last head, so it needs a new head; or the other
+ * heads, who stay, since a move ends only the mover's rows (`planMove`).
+ */
+export type HeadsAfterMove = { readonly kind: "none" } | { readonly kind: "staying"; readonly heads: readonly [MovePerson, ...MovePerson[]] };
+
+/** `HeadsAfterMove` for the department `departmentId` of `departments`; a department not among them reads as left with no head. */
+export function headsAfterMove(departments: readonly Pick<MoveDepartment, "id" | "heads">[], departmentId: number, personId: number): HeadsAfterMove {
+  const [first, ...rest] = departments.find((d) => d.id === departmentId)?.heads.filter((h) => h.id !== personId) ?? [];
+  return first === undefined ? { kind: "none" } : { kind: "staying", heads: [first, ...rest] };
+}
 
 /** Where the viewer may move someone, as Edit details and the Team tree load it; none for a viewer who may not move them. */
 export type MoveLookup = { readonly kind: "targets"; readonly departments: readonly MoveDepartment[] } | { readonly kind: "none" };
@@ -174,14 +187,15 @@ export function moveTargetsOf(records: readonly MoveRecord[], org: OrgChart, act
       .map((d) => ({ id: d.id, name: divisionLabel(d.name), code: d.code ?? null, lead: mayChangeDivision(actor, d.id, org).allowed }));
     if (divisions.length === 0 && !headable) return [];
     const headsHere = (r: MoveRecord) => r.beyondDivisions.some((b) => b.kind === "head" && b.departmentId === department.id);
-    const head = records.find(headsHere);
+    const byName = (a: MoveRecord, b: MoveRecord) => a.name.localeCompare(b.name);
+    const heads = records.filter(headsHere).sort(byName).map(person);
     const successors = headable
       ? records
           .filter((r) => !headsHere(r) && r.memberships.some((m) => own.some((d) => d.id === m.divisionId)))
-          .sort((a, b) => a.name.localeCompare(b.name))
+          .sort(byName)
           .map(person)
       : [];
-    return [{ id: department.id, name: department.name, code: department.code ?? null, head: head ? person(head) : null, headable, divisions, successors }];
+    return [{ id: department.id, name: department.name, code: department.code ?? null, heads, headable, divisions, successors }];
   });
 }
 
@@ -196,6 +210,8 @@ export type MoveRequest = {
   readonly title: string;
   /** What the head of the department they are made head of does next; null when it has none (the replace-head choice). */
   readonly replaced: HandOverOutcome | null;
+  /** Which head of that department they replace; null names its only head, and is refused while it has several (issue #872). */
+  readonly replacing: number | null;
   /** Who heads the department they stop heading; null leaves it with no head, to be set on the Team tree. */
   readonly successor: number | null;
 };
@@ -210,6 +226,7 @@ const moveSchema = z.object({
   ]),
   title: z.string().trim().max(80, "The role title is too long."),
   replaced: z.enum(HAND_OVER_OUTCOMES).nullable().default(null),
+  replacing: id.nullable().default(null),
   successor: id.nullable().default(null),
 });
 
@@ -318,13 +335,17 @@ export function planMove(input: {
     // (an advisor role, a team-level seat, another department's headship), and only the headship being filled is refused.
     const current = headsOf(to.departmentId);
     if (fromDepartment === to.departmentId || current.some((h) => h.memberId === personId)) return no(`${name(personId)} already heads ${department}.`);
-    const seat = seatHandOver(current, [personId]);
+    // They replace one head, picked among several (issue #872): only that head's rows end, and every other head stays.
+    const picked = replacedHead(request.replacing, [...new Set(current.map((h) => h.memberId))]);
+    if (!picked.ok) return no(picked.error);
+    const replacedRows = current.filter((h) => h.memberId === picked.value);
+    const seat = seatHandOver(replacedRows, [personId]);
     if (!seat.ok) return no(seat.error);
-    if (current.length > 0) {
-      if (request.replaced === null) return no(`Choose what happens to ${name(current[0].memberId)}: Become an advisor or Leave the team.`);
+    if (picked.value !== null) {
+      if (request.replaced === null) return no(`Choose what happens to ${name(picked.value)}: Become an advisor or Leave the team.`);
       replaced = {
-        memberId: current[0].memberId,
-        rows: current.map((h) => h.id),
+        memberId: picked.value,
+        rows: replacedRows.map((h) => h.id),
         steppingDown: steppingDown({ kind: "head", departmentId: to.departmentId }, request.replaced),
       };
     }

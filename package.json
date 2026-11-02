@@ -10,12 +10,14 @@
     "preview": "next build && next start",
     "deploy": "vercel --prod",
     "upload": "vercel --prod",
-    "test": "tsx --test \"lib/**/*.test.ts\"",
+    "test": "tsx --test \"lib/**/*.test.ts\" \"scripts/**/*.test.ts\"",
     "logos:check": "tsx scripts/logos-check.ts",
     "partners:check": "tsx scripts/partners-check.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx db/migrate.ts",
     "db:seed": "tsx db/seed.ts",
+    "db:alumni-repair": "tsx scripts/alumni-repair/cli.ts",
+    "db:team-join-date": "tsx scripts/team-join-date/cli.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
@@ -44,6 +46,7 @@
     "drizzle-kit": "catalog:",
     "drizzle-orm": "catalog:",
     "eslint-config-next": "catalog:",
+    "libphonenumber-js": "catalog:",
     "lucide-react": "catalog:",
     "next": "catalog:",
     "next-themes": "catalog:",

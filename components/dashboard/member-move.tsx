@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { findMoveTargets, moveMember } from "@/app/dashboard/team-actions";
 import type { HandOverOutcome } from "@/lib/dashboard/hand-over";
-import { titleOnMove, type MovablePlace, type MoveDepartment, type MoveTo } from "@/lib/dashboard/member-move";
+import { headsAfterMove, titleOnMove, type HeadsAfterMove, type MovablePlace, type MoveDepartment, type MoveTo } from "@/lib/dashboard/member-move";
+import { andList } from "@/lib/dashboard/team-structure";
 import { Chips } from "./division-chips";
 import { ConfirmDialog } from "./confirm-dialog";
 import { Field, inputClass } from "./field";
@@ -269,7 +270,11 @@ export function MoveHint({ place, moving }: { place: MovablePlace; moving: boole
   );
 }
 
-/** The amber note when a head's move leaves their department with no head (board 98b). */
+/**
+ * The amber note when a head's move leaves their department with no head
+ * (board 98b): shown only for its last head, since any other heads stay
+ * (issue #879; `headsAfterMove`).
+ */
 export function NoHeadNote({ department }: { department: string }) {
   return (
     <p className="mt-3 flex items-start gap-2.5 rounded-xl border border-warning/30 bg-warning/[0.05] px-4 py-3 text-[13px] leading-snug text-warning">
@@ -282,19 +287,23 @@ export function NoHeadNote({ department }: { department: string }) {
   );
 }
 
-/** What a head's move asks on Save (board 98c): the head picked for the department they leave, and what the head they replace does. */
-export type HeadMoveAnswer = { readonly successor: number | null; readonly replaced: HandOverOutcome | null };
+/** What a head's move asks on Save (board 98c): the head picked for the department they leave, the head they replace (issue #872) and what that head does. */
+export type HeadMoveAnswer = { readonly successor: number | null; readonly replacing: number | null; readonly replaced: HandOverOutcome | null };
 
 /**
- * Save's confirm for a head's move (board 98c): their department will have no
- * head, so pick one now from its people or leave it empty for the Team tree;
- * and when they are made head of a department that has one, what happens to
- * that head (the replace-head choice), so a department never has two heads.
+ * Save's confirm for a head's move (board 98c). When they are the last head of
+ * the department they leave, it will have no head, so pick one now from its
+ * people or leave it empty for the Team tree. When it has other heads, they
+ * stay (issue #879): the confirm names them and adding a head is optional,
+ * still offered for a head whose full-access seat needs someone to take it
+ * over. And when they are made head of a department that has heads, which one
+ * they replace and what that head does (the replace-head choice).
  */
 export function HeadMoveConfirm({
   open,
   onOpenChange,
   person,
+  personId,
   from,
   to,
   departments,
@@ -305,6 +314,7 @@ export function HeadMoveConfirm({
   onOpenChange: (open: boolean) => void;
   /** "Marco Bianchi" */
   person: string;
+  personId: number;
   /** The department they stop heading. */
   from: { readonly id: number; readonly name: string };
   to: MoveTo;
@@ -312,40 +322,56 @@ export function HeadMoveConfirm({
   pending: boolean;
   onConfirm: (answer: HeadMoveAnswer) => void;
 }) {
-  const [leave, setLeave] = useState<"pick" | "empty">("pick");
+  const left = headsAfterMove(departments, from.id, personId);
+  // Pick a new head is the default only for the last head; with other heads it stays an option.
+  const [leaveChoice, setLeave] = useState<"pick" | "empty" | null>(null);
+  const leave = leaveChoice ?? (left.kind === "none" ? "pick" : "empty");
   const [successor, setSuccessor] = useState<number | null>(null);
   const [replaced, setReplaced] = useState<HandOverOutcome | null>(null);
+  const [replacingId, setReplacingId] = useState<number | null>(null);
   const first = person.split(" ")[0] ?? person;
   const source = departments.find((d) => d.id === from.id);
   const target = to.kind === "head" ? departments.find((d) => d.id === to.departmentId) : undefined;
-  const replacing = target?.head ?? null;
+  const targetHeads = target?.heads ?? [];
+  // They replace one head of it: its only head, or the one picked among several; every other head stays (issue #872).
+  const replacing = targetHeads.length === 1 ? targetHeads[0] : (targetHeads.find((h) => h.id === replacingId) ?? null);
+  const staying = replacing === null ? [] : targetHeads.filter((h) => h.id !== replacing.id).map((h) => h.name);
   const toLabel = moveLabel(departments, to);
   const joins = to.kind === "head" ? `${first} becomes head of ${toLabel}.` : `${first} joins ${toLabel} as ${to.as === "lead" ? "its lead" : "a member"}.`;
-  const ready = (leave === "empty" || successor !== null) && (replacing === null || replaced !== null);
+  const ready = (leave === "empty" || successor !== null) && (targetHeads.length === 0 || (replacing !== null && replaced !== null));
   return (
     <ConfirmDialog
       open={open}
       onOpenChange={onOpenChange}
       icon={<ArrowRightLeft className="h-5 w-5" strokeWidth={1.75} />}
       title={`Move ${person} to ${moveShort(departments, to)}?`}
-      description={`${joins} ${from.name} will have no head.`}
+      description={`${joins} ${fromAfter(from.name, left)}`}
       cancelLabel="Cancel"
       confirmLabel="Move"
       pending={pending}
       confirmDisabled={!ready}
-      onConfirm={() => onConfirm({ successor: leave === "pick" ? successor : null, replaced: replacing === null ? null : replaced })}
+      onConfirm={() =>
+        onConfirm({ successor: leave === "pick" ? successor : null, replacing: replacing?.id ?? null, replaced: replacing === null ? null : replaced })
+      }
     >
       <div className="mt-5">
         <RadioChoice
           name="head-move-successor"
-          legend={`Who heads ${from.name}?`}
+          legend={left.kind === "none" ? `Who heads ${from.name}?` : `Add a head to ${from.name}?`}
           layout="cards"
           value={leave}
           onChange={setLeave}
-          options={[
-            { value: "pick", title: `Pick a new head for ${from.name} now`, detail: `Search ${from.name} members` },
-            { value: "empty", title: "Leave it empty for now", detail: "Set it later on the Team tree" },
-          ]}
+          options={
+            left.kind === "none"
+              ? [
+                  { value: "pick", title: `Pick a new head for ${from.name} now`, detail: `Search ${from.name} members` },
+                  { value: "empty", title: "Leave it empty for now", detail: "Set it later on the Team tree" },
+                ]
+              : [
+                  { value: "empty", title: "No new head", detail: `${from.name} keeps the heads it has` },
+                  { value: "pick", title: `Pick a new head for ${from.name} too`, detail: `Search ${from.name} members` },
+                ]
+          }
         />
         {leave === "pick" && (
           <div className="mt-3">
@@ -359,8 +385,28 @@ export function HeadMoveConfirm({
           </div>
         )}
       </div>
+      {targetHeads.length > 1 && to.kind === "head" && (
+        <div className="mt-5">
+          <RadioChoice
+            name="head-move-replacing"
+            legend={`Which head of ${toLabel} does ${first} replace?`}
+            layout="cards"
+            value={replacingId === null ? null : String(replacingId)}
+            onChange={(id) => {
+              setReplacingId(Number(id));
+              setReplaced(null);
+            }}
+            options={targetHeads.map((h) => ({ value: String(h.id), title: h.name, detail: "The other heads stay" }))}
+          />
+        </div>
+      )}
       {replacing !== null && to.kind === "head" && (
         <div className="mt-5">
+          {staying.length > 0 && (
+            <p className="mb-3 text-[13px] text-text-2">
+              {andList(staying)} {staying.length === 1 ? "stays" : "stay"} head of {toLabel}.
+            </p>
+          )}
           <HandOverChoice
             name="head-move-replaced"
             person={replacing.name}
@@ -376,6 +422,12 @@ export function HeadMoveConfirm({
       )}
     </ConfirmDialog>
   );
+}
+
+/** "Propulsion will have no head.", or who heads it after the move: "Anna Rossi stays head of Propulsion." */
+function fromAfter(department: string, left: HeadsAfterMove): string {
+  if (left.kind === "none") return `${department} will have no head.`;
+  return `${andList(left.heads.map((h) => h.name))} ${left.heads.length === 1 ? "stays" : "stay"} head of ${department}.`;
 }
 
 /**
@@ -413,7 +465,7 @@ export function MoveDialog({
   const save = () =>
     startTransition(async () => {
       if (to === null) return;
-      const result = await moveMember({ personId, from: { kind: "division", divisionId: place.divisionId }, to, title, replaced: null, successor: null });
+      const result = await moveMember({ personId, from: { kind: "division", divisionId: place.divisionId }, to, title, replaced: null, replacing: null, successor: null });
       if (!result.ok) {
         toast.error(`Could not move ${name}`, { description: result.error });
         return;

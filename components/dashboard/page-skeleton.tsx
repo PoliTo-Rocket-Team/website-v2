@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { PANEL } from "./panel";
+import { FIGURE_GAP, PANEL } from "./panel";
 
 // What a dashboard page shows while its content streams in (issue #397, in
 // place of #227's spinner): a quiet placeholder for each section of the page,
@@ -53,15 +53,13 @@ export function OverviewSectionSkeleton({ section }: { section: OverviewSkeleton
 
 const OVERVIEW_SECTIONS: Readonly<Record<OverviewSkeletonSection, () => ReactNode>> = {
   board: () => (
-    <>
-      <div className="mt-5 md:mt-6">
-        <StatsSection />
-      </div>
-      <div className="mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
+    <div className={`mt-5 flex flex-col md:mt-6 ${FIGURE_GAP}`}>
+      <StatsSection />
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
         <PanelSection rows={3} />
         <PanelSection rows={4} />
       </div>
-    </>
+    </div>
   ),
 };
 
@@ -213,7 +211,7 @@ function Rows({ rows }: { rows: number }) {
 
 function StatsSection() {
   return (
-    <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
+    <div className={`grid grid-cols-2 xl:grid-cols-4 ${FIGURE_GAP}`}>
       {WIDTHS.slice(0, 4).map((width, index) => (
         <div key={width} className={`${PANEL} px-4 pb-4 pt-5 md:px-5 md:pb-5 md:pt-6 ${index >= 2 ? "max-md:hidden" : ""}`}>
           <Bar className="h-2 w-20" />
