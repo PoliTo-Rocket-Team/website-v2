@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { ArrowRightLeft, Pencil, RefreshCw, Undo2, UserMinus, UserX, X } from "lucide-react";
+import { Pencil, RefreshCw, Undo2, UserMinus, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { addMember, createDivision, findPeople, saveDivision } from "@/app/dashboard/team-actions";
 import {
@@ -22,7 +22,6 @@ import {
   defaultAdvisorScope,
   fullAccessMovesLine,
   seatOfHandedRole,
-  STAYS_AS_AN_ADVISOR,
   steppingDown,
   steppingDownLine,
   type AdvisorScope,
@@ -31,17 +30,19 @@ import {
   type ScopeNames,
 } from "@/lib/dashboard/hand-over";
 import { departmentLabel } from "@/lib/dashboard/recruitment";
-import { divisionLabel, type Permission } from "@/lib/dashboard/team";
+import { divisionLabel } from "@/lib/dashboard/team";
 import type { FullAccessSeat } from "@/lib/dashboard/viewer";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { ConfirmNdaButton, MailAvatar, MemberDialogs, MenuItem, NoEmailNote, RowMenu, WaitingLine, matchesWaiting, type Asking } from "./division-members";
+import { MemberMenu } from "./member-menu";
 import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, inputClass } from "./field";
 import { FooterSummary, useFormSummary } from "./form-summary";
-import { advisorOption, HandOverChoice, RadioChoice, type AdvisorScopeField } from "./hand-over-choice";
+import { HandOverChoice, RemovedLeadChoice, type AdvisorScopeField } from "./hand-over-choice";
 import { MoveDialog } from "./member-move";
 import type { MovablePlace } from "@/lib/dashboard/member-move";
+import { divisionRowMenu } from "@/lib/dashboard/member-actions";
 import { PersonCombobox } from "./person-combobox";
 import { SearchField } from "./search-field";
 
@@ -52,9 +53,10 @@ import { SearchField } from "./search-field";
 // Name, code and leads are a draft until "Save changes", which asks "are you
 // sure" first; the server checks every rule again (lib/dashboard/division-
 // edit.ts). An open division's members are changed one by one, as on the
-// Members page: Add member, Confirm NDA, Remove and Leaves the team act at
-// once, each behind its own confirm. New division gathers its members in the
-// draft, since the division is not open yet.
+// Members page: Add member, Confirm NDA and each member row's actions
+// (`DivisionMemberMenu`, issue #901) act at once, each behind its own
+// confirm. New division gathers its members in the draft, since the division
+// is not open yet.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const ADD_LINK = `inline-flex items-center gap-1.5 rounded-md text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:text-accent-hover ${FOCUS}`;
@@ -107,10 +109,6 @@ function draftOf(target: DivisionDrawerTarget): Draft {
   };
 }
 
-function firstName(name: string): string {
-  return name.split(" ")[0] ?? name;
-}
-
 export function DivisionDrawer({
   target,
   takenCodes,
@@ -118,6 +116,7 @@ export function DivisionDrawer({
   editable,
   onClose,
   onFill,
+  onEdit,
   mayClose,
   onCloseDivision,
 }: {
@@ -129,6 +128,8 @@ export function DivisionDrawer({
   onClose: () => void;
   /** Fill details on someone waiting for their NDA: the page's Edit details drawer. */
   onFill: (waiting: WaitingPerson, division: DivisionMembers) => void;
+  /** Edit details on a member row (issue #901): the page's Edit details drawer, the Members page's own panel. */
+  onEdit?: (person: DivisionPerson) => void;
   /** Whether the viewer may close the division: a lead's Edit division has no Close division (issue #594). */
   mayClose: (division: DivisionMembers) => boolean;
   /** Close division in Edit division's footer (boards 77g, 68b): the page's Close division dialog. */
@@ -149,6 +150,7 @@ export function DivisionDrawer({
       editable={editable}
       onClose={onClose}
       onFill={onFill}
+      onEdit={onEdit}
       mayClose={mayClose}
       onCloseDivision={onCloseDivision}
     />
@@ -163,6 +165,7 @@ function DrawerForm({
   editable,
   onClose,
   onFill,
+  onEdit,
   mayClose,
   onCloseDivision,
 }: {
@@ -173,6 +176,7 @@ function DrawerForm({
   editable: boolean;
   onClose: () => void;
   onFill: (waiting: WaitingPerson, division: DivisionMembers) => void;
+  onEdit?: (person: DivisionPerson) => void;
   mayClose: (division: DivisionMembers) => boolean;
   onCloseDivision: (division: DivisionMembers) => void;
 }) {
@@ -231,6 +235,7 @@ function DrawerForm({
       const outcome = draft.handOvers[l.id];
       return outcome === undefined ? [] : [{ personId: l.id, via: "replaced", outcome, scope }];
     }),
+    advisors: [],
     members: draft.members.map((m) => m.id),
     emails: draft.emails,
   };
@@ -428,21 +433,22 @@ function DrawerForm({
                   />
                 </div>
               ) : (
-                <OutcomeChoice
-                  key={lead.id}
-                  lead={lead}
-                  short={short}
-                  value={draft.outcomes[lead.id] ?? "member"}
-                  onChange={(outcome) => set({ outcomes: { ...draft.outcomes, [lead.id]: outcome } })}
-                  scope={scopeField(lead.id)}
-                />
+                <div key={lead.id} className="mt-5">
+                  <RemovedLeadChoice
+                    lead={lead}
+                    short={short}
+                    value={draft.outcomes[lead.id] ?? "member"}
+                    onChange={(outcome) => set({ outcomes: { ...draft.outcomes, [lead.id]: outcome } })}
+                    scope={scopeField(lead.id)}
+                  />
+                </div>
               );
             })}
             {showErrors && handOverError !== null && <p className="mt-2 text-[12px] text-danger">{handOverError}</p>}
           </section>
 
           {tab ? (
-            <LiveMembers tab={tab} editable={editable} onFill={(w) => onFill(w, tab)} />
+            <LiveMembers tab={tab} editable={editable} onFill={(w) => onFill(w, tab)} onEdit={onEdit} />
           ) : (
             <DraftMembers
               short={short}
@@ -594,50 +600,6 @@ function ReplacesSelect({ added, leads, onChange }: { added: NewLead; leads: rea
   );
 }
 
-/** Whether "Leaves <division>" is open for a removed lead, with the reason when it is not. */
-function leaveDivisionFor(lead: DivisionPerson, short: string): Permission {
-  // Someone in another division, or with a seat, keeps a place on the team (`mayLeaveDivision`).
-  return lead.removal.kind !== "only-division" ? { allowed: true } : { allowed: false, reason: `${short} is their only division` };
-}
-
-/**
- * "What happens to Marco?" for a lead taken off with Remove (board 68b4):
- * stays as a member, stays as an advisor where the editor picks (issue
- * #900), leaves this division, or leaves the team. Remove is not a
- * hand-over; a replaced lead gets `HandOverChoice`.
- */
-function OutcomeChoice({
-  lead,
-  short,
-  value,
-  onChange,
-  scope,
-}: {
-  lead: DivisionPerson;
-  short: string;
-  value: RemovedLeadOutcome;
-  onChange: (outcome: RemovedLeadOutcome) => void;
-  scope: AdvisorScopeField;
-}) {
-  const name = `outcome-${lead.id}`;
-  return (
-    <div className="mt-5">
-      <RadioChoice
-        name={name}
-        legend={`What happens to ${firstName(lead.name)}?`}
-        value={value}
-        onChange={onChange}
-        options={[
-          { value: "member", title: "Stays as a member", detail: `Keeps ${short}, loses lead access` },
-          advisorOption({ name, person: lead.name, from: LEAD_STEP, title: STAYS_AS_AN_ADVISOR, field: scope }),
-          { value: "leave-division", title: `Leaves ${short}`, detail: "Keeps their other divisions, if any", permission: leaveDivisionFor(lead, short) },
-          { value: "leave-team", title: "Leaves the team", detail: "Moves to Alumni; their access ends", danger: true, permission: lead.leave },
-        ]}
-      />
-    </div>
-  );
-}
-
 /**
  * The picker under "+ Add lead", "+ Add member" (boards 68b2, 68b6, 68b7) or
  * "+ Pick head" (77d, 77e), or who takes over as team leader (77i): the
@@ -772,7 +734,17 @@ function memberLine(person: DivisionPerson): string {
  * for their NDA, then everyone who is not a lead, five at first. Each change
  * here is the Members page's own, made at once behind its confirm.
  */
-function LiveMembers({ tab, editable, onFill }: { tab: DivisionMembers; editable: boolean; onFill: (waiting: WaitingPerson) => void }) {
+function LiveMembers({
+  tab,
+  editable,
+  onFill,
+  onEdit,
+}: {
+  tab: DivisionMembers;
+  editable: boolean;
+  onFill: (waiting: WaitingPerson) => void;
+  onEdit?: (person: DivisionPerson) => void;
+}) {
   const [query, setQuery] = useState("");
   const [all, setAll] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -811,7 +783,7 @@ function LiveMembers({ tab, editable, onFill }: { tab: DivisionMembers; editable
               row.kind === "waiting" ? (
                 <WaitingItem key={`w${row.w.joinId}`} waiting={row.w} editable={editable} short={short} onAsk={setAsking} onFill={() => onFill(row.w)} division={division.name} />
               ) : (
-                <MemberItem key={row.p.id} person={row.p} editable={editable} short={short} divisionId={division.id} onAsk={setAsking} />
+                <MemberItem key={row.p.id} person={row.p} editable={editable} divisionId={division.id} onAsk={setAsking} onEdit={onEdit} />
               ),
             )}
           </ul>
@@ -893,27 +865,23 @@ function WaitingItem({
 }
 
 /**
- * A member's row and ⋯ menu (board 68b5): Move to… (issue #647), the move
- * Edit details makes, through the same control; Remove from the division,
- * and Leaves the team, each locked with a reason when it is not theirs.
+ * A member's row and ⋯ menu (board 68b5, issue #901): the Team tree's member
+ * menu (`DivisionMemberMenu`), each item locked with a reason when it is not
+ * theirs.
  */
 function MemberItem({
   person,
   editable,
-  short,
   divisionId,
   onAsk,
+  onEdit,
 }: {
   person: DivisionPerson;
   editable: boolean;
-  short: string;
   divisionId: number;
   onAsk: (asking: Asking) => void;
+  onEdit?: (person: DivisionPerson) => void;
 }) {
-  const { removal, leave } = person;
-  const [moving, setMoving] = useState(false);
-  const others = person.divisions.filter((d) => d.divisionId !== divisionId).map((d) => d.name);
-  const place = person.position?.moves.find((m): m is Extract<MovablePlace, { kind: "division" }> => m.kind === "division" && m.divisionId === divisionId) ?? null;
   return (
     <li className="flex items-center gap-3 px-3.5 py-2.5">
       <Avatar size="md" person={person} />
@@ -921,7 +889,39 @@ function MemberItem({
         <span className="shrink-0 text-[14px] text-prt-text">{person.name}</span>
         <span className="truncate text-[12px] text-prt-muted">{memberLine(person)}</span>
       </span>
-      {editable && !person.self && place !== null && (
+      {editable && <DivisionMemberMenu person={person} divisionId={divisionId} onAsk={onAsk} onEdit={onEdit} />}
+    </li>
+  );
+}
+
+/**
+ * The Team tree's ⋯ menu on someone's role in one division (issue #901), in
+ * the division drawer and the department drawer alike (`divisionRowMenu`):
+ * Change title, Make lead, Becomes an advisor, Edit details, Move to… (issue
+ * #647, the move Edit details makes, through the same control), Remove from
+ * the division and Leaves the team. None on the viewer's own row, or where
+ * they may change nothing about the person.
+ */
+export function DivisionMemberMenu({
+  person,
+  divisionId,
+  onAsk,
+  onEdit,
+}: {
+  person: DivisionPerson;
+  divisionId: number;
+  onAsk: (asking: Asking) => void;
+  onEdit?: (person: DivisionPerson) => void;
+}) {
+  const [moving, setMoving] = useState(false);
+  const { position } = person;
+  if (person.self || position === null) return null;
+  const entries = divisionRowMenu(position, divisionId);
+  if (entries.length === 0) return null;
+  const place = position.moves.find((m): m is Extract<MovablePlace, { kind: "division" }> => m.kind === "division" && m.divisionId === divisionId) ?? null;
+  return (
+    <>
+      {place !== null && (
         <MoveDialog
           open={moving}
           onOpenChange={setMoving}
@@ -931,29 +931,15 @@ function MemberItem({
           taken={person.divisions.map((d) => d.divisionId).filter((id) => id !== divisionId)}
         />
       )}
-      {editable && !person.self && (
-        <RowMenu label={`Actions for ${person.name}`}>
-          {place !== null && (
-            <MenuItem onSelect={() => setMoving(true)} icon={<ArrowRightLeft className="h-3.5 w-3.5" strokeWidth={1.75} />}>
-              Move to…
-            </MenuItem>
-          )}
-          {(removal.kind === "offered" || removal.kind === "locked") && (
-            <MenuItem
-              onSelect={() => onAsk({ kind: "remove", person, divisionId, short })}
-              icon={<UserMinus className="h-3.5 w-3.5" strokeWidth={1.75} />}
-              locked={removal.kind === "locked" ? removal.reason : null}
-              detail={`Stays in ${others.join(", ")}`}
-            >
-              Remove from {short}
-            </MenuItem>
-          )}
-          <MenuItem onSelect={() => onAsk({ kind: "leave", person })} danger locked={leave.allowed ? null : leave.reason}>
-            Leaves the team
-          </MenuItem>
-        </RowMenu>
-      )}
-    </li>
+      <MemberMenu
+        person={person}
+        position={position}
+        entries={entries}
+        onAsk={onAsk}
+        onEdit={onEdit === undefined ? undefined : () => onEdit(person)}
+        onMove={place === null ? undefined : () => setMoving(true)}
+      />
+    </>
   );
 }
 

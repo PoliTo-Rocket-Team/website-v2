@@ -96,18 +96,26 @@ export type AdvisorScope = (typeof ADVISOR_SCOPES)[number];
 
 /**
  * A role someone steps down from, placed in the team: a lead's division with
- * the department it sits in, which a "department" scope reads. Every other
- * role carries the units it has already.
+ * the department it sits in, which a "department" scope reads. A member of a
+ * division who becomes an advisor (issue #901) is placed the same way. Every
+ * other role carries the units it has already.
  */
-export type PlacedRole = Exclude<SteppedDownFrom, { kind: "lead" }> | { readonly kind: "lead"; readonly divisionId: number; readonly departmentId: number };
+export type PlacedRole =
+  | Exclude<SteppedDownFrom, { kind: "lead" }>
+  | { readonly kind: "lead" | "member"; readonly divisionId: number; readonly departmentId: number };
 
-/** The kind of role stepped down from: all the scope rules read of it. */
-export type SteppedDownKind = Pick<SteppedDownFrom, "kind">;
+/** The kind of role stepped down from: all the scope rules read of it. A division member's is "member" (issue #901). */
+export type SteppedDownKind = { readonly kind: PlacedRole["kind"] };
 
-/** The scopes `from` offers, its default first: a lead division, department, team; a head department, team; a seat or the team leader the team. */
+/**
+ * The scopes `from` offers, its default first: a lead or a division member
+ * division, department, team; a head department, team; a seat or the team
+ * leader the team.
+ */
 export function advisorScopes(from: SteppedDownKind): readonly [AdvisorScope, ...AdvisorScope[]] {
   switch (from.kind) {
     case "lead":
+    case "member":
       return ["division", "department", "team"];
     case "head":
       return ["department", "team"];
@@ -126,16 +134,17 @@ export function defaultAdvisorScope(from: SteppedDownKind): AdvisorScope {
 export function advisorPlace(role: PlacedRole, scope: AdvisorScope): AdvisorPlace | null {
   if (!advisorScopes(role).includes(scope)) return null;
   if (scope === "team") return { kind: "team" };
-  if (scope === "division") return role.kind === "lead" ? { kind: "division", divisionId: role.divisionId } : null;
-  return role.kind === "lead" || role.kind === "head" ? { kind: "department", departmentId: role.departmentId } : null;
+  if (scope === "division") return role.kind === "lead" || role.kind === "member" ? { kind: "division", divisionId: role.divisionId } : null;
+  return role.kind === "lead" || role.kind === "member" || role.kind === "head" ? { kind: "department", departmentId: role.departmentId } : null;
 }
 
 export const SCOPE_NOT_OFFERED = "They cannot advise there. Pick where they advise again.";
 
 /**
  * "Stays as an advisor" at `scope`, or `role`'s default with none picked: an
- * Advisor role at the place the scope names. A lead, head or seat holder
- * loses their access, as `advising` says; a former team leader keeps theirs.
+ * Advisor role at the place the scope names. A lead, a division member, a
+ * head or a seat holder loses their access, as `advising` says; a former team
+ * leader keeps theirs.
  * A scope `role` does not offer is refused.
  */
 export function advisingAt(role: PlacedRole, scope: AdvisorScope | null): Checked<Advising> {

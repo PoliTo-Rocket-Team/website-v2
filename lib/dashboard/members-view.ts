@@ -203,7 +203,7 @@ export function departmentModel(page: DepartmentMembers & ListedGoogleEmails): M
   return model({
     scopeLine: departmentLine(page),
     units: [{ name: page.department.name, divisions: headers.map(unitDivision) }],
-    everyone: page.everyone.map((p: DepartmentPerson) => entryOf(p, actionsOf(p))),
+    everyone: page.everyone.map((p: DepartmentPerson) => entryOf(p, divisionActionsOf(p))),
     divisions: page.tabs.map((tab) => sliceOf(tab)),
     add: headers.length === 0 ? null : { kind: "department", department: page.department.name, divisions: headers },
     panelEdits: true,
@@ -279,15 +279,15 @@ function unitDivision(d: DivisionHeader): MembersUnit["divisions"][number] {
   return { id: d.id, name: d.name, code: d.code };
 }
 
-/** A division page's person's actions: none on a page at Can view, or on their own row (`position` is null there). */
-function actionsOf(person: DivisionPerson): MemberActions | null {
+/** A division page's person's actions: none on a page at Can view, or on their own row (`position` is null there). The Team tree opens Edit details with them too (issue #901). */
+export function divisionActionsOf(person: DivisionPerson): MemberActions | null {
   return person.position === null ? null : { person, position: person.position, correctsSignInEmail: false };
 }
 
 function sliceOf(page: DivisionMembers): MembersDivision {
   return {
     header: page.division,
-    people: page.people.map((p) => entryOf(p, page.editable ? actionsOf(p) : null)),
+    people: page.people.map((p) => entryOf(p, page.editable ? divisionActionsOf(p) : null)),
     waiting: page.waiting,
     joining: page.joining,
     editable: page.editable,

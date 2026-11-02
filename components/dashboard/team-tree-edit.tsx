@@ -3,7 +3,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Check, Lock, Pencil, Plus } from "lucide-react";
-import type { DivisionMembers, WaitingPerson } from "@/lib/dashboard/division-members";
+import type { DivisionMembers, DivisionPerson, WaitingPerson } from "@/lib/dashboard/division-members";
+import { divisionActionsOf } from "@/lib/dashboard/members-view";
 import { divisionLabel, matchesQuery } from "@/lib/dashboard/team";
 import {
   editViewIntro,
@@ -102,6 +103,14 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
     setDivision(null);
     setEditing({ kind: "waiting", waiting: w, division: tab.division });
   };
+  // Edit details on a member row (issue #901): the Members page's own panel, over the drawer it was opened from.
+  const edit = (person: DivisionPerson) => {
+    const actions = divisionActionsOf(person);
+    if (actions === null) return;
+    setDivision(null);
+    setDepartment(null);
+    setEditing({ kind: "person", actions, googleEmails: [] });
+  };
 
   const intro = editViewIntro(structure);
   // Close division is a head's or the team's: a lead's Edit division offers none (issue #594).
@@ -143,6 +152,7 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
         editable
         onClose={() => setDivision(null)}
         onFill={fill}
+        onEdit={edit}
         mayClose={mayClose}
         onCloseDivision={(tab) => {
           setDivision(null);
@@ -164,6 +174,7 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
           structure={structure}
           onClose={() => setDepartment(null)}
           onTarget={setDepartment}
+          onEdit={edit}
           // Add division in Edit department: the department's panel gives way to New division under it (issue #927).
           onAddDivision={(id) => {
             setDepartment(null);

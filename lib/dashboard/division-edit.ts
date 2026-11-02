@@ -105,9 +105,17 @@ export type OldLead =
 export type AdvisingLead = { readonly memberId: number; readonly step: Advising };
 
 /**
+ * A member of the open division who becomes an advisor (issue #901), from a
+ * member row's "Becomes an advisor": their member role here ends and they
+ * advise where the editor picked, as an old lead does (`advisingAt`).
+ */
+export type NewAdvisor = { readonly personId: number; readonly scope: AdvisorScope | null };
+
+/**
  * What New division and Edit division send. Members and emails are sent only
  * by New division: an open division adds its members one by one, as the
- * Members page does.
+ * Members page does. `advisors` is sent only for an open division, by a
+ * member row's "Becomes an advisor" (`PeopleChange`).
  */
 export type DivisionSave = {
   /** As typed, without "Division". */
@@ -115,6 +123,7 @@ export type DivisionSave = {
   readonly code: string;
   readonly newLeads: readonly number[];
   readonly oldLeads: readonly OldLead[];
+  readonly advisors: readonly NewAdvisor[];
   readonly members: readonly number[];
   readonly emails: readonly string[];
 };
@@ -123,18 +132,26 @@ const id = z.number().int().positive();
 /** A saved payload with no scope keeps today's place: the role's own unit (`defaultAdvisorScope`). */
 const advisorScope = z.enum(ADVISOR_SCOPES).nullable().default(null);
 
+const oldLeadsSchema = z
+  .array(
+    z.discriminatedUnion("via", [
+      z.object({ personId: id, via: z.literal("replaced"), outcome: z.enum(HAND_OVER_OUTCOMES), scope: advisorScope }),
+      z.object({ personId: id, via: z.literal("removed"), outcome: z.enum(REMOVED_LEAD_OUTCOMES), scope: advisorScope }),
+    ]),
+  )
+  .max(20);
+/** A payload saved before issue #901 sends no advisors. */
+const advisorsSchema = z
+  .array(z.object({ personId: id, scope: advisorScope }))
+  .max(20)
+  .default([]);
+
 const saveSchema = z.object({
   name: z.string().max(200),
   code: z.string().max(10).transform(normalizeDivisionCode),
   newLeads: z.array(id).max(20),
-  oldLeads: z
-    .array(
-      z.discriminatedUnion("via", [
-        z.object({ personId: id, via: z.literal("replaced"), outcome: z.enum(HAND_OVER_OUTCOMES), scope: advisorScope }),
-        z.object({ personId: id, via: z.literal("removed"), outcome: z.enum(REMOVED_LEAD_OUTCOMES), scope: advisorScope }),
-      ]),
-    )
-    .max(20),
+  oldLeads: oldLeadsSchema,
+  advisors: advisorsSchema,
   members: z.array(id).max(60),
   emails: z.array(z.string().trim().toLowerCase().pipe(z.email("Write an email address.").max(200))).max(20),
 });
@@ -144,6 +161,30 @@ export function checkDivisionSave(input: unknown): { ok: true; value: DivisionSa
   const result = saveSchema.safeParse(input);
   if (!result.success) return { ok: false, error: result.error.issues[0]?.message ?? "Check the form." };
   return { ok: true, value: result.data };
+}
+
+/**
+ * A change to who leads or advises in an open division, made at once from a
+ * member row's menu on the Team tree or the Members page (issue #901): an old
+ * lead stepping down with one of Remove's outcomes, or a member becoming an
+ * advisor. It is Edit division's save with nothing else changed
+ * (`peopleSaveOf`), so the rules and the writes are that save's.
+ */
+export type PeopleChange = Pick<DivisionSave, "oldLeads" | "advisors">;
+
+const peopleSchema = z.object({ oldLeads: oldLeadsSchema.default([]), advisors: advisorsSchema });
+
+/** The change as sent, in its shape; the rules are `planDivisionSave`'s. */
+export function checkPeopleChange(input: unknown): { ok: true; value: PeopleChange } | { ok: false; error: string } {
+  const result = peopleSchema.safeParse(input);
+  if (!result.success) return { ok: false, error: result.error.issues[0]?.message ?? "Check the form." };
+  if (result.data.oldLeads.length + result.data.advisors.length === 0) return { ok: false, error: "Nothing to change." };
+  return { ok: true, value: result.data };
+}
+
+/** Edit division's save that makes `change` alone: the division's stored name and code, no new lead and no new member. */
+export function peopleSaveOf(division: Pick<OrgDivision, "name" | "code">, change: PeopleChange): DivisionSave {
+  return { name: division.name, code: normalizeDivisionCode(division.code ?? ""), newLeads: [], members: [], emails: [], ...change };
 }
 
 /** Someone on the team, as the division rules read them. */
@@ -191,9 +232,10 @@ export type DivisionPlan = {
   readonly demote: readonly number[];
   /**
    * Old leads who become advisors, replaced (issue #253) or removed (issue
-   * #900): their lead role here ends, one Advisor role starts at the place
-   * the editor picked (this division by default), and every access row they
-   * hold is removed (`advisingAt`). Their other divisions and roles stay.
+   * #900), and members who become advisors (issue #901): their lead or member
+   * role here ends, one Advisor role starts at the place the editor picked
+   * (this division by default), and every access row they hold is removed
+   * (`advisingAt`). Their other divisions and roles stay.
    */
   readonly advise: readonly AdvisingLead[];
   /**
@@ -244,6 +286,9 @@ function pickError(person: TeamPerson | undefined): string | null {
   return person ? null : "They are not on the team.";
 }
 
+/** Why a save, or Becomes an advisor for a division's only lead, would leave a division with no lead. */
+export const ONE_LEAD_NEEDED = "A division needs at least one lead.";
+
 /**
  * The save as the rules allow it (Owner decisions, 2026-10-11 on #232), or
  * the first reason it is refused:
@@ -256,7 +301,8 @@ function pickError(person: TeamPerson | undefined): string | null {
  * - a replaced lead becomes an advisor or leaves the team, never a member
  *   (issue #253); each new lead replaces at most one;
  * - an old lead who becomes an advisor advises in this division, its
- *   department or the whole team, as the editor picked (issue #900);
+ *   department or the whole team, as the editor picked (issue #900), and so
+ *   does a member of an open division who becomes one (issue #901);
  * - a removed lead leaves this division only when they are in another one or
  *   hold a seat (`mayLeaveDivision`);
  * - an old lead leaves the team only when `mayLeaveTeam` allows it.
@@ -284,7 +330,9 @@ export function planDivisionSave(input: {
   const nameError = divisionNameError(save.name);
   if (nameError !== null) return no(nameError);
   const self = subject.kind === "open" ? subject.division.id : null;
-  const codeError = divisionCodeError(save.code, org.divisions, self);
+  // A save that keeps the stored code is not refused for it (a division stored with none included, issue #901).
+  const codeChanged = subject.kind === "new" || normalizeDivisionCode(subject.division.code ?? "") !== save.code;
+  const codeError = codeChanged ? divisionCodeError(save.code, org.divisions, self) : null;
   if (codeError !== null) return no(codeError);
 
   const byId = new Map(team.map((p) => [p.id, p]));
@@ -306,7 +354,7 @@ export function planDivisionSave(input: {
     if (error !== null) return no(error);
     if (leads.includes(personId) || oldIds.includes(personId)) return no(`${person!.name} already leads this division.`);
   }
-  if (leads.length - oldIds.length + newLeads.length < 1) return no("A division needs at least one lead.");
+  if (leads.length - oldIds.length + newLeads.length < 1) return no(ONE_LEAD_NEEDED);
   // Each new lead replaces at most one old lead (board 68b3).
   if (save.oldLeads.filter((o) => o.via === "replaced").length > newLeads.length) return no("Only a new lead can replace an old one.");
 
@@ -350,6 +398,18 @@ export function planDivisionSave(input: {
     if (refusal !== null) return no(refusal);
   }
 
+  // A member who becomes an advisor (issue #901) advises where the editor picked, as an old lead does.
+  const advisorIds = save.advisors.map((a) => a.personId);
+  if (new Set(advisorIds).size !== advisorIds.length) return no("A member is listed twice.");
+  for (const advisor of save.advisors) {
+    const person = byId.get(advisor.personId);
+    if (divisionId === null || person === undefined || roleHere(person) !== "member") return no("Only a member of this division can become an advisor here.");
+    if (newLeads.includes(person.id)) return no(`${person.name} cannot lead this division and become an advisor in one save.`);
+    const step = advisingAt({ kind: "member", divisionId, departmentId }, advisor.scope);
+    if (!step.ok) return no(step.error);
+    advise.push({ memberId: person.id, step: step.value });
+  }
+
   const members = [...new Set(save.members)].filter((m) => !newLeads.includes(m));
   const emails = [...new Set(save.emails)];
   if (subject.kind === "open" && (members.length > 0 || emails.length > 0)) return no("Add members to an open division from its member list.");
@@ -368,7 +428,7 @@ export function planDivisionSave(input: {
       name: storedDivisionName(save.name),
       nameChanged: subject.kind === "open" && renamesDivision(save.name, subject.division.name),
       code: save.code,
-      codeChanged: subject.kind === "open" && normalizeDivisionCode(subject.division.code ?? "") !== save.code,
+      codeChanged: subject.kind === "open" && codeChanged,
       promote: newLeads.filter(holdsRole),
       joinAsLead: newLeads.filter((p) => !holdsRole(p)),
       demote,
@@ -442,7 +502,7 @@ export function divisionClosing(divisionId: number, held: readonly DivisionRow[]
 
 /** The rows of the division a plan's writes end or change, by row id. */
 export type DivisionRowWrites = {
-  /** Rows that end: the old leads who leave this division, and the lead rows of old leads who become advisors (an Advisor row they hold here stays). */
+  /** Rows that end: the old leads who leave this division, and the lead or member rows of people who become advisors (an Advisor row they hold here stays). */
   readonly end: readonly number[];
   /** Rows that become a lead's. */
   readonly toLead: readonly number[];
@@ -460,7 +520,7 @@ export type DivisionRowWrites = {
 export function divisionRowWrites(plan: DivisionPlan, divisionId: number, held: readonly DivisionRow[]): DivisionRowWrites {
   const rows = held.filter((r) => isDivisionRole({ type: r.type, divisionId }));
   const of = (people: readonly number[]) => rows.filter((r) => people.includes(r.memberId));
-  // An old lead who becomes an advisor loses the lead role here, never an Advisor role they already hold here (issue #900).
+  // Someone who becomes an advisor loses the lead or member role here, never an Advisor role they already hold here (issues #900, #901).
   const advising = of(plan.advise.map((a) => a.memberId)).filter((r) => r.type !== "advisor");
   return {
     end: [...of(plan.leaveDivision), ...advising].map((r) => r.id),

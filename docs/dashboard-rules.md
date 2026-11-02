@@ -618,18 +618,31 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   - Lead or member: one choice per division of the person where the editor may change who leads
     it, as Edit division allows: the department's head, the team leader, full access, and a lead
     of that division by role (#594). A Members grant never shows it, and the server refuses its
-    change.
+    change. Switching a lead to member asks the Team tree's "What happens to {name}?" (Stays as
+    a member, Stays as an advisor where the editor picks, Leaves {division}, Leaves the team), and
+    Save makes Edit division's Remove with that outcome, so a division keeps at least one lead
+    (#901).
+  - Becomes an advisor: the row menu's own action (below), here too, so the Table view and the
+    phone cards reach it (#901).
   - Leaving the team (board 46b): "Remove from {division}" for each of the person's divisions the
     editor reaches, and "Move to alumni", under the rules of the ⋯ menu below. An action the editor
     may not take is locked with the menu's reason, and opens the menu's own "are you sure".
   - Save writes the details and the title, then each changed lead or member choice. The server
     checks each against the same rules.
-- The row ⋯ menu has "Remove from {division}" and "Leaves the team", on every Members page.
+- The row ⋯ menu has "Becomes an advisor", "Remove from {division}" and "Leaves the team", on
+  every Members page.
+  - "Becomes an advisor" (#901) ends the person's lead or member role in one division and gives
+    them the Advisor role where the editor picks, with the #900 choice: that division, its
+    department or the whole team. Their access ends, as for a lead who becomes an advisor, and
+    they keep their other divisions. When several divisions offer it, the editor picks which one
+    first. Who may: whoever may change that division's leads (see "Lead or member" above); a lead
+    becomes an advisor only while another lead stays.
   - "Remove from {division}" ends only that division's role and its division access; the person
     keeps their other divisions. When it is the person's only division and they hold no seat (the
-    team leader, a board seat or a department head), the menu does not offer it, and the server
-    refuses it: nobody is on the team with neither a division nor a seat. A seat holder keeps
-    their place on the team through their seat, so they can leave their only division (#232).
+    team leader, a board seat or a department head), the item is locked with "{division} is their
+    only division", and the server refuses it: nobody is on the team with neither a division nor
+    a seat. A seat holder keeps their place on the team through their seat, so they can leave
+    their only division (#232).
   - "Leaves the team" ends every role and every access the person has, and moves them to Alumni
     with the years and an optional reason. The account stays. Who may use it:
     - a division lead, only if the person is in no division outside the lead's own;
@@ -641,8 +654,22 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
     department or the team. No lead or head reaches it, and the move would end it.
   - Otherwise the item is disabled with a lock and the reason, for example "Also in Safety, so only
     the team leader can do this". The server checks the same rule on every request.
-- Confirm NDA, Cancel add, Remove from {division} and Leaves the team each ask "are you sure"
-  first.
+- Confirm NDA, Cancel add, Becomes an advisor, Remove from {division} and Leaves the team each ask
+  "are you sure" first.
+- **Member action parity** (Owner decision, 2026-11-02,
+  [#901](https://github.com/PoliTo-Rocket-Team/website-v2/issues/901)): the Members page and the
+  Team tree offer the same actions on a member. A member action added to one of them must be added
+  to the other in the same change. Both menus are built from one rule
+  (`lib/dashboard/member-actions.ts`), each action saves through one write, and each is locked
+  with its reason for a viewer who may not take it.
+  - The Team tree's member row ⋯ menu, in Edit division and in Edit department's division rows:
+    Change title (their title in this division), Make lead (they lead beside the other leads,
+    #861, and keep every other role), Becomes an advisor, Edit details (the Members page's own
+    panel), Move to… (#647), Remove from {division} and Leaves the team.
+  - The Members page reaches the same actions through the row ⋯ menu and Edit details: Change
+    title is Edit details' Role, Make lead its Lead or member choice, and Move to… its Division
+    and As boxes.
+  - Change title and Make lead each ask "are you sure" first, as the other actions do.
 - A lead renames, recodes and changes the leads of each division they lead by role, in Edit
   division (see Divisions below; Owner decision, 2026-10-24, on #594). A Members grant does not:
   a page reached only through one shows "Leads are changed by the Head of {department}", and the

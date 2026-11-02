@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   checkDivisionSave,
+  checkPeopleChange,
   closeRefusal,
   divisionClosing,
   divisionCodeError,
   divisionRowWrites,
   divisionTitle,
   peopleInDivision,
+  peopleSaveOf,
   planDivisionSave,
   renamesDivision,
   searchTeam,
@@ -58,7 +60,7 @@ const team: FoundPerson[] = [
 
 const head: TeamActor = { kind: "head", departmentIds: [1] };
 const missionAnalysis: DivisionSubject = { kind: "open", division: org.divisions[0] };
-const keep: DivisionSave = { name: "Mission Analysis", code: "MA", newLeads: [], oldLeads: [], members: [], emails: [] };
+const keep: DivisionSave = { name: "Mission Analysis", code: "MA", newLeads: [], oldLeads: [], advisors: [], members: [], emails: [] };
 
 const plan = (save: Partial<DivisionSave>, subject: DivisionSubject = missionAnalysis, actor: TeamActor = head) =>
   planDivisionSave({ actor, org, subject, save: { ...keep, ...save }, team });
@@ -306,4 +308,53 @@ test("a picked person carries every seat they hold, not only the first (#857)", 
   const unseated = searchTeam("sara", team, org);
   assert.ok(unseated.kind === "people");
   assert.deepEqual(unseated.people[0].seats, [], "a member with no seat carries none");
+});
+
+// A member row's "Becomes an advisor" and lead step-down (issue #901): Edit division's save with only that change.
+
+test("a member of the division becomes an advisor where the editor picked: their member row ends, nothing else changes", () => {
+  for (const [scope, place] of [
+    ["division", { kind: "division", divisionId: 1 }],
+    ["department", { kind: "department", departmentId: 1 }],
+    ["team", { kind: "team" }],
+  ] as const) {
+    const planned = plan({ advisors: [{ personId: 3, scope }] });
+    assert.ok(planned.ok, scope);
+    assert.deepEqual(planned.plan.advise, [{ memberId: 3, step: { kind: "advisor", place, access: "ends" } }]);
+    assert.deepEqual([planned.plan.promote, planned.plan.demote, planned.plan.leaveDivision, planned.plan.nameChanged, planned.plan.codeChanged], [[], [], [], false, false]);
+    assert.deepEqual(divisionRowWrites(planned.plan, 1, [{ id: 103, memberId: 3, type: "core" }]).end, [103]);
+  }
+});
+
+test("only a member of this division becomes an advisor here, once, never in New division, and only for who may change its leads", () => {
+  const refusal = { ok: false, error: "Only a member of this division can become an advisor here." };
+  assert.deepEqual(plan({ advisors: [{ personId: 1, scope: null }] }), refusal, "a lead steps down through oldLeads");
+  assert.deepEqual(plan({ advisors: [{ personId: 4, scope: null }] }), refusal, "someone in another division");
+  assert.equal(plan({ advisors: [{ personId: 3, scope: null }, { personId: 3, scope: "team" }] }).ok, false);
+  assert.equal(plan({ advisors: [{ personId: 3, scope: null }] }, { kind: "new", departmentId: 1 }).ok, false);
+  assert.equal(plan({ advisors: [{ personId: 3, scope: null }] }, missionAnalysis, { kind: "lead", divisionIds: [1], ledDivisionIds: [] }).ok, false);
+});
+
+test("a people change keeps the stored name and code, a division stored with no code included", () => {
+  const change = { oldLeads: [], advisors: [{ personId: 3, scope: null }] };
+  assert.deepEqual(peopleSaveOf({ name: "Mission Analysis Division", code: "MA" }, change), {
+    name: "Mission Analysis Division",
+    code: "MA",
+    newLeads: [],
+    members: [],
+    emails: [],
+    ...change,
+  });
+  const uncoded: DivisionSubject = { kind: "open", division: { ...org.divisions[0], code: null } };
+  if (uncoded.kind !== "open") return;
+  const planned = planDivisionSave({ actor: head, org, subject: uncoded, save: peopleSaveOf(uncoded.division, change), team });
+  assert.ok(planned.ok && !planned.plan.codeChanged && !planned.plan.nameChanged);
+  assert.deepEqual(checkPeopleChange({}), { ok: false, error: "Nothing to change." });
+  assert.ok(checkPeopleChange({ advisors: [{ personId: 3, scope: "team" }] }).ok);
+});
+
+test("a save sent before issue #901 carries no advisors and still reads", () => {
+  const checked = checkDivisionSave({ name: "Mission Analysis", code: "MA", newLeads: [], oldLeads: [], members: [], emails: [] });
+  assert.ok(checked.ok);
+  assert.deepEqual(checked.value.advisors, []);
 });

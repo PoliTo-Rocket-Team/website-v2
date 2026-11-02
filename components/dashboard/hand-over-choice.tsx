@@ -10,6 +10,7 @@ import {
   BECOME_AN_ADVISOR,
   defaultAdvisorScope,
   fullAccessMovesLine,
+  STAYS_AS_AN_ADVISOR,
   steppingDown,
   type AdvisorScope,
   type HandOverOutcome,
@@ -17,7 +18,9 @@ import {
   type SteppedDownFrom,
   type SteppedDownKind,
 } from "@/lib/dashboard/hand-over";
-import type { Permission } from "@/lib/dashboard/team";
+import type { RemovedLeadOutcome } from "@/lib/dashboard/division-edit";
+import { onlyDivisionReason } from "@/lib/dashboard/member-actions";
+import type { Permission, Removal } from "@/lib/dashboard/team";
 import type { FullAccessSeat } from "@/lib/dashboard/viewer";
 
 // The one-of choice the structure panels ask about the person stepping down
@@ -165,6 +168,50 @@ export function advisorOption({
     detail: advisingDetail(from, field.value ?? defaultAdvisorScope(from), field.names),
     more: <AdvisorScopePicker name={name} person={person} from={from} field={field} />,
   };
+}
+
+/** What an old lead steps down from, as the advisor scope rules read it (issue #900). */
+const LEAD_STEP = { kind: "lead" } as const;
+
+/**
+ * "What happens to Marco?" for a lead who stops leading a division without a
+ * successor (board 68b4): Remove in Edit division, and the lead to member
+ * switch in Edit details (issue #901), so both places ask the one question.
+ * They stay as a member, stay as an advisor where the editor picks (issue
+ * #900), leave this division, or leave the team. It is not a hand-over: a
+ * replaced lead gets `HandOverChoice`.
+ */
+export function RemovedLeadChoice({
+  lead,
+  short,
+  value,
+  onChange,
+  scope,
+}: {
+  lead: { readonly id: number; readonly name: string; readonly removal: Removal; readonly leave: Permission };
+  /** The division they stop leading: "Mission Analysis". */
+  short: string;
+  value: RemovedLeadOutcome;
+  onChange: (outcome: RemovedLeadOutcome) => void;
+  scope: AdvisorScopeField;
+}) {
+  const name = `outcome-${lead.id}`;
+  // Someone in another division, or with a seat, keeps a place on the team (`mayLeaveDivision`).
+  const leavesDivision: Permission = lead.removal.kind === "only-division" ? { allowed: false, reason: onlyDivisionReason(short) } : { allowed: true };
+  return (
+    <RadioChoice
+      name={name}
+      legend={`What happens to ${lead.name.split(" ")[0] ?? lead.name}?`}
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: "member", title: "Stays as a member", detail: `Keeps ${short}, loses lead access` },
+        advisorOption({ name, person: lead.name, from: LEAD_STEP, title: STAYS_AS_AN_ADVISOR, field: scope }),
+        { value: "leave-division", title: `Leaves ${short}`, detail: "Keeps their other divisions, if any", permission: leavesDivision },
+        { value: "leave-team", title: "Leaves the team", detail: "Moves to Alumni; their access ends", danger: true, permission: lead.leave },
+      ]}
+    />
+  );
 }
 
 /**

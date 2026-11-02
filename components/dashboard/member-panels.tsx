@@ -1,14 +1,18 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition, type ChangeEvent, type FormEvent, type ReactNode } from "react";
-import { AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, Lock, Mail, MailX, Upload, UserMinus, UserPlus, X } from "lucide-react";
+import { AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, GraduationCap, Lock, Mail, MailX, Upload, UserMinus, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { usePhoneGrouping } from "@/components/use-phone-grouping";
 import { PHONE_PLACEHOLDER } from "@/lib/phone";
-import { addMember, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
+import { addMember, changeDivisionPeople, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
+import type { RemovedLeadOutcome } from "@/lib/dashboard/division-edit";
+import type { AdvisorScope } from "@/lib/dashboard/hand-over";
+import { leadStepDown, membersRowMenu } from "@/lib/dashboard/member-actions";
+import { advisorAsking } from "./member-menu";
 import { cancelAliasRequest, removeTeamAddress, requestAlias, requestTeamAddress } from "@/app/dashboard/actions";
 import { ALIAS_FORM_HINT, aliasPrefill, checkAliasAddress, personalRequestChoice, TEAM_DOMAIN, type MemberAlias } from "@/lib/dashboard/alias-request";
 import type { Permission } from "@/lib/dashboard/team";
@@ -46,7 +50,7 @@ import { Avatar } from "./avatar";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CopyButton, IconButton } from "./copy-button";
-import { RadioChoice } from "./hand-over-choice";
+import { RadioChoice, RemovedLeadChoice } from "./hand-over-choice";
 import { Chips } from "./division-chips";
 import { MemberDialogs, type Asking } from "./division-members";
 import {
@@ -1154,6 +1158,15 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
     }
     setChoices((c) => ({ ...c, [placeKey(place)]: next }));
   };
+  // A lead switched to member here is asked "What happens to Marco?", as Remove in the Team tree asks (issue #901):
+  // the outcome and the advisor's scope, per division place, from "Stays as a member" and the division.
+  const [stepDowns, setStepDowns] = useState<Readonly<Record<string, { readonly outcome: RemovedLeadOutcome; readonly scope: AdvisorScope | null }>>>({});
+  const stepDownOf = (place: MovablePlace) => stepDowns[placeKey(place)] ?? { outcome: "member" as const, scope: null };
+  const setStepDown = (place: MovablePlace, next: Partial<{ outcome: RemovedLeadOutcome; scope: AdvisorScope | null }>) =>
+    setStepDowns((s) => ({ ...s, [placeKey(place)]: { ...stepDownOf(place), ...next } }));
+  /** Whether `place` is a division they lead, switched to member and not moved: the step-down the question is about. */
+  const stepsDown = (place: MovablePlace) =>
+    place.kind === "division" && place.role === "lead" && choiceFor(place).as === "member" && moveToOf(place, choiceFor(place), departments) === null;
   // Why the last Save was refused by the server, until the next Save starts (issue #911). A refusal closes the
   // head-move question, so the summary above Save is in view.
   const [refusal, setRefusalState] = useState<string | null>(null);
@@ -1263,8 +1276,16 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
             setRefusal(`Could not move them from ${place.kind === "division" ? place.short : place.department}. ${moved.error}`);
             return;
           }
+        } else if (stepsDown(place) && place.kind === "division") {
+          // A lead who stops leading: Edit division's Remove, with what happens to them (issue #901).
+          const step = stepDownOf(place);
+          const changed = await changeDivisionPeople(place.divisionId, leadStepDown(person!.id, step.outcome, step.scope));
+          if (!changed.ok) {
+            setRefusal(`Could not change who leads ${place.short}. ${changed.error}`);
+            return;
+          }
         } else if (place.kind === "division" && choice.as !== place.role && choice.as !== "head") {
-          // Lead or member in the same division: the switch it always was, checked on the server.
+          // Member to lead in the same division: the switch it always was, checked on the server.
           const changed = await saveMember(person!.id, place.divisionId, choice.as === "lead" ? "division-lead" : "member");
           if (!changed.ok) {
             setRefusal(`Could not change who leads ${place.short}. ${changed.error}`);
@@ -1358,6 +1379,26 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
           place === seatPlace && <div className="mt-4">{titleField(titleLabelOf(place), to === null)}</div>
         )}
         <MoveHint place={place} moving={to !== null} />
+        {place.kind === "division" && stepsDown(place) && person !== null && position !== null && (
+          <div className="mt-4">
+            <RemovedLeadChoice
+              lead={{
+                id: person.id,
+                name: person.name,
+                removal: position.removals.find((r) => r.divisionId === place.divisionId)?.removal ?? { kind: "only-division" },
+                leave: position.leave,
+              }}
+              short={place.short}
+              value={stepDownOf(place).outcome}
+              onChange={(outcome) => setStepDown(place, { outcome })}
+              scope={{
+                value: stepDownOf(place).scope,
+                names: { division: place.short, department: place.department },
+                onChange: (scope) => setStepDown(place, { scope }),
+              }}
+            />
+          </div>
+        )}
         {place.kind === "head" && to !== null && person !== null && headsAfterMove(departments, place.departmentId, person.id).kind === "none" && (
           <NoHeadNote department={place.department} />
         )}
@@ -1449,6 +1490,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
               {places.map(placeFields)}
             </div>
           )}
+          {person && position && <AdvisorAction person={person} position={position} onAsk={setAsking} />}
         </Section>
 
         <Section title="Contact">
@@ -1520,6 +1562,35 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         />
       )}
     </>
+  );
+}
+
+/**
+ * Becomes an advisor in Edit details (issue #901): the row menu's own action
+ * (`membersRowMenu`), here too so every view of the Members page and the Team
+ * tree's Edit details reach it. It opens the same "are you sure", with the
+ * #900 advisor choice; locked with the menu's reason where the viewer may not.
+ */
+function AdvisorAction({ person, position, onAsk }: { person: EditPerson; position: MemberPosition; onAsk: (asking: Asking) => void }) {
+  const entry = membersRowMenu(position).find((e) => e.action === "become-advisor");
+  if (entry === undefined) return null;
+  const asking = advisorAsking(person, position, null);
+  const { permission } = entry;
+  return (
+    <div className="mt-5">
+      <button
+        type="button"
+        disabled={!permission.allowed || asking === null}
+        onClick={() => asking !== null && onAsk(asking)}
+        className={GHOST_PILL}
+      >
+        {permission.allowed ? <GraduationCap aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} /> : <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
+        Becomes an advisor
+      </button>
+      <p className="mt-2 text-[12px] leading-snug text-prt-muted">
+        {permission.allowed ? "Their role in a division ends; they stay on the team with the Advisor role." : permission.reason}
+      </p>
+    </div>
   );
 }
 
