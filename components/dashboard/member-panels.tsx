@@ -11,7 +11,7 @@ import { PHONE_PLACEHOLDER } from "@/lib/phone";
 import { addMember, changeDivisionPeople, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
 import type { RemovedLeadOutcome } from "@/lib/dashboard/division-edit";
 import type { AdvisorScope } from "@/lib/dashboard/hand-over";
-import { leadStepDown, membersRowMenu } from "@/lib/dashboard/member-actions";
+import { leadStepDown, membersRowMenu, stepDownPermission } from "@/lib/dashboard/member-actions";
 import { advisorAsking } from "./member-menu";
 import { cancelAliasRequest, removeTeamAddress, requestAlias, requestTeamAddress } from "@/app/dashboard/actions";
 import { ALIAS_FORM_HINT, aliasPrefill, checkAliasAddress, personalRequestChoice, TEAM_DOMAIN, type MemberAlias } from "@/lib/dashboard/alias-request";
@@ -1093,17 +1093,29 @@ function detailsOf(draft: Draft): Record<MemberDetailKey, string> {
  * Move to alumni), each locked with its reason where the viewer may not. A
  * head's move asks on Save who heads the department they leave (board 98c).
  * Fill details, for someone waiting, holds the role in their division and the
- * details.
+ * details. `openedFrom` is the page it opens on: from the Team tree, the
+ * "Also on the Team tree" link would lead back to where it is (issue #965).
  */
-export function EditDetailsDrawer({ target, onClose }: { target: EditTarget | null; onClose: () => void }) {
+export function EditDetailsDrawer({ target, openedFrom, onClose }: { target: EditTarget | null; openedFrom: EditOpenedFrom; onClose: () => void }) {
   const [shown, setShown] = useState(target);
   if (target !== null && target !== shown) setShown(target);
   const t = target ?? shown;
   if (t === null) return null;
-  return <EditForm key={t.kind === "person" ? `p${t.actions.person.id}` : `w${t.waiting.joinId}`} open={target !== null} target={t} onClose={onClose} />;
+  return (
+    <EditForm
+      key={t.kind === "person" ? `p${t.actions.person.id}` : `w${t.waiting.joinId}`}
+      open={target !== null}
+      target={t}
+      openedFrom={openedFrom}
+      onClose={onClose}
+    />
+  );
 }
 
-function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget; onClose: () => void }) {
+/** The page Edit details opens on. */
+export type EditOpenedFrom = "members" | "team-tree";
+
+function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target: EditTarget; openedFrom: EditOpenedFrom; onClose: () => void }) {
   const person = target.kind === "person" ? target.actions.person : null;
   const position = target.kind === "person" ? target.actions.position : null;
   const waiting = target.kind === "waiting" ? target.waiting : null;
@@ -1167,6 +1179,11 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   /** Whether `place` is a division they lead, switched to member and not moved: the step-down the question is about. */
   const stepsDown = (place: MovablePlace) =>
     place.kind === "division" && place.role === "lead" && choiceFor(place).as === "member" && moveToOf(place, choiceFor(place), departments) === null;
+  /** Whether Member is open in the division `place` is: locked for its only lead (issue #965), from the lead counts the page read. */
+  const stepDownOfPlace = (place: MovablePlace): Permission => {
+    const role = place.kind === "division" ? position?.roles.find((r) => r.divisionId === place.divisionId) : undefined;
+    return role === undefined ? { allowed: true } : stepDownPermission(role);
+  };
   // Why the last Save was refused by the server, until the next Save starts (issue #911). A refusal closes the
   // head-move question, so the summary above Save is in view.
   const [refusal, setRefusalState] = useState<string | null>(null);
@@ -1362,6 +1379,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
           departments={departments}
           value={choice}
           taken={taken}
+          stepDown={stepDownOfPlace(place)}
           onChange={(next) => choose(place, next)}
         />
         {place.kind === "division" ? (
@@ -1378,7 +1396,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         ) : (
           place === seatPlace && <div className="mt-4">{titleField(titleLabelOf(place), to === null)}</div>
         )}
-        <MoveHint place={place} moving={to !== null} />
+        <MoveHint place={place} moving={to !== null} treeLink={openedFrom === "members"} />
         {place.kind === "division" && stepsDown(place) && person !== null && position !== null && (
           <div className="mt-4">
             <RemovedLeadChoice

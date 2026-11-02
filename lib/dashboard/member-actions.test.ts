@@ -12,6 +12,7 @@ import {
   membersRowMenu,
   onlyDivisionReason,
   removalPermission,
+  stepDownPermission,
   type MemberAction,
   type MenuEntry,
 } from "./member-actions";
@@ -113,6 +114,12 @@ test("Becomes an advisor is locked for a division's only lead in both menus, and
 
   const elsewhere = position({ roles: [role({ role: "lead", leads: 1 }), role({ divisionId: 8, short: "Structures" })] });
   assert.deepEqual(advisorDivisions(elsewhere).map((r) => r.divisionId), [8], "the pick leaves out the division they alone lead");
+});
+
+test("stepping down to member is locked for a division's only lead, with the server's reason, and open while another lead stays", () => {
+  assert.deepEqual(stepDownPermission(role({ role: "lead", leads: 1 })), { allowed: false, reason: ONE_LEAD_NEEDED });
+  assert.deepEqual(stepDownPermission(role({ role: "lead", leads: 2 })), OPEN);
+  assert.deepEqual(stepDownPermission(role({ role: "member", leads: 1 })), OPEN, "a member is a member already");
 });
 
 test("a removal out of the viewer's reach shows nowhere", () => {
