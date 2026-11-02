@@ -18,6 +18,7 @@
     "db:seed": "tsx db/seed.ts",
     "db:alumni-repair": "tsx scripts/alumni-repair/cli.ts",
     "db:team-join-date": "tsx scripts/team-join-date/cli.ts",
+    "db:outreach-instagram": "tsx scripts/outreach-instagram/cli.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
