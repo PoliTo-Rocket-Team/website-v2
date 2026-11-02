@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { FileSpreadsheet, List, Lock, Pencil, Plus, Table2, UserMinus, UserX } from "lucide-react";
+import { FileSpreadsheet, List, Lock, Pencil, Plus, Table2, UserX } from "lucide-react";
 import type { MemberAliases } from "@/lib/dashboard/alias-request";
 import type { MemberTeamAddresses } from "@/lib/dashboard/team-address";
 import { memberDetailText } from "@/lib/dashboard/details";
@@ -31,6 +31,7 @@ import {
   type TableFilter,
   type TeamMember,
 } from "@/lib/dashboard/team-members";
+import { membersRowMenu } from "@/lib/dashboard/member-actions";
 import { shortDate } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
 import { ColumnFilter } from "./column-filter";
@@ -49,6 +50,7 @@ import {
   type Asking,
 } from "./division-members";
 import { DrawerPage } from "./drawer";
+import { MemberMenu } from "./member-menu";
 import { AddMemberDrawer, EditDetailsDrawer, PersonDrawer, type AddTarget, type EditTarget } from "./member-panels";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
@@ -475,31 +477,14 @@ function PersonRow({
 }
 
 /**
- * A row's ⋯ menu, on every page: Remove from each division it may, then
- * Leaves the team; a locked item says why (Owner decision, 2026-10-11). Edit
- * details' Leaving the team offers the same, from the same position.
+ * A row's ⋯ menu, on every page (`membersRowMenu`, issue #901): Becomes an
+ * advisor, Remove from each division it reaches, then Leaves the team; a
+ * locked item says why (Owner decision, 2026-10-11). Edit details' Leaving the
+ * team offers the same removals, from the same position.
  */
 function PersonMenu({ actions, onAsk }: { actions: MemberActions; onAsk: (asking: Asking) => void }) {
   const { person, position } = actions;
-  // Not offered where it is their only division: the menu then holds only "Leaves the team".
-  const offered = position.removals.filter((r) => r.removal.kind === "offered" || r.removal.kind === "locked");
-  return (
-    <RowMenu label={`Actions for ${person.name}`}>
-      {offered.map((r) => (
-        <MenuItem
-          key={r.divisionId}
-          onSelect={() => onAsk({ kind: "remove", person, divisionId: r.divisionId, short: r.short })}
-          icon={<UserMinus className="h-3.5 w-3.5" strokeWidth={1.75} />}
-          locked={r.removal.kind === "locked" ? r.removal.reason : null}
-        >
-          Remove from {r.short}
-        </MenuItem>
-      ))}
-      <MenuItem onSelect={() => onAsk({ kind: "leave", person })} danger locked={position.leave.allowed ? null : position.leave.reason}>
-        Leaves the team
-      </MenuItem>
-    </RowMenu>
-  );
+  return <MemberMenu person={person} position={position} entries={membersRowMenu(position)} onAsk={onAsk} />;
 }
 
 function WaitingRow({

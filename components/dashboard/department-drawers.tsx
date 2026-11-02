@@ -32,14 +32,15 @@ import {
   type Unit,
 } from "@/lib/dashboard/hand-over";
 import type { TeamPick } from "@/lib/dashboard/division-edit";
+import type { DivisionPerson } from "@/lib/dashboard/division-members";
 import { defaultHeadTitle, divisionLabel, type OrgChart } from "@/lib/dashboard/team";
 import { departmentLabel } from "@/lib/dashboard/recruitment";
 import { andList, type StructureDepartment, type StructureDivision, type TeamStructure } from "@/lib/dashboard/team-structure";
 import { AddHolderLink, AddHolderPicker } from "./add-holder";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
-import { PeoplePicker } from "./division-drawer";
-import { MenuItem, RowMenu } from "./division-members";
+import { DivisionMemberMenu, PeoplePicker } from "./division-drawer";
+import { MemberDialogs, MenuItem, RowMenu, type Asking } from "./division-members";
 import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
 import { FooterSummary, useFormSummary } from "./form-summary";
@@ -104,6 +105,7 @@ export function DepartmentDrawer({
   onClose,
   onTarget,
   onAddDivision,
+  onEdit,
 }: {
   target: DepartmentDrawerTarget | null;
   structure: TeamStructure;
@@ -111,6 +113,8 @@ export function DepartmentDrawer({
   onTarget: (target: DepartmentDrawerTarget) => void;
   /** New division under the department: Edit department's "+ Add division" (issue #927). */
   onAddDivision: (departmentId: number) => void;
+  /** Edit details on a member row of a division (issue #901): the page's Edit details drawer. */
+  onEdit?: (person: DivisionPerson) => void;
 }) {
   // The last target stays while the panel closes, so its content does not vanish mid-close.
   const [shown, setShown] = useState(target);
@@ -124,6 +128,7 @@ export function DepartmentDrawer({
   return shown.kind === "edit" ? (
     <EditDepartment key={`e${department.id}`} open={open} department={department} structure={structure} onClose={onClose} onCloseDepartment={() => onTarget({ kind: "close", departmentId: department.id })}
       onAddDivision={() => onAddDivision(department.id)}
+      onEdit={onEdit}
     />
   ) : (
     <CloseDepartment key={`c${department.id}`} open={open} department={department} structure={structure} onClose={onClose} />
@@ -343,6 +348,7 @@ function EditDepartment({
   onClose,
   onCloseDepartment,
   onAddDivision,
+  onEdit,
 }: {
   open: boolean;
   department: StructureDepartment;
@@ -351,7 +357,9 @@ function EditDepartment({
   onCloseDepartment: () => void;
   /** "+ Add division" in the Divisions section, as on the department's box in the tree: New division under it (issue #927). */
   onAddDivision: () => void;
+  onEdit?: (person: DivisionPerson) => void;
 }) {
+  const [asking, setAsking] = useState<Asking | null>(null);
   const [name, setName] = useState(department.name);
   const [rawCode, setCode] = useState(department.code ?? "");
   const [confirming, setConfirming] = useState(false);
@@ -633,6 +641,8 @@ function EditDepartment({
               {department.divisions.map((division) => (
                 <DivisionRow
                   key={division.id}
+                  onAsk={setAsking}
+                  onEdit={onEdit}
                   division={division}
                   open={openDivision === division.id}
                   onToggle={() => setOpenDivision((current) => (current === division.id ? null : division.id))}
@@ -671,13 +681,31 @@ function EditDepartment({
         pending={pending}
         onConfirm={confirm}
       />
+      <MemberDialogs asking={asking} onClose={() => setAsking(null)} />
     </SidePanel>
   );
 }
 
-/** One division of Edit department (board 77e): its code, name, lead and count; open, its people, lead first, read-only. */
-function DivisionRow({ division, open, onToggle }: { division: StructureDivision; open: boolean; onToggle: () => void }) {
+/**
+ * One division of Edit department (board 77e): its code, name, lead and
+ * count; open, its people, lead first. A member row carries the Team tree's
+ * member menu (`DivisionMemberMenu`, issue #901), as in Edit division.
+ */
+function DivisionRow({
+  division,
+  open,
+  onToggle,
+  onAsk,
+  onEdit,
+}: {
+  division: StructureDivision;
+  open: boolean;
+  onToggle: () => void;
+  onAsk: (asking: Asking) => void;
+  onEdit?: (person: DivisionPerson) => void;
+}) {
   const people = [...(division.page?.people ?? [])].sort((a, b) => Number(b.role === "lead") - Number(a.role === "lead"));
+  const editable = division.page?.editable ?? false;
   return (
     <li className={LIST}>
       <button
@@ -698,8 +726,11 @@ function DivisionRow({ division, open, onToggle }: { division: StructureDivision
           {people.map((p) => (
             <li key={p.id} className="flex items-center gap-3 py-1.5">
               <Avatar size="sm" accent={p.role === "lead"} person={p} />
-              <span className="truncate text-[14px] text-prt-text">{p.name}</span>
+              <span className="min-w-0 flex-1 truncate text-[14px] text-prt-text">{p.name}</span>
               {p.role === "lead" && <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Lead</span>}
+              {p.role !== "lead" && editable && (
+                <DivisionMemberMenu person={p} divisionId={division.id} onAsk={onAsk} onEdit={onEdit} />
+              )}
             </li>
           ))}
         </ul>

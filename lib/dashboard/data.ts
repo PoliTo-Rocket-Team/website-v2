@@ -525,6 +525,11 @@ export interface TeamWrites {
    * login where it must (issue #864, ./sign-in-email.ts).
    */
   saveMemberDetails(target: DetailsTarget, divisionId: number | null, input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Change title on a Team tree member row (issue #901): their role title in
+   * `divisionId` alone, by Edit details' reach and title rule.
+   */
+  saveDivisionTitle(personId: number, divisionId: number, input: unknown): Promise<WriteResult<null>>;
   /** The photo in Edit details, for anyone the viewer may edit: a square JPEG under 500 KB, or null to remove it. */
   setMemberPhoto(personId: number, photo: Upload | null): Promise<WriteResult<null>>;
   /**
@@ -539,6 +544,14 @@ export interface TeamWrites {
    * division never opens again (#251).
    */
   saveDivision(divisionId: number, input: unknown): Promise<WriteResult<null>>;
+  /**
+   * A member row's lead or advisor change (issue #901), on the Team tree and
+   * the Members page alike: a lead stepping down with one of Remove's
+   * outcomes, or a member becoming an advisor where the editor picked. It is
+   * Edit division's save with only that change (`peopleSaveOf`,
+   * ./division-edit.ts), checked by `planDivisionSave`.
+   */
+  changeDivisionPeople(divisionId: number, input: unknown): Promise<WriteResult<null>>;
   /**
    * Close division (board 68c): refused while anyone is in it; closing also
    * closes its open positions and removes the access given in it.

@@ -44,6 +44,7 @@ import {
   addOutcome,
   checkAddMember,
   checkMemberEdit,
+  checkRoleTitle,
   editedFields,
   lookupForAdd,
   positionsOf,
@@ -112,9 +113,11 @@ import { checkNewSeat, checkSeatHolderChange, checkSeatRemoval, planNewSeat, pla
 import { asksAlias, checkHolderAdd, tieOfSeat, type ActiveRoleRow, type HolderAddPlan } from "./seat-holders";
 import {
   checkDivisionSave,
+  checkPeopleChange,
   closeRefusal,
   divisionClosing,
   divisionRowWrites,
+  peopleSaveOf,
   planDivisionSave,
   searchTeam,
   type DivisionPlan,
@@ -1216,14 +1219,15 @@ async function saveMemberDetails(
     if (seat !== null && title === null) return refused(SEAT_TITLE_REQUIRED);
     titled = seat === null ? [] : [seat.role.id];
   } else {
-    titled = divisionRowsIn(active, divisionId).map((r) => r.id);
-    if (titled.length === 0 || !reachesDivision(actor, divisionId, org)) return refused(NOT_IN_SCOPE);
+    const rows = titledRowsIn(actor, active, divisionId, org);
+    if (rows === null) return refused(NOT_IN_SCOPE);
+    titled = rows;
   }
   // Each other division row's title (issue #911), checked as the form's own one is: one out of reach refuses the whole save.
   const rowTitles: { readonly ids: number[]; readonly title: string | null }[] = [];
   for (const row of divisionTitles) {
-    const ids = divisionRowsIn(active, row.divisionId).map((r) => r.id);
-    if (row.divisionId === divisionId || ids.length === 0 || !reachesDivision(actor, row.divisionId, org)) return refused(NOT_IN_SCOPE);
+    const ids = row.divisionId === divisionId ? null : titledRowsIn(actor, active, row.divisionId, org);
+    if (ids === null) return refused(NOT_IN_SCOPE);
     rowTitles.push({ ids, title: row.title });
   }
   const correction = await planCorrection(identity, signInEmail, eq(users.member, target.id));
@@ -1262,6 +1266,40 @@ async function saveMemberDetails(
     if (isGuardFailure(error)) return refused(SIGN_IN_EMAIL_REFUSALS.changed);
     throw error;
   }
+  done();
+  return written(null);
+}
+
+/**
+ * The rows a role title in `divisionId` is written on: the person's lead and
+ * member rows there, when the viewer reaches the division; null when they are
+ * not in it or it is out of the viewer's reach. Edit details and Change title
+ * both read it.
+ */
+function titledRowsIn(actor: TeamActor, active: readonly ActiveRole[], divisionId: number, org: OrgChart): number[] | null {
+  const ids = divisionRowsIn(active, divisionId).map((r) => r.id);
+  return ids.length === 0 || !reachesDivision(actor, divisionId, org) ? null : ids;
+}
+
+/**
+ * Change title on a Team tree member row (issue #901): their role title in
+ * `divisionId`, for someone the viewer may edit, written on the rows Edit
+ * details writes it on (`titledRowsIn`). Nothing else changes.
+ */
+async function saveDivisionTitle(identity: DashboardIdentity, personId: number, divisionId: number, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkRoleTitle(input);
+  if (!checked.ok) return refused(checked.error);
+  const { org } = await readTeamSnapshot();
+  const actor = await readMembersActor(identity, org);
+  const active = await rolesTheViewerChanges(identity, actor, personId);
+  const titled = actor === null || active === null ? null : titledRowsIn(actor, active, divisionId, org);
+  if (titled === null) return refused(NOT_IN_SCOPE);
+  await runAuditQuery((db) =>
+    db
+      .update(roles)
+      .set({ title: checked.value ?? "" })
+      .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
+  );
   done();
   return written(null);
 }
@@ -1457,8 +1495,9 @@ async function writeDivisionPlan(
       ? db.insert(divisions).values({ id: divisionId, deptId: create.departmentId, name: plan.name, code: plan.code })
       : db
           .update(divisions)
-          // A save that keeps the name leaves the stored one as it is (issue #938).
-          .set(plan.nameChanged ? { name: plan.name, code: plan.code } : { code: plan.code })
+          // A save that keeps the name leaves the stored one as it is (issue #938), and one that keeps the code leaves
+          // the stored code, none included (issue #901): the row is then written with its own code, the batch's head.
+          .set({ ...(plan.nameChanged ? { name: plan.name } : {}), code: plan.codeChanged ? plan.code : sql`${divisions.code}` })
           .where(and(eq(divisions.id, divisionId), isNull(divisions.closedAt))),
     ...(rows.end.length === 0 ? [] : [db.update(roles).set({ leavedAt: on }).where(open(rows.end))]),
     // Old leads who leave the team end every role before a seat on one moves to a new lead. The hand-over ends their rows by
@@ -1516,6 +1555,26 @@ async function saveDivision(identity: DashboardIdentity, divisionId: number, inp
   // Position codes are built from the division's code when read, so a new code reaches every position at once.
   if (planned.plan.codeChanged) refreshPositions();
   return result;
+}
+
+/**
+ * A member row's lead or advisor change (issue #901), from the Team tree's
+ * member menu and the Members page alike: Edit division's save with only
+ * that change in it (`peopleSaveOf`), planned and written as Edit division's
+ * is. It is a Members write, so the viewer acts as `readMembersActor` says,
+ * and `planDivisionSave` still asks `mayChangeDivision`.
+ */
+async function changeDivisionPeople(identity: DashboardIdentity, divisionId: number, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkPeopleChange(input);
+  if (!checked.ok) return refused(checked.error);
+  const snapshot = await readTeamSnapshot();
+  const actor = await readMembersActor(identity, snapshot.org);
+  const subject = savedSubject(divisionId, snapshot.org);
+  if (actor === null || subject === null) return refused("That division is not one you manage.");
+  const save = peopleSaveOf(subject.division, checked.value);
+  const planned = planDivisionSave({ actor, org: snapshot.org, subject, save, team: teamPeopleOf(snapshot) });
+  if (!planned.ok) return refused(planned.error);
+  return writeDivisionPlan(identity, divisionId, planned.plan, null);
 }
 
 function refreshPositions() {
@@ -2219,9 +2278,11 @@ export function databaseTeamWrites(
     removeFromDivision: (personId, divisionId) => removeFromDivision(identity, personId, divisionId),
     moveMember: (input) => moveMember(identity, input),
     saveMemberDetails: (target, divisionId, input) => saveMemberDetails(identity, target, divisionId, input),
+    saveDivisionTitle: (personId, divisionId, input) => saveDivisionTitle(identity, personId, divisionId, input),
     setMemberPhoto: (personId, photo) => setMemberPhoto(identity, personId, photo),
     createDivision: (departmentId, input) => createDivision(identity, departmentId, input),
     saveDivision: (divisionId, input) => saveDivision(identity, divisionId, input),
+    changeDivisionPeople: (divisionId, input) => changeDivisionPeople(identity, divisionId, input),
     closeDivision: (divisionId) => closeDivision(identity, divisionId),
     createDepartment: (input) => createDepartment(identity, input),
     saveDepartment: (departmentId, input) => saveDepartment(identity, departmentId, input),

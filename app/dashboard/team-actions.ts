@@ -167,6 +167,20 @@ export async function saveMemberDetails(target: DetailsTarget, divisionId: numbe
   return answered(await writes.saveMemberDetails(target, divisionId, input));
 }
 
+/** Change title on a Team tree member row (issue #901): their role title in `divisionId`. */
+export async function saveDivisionTitle(personId: number, divisionId: number, title: string): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes || !isId(personId) || !isId(divisionId)) return REFUSED;
+  return answered(await writes.saveDivisionTitle(personId, divisionId, title));
+}
+
+/** A member row's lead or advisor change (issue #901), from the Team tree and the Members page: Edit division's save with only that change. */
+export async function changeDivisionPeople(divisionId: number, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes || !isId(divisionId)) return REFUSED;
+  return answered(await writes.changeDivisionPeople(divisionId, input));
+}
+
 /** Edit details' photo: the cropped square JPEG in the form's `photo` field, or none to remove it. */
 export async function setMemberPhoto(personId: number, form: FormData | null): Promise<TeamActionResult> {
   const writes = await writesOn("members");

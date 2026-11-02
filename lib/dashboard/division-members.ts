@@ -128,12 +128,31 @@ export type PositionTitle =
   | { readonly kind: "seat"; readonly value: string }
   | { readonly kind: "fixed"; readonly label: string };
 
+/**
+ * Someone's role in one division the viewer reaches, as the member menus
+ * read it (issue #901): Make lead and Becomes an advisor change who leads or
+ * advises there, which `change` says the viewer may (`mayChangeDivision`).
+ */
+export type DivisionRoleChange = {
+  readonly divisionId: number;
+  /** "Mission Analysis" */
+  readonly short: string;
+  /** "Structures": the department the division sits in, which an advisor's department scope names. */
+  readonly department: string;
+  readonly role: DivisionRole;
+  /** Their role here is an Advisor role. */
+  readonly advisor: boolean;
+  readonly change: Permission;
+};
+
 /** What the viewer may change about someone's place on the team from Edit details. */
 export type MemberPosition = {
   /** Their first and last name as stored, which Edit details renames them by (issue #668): anyone who may edit them may. */
   readonly name: PersonName;
   readonly title: PositionTitle;
   readonly leads: readonly LeadChoice[];
+  /** Their role in every division of theirs the viewer reaches, home first (issue #901). */
+  readonly roles: readonly DivisionRoleChange[];
   /** The places the viewer may move them out of, from Edit details and the Team tree (`movablePlacesOf`, issue #647). */
   readonly moves: readonly MovablePlace[];
   /** Every division of theirs the viewer reaches; the panel and the ⋯ menu show those offered or locked. */
@@ -173,6 +192,14 @@ export function positionOf(record: PersonRecord, org: OrgChart, actor: TeamActor
     leads: reached
       .filter((m) => !record.advising.includes(m.divisionId) && mayChangeDivision(actor, m.divisionId, org).allowed)
       .map((m) => ({ divisionId: m.divisionId, short: short(m.divisionId), role: m.role })),
+    roles: reached.map((m) => ({
+      divisionId: m.divisionId,
+      short: short(m.divisionId),
+      department: departmentNameOf(org, org.divisions.find((d) => d.id === m.divisionId)?.departmentId ?? -1),
+      role: m.role,
+      advisor: record.advising.includes(m.divisionId),
+      change: mayChangeDivision(actor, m.divisionId, org),
+    })),
     moves: movablePlacesOf(record, org, actor),
     removals: reached.map((m) => ({ divisionId: m.divisionId, short: short(m.divisionId), removal: removalFrom(actor, standing, m.divisionId, org) })),
     leave: mayLeaveTeam(actor, standing, org),
@@ -543,6 +570,13 @@ const title = z
 export function roleTitleError(text: string): string | null {
   const t = title.safeParse(text);
   return t.success ? null : (t.error.issues[0]?.message ?? "Check the role.");
+}
+
+/** Change title's title as sent (issue #901), by the same rule: trimmed, at most 80 letters, blank as none. */
+export function checkRoleTitle(input: unknown): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (typeof input !== "string") return { ok: false, error: "Write the role." };
+  const t = title.safeParse(input);
+  return t.success ? { ok: true, value: t.data } : { ok: false, error: t.error.issues[0]?.message ?? "Check the role." };
 }
 
 const id = z.number().int().positive();
