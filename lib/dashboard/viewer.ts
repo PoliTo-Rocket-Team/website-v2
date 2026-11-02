@@ -305,11 +305,23 @@ export function areasGrantedBy(grants: readonly AreaGrant[]): GrantArea[] {
  * `all` grants every one, at either level. Read off the stored rows, before
  * `unitRowsOf` turns such a row into one per open department, since that is
  * the last place "whole team" is still said. "Approve orders" is no area
- * here.
+ * here. With `level` "edit", only the rows at Can edit count (issue #957).
  */
-export function wholeTeamAreasOf(scopes: readonly ScopeRef[]): GrantArea[] {
-  const targets = scopes.flatMap((s) => (s.scope === "team" ? [s.target] : []));
+export function wholeTeamAreasOf(scopes: readonly ScopeRef[], level: AccessLevel = "view"): GrantArea[] {
+  const targets = scopes.flatMap((s) => (s.scope === "team" && (level === "view" || s.level === "edit") ? [s.target] : []));
   return GRANT_AREAS.filter((area) => targets.includes("all") || targets.includes(area));
+}
+
+/**
+ * Whether the viewer changes `area` as the whole team (issue #957, Owner
+ * decision 2026-11-02): full access, or a whole-team grant on that area at
+ * Can edit, whatever the holder's role. Such a grant acts as full access
+ * within its own area and nowhere else (#471): the rules kept to full access
+ * alone read `isFullAccess`, never this. At Can view the grant shows the
+ * whole area and changes nothing.
+ */
+export function changesAreaAsTeam(viewer: ViewerStanding & { readonly wholeTeamEdits: readonly GrantArea[] }, area: GrantArea): boolean {
+  return isFullAccess(viewer) || (readsArea(viewer, area) && viewer.wholeTeamEdits.includes(area));
 }
 
 /**

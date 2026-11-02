@@ -96,7 +96,7 @@ import {
   type SeatRow,
   type SteppingDown,
 } from "./hand-over";
-import { coveredDivisionIds, FLAG_OF_SEAT, isOffTeam, mayChange, readsArea, readsAreaIn, SEAT_OF_FLAG, seatOf, type FlaggedSeat, type SeatFlag } from "./viewer";
+import { changesAreaAsTeam, coveredDivisionIds, FLAG_OF_SEAT, isOffTeam, mayChange, readsArea, readsAreaIn, SEAT_OF_FLAG, seatOf, type FlaggedSeat, type SeatFlag } from "./viewer";
 import {
   checkDepartmentClose,
   checkDepartmentCreate,
@@ -157,8 +157,9 @@ export function leadDivisionId(identity: DashboardIdentity): number | null {
  * Members (or every-area) grant at Can edit that covers it (issue #342); a
  * grant across a department covers each of its divisions (issue #351). A
  * grant at Can view, or on another area, changes nobody. Null for anyone
- * else. Every Members write checks this actor, directly or through
- * `actingOn`.
+ * else. The Team tree's structure writes check this actor: a grant on an
+ * area never widens them (issue #957). The Members writes check
+ * `readMembersActor`.
  */
 async function readActor(identity: DashboardIdentity, org: OrgChart | Promise<OrgChart>): Promise<TeamActor | null> {
   return actorOf(identity, org, (divisionId, chart) => {
@@ -168,12 +169,26 @@ async function readActor(identity: DashboardIdentity, org: OrgChart | Promise<Or
 }
 
 /**
+ * Who the viewer changes people as on the Members page: the team for anyone
+ * who changes Members as the team (`changesAreaAsTeam`), a whole-team Members
+ * grant at Can edit included, whatever their role (issue #957); else
+ * `readActor`. Every Members write checks this actor, directly or through
+ * `actingOn`.
+ */
+async function readMembersActor(identity: DashboardIdentity, org: OrgChart | Promise<OrgChart>): Promise<TeamActor | null> {
+  if (!changesAreaAsTeam(identity, "members")) return readActor(identity, org);
+  // The chart is awaited on this path too, so a failed read of it never goes unheard.
+  await org;
+  return { kind: "team" };
+}
+
+/**
  * Who the viewer reads the Members page as: `readActor`, except that it reads
  * every division where they read the Members area (`readsAreaIn`): a lead's
  * own, or one a member's Members grant (or every-area grant) covers, at any
  * level. A grant on another area reads no division here (issue #471).
  * Reading is all it decides; no write takes this actor, and the page's
- * actions follow `readActor` (issue #351).
+ * actions follow `readMembersActor` (issue #351).
  */
 async function readViewingActor(identity: DashboardIdentity, org: OrgChart | Promise<OrgChart>): Promise<TeamActor | null> {
   return actorOf(identity, org, (divisionId, chart) => {
@@ -503,7 +518,7 @@ export async function readMembersDivisionReach(identity: DashboardIdentity): Pro
  * they reach, all at once (issue #903), each with everyone in it, the people
  * waiting for Confirm NDA and the accepted applicants joining. A head gets
  * their department's page instead. Which divisions it lists follows the
- * viewing reach; what the page offers to change follows `readActor`, so a
+ * viewing reach; what the page offers to change follows `readMembersActor`, so a
  * grant at Can view shows the people and no action (issue #351).
  */
 export async function readDivisionMembers(identity: DashboardIdentity): Promise<MemberDirectory> {
@@ -514,7 +529,7 @@ export async function readDivisionMembers(identity: DashboardIdentity): Promise<
   const reach = reachOf(identity, viewing, snapshot.org);
   // The accepted applicants joining are applications data: listed only for a
   // viewer who reads the Applications area here (issue #471, `readJoining`).
-  const [perDivision, actor] = await Promise.all([readPerDivision(identity, reach, snapshot.org), readActor(identity, snapshot.org)]);
+  const [perDivision, actor] = await Promise.all([readPerDivision(identity, reach, snapshot.org), readMembersActor(identity, snapshot.org)]);
   const page = reachMembers({
     records: recordsOf(snapshot),
     org: snapshot.org,
@@ -539,7 +554,7 @@ export async function readDivisionMembers(identity: DashboardIdentity): Promise<
  */
 export async function readWholeTeamMembers(identity: DashboardIdentity): Promise<MemberDirectory> {
   const snapshotRead = readTeamSnapshot();
-  const [snapshot, actor] = await Promise.all([snapshotRead, readActor(identity, snapshotRead.then((s) => s.org))]);
+  const [snapshot, actor] = await Promise.all([snapshotRead, readMembersActor(identity, snapshotRead.then((s) => s.org))]);
   const records = recordsOf(snapshot);
   const divisionIds = snapshot.org.divisions.map((d) => d.id);
   const team = wholeTeamMembers({ records, org: snapshot.org, selfId: identity.memberId });
@@ -573,7 +588,7 @@ async function readSignInEmailCorrectable(identity: DashboardIdentity): Promise<
 /** Add member's field (boards 61h, 69c): the team, searched by name or email, and who is waiting here. */
 export async function findForAdd(identity: DashboardIdentity, divisionId: number, query: string): Promise<AddLookup> {
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readMembersActor(identity, snapshot.org);
   if (actor === null || !reachesDivision(actor, divisionId, snapshot.org)) return { kind: "none" };
   const team = recordsOf(snapshot).map((r) => ({
     id: r.id,
@@ -659,7 +674,7 @@ function membershipsOfActive(active: readonly ActiveRole[]): Memberships {
 
 /**
  * The person's active roles in the divisions the viewer changes people in
- * (`actor`, from `readActor`): every role for the team, and for a head or a
+ * (`actor`, from `readMembersActor`): every role for the team, and for a head or a
  * division lead the roles in the divisions they reach, each division a lead
  * of several included (issues #185, #342); never the viewer. Null when none
  * is left.
@@ -693,7 +708,7 @@ const today = () => new Date().toISOString().slice(0, 10);
  */
 async function saveMember(identity: DashboardIdentity, personId: number, edit: MemberEdit): Promise<boolean> {
   const { org } = await readTeamSnapshot();
-  const actor = await readActor(identity, org);
+  const actor = await readMembersActor(identity, org);
   const active = await rolesTheViewerChanges(identity, actor, personId);
   if (actor === null || active === null) return false;
   if (!org.divisions.some((d) => d.id === edit.divisionId) || !mayChangeDivision(actor, edit.divisionId, org).allowed) return false;
@@ -717,7 +732,7 @@ async function saveMember(identity: DashboardIdentity, personId: number, edit: M
 async function moveToAlumni(identity: DashboardIdentity, personId: number, departure: Departure): Promise<boolean> {
   if (personId === identity.memberId) return false;
   const { org } = await readTeamSnapshot();
-  const actor = await readActor(identity, org);
+  const actor = await readMembersActor(identity, org);
   if (actor === null) return false;
   const active = await activeRoles(personId);
   // Every active role counts, one beyond every division included (a head kept on a division row too):
@@ -757,7 +772,7 @@ async function confirmJoin(identity: DashboardIdentity, applicationId: number): 
 /** The actor and the open org chart, when the viewer's page reaches `divisionId`. */
 async function actingOn(identity: DashboardIdentity, divisionId: number): Promise<{ actor: TeamActor; org: OrgChart } | null> {
   const { org } = await readTeamSnapshot();
-  const actor = await readActor(identity, org);
+  const actor = await readMembersActor(identity, org);
   if (actor === null || !org.divisions.some((d) => d.id === divisionId) || !reachesDivision(actor, divisionId, org)) return null;
   return { actor, org };
 }
@@ -966,7 +981,7 @@ const NOT_IN_SCOPE = "You can edit only people your Members page lets you change
  */
 export async function findMoveTargets(identity: DashboardIdentity, personId: number): Promise<MoveLookup> {
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readMembersActor(identity, snapshot.org);
   if (actor === null || (await rolesTheViewerChanges(identity, actor, personId)) === null) return { kind: "none" };
   return { kind: "targets", departments: moveTargetsOf(recordsOf(snapshot), snapshot.org, actor) };
 }
@@ -989,7 +1004,7 @@ async function moveMember(identity: DashboardIdentity, input: unknown): Promise<
   if (!checked.ok) return refused(checked.error);
   const request = checked.value;
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readMembersActor(identity, snapshot.org);
   if (actor === null || (await rolesTheViewerChanges(identity, actor, request.personId)) === null) return refused(NOT_IN_SCOPE);
   const [active, headRows] = await Promise.all([
     activeRoles(request.personId),
@@ -1190,7 +1205,7 @@ async function saveMemberDetails(
 
   const snapshot = await readTeamSnapshot();
   const { org } = snapshot;
-  const actor = await readActor(identity, org);
+  const actor = await readMembersActor(identity, org);
   const active = await rolesTheViewerChanges(identity, actor, target.id);
   if (actor === null || active === null) return refused(NOT_IN_SCOPE);
   let titled: number[];
@@ -1254,7 +1269,7 @@ async function saveMemberDetails(
 /** The photo in Edit details (board 61g): a square JPEG under 500 KB in the public store, or none; for anyone the viewer may edit. */
 async function setMemberPhoto(identity: DashboardIdentity, personId: number, photo: Upload | null): Promise<WriteResult<null>> {
   const { org } = await readTeamSnapshot();
-  if ((await rolesTheViewerChanges(identity, await readActor(identity, org), personId)) === null) return refused(NOT_IN_SCOPE);
+  if ((await rolesTheViewerChanges(identity, await readMembersActor(identity, org), personId)) === null) return refused(NOT_IN_SCOPE);
   const checked = photo === null ? written(null) : checkedMemberPhoto(photo);
   if (!checked.ok) return refused(checked.error);
   const [member] = await getDb().select({ picture: members.picture }).from(members).where(eq(members.memberId, personId)).limit(1);

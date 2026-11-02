@@ -62,6 +62,7 @@ import {
   grantReachOf,
   quietDays,
   quietNote,
+  wholeTeamReachOf,
   type ApplicationDocument,
   type ApplicationEntry,
   type ApplicationsPage,
@@ -275,13 +276,15 @@ async function readNextPositionId(): Promise<number> {
 
 async function positionsPage(identity: Identity): Promise<PositionsPage> {
   if (!readsRecruitment(identity, "positions")) throw new DashboardRefused("positions");
+  // A whole-team Positions grant reads as the team for a lead or a head too (issue #957).
+  const wholeTeam = wholeTeamReachOf(identity, "positions");
   // The head's department needs nothing of the positions, so it is read beside them (issue #397).
   const [positions, divisionChoices, nextId, department, reach] = await Promise.all([
     readPositionRows(identity, "positions", new Date()),
     readPostableDivisions(identity),
     readNextPositionId(),
-    identity.kind === "operations-lead" ? null : readDepartmentUnit(identity),
-    identity.kind === "member" ? readGrantReach(identity, "positions") : null,
+    identity.kind === "operations-lead" || wholeTeam !== null ? null : readDepartmentUnit(identity),
+    wholeTeam ?? (identity.kind === "member" ? readGrantReach(identity, "positions") : null),
   ]);
   const shared = {
     positions: positions.map(rowOf),
@@ -317,6 +320,9 @@ async function readDepartmentUnit(identity: Identity): Promise<DepartmentUnit | 
 async function applicationsScope(identity: Identity): Promise<ApplicationsScope> {
   // The recruitment manager reads every division's applications, as full access does (issue #194).
   if (identity.kind === "operations-lead" || managesRecruitment(identity)) return { kind: "team" };
+  // A whole-team Applications grant reads as the team for a lead or a head too (issue #957).
+  const wholeTeam = wholeTeamReachOf(identity, "applications");
+  if (wholeTeam !== null) return { kind: "granted", reach: wholeTeam };
   const [department, reach] = await Promise.all([
     readDepartmentUnit(identity),
     identity.kind === "member" ? readGrantReach(identity, "applications") : null,

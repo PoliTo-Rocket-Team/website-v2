@@ -261,6 +261,14 @@ describe("figures about applications come only where the viewer reads Applicatio
   }
 });
 
+/** Whether the viewer holds a `team` row on `area`: a grant across the whole team (issues #956, #957). */
+const holdsWholeTeam = (row: MatrixRow, area?: string) =>
+  row.viewer.rawRows.some((r) => r.scope === "team" && r.target !== "approve_orders" && (area === undefined || r.target === area));
+
+/** The intro of every matrix row holding a whole-team grant on `area`, whatever their role and level (issue #957). */
+const wholeTeamIntros = (area: "positions" | "applications", intro: string): Record<string, string> =>
+  Object.fromEntries((VIEWERS as readonly MatrixRow[]).filter((r) => holdsWholeTeam(r, area)).map((r) => [r.name, intro]));
+
 // The intro each Positions grant holder's page reads: the places the grant names, never their own division (Mission Analysis).
 const GRANT_INTROS: Readonly<Record<string, string>> = {
   "member with a positions grant across the division": "Roles in the Mission Analysis.",
@@ -269,6 +277,8 @@ const GRANT_INTROS: Readonly<Record<string, string>> = {
   "member with a positions grant across the team": "Every role in the team.",
   "member with a Positions grant (Can view) in MA": "Roles in the Mission Analysis.",
   "member with a Positions grant (Can edit) in MA and (Can view) in DM": "Roles in the Design & Manufacturing and the Mission Analysis.",
+  // A whole-team Positions grant reads as the team for a lead and a head too, at either level (issue #957).
+  ...wholeTeamIntros("positions", "Every role in the team."),
 };
 
 describe("the Positions page offers only what the viewer may do (issue #487)", () => {
@@ -302,6 +312,8 @@ const APPLICATIONS_GRANT_INTROS: Readonly<Record<string, string>> = {
   "member with a applications grant across the team": "Applications for every role in the team.",
   "member with an Applications grant (Can view) across the team": "Applications for every role in the team.",
   "member with an Applications grant (Can edit) in MA and (Can view) in DM": "Applications for roles in the Design & Manufacturing and the Mission Analysis.",
+  // A whole-team Applications grant reads as the team for a lead and a head too, at either level (issue #957).
+  ...wholeTeamIntros("applications", "Applications for every role in the team."),
 };
 
 describe("the Applications page offers a move only where the viewer may make it (issue #577)", () => {
@@ -2323,6 +2335,87 @@ describe("a Members grant across the whole team opens the whole team's Members p
     for (const area of ["positions", "applications", "orders"]) {
       const name = `member with a ${area} grant across the team`;
       assert.equal((await (await open(name)).members()).scope, "none", name);
+    }
+  });
+});
+
+// A whole-team grant at Can edit acts as full access within its own area,
+// and only there (Owner decision, 2026-11-02, issue #957). Each matrix row
+// holding a `team` row on an area, at either level, makes one Members write
+// only the team may make, one Team tree structure write, and reads the
+// Team tree's edit view; the Positions and Applications headers are pinned by
+// the intro tables above.
+
+describe("a whole-team grant acts as full access within its own area, and the Team tree's structure stays as it is (issue #957)", () => {
+  const GRANT_ROWS = (VIEWERS as readonly MatrixRow[]).filter((r) => holdsWholeTeam(r));
+  /** The same viewer without the grant: the matrix row holding their roles and no scope row. */
+  const plainOf = (row: MatrixRow) =>
+    ({ "division-lead": "division lead", "department-head": "department head", member: "member" })[row.viewer.kind as "division-lead" | "department-head" | "member"];
+  /** What the edit view lets the viewer change: the department pencils and seats, each department's divisions, each division's pencil. */
+  const editableOf = (s: TeamStructure) => ({
+    departmentsEditable: s.departmentsEditable,
+    departments: s.departments.map((d) => ({ id: d.id, divisionsEditable: d.divisionsEditable, pages: d.divisions.filter((v) => v.page !== null).map((v) => v.id) })),
+  });
+  /** A full-access seat with no division role: Leaves the team for them is the team's alone (`mayLeaveTeam`). */
+  const seatHolder = () => accountOf("Project Manager").memberId!;
+
+  test("every holder, area and level is in the matrix, and only the Can edit Members rows change Members as the team", () => {
+    assert.ok(GRANT_ROWS.length >= 24, `${GRANT_ROWS.length} whole-team grant rows`);
+    for (const { name, viewer, expect } of GRANT_ROWS) {
+      assert.equal(
+        expect.membersAsTeam,
+        viewer.rawRows.some((r) => r.scope === "team" && r.target === "members" && r.level === "edit"),
+        `${name}: Members as the team`,
+      );
+      assert.equal(expect.fullAccess, false, `${name}: full access`);
+    }
+  });
+
+  test("Leaves the team for a seat holder lands exactly where the viewer changes Members as the team", async () => {
+    const control = await attempt(accountOf("team leader").userId, () => teamActions.moveToAlumni(seatHolder(), "2024 – 2026", null));
+    assert.ok(!isRefusal(control.answer) && control.writes.length > 0, `the team leader: ${JSON.stringify(control.answer)}`);
+    for (const { name, expect } of GRANT_ROWS) {
+      const { answer, writes } = await attempt(accountOf(name).userId, () => teamActions.moveToAlumni(seatHolder(), "2024 – 2026", null));
+      assert.equal(!isRefusal(answer), expect.membersAsTeam, `${name}: ${JSON.stringify(answer)}`);
+      assert.equal(writes.length > 0, expect.membersAsTeam, `${name}: the writes`);
+    }
+  });
+
+  test("a new department is refused for every grant row, and writes nothing", async () => {
+    const run = () => teamActions.createDepartment({ name: "Avionics", code: "AVI", kind: "technical", heads: [EXTRA.mover] });
+    const control = await attempt(accountOf("team leader").userId, run);
+    assert.ok(!isRefusal(control.answer), `the team leader: ${JSON.stringify(control.answer)}`);
+    for (const { name } of GRANT_ROWS) {
+      const { answer, writes } = await attempt(accountOf(name).userId, run);
+      assert.ok(isRefusal(answer), `${name}: not refused: ${JSON.stringify(answer)}`);
+      assert.deepEqual(writes, [], `${name}: wrote`);
+    }
+  });
+
+  test("the Team tree's edit view answers each grant row as it answers the same viewer without the grant", async () => {
+    for (const row of GRANT_ROWS) {
+      const plain = plainOf(row);
+      const withGrant = await (await open(row.name)).teamStructure();
+      const without = await (await open(plain)).teamStructure();
+      assert.equal(withGrant === null, without === null, `${row.name}: an edit view, against ${plain}`);
+      if (withGrant !== null && without !== null) {
+        assert.deepEqual(editableOf(withGrant), editableOf(without), `${row.name}: the divisions they edit, against ${plain}`);
+      }
+    }
+  });
+
+  test("the Overview's Members figure counts everyone with an active role for a member's or a lead's whole-team Members grant", async () => {
+    const rows = GRANT_ROWS.filter((r) => holdsWholeTeam(r, "members") && r.viewer.kind !== "department-head");
+    assert.ok(rows.length >= 4, "a member and a lead, at each level");
+    for (const { name } of rows) {
+      const data = await open(name);
+      const active = new Set((await tableRows(roles)).filter((r) => r.leavedAt == null).map((r) => r.memberId));
+      const board = (await data.overview()) as TeamSideOverview;
+      const figure = board.stats.find((s) => s.label === "Team");
+      assert.equal(figure?.value, String(active.size), `${name}: the Team figure`);
+      const access = board.access.kind === "lines" ? board.access.lines.find((l) => l.area === "members") : undefined;
+      assert.ok(access !== undefined && access.area === "members", `${name}: a Members line under Your access`);
+      assert.equal(access.people, active.size, `${name}: Your access counts`);
     }
   });
 });

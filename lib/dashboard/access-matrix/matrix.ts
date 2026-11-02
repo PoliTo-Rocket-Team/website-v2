@@ -80,6 +80,8 @@ export type Viewer = ViewerStanding & {
   readonly grants: readonly AreaGrant[];
   /** The areas a `team` row grants across the whole team (`wholeTeamAreasOf`, issue #956); none off the team. */
   readonly wholeTeamAreas: readonly GrantArea[];
+  /** The areas a `team` row grants at Can edit (`wholeTeamAreasOf`, issue #957); none off the team. */
+  readonly wholeTeamEdits: readonly GrantArea[];
   /** The active roles as stored, before an alumnus's are dropped. */
   readonly heldRoles: readonly Role[];
   readonly rawRows: readonly ScopeUnitRow[];
@@ -99,6 +101,7 @@ export function viewerOf(roles: readonly Role[], rows: readonly ScopeUnitRow[] =
     roles: offTeam ? [] : roles,
     grants: offTeam ? [] : areaGrantsOf(unitRows),
     wholeTeamAreas: offTeam ? [] : wholeTeamAreasOf(rows),
+    wholeTeamEdits: offTeam ? [] : wholeTeamAreasOf(rows, "edit"),
     heldRoles: roles,
     rawRows: rows,
     onAlumniRecord,
@@ -109,7 +112,7 @@ export function viewerOf(roles: readonly Role[], rows: readonly ScopeUnitRow[] =
 
 /** The break-glass admin as `readIdentity` reads it (issue #646): the team leader's standing, from no member row, role or scope row. */
 export function breakGlassViewer(): Viewer {
-  return { ...BREAK_GLASS_STANDING, roles: [], grants: [], wholeTeamAreas: [], heldRoles: [], rawRows: [], onAlumniRecord: false, headDepartment: null, breakGlass: true };
+  return { ...BREAK_GLASS_STANDING, roles: [], grants: [], wholeTeamAreas: [], wholeTeamEdits: [], heldRoles: [], rawRows: [], onAlumniRecord: false, headDepartment: null, breakGlass: true };
 }
 
 // The matrix ------------------------------------------------------------------
@@ -139,6 +142,13 @@ export type Expect = {
   readonly ordersPage: boolean;
   /** Whether the Members page is the whole team (`opensWholeTeam`): full access, or a Members grant across the whole team (issue #956). */
   readonly wholeTeamMembers: boolean;
+  /**
+   * Whether the viewer changes Members as the team (`changesAreaAsTeam`, the
+   * actor every Members write checks): full access, the team leader, and a
+   * whole-team Members grant at Can edit, whatever the holder's role (Owner
+   * decision, 2026-11-02, issue #957). The Team tree's structure is not it.
+   */
+  readonly membersAsTeam: boolean;
   /**
    * Whether the viewer has full access (`isFullAccess`): what the Members
    * export (issue #539), the sign-in email change (issues #741, #864) and the
@@ -185,6 +195,7 @@ const FULL_ACCESS: Expect = {
   switchesRecruitment: true,
   ordersPage: true,
   wholeTeamMembers: true,
+  membersAsTeam: true,
   fullAccess: true,
   aliases: FULL_ACCESS_ALIASES,
   decidesOrders: false,
@@ -198,6 +209,7 @@ export const PLAIN_MEMBER: Expect = {
   switchesRecruitment: false,
   ordersPage: false,
   wholeTeamMembers: false,
+  membersAsTeam: false,
   fullAccess: false,
   aliases: NO_ALIASES,
   decidesOrders: false,
@@ -221,6 +233,66 @@ export const SCOPES = {
 } as const satisfies Record<string, { at: { divisionId?: number; deptId?: number }; kind: ScopeUnitRow["scope"]; units: readonly Unit[] }>;
 
 export type MatrixRow = { readonly name: string; readonly viewer: Viewer; readonly expect: Expect };
+
+/** What a division lead of MA reaches by the role alone: every area in MA, and Orders (`ordersScopeOf`, issue #590). */
+const LEAD_OF_MA: Expect = { ...PLAIN_MEMBER, aliases: leadsOrHeads(["MA"]), pages: [...TEAM_BASE, ...LEADING], reads: everywhere(["MA"]), changes: changing(["MA"]), ordersPage: true };
+/** What the head of Aerodynamics reaches by the role alone: every area in their department. */
+const HEAD_OF_AERODYNAMICS: Expect = { ...LEAD_OF_MA, aliases: leadsOrHeads(AERODYNAMICS), reads: everywhere(AERODYNAMICS), changes: changing(AERODYNAMICS) };
+
+/**
+ * The viewers a whole-team grant is given to (issue #957): a member, a
+ * division lead (MA) and a department head (Aerodynamics), each with what
+ * their role reaches without the grant.
+ */
+export const WHOLE_TEAM_HOLDERS = [
+  { who: "member", roles: [MEMBER_ROLE], base: PLAIN_MEMBER },
+  { who: "division lead", roles: [role("lead", 1, 1)], base: LEAD_OF_MA },
+  { who: "department head", roles: [role("head", null, 1)], base: HEAD_OF_AERODYNAMICS },
+] as const satisfies readonly { who: string; roles: readonly Role[]; base: Expect }[];
+
+/**
+ * A whole-team grant on one area at one level, on top of what the role
+ * reaches (Owner decision, 2026-11-02, issue #957): the area is read in every
+ * unit; at Can edit it is changed in every unit, and Members is changed as
+ * the team; at Can view nothing changes beyond what the role changes. Every
+ * other field is the role's: the grant opens no other area (#471).
+ */
+function wholeTeamGrant(base: Expect, area: GrantArea, level: "view" | "edit"): Expect {
+  const page = PAGE_OF_AREA[area];
+  return {
+    ...base,
+    pages: base.pages.includes(page) ? base.pages : [...base.pages, page],
+    reads: { ...base.reads, [area]: ALL },
+    changes: level === "edit" && area !== "orders" ? { ...base.changes, [area]: ALL } : base.changes,
+    ordersPage: base.ordersPage || area === "orders",
+    wholeTeamMembers: area === "members",
+    membersAsTeam: area === "members" && level === "edit",
+  };
+}
+
+/**
+ * The whole-team grant rows other rows already cover: a member's at Can edit
+ * (each single grant across the team, below), and the Can view rows of
+ * issues #577 and #956.
+ */
+const COVERED_WHOLE_TEAM = new Set([
+  ...GRANT_AREAS.map((area) => `member ${area} edit`),
+  "member members view",
+  "member applications view",
+  "division lead members view",
+  "department head members view",
+]);
+
+/** Every other whole-team grant row (issue #957): each holder, each area, at each level. */
+const WHOLE_TEAM_ROWS: readonly MatrixRow[] = WHOLE_TEAM_HOLDERS.flatMap(({ who, roles, base }) =>
+  GRANT_AREAS.flatMap((area) =>
+    (["view", "edit"] as const).flatMap((level): MatrixRow[] =>
+      COVERED_WHOLE_TEAM.has(`${who} ${area} ${level}`)
+        ? []
+        : [{ name: `${who} with a ${area} grant (Can ${level}) across the team`, viewer: viewerOf(roles, [row("team", area, level)]), expect: wholeTeamGrant(base, area, level) }],
+    ),
+  ),
+);
 
 /** The team leader's row: every page and action of full access, plus deciding orders and asking for, and managing, any unit's alias. */
 const TEAM_LEADER: Expect = { ...FULL_ACCESS, aliases: { requests: ALL, manages: ALL, answers: true }, decidesOrders: true };
@@ -352,8 +424,9 @@ export const VIEWERS: readonly MatrixRow[] = [
     Object.entries(SCOPES).map(([scope, s]): MatrixRow => ({
       name: `member with a ${area} grant across the ${scope}`,
       viewer: viewerOf([MEMBER_ROLE], [row(s.kind, area, "edit", s.at)]),
-      // A Members grant across the whole team opens the whole team's Members page (issue #956).
-      expect: { ...singleGrant(area, s.units), wholeTeamMembers: area === "members" && s.kind === "team" },
+      // A Members grant across the whole team opens the whole team's Members page (issue #956), and at Can edit
+      // changes Members as the team (issue #957).
+      expect: { ...singleGrant(area, s.units), wholeTeamMembers: area === "members" && s.kind === "team", membersAsTeam: area === "members" && s.kind === "team" },
     })),
   ),
   // The same at Can view (issue #956): the whole team's Members page, and no change on it.
@@ -390,6 +463,9 @@ export const VIEWERS: readonly MatrixRow[] = [
       wholeTeamMembers: true,
     },
   },
+  // Every other whole-team grant, for a member, a lead and a head, at each level (Owner decision, 2026-11-02, issue #957):
+  // at Can edit it acts as full access within its own area, and only there; at Can view it shows the whole area.
+  ...WHOLE_TEAM_ROWS,
   // A grant at Can view reads and changes nothing.
   {
     name: "member with a Positions grant (Can view) in MA",
