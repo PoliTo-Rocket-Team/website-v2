@@ -291,7 +291,8 @@ describe("the Team tree and the Members page offer the same member actions", () 
     // Becomes an advisor is in Edit details too, so the Members table and phone views reach it.
     const advisor = [...window.document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Becomes an advisor");
     assert.ok(advisor, "Edit details offers Becomes an advisor");
-    assert.equal(advisor.disabled, false, "open for the team leader");
+    assert.equal(advisor.disabled, true, "locked: they are the division's only lead");
+    assert.ok(ui.text().includes("A division needs at least one lead."), "with the reason");
     const as = [...window.document.querySelectorAll("select")].find((s) => s.value === "lead");
     assert.ok(as, "the As box shows Division lead");
     await act(() => {

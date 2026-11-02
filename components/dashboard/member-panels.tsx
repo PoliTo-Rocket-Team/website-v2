@@ -1594,7 +1594,7 @@ function AdvisorAction({ person, position, onAsk }: { person: EditPerson; positi
   );
 }
 
-const LEAVING_BUTTON =`inline-flex h-9 items-center gap-2 rounded-full border border-danger/60 px-4 text-[13px] font-semibold text-danger transition-colors duration-300 ease-out hover:border-danger hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-danger/60 disabled:hover:bg-transparent ${FOCUS}`;
+const LEAVING_BUTTON = `inline-flex h-9 items-center gap-2 rounded-full border border-danger/60 px-4 text-[13px] font-semibold text-danger transition-colors duration-300 ease-out hover:border-danger hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-danger/60 disabled:hover:bg-transparent ${FOCUS}`;
 
 /**
  * Leaving the team (board 46b), the end of Edit details: Remove from each of

@@ -286,6 +286,9 @@ function pickError(person: TeamPerson | undefined): string | null {
   return person ? null : "They are not on the team.";
 }
 
+/** Why a save, or Becomes an advisor for a division's only lead, would leave a division with no lead. */
+export const ONE_LEAD_NEEDED = "A division needs at least one lead.";
+
 /**
  * The save as the rules allow it (Owner decisions, 2026-10-11 on #232), or
  * the first reason it is refused:
@@ -351,7 +354,7 @@ export function planDivisionSave(input: {
     if (error !== null) return no(error);
     if (leads.includes(personId) || oldIds.includes(personId)) return no(`${person!.name} already leads this division.`);
   }
-  if (leads.length - oldIds.length + newLeads.length < 1) return no("A division needs at least one lead.");
+  if (leads.length - oldIds.length + newLeads.length < 1) return no(ONE_LEAD_NEEDED);
   // Each new lead replaces at most one old lead (board 68b3).
   if (save.oldLeads.filter((o) => o.via === "replaced").length > newLeads.length) return no("Only a new lead can replace an old one.");
 

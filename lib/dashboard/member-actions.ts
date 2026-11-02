@@ -1,4 +1,4 @@
-import type { PeopleChange, RemovedLeadOutcome } from "./division-edit";
+import { ONE_LEAD_NEEDED, type PeopleChange, type RemovedLeadOutcome } from "./division-edit";
 import type { DivisionRoleChange, MemberPosition } from "./division-members";
 import type { AdvisorScope, SteppedDownKind } from "./hand-over";
 import type { Permission, Removal } from "./team";
@@ -58,9 +58,15 @@ export function makeLeadPermission(role: DivisionRoleChange): Permission | null 
   return role.advisor ? locked(ADVISORS_LEAD_NOTHING) : role.change;
 }
 
-/** Becomes an advisor in one division: locked for someone who advises there already, else open where the viewer may change who leads it. */
+/**
+ * Becomes an advisor in one division: locked for someone who advises there
+ * already, where the viewer may not change who leads it, and for its only
+ * lead, since a division keeps at least one (`planDivisionSave`); else open.
+ */
 export function becomeAdvisorPermission(role: DivisionRoleChange): Permission {
-  return role.advisor ? locked(`Already an advisor in ${role.short}`) : role.change;
+  if (role.advisor) return locked(`Already an advisor in ${role.short}`);
+  if (!role.change.allowed) return role.change;
+  return role.role === "lead" && role.leads < 2 ? locked(ONE_LEAD_NEEDED) : OPEN;
 }
 
 /** What the person steps down from when they become an advisor in a division: their lead role, or their member role. */

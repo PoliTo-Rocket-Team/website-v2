@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { ONE_LEAD_NEEDED } from "./division-edit";
 import type { DivisionRoleChange, MemberPosition } from "./division-members";
 import { advisingAt, advisorScopes } from "./hand-over";
 import {
@@ -23,7 +24,7 @@ const OPEN = { allowed: true } as const;
 const LEADS_BY_HEAD = { allowed: false, reason: "Leads are changed by the Head of Structures" } as const;
 
 function role(over: Partial<DivisionRoleChange> = {}): DivisionRoleChange {
-  return { divisionId: 7, short: "Mission Analysis", department: "Aerodynamics", role: "member", advisor: false, change: OPEN, ...over };
+  return { divisionId: 7, short: "Mission Analysis", department: "Aerodynamics", role: "member", advisor: false, leads: 1, change: OPEN, ...over };
 }
 
 function position(over: Partial<MemberPosition> = {}): MemberPosition {
@@ -79,7 +80,7 @@ test("the Team tree's menu: Leaves the team carries its reason; Move to… shows
 
 test("the Members page's menu offers Becomes an advisor, each removal and Leaves the team, with the Team tree's reasons", () => {
   const two = position({
-    roles: [role(), role({ divisionId: 8, short: "Structures", role: "lead" })],
+    roles: [role(), role({ divisionId: 8, short: "Structures", role: "lead", leads: 2 })],
     removals: [
       { divisionId: 7, short: "Mission Analysis", removal: { kind: "offered" } },
       { divisionId: 8, short: "Structures", removal: { kind: "locked", reason: "Leads are changed by the Head of Structures" } },
@@ -97,6 +98,21 @@ test("the Members page's menu offers Becomes an advisor, each removal and Leaves
   const locked = membersRowMenu(position({ roles: [role({ change: LEADS_BY_HEAD })] }));
   assert.deepEqual(entry(locked, "become-advisor")?.permission, LEADS_BY_HEAD);
   assert.equal(entry(membersRowMenu(position({ roles: [] })), "become-advisor"), undefined, "no reached division, nothing to advise from");
+});
+
+test("Becomes an advisor is locked for a division's only lead in both menus, and open while another lead stays", () => {
+  const sole = position({ roles: [role({ role: "lead", leads: 1 })] });
+  const locked = { allowed: false, reason: ONE_LEAD_NEEDED };
+  assert.deepEqual(entry(divisionRowMenu(sole, 7), "become-advisor")?.permission, locked);
+  assert.deepEqual(entry(membersRowMenu(sole), "become-advisor")?.permission, locked);
+  assert.deepEqual(advisorDivisions(sole), [], "the Members page offers no division to advise from");
+
+  const shared = position({ roles: [role({ role: "lead", leads: 2 })] });
+  assert.deepEqual(entry(divisionRowMenu(shared, 7), "become-advisor")?.permission, OPEN);
+  assert.deepEqual(entry(membersRowMenu(shared), "become-advisor")?.permission, OPEN);
+
+  const elsewhere = position({ roles: [role({ role: "lead", leads: 1 }), role({ divisionId: 8, short: "Structures" })] });
+  assert.deepEqual(advisorDivisions(elsewhere).map((r) => r.divisionId), [8], "the pick leaves out the division they alone lead");
 });
 
 test("a removal out of the viewer's reach shows nowhere", () => {
