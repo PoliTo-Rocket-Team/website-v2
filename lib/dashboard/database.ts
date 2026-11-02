@@ -33,7 +33,7 @@ import {
   type MemberDirectory,
   type RoleType,
 } from "./team";
-import { readTeamSnapshot, recordsOf, rosterOf } from "./team-database";
+import { readTeamSnapshot, recordsOf, rosterOf, type TeamSnapshot } from "./team-database";
 import { acceptanceEmailsAttention } from "./acceptance-emails";
 import { departmentSummaries, leaderAttention, leaderStats } from "./leader-overview";
 import { opensWholeTeam } from "./members-view";
@@ -172,6 +172,12 @@ type IdentityFields = {
    * whole team's Members page (`opensWholeTeam`). None off the team.
    */
   wholeTeamAreas: readonly GrantArea[];
+  /**
+   * The areas among `wholeTeamAreas` a `team` row grants at Can edit
+   * (issue #957): on each, the viewer changes the area as the whole team
+   * (`changesAreaAsTeam`). None off the team.
+   */
+  wholeTeamEdits: readonly GrantArea[];
 };
 
 /**
@@ -260,7 +266,7 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
   };
   // The break-glass admin stands as the team leader, with or without a member row or a role (issue #646).
   const breakGlass = isBreakGlassEmail(user.sign_in_email);
-  const noUnits = { role: null, roles: [], divisionIds: [], departmentIds: [], grants: [], wholeTeamAreas: [] };
+  const noUnits = { role: null, roles: [], divisionIds: [], departmentIds: [], grants: [], wholeTeamAreas: [], wholeTeamEdits: [] };
   if (user.member_id === null) {
     if (breakGlass) return { ...base, ...noUnits, ...BREAK_GLASS_STANDING };
     return { ...base, ...noUnits, breakGlass, ...viewerStandingOf(null) };
@@ -284,6 +290,7 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
     departmentIds: [...units.departmentIds],
     grants: areaGrantsOf(unitRows),
     wholeTeamAreas: wholeTeamAreasOf(scopeRows),
+    wholeTeamEdits: wholeTeamAreasOf(scopeRows, "edit"),
   };
   if (breakGlass) return { ...base, ...held, ...BREAK_GLASS_STANDING };
 
@@ -645,16 +652,27 @@ async function readOrderFigures(identity: Identity): Promise<NonNullable<Divisio
 /**
  * How many people are in the open divisions the viewer reads Members in
  * (`readsAreaIn`), each once; the scope those divisions make, which the
- * figure names (issue #593); and who there has no photo.
+ * figure names (issue #593); and who there has no photo. A whole-team
+ * Members grant, at either level, counts the whole team: everyone with an
+ * active role, the people above the divisions included (issue #957).
  */
 async function readMemberFigures(identity: Identity): Promise<NonNullable<DivisionFigures["members"]>> {
   const { org, roles: roleRows } = await readTeamSnapshot();
   const covered = coveredMemberDivisions(identity, org.divisions);
-  const people = new Set(
-    roleRows.filter((r) => r.leaved_at === null && r.division_id !== null && covered.includes(r.division_id)).map((r) => r.member_id),
-  );
+  const withoutPhoto = readMembersWithoutPhoto(covered);
   const own = identity.roles.flatMap((r) => (r.divisionId === null ? [] : [r.divisionId]));
-  return { count: people.size, scope: membersScopeOf(covered, org, own), withoutPhoto: await readMembersWithoutPhoto(covered) };
+  const wholeTeam = identity.wholeTeamAreas.includes("members");
+  const people = membersCounted(roleRows, wholeTeam ? null : covered);
+  return { count: people, scope: wholeTeam ? { kind: "team" } : membersScopeOf(covered, org, own), withoutPhoto: await withoutPhoto };
+}
+
+/**
+ * How many people hold an active role in one of `divisionIds`, each once; or,
+ * for null, an active role anywhere on the team (issue #957).
+ */
+function membersCounted(roleRows: TeamSnapshot["roles"], divisionIds: readonly number[] | null): number {
+  const active = roleRows.filter((r) => r.leaved_at === null && (divisionIds === null || (r.division_id !== null && divisionIds.includes(r.division_id))));
+  return new Set(active.map((r) => r.member_id)).size;
 }
 
 /** The open divisions where the viewer reads Members: a grant on a department covers each of its divisions, as on the Members page. */
@@ -945,15 +963,15 @@ function grantReachOf(identity: Identity): Identity & { kind: "member" } {
 /**
  * How many people are in the open divisions the viewer reads Members in
  * (`readsAreaIn`), each once, and how many divisions that is. A grant on a
- * department covers each of its divisions, as on the Members page.
+ * department covers each of its divisions, as on the Members page. A
+ * whole-team Members grant counts everyone with an active role, as the
+ * Overview's Members figure does (issue #957).
  */
 async function readMemberAccess(identity: Identity): Promise<NonNullable<AccessFigures["members"]>> {
   const { org, roles: roleRows } = await readTeamSnapshot();
-  const covered = new Set(coveredMemberDivisions(identity, org.divisions));
-  const people = new Set(
-    roleRows.filter((r) => r.leaved_at === null && r.division_id !== null && covered.has(r.division_id)).map((r) => r.member_id),
-  );
-  return { people: people.size, divisions: covered.size };
+  const covered = coveredMemberDivisions(identity, org.divisions);
+  const people = membersCounted(roleRows, identity.wholeTeamAreas.includes("members") ? null : covered);
+  return { people, divisions: new Set(covered).size };
 }
 
 /**

@@ -567,9 +567,10 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
 - A Members grant across the whole team (a `team` scope row on Members, or on every area, at Can
   view or Can edit) opens the same whole-team Members page full access gets, for a member, a
   division lead or a department head alike (Owner decision, 2026-11-02, #956). What its holder may
-  change there still follows the grant's level and their role: nothing at Can view, and at Can
-  edit only what the grant changes today. It gives no full access: the Members export and the
-  sign-in email change stay with full access only (#539, #741, #864).
+  change there follows the grant's level: at Can view nothing beyond what their role changes, and
+  at Can edit everyone on Members, as full access does (Owner decision, 2026-11-02, #957; see
+  Access). It gives no full access: the Members export and the sign-in email change stay with full
+  access only (#539, #741, #864).
 - The table shows each person's divisions as code chips. A division in another department shows
   the department's name instead. Each person's role is their title in this division, or "Division
   Lead".
@@ -1153,6 +1154,21 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
     sidebar and only those areas' figures and rows on the Overview. The server refuses every
     read and action outside them, application files included. Access is no area, so no grant
     opens it.
+  - **A grant across the whole team acts as full access within its own area, and only there**
+    (Owner decision, 2026-11-02, #957). At Can edit its holder, a member, a division lead or a
+    department head alike, changes that area for the whole team as full access does: on Members
+    they move a seat holder or a head, set a seat's title, and use Leaves the team for someone
+    with a role beyond every division. The Positions and Applications pages read as the team
+    ("Every role in the team.", "Applications for every role in the team."), at either level. A
+    whole-team Members grant, at either level, counts everyone with an active role in "Your
+    access", and in the Members figure of a member's or a lead's Overview; a head's Overview
+    stays their department's. At Can view it shows the
+    whole area and changes nothing beyond what the holder's role already changes. The grant opens
+    no other area (#471), and these powers stay with full access only: the Members export (#539),
+    the sign-in email change (#741, #864), the recruitment switch (#621), the Activity log (#238,
+    #727), deciding orders (#592), the Access page (#471), PRT email alias and team address
+    requests (#538, #721), and the Team tree's structure edits (departments, divisions, seats and
+    their holders).
 - A person holds each area at one level or not at all. In both drawers each area has a tick; a
   ticked area takes its own level, and an unticked area means no access.
 - Delegation limit: a lead gives only an area they hold, and only up to their own level in it.
