@@ -7,6 +7,7 @@ import {
   divisionsMeta,
   myDepartmentStat,
   ROSTER_LIMIT,
+  teamSinceOf,
   type DepartmentRosterRow,
   type DivisionSummary,
   type RosterRow,
@@ -125,4 +126,12 @@ test("a department whose head holds no division role counts the head, where the 
     divisionsMeta([{ id: 10, name: "Division 10", leads: [], people: 1, newApplications: 0, openPositions: 0 }], people),
     "1 division · 2 people",
   );
+});
+
+// Issue #948: "In the team since" is the stored team join day as month and
+// year, and hidden without one.
+test("the team-since line is the stored join day's month and year, and hidden without one", () => {
+  assert.equal(teamSinceOf("2023-11-15"), "In the team since November 2023");
+  assert.equal(teamSinceOf("2021-10-01"), "In the team since October 2021");
+  assert.equal(teamSinceOf(null), null);
 });

@@ -2,9 +2,11 @@
 
 import { Calendar, ChevronDown, FileText, Lock, Upload, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
+import { useId, useRef, useState, type ChangeEvent, type DragEvent, type FocusEvent, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { RocketLaunch } from "@/components/landing/rocket-arrow";
+import { usePhoneGrouping } from "@/components/use-phone-grouping";
+import { PHONE_PLACEHOLDER } from "@/lib/phone";
 import {
   DEGREE_PROGRAMMES,
   GENDERS,
@@ -57,6 +59,7 @@ export function ApplicationForm({
   const [cv, setCv] = useState<PdfPick>(() => previousPick(previous.cv));
   const [letter, setLetter] = useState<PdfPick>(() => previousPick(previous.motivationLetter));
   const [sending, setSending] = useState(false);
+  const phone = usePhoneGrouping();
 
   const clear = (field: string) =>
     setErrors((e) => {
@@ -153,9 +156,10 @@ export function ApplicationForm({
             hint="with country code"
             type="tel"
             autoComplete="tel"
-            placeholder="+39 351 234 5678"
+            placeholder={PHONE_PLACEHOLDER}
             defaultValue={defaults.phone}
             errors={errors}
+            {...phone}
           />
           <Field label="Date of birth" error={errors.dateOfBirth}>
             {(id, describedBy) => (
@@ -325,6 +329,9 @@ function TextField({
   autoComplete?: string;
   inputMode?: "numeric";
   placeholder?: string;
+  onChange?: (e: ChangeEvent<HTMLInputElement>) => void;
+  onFocus?: (e: FocusEvent<HTMLInputElement>) => void;
+  onBlur?: (e: FocusEvent<HTMLInputElement>) => void;
 }) {
   const error = errors[name];
   return (

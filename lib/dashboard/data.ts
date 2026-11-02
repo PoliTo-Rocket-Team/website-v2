@@ -295,6 +295,20 @@ export interface DashboardData {
   /** Board 55: a team member's own profile. */
   myProfile(): Promise<MyProfile | null>;
   saveLinkedin(text: string): Promise<WriteResult<string | null>>;
+  /**
+   * The member's own PRT email on My profile (issue #921), checked by
+   * `planOwnPrtEmailEdit` (./own-prt-email.ts): a team-domain address nobody
+   * else holds, in any letter case; an unchanged one always saves. Their open
+   * request closes with it. Answers the PRT email as saved.
+   */
+  savePrtEmail(text: string): Promise<WriteResult<string | null>>;
+  /**
+   * Request my PRT email on My profile (issue #921): the member asks for
+   * themselves, checked by `checkAliasRequest` and `planOwnAliasRequest`;
+   * refused while their PRT email is set or a request is open, and for an
+   * address someone already holds. The approvers answer it as any request.
+   */
+  requestOwnAlias(address: string): Promise<WriteResult<null>>;
   /** A new photo, already cropped square by the browser, or null to remove it. */
   setPhoto(photo: Upload | null): Promise<WriteResult<null>>;
   /**
@@ -373,6 +387,14 @@ export interface DashboardData {
    * the removal as history; a second Mark done is refused.
    */
   markTeamAddressRemovalDone(removalId: number): Promise<WriteResult<null>>;
+  /**
+   * Mark done (`"removed"`) or Keep address (`"kept"`) on an open personal
+   * PRT email removal (issue #931), checked by `planPrtEmailRemovalAnswer`:
+   * only the team leader, the operations lead and the IT lead. Mark done
+   * clears the member's PRT email; Keep address leaves it. Either closes the
+   * removal; a second answer is refused and writes nothing.
+   */
+  answerPrtEmailRemoval(removalId: number, answer: unknown): Promise<WriteResult<null>>;
   /**
    * The team addresses the viewer holds and whether they set each up
    * (`ownTeamAddressesOf`, ./team-address.ts), for the Overview's ready

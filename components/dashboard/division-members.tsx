@@ -112,11 +112,16 @@ export function ConfirmNdaButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-export function RowMenu({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * A row's "…" actions. `name` names the trigger as a form control, so a
+ * refused form can focus it when it is the first place to act (issue #927).
+ */
+export function RowMenu({ label, name, children }: { label: string; name?: string; children: ReactNode }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={label}
+        name={name}
         className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-prt-muted transition-colors duration-300 ease-out hover:bg-white-5 hover:text-prt-text data-[state=open]:bg-white-5 data-[state=open]:text-prt-text ${FOCUS}`}
       >
         <MoreHorizontal aria-hidden className="h-4 w-4" strokeWidth={1.75} />

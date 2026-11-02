@@ -206,7 +206,7 @@ for (const { stored, shows, label } of CASES) {
     const structure = (await (await signedIn(LEADER.userId)).teamStructure())!;
     const { createElement } = await import("react");
     const { DepartmentDrawer } = await import("@/components/dashboard/department-drawers");
-    const ui = await mount(async () => createElement(DepartmentDrawer, { target: { kind: "new" }, structure, onClose: () => {}, onTarget: () => {} }));
+    const ui = await mount(async () => createElement(DepartmentDrawer, { target: { kind: "new" }, structure, onClose: () => {}, onTarget: () => {}, onAddDivision: () => {} }));
     await ui.press("Pick head");
     await ui.click(await ui.find(PICKED.name));
     assert.deepEqual(circlesBeside(PICKED.name), [shows]);
@@ -219,7 +219,7 @@ for (const { stored, shows, label } of CASES) {
     const structure = (await (await signedIn(LEADER.userId)).teamStructure())!;
     const { createElement } = await import("react");
     const { DepartmentDrawer } = await import("@/components/dashboard/department-drawers");
-    const ui = await mount(async () => createElement(DepartmentDrawer, { target: { kind: "edit", departmentId: 2 }, structure, onClose: () => {}, onTarget: () => {} }));
+    const ui = await mount(async () => createElement(DepartmentDrawer, { target: { kind: "edit", departmentId: 2 }, structure, onClose: () => {}, onTarget: () => {}, onAddDivision: () => {} }));
     assert.deepEqual(circlesBeside(HEAD.name), [shows], "the head");
     await ui.press("Change head");
     await ui.click(await ui.find(PICKED.name));
@@ -234,7 +234,7 @@ for (const { stored, shows, label } of CASES) {
     const structure = (await (await signedIn(LEADER.userId)).teamStructure())!;
     const { createElement } = await import("react");
     const { DepartmentDrawer } = await import("@/components/dashboard/department-drawers");
-    const ui = await mount(async () => createElement(DepartmentDrawer, { target: { kind: "close", departmentId: 1 }, structure, onClose: () => {}, onTarget: () => {} }));
+    const ui = await mount(async () => createElement(DepartmentDrawer, { target: { kind: "close", departmentId: 1 }, structure, onClose: () => {}, onTarget: () => {}, onAddDivision: () => {} }));
     assert.deepEqual(circlesBeside(PICKED.name), [shows]);
     noEmptyImage();
     await ui.unmount();

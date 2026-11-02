@@ -208,7 +208,7 @@ const PANELS: readonly Panel[] = [
     open: async (s, onClose) => {
       const { createElement } = await import("react");
       const { DepartmentDrawer } = await import("@/components/dashboard/department-drawers");
-      return createElement(DepartmentDrawer, { target: { kind: "edit", departmentId: STRUCTURES }, structure: s, onClose, onTarget: () => {} });
+      return createElement(DepartmentDrawer, { target: { kind: "edit", departmentId: STRUCTURES }, structure: s, onClose, onTarget: () => {}, onAddDivision: () => {} });
     },
   },
 ];

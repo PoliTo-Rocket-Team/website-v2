@@ -1,3 +1,4 @@
+import { googleAccountEventOf, googleAccountSentence, signInAccountRemovalSentence, type GoogleAccountEvent } from "./google-accounts";
 import { formatEuro } from "./orders";
 import { matchesQuery } from "./team";
 import { VIEW_AS_OPERATIONS } from "./view-as";
@@ -267,6 +268,8 @@ const TABLE_RANK = [
   "departments",
   "divisions",
   "roles",
+  // Its Mark done clears the member's PRT email too; the answer is the change.
+  "prt_email_removals",
   "members",
   "outreach_post_versions",
   "outreach_summit_versions",
@@ -615,6 +618,19 @@ const SENTENCES: Readonly<Record<string, Sentence>> = {
     return { sentence: `Updated the details of ${person}`, area };
   },
 
+  // A Google account linked to or removed from the writer's own login (issue
+  // #906); a removal that moved the sign-in email (issue #949) names both.
+  account(row, data, d) {
+    const event = googleAccountEventOf(row.operation);
+    if (event === null) return { sentence: "Changed their sign-in accounts", area: "account" };
+    const stored = (wanted: GoogleAccountEvent) => d.rows("account").find((r) => googleAccountEventOf(r.operation) === wanted);
+    const [removed, moved] = [stored("unlink"), stored("sign-in-email")];
+    if (removed !== undefined && moved !== undefined) {
+      return { sentence: signInAccountRemovalSentence(text(dataOf(removed), "email"), text(dataOf(moved), "email")), area: "account" };
+    }
+    return { sentence: googleAccountSentence(event, text(data, "email")), area: "account" };
+  },
+
   team_leaves(row, data, d) {
     const id = int(data, "member_id");
     return { sentence: id !== null && id === d.writerMember(row) ? "Left the team" : `Marked ${d.member(id)} as left`, area: "members" };
@@ -650,6 +666,24 @@ const SENTENCES: Readonly<Record<string, Sentence>> = {
         return { sentence: `Cancelled the team email request for ${person}`, area };
       default:
         return { sentence: `Changed the team email request for ${person}`, area };
+    }
+  },
+
+  // A personal PRT email removal (issue #931): the database opens it when the member leaves, an approver answers it.
+  prt_email_removals(row, data, d) {
+    const area = "members";
+    const person = d.member(int(data, "member_id"));
+    const address = text(data, "address") ?? "the PRT email";
+    if (row.operation === "INSERT") return { sentence: `Asked to remove ${address} of ${person}`, area };
+    switch (text(data, "outcome")) {
+      case "removed":
+        return { sentence: `Removed ${address} of ${person}`, area };
+      case "kept":
+        return { sentence: `Kept ${address} for ${person}`, area };
+      case "cancelled":
+        return { sentence: `Cancelled the removal of ${address} of ${person}`, area };
+      default:
+        return { sentence: `Changed the removal of ${address} of ${person}`, area };
     }
   },
 

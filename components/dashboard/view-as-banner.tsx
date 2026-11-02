@@ -4,7 +4,7 @@ import { createContext, Suspense, use, useContext, useState } from "react";
 import { Eye } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import type { DashboardChrome } from "@/lib/dashboard/chrome";
-import { viewAsBannerLine, type ViewAsBanner as Banner } from "@/lib/dashboard/view-as";
+import { viewAsBannerLine, viewAsFailureLine, type ViewAsBanner as Banner, type ViewAsCallFailure } from "@/lib/dashboard/view-as";
 
 /** The frame's chrome, for the banner wherever a dashboard page draws it: the shell's page, or an editor lying over it. */
 export const ViewAsBannerChrome = createContext<Promise<DashboardChrome> | null>(null);
@@ -41,22 +41,49 @@ function ResolvedBanner({ chrome, placement }: { chrome: Promise<DashboardChrome
   return <Bar banner={resolved.viewingAs} placement={placement} />;
 }
 
+/** A call to the auth server, read as a failure the banner can name, or null when it succeeded. */
+async function failureOf(call: () => Promise<{ error: { status: number; statusText: string; message?: string } | null }>): Promise<ViewAsCallFailure | null> {
+  try {
+    const { error } = await call();
+    if (error === null) return null;
+    return { kind: "answered", status: error.status, statusText: error.statusText, message: error.message ?? null };
+  } catch {
+    return { kind: "unreached" };
+  }
+}
+
 function Bar({ banner, placement }: { banner: Banner; placement: Placement }) {
-  const [stopping, setStopping] = useState(false);
+  const [pending, setPending] = useState<"stop" | "sign-out" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Stop (issue #899) ends the View as session on the server and signs the
+  // acting account's own session back in, also once the View as session has
+  // run out. When it still fails, the banner says why and offers signing out,
+  // which ends every session cookie this browser holds.
   const stop = async () => {
-    if (stopping) return;
-    setStopping(true);
+    if (pending !== null) return;
+    setPending("stop");
     setError(null);
-    const { error: failed } = await authClient.admin.stopImpersonating();
-    if (failed) {
-      setError(failed.message ?? "View as could not stop. Try again.");
-      setStopping(false);
+    const failed = await failureOf(() => authClient.$fetch("/view-as/stop", { method: "POST", body: {} }));
+    if (failed !== null) {
+      setError(viewAsFailureLine("stop", failed));
+      setPending(null);
       return;
     }
     // A full load, so every part of the frame reads the acting account's session again.
     window.location.assign("/dashboard");
+  };
+
+  const signOut = async () => {
+    if (pending !== null) return;
+    setPending("sign-out");
+    const failed = await failureOf(() => authClient.signOut());
+    if (failed !== null) {
+      setError(viewAsFailureLine("sign-out", failed));
+      setPending(null);
+      return;
+    }
+    window.location.assign("/login?cb=/dashboard");
   };
 
   return (
@@ -66,14 +93,22 @@ function Bar({ banner, placement }: { banner: Banner; placement: Placement }) {
         {viewAsBannerLine(banner)}
         {error !== null && (
           <span role="alert" className="block text-danger">
-            {error}
+            {error}{" "}
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              disabled={pending !== null}
+              className="font-semibold underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Sign out instead
+            </button>
           </span>
         )}
       </p>
       <button
         type="button"
         onClick={() => void stop()}
-        disabled={stopping}
+        disabled={pending !== null}
         className="inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-full bg-prt-text px-3 text-[13px] font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
       >
         Stop viewing

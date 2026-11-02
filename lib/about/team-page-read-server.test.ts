@@ -11,7 +11,7 @@ import { addRows, changeRows, tableRows, testDb } from "@/lib/dashboard/access-m
 import { seeded } from "@/lib/dashboard/access-matrix/whole-seed";
 import type { DashboardData } from "@/lib/dashboard/data";
 import { openDashboard } from "@/lib/dashboard/open";
-import { boardFlagOf } from "@/lib/dashboard/team";
+import { boardFlagOf, isTeamSeat, type RoleType } from "@/lib/dashboard/team";
 import { queryTeamSnapshot, teamRolesOf } from "@/lib/dashboard/team-snapshot";
 import { teamPageData } from "./team-data";
 import { NO_TEAM_LAYER, type TeamPageLayer } from "./team-layer";
@@ -171,7 +171,11 @@ test("a section whose seats have no holder is drawn empty on /about/the-team, ne
 
   // Every department head's seat is left with no one in it.
   const heads = roleRows.filter((r) => r.type === "head" && r.leavedAt === null);
-  const headNames = await Promise.all(heads.map((h) => nameOf(h.memberId!)));
+  // A head who also holds a team-level seat (the seed's Chief Engineer, issue #944) keeps their place on the arc through it.
+  const seated = new Set(
+    roleRows.filter((r) => r.leavedAt === null && isTeamSeat({ type: r.type as RoleType, departmentId: r.deptId, divisionId: r.divisionId })).map((r) => r.memberId),
+  );
+  const headNames = await Promise.all(heads.filter((h) => !seated.has(h.memberId)).map((h) => nameOf(h.memberId!)));
   for (const head of heads) await changeRows(roles, { id: head.id }, { leavedAt: ROLE_DAY });
   const noHeads = await teamPageData();
   assert.deepEqual(noHeads.departments.groups, [], "the departments area is empty, not the hand-typed carousel");

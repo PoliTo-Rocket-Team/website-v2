@@ -75,7 +75,8 @@ An admin column comes later. **Planned**, no issue yet.
     seat, but a grant one kept from a seat held before becoming team leader can still be removed,
     through Edit access or Remove all access (see "4. Orders");
   - every holder of an alias approver seat (the team leader, the operations lead, the IT lead)
-    sees each waiting PRT email request, team address request, routing item and removal, and
+    sees each waiting PRT email request, team address request, routing item and removal, the
+    personal PRT email removals of members who left included, and
     either holder may answer it or mark it done;
   - a head's hand-over request goes to every team leader, and a lead's to every head of the
     lead's department; the sender is never one of them, and either approver may answer;
@@ -563,6 +564,13 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
 - There is no separate Department page. The Members page shows member data only: it holds no
   structure tools. Divisions and departments are created, edited and closed in the Team tree's
   edit view (see Team structure below, #251). The department head's view is below (#235).
+- A Members grant across the whole team (a `team` scope row on Members, or on every area, at Can
+  view or Can edit) opens the same whole-team Members page full access gets, for a member, a
+  division lead or a department head alike (Owner decision, 2026-11-02, #956). What its holder may
+  change there follows the grant's level: at Can view nothing beyond what their role changes, and
+  at Can edit everyone on Members, as full access does (Owner decision, 2026-11-02, #957; see
+  Access). It gives no full access: the Members export and the sign-in email change stay with full
+  access only (#539, #741, #864).
 - The table shows each person's divisions as code chips. A division in another department shows
   the department's name instead. Each person's role is their title in this division, or "Division
   Lead".
@@ -984,6 +992,26 @@ personal PRT email, and the PRT emails section above sets how it reads.
   created.
 - The alias is created by hand in Google Workspace. The site creates nothing there and sends no
   email.
+- When a member with a PRT email leaves the team, the approvers are asked to remove it (issue
+  #931, `lib/dashboard/prt-email-removal.ts`, Owner decisions of 2026-10-31). Leaving is any
+  write after which the member holds no active role: Leave the team, Move to alumni, a hand-over
+  or a replace that ends their last role, the end of their last advisor role. The database opens
+  the removal as that write commits (`drizzle/0084`), so every way of leaving is covered, and
+  the leave is never refused because of it. A member with no PRT email gets none.
+- The same leave cancels the member's own open PRT email request, if one is open. The
+  cancellation shows in the Activity log under who made the leave.
+- A member who stays on as an advisor (division, department or team) keeps the address and any
+  open PRT email request; the removal opens, and the request is cancelled, when their last
+  advisor role ends.
+- One address has at most one open removal, in any letter case (`prt_email_removals_one_open`).
+  A member who rejoins the team before it is answered has it cancelled. A member who takes an
+  advisor role again leaves it open: the approvers answer it with Keep address or Mark done.
+- Each open removal is one "Remove … from …" item on the approvers' Overview, every holder of
+  each seat, drawn as a team address removal's, with Keep address and Mark done. Mark done is
+  pressed once the mailbox is deleted in Google Workspace: it clears the member's PRT email.
+  Keep address closes it and leaves the PRT email; that leave asks no more, and a later leave
+  asks again. Either answer is final and shows in the Activity log under who gave it; a second
+  answer, from another approver, is refused and writes nothing.
 
 ### Team addresses
 
@@ -1126,6 +1154,21 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
     sidebar and only those areas' figures and rows on the Overview. The server refuses every
     read and action outside them, application files included. Access is no area, so no grant
     opens it.
+  - **A grant across the whole team acts as full access within its own area, and only there**
+    (Owner decision, 2026-11-02, #957). At Can edit its holder, a member, a division lead or a
+    department head alike, changes that area for the whole team as full access does: on Members
+    they move a seat holder or a head, set a seat's title, and use Leaves the team for someone
+    with a role beyond every division. The Positions and Applications pages read as the team
+    ("Every role in the team.", "Applications for every role in the team."), at either level. A
+    whole-team Members grant, at either level, counts everyone with an active role in "Your
+    access", and in the Members figure of a member's or a lead's Overview; a head's Overview
+    stays their department's. At Can view it shows the
+    whole area and changes nothing beyond what the holder's role already changes. The grant opens
+    no other area (#471), and these powers stay with full access only: the Members export (#539),
+    the sign-in email change (#741, #864), the recruitment switch (#621), the Activity log (#238,
+    #727), deciding orders (#592), the Access page (#471), PRT email alias and team address
+    requests (#538, #721), and the Team tree's structure edits (departments, divisions, seats and
+    their holders).
 - A person holds each area at one level or not at all. In both drawers each area has a tick; a
   ticked area takes its own level, and an unticked area means no access.
 - Delegation limit: a lead gives only an area they hold, and only up to their own level in it.

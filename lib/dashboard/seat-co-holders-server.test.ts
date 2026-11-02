@@ -171,13 +171,13 @@ describe("the team snapshot reads roles in a stable order", () => {
     const order = [13, 11, 10, 12];
     const before = await readTeamSnapshot();
     assert.deepEqual(before.roles.map((r) => r.id), order);
-    const headBefore = buildTeamTree(rosterOf(before), before.org, "2025–26", null).departments.find((d) => d.id === AERODYNAMICS)?.head;
+    const headBefore = buildTeamTree(rosterOf(before), before.org, "2025–26", null).departments.find((d) => d.id === AERODYNAMICS)?.heads[0];
 
     // On Postgres an update writes a new row version, so a read with no order returns the row last.
     await changeRows(roles, { id: 10 }, { title: "Chief of Aerodynamics" });
     const after = await readTeamSnapshot();
     assert.deepEqual(after.roles.map((r) => r.id), order);
-    const headAfter = buildTeamTree(rosterOf(after), after.org, "2025–26", null).departments.find((d) => d.id === AERODYNAMICS)?.head;
+    const headAfter = buildTeamTree(rosterOf(after), after.org, "2025–26", null).departments.find((d) => d.id === AERODYNAMICS)?.heads[0];
     assert.equal(headAfter?.id, 1);
     assert.equal(headAfter?.id, headBefore?.id, "the same head on every load");
   });

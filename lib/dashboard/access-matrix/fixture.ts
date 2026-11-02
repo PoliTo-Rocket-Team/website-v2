@@ -4,6 +4,7 @@ import {
   applicationFiles,
   applications,
   applyPositions,
+  betterAuthAccounts,
   betterAuthUsers,
   dashboardNotices,
   departments,
@@ -47,8 +48,12 @@ export const MARKERS = {
   title: (u: Unit) => [`role-${lower(u)}-title`],
   /** Who applied, what they answered, their files and interviews. */
   applications: (u: Unit) => [`appl-${lower(u)}`, `answer-${lower(u)}`, `cv-${lower(u)}`, `letter-${lower(u)}`],
-  /** A person's private details on the Members page, and who waits to join. Their team email is public on the Team page, so no marker. */
-  members: (u: Unit) => [`mob-${lower(u)}`, `disc-${lower(u)}`, `join-${lower(u)}`],
+  /**
+   * A person's private details on the Members page, the other Google account
+   * the unit's lead signs in with (issue #908), and who waits to join. Their team email is
+   * public on the Team page, so no marker.
+   */
+  members: (u: Unit) => [`mob-${lower(u)}`, `disc-${lower(u)}`, `gacct-${lower(u)}`, `join-${lower(u)}`],
   /** An order's item and reason. */
   orders: (u: Unit) => [`ord-${lower(u)}`],
 } as const satisfies Record<GrantArea | "title", (u: Unit) => readonly string[]>;
@@ -243,6 +248,12 @@ async function seedUnit(u: Unit): Promise<void> {
   const lead = IDS.lead(u);
   await addRows(members, [{ memberId: lead, ndaSignedAt: SINCE }]);
   await addRows(users, [{ id: `lead-${l}`, email: `lead-${l}@mail.test`, firstName: "Lead", lastName: u, member: lead, createdAt: SINCE }]);
+  // The lead signs in with Google as that email, and with a second Google account linked to it (issue #908).
+  await addRows(betterAuthUsers, [{ id: `lead-${l}`, name: `Lead ${u}`, email: `lead-${l}@mail.test`, emailVerified: true }]);
+  await addRows(betterAuthAccounts, [
+    { id: `account-${l}-1`, accountId: `google-${l}-1`, providerId: "google", userId: `lead-${l}`, email: `lead-${l}@mail.test`, createdAt: new Date(SINCE), updatedAt: new Date(SINCE) },
+    { id: `account-${l}-2`, accountId: `google-${l}-2`, providerId: "google", userId: `lead-${l}`, email: `gacct-${l}@mail.test`, createdAt: new Date(NOW), updatedAt: new Date(NOW) },
+  ]);
   await addRows(roles, [{ id: 5_000 + lead, memberId: lead, divisionId, title: "Division Lead", startedAt: SINCE, type: "lead" }]);
   // DM's lead has sent one, waiting for the team leader: Structures has no head.
   if (u === "DM") await addRows(handOverRequests, [{ id: IDS.handOver(u), fromId: lead, role: "lead", divisionId, toId: person, outcome: "advisor", createdAt: daysAgo(1) }]);

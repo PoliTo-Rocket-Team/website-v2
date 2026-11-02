@@ -146,6 +146,11 @@ export const members = pgTable("members", {
   // on the team as their lead gave them. Why they left goes to team_leaves.
   teamFrom: integer("team_from"),
   teamTo: integer("team_to"),
+  // The day the member joined the team, from the roster's "Joined the Team
+  // on" and "Date of joining" columns (issue #948). The Overview's "In the
+  // team since" line and the Members page's joined year read it and never a
+  // role's start; null hides both.
+  joinedTeamOn: date("joined_team_on", { mode: "string" }),
   // When the member said they set up their alias, the address in
   // `prt_email` (issue #542).
   emailAliasSetUpAt: timestamp("email_alias_set_up_at", { withTimezone: true, mode: "string" }),
@@ -767,6 +772,38 @@ export const teamAddressRemovals = pgTable("team_address_removals", {
   oneOpen: uniqueIndex("team_address_removals_one_open").on(table.addressId).where(sql`${table.doneAt} is null`),
   done: check("team_address_removals_done", sql`${table.doneBy} is null or ${table.doneAt} is not null`),
   openAddress: check("team_address_removals_open_address", sql`${table.doneAt} is not null or ${table.addressId} is not null`),
+}));
+
+/** How a personal PRT email removal closed (lib/dashboard/prt-email-removal.ts); null while it is open. */
+export const prtEmailRemovalOutcomeEnum = pgEnum("prt_email_removal_outcome", ["removed", "kept", "cancelled"]);
+
+/**
+ * A personal PRT email removal (issue #931, drizzle/0084): a member whose
+ * `members.prt_email` is set held no active role any more, so the alias
+ * approvers delete the mailbox in Google Workspace and press Mark done, which
+ * clears the PRT email, or press Keep address, which leaves it. A role other
+ * than an advisor role started again before either closes it as cancelled;
+ * an advisor role leaves it open. The database opens and
+ * cancels these itself, when a `roles` write commits (drizzle/0084), so every
+ * way of leaving the team is covered. One address has at most one open
+ * removal in any letter case (`prt_email_removals_one_open`).
+ * lib/dashboard/prt-email-removal.ts owns the rules.
+ */
+export const prtEmailRemovals = pgTable("prt_email_removals", {
+  id: serial("id").primaryKey(),
+  memberId: integer("member_id").references(() => members.memberId, { onDelete: "set null" }),
+  address: text("address").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  outcome: prtEmailRemovalOutcomeEnum("outcome"),
+  answeredBy: integer("answered_by").references(() => members.memberId, { onDelete: "set null" }),
+  answeredByActingAccount: actingAccount("answered_by_acting_account"),
+  answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }),
+}, (table) => ({
+  oneOpen: uniqueIndex("prt_email_removals_one_open").on(sql`lower(${table.address})`).where(sql`${table.outcome} is null`),
+  memberIdx: index("prt_email_removals_member_idx").on(table.memberId),
+  answered: check("prt_email_removals_answered", sql`(${table.outcome} is null) = (${table.answeredAt} is null)`),
 }));
 
 // The Alumni page (issue #257). The page is built from the roles; an entry

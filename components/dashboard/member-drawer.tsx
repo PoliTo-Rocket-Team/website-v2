@@ -4,7 +4,7 @@ import { useId, useState, useTransition } from "react";
 import { ChevronDown, GraduationCap } from "lucide-react";
 import { toast } from "sonner";
 import { moveToAlumni } from "@/app/dashboard/team-actions";
-import { checkDeparture, LEAVE_REASONS, LEAVE_REASON_LABELS, yearsLabel } from "@/lib/dashboard/team";
+import { checkDeparture, departureYearsOf, LEAVE_REASONS, LEAVE_REASON_LABELS } from "@/lib/dashboard/team";
 import { ConfirmDialog } from "./confirm-dialog";
 import { inputClass } from "./field";
 
@@ -27,11 +27,11 @@ export function AlumniDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  person: { readonly id: number; readonly name: string; readonly joined: number };
+  person: { readonly id: number; readonly name: string; readonly joined: number | null };
   onDone: () => void;
 }) {
   const thisYear = new Date().getFullYear();
-  const [years, setYears] = useState(yearsLabel(Math.min(person.joined, thisYear), thisYear));
+  const [years, setYears] = useState(departureYearsOf(person.joined, thisYear));
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();

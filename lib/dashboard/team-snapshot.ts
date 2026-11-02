@@ -9,12 +9,15 @@ import type { FoundPerson } from "./division-edit";
 import type { PersonRecord } from "./division-members";
 import type { HeldSeat } from "./hand-over";
 import type { PersonName } from "./person-name";
+import { leadsRecruitmentManagerDivision } from "./recruitment-manager";
 import { normalizeLinkedin } from "./self";
 import { viewAsSiteOf, type ViewAsSite } from "./view-as";
 import { SEAT_OF_FLAG, type SeatFlag } from "./viewer";
 import {
+  furtherSeatsOf,
   headDepartmentOf,
   isTeamSeat,
+  joinedYearOf,
   membershipsIn,
   membershipsOfRoles,
   roleBeyondDivisions,
@@ -59,6 +62,8 @@ type PersonRow = {
   /** The years on the team their lead gave when moving them to alumni (issue #172). */
   team_from: number | null;
   team_to: number | null;
+  /** The day they joined the team (`members.joined_team_on`, issue #948); null when none is stored. */
+  joined_team_on: string | null;
   // The Members page's private details (issue #231, board 61f).
   phone: string | null;
   mobile_number: string | null;
@@ -127,6 +132,7 @@ export async function queryTeamSnapshot(db: SnapshotDb): Promise<TeamSnapshot> {
         level_of_study: users.levelOfStudy,
         team_from: members.teamFrom,
         team_to: members.teamTo,
+        joined_team_on: members.joinedTeamOn,
         phone: users.phone,
         mobile_number: members.mobileNumber,
         discord: members.discord,
@@ -240,17 +246,13 @@ export function memberNamesOf(snapshot: TeamSnapshot): ReadonlyMap<number, strin
   }));
 }
 
-function yearOf(date: string): number {
-  return Number(date.slice(0, 4));
-}
-
 function rolesByMember(snapshot: TeamSnapshot): Map<number, RoleRow[]> {
   const byMember = new Map<number, RoleRow[]>();
   for (const role of snapshot.roles) byMember.set(role.member_id, [...(byMember.get(role.member_id) ?? []), role]);
   return byMember;
 }
 
-/** Everyone with an active role, placed by all of them (`placementOf`). */
+/** Everyone with an active role, placed by all of them (`placementOf`), with every further seat and head they hold (`furtherSeatsOf`). */
 export function rosterOf(snapshot: TeamSnapshot): RosterEntry[] {
   const people = new Map(snapshot.people.map((p) => [p.member_id, p]));
   return [...rolesByMember(snapshot)].flatMap(([memberId, memberRoles]): RosterEntry[] => {
@@ -258,14 +260,17 @@ export function rosterOf(snapshot: TeamSnapshot): RosterEntry[] {
     const person = people.get(memberId);
     const named = nameOf(person);
     if (active.length === 0 || !named) return [];
+    const placement = placementOf(active, snapshot.org);
     return [
       {
         id: memberId,
         ...named,
         photoUrl: person?.picture ?? null,
-        placement: placementOf(active, snapshot.org),
+        placement,
+        furtherSeats: furtherSeatsOf(placement, active.flatMap((role) => roleBeyondDivisions(roleSeat(role), snapshot.org) ?? [])),
         pageTitle: active[0].title || null,
-        joined: Math.min(...memberRoles.map((r) => yearOf(r.started_at))),
+        // The stored team join day, never a role's start (issue #948).
+        joined: joinedYearOf(person?.joined_team_on ?? null),
         program: person?.program ?? null,
         study: person?.level_of_study ?? null,
         access: snapshot.scopes
@@ -315,21 +320,34 @@ export function editorViewOf(snapshot: TeamSnapshot, memberId: number): { readon
 /**
  * The full-access seats on the team's active lead and head roles, as the
  * hand-over screens read them (`HeldSeat`, issue #501): a flagged lead row of
- * an open division, or a flagged head row of an open department. A seat on a
- * row no hand-over reaches (a board seat, a lead row with no division) is not
- * one of them.
+ * an open division, a flagged head row of an open department, and a lead row
+ * of the open Logistics division, which is the Logistics lead seat by its
+ * division and no flag (issue #891). A seat on a row no hand-over reaches (a
+ * board seat, a lead row with no division) is not one of them.
  */
 export function seatsOf(snapshot: TeamSnapshot): HeldSeat[] {
   return snapshot.roles.flatMap((row): HeldSeat[] => {
-    if (row.leaved_at !== null || row.full_access === null) return [];
-    const seat = SEAT_OF_FLAG[row.full_access];
-    if (row.type === "lead" && row.division_id !== null && snapshot.org.divisions.some((d) => d.id === row.division_id)) {
-      return [{ seat, personId: row.member_id, role: { kind: "lead", divisionId: row.division_id } }];
+    if (row.leaved_at !== null) return [];
+    const flagged = row.full_access === null ? null : SEAT_OF_FLAG[row.full_access];
+    const division = row.type === "lead" ? snapshot.org.divisions.find((d) => d.id === row.division_id) : undefined;
+    if (division !== undefined) {
+      const seat = flagged ?? (leadsLogistics(row, division) ? "logistics-lead" : null);
+      return seat === null ? [] : [{ seat, personId: row.member_id, role: { kind: "lead", divisionId: division.id } }];
     }
+    if (flagged === null) return [];
     const departmentId = row.type === "head" ? headDepartmentOf(roleSeat(row), snapshot.org) : null;
     if (departmentId === null || !snapshot.org.departments.some((d) => d.id === departmentId)) return [];
-    return [{ seat, personId: row.member_id, role: { kind: "head", departmentId } }];
+    return [{ seat: flagged, personId: row.member_id, role: { kind: "head", departmentId } }];
   });
+}
+
+/**
+ * Whether a lead row of `division` leads the open Logistics division, by the
+ * one rule that finds it (`leadsRecruitmentManagerDivision`). The org chart
+ * holds open divisions only, so `division` is open.
+ */
+function leadsLogistics(row: RoleRow, division: OrgChart["divisions"][number]): boolean {
+  return leadsRecruitmentManagerDivision([{ type: row.type, divisionId: division.id, divisionCode: division.code ?? null, divisionClosedAt: null }]);
 }
 
 /**

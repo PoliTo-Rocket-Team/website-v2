@@ -1,5 +1,4 @@
-import { opensWholeTeam } from "./members-view";
-import type { ViewerStanding } from "./viewer";
+import { isFullAccess, type ViewerStanding } from "./viewer";
 
 // Changing a sign-in email in Edit details and Fill details. Someone added
 // with a mistyped address is never linked to their sign-in: the
@@ -30,13 +29,13 @@ export type SignInEmailOwner = "member" | "waiting";
 
 /**
  * Whether `viewer` may change the sign-in email of `owner`, whose user row is
- * `linked` to a sign-in account: full access only, by the Members export's
- * whole-team rule (`mayExportMembers`). A member's always, since the record
+ * `linked` to a sign-in account: full access only (`isFullAccess`), as for the
+ * Members export; a whole-team Members grant changes none (issue #956). A member's always, since the record
  * can move off a login; someone waiting's only before they sign in, since
  * they hold no record to move.
  */
 export function correctsSignInEmail(viewer: ViewerStanding, owner: SignInEmailOwner, linked: boolean): boolean {
-  return opensWholeTeam(viewer) && (owner === "member" || !linked);
+  return isFullAccess(viewer) && (owner === "member" || !linked);
 }
 
 export const SIGN_IN_EMAIL_REFUSALS = {
@@ -135,7 +134,7 @@ export function planSignInEmailCorrection(
   if (sent === null) return { kind: "unchanged" };
   if (row === null) return { kind: "refused", error: SIGN_IN_EMAIL_REFUSALS.noUser };
   if (row.email.trim().toLowerCase() === sent) return { kind: "unchanged" };
-  if (!opensWholeTeam(viewer)) return { kind: "refused", error: SIGN_IN_EMAIL_REFUSALS.notFullAccess };
+  if (!isFullAccess(viewer)) return { kind: "refused", error: SIGN_IN_EMAIL_REFUSALS.notFullAccess };
   if (row.member === null && row.linked) return { kind: "refused", error: SIGN_IN_EMAIL_REFUSALS.signedIn };
   const [holder, ...others] = holders;
   const moving = (to: RecordDestination, memberId: number): SignInEmailCorrection => ({

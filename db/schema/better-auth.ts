@@ -69,6 +69,11 @@ export const betterAuthAccounts = betterAuthSchema.table(
     }),
     scope: text("scope"),
     password: text("password"),
+    // The Google account's own email (issue #906, drizzle/0085_account_google_email.sql): set from the
+    // id token Google sends when the account is linked and on each sign-in,
+    // through Better Auth's `account.additionalFields` (lib/auth.ts). Null
+    // only for a row no sign-in has set yet and the backfill could not fill.
+    email: text("email"),
     createdAt: timestamp("createdAt", {
       withTimezone: true,
       mode: "date",

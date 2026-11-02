@@ -139,6 +139,15 @@ test("the export's Department column sits before Divisions with the table's valu
   assert.deepEqual(row("Zoe Member"), ["Structures", "Structures · Design & Manufacturing (DM): CAD Engineer"]);
 });
 
+test("the export's Member since cell is the join year, and empty for a member with no stored join day (issue #948)", () => {
+  const unknown = { ...record("Paolo Neri", [[20, "member"]]), since: null };
+  const [header, ...rows] = membersExportRows(wholeTeamMembers({ records: [...records, unknown], org, selfId: null }).people);
+  const column = header.indexOf("Member since");
+  const cell = (name: string) => rows.find((r) => r[0] === name)![column];
+  assert.equal(cell("Zoe Member"), "2024");
+  assert.equal(cell("Paolo Neri"), "");
+});
+
 test("the department and division selects narrow the rows, a head counting in each division of their department", () => {
   const names = (filter: Parameters<typeof filterTeam>[1]) => filterTeam(page.people, filter).map((p) => p.name);
   assert.deepEqual(names({ ...NO_TEAM_FILTER, departmentId: 1 }), ["Chiara Ferri", "Marco Bianchi", "Anna Villa"]);

@@ -281,6 +281,20 @@ export async function saveLinkedin(text: string): Promise<WriteResult<string | n
   return write("my-profile", (data) => data.saveLinkedin(String(text)));
 }
 
+/** The PRT email on My profile (issue #921): the Overview's alias card and the profile read it again. */
+export async function savePrtEmail(text: string): Promise<WriteResult<string | null>> {
+  const result = await write("my-profile", (data) => data.savePrtEmail(String(text ?? "")));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+/** Request my PRT email on My profile (issue #921): the profile reads again with the request waiting. */
+export async function requestOwnAlias(address: string): Promise<WriteResult<null>> {
+  const result = await write("my-profile", (data) => data.requestOwnAlias(String(address ?? "")));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
 export async function uploadPhoto(form: FormData): Promise<WriteResult<null>> {
   const photo = await uploadOf(form, "photo");
   if (photo === null) return refused("Choose a photo.");
@@ -382,6 +396,17 @@ export async function removeTeamAddress(addressId: number): Promise<WriteResult<
 export async function markTeamAddressRemovalDone(removalId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(removalId)) return refused("Unknown PRT email removal.");
   const result = await write("overview", (data) => data.markTeamAddressRemovalDone(removalId));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+/**
+ * Mark done or Keep address on a personal PRT email removal (issue #931): the
+ * row leaves, and Mark done clears the member's PRT email.
+ */
+export async function answerPrtEmailRemoval(removalId: number, answer: unknown): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(removalId)) return refused("Unknown PRT email removal.");
+  const result = await write("overview", (data) => data.answerPrtEmailRemoval(removalId, answer));
   if (result.ok) revalidatePath("/dashboard", "layout");
   return result;
 }

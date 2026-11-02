@@ -83,7 +83,11 @@ export function placesOf(record: PlaceRecord, org: OrgChart): PersonPlace[] {
   return [...high, ...divisions, ...low];
 }
 
-/** The member panel's header line (board 98): "Mission Analysis Lead · member since 2024". */
-export function placeHeaderLine(places: readonly PersonPlace[], since: number): string {
-  return `${places[0]?.title ?? "Member"} · member since ${since}`;
+/**
+ * The member panel's header line (board 98): "Mission Analysis Lead · member
+ * since 2024"; the title alone when no join day is stored (issue #948).
+ */
+export function placeHeaderLine(places: readonly PersonPlace[], since: number | null): string {
+  const title = places[0]?.title ?? "Member";
+  return since === null ? title : `${title} · member since ${since}`;
 }

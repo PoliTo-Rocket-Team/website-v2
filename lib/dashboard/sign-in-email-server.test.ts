@@ -3,7 +3,7 @@ import "./access-matrix/install";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import * as teamActions from "@/app/dashboard/team-actions";
-import { applicationFiles, applications, betterAuthSessions, betterAuthUsers, members, teamJoins, users } from "@/db/schema";
+import { applicationFiles, applications, betterAuthAccounts, betterAuthSessions, betterAuthUsers, members, teamJoins, users } from "@/db/schema";
 import { addRows, changeRows, databaseWrites, logRowsSinceSeed, tableRows, testDb, writesByTransaction } from "./access-matrix/test-database";
 import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
@@ -39,7 +39,13 @@ const DETAILS = { phone: "", politoId: "", programme: "", level: "", country: ""
 
 const FULL_ACCESS = ["operations lead", "team leader"];
 // Each may edit the person's other details in Mission Analysis, never their sign-in email.
-const MAY_EDIT_DETAILS_ONLY = ["division lead", "department head", "member with a members grant across the division"];
+const MAY_EDIT_DETAILS_ONLY = [
+  "division lead",
+  "department head",
+  "member with a members grant across the division",
+  // A whole-team Members grant opens the whole team's page, and the sign-in email stays full access's (issue #956).
+  "member with a members grant across the team",
+];
 
 const emailOf = async (userId: string) => (await tableRows(users)).find((u) => u.id === userId)?.email;
 const userRow = async (userId: string) => (await tableRows(users)).find((u) => u.id === userId);
@@ -337,6 +343,25 @@ describe("a stranger signed in on a member's wrong stored address loses the reco
     assert.deepEqual(await yourDetailsOf(PERSON_USER), NO_DETAILS, "the stranger's Your details read none of the member's");
     assert.equal(await standingOf(LOGIN), "member", "the login reaches the member's dashboard");
   });
+
+  test("the record moves without its Google accounts: the stranger's linked accounts stay on their login, and no other account changes (issue #906)", async () => {
+    await seededStranger();
+    const LOGIN = "applicant-ma";
+    const REAL = "appl-ma@mail.test";
+    await addRows(betterAuthUsers, [{ id: LOGIN, name: "Applicant", email: REAL, emailVerified: true }]);
+    const google = (id: string, userId: string, email: string) => ({ id, accountId: `google-${id}`, providerId: "google", userId, email, updatedAt: new Date() });
+    await addRows(betterAuthAccounts, [
+      google("stranger-1", PERSON_USER, "person-ma@mail.test"),
+      google("stranger-2", PERSON_USER, "second.stranger@mail.test"),
+      google("login-1", LOGIN, REAL),
+      google("bystander-1", "bystander", "bystander@example.com"),
+    ]);
+    const before = await tableRows(betterAuthAccounts);
+    const { answer } = await saveForm(REAL);
+    assert.deepEqual(answer, { ok: true });
+    assert.equal((await userRow(LOGIN))?.member, MEMBER, "the record moved");
+    assert.deepEqual(await tableRows(betterAuthAccounts), before, "every account row reads back as it was, on the login it was on");
+  });
 });
 
 describe("an empty login takes the record off a row nobody signed in on (issues #860, #864)", () => {
@@ -496,7 +521,8 @@ describe("Edit details offers the field from one flag the server sets (issues #7
   test("set for full access on every member, signed in or not, and on someone waiting until they sign in; for nobody else", async () => {
     await seedFixture();
     assert.deepEqual(await flagsOf("operations lead"), { person: true, waiting: true });
-    for (const viewer of ["division lead", "department head"]) assert.deepEqual(await flagsOf(viewer), { person: false, waiting: false }, viewer);
+    const others = ["division lead", "department head", "member with a members grant across the team", "member with a members grant (Can view) across the team"];
+    for (const viewer of others) assert.deepEqual(await flagsOf(viewer), { person: false, waiting: false }, viewer);
     await seededSignedIn(PERSON_USER);
     assert.equal((await flagsOf("operations lead")).person, true, "a member who signs in keeps the field");
     await seededSignedIn(WAITING_USER);

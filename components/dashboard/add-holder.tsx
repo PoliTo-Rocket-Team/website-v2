@@ -73,8 +73,11 @@ export function AddHolderPicker({
   save,
   onCancel,
   onSaved,
+  name,
 }: {
   mode: "leader" | "seat" | "head";
+  /** The search field's form name, when the panel's form names a field it should focus (issue #927). */
+  name?: string;
   /** The seat by name: "Team Leader", "Project Manager", "Head of Aerodynamics". */
   seat: string;
   /** What the picker's hint names: the seat, or the department a head heads. */
@@ -104,7 +107,7 @@ export function AddHolderPicker({
 
   return (
     <>
-      <PeoplePicker mode={mode} short={short} taken={(p) => holderAddRefusal(p, holderIds)} onPick={setPick} onClose={onCancel} />
+      <PeoplePicker mode={mode} name={name} short={short} taken={(p) => holderAddRefusal(p, holderIds)} onPick={setPick} onClose={onCancel} />
       <ConfirmDialog
         open={pick !== null}
         onOpenChange={(open) => !open && setPick(null)}

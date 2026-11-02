@@ -158,7 +158,19 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
           setClosing(null);
         }}
       />
-      {structure.departmentsEditable && <DepartmentDrawer target={department} structure={structure} onClose={() => setDepartment(null)} onTarget={setDepartment} />}
+      {structure.departmentsEditable && (
+        <DepartmentDrawer
+          target={department}
+          structure={structure}
+          onClose={() => setDepartment(null)}
+          onTarget={setDepartment}
+          // Add division in Edit department: the department's panel gives way to New division under it (issue #927).
+          onAddDivision={(id) => {
+            setDepartment(null);
+            setDivision({ kind: "new", departmentId: id });
+          }}
+        />
+      )}
       {structure.departmentsEditable && <SeatDrawer target={seat} structure={structure} onClose={() => setSeat(null)} />}
       <EditDetailsDrawer target={editing} onClose={() => setEditing(null)} />
       {structure.leader && opensLeader(structure.leader, structure.departmentsEditable) && (

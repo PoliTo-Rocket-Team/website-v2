@@ -7,7 +7,7 @@ import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import { DRIZZLE_MAPPED_TYPES } from "../../db/seed/connection";
 import { SEED_MODULES } from "../../db/seed/registry";
 import type { TableSeed } from "../../db/seed/rows";
-import { ADDED_BY_EMAIL, SIGN_IN_RESET, SIGN_IN_ROWS, TEST_BENCH_LEAD } from "../../db/seed/people";
+import { ADDED_BY_EMAIL, GOOGLE_ACCOUNT_ROWS, SIGN_IN_RESET, SIGN_IN_ROWS, TEST_BENCH_LEAD } from "../../db/seed/people";
 import { DIVISION } from "../../db/seed/structure";
 import { seatOf } from "../seeded-accounts";
 import {
@@ -292,6 +292,36 @@ test("a seed run gives every seeded person one sign-in row, removes a retired te
   assert.deepEqual(accounts.rows.map((r) => r.id).sort(), [...seeded, "d3v3l0p3r-own-account"].sort());
   const sessions = await db.query<{ id: string }>(`select id from better_auth.session`);
   assert.deepEqual(sessions.rows.map((r) => r.id), ["own-session"], "the developer is still signed in");
+});
+
+// The seeded Google accounts (issue #942): a second run leaves the same rows,
+// column by column, and the reset removes only the seeded logins' accounts.
+
+/** Every `better_auth.account` row as stored, every column, so two runs compare whole. */
+async function accountRows(db: PGlite) {
+  const rows = await db.query<{ row: Record<string, unknown> }>(`select to_jsonb(a) as row from better_auth.account a order by id`);
+  return rows.rows.map((r) => r.row);
+}
+
+test("a seed run leaves the same Google account rows every time and keeps a developer's own Google account", async () => {
+  const db = await migrated();
+  const local = guardSeedTarget(LOCAL);
+  assert.ok(local.ok);
+  await runSeed(local.target, SEED_ON_PGLITE, onPglite(db));
+  const seeded = await accountRows(db);
+  assert.deepEqual(seeded.map((r) => r.id).sort(), GOOGLE_ACCOUNT_ROWS.rows.map((r) => r.id).sort());
+
+  await db.exec(`
+    insert into better_auth."user" (id, name, email, "emailVerified") values ('d3v3l0p3r-own-account', 'A Developer', 'a.developer@gmail.com', true);
+    insert into better_auth.account (id, "accountId", "providerId", "userId", email, "updatedAt") values ('own-google', '000000000000000000001', 'google', 'd3v3l0p3r-own-account', 'a.developer@gmail.com', now());
+  `);
+  const own = (await accountRows(db)).filter((r) => r.id === "own-google");
+
+  await runSeed(local.target, SEED_ON_PGLITE, onPglite(db));
+
+  const after = await accountRows(db);
+  assert.deepEqual(after.filter((r) => r.id !== "own-google"), seeded, "a second run leaves the same seeded rows, every column");
+  assert.deepEqual(after.filter((r) => r.id === "own-google"), own, "a developer's own Google account stays");
 });
 
 // The person added by email who has not signed in (issue #746): a seed run
