@@ -1,28 +1,33 @@
+import { editorVersion } from "@/lib/content/versioned";
 import type { CheckedPhoto } from "@/lib/outreach-photos";
 import type { PhotoSrc } from "@/lib/outreach-types";
 import { afterWrite, FailedAfterUpload } from "./failure";
+import { fingerprintOf, type Ledger, type LedgerEntry } from "./ledger";
 import { buildPlan, planFiles, planImport, planKey, type Plan } from "./plan";
 import { shapePhoto, storePhoto, type PhotoReader, type PhotoStore } from "./photos";
 import { renderReport } from "./report";
-import { readSnapshot, type ImportDb } from "./snapshot";
-import type { Source } from "./source";
+import { readSnapshot, type ImportDb, type Snapshot } from "./snapshot";
+import type { PostKey, Source } from "./source";
 import { writePlan, type Written } from "./write";
 
 // One run of the outreach Instagram import (issue #886), whatever opened the
 // database and the store: the CLI (./cli.ts) on what the owner gives, the
 // tests on the in-memory PGlite and a fake store. A dry run reads the source,
-// the photos and the database, and writes and uploads nothing. A real run
-// plans, shapes every photo (one unfit photo stops it before any upload),
-// uploads them, then re-reads the database and writes in one transaction,
-// only while the plan still stands, so a failure leaves the database as it
-// was. Everything after the commit runs under `afterWrite`, so a failure
-// there says the import was written.
+// the ledger, the photos and the database, and writes and uploads nothing. A
+// real run plans, shapes every photo (one unfit photo stops it before any
+// upload), uploads them, then re-reads the database and writes in one
+// transaction, only while the plan still stands, so a failure leaves the
+// database as it was. In that transaction it reads back each draft it wrote
+// and fingerprints it for the ledger. Everything after the commit runs under
+// `afterWrite`, so a failure there says the import was written.
 
 export type RunOptions = {
   readonly mode: "dry-run" | "import";
   /** The source file's name, for the report. */
   readonly sourceFile: string;
   readonly source: Source;
+  /** What earlier runs wrote; empty on the first run. */
+  readonly ledger: Ledger;
   readonly photos: PhotoReader;
   readonly db: ImportDb;
   /** Where a real run uploads; a dry run needs none. */
@@ -34,6 +39,8 @@ export type RunOptions = {
 export type RunResult = {
   readonly plan: Plan;
   readonly written?: Written & { readonly uploaded: number };
+  /** The ledger the caller keeps: the one given, with each key this run wrote at its new draft. */
+  readonly ledger: Ledger;
   readonly report: string;
 };
 
@@ -46,14 +53,25 @@ async function shapeAll(files: readonly string[], photos: PhotoReader): Promise<
   return shaped;
 }
 
+/** The ledger after a write: each key at the draft now stored on its post. */
+function ledgerAfter(ledger: Ledger, postIds: ReadonlyMap<PostKey, number>, snapshot: Snapshot): Ledger {
+  const next = new Map<PostKey, LedgerEntry>(ledger);
+  for (const [key, postId] of postIds) {
+    const item = snapshot.posts.find((p) => p.id === postId);
+    if (item === undefined) throw new Error(`post ${postId} was written and is not stored`);
+    next.set(key, { postId, fingerprint: fingerprintOf(editorVersion(item.version)) });
+  }
+  return next;
+}
+
 export async function runImport(options: RunOptions, finish: readonly FinishStep[] = []): Promise<RunResult> {
-  const { mode, sourceFile, source, photos, db } = options;
-  const plan = planImport(source, await readSnapshot(db));
+  const { mode, sourceFile, source, ledger, photos, db } = options;
+  const plan = planImport(source, await readSnapshot(db), ledger);
   const shaped = await shapeAll(planFiles(plan), photos);
   const fitness = [...shaped].map(([file, photo]) => ({ file, fit: photo !== null }));
 
   if (mode === "dry-run") {
-    const result = { plan, report: renderReport({ sourceFile, plan, photos: fitness }) };
+    const result = { plan, ledger, report: renderReport({ sourceFile, plan, photos: fitness }) };
     for (const step of finish) await step.act(result);
     return result;
   }
@@ -66,6 +84,7 @@ export async function runImport(options: RunOptions, finish: readonly FinishStep
 
   const stored = new Map<string, PhotoSrc>();
   let written: Written;
+  let nextLedger: Ledger;
   try {
     for (const [file, photo] of shaped) stored.set(file, await storePhoto(store, photo as CheckedPhoto, newName()));
     const srcOf = (file: string) => {
@@ -73,13 +92,15 @@ export async function runImport(options: RunOptions, finish: readonly FinishStep
       if (src === undefined) throw new Error(`no photo was stored for ${file}`);
       return src;
     };
-    written = await db.transaction(async (tx) => {
-      const snapshot = await readSnapshot(tx as unknown as ImportDb);
+    ({ written, ledger: nextLedger } = await db.transaction(async (tx) => {
+      const txDb = tx as unknown as ImportDb;
+      const snapshot = await readSnapshot(txDb);
       // Each draft starts from the published version as this transaction reads it.
-      const fresh = planImport(source, snapshot);
+      const fresh = planImport(source, snapshot, ledger);
       if (planKey(fresh) !== planKey(plan)) throw new Error("the stored posts changed since the plan read them; run it again");
-      return writePlan(tx, buildPlan(fresh, snapshot, srcOf));
-    });
+      const result = await writePlan(tx, buildPlan(fresh, snapshot, srcOf), snapshot.lastTagOrder);
+      return { written: result.written, ledger: ledgerAfter(ledger, result.postIds, await readSnapshot(txDb)) };
+    }));
   } catch (error) {
     throw stored.size === 0 ? error : new FailedAfterUpload(stored.size, error);
   }
@@ -87,7 +108,7 @@ export async function runImport(options: RunOptions, finish: readonly FinishStep
   // The transaction has committed: from here on, every failure says the import was written.
   const all = { ...written, uploaded: stored.size };
   const report = await afterWrite("rendering the report", () => renderReport({ sourceFile, plan, photos: fitness, written: all }));
-  const result = { plan, written: all, report };
+  const result = { plan, written: all, ledger: nextLedger, report };
   for (const step of finish) await afterWrite(step.name, () => step.act(result));
   return result;
 }

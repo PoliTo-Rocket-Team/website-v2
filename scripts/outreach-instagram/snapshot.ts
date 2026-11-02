@@ -8,7 +8,7 @@ import type { OutreachTag, PostItem, PostVersions } from "@/lib/outreach-types";
 // What the import reads before it plans (issue #886): every stored post with
 // its versions, as the dashboard's own read makes them
 // (lib/dashboard/database-outreach.ts, `readStoredOutreach`), the tag list,
-// and the last place in the site order. Only selects.
+// and the last places in the site order and the tag list. Only selects.
 
 export type ImportDb = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -17,6 +17,8 @@ export type Snapshot = {
   readonly tags: readonly OutreachTag[];
   /** The highest site order a post holds; 0 with no post. */
   readonly lastSiteOrder: number;
+  /** The highest place a tag holds in the tag list; 0 with no tag. */
+  readonly lastTagOrder: number;
 };
 
 export async function readSnapshot(db: ImportDb): Promise<Snapshot> {
@@ -62,5 +64,6 @@ export async function readSnapshot(db: ImportDb): Promise<Snapshot> {
     posts,
     tags: tagList.map((row): OutreachTag => ({ name: row.name, award: row.award })),
     lastSiteOrder: last?.siteOrder ?? 0,
+    lastTagOrder: tagList.reduce((top, row) => Math.max(top, row.listOrder), 0),
   };
 }

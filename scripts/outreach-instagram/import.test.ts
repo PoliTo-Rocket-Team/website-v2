@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import sharp from "sharp";
-import { outreachPosts, outreachPostTags, outreachPostVersions } from "@/db/schema";
+import { outreachPosts, outreachPostTags, outreachPostVersions, outreachTags } from "@/db/schema";
 import { addRows, changeRows, databaseWrites, restore, tableRows, testDb } from "@/lib/dashboard/access-matrix/test-database";
 import { publicPathnameOfUrl, publicStoreHost } from "@/lib/storage/pathname";
 import { FailedAfterUpload, failureReport } from "./failure";
+import { emptyLedger, ledgerText, type Ledger } from "./ledger";
 import type { PhotoReader, PhotoStore } from "./photos";
 import { runImport, type RunOptions } from "./run";
 import type { ImportDb } from "./snapshot";
@@ -63,8 +64,10 @@ function fakeStore(failAt?: number): PhotoStore & { readonly uploads: string[] }
 }
 
 const SOURCE: Source = sourceOf({
+  newTags: ["Launch", "Fair"],
   existing: [
     {
+      key: "pi-day",
       title: "Pi Day Fair",
       body: [
         { kind: "paragraph", text: "An invented longer first paragraph about the fair." },
@@ -75,15 +78,16 @@ const SOURCE: Source = sourceOf({
         { file: "media/posts/b.jpg", alt: "An invented second alt text.", caption: "An invented caption." },
       ],
     },
-    { title: "Luna e Italia", body: [{ kind: "paragraph", text: "Invented." }], gallery: [{ file: "media/posts/c.jpg", alt: "Invented." }] },
-    { title: "No such post", body: [{ kind: "paragraph", text: "Invented." }], gallery: [{ file: "media/posts/c.jpg", alt: "Invented." }] },
+    { key: "luna", title: "Luna e Italia", body: [{ kind: "paragraph", text: "Invented." }], gallery: [{ file: "media/posts/c.jpg", alt: "Invented." }] },
+    { key: "nowhere", title: "No such post", body: [{ kind: "paragraph", text: "Invented." }], gallery: [{ file: "media/posts/c.jpg", alt: "Invented." }] },
   ],
   added: [
     {
-      title: "Example fair",
+      key: "example-launch",
+      title: "Example launch",
       date: "2024-02-15",
       place: "Torino, Italy",
-      tags: ["Fair", "School"],
+      tags: ["Launch", "School"],
       summary: { text: "An invented summary.", phone: "Invented." },
       lead: "An invented lead.",
       body: [{ kind: "paragraph", text: "An invented body." }, { kind: "highlight", label: "FACT", text: "An invented fact." }],
@@ -93,6 +97,7 @@ const SOURCE: Source = sourceOf({
       ],
     },
     {
+      key: "pi-day-again",
       title: "Pi Day Fair!",
       date: "2024-03-14",
       place: "Torino, Italy",
@@ -103,6 +108,7 @@ const SOURCE: Source = sourceOf({
       gallery: [{ file: "media/posts/c.jpg", alt: "Invented." }],
     },
     {
+      key: "rodeo",
       title: "Example rodeo",
       date: "2024-03-14",
       place: "Torino, Italy",
@@ -128,9 +134,17 @@ async function world(): Promise<void> {
   });
 }
 
-const options = (over: Partial<RunOptions> = {}): RunOptions => ({ mode: "dry-run", sourceFile: "source.json", source: SOURCE, photos: reader(), db, ...over });
+const options = (over: Partial<RunOptions> = {}): RunOptions => ({ mode: "dry-run", sourceFile: "source.json", source: SOURCE, ledger: emptyLedger, photos: reader(), db, ...over });
 
-test("a source keeps no hashtag, handle, emoji or styled letters, and names photos inside the export only", () => {
+/** A first real run on the world: its ledger, and the photo names it used. */
+async function firstRun(): Promise<Ledger> {
+  await world();
+  let n = 0;
+  const { ledger } = await runImport(options({ mode: "import", store: fakeStore(), newName: () => `first-${++n}` }));
+  return ledger;
+}
+
+test("a source keeps no hashtag, handle, emoji or styled letters, names photos inside the export only, and gives each post its own key", () => {
   assert.equal(captionMarkIn("Raised about €800, see info@example.com."), null);
   assert.equal(captionMarkIn("Thanks to #PRTOutreach"), "a hashtag");
   assert.equal(captionMarkIn("Thanks to @politorocketteam"), "an @handle");
@@ -139,31 +153,36 @@ test("a source keeps no hashtag, handle, emoji or styled letters, and names phot
   const bad = {
     existing: [
       {
+        key: "Pi Day",
         title: "Pi Day Fair",
         body: [{ kind: "paragraph", text: "Great day 🚀" }],
         gallery: [{ file: "../outside.jpg", alt: "Thanks @someone" }],
       },
     ],
-    added: [],
+    added: [{ ...SOURCE.added[0], key: "Pi Day" }],
   };
   assert.throws(
     () => sourceOf(bad),
     (error: unknown) =>
       error instanceof SourceError &&
+      /existing\.0\.key: must be lowercase words joined by hyphens/.test(error.message) &&
       /existing\.0\.body\.0\.text: holds an emoji/.test(error.message) &&
       /existing\.0\.gallery\.0\.file: must be a plain path inside the export/.test(error.message) &&
       /existing\.0\.gallery\.0\.alt: holds an @handle/.test(error.message),
   );
+  assert.throws(() => sourceOf({ existing: [SOURCE.existing[0]], added: [{ ...SOURCE.added[0], key: "pi-day" }] }), /added\.0\.key: pi-day is an earlier post's key/);
+  assert.throws(() => sourceOf({ newTags: ["A tag far longer than the tag list takes"], existing: [], added: [] }), /newTags\.0: must be at most 32 characters/);
   assert.throws(() => sourceOf({ existing: [], added: [{ ...SOURCE.added[0], date: "2024-02-30" }] }), /added\.0\.date: must be a day written YYYY-MM-DD/);
 });
 
-test("a dry run lists each draft and new post in full, skips what it may not write, and writes and uploads nothing", async () => {
+test("a dry run lists each post with its length, shows every text in full, skips what it may not write, and writes and uploads nothing", async () => {
   await world();
   const { plan, report } = await runImport(options({ photos: reader({ [UNFIT]: new TextEncoder().encode("not a photo") }), source: { ...SOURCE, added: [{ ...SOURCE.added[0], gallery: [...SOURCE.added[0].gallery, { file: UNFIT, alt: "Invented." }] }, ...SOURCE.added.slice(1)] } }));
   assert.deepEqual(await databaseWrites(), []);
-  assert.deepEqual(plan.drafts.map((d) => d.entry.title), ["Pi Day Fair"]);
+  assert.deepEqual(plan.drafts.map((d) => [d.entry.title, d.replaces]), [["Pi Day Fair", false]]);
+  assert.deepEqual(plan.newTags, ["Launch"]);
   const [lastOrder] = (await tableRows(outreachPosts)).map((p) => Number(p.siteOrder)).sort((a, b) => b - a);
-  assert.deepEqual(plan.added.map((a) => [a.entry.title, a.siteOrder]), [["Example fair", lastOrder + 1]]);
+  assert.deepEqual(plan.posts.map((p) => [p.entry.title, p.target]), [["Example launch", { kind: "add", siteOrder: lastOrder + 1 }]]);
   assert.deepEqual(
     plan.skipped.map((s) => [s.kind, s.title]),
     [
@@ -174,12 +193,16 @@ test("a dry run lists each draft and new post in full, skips what it may not wri
     ],
   );
   assert.match(report, /^Outreach Instagram import \(issue #886\): dry run, nothing written or uploaded$/m);
+  assert.match(report, /^Posts: 2; words per post 6 to 17, 12 on average$/m);
+  assert.match(report, /^ {2}2023-03-14 {4}17 words {2}2 paragraphs {3}2 photos {2}\[new draft\] Pi Day Fair$/m);
+  assert.match(report, /^ {2}2024-02-15 {5}6 words {2}1 paragraphs {3}3 photos {2}\[new post\] Example launch$/m);
+  assert.match(report, /^New tags: Launch$/m);
   assert.match(report, /^ {2}"Pi Day Fair" \(post \d+\), dated 2023-03-14: 1 gallery photos kept, 2 added$/m);
   assert.match(report, /^ {6}\[paragraph\] An invented second paragraph, about €800 and nothing else\.$/m);
   assert.match(report, /^ {6}media\/posts\/b\.jpg: An invented second alt text\. \(caption: An invented caption\.\)$/m);
-  assert.match(report, /^ {2}"Example fair", 2024-02-15, Torino, Italy; tags: Fair, School; site order \d+$/m);
+  assert.match(report, /^ {2}"Example launch", 2024-02-15, Torino, Italy; tags: Launch, School; site order \d+$/m);
   assert.match(report, /^ {6}\[highlight FACT\] An invented fact\.$/m);
-  assert.match(report, /^ {2}\[has-draft\] "Luna e Italia" \(post \d+\): the post already has a draft; a new one would overwrite it$/m);
+  assert.match(report, /^ {2}\[has-draft\] "Luna e Italia" \(post \d+\): the post holds a draft this import did not write; writing would overwrite it$/m);
   assert.match(report, /^ {2}\[address-taken\] "Pi Day Fair!" \(\/outreach\/pi-day-fair, held by "Pi Day Fair"\): /m);
   assert.match(report, /^Photo files: 4; would be uploaded: 3$/m);
   assert.match(report, /^ {2}media\/posts\/not-a-photo\.jpg$/m);
@@ -194,13 +217,13 @@ test("a real run with a photo the store would not take uploads and writes nothin
   assert.deepEqual(await databaseWrites(), []);
 });
 
-test("a real run inserts the drafts and new posts, keeps every stored version as it was, and a second run plans nothing", async () => {
+test("a first real run adds the tags, drafts and new posts, keeps every stored version as it was, and names each in its ledger", async () => {
   await world();
   const before = await versions();
   const store = fakeStore();
   let n = 0;
-  const { written, report } = await runImport(options({ mode: "import", store, newName: () => `photo-${++n}` }));
-  assert.deepEqual(written, { drafts: 1, added: 1, uploaded: 3 });
+  const { written, report, ledger } = await runImport(options({ mode: "import", store, newName: () => `photo-${++n}` }));
+  assert.deepEqual(written, { drafts: 1, redrafts: 0, added: 1, tags: 1, uploaded: 3 });
   assert.deepEqual(store.uploads, ["post-photos/photo-1.jpg", "post-photos/photo-2.jpg", "post-photos/photo-3.jpg"]);
   assert.match(report, /^Outreach Instagram import \(issue #886\): real run$/m);
 
@@ -228,6 +251,9 @@ test("a real run inserts the drafts and new posts, keeps every stored version as
   const tags = (await tableRows(outreachPostTags)).filter((t) => t.postId === piDay);
   assert.deepEqual(tags.filter((t) => t.version === "draft").map((t) => t.tagName), tags.filter((t) => t.version === "published").map((t) => t.tagName));
 
+  const tagList = (await tableRows(outreachTags)).map((t) => [t.name, t.listOrder] as const).sort((a, b) => Number(a[1]) - Number(b[1]));
+  assert.deepEqual(tagList.at(-1), ["Launch", tagList.length]);
+
   const newRows = after.filter((v) => !before.some((b) => b.postId === v.postId));
   assert.equal(newRows.length, 1);
   const [added] = newRows;
@@ -235,7 +261,7 @@ test("a real run inserts the drafts and new posts, keeps every stored version as
   assert.deepEqual(
     { title: added.title, date: added.date, place: added.place, photos: added.photos, channels: added.channels, gallery: added.gallery },
     {
-      title: "Example fair",
+      title: "Example launch",
       date: "2024-02-15",
       place: "Torino, Italy",
       photos: [{ src: url("photo-3"), alt: "An invented cover alt text." }],
@@ -249,23 +275,73 @@ test("a real run inserts the drafts and new posts, keeps every stored version as
     },
   );
   for (const src of [url("photo-1"), url("photo-3")]) assert.ok(publicPathnameOfUrl(src, HOST));
+  assert.deepEqual(new Set((await databaseWrites()).map((w) => w.kind)), new Set(["insert"]));
 
-  const kinds = new Set((await databaseWrites()).map((w) => w.kind));
-  assert.deepEqual(kinds, new Set(["insert"]));
+  assert.deepEqual([...ledger.keys()], ["pi-day", "example-launch"]);
+  assert.equal(ledger.get("pi-day")?.postId, piDay);
+  assert.equal(ledger.get("example-launch")?.postId, added.postId);
+  assert.match(ledgerText(ledger), /"key": "example-launch",\n\s+"postId": \d+,\n\s+"fingerprint": "[0-9a-f]{64}"/);
+});
 
-  const again = await runImport(options({ mode: "import", store: fakeStore() }));
-  assert.deepEqual(again.plan.drafts, []);
-  assert.deepEqual(again.plan.added, []);
-  assert.deepEqual(again.written, { drafts: 0, added: 0, uploaded: 0 });
+test("a run with the ledger replaces the drafts the import wrote and reuses the post it added; any other draft is left alone", async () => {
+  const ledger = await firstRun();
+  const before = await versions();
+  const postsBefore = await tableRows(outreachPosts);
+  const changed: Source = {
+    ...SOURCE,
+    existing: [{ ...SOURCE.existing[0], body: [{ kind: "paragraph", text: "A rewritten invented paragraph." }] }, ...SOURCE.existing.slice(1)],
+    added: [{ ...SOURCE.added[0], title: "Example launch, revised" }, ...SOURCE.added.slice(1)],
+  };
+  const { plan, written, ledger: next } = await runImport(options({ mode: "import", store: fakeStore(), source: changed, ledger, newName: () => crypto.randomUUID() }));
+  assert.deepEqual(written, { drafts: 0, redrafts: 2, added: 0, tags: 0, uploaded: 3 });
+  assert.deepEqual(plan.newTags, []);
+  assert.deepEqual(await tableRows(outreachPosts), postsBefore, "no post is added");
+
+  const after = await versions();
+  const piDay = await postIdOf("Pi Day Fair");
+  const rewritten = new Set([piDay, ledger.get("example-launch")?.postId]);
+  for (const row of before.filter((v) => v.version === "published" || !rewritten.has(v.postId))) {
+    assert.deepEqual(after.find((v) => v.id === row.id), row, `version ${row.id} is unchanged`);
+  }
+  assert.deepEqual(after.find((v) => v.postId === piDay && v.version === "draft")?.body, [{ kind: "paragraph", text: "A rewritten invented paragraph." }]);
+  const reused = after.find((v) => v.postId === ledger.get("example-launch")?.postId);
+  assert.equal(reused?.title, "Example launch, revised");
+  assert.equal(reused?.version, "draft");
   assert.deepEqual(
-    again.plan.skipped.map((s) => [s.kind, s.title]).slice(0, 3),
+    (await tableRows(outreachPostTags)).filter((t) => t.postId === reused?.postId).map((t) => [t.version, t.tagName, t.position]),
+    [
+      ["draft", "Launch", 1],
+      ["draft", "School", 2],
+    ],
+  );
+  assert.notEqual(next.get("pi-day")?.fingerprint, ledger.get("pi-day")?.fingerprint);
+  assert.deepEqual(after.map((v) => v.id), before.map((v) => v.id), "the drafts are replaced in place: no version row is added");
+});
+
+test("a draft edited since the import wrote it is skipped; without its ledger a run adds no second post", async () => {
+  const ledger = await firstRun();
+  const piDay = await postIdOf("Pi Day Fair");
+  const addedId = ledger.get("example-launch")!.postId;
+  await changeRows(outreachPostVersions, { postId: piDay, version: "draft" }, { lead: "The owner changed the draft." });
+  await changeRows(outreachPostVersions, { postId: addedId, version: "draft" }, { lead: "The owner changed this one too." });
+  const edited = await runImport(options({ ledger }));
+  assert.deepEqual(edited.plan.drafts, []);
+  assert.deepEqual(edited.plan.posts, []);
+  assert.deepEqual(
+    edited.plan.skipped.map((s) => [s.kind, s.title]).filter(([kind]) => kind === "has-draft" || kind === "changed-since"),
     [
       ["has-draft", "Pi Day Fair"],
       ["has-draft", "Luna e Italia"],
-      ["no-post", "No such post"],
+      ["changed-since", "Example launch"],
     ],
   );
-  assert.ok(again.plan.skipped.some((s) => s.kind === "address-taken" && s.title === "Example fair"));
+
+  await firstRun();
+  const lost = await runImport(options({ ledger: emptyLedger }));
+  assert.deepEqual(lost.plan.drafts, []);
+  assert.deepEqual(lost.plan.posts, []);
+  assert.ok(lost.plan.skipped.some((s) => s.kind === "has-draft" && s.title === "Pi Day Fair"));
+  assert.ok(lost.plan.skipped.some((s) => s.kind === "address-taken" && s.title === "Example launch"));
 });
 
 test("a run that fails after uploading says nothing was written and how many files it left; one that fails after its commit says it was written", async () => {
@@ -280,7 +356,7 @@ test("a run that fails after uploading says nothing was written and how many fil
   assert.deepEqual(await databaseWrites(), []);
 
   await world();
-  const fail = { name: "writing the report file", act: () => Promise.reject(new Error("EACCES: permission denied")) };
+  const fail = { name: "writing the ledger", act: () => Promise.reject(new Error("EACCES: permission denied")) };
   const real = await runImport(options({ mode: "import", store: fakeStore() }), [fail]).then(() => "no failure", failureReport);
-  assert.match(real, /^Outreach Instagram import was written: its transaction committed\. Then writing the report file failed\.\n {2}EACCES: permission denied$/);
+  assert.match(real, /^Outreach Instagram import was written: its transaction committed\. Then writing the ledger failed\.\n {2}EACCES: permission denied$/);
 });
