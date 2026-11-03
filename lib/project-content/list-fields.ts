@@ -9,7 +9,7 @@ import {
   type GalleryFields,
   type GalleryItemFields,
 } from "@/lib/gallery-fields";
-import { isPhotoSrc } from "@/lib/outreach-photos";
+import { LAUNCH_PHOTO } from "@/lib/photo-crops";
 import { planSteps, versionList, type PlanStatus } from "@/lib/project-pages";
 import {
   specRows,
@@ -24,6 +24,7 @@ import {
 } from "@/lib/project-pages/types";
 import type { Award } from "@/lib/projects";
 import { copyFields, copyOf, filled, titleOf, titleText, type CopyFields } from "./copy-fields";
+import { readPhotoIn, storedPhotoOf } from "./photos";
 import type { LaunchesBlock, PageStat, ProjectRecord, StoredLaunch } from "./record";
 
 // The list blocks of the Edit <project> panel (board 75c, issue #299; page
@@ -253,7 +254,7 @@ function awardOf(fields: LaunchFields["award"]): Award | null {
 export function launchOf(fields: LaunchFields): StoredLaunch {
   const award = awardOf(fields.award);
   const [first] = fields.photos;
-  const cover = first === undefined ? null : { src: first.src, alt: first.alt.trim() };
+  const cover = first === undefined ? null : storedPhotoOf(first);
   const base = {
     date: fields.date.trim(),
     where: fields.where.trim(),
@@ -427,14 +428,19 @@ export { blankGallery, GALLERY_KEEPS_A_PHOTO, galleryProblems, removeGalleryItem
 export function galleryFields(gallery: GallerySection): GalleryFields {
   return {
     title: gallery.title,
-    items: gallery.items.map((item) => ({ src: "src" in item ? item.src : null, alt: item.alt, caption: item.caption ?? "" })),
+    items: gallery.items.map((item) =>
+      "src" in item
+        ? { src: item.src, alt: item.alt, caption: item.caption ?? "", ...(item.crops !== undefined && { crops: item.crops }) }
+        : { src: null, alt: item.alt, caption: item.caption ?? "" },
+    ),
   };
 }
 
 function galleryItemOf(fields: GalleryItemFields): GalleryItem {
   const caption = filled(fields.caption);
   const rest = { alt: fields.alt.trim(), ...(caption !== null && { caption }) };
-  return fields.src === null ? { placeholder: true, ...rest } : { src: fields.src, ...rest };
+  if (fields.src === null) return { placeholder: true, ...rest };
+  return { src: fields.src, ...rest, ...(fields.crops !== undefined && { crops: fields.crops }) };
 }
 
 /** The gallery as stored; null while it holds nothing. */
@@ -497,10 +503,7 @@ function readLaunch(v: unknown): LaunchFields | null {
   const summary = readCopy(v.summary);
   const award = strings(v.award, ["name", "short", "citation"]);
   const numbers = listOf(v.numbers, (n) => strings(n, ["value", "label", "phoneLabel"]));
-  const photos = listOf(v.photos, (p): LaunchPhoto | null => {
-    const photo = strings(p, ["src", "alt"]);
-    return photo !== null && isPhotoSrc(photo.src) ? { src: photo.src, alt: photo.alt } : null;
-  });
+  const photos = listOf(v.photos, (p) => readPhotoIn(p, LAUNCH_PHOTO));
   const outcome = OUTCOMES.find((o) => o === v.outcome);
   const phoneDrops = ([0, 1, 2, 3] as const).find((d) => d === v.phoneDrops);
   if (place === null || summary === null || award === null || numbers?.length !== 4 || photos === null || outcome === undefined || phoneDrops === undefined) {

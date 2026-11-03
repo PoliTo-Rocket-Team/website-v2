@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BACKGROUND_CROP_MAX_BYTES, BACKGROUND_FRAMES } from "@/lib/project-content/record";
 import { PHOTO_MAX_BYTES } from "@/lib/outreach-photos";
-import { GALLERY_PHOTO, LAUNCH_PHOTO, POST_PHOTO } from "@/lib/photo-crops";
+import { GALLERY_PHOTO, LAUNCH_PHOTO, POST_PHOTO, PROJECT_PHOTO } from "@/lib/photo-crops";
 import {
   CROP_SETTINGS,
   cutOf,
@@ -52,11 +52,13 @@ test("a project background is Tall 9:16 and Wide 2:1 JPEG files at the presets' 
   for (const shape of entry.shapes) assert.equal(shape.aspect.width / shape.aspect.height, shape.size.width / shape.size.height, shape.name);
 });
 
-test("outreach post, gallery and launch photos are kept once, cropped for each shape their public box is shown at, under the photo limit", () => {
+test("outreach and project photos, gallery photos and launch covers are kept once, cropped for each shape their public box is shown at, under the photo limit", () => {
   const places = [
     [CROP_SETTINGS.outreachPhoto, POST_PHOTO],
     [CROP_SETTINGS.outreachGallery, GALLERY_PHOTO],
     [CROP_SETTINGS.launchPhoto, LAUNCH_PHOTO],
+    [CROP_SETTINGS.projectPhoto, PROJECT_PHOTO],
+    [CROP_SETTINGS.projectGallery, GALLERY_PHOTO],
   ] as const;
   for (const [entry, place] of places) {
     assert.equal(entry.kind, "crops");

@@ -32,14 +32,26 @@ export type PostPhotoShape = keyof typeof POST_PHOTO;
 export const GALLERY_PHOTO = { phone: { width: 300, height: 220 }, desktop: { width: 760, height: 480 } } as const satisfies PhotoPlace<string>;
 export type GalleryPhotoShape = keyof typeof GALLERY_PHOTO;
 
-/** A launch's cover photo (components/project-page/launches.tsx): its slot beside a launch is 300 x 180 from lg. */
-export const LAUNCH_PHOTO = { card: { width: 5, height: 3 } } as const satisfies PhotoPlace<string>;
+/** A launch's cover photo (components/project-page/launches.tsx, issue #970): the phone card's top strip is 326 x 112 at 390 wide, and the slot beside a launch is 300 x 180 from lg. */
+export const LAUNCH_PHOTO = { phone: { width: 326, height: 112 }, desktop: { width: 5, height: 3 } } as const satisfies PhotoPlace<string>;
 export type LaunchPhotoShape = keyof typeof LAUNCH_PHOTO;
+
+/**
+ * A project page's photo (issue #970): a Photo block (components/project-page/photo.tsx)
+ * and the top's photo panel (components/project-page/hero.tsx) share one box,
+ * 220 px high on phones (350 x 220 at 390 wide) and 620 px from md (1312 x 620 at 1440).
+ */
+export const PROJECT_PHOTO = { phone: { width: 350, height: 220 }, desktop: { width: 1312, height: 620 } } as const satisfies PhotoPlace<string>;
+export type ProjectPhotoShape = keyof typeof PROJECT_PHOTO;
 
 /** The crops an outreach post photo may carry. */
 export type PostPhotoCrops = ShapeCrops<PostPhotoShape>;
 /** The crops a gallery photo may carry. */
 export type GalleryPhotoCrops = ShapeCrops<GalleryPhotoShape>;
+/** The crops a launch's cover photo may carry. */
+export type LaunchPhotoCrops = ShapeCrops<LaunchPhotoShape>;
+/** The crops a project page's photo may carry. */
+export type ProjectPhotoCrops = ShapeCrops<ProjectPhotoShape>;
 
 /** A new photo's `crops` key as it is kept: absent when the editor framed no shape, so it reads as a photo with none. */
 export function cropsKey<N extends string>(crops: ShapeCrops<N>): { readonly crops?: ShapeCrops<N> } {

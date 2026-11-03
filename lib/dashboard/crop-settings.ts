@@ -14,7 +14,7 @@
 import { BACKGROUND_CROP_MAX_BYTES, BACKGROUND_FRAMES } from "@/lib/project-content/record";
 import { PHOTO_MAX_BYTES } from "@/lib/outreach-photos";
 import { MAX_MEMBER_PHOTO_BYTES } from "./division-members";
-import { GALLERY_PHOTO, LAUNCH_PHOTO, POST_PHOTO, type ShapeCrop, type ShapeCrops, type Size } from "@/lib/photo-crops";
+import { GALLERY_PHOTO, LAUNCH_PHOTO, POST_PHOTO, PROJECT_PHOTO, type ShapeCrop, type ShapeCrops, type Size } from "@/lib/photo-crops";
 import { sourceRect, type FrameCrop } from "./photo-crop";
 import { MAX_PHOTO_BYTES, PHOTO_TYPES } from "./self";
 
@@ -216,15 +216,44 @@ export const CROP_SETTINGS = {
       { kind: "fixed", name: "desktop", label: "Laptops", use: "Gallery", aspect: GALLERY_PHOTO.desktop },
     ],
   },
-  /** A launch's cover photo (issue #969): one photo, cropped for its 5:3 slot beside the launch, under 4 MB. */
+  /** A launch's cover photo (issues #969, #970): one photo, cropped for the phone card's 326:112 strip and the 5:3 slot beside the launch, under 4 MB. */
   launchPhoto: {
     kind: "crops",
-    words: { title: "Crop your photo", confirm: "Use this photo" },
+    words: TWO_SHAPE_WORDS,
     accept: PHOTO_ACCEPT,
     maxBytes: PHOTO_MAX_BYTES,
     maxSide: STORED_PHOTO_SIDE,
     output: { type: "image/jpeg", quality: STORED_PHOTO_QUALITY },
-    shapes: [{ kind: "fixed", name: "card", label: "Card", use: "Launch card", aspect: LAUNCH_PHOTO.card }],
+    shapes: [
+      { kind: "fixed", name: "phone", label: "Phones", use: "Launch card", aspect: LAUNCH_PHOTO.phone },
+      { kind: "fixed", name: "desktop", label: "Laptops", use: "Launch card", aspect: LAUNCH_PHOTO.desktop },
+    ],
+  },
+  /** A project page's photo, the top's photo panel or a Photo block (issue #970): one photo, cropped for the panel's 350:220 on phones and 1312:620 from md, under 4 MB. */
+  projectPhoto: {
+    kind: "crops",
+    words: TWO_SHAPE_WORDS,
+    accept: PHOTO_ACCEPT,
+    maxBytes: PHOTO_MAX_BYTES,
+    maxSide: STORED_PHOTO_SIDE,
+    output: { type: "image/jpeg", quality: STORED_PHOTO_QUALITY },
+    shapes: [
+      { kind: "fixed", name: "phone", label: "Phones", use: "Project page", aspect: PROJECT_PHOTO.phone },
+      { kind: "fixed", name: "desktop", label: "Laptops", use: "Project page", aspect: PROJECT_PHOTO.desktop },
+    ],
+  },
+  /** A project's gallery photo (issue #970): one photo, cropped for the carousel's 300:220 on phones and 760:480 from md, under 4 MB. */
+  projectGallery: {
+    kind: "crops",
+    words: TWO_SHAPE_WORDS,
+    accept: PHOTO_ACCEPT,
+    maxBytes: PHOTO_MAX_BYTES,
+    maxSide: STORED_PHOTO_SIDE,
+    output: { type: "image/jpeg", quality: STORED_PHOTO_QUALITY },
+    shapes: [
+      { kind: "fixed", name: "phone", label: "Phones", use: "Project gallery", aspect: GALLERY_PHOTO.phone },
+      { kind: "fixed", name: "desktop", label: "Laptops", use: "Project gallery", aspect: GALLERY_PHOTO.desktop },
+    ],
   },
 } as const satisfies Readonly<Record<string, CropEntry>>;
 

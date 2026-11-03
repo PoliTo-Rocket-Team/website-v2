@@ -34,6 +34,7 @@ import {
   type PartFields,
   type ReasonFields,
 } from "@/lib/project-content/block-fields";
+import { CROP_SETTINGS } from "@/lib/dashboard/crop-settings";
 import { BLOCKS_MAX } from "@/lib/project-content/block-list";
 import type { BlockSection } from "@/lib/project-content/fields";
 import { BLOCK_LABELS } from "@/lib/project-content/page-parts";
@@ -590,7 +591,7 @@ function PhotoBlockEditor({
             })
           }
           uploads={uploads}
-          crop={null}
+          crop={CROP_SETTINGS.projectPhoto}
           cover={false}
           max={1}
           error={errors["photo.photo"]}

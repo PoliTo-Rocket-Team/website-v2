@@ -649,7 +649,7 @@ export function GalleryEditor({
           return result.ok ? { ok: true, value: { items: result.value.fields.items, letGo: result.value.letGo } } : result;
         }}
         uploads={uploads}
-        crop={null}
+        crop={CROP_SETTINGS.projectGallery}
       />
     </>
   );
