@@ -9,15 +9,18 @@ import {
   leadersOnArc,
   NO_TEAM_LAYER,
   resetLayer,
+  textOf,
+  withText,
   type AddedLeader,
   type TeamPageLayer,
 } from "./team-layer";
+import { GROUP_PHOTO, placementOf } from "@/lib/photo-crops";
 import { publicStoreHost } from "@/lib/storage/pathname";
-import { describedGroupPhoto, groupPhotoDescriptions } from "./team-page-edit";
+import { describedGroupPhoto, groupPhotoDescriptions, withGroupPhoto } from "./team-page-edit";
 import { ownsTeamPageUpload } from "./team-page-photos";
 import type { TeamPerson } from "./team-person";
 import { team } from "./team";
-import { teamBuildOf, teamPageFromRoles, type TeamRoles } from "./team-roles";
+import { teamBuildOf, teamPageFromRoles, withLayerText, type TeamRoles } from "./team-roles";
 
 // The Team page's visual layer (issue #283): each edit at its spot, added
 // leaders at their place on the arc, Reset to team, and edits that outlive
@@ -292,6 +295,31 @@ test("a layer is read back only when this code could have written it", () => {
     { ...NO_TEAM_LAYER, extra: 1 },
   ];
   for (const value of bad) assert.equal(isTeamPageLayer(value, owns), false, JSON.stringify(value));
+});
+
+test("the group photo's crops are an optional layer key: kept through save and read, absent reads as centred, malformed is refused", () => {
+  const owns = ownsTeamPageUpload(publicStoreHost("store_Own123"));
+  const own = "https://own123.public.blob.vercel-storage.com/photos/team-page-1.jpg";
+  const crops = { phone: { x: 0.1, y: 0.2, width: 0.5, height: 0.5 } };
+  // Uploaded and cropped in the editor (issue #971): the crop for phones only, laptops left centred.
+  const picked = describedGroupPhoto(own, { [own]: "The team" }, { [own]: crops });
+  const saved = withText(NO_TEAM_LAYER, withGroupPhoto(team, textOf(NO_TEAM_LAYER), picked));
+  const read = JSON.parse(JSON.stringify(saved));
+  assert.ok(isTeamPageLayer(read, owns));
+  assert.deepEqual(read.groupPhoto, { src: own, alt: "The team", crops });
+  assert.deepEqual(withLayerText(team, read).coreMembers.groupPhoto.crops, crops);
+  // The phone box shows its crop; the laptop box, left unset, shows the photo centred.
+  assert.deepEqual(placementOf(GROUP_PHOTO, read.groupPhoto.crops, { shape: "phone", box: "exact" }), { kind: "crop", crop: crops.phone });
+  assert.equal(placementOf(GROUP_PHOTO, read.groupPhoto.crops, { shape: "desktop", box: "exact" })?.kind, "centre");
+  // A layer saved before crops has no key: it reads, and its photo draws as it always did.
+  const before = { ...NO_TEAM_LAYER, groupPhoto: { src: own, alt: "The team" } };
+  assert.ok(isTeamPageLayer(before, owns));
+  assert.equal(placementOf(GROUP_PHOTO, withLayerText(team, before).coreMembers.groupPhoto.crops, { shape: "phone", box: "exact" }), null);
+  // An upload with no frame moved stores no key at all.
+  assert.equal("crops" in withGroupPhoto(team, textOf(NO_TEAM_LAYER), describedGroupPhoto(own, {}, { [own]: {} })).groupPhoto!, false);
+  for (const bad of [{ square: crops.phone }, { phone: { x: 0.8, y: 0, width: 0.5, height: 0.5 } }, { phone: { x: 0, y: 0, width: 0, height: 1 } }, [crops.phone]]) {
+    assert.equal(isTeamPageLayer({ ...NO_TEAM_LAYER, groupPhoto: { src: own, alt: "", crops: bad } }, owns), false, JSON.stringify(bad));
+  }
 });
 
 test("picking another group photo shows that photo's own description, never the one typed for the last", () => {

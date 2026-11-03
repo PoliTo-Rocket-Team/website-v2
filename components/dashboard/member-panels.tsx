@@ -46,6 +46,7 @@ import { PLACE_TAG_LABELS, placeHeaderLine, type PersonPlace, type PlaceTag } fr
 import { MAX_NAME, type PersonName } from "@/lib/dashboard/person-name";
 import { divisionLabel } from "@/lib/dashboard/team";
 import { shortDate } from "@/lib/dashboard/write";
+import { CROP_SETTINGS } from "@/lib/dashboard/crop-settings";
 import { Avatar } from "./avatar";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -75,7 +76,7 @@ import { Field, GroupLabel, inputClass, LOCKED_INPUT } from "./field";
 import { PersonCombobox } from "./person-combobox";
 import { Toggle } from "./controls";
 import { EYEBROW, GHOST_PILL } from "./page-header";
-import { PHOTO_ACCEPT, PhotoCropDialog } from "./photo-crop-dialog";
+import { CropDialog } from "./crop-dialog";
 
 // The member panels of every Members page (issues #231, #584 and #647): the
 // member panel with their placement and private data (boards 61f, 98), Edit
@@ -1667,7 +1668,7 @@ function LeavingSection({ person, position, onAsk }: { person: EditPerson; posit
   );
 }
 
-/** The photo row of Edit details: Upload photo opens the square crop; the saved photo is a JPEG under 500 KB. */
+/** The photo row of Edit details: Upload photo opens the shared crop dialog; the saved photo is a JPEG under 500 KB (`CROP_SETTINGS.memberPhoto`). */
 function PhotoField({ person }: { person: Pick<EditPerson, "id" | "photoUrl"> }) {
   const [cropping, setCropping] = useState<File | null>(null);
   const [pending, setPending] = useState(false);
@@ -1705,7 +1706,7 @@ function PhotoField({ person }: { person: Pick<EditPerson, "id" | "photoUrl"> })
       <input
         ref={input}
         type="file"
-        accept={PHOTO_ACCEPT}
+        accept={CROP_SETTINGS.memberPhoto.accept.join(",")}
         className="sr-only"
         tabIndex={-1}
         aria-hidden
@@ -1722,12 +1723,13 @@ function PhotoField({ person }: { person: Pick<EditPerson, "id" | "photoUrl"> })
       <span className="text-[13px] text-prt-muted">
         Square JPEG, under <span className="whitespace-nowrap">500 KB</span>
       </span>
-      <PhotoCropDialog
+      <CropDialog
+        entry={CROP_SETTINGS.memberPhoto}
         file={cropping}
-        onOpenChange={(next) => !next && setCropping(null)}
-        onChooseAnother={() => input.current?.click()}
-        onSave={save}
         pending={pending}
+        onCancel={() => setCropping(null)}
+        onChooseAnother={() => input.current?.click()}
+        onDone={({ files }) => save(files.square)}
       />
     </div>
   );

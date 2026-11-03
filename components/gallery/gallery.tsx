@@ -4,7 +4,9 @@ import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type 
 import Image from "next/image";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ArrowLeft, ArrowRight, Maximize2, X } from "lucide-react";
+import { CroppedImage } from "@/components/cropped-image";
 import { MarkFallback } from "@/components/mark-fallback";
+import { GALLERY_PHOTO, placementOf } from "@/lib/photo-crops";
 import { NO_GESTURE, readWheel } from "@/lib/wheel-swipe";
 import { Dialog, DialogClose, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { isPhoto, ringOffset, wrapIndex, type FilledGallery, type GalleryItem } from "./items";
@@ -30,19 +32,32 @@ function PlaceholderTile() {
   );
 }
 
+/** The carousel's current frame: the phone shape below md, the laptop shape from md. */
+const PHONE_FRAME = { shape: "phone", box: "exact" } as const;
+const LAPTOP_FRAME = { shape: "desktop", box: "exact" } as const;
+
+/**
+ * A slot's photo: covering the carousel's frame with the crop for its shape
+ * (issue #969), or whole in the lightbox; a placeholder for an empty slot.
+ */
 function ItemView({ item, sizes, fit }: { item: GalleryItem; sizes: string; fit: "cover" | "contain" }) {
   if (!isPhoto(item)) return <PlaceholderTile />;
+  // A photo uploaded from the dashboard (the public store, or a preview's data URL) is served as it is (issue #299).
+  const unoptimized = !item.src.startsWith("/");
   return (
     <div className="absolute inset-0 overflow-hidden rounded-xl">
-      <Image
-        src={item.src}
-        alt={item.alt}
-        fill
-        sizes={sizes}
-        // A photo uploaded from the dashboard (the public store, or a preview's data URL) is served as it is (issue #299).
-        unoptimized={!item.src.startsWith("/")}
-        className={fit === "cover" ? "object-cover" : "object-contain"}
-      />
+      {fit === "cover" ? (
+        <CroppedImage
+          base={placementOf(GALLERY_PHOTO, item.crops, PHONE_FRAME)}
+          md={placementOf(GALLERY_PHOTO, item.crops, LAPTOP_FRAME)}
+          src={item.src}
+          alt={item.alt}
+          sizes={sizes}
+          unoptimized={unoptimized}
+        />
+      ) : (
+        <Image src={item.src} alt={item.alt} fill sizes={sizes} unoptimized={unoptimized} className="object-contain" />
+      )}
     </div>
   );
 }

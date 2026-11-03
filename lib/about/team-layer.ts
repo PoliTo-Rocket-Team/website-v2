@@ -1,6 +1,7 @@
 import { textLength } from "@/lib/content/text";
 import { BOARD_FLAGS, boardFlagOf, type BoardFlag, type BoardRole, type DepartmentKind } from "@/lib/dashboard/team";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
+import { GROUP_PHOTO, readShapeCrops, type GroupPhotoCrops } from "@/lib/photo-crops";
 import { personOf, type TeamPerson } from "./team-person";
 import type { DepartmentHead, DivisionLead, HeaderStats, Leader, Member, Person, PersonPhoto } from "./types";
 
@@ -107,8 +108,13 @@ export type DepartmentEdit = {
   readonly addedLeads?: readonly AddedLead[];
 };
 
-/** The group photo over the core members: a photo of the site's own in public/team/, or one uploaded in the editor (issue #510). */
-export type GroupPhoto = { readonly src: PersonPhoto; readonly alt: string };
+/**
+ * The group photo over the core members: a photo of the site's own in
+ * public/team/, or one uploaded in the editor (issue #510). An upload may
+ * carry `crops` (issue #971), its crop for each shape the box is shown at;
+ * a photo without them, as every layer saved before, is shown centred.
+ */
+export type GroupPhoto = { readonly src: PersonPhoto; readonly alt: string; readonly crops?: GroupPhotoCrops };
 
 /** The whole visual layer. Every part is optional in effect: an empty part changes nothing. */
 export type TeamPageLayer = {
@@ -554,6 +560,8 @@ const isGroupPhoto =
       {
         src: (src) => typeof src === "string" && isPhoto(src) && (src.startsWith("/team/") || ownsUpload(src)),
         alt: (alt) => typeof alt === "string" && textLength(alt) <= 300,
+        // Optional (issue #971): absent reads as centred, so a layer saved before it still reads.
+        crops: (crops) => readShapeCrops(crops, GROUP_PHOTO) != null,
       },
       ["src", "alt"],
     );

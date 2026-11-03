@@ -8,6 +8,7 @@ import { DialogClose } from "@/components/ui/dialog";
 import { addAdvisor, fixAlumnus, setAlumnusPhoto } from "@/app/dashboard/team-actions";
 import { ADVISORS } from "@/lib/about/alumni-record";
 import type { FounderMark } from "@/lib/about/alumni-types";
+import { CROP_SETTINGS } from "@/lib/dashboard/crop-settings";
 import { FIRST_ALUMNI_YEAR, MAX_ALUMNI_NAME, MAX_ALUMNI_ROLE, yearTab, type AlumnusRow } from "@/lib/dashboard/alumni";
 
 import { Avatar } from "./avatar";
@@ -191,7 +192,7 @@ function FixForm({ open, row, editable, onClose }: { open: boolean; row: Alumnus
         <GroupLabel id={`${row.key}-photo`} label="Photo" hint="optional" />
         <div className="flex items-center gap-4">
           <Avatar size="panel" person={{ photoUrl: photo }} />
-          {editable && <PhotoPicker label={photo === null ? "Upload photo" : "Replace photo"} pending={uploading} onCropped={uploadPhoto} />}
+          {editable && <PhotoPicker entry={CROP_SETTINGS.alumniPhoto} label={photo === null ? "Upload photo" : "Replace photo"} pending={uploading} onCropped={uploadPhoto} />}
         </div>
       </div>
 
@@ -373,6 +374,7 @@ function AdvisorForm({ open, thisYear, onClose }: { open: boolean; thisYear: num
             <div className="flex items-center gap-4">
               {preview !== null && <Avatar size="panel" person={{ photoUrl: preview }} />}
               <PhotoPicker
+                entry={CROP_SETTINGS.alumniPhoto}
                 label={photo === null ? "Upload photo" : "Replace photo"}
                 pending={saving}
                 onCropped={(square) => {

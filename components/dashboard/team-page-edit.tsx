@@ -56,6 +56,7 @@ import {
   backToTeamRecord,
   changesSeat,
   describedGroupPhoto,
+  groupPhotoCropsOf,
   editCount,
   editedTeamPage,
   figureErrors,
@@ -92,8 +93,9 @@ import { YearSelect } from "./alumni-panels";
 import { ConfirmDialog } from "./confirm-dialog";
 import { CONTENT_FOCUS, TextField } from "./content-parts";
 import { BarButton, EditableBlock, EditShell } from "./edit-shell";
-import { shrunkPhoto } from "./outreach-post-photos";
-import { PHOTO_ACCEPT } from "./photo-crop-dialog";
+import { CROP_SETTINGS, type CropResult } from "@/lib/dashboard/crop-settings";
+import type { GroupPhotoCrops } from "@/lib/photo-crops";
+import { CropDialog } from "./crop-dialog";
 import { TeamAdvisorsPanel, type KeyedAdvisorRow } from "./team-advisors-panel";
 import { TeamGroupsPanel } from "./team-groups-panel";
 import { TeamHeadPanel } from "./team-head-panel";
@@ -993,13 +995,16 @@ function GroupPhotoBox({
   onDone: () => void;
 }) {
   const [descriptions, setDescriptions] = useState(() => groupPhotoDescriptions(photo, original));
+  const [crops, setCrops] = useState(() => groupPhotoCropsOf(photo));
   const [uploads, setUploads] = useState<readonly PersonPhoto[]>([]);
   const src = photo.src;
   const alt = descriptions[src] ?? photo.alt;
   const choices = groupPhotoRow(site, uploads, photo);
-  const uploaded = (next: PersonPhoto) => {
+  const uploaded = (next: PersonPhoto, nextCrops: GroupPhotoCrops) => {
+    const cropsBySrc = { ...crops, [next]: nextCrops };
+    setCrops(cropsBySrc);
     setUploads((list) => [next, ...list.filter((s) => s !== next)]);
-    onChange(describedGroupPhoto(next, descriptions));
+    onChange(describedGroupPhoto(next, descriptions, cropsBySrc));
   };
   return (
     <div className="mt-6 rounded-xl border border-hairline bg-panel p-4 md:mt-8 md:p-5">
@@ -1014,7 +1019,7 @@ function GroupPhotoBox({
               aria-pressed={on}
               aria-label={choice.label}
               title={choice.label}
-              onClick={() => onChange(describedGroupPhoto(choice.src, descriptions))}
+              onClick={() => onChange(describedGroupPhoto(choice.src, descriptions, crops))}
               className={`${PHOTO_TILE} ${on ? "ring-2 ring-accent" : "opacity-70 transition-opacity duration-300 ease-out hover:opacity-100"} ${CONTENT_FOCUS}`}
             >
               {/* An upload is a store URL, served as stored as person photos are. */}
@@ -1031,8 +1036,9 @@ function GroupPhotoBox({
           value={alt}
           limit={300}
           onChange={(value) => {
-            setDescriptions((d) => ({ ...d, [src]: value }));
-            onChange({ src, alt: value });
+            const typed = { ...descriptions, [src]: value };
+            setDescriptions(typed);
+            onChange(describedGroupPhoto(src, typed, crops));
           }}
         />
       </div>
@@ -1057,25 +1063,28 @@ function GroupPhotoBox({
 }
 
 /**
- * The group photo row's last tile (issue #510): picks a photo file, sends it
- * shrunk as the Outreach panel does, and stores it through the Team page's
- * upload, behind the site-content gate. No square crop: the page's wide box
- * crops it.
+ * The group photo row's last tile (issues #510, #971): picks a photo file and
+ * opens the shared crop dialog on it (`CROP_SETTINGS.groupPhoto`), which
+ * keeps the photo once, its long side capped, with a crop for each shape the
+ * page's box is shown at. It stores the photo through the Team page's upload,
+ * behind the site-content gate, and hands back the photo and its crops.
  */
-function GroupPhotoUpload({ onUploaded }: { onUploaded: (src: PersonPhoto) => void }) {
+function GroupPhotoUpload({ onUploaded }: { onUploaded: (src: PersonPhoto, crops: GroupPhotoCrops) => void }) {
+  const [cropping, setCropping] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const upload = async (file: File) => {
+  const upload = async ({ file, crops }: CropResult<typeof CROP_SETTINGS.groupPhoto>) => {
     setUploading(true);
     try {
       const form = new FormData();
-      form.set("photo", await shrunkPhoto(file));
+      form.set("photo", file);
       const result = await uploadTeamPagePhoto(form);
       if (!result.ok) {
         toast.error("Could not upload the photo", { description: result.error });
         return;
       }
-      onUploaded(result.value);
+      setCropping(null);
+      onUploaded(result.value, crops);
     } finally {
       setUploading(false);
     }
@@ -1085,16 +1094,17 @@ function GroupPhotoUpload({ onUploaded }: { onUploaded: (src: PersonPhoto) => vo
       <input
         ref={input}
         type="file"
-        accept={PHOTO_ACCEPT}
+        accept={CROP_SETTINGS.groupPhoto.accept.join(",")}
         className="sr-only"
         tabIndex={-1}
         aria-hidden
         onChange={(e) => {
           const file = e.target.files?.[0];
           e.target.value = "";
-          if (file) void upload(file);
+          if (file) setCropping(file);
         }}
       />
+      <CropDialog entry={CROP_SETTINGS.groupPhoto} file={cropping} pending={uploading} onCancel={() => setCropping(null)} onDone={(result) => void upload(result)} />
       <button
         type="button"
         disabled={uploading}

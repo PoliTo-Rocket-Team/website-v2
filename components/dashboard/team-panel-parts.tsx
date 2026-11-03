@@ -8,6 +8,7 @@ import { Avatar } from "@/components/about/person";
 import type { PhotoChoice } from "@/lib/about/team-page-edit";
 import { personOf, type TeamPerson } from "@/lib/about/team-person";
 import type { PersonPhoto } from "@/lib/about/types";
+import { CROP_SETTINGS } from "@/lib/dashboard/crop-settings";
 import { CONTENT_FOCUS } from "./content-parts";
 import { EditorPanel } from "./editor-panel";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
@@ -245,6 +246,7 @@ export function PhotoChoices({
       </div>
       <div className={choices.length > 0 ? "mt-3 border-t border-hairline pt-3" : undefined}>
         <PhotoPicker
+          entry={CROP_SETTINGS.teamMemberPhoto}
           label={uploading ? "Uploading…" : "Upload a photo"}
           pending={uploading}
           onCropped={upload}

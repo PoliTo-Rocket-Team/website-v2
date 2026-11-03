@@ -4,11 +4,13 @@ import { useId, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, ImagePlus, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Photo } from "@/components/outreach/photo";
+import type { CropsEntry, ShapeCrops } from "@/lib/dashboard/crop-settings";
 import type { WriteResult } from "@/lib/dashboard/write";
-import type { PhotoFields } from "@/lib/outreach-post-fields";
 import type { PhotoSrc } from "@/lib/outreach-types";
+import { cropsKey } from "@/lib/photo-crops";
 import { describePhoto, movePhoto, neighbourOf, pickedPhoto, removePhoto, reorderPhotos } from "@/lib/photo-list";
 import { CONTENT_FOCUS, useDragOrder } from "./content-parts";
+import { useCropQueue, useInOrder, type CroppedPhoto } from "./crop-queue";
 import { inputClass } from "./field";
 
 // The Photos section of the Edit post panel (board 74h, issue #291): the
@@ -26,26 +28,13 @@ import { inputClass } from "./field";
 // the panel's fields at once, so Save draft keeps it. The box's arrows pick
 // the previous or next photo and never carry the text along. A description
 // is optional.
+//
+// The place's crop entry (issue #969) opens the shared crop dialog on each
+// picked file in turn, Skip and Cancel included, and keeps the photo once
+// with its crop for each shape.
 
-/** The longest side a picked photo is sent at. Uploaded photos are served as they are, so they are shrunk first. */
-const PHOTO_EDGE = 2400;
-
-/** The picked photo turned upright, shrunk to `PHOTO_EDGE` and sent as a JPEG; the file itself when the browser cannot draw it. */
-export async function shrunkPhoto(file: File): Promise<File> {
-  try {
-    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-    const scale = Math.min(1, PHOTO_EDGE / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.86));
-    return blob === null ? file : new File([blob], "photo.jpg", { type: "image/jpeg" });
-  } catch {
-    return file;
-  }
-}
+/** A photo in a panel's list: its file, its description, and its crop for each shape the editor framed. */
+export type CroppablePhoto<N extends string> = { readonly src: PhotoSrc; readonly alt: string; readonly crops?: ShapeCrops<N> };
 
 const TILE = "relative aspect-[16/9] overflow-hidden rounded-lg";
 
@@ -55,18 +44,21 @@ export type PhotoUploads = {
   readonly discard: (src: string) => Promise<unknown>;
 };
 
-export function PhotosSection({
+export function PhotosSection<N extends string>({
   photos,
   onChange,
   uploads,
+  crop,
   cover,
   max,
   error,
 }: {
-  photos: readonly PhotoFields[];
+  photos: readonly CroppablePhoto<N>[];
   /** Takes a change to the photos as they are when it lands, so an upload that ends late never undoes an edit. */
-  onChange: (change: (photos: readonly PhotoFields[]) => PhotoFields[]) => void;
+  onChange: (change: (photos: readonly CroppablePhoto<N>[]) => CroppablePhoto<N>[]) => void;
   uploads: PhotoUploads;
+  /** The place's crop entry (lib/dashboard/crop-settings.ts). */
+  crop: CropsEntry<N>;
   /** The first photo is the cover, and says so. */
   cover: boolean;
   /** The most photos the list takes; null for no limit. */
@@ -91,27 +83,31 @@ export function PhotosSection({
   };
   const move = (src: string, by: -1 | 1) => onChange((list) => movePhoto(list, src, by));
 
-  const room = max === null ? Infinity : max - photos.length - uploading;
-  const add = async (picked: readonly File[]) => {
-    const files = picked.slice(0, Math.max(0, room));
-    if (files.length < picked.length) toast.error(`Keep ${max} photos at most.`);
-    setUploading((n) => n + files.length);
-    let first = true;
-    for (const file of files) {
+  // The first photo of a pick to land opens, so its description is the next thing to write.
+  const opensNext = useRef(false);
+  const inOrder = useInOrder();
+  const store = ({ file, crops }: CroppedPhoto<N>) => {
+    setUploading((n) => n + 1);
+    inOrder(async () => {
       const form = new FormData();
-      form.set("photo", await shrunkPhoto(file));
+      form.set("photo", file);
       const result = await uploads.upload(form);
       setUploading((n) => n - 1);
-      if (!result.ok) {
-        toast.error(result.error);
-        continue;
-      }
+      if (!result.ok) return void toast.error(result.error);
       const src = result.value;
-      onChange((list) => [...list, { src, alt: "" }]);
-      // The first new photo opens, so its description is the next thing to write.
-      if (first) setOpen(src);
-      first = false;
-    }
+      onChange((list) => [...list, { src, alt: "", ...cropsKey(crops) }]);
+      if (opensNext.current) setOpen(src);
+      opensNext.current = false;
+    });
+  };
+  const queue = useCropQueue(crop, store);
+
+  const room = max === null ? Infinity : max - photos.length - uploading;
+  const add = (picked: readonly File[]) => {
+    const files = picked.slice(0, Math.max(0, room));
+    if (files.length < picked.length) toast.error(`Keep ${max} photos at most.`);
+    opensNext.current = true;
+    queue.pick(files);
   };
 
   const picked = pickedPhoto(photos, open);
@@ -176,14 +172,14 @@ export function PhotosSection({
           <input
             ref={input}
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept={crop.accept.join(",")}
             multiple
             hidden
             aria-label="Add photos"
             onChange={(e) => {
               const files = [...(e.target.files ?? [])];
               e.target.value = "";
-              if (files.length > 0) void add(files);
+              if (files.length > 0) add(files);
             }}
           />
         </li>
@@ -230,6 +226,7 @@ export function PhotosSection({
         </div>
       )}
 
+      {queue.dialog}
       {error !== undefined && <p className="text-[12px] text-danger">{error}</p>}
       <p className="text-[12px] text-prt-muted">Click a photo to describe it for screen readers (optional). The text is kept as you type.</p>
     </>
