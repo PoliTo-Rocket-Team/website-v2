@@ -602,41 +602,50 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   themselves here. A Members grant at Can view, or a grant on another area, opens no editor, and
   the server refuses every write below from it.
   - Details (board 61g): photo, contact, studies and personal details, with the same field checks.
-  - Role: the person's title in one division, shown on the Team page: the division the page lists
-    them under, else their first division the editor reaches. Titles in their other divisions
-    show on the member panel, not in the form. Someone in no division the editor reaches who holds
-    a seat (the team leader, a department head, the Project Manager, the Chief Engineer or another
-    team-level seat) shows their seat's stored title as an editable Role, and only the team
-    leader and full access reach them (issue #626). A blank stored title shows as the seat's
-    default name ("Team Leader", "Head of Aerodynamics"). It may not be blank. Save writes that
-    seat row's title and nothing else: never its type, department, division or full access, so
-    the seat, the headship and every access stay. A save with the Role left as shown writes the
-    title back unchanged. The team leader's title is the one on the public Team page; the
-    Members Role column names that seat "Team Leader" whatever it stores.
-    Someone with no such seat (an Advisor role, a role kept on a department) shows their role
-    locked.
-  - Lead or member: one choice per division of the person where the editor may change who leads
-    it, as Edit division allows: the department's head, the team leader, full access, and a lead
-    of that division by role (#594). A Members grant never shows it, and the server refuses its
-    change. Switching a lead to member asks the Team tree's "What happens to {name}?" (Stays as
-    a member, Stays as an advisor where the editor picks, Leaves {division}, Leaves the team), and
-    Save makes Edit division's Remove with that outcome, so a division keeps at least one lead
-    (#901).
-  - Becomes an advisor: the row menu's own action (below), here too, so the Table view and the
-    phone cards reach it (#901).
-  - Leaving the team (board 46b): "Remove from {division}" for each of the person's divisions the
-    editor reaches, and "Move to alumni", under the rules of the ⋯ menu below. An action the editor
-    may not take is locked with the menu's reason, and opens the menu's own "are you sure".
-  - Save writes the details and the title, then each changed lead or member choice. The server
-    checks each against the same rules.
-- The row ⋯ menu has "Becomes an advisor", "Remove from {division}" and "Leaves the team", on
-  every Members page.
-  - "Becomes an advisor" (#901) ends the person's lead or member role in one division and gives
-    them the Advisor role where the editor picks, with the #900 choice: that division, its
-    department or the whole team. Their access ends, as for a lead who becomes an advisor, and
-    they keep their other divisions. When several divisions offer it, the editor picks which one
-    first. Who may: whoever may change that division's leads (see "Lead or member" above); a lead
-    becomes an advisor only while another lead stays.
+  - Roles (boards 103b to 103d, #972, Owner decision, 2026-11-03): one row per place the person
+    holds, with the unit's name, its department muted, a role pill and a ⋯, and the place's title
+    box under the row ("Title on the Team page"). The title is the one on the Team page for that
+    division (#911).
+    - A division row's pill opens the dashboard's own menu, never the browser's dropdown: Member,
+      Lead (naming the division's other leads), then "Advisor · advises" with This division, Its
+      department and Whole team (the #900 scopes), the first two naming the unit they advise. Each
+      choice has its icon, and the current one has a check. A choice the
+      editor may not make is locked with its reason, from one rule (`roleOptions` in
+      `lib/dashboard/member-actions.ts`): where the editor may not change who leads the division
+      (as Edit division allows: the department's head, the team leader, full access, and a lead of
+      that division by role, #594; a Members grant never may), every other choice carries that
+      reason; the division's only lead may not become a member or an advisor ("A division needs at
+      least one lead."). An advisor there may become a member or a lead again, or advise at
+      another scope (Owner decision, 2026-11-03); only the editor's reach locks those choices.
+    - A pick is staged and Save applies it through the write each one already has: Lead and Member
+      the lead or member switch; a lead switched to Member asks the Team tree's "What happens to
+      {name}?" (Stays as a member, Stays as an advisor where the editor picks, Leaves {division},
+      Leaves the team), and Save makes Edit division's Remove with that outcome (#901); Advisor
+      makes Edit division's save with the scope picked, so their role there and their access end
+      and they keep their other divisions (#900). For an advisor there, Member or Lead is the lead
+      or member switch: their Advisor role there ends and a member or lead role starts that day,
+      with no title. Another scope is Edit division's save with that scope: their Advisor role
+      moves there, and they hold one Advisor role.
+    - The row ⋯ has Move to… (the Division and As boxes open under the row, and Save makes the
+      move, #647) and Remove from this division (it names the divisions they stay in, and is locked
+      with "{division} is their only division" under the rules of the ⋯ menu below).
+    - A department head the editor moves gets a row for the department, "Head of {department}" in
+      the pill, and Move to… moves the headship (boards 98a to 98c).
+    - Team seats (the team leader, the Project Manager, the Chief Engineer and other team-level
+      seats, and a headship the editor does not move) are listed and never changed here: the Team
+      tree's seat drawers change them. The first one's stored title is the editable title (issue
+      #626). A blank stored title shows as the seat's default name ("Team Leader", "Head of
+      Aerodynamics"). It may not be blank. Save writes that seat row's title and nothing else:
+      never its type, department, division or full access. Someone with no division, seat or
+      headship here (an Advisor role, a role kept on a department) shows their role locked.
+    - "+ Add division" under the rows adds a division the editor may place them in, as a member,
+      with its title, on Save (Add member's own write for someone on the team).
+  - Leaves the team, at the bottom of the panel in the danger colour, with "Ends every role. They
+    move to alumni." under it: the ⋯ menu's own "Leaves the team" and its "are you sure", locked
+    with the menu's reason where the editor may not.
+  - Save writes the details and the titles, then each staged move, role change and added division.
+    The server checks each against the same rules.
+- The row ⋯ menu has "Remove from {division}" and "Leaves the team", on every Members page.
   - "Remove from {division}" ends only that division's role and its division access; the person
     keeps their other divisions. When it is the person's only division and they hold no seat (the
     team leader, a board seat or a department head), the item is locked with "{division} is their
@@ -654,8 +663,8 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
     department or the team. No lead or head reaches it, and the move would end it.
   - Otherwise the item is disabled with a lock and the reason, for example "Also in Safety, so only
     the team leader can do this". The server checks the same rule on every request.
-- Confirm NDA, Cancel add, Becomes an advisor, Remove from {division} and Leaves the team each ask
-  "are you sure" first.
+- Confirm NDA, Cancel add, Remove from {division} and Leaves the team each ask "are you sure"
+  first.
 - **Member action parity** (Owner decision, 2026-11-02,
   [#901](https://github.com/PoliTo-Rocket-Team/website-v2/issues/901)): the Members page and the
   Team tree offer the same actions on a member. A member action added to one of them must be added
@@ -663,13 +672,13 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   (`lib/dashboard/member-actions.ts`), each action saves through one write, and each is locked
   with its reason for a viewer who may not take it.
   - The Team tree's member row ⋯ menu, in Edit division and in Edit department's division rows:
-    Change title (their title in this division), Make lead (they lead beside the other leads,
-    #861, and keep every other role), Becomes an advisor, Edit details (the Members page's own
-    panel), Move to… (#647), Remove from {division} and Leaves the team.
-  - The Members page reaches the same actions through the row ⋯ menu and Edit details: Change
-    title is Edit details' Role, Make lead its Lead or member choice, and Move to… its Division
-    and As boxes.
-  - Change title and Make lead each ask "are you sure" first, as the other actions do.
+    Edit details (the Members page's own panel), Move to… (#647), Remove from {division} and
+    Leaves the team.
+  - The Members page reaches the same actions through the row ⋯ menu (Remove from {division},
+    Leaves the team) and Edit details, which the row opens (Move to… on each division row's ⋯).
+  - A person's title and role in a division (member, lead, or advisor at the #900 scopes) are
+    changed in Edit details' Roles rows only, the same panel from both places (#972, Owner
+    decision, 2026-11-03). No ⋯ menu offers Change title, Make lead or Becomes an advisor.
 - A lead renames, recodes and changes the leads of each division they lead by role, in Edit
   division (see Divisions below; Owner decision, 2026-10-24, on #594). A Members grant does not:
   a page reached only through one shows "Leads are changed by the Head of {department}", and the
@@ -679,12 +688,12 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   from the team's roles, so a saved title shows there once the `team-roster` cache refreshes
   (ADR 0015).
 - A division's leads change through Edit division (see Divisions below), or through Edit
-  details' lead or member choice, for the same people: the department's head, the team leader,
+  details' role pill (Member or Lead), for the same people: the department's head, the team leader,
   full access (#231, #584) and a lead of the division by role (#594). "Remove from {division}" on
   a lead follows the same rule. The Members page has no Promote (removed by #551).
   - A "promoted" notice written while Promote existed (#188) still shows under "Needs your
     attention" until it is dismissed.
-- Move to alumni in Edit details is the same "Leaves the team": every role and every access ends,
+- Leaves the team in Edit details is the same "Leaves the team": every role and every access ends,
   after a confirm with the years and an optional reason.
 - Leave the team (by the member) is confirmed, with an optional reason. The lead and the
   recruitment manager are told. The person moves to Alumni. A division lead or a department head

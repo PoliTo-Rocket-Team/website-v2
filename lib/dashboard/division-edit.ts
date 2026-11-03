@@ -105,17 +105,18 @@ export type OldLead =
 export type AdvisingLead = { readonly memberId: number; readonly step: Advising };
 
 /**
- * A member of the open division who becomes an advisor (issue #901), from a
- * member row's "Becomes an advisor": their member role here ends and they
- * advise where the editor picked, as an old lead does (`advisingAt`).
+ * A member of the open division who becomes an advisor (issue #901), from
+ * the Advisor choice of Edit details' role pill (issue #972): their member
+ * role here ends and they advise where the editor picked, as an old lead
+ * does (`advisingAt`).
  */
 export type NewAdvisor = { readonly personId: number; readonly scope: AdvisorScope | null };
 
 /**
  * What New division and Edit division send. Members and emails are sent only
  * by New division: an open division adds its members one by one, as the
- * Members page does. `advisors` is sent only for an open division, by a
- * member row's "Becomes an advisor" (`PeopleChange`).
+ * Members page does. `advisors` is sent only for an open division, by the
+ * Advisor choice of Edit details' role pill (`PeopleChange`).
  */
 export type DivisionSave = {
   /** As typed, without "Division". */
@@ -164,11 +165,12 @@ export function checkDivisionSave(input: unknown): { ok: true; value: DivisionSa
 }
 
 /**
- * A change to who leads or advises in an open division, made at once from a
- * member row's menu on the Team tree or the Members page (issue #901): an old
- * lead stepping down with one of Remove's outcomes, or a member becoming an
- * advisor. It is Edit division's save with nothing else changed
- * (`peopleSaveOf`), so the rules and the writes are that save's.
+ * A change to who leads or advises in an open division, saved from Edit
+ * details' role pill on the Team tree or the Members page (issues #901,
+ * #972): an old lead stepping down with one of Remove's outcomes, or a member
+ * or advisor taking the pill's Advisor choice. It is Edit division's save
+ * with nothing else changed (`peopleSaveOf`), so the rules and the writes are
+ * that save's.
  */
 export type PeopleChange = Pick<DivisionSave, "oldLeads" | "advisors">;
 
@@ -286,7 +288,7 @@ function pickError(person: TeamPerson | undefined): string | null {
   return person ? null : "They are not on the team.";
 }
 
-/** Why a save, or Becomes an advisor for a division's only lead, would leave a division with no lead. */
+/** Why a save, or a role pill change in Edit details for a division's only lead, would leave a division with no lead. */
 export const ONE_LEAD_NEEDED = "A division needs at least one lead.";
 
 /**
@@ -500,9 +502,32 @@ export function divisionClosing(divisionId: number, held: readonly DivisionRow[]
   return { people: peopleInDivision(divisionId, held.filter((r) => r.type !== "advisor")), advisors };
 }
 
+/**
+ * What Edit details' Member or Lead writes in one division (issues #584,
+ * #972): their lead or member rows there change type; for someone whose only
+ * role there is an Advisor role, that role ends and a new lead or member role
+ * starts there today, so an advisor becomes a member or a lead again. None
+ * when they hold no role there.
+ */
+export type RoleSwitch =
+  | { readonly kind: "retype"; readonly rows: readonly [number, ...number[]] }
+  | { readonly kind: "from-advisor"; readonly ending: readonly [number, ...number[]] }
+  | { readonly kind: "none" };
+
+/** The switch for `held`, someone's active rows kept on one division (`RoleSwitch`). */
+export function roleSwitchOf(held: readonly Pick<DivisionRow, "id" | "type">[]): RoleSwitch {
+  const [first, ...rest] = held.filter((r) => r.type === "lead" || r.type === "core").map((r) => r.id);
+  if (first !== undefined) return { kind: "retype", rows: [first, ...rest] };
+  const [advisor, ...others] = held.filter((r) => r.type === "advisor").map((r) => r.id);
+  return advisor === undefined ? { kind: "none" } : { kind: "from-advisor", ending: [advisor, ...others] };
+}
+
 /** The rows of the division a plan's writes end or change, by row id. */
 export type DivisionRowWrites = {
-  /** Rows that end: the old leads who leave this division, and the lead or member rows of people who become advisors (an Advisor row they hold here stays). */
+  /**
+   * Rows that end: the old leads who leave this division, the lead or member rows of people who become advisors (an
+   * Advisor row they hold here stays), and the Advisor row of someone who advises only here and now advises elsewhere.
+   */
   readonly end: readonly number[];
   /** Rows that become a lead's. */
   readonly toLead: readonly number[];
@@ -522,8 +547,13 @@ export function divisionRowWrites(plan: DivisionPlan, divisionId: number, held: 
   const of = (people: readonly number[]) => rows.filter((r) => people.includes(r.memberId));
   // Someone who becomes an advisor loses the lead or member role here, never an Advisor role they already hold here (issues #900, #901).
   const advising = of(plan.advise.map((a) => a.memberId)).filter((r) => r.type !== "advisor");
+  // An advisor here whose only role here is that Advisor role, and who now advises elsewhere, moves it there
+  // (issue #972, Edit details' role pill): the row here ends, and `steppingDownWrites` starts the one at the new place.
+  const onlyAdvises = (memberId: number) => rows.every((r) => r.memberId !== memberId || r.type === "advisor");
+  const elsewhere = plan.advise.filter((a) => !(a.step.place.kind === "division" && a.step.place.divisionId === divisionId) && onlyAdvises(a.memberId));
+  const rescoped = of(elsewhere.map((a) => a.memberId));
   return {
-    end: [...of(plan.leaveDivision), ...advising].map((r) => r.id),
+    end: [...of(plan.leaveDivision), ...advising, ...rescoped].map((r) => r.id),
     toLead: of(plan.promote).map((r) => r.id),
     toMember: of(plan.demote)
       .filter((r) => r.type === "lead")

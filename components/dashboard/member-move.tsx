@@ -219,22 +219,33 @@ export function MoveFields({
         </Field>
         <Field label="As">
           {(id) => (
-            <div className="relative">
-              <select
+            // The dashboard's own menu, as the role pill's (issue #972): no browser dropdown.
+            <DropdownMenu>
+              <DropdownMenuTrigger
                 id={id}
                 aria-describedby={memberLock === null ? undefined : reasonId}
-                value={value.as}
-                onChange={(e) => onChange({ ...value, as: e.target.value as MoveChoice["as"] })}
-                className={`${inputClass()} cursor-pointer appearance-none truncate pr-10`}
+                className={`${inputClass()} flex items-center gap-2.5 text-left data-[state=open]:border-accent ${FOCUS}`}
               >
-                {options.map((o) => (
-                  <option key={o.value} value={o.value} disabled={o.disabled} className="bg-panel text-prt-text">
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
-            </div>
+                <span className="min-w-0 truncate">{options.find((o) => o.value === value.as)?.label ?? ""}</span>
+                <ChevronDown aria-hidden className="ml-auto h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
+              </DropdownMenuTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuPrimitive.Content
+                  align="end"
+                  sideOffset={6}
+                  className="z-50 w-[max(var(--radix-dropdown-menu-trigger-width),200px)] rounded-xl border border-hairline bg-panel p-1.5 text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0"
+                >
+                  <DropdownMenuPrimitive.RadioGroup value={value.as} onValueChange={(as) => onChange({ ...value, as: as as MoveChoice["as"] })}>
+                    {options.map((o) => (
+                      <MoveItem key={o.value} value={o.value} disabled={o.disabled}>
+                        {o.disabled && <Lock aria-hidden className="h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={1.75} />}
+                        <span className="min-w-0 truncate">{o.label}</span>
+                      </MoveItem>
+                    ))}
+                  </DropdownMenuPrimitive.RadioGroup>
+                </DropdownMenuPrimitive.Content>
+              </DropdownMenuPortal>
+            </DropdownMenu>
           )}
         </Field>
       </div>

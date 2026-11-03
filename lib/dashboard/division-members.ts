@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { NO_MEMBER_DETAILS, noDetailsFilled, parseMemberDetails, type MemberDetailErrors, type MemberDetails } from "./details";
 import { movablePlacesOf, type MovablePlace } from "./member-move";
-import { placesOf, type PersonPlace } from "./member-places";
+import { placesOf, seatPlace, type PersonPlace } from "./member-places";
 import { nameRule, NO_NAME, type PersonName } from "./person-name";
 import {
   beyondTitle,
@@ -129,9 +129,9 @@ export type PositionTitle =
   | { readonly kind: "fixed"; readonly label: string };
 
 /**
- * Someone's role in one division the viewer reaches, as the member menus
- * read it (issue #901): Make lead and Becomes an advisor change who leads or
- * advises there, which `change` says the viewer may (`mayChangeDivision`).
+ * Someone's role in one division the viewer reaches, as Edit details' role
+ * pill reads it (issue #972): picking Lead or Advisor there changes who leads
+ * or advises, which `change` says the viewer may (`mayChangeDivision`).
  */
 export type DivisionRoleChange = {
   readonly divisionId: number;
@@ -144,21 +144,23 @@ export type DivisionRoleChange = {
   readonly advisor: boolean;
   /** How many lead this division now, them included when they lead it: a lead becomes an advisor only while another lead stays. */
   readonly leads: number;
+  /** Who else leads it, by name: Edit details' Lead choice names them (issue #972). */
+  readonly otherLeads: readonly string[];
   readonly change: Permission;
 };
 
-/** How many lead each division, by division id (`leadCountsOf`). */
-export type LeadCounts = ReadonlyMap<number, number>;
+/** Who leads each division, by division id (`divisionLeadsOf`). */
+export type DivisionLeads = ReadonlyMap<number, readonly Pick<PersonRecord, "id" | "name">[]>;
 
-/** How many lead each division across `records`, as Edit division's save counts them (`planDivisionSave`). */
-export function leadCountsOf(records: readonly Pick<PersonRecord, "memberships">[]): LeadCounts {
-  const counts = new Map<number, number>();
+/** Who leads each division across `records`, as Edit division's save counts them (`planDivisionSave`). */
+export function divisionLeadsOf(records: readonly Pick<PersonRecord, "id" | "name" | "memberships">[]): DivisionLeads {
+  const leads = new Map<number, Pick<PersonRecord, "id" | "name">[]>();
   for (const record of records) {
     for (const m of record.memberships) {
-      if (m.role === "lead") counts.set(m.divisionId, (counts.get(m.divisionId) ?? 0) + 1);
+      if (m.role === "lead") leads.set(m.divisionId, [...(leads.get(m.divisionId) ?? []), { id: record.id, name: record.name }]);
     }
   }
-  return counts;
+  return leads;
 }
 
 /** What the viewer may change about someone's place on the team from Edit details. */
@@ -169,6 +171,12 @@ export type MemberPosition = {
   readonly leads: readonly LeadChoice[];
   /** Their role in every division of theirs the viewer reaches, home first (issue #901). */
   readonly roles: readonly DivisionRoleChange[];
+  /**
+   * The seats Edit details lists but never changes (issue #972), by title:
+   * the team leader's, a team-level seat's, and a headship the viewer does
+   * not move. The Team tree's seat drawers change them.
+   */
+  readonly seats: readonly string[];
   /** The places the viewer may move them out of, from Edit details and the Team tree (`movablePlacesOf`, issue #647). */
   readonly moves: readonly MovablePlace[];
   /** Every division of theirs the viewer reaches; the panel and the ⋯ menu show those offered or locked. */
@@ -192,13 +200,17 @@ export function editsPerson(actor: TeamActor, record: Pick<PersonRecord, "member
  * The position part for `record` as `actor` sees it. `titleIn` is the
  * division the page lists them under; the title falls back to their first
  * division the actor reaches, and to their seat when there is none. `leads`
- * counts each division's leads across the whole team (`leadCountsOf`).
+ * names each division's leads across the whole team (`divisionLeadsOf`).
  */
-export function positionOf(record: PersonRecord, org: OrgChart, actor: TeamActor, titleIn: number | null, leads: LeadCounts): MemberPosition {
+export function positionOf(record: PersonRecord, org: OrgChart, actor: TeamActor, titleIn: number | null, leads: DivisionLeads): MemberPosition {
   const standing = { memberships: record.memberships, beyond: record.beyondDivisions };
   const reached = homeFirst(record.memberships).filter((m) => org.divisions.some((d) => d.id === m.divisionId) && reachesDivision(actor, m.divisionId, org));
   const short = (divisionId: number) => divisionLabel(org.divisions.find((d) => d.id === divisionId)?.name ?? "");
   const titled = reached.find((m) => m.divisionId === titleIn) ?? reached[0];
+  const moves = movablePlacesOf(record, org, actor);
+  const leadsOf = (divisionId: number) => leads.get(divisionId) ?? [];
+  // A headship the viewer moves is a place of its own; every other seat is only listed.
+  const listed = (b: RoleBeyondDivisions) => b.kind !== "head" || !moves.some((m) => m.kind === "head" && m.departmentId === b.departmentId);
   return {
     name: record.storedName,
     title:
@@ -215,10 +227,16 @@ export function positionOf(record: PersonRecord, org: OrgChart, actor: TeamActor
       department: departmentNameOf(org, org.divisions.find((d) => d.id === m.divisionId)?.departmentId ?? -1),
       role: m.role,
       advisor: record.advising.includes(m.divisionId),
-      leads: leads.get(m.divisionId) ?? 0,
+      leads: leadsOf(m.divisionId).length,
+      otherLeads: leadsOf(m.divisionId)
+        .filter((l) => l.id !== record.id)
+        .map((l) => l.name),
       change: mayChangeDivision(actor, m.divisionId, org),
     })),
-    moves: movablePlacesOf(record, org, actor),
+    seats: (["team-leader", "board", "head"] as const).flatMap((kind) =>
+      record.beyondDivisions.filter((b) => b.kind === kind && listed(b)).map((b) => seatPlace(b, org).title),
+    ),
+    moves,
     removals: reached.map((m) => ({ divisionId: m.divisionId, short: short(m.divisionId), removal: removalFrom(actor, standing, m.divisionId, org) })),
     leave: mayLeaveTeam(actor, standing, org),
   };
@@ -235,7 +253,7 @@ function seatTitleOf(record: PersonRecord, org: OrgChart): PositionTitle {
 /** The whole team's positions: everyone `actor` may edit, never the viewer; none for no actor. */
 export function positionsOf(records: readonly PersonRecord[], org: OrgChart, actor: TeamActor | null, selfId: number | null): PersonPosition[] {
   if (actor === null) return [];
-  const leads = leadCountsOf(records);
+  const leads = divisionLeadsOf(records);
   return records.flatMap((r) => (r.id === selfId || !editsPerson(actor, r, org) ? [] : [{ id: r.id, ...positionOf(r, org, actor, null, leads) }]));
 }
 
@@ -420,7 +438,7 @@ export function divisionMembers(input: {
   const division = org.divisions.find((d) => d.id === divisionId);
   if (!division) return null;
   const changer = actor !== null && reachesDivision(actor, divisionId, org) ? actor : null;
-  const leads = leadCountsOf(input.records);
+  const leads = divisionLeadsOf(input.records);
   const people = input.records.flatMap((record): DivisionPerson[] => {
     const role = roleIn(record.memberships, divisionId);
     if (role === null) return [];
@@ -590,13 +608,6 @@ const title = z
 export function roleTitleError(text: string): string | null {
   const t = title.safeParse(text);
   return t.success ? null : (t.error.issues[0]?.message ?? "Check the role.");
-}
-
-/** Change title's title as sent (issue #901), by the same rule: trimmed, at most 80 letters, blank as none. */
-export function checkRoleTitle(input: unknown): { ok: true; value: string | null } | { ok: false; error: string } {
-  if (typeof input !== "string") return { ok: false, error: "Write the role." };
-  const t = title.safeParse(input);
-  return t.success ? { ok: true, value: t.data } : { ok: false, error: t.error.issues[0]?.message ?? "Check the role." };
 }
 
 const id = z.number().int().positive();

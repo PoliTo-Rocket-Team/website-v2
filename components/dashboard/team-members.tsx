@@ -477,14 +477,14 @@ function PersonRow({
 }
 
 /**
- * A row's ⋯ menu, on every page (`membersRowMenu`, issue #901): Becomes an
- * advisor, Remove from each division it reaches, then Leaves the team; a
- * locked item says why (Owner decision, 2026-10-11). Edit details' Leaving the
- * team offers the same removals, from the same position.
+ * A row's ⋯ menu, on every page (`membersRowMenu`, issues #901, #972):
+ * Remove from each division it reaches, then Leaves the team; a locked item
+ * says why (Owner decision, 2026-10-11). Edit details' division rows offer the
+ * same removals, from the same position.
  */
 function PersonMenu({ actions, onAsk }: { actions: MemberActions; onAsk: (asking: Asking) => void }) {
   const { person, position } = actions;
-  return <MemberMenu person={person} position={position} entries={membersRowMenu(position)} onAsk={onAsk} />;
+  return <MemberMenu person={person} entries={membersRowMenu(position)} onAsk={onAsk} />;
 }
 
 function WaitingRow({

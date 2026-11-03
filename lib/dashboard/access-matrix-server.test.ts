@@ -622,8 +622,7 @@ const ACTION_CASES: readonly ActionCase[] = [
     may: changesDM("members"),
     control: by("team leader"),
   },
-  // A Team tree member row's Change title and Becomes an advisor (issue #901): Members writes, in DM.
-  { action: "team-actions.saveDivisionTitle", run: () => teamActions.saveDivisionTitle(IDS.person(DM), IDS.division(DM), "CAD Engineer"), may: changesDM("members"), control: by("team leader") },
+  // Edit details' Advisor pick and a lead stepping down (issues #901, #972): Members writes, in DM.
   {
     action: "team-actions.changeDivisionPeople",
     run: () => teamActions.changeDivisionPeople(IDS.division(DM), { advisors: [{ personId: EXTRA.mover, scope: "division" }] }),

@@ -12,6 +12,7 @@ import {
   peopleSaveOf,
   planDivisionSave,
   renamesDivision,
+  roleSwitchOf,
   searchTeam,
   storedDivisionName,
   type DivisionRow,
@@ -310,7 +311,7 @@ test("a picked person carries every seat they hold, not only the first (#857)", 
   assert.deepEqual(unseated.people[0].seats, [], "a member with no seat carries none");
 });
 
-// A member row's "Becomes an advisor" and lead step-down (issue #901): Edit division's save with only that change.
+// Edit details' role pill (issue #972): its Advisor choice and a lead's step-down are Edit division's save with only that change (issue #901).
 
 test("a member of the division becomes an advisor where the editor picked: their member row ends, nothing else changes", () => {
   for (const [scope, place] of [
@@ -324,6 +325,30 @@ test("a member of the division becomes an advisor where the editor picked: their
     assert.deepEqual([planned.plan.promote, planned.plan.demote, planned.plan.leaveDivision, planned.plan.nameChanged, planned.plan.codeChanged], [[], [], [], false, false]);
     assert.deepEqual(divisionRowWrites(planned.plan, 1, [{ id: 103, memberId: 3, type: "core" }]).end, [103]);
   }
+});
+
+test("an advisor of the division who advises elsewhere now moves their Advisor role there; one picked here again keeps it (#972)", () => {
+  const advisorRow: DivisionRow = { id: 108, memberId: 3, type: "advisor" };
+  for (const scope of ["department", "team"] as const) {
+    const planned = plan({ advisors: [{ personId: 3, scope }] });
+    assert.ok(planned.ok, scope);
+    assert.deepEqual(divisionRowWrites(planned.plan, 1, [advisorRow]).end, [108], `the Advisor row here ends for the ${scope}`);
+  }
+  const here = plan({ advisors: [{ personId: 3, scope: "division" }] });
+  assert.ok(here.ok);
+  assert.deepEqual(divisionRowWrites(here.plan, 1, [advisorRow]).end, [], "advising here again ends nothing");
+  // Someone with a member row here and an Advisor row here keeps the old rule: only the member row ends.
+  const both = plan({ advisors: [{ personId: 3, scope: "team" }] });
+  assert.ok(both.ok);
+  assert.deepEqual(divisionRowWrites(both.plan, 1, [{ id: 103, memberId: 3, type: "core" }, advisorRow]).end, [103]);
+});
+
+test("Edit details' Member or Lead retypes a lead or member row, and turns an Advisor role into a new role (#972)", () => {
+  assert.deepEqual(roleSwitchOf([{ id: 103, type: "core" }]), { kind: "retype", rows: [103] });
+  assert.deepEqual(roleSwitchOf([{ id: 101, type: "lead" }, { id: 108, type: "advisor" }]), { kind: "retype", rows: [101] });
+  assert.deepEqual(roleSwitchOf([{ id: 108, type: "advisor" }]), { kind: "from-advisor", ending: [108] });
+  assert.deepEqual(roleSwitchOf([{ id: 105, type: "head" }]), { kind: "none" }, "a seat kept on the division is no role to switch");
+  assert.deepEqual(roleSwitchOf([]), { kind: "none" });
 });
 
 test("only a member of this division becomes an advisor here, once, never in New division, and only for who may change its leads", () => {

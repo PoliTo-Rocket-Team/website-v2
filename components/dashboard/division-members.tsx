@@ -13,7 +13,6 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "./confirm-dialog";
 import { AlumniDialog } from "./member-drawer";
-import { AdvisorDialog, LeadDialog, TitleDialog, type AdvisorAsking, type LeadAsking, type TitleAsking } from "./member-action-dialogs";
 import { GHOST_PILL } from "./page-header";
 
 // The parts a Members page and the Team tree's division panel share (boards
@@ -32,10 +31,7 @@ export type Asking =
   | { readonly kind: "nda"; readonly waiting: WaitingPerson; readonly division: string }
   | { readonly kind: "cancel"; readonly waiting: WaitingPerson; readonly short: string }
   | { readonly kind: "remove"; readonly person: AskedPerson; readonly divisionId: number; readonly short: string }
-  | { readonly kind: "leave"; readonly person: AskedPerson }
-  | TitleAsking
-  | LeadAsking
-  | AdvisorAsking;
+  | { readonly kind: "leave"; readonly person: AskedPerson };
 
 export { matchesWaiting } from "@/lib/dashboard/members-view";
 
@@ -50,9 +46,6 @@ export function MemberDialogs({ asking, onClose, onDone }: { asking: Asking | nu
       <ConfirmNdaDialog asking={asking?.kind === "nda" ? asking : null} onClose={onClose} />
       <CancelAddDialog asking={asking?.kind === "cancel" ? asking : null} onClose={onClose} />
       <RemoveDialog asking={asking?.kind === "remove" ? asking : null} onClose={onClose} onDone={onDone} />
-      <TitleDialog asking={asking?.kind === "title" ? asking : null} onClose={onClose} />
-      <LeadDialog asking={asking?.kind === "lead" ? asking : null} onClose={onClose} />
-      <AdvisorDialog asking={asking?.kind === "advisor" ? asking : null} onClose={onClose} />
       {asking?.kind === "leave" && (
         <AlumniDialog
           open
