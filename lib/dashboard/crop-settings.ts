@@ -63,7 +63,7 @@ export type CropPreview = { readonly caption: string; readonly size: number };
 
 type EntryBase = {
   readonly words: CropWords;
-  /** The file types the input takes. */
+  /** The file types the input takes: media types, or extensions. */
   readonly accept: readonly string[];
   /** The largest file the place's server action takes; every output stays under it. */
   readonly maxBytes: number;
@@ -303,7 +303,8 @@ export const CROP_SETTINGS = {
       description: "Drag the frame's edges or corners to trim the logo, or drag inside it to move it.",
       note: "PNG, up to 1 MB. The transparent background is kept.",
     },
-    accept: ["image/png"],
+    // The extension too, for a system that names no type for a PNG it offers.
+    accept: ["image/png", ".png"],
     maxBytes: LOGO_MAX_BYTES,
     output: { type: "image/png" },
     shapes: [{ kind: "free", name: "logo", label: "Logo", use: "Partners page", maxSide: LOGO_SIDE }],

@@ -6,11 +6,15 @@
 // photo was before crops, so a photo stored without them looks as it did.
 //
 // The public pages draw a photo through these helpers. A box of a shape's
-// own aspect ("exact") shows that shape's crop exactly. A box whose aspect
-// moves with the page ("fluid", such as the landing card) keeps the photo
-// covering it, as today, and moves it so the crop's centre sits as near the
-// box's centre as the photo allows. Pure data and math, shared by the
-// dashboard and the public pages.
+// own aspect ("exact") shows that shape's crop exactly. A box near a shape's
+// aspect whose size moves with the page ("framed", such as a project's photo
+// panel or an outreach card) shows that shape's crop at its zoom: the crop
+// covers the box, centred, so the box shows the crop and, where the box's
+// aspect differs, a little of the photo around it. A box whose aspect moves
+// freely ("fluid", the landing card) keeps the photo covering it, as before
+// crops, and moves it so the crop's centre sits as near the box's centre as
+// the photo allows. Pure data and math, shared by the dashboard and the
+// public pages.
 
 /** A width and height in pixels, or the two sides of an aspect. */
 export type Size = { readonly width: number; readonly height: number };
@@ -100,17 +104,24 @@ export function photoAspectOf(shape: Size, crop: ShapeCrop): number {
   return ((shape.width / shape.height) * crop.height) / crop.width;
 }
 
-/** A box a photo fills: of `shape`'s own aspect, or one whose aspect moves with the page. */
-export type BoxFit<N extends string> = { readonly shape: N; readonly box: "exact" | "fluid" };
+/**
+ * A box a photo fills, and the shape whose crop it shows. "exact": the box
+ * is the shape's own aspect. "framed": its aspect is near the shape's, and
+ * the crop's zoom holds. "fluid": its aspect moves freely, and only the
+ * crop's centre holds.
+ */
+export type BoxFit<N extends string> = { readonly shape: N; readonly box: "exact" | "framed" | "fluid" };
 
 /**
  * How a photo sits in a box. "crop": the crop fills the box exactly.
- * "centre": the photo covers the box, its point (`x`, `y`, in fractions of
- * the photo) as near the box's centre as the photo allows; `aspect` is the
- * photo's own, width over height.
+ * "cover": the crop covers the box, centred in it as far as the photo
+ * allows. "centre": the photo covers the box, its point (`x`, `y`, in
+ * fractions of the photo) as near the box's centre as the photo allows.
+ * `aspect` is the photo's own, width over height.
  */
 export type Placement =
   | { readonly kind: "crop"; readonly crop: ShapeCrop }
+  | { readonly kind: "cover"; readonly crop: ShapeCrop; readonly aspect: number }
   | { readonly kind: "centre"; readonly x: number; readonly y: number; readonly aspect: number };
 
 /**
@@ -126,9 +137,30 @@ export function placementOf<N extends string>(place: PhotoPlace<N>, crops: Shape
   const [any] = set;
   if (any === undefined) return null;
   const own = crops[fit.shape];
-  if (own !== undefined && fit.box === "exact") return { kind: "crop", crop: own };
   const aspect = photoAspectOf(place[any.name], any.crop);
-  return own === undefined ? { kind: "centre", x: 0.5, y: 0.5, aspect } : { kind: "centre", x: own.x + own.width / 2, y: own.y + own.height / 2, aspect };
+  if (own === undefined) return { kind: "centre", x: 0.5, y: 0.5, aspect };
+  switch (fit.box) {
+    case "exact":
+      return { kind: "crop", crop: own };
+    case "framed":
+      return { kind: "cover", crop: own, aspect };
+    case "fluid":
+      return { kind: "centre", x: own.x + own.width / 2, y: own.y + own.height / 2, aspect };
+  }
+}
+
+/**
+ * A placement that covers its box, as one zoom over the photo: the photo is
+ * drawn at least `zoomX` box widths wide and `zoomY` box heights high, at
+ * its own `aspect`, its point (`x`, `y`) as near the box's centre as it
+ * allows. A crop's zoom is the inverse of its size; a centred photo's is 1.
+ */
+type Cover = { readonly aspect: number; readonly zoomX: number; readonly zoomY: number; readonly x: number; readonly y: number };
+
+function coverOf(placement: Exclude<Placement, { kind: "crop" }>): Cover {
+  if (placement.kind === "centre") return { aspect: placement.aspect, zoomX: 1, zoomY: 1, x: placement.x, y: placement.y };
+  const { crop, aspect } = placement;
+  return { aspect, zoomX: 1 / crop.width, zoomY: 1 / crop.height, x: crop.x + crop.width / 2, y: crop.y + crop.height / 2 };
 }
 
 /** Where the photo lies from the box's top left, and its size, in the box's pixels. */
@@ -142,11 +174,12 @@ export function placedRect(placement: Placement, box: Size): PlacedRect {
     const { x, y, width: w, height: h } = placement.crop;
     return { left: (-box.width * x) / w, top: (-box.height * y) / h, width: box.width / w, height: box.height / h };
   }
-  const width = Math.max(box.width, box.height * placement.aspect);
-  const height = width / placement.aspect;
+  const cover = coverOf(placement);
+  const width = Math.max(box.width * cover.zoomX, box.height * cover.zoomY * cover.aspect);
+  const height = width / cover.aspect;
   return {
-    left: clamp(box.width / 2 - placement.x * width, box.width - width, 0),
-    top: clamp(box.height / 2 - placement.y * height, box.height - height, 0),
+    left: clamp(box.width / 2 - cover.x * width, box.width - width, 0),
+    top: clamp(box.height / 2 - cover.y * height, box.height - height, 0),
     width,
     height,
   };
@@ -167,11 +200,12 @@ export function placementStyle(placement: Placement): PlacementStyle {
     const { x, y, width: w, height: h } = placement.crop;
     return { left: `${n((-100 * x) / w)}cqw`, top: `${n((-100 * y) / h)}cqh`, width: `${n(100 / w)}cqw`, height: `${n(100 / h)}cqh` };
   }
-  const width = `max(100cqw, ${n(100 * placement.aspect)}cqh)`;
-  const height = `max(${n(100 / placement.aspect)}cqw, 100cqh)`;
+  const cover = coverOf(placement);
+  const width = `max(${n(100 * cover.zoomX)}cqw, ${n(100 * cover.zoomY * cover.aspect)}cqh)`;
+  const height = `max(${n((100 * cover.zoomX) / cover.aspect)}cqw, ${n(100 * cover.zoomY)}cqh)`;
   return {
-    left: `clamp(calc(100cqw - ${width}), calc(50cqw - ${n(placement.x)} * ${width}), 0px)`,
-    top: `clamp(calc(100cqh - ${height}), calc(50cqh - ${n(placement.y)} * ${height}), 0px)`,
+    left: `clamp(calc(100cqw - ${width}), calc(50cqw - ${n(cover.x)} * ${width}), 0px)`,
+    top: `clamp(calc(100cqh - ${height}), calc(50cqh - ${n(cover.y)} * ${height}), 0px)`,
     width,
     height,
   };

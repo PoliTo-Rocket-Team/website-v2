@@ -9,6 +9,7 @@ import {
   moveCrop,
   moveFrameCrop,
   moveFreeCrop,
+  resizedFrameCrop,
   resizeFreeCrop,
   sourceRect,
   sourceSquare,
@@ -89,6 +90,13 @@ test("a background's Tall and Wide cuts keep their frame's shape and stay inside
       }
     }
   }
+});
+
+test("a framed crop drawn at a new size, as on a window resize, keeps the same part of the photo", () => {
+  const moved = zoomFrameCrop(moveFrameCrop(centredFrameCrop(4000, 3000, 624, 312), -120, 40), 1.8);
+  const before = sourceRect(moved);
+  const after = sourceRect(resizedFrameCrop(moved, 400, 200));
+  for (const key of ["sx", "sy", "sw", "sh"] as const) assert.ok(Math.abs(after[key] - before[key]) < 1e-6, key);
 });
 
 test("at zoom 1 the square is the photo's short side, centred; zooming in cuts a smaller square", () => {

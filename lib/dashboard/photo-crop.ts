@@ -63,6 +63,12 @@ export function centredFrameCrop(width: number, height: number, frameWidth: numb
   return clampFrameCrop({ width, height, frameWidth, frameHeight, zoom: 1, x: (frameWidth - width * scale) / 2, y: (frameHeight - height * scale) / 2 });
 }
 
+/** The same crop in a frame of the same shape drawn at a new size, as when the window is resized: it shows the same part of the photo. */
+export function resizedFrameCrop(crop: FrameCrop, frameWidth: number, frameHeight: number): FrameCrop {
+  const ratio = frameWidth / crop.frameWidth;
+  return clampFrameCrop({ ...crop, frameWidth, frameHeight, x: crop.x * ratio, y: crop.y * ratio });
+}
+
 /** Drag: the photo follows the pointer by (dx, dy) screen pixels. */
 export function moveFrameCrop(crop: FrameCrop, dx: number, dy: number): FrameCrop {
   return clampFrameCrop({ ...crop, x: crop.x + dx, y: crop.y + dy });

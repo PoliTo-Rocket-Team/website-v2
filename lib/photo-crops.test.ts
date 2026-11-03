@@ -41,7 +41,7 @@ test("a box of the crop's shape shows exactly the crop", () => {
   assert.ok(Math.abs(rect.top + 300) < 1e-9);
 });
 
-test("a box whose shape moves with the page keeps the crop's centre, the photo still covering it", () => {
+test("a fluid box, whose shape moves freely with the page, keeps the crop's centre, the photo still covering it", () => {
   const placement = placementOf(POST_PHOTO, { desktop: rightHalf }, { shape: "desktop", box: "fluid" });
   assert.ok(placement !== null && placement.kind === "centre");
   assert.ok(Math.abs(placement.aspect - 1.5) < 1e-9, "the photo's own 3:2");
@@ -51,6 +51,26 @@ test("a box whose shape moves with the page keeps the crop's centre, the photo s
   assert.deepEqual({ ...wide, top: Math.round(wide.top * 1000) / 1000 }, { left: 0, top: -83.333, width: 600, height: 400 });
   // A square box: the photo covers it at 450 x 300, slid left only as far as its right edge allows.
   assert.deepEqual(placedRect(placement, { width: 300, height: 300 }), { left: -150, top: 0, width: 450, height: 300 });
+});
+
+test("a framed box shows the crop at its zoom: exactly at the shape's aspect, centred and covering at another", () => {
+  const placement = placementOf(POST_PHOTO, { desktop: rightHalf }, { shape: "desktop", box: "framed" });
+  assert.ok(placement !== null && placement.kind === "cover");
+  const round = (r: { left: number; top: number; width: number; height: number }) =>
+    Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Math.round(v * 1000) / 1000]));
+  // A 900 x 500 box is the shape's own 9:5: the same as an exact box.
+  const exact = placementOf(POST_PHOTO, { desktop: rightHalf }, { shape: "desktop", box: "exact" })!;
+  assert.deepEqual(round(placedRect(placement, { width: 900, height: 500 })), round(placedRect(exact, { width: 900, height: 500 })));
+  // A wider 1000 x 500 box: the crop's width fills it, the photo drawn twice
+  // the box's width (a fluid box draws it once), the crop centred top to bottom.
+  const wide = placedRect(placement, { width: 1000, height: 500 });
+  assert.deepEqual(round(wide), { left: -1000, top: -361.111, width: 2000, height: 1333.333 });
+  const cropTop = wide.top + rightHalf.y * wide.height;
+  const cropBottom = cropTop + rightHalf.height * wide.height;
+  assert.ok(Math.abs(cropTop + cropBottom - 500) < 1e-9, "the crop's middle is the box's");
+  // A shape left unset is centred in a framed box too.
+  const unset = placementOf(POST_PHOTO, { desktop: rightHalf }, { shape: "phone", box: "framed" });
+  assert.deepEqual(unset, { kind: "centre", x: 0.5, y: 0.5, aspect: placement.aspect });
 });
 
 test("a photo with no crop is today's centred cover, and a shape left unset is centred", () => {

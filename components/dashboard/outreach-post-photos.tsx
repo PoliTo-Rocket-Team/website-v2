@@ -29,16 +29,12 @@ import { inputClass } from "./field";
 // the previous or next photo and never carry the text along. A description
 // is optional.
 //
-// A place with a crop entry (issue #969) opens the shared crop dialog on
-// each picked file in turn, Skip and Cancel included, and keeps the photo
-// once with its crop for each shape; a place with none yet uploads the
-// picked files as they are.
+// The place's crop entry (issue #969) opens the shared crop dialog on each
+// picked file in turn, Skip and Cancel included, and keeps the photo once
+// with its crop for each shape.
 
 /** A photo in a panel's list: its file, its description, and its crop for each shape the editor framed. */
 export type CroppablePhoto<N extends string> = { readonly src: PhotoSrc; readonly alt: string; readonly crops?: ShapeCrops<N> };
-
-/** The files a place with no crop entry yet takes. */
-export const PLAIN_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 
 const TILE = "relative aspect-[16/9] overflow-hidden rounded-lg";
 
@@ -61,8 +57,8 @@ export function PhotosSection<N extends string>({
   /** Takes a change to the photos as they are when it lands, so an upload that ends late never undoes an edit. */
   onChange: (change: (photos: readonly CroppablePhoto<N>[]) => CroppablePhoto<N>[]) => void;
   uploads: PhotoUploads;
-  /** The place's crop entry (lib/dashboard/crop-settings.ts); null where the place has none yet. */
-  crop: CropsEntry<N> | null;
+  /** The place's crop entry (lib/dashboard/crop-settings.ts). */
+  crop: CropsEntry<N>;
   /** The first photo is the cover, and says so. */
   cover: boolean;
   /** The most photos the list takes; null for no limit. */
@@ -176,7 +172,7 @@ export function PhotosSection<N extends string>({
           <input
             ref={input}
             type="file"
-            accept={(crop?.accept ?? PLAIN_PHOTO_TYPES).join(",")}
+            accept={crop.accept.join(",")}
             multiple
             hidden
             aria-label="Add photos"

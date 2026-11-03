@@ -130,7 +130,7 @@ export function Pill({ tone, children, className = "" }: { tone: PillTone; child
  * A photo slot: the launch's photo when it has one, with its crop for the
  * slot's shape (issue #970), else the project's texture under a dark fade,
  * with the PRT mark (issue #366). Both slots stretch with the page, so the
- * crop's centre is kept in view (lib/photo-crops.ts).
+ * crop covers the slot at its zoom (lib/photo-crops.ts).
  */
 export function PhotoSlot({
   texture,
@@ -151,7 +151,7 @@ export function PhotoSlot({
       <div className={`relative overflow-hidden rounded-xl ${className}`}>
         {/* An uploaded photo (the public store, or a preview's data URL) is served as it is, as Outreach photos are. */}
         <CroppedImage
-          base={placementOf(LAUNCH_PHOTO, photo.crops, { shape, box: "fluid" })}
+          base={placementOf(LAUNCH_PHOTO, photo.crops, { shape, box: "framed" })}
           src={photo.src}
           alt={photo.alt}
           sizes={sizes}

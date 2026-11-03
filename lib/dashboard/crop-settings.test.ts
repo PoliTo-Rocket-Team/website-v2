@@ -79,7 +79,7 @@ test("a partner logo is one free frame cut to a PNG, under the logo limit, its l
   assert.equal(entry.kind, "cut");
   assert.deepEqual(entry.output, { type: "image/png" });
   assert.equal(entry.maxBytes, LOGO_MAX_BYTES);
-  assert.deepEqual(entry.accept, ["image/png"]);
+  assert.deepEqual(entry.accept, ["image/png", ".png"]);
   assert.ok(isFreeEntry(entry));
   const [shape] = entry.shapes;
   // A huge logo trimmed to its middle half: the file keeps the frame's aspect at the capped long side.

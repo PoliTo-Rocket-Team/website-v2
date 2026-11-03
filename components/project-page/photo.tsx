@@ -6,9 +6,9 @@ import { BlockColumn, type BlockFrame } from "./parts";
 // A Photo block (board 93b): one wide photo across the page's column, in the
 // hero panel's frame, with its caption under it.
 
-/** The panel's width moves with the page at a fixed height, so each shape keeps its crop's centre in view (lib/photo-crops.ts). */
-const PHONE_PANEL = { shape: "phone", box: "fluid" } as const;
-const LAPTOP_PANEL = { shape: "desktop", box: "fluid" } as const;
+/** The panel's width moves with the page at a fixed height, so each shape's crop covers it at its zoom (lib/photo-crops.ts). */
+const PHONE_PANEL = { shape: "phone", box: "framed" } as const;
+const LAPTOP_PANEL = { shape: "desktop", box: "framed" } as const;
 
 /**
  * An uploaded photo filling a project page's photo panel, the Photo block's

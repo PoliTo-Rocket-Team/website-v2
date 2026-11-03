@@ -28,6 +28,7 @@ import {
   frameScaleOf,
   moveFrameCrop,
   moveFreeCrop,
+  resizedFrameCrop,
   resizeFreeCrop,
   wholeFreeCrop,
   zoomFrameCrop,
@@ -162,17 +163,27 @@ function FixedCropDialog<E extends FixedEntry>({ entry, file, pending, onCancel,
   const [set, setSet] = useState<ReadonlySet<string>>(new Set());
   const { run, busy, preparing } = usePreparing();
 
-  // A new photo, or a frame's new width, starts that frame centred at zoom 1; a photo still loading has no frames.
+  // A new photo starts every frame centred at zoom 1, and none set; a photo
+  // still loading has no frames. A frame's new width, as on a window resize,
+  // keeps the part of the photo it showed.
+  const framesFor = useRef<{ natural: Size | null; shapes: readonly FixedShape[] } | null>(null);
   useEffect(() => {
-    const next: Record<string, FrameCrop | null> = {};
-    if (natural !== null) {
-      for (const shape of shapes) {
-        const width = widths[shape.name] ?? 0;
-        next[shape.name] = width > 0 ? centredFrameCrop(natural.width, natural.height, width, (width * shape.aspect.height) / shape.aspect.width) : null;
+    const fresh = framesFor.current?.natural !== natural || framesFor.current?.shapes !== shapes;
+    framesFor.current = { natural, shapes };
+    setFrames((all) => {
+      const next: Record<string, FrameCrop | null> = {};
+      if (natural !== null) {
+        for (const shape of shapes) {
+          const width = widths[shape.name] ?? 0;
+          const height = (width * shape.aspect.height) / shape.aspect.width;
+          const before = fresh ? null : all[shape.name];
+          next[shape.name] =
+            width <= 0 ? null : before ? resizedFrameCrop(before, width, height) : centredFrameCrop(natural.width, natural.height, width, height);
+        }
       }
-    }
-    setFrames(next);
-    setSet(new Set());
+      return next;
+    });
+    if (fresh) setSet(new Set());
   }, [natural, widths, shapes]);
 
   const measured = useCallback(

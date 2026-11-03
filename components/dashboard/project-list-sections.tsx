@@ -40,7 +40,7 @@ import { CONTENT_FOCUS, TextField, useDragOrder } from "./content-parts";
 import { ErrorLine } from "./edit-panel";
 import { Field, inputClass } from "./field";
 import { useCropQueue, useInOrder } from "./crop-queue";
-import { PhotosSection, PLAIN_PHOTO_TYPES, type PhotoUploads } from "./outreach-post-photos";
+import { PhotosSection, type PhotoUploads } from "./outreach-post-photos";
 import { CopyField, EditableList, RowButton, type FieldErrors } from "./project-panel-parts";
 
 // The list blocks of the Edit <project> panel (board 75c, issue #299; page
@@ -678,8 +678,8 @@ export function GalleryPhotosEditor({
   remove: (index: number) => WriteResult<GalleryPhotoRemoval>;
   /** Where its photos are stored and let go. */
   uploads: PhotoUploads;
-  /** The gallery's crop entry (lib/dashboard/crop-settings.ts); null where the place has none yet. */
-  crop: CropsEntry<GalleryPhotoShape> | null;
+  /** The gallery's crop entry (lib/dashboard/crop-settings.ts). */
+  crop: CropsEntry<GalleryPhotoShape>;
 }) {
   const [uploading, setUploading] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -735,7 +735,7 @@ export function GalleryPhotosEditor({
       <input
         ref={input}
         type="file"
-        accept={(crop?.accept ?? PLAIN_PHOTO_TYPES).join(",")}
+        accept={crop.accept.join(",")}
         multiple
         hidden
         aria-label="Add photos"

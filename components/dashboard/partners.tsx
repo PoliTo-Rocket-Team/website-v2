@@ -440,7 +440,7 @@ function PartnerPanel({
               <input
                 ref={fileInput}
                 type="file"
-                accept={[...CROP_SETTINGS.partnerLogo.accept, ".png"].join(",")}
+                accept={CROP_SETTINGS.partnerLogo.accept.join(",")}
                 aria-label="Logo file"
                 className="sr-only"
                 onChange={(e) => {
