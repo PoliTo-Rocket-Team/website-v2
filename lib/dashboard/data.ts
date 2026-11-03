@@ -525,11 +525,6 @@ export interface TeamWrites {
    * login where it must (issue #864, ./sign-in-email.ts).
    */
   saveMemberDetails(target: DetailsTarget, divisionId: number | null, input: unknown): Promise<WriteResult<null>>;
-  /**
-   * Change title on a Team tree member row (issue #901): their role title in
-   * `divisionId` alone, by Edit details' reach and title rule.
-   */
-  saveDivisionTitle(personId: number, divisionId: number, input: unknown): Promise<WriteResult<null>>;
   /** The photo in Edit details, for anyone the viewer may edit: a square JPEG under 500 KB, or null to remove it. */
   setMemberPhoto(personId: number, photo: Upload | null): Promise<WriteResult<null>>;
   /**

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition, type ChangeEvent, type FormEvent, type ReactNode } from "react";
-import { AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, GraduationCap, Lock, Mail, MailX, Upload, UserMinus, UserPlus, X } from "lucide-react";
+import { ArrowRightLeft, AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, Lock, LogOut, Mail, MailX, Upload, UserMinus, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
@@ -11,8 +11,8 @@ import { PHONE_PLACEHOLDER } from "@/lib/phone";
 import { addMember, changeDivisionPeople, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
 import type { RemovedLeadOutcome } from "@/lib/dashboard/division-edit";
 import type { AdvisorScope } from "@/lib/dashboard/hand-over";
-import { leadStepDown, membersRowMenu, stepDownPermission } from "@/lib/dashboard/member-actions";
-import { advisorAsking } from "./member-menu";
+import { advisorChange, leadStepDown, removalPermission, roleNow, roleOptions, sameRole, stepDownPermission, type RoleChoice } from "@/lib/dashboard/member-actions";
+import { andList } from "@/lib/dashboard/team-structure";
 import { cancelAliasRequest, removeTeamAddress, requestAlias, requestTeamAddress } from "@/app/dashboard/actions";
 import { ALIAS_FORM_HINT, aliasPrefill, checkAliasAddress, personalRequestChoice, TEAM_DOMAIN, type MemberAlias } from "@/lib/dashboard/alias-request";
 import type { Permission } from "@/lib/dashboard/team";
@@ -36,6 +36,7 @@ import {
   type AddMemberErrors,
   type DivisionHeader,
   type DivisionPerson,
+  type DivisionRoleChange,
   type LandedSent,
   type MemberPosition,
   type TeamMatch,
@@ -52,7 +53,8 @@ import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/compone
 import { CopyButton, IconButton } from "./copy-button";
 import { RadioChoice, RemovedLeadChoice } from "./hand-over-choice";
 import { Chips } from "./division-chips";
-import { MemberDialogs, type Asking } from "./division-members";
+import { MemberDialogs, MenuItem, RowMenu, type Asking } from "./division-members";
+import { AddDivision, FixedPill, RolePill, RoleRow, RowTitle } from "./role-rows";
 import {
   choiceOf,
   HeadMoveConfirm,
@@ -1085,13 +1087,13 @@ function detailsOf(draft: Draft): Record<MemberDetailKey, string> {
 
 /**
  * Edit details (board 61g), the one member editor of every Members page
- * (issue #584): the photo, the role title, contact, studies and personal
- * details, and for someone on the team the position part: for each place the
- * viewer may move them out of, where they go and what they are there (boards
- * 98a and 98b, issue #647; lead or member in the same division is the switch
- * it always was), and Leaving the team (board 46b: Remove from a division,
- * Move to alumni), each locked with its reason where the viewer may not. A
- * head's move asks on Save who heads the department they leave (board 98c).
+ * (issue #584): the photo, contact, studies and personal details, and for
+ * someone on the team the Roles rows (boards 103b to 103d, issue #972): one
+ * per seat, headship and division, each with its role pill, its ⋯ (Move to…,
+ * Remove from this division) and its title box, then "+ Add division", and
+ * Leaves the team at the bottom; each choice locked with its reason where the
+ * viewer may not. A head's move asks on Save who heads the department they
+ * leave (board 98c).
  * Fill details, for someone waiting, holds the role in their division and the
  * details. `openedFrom` is the page it opens on: from the Team tree, the
  * "Also on the Team tree" link would lead back to where it is (issue #965).
@@ -1137,7 +1139,8 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
   const { draft, errors, setErrors, set } = useDraft(draftOf(startTitle, openedDetails));
   // Where each place they hold goes, and what they are there (boards 98a, 98b); a seat is never one (issue #647).
   const places = position?.moves ?? [];
-  const departments = useMoveTargets(places.length > 0 && person !== null ? person.id : null);
+  // Where a move or "+ Add division" may place them, read once for anyone on the team.
+  const departments = useMoveTargets(person !== null && position !== null ? person.id : null);
   const [choices, setChoices] = useState<Readonly<Record<string, MoveChoice>>>(() => Object.fromEntries(places.map((p) => [placeKey(p), choiceOf(p)])));
   const choiceFor = (place: MovablePlace) => choices[placeKey(place)] ?? choiceOf(place);
   // Every division row holds its own title, from its stored one (issue #911); the row of the division the form
@@ -1179,6 +1182,49 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
   /** Whether `place` is a division they lead, switched to member and not moved: the step-down the question is about. */
   const stepsDown = (place: MovablePlace) =>
     place.kind === "division" && place.role === "lead" && choiceFor(place).as === "member" && moveToOf(place, choiceFor(place), departments) === null;
+  // A division row's role pill (issue #972, board 103c): Member and Lead are the place's lead or member choice;
+  // an advisor pick is held here, by place, and Save makes them an advisor at its scope (#900).
+  const [advisorPicks, setAdvisorPicks] = useState<Readonly<Record<string, AdvisorScope>>>({});
+  const dropAdvisorPick = (key: string) => setAdvisorPicks(({ [key]: _dropped, ...rest }) => rest);
+  /** What a division row's pill shows: the advisor picked, their lead or member choice, or, with no place to change, what they are now. */
+  const pillOf = (role: DivisionRoleChange, place: MovablePlace | null): RoleChoice => {
+    const scope = place === null ? undefined : advisorPicks[placeKey(place)];
+    if (scope !== undefined) return { kind: "advisor", scope };
+    const as = place === null ? null : choiceFor(place).as;
+    return as === "member" || as === "lead" ? { kind: as } : roleNow(role);
+  };
+  const pickRole = (place: MovablePlace, choice: RoleChoice) => {
+    const key = placeKey(place);
+    const start = choiceOf(place);
+    if (choice.kind === "advisor") {
+      setAdvisorPicks((p) => ({ ...p, [key]: choice.scope }));
+      setChoices((c) => ({ ...c, [key]: start }));
+      return;
+    }
+    dropAdvisorPick(key);
+    choose(place, { ...start, as: choice.kind });
+  };
+  // Move to… (board 103d) opens a row's move boxes; closing them puts the place back where it is.
+  const [moving, setMoving] = useState<ReadonlySet<string>>(() => new Set());
+  const startMove = (place: MovablePlace) => {
+    dropAdvisorPick(placeKey(place));
+    setMoving((m) => new Set(m).add(placeKey(place)));
+  };
+  const stopMove = (place: MovablePlace) => {
+    choose(place, choiceOf(place));
+    setMoving((m) => {
+      const next = new Set(m);
+      next.delete(placeKey(place));
+      return next;
+    });
+  };
+  // "+ Add division" (board 103b): each division picked is a new member row, with its title, added on Save.
+  const [added, setAdded] = useState<readonly AddedDivision[]>([]);
+  const addedKey = (a: Pick<AddedDivision, "id">) => `a${a.id}`;
+  const setAddedTitle = (a: AddedDivision, value: string) => {
+    setAdded((all) => all.map((x) => (x.id === a.id ? { ...x, title: value } : x)));
+    setRowErrors(({ [addedKey(a)]: _fixed, ...rest }) => rest);
+  };
   /** Whether Member is open in the division `place` is: locked for its only lead (issue #965), from the lead counts the page read. */
   const stepDownOfPlace = (place: MovablePlace): Permission => {
     const role = place.kind === "division" ? position?.roles.find((r) => r.divisionId === place.divisionId) : undefined;
@@ -1232,12 +1278,16 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
       ...(corrected ? { signInEmail } : {}),
       ...(landed === null ? {} : { landed }),
     };
-    const rowErrs: Record<string, string> = Object.fromEntries(
-      places.flatMap((p) => {
+    const rowErrs: Record<string, string> = Object.fromEntries([
+      ...places.flatMap((p) => {
         const error = p.kind === "division" ? roleTitleError(rowTitleOf(p)) : null;
         return error === null ? [] : [[placeKey(p), error] as const];
       }),
-    );
+      ...added.flatMap((a) => {
+        const error = roleTitleError(a.title);
+        return error === null ? [] : [[addedKey(a), error] as const];
+      }),
+    ]);
     // The phone the form opened with saves as it is, whatever its format (issue #887).
     const checked = checkMemberEdit(input, openedDetails.phone, title?.kind === "seat" && titledMove === null ? "required" : "optional");
     if (checked.ok && Object.keys(rowErrs).length === 0) return { ok: true as const, input, value: checked.value };
@@ -1293,6 +1343,13 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
             setRefusal(`Could not move them from ${place.kind === "division" ? place.short : place.department}. ${moved.error}`);
             return;
           }
+        } else if (place.kind === "division" && advisorPicks[placeKey(place)] !== undefined) {
+          // The role pill's Advisor (issue #972): Edit division's save, as Becomes an advisor saved it (#900, #901).
+          const changed = await changeDivisionPeople(place.divisionId, advisorChange(person!.id, place, advisorPicks[placeKey(place)]!));
+          if (!changed.ok) {
+            setRefusal(`Could not make them an advisor in ${place.short}. ${changed.error}`);
+            return;
+          }
         } else if (stepsDown(place) && place.kind === "division") {
           // A lead who stops leading: Edit division's Remove, with what happens to them (issue #901).
           const step = stepDownOf(place);
@@ -1308,6 +1365,14 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
             setRefusal(`Could not change who leads ${place.short}. ${changed.error}`);
             return;
           }
+        }
+      }
+      for (const division of person === null ? [] : added) {
+        // "+ Add division": Add member's own write for someone on the team, with the row's title.
+        const joined = await addMember({ kind: "member", divisionId: division.id, personId: person!.id, title: division.title });
+        if (!joined.ok) {
+          setRefusal(`Could not add them to ${division.short}. ${joined.error}`);
+          return;
         }
       }
       toast.success(`Saved ${checked.value.name === null ? name : `${checked.value.name.firstName} ${checked.value.name.lastName}`}`);
@@ -1357,6 +1422,7 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
           ? [{ name: "title", label: titleLabelOf(p), error: errs.title }]
           : [],
     ),
+    ...added.map((a) => ({ name: `title-${addedKey(a)}`, label: `Role in ${a.short}`, error: rowErrs[addedKey(a)] })),
     ...CONTACT_DETAILS.flatMap((key) => [
       { name: key, label: DETAIL_LABEL[key], error: errs[key] },
       ...(key === "prtEmail" && correctsEmail ? [{ name: "signInEmail", label: "Personal email", error: errs.signInEmail }] : []),
@@ -1366,63 +1432,166 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
   // The summary above Save: the fields still in error, or the server's refusal (issue #911).
   const summary: FormSummary | null = refusal !== null ? { kind: "refusal", message: refusal } : fieldSummaryOf(summaryFields(errors, rowErrors));
 
-  /** The boxes of one place, its title field (every division row's, and a seat's head place's), the hint and the no-head note. */
-  const placeFields = (place: MovablePlace) => {
+  /** Under a row on the move (board 103d): the Division (or Move to) and As boxes, what Save does, and a way back. */
+  const moveFields = (place: MovablePlace) => {
     const choice = choiceFor(place);
     const to = moveToOf(place, choice, departments);
     // Every division they are in, the ones this viewer does not reach included: none is a place to move into.
     const taken = (person?.divisions ?? []).map((d) => d.divisionId).filter((id) => place.kind !== "division" || id !== place.divisionId);
     return (
-      <div key={placeKey(place)}>
-        <MoveFields
-          place={place}
-          departments={departments}
-          value={choice}
-          taken={taken}
-          stepDown={stepDownOfPlace(place)}
-          onChange={(next) => choose(place, next)}
-        />
-        {place.kind === "division" ? (
-          <div className="mt-4">
-            <TitleInput
-              name={rowFieldName(place)}
-              label={titleLabelOf(place)}
-              value={rowTitleOf(place)}
-              error={rowErrors[placeKey(place)]}
-              required={false}
-              onChange={(value) => setRowTitle(place, value)}
-            />
-          </div>
-        ) : (
-          place === seatPlace && <div className="mt-4">{titleField(titleLabelOf(place), to === null)}</div>
-        )}
+      <div className="mt-3">
+        <MoveFields place={place} departments={departments} value={choice} taken={taken} stepDown={stepDownOfPlace(place)} onChange={(next) => choose(place, next)} />
         <MoveHint place={place} moving={to !== null} treeLink={openedFrom === "members"} />
-        {place.kind === "division" && stepsDown(place) && person !== null && position !== null && (
-          <div className="mt-4">
-            <RemovedLeadChoice
-              lead={{
-                id: person.id,
-                name: person.name,
-                removal: position.removals.find((r) => r.divisionId === place.divisionId)?.removal ?? { kind: "only-division" },
-                leave: position.leave,
-              }}
-              short={place.short}
-              value={stepDownOf(place).outcome}
-              onChange={(outcome) => setStepDown(place, { outcome })}
-              scope={{
-                value: stepDownOf(place).scope,
-                names: { division: place.short, department: place.department },
-                onChange: (scope) => setStepDown(place, { scope }),
-              }}
-            />
-          </div>
-        )}
+        <button type="button" onClick={() => stopMove(place)} className={`mt-2 rounded-sm text-[13px] text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}>
+          {place.kind === "division" ? `Keep them in ${place.short}` : `Keep them head of ${place.department}`}
+        </button>
         {place.kind === "head" && to !== null && person !== null && headsAfterMove(departments, place.departmentId, person.id).kind === "none" && (
           <NoHeadNote department={place.department} />
         )}
       </div>
     );
   };
+
+  const moveItem = (place: MovablePlace) => (
+    <MenuItem icon={<ArrowRightLeft className="h-3.5 w-3.5" strokeWidth={1.75} />} detail="Pick where they go; they move on Save" onSelect={() => startMove(place)}>
+      Move to…
+    </MenuItem>
+  );
+
+  /** A division row (boards 103b to 103d): the role pill, the ⋯ with Move to… and Remove from this division, and the title box. */
+  const divisionRow = (role: DivisionRoleChange) => {
+    const place = places.find((p) => p.kind === "division" && p.divisionId === role.divisionId) ?? null;
+    const onMove = place !== null && moving.has(placeKey(place));
+    const value = pillOf(role, place);
+    const removal = position?.removals.find((r) => r.divisionId === role.divisionId);
+    const removing = removal === undefined ? null : removalPermission(removal.removal, role.short);
+    const staying = (person?.divisions ?? []).filter((d) => d.divisionId !== role.divisionId).map((d) => d.name);
+    // The form's own title is a division's when that division is no place of theirs here (an advisor, a lead the viewer does not change).
+    const ownTitle = place === null && titledPlace === null && titleDivision?.id === role.divisionId;
+    return (
+      <RoleRow
+        key={role.divisionId}
+        name={role.short}
+        department={role.department}
+        pill={
+          onMove ? null : (
+            <RolePill
+              label={`Role in ${role.short}`}
+              options={roleOptions(role)}
+              value={value}
+              staged={!sameRole(value, roleNow(role))}
+              onChange={(choice) => place !== null && pickRole(place, choice)}
+            />
+          )
+        }
+        menu={
+          (place !== null || removing !== null) && (
+            <RowMenu label={`More for ${role.short}`}>
+              {place !== null && moveItem(place)}
+              {removing !== null && person !== null && (
+                <MenuItem
+                  icon={<UserMinus className="h-3.5 w-3.5" strokeWidth={1.75} />}
+                  locked={removing.allowed ? null : removing.reason}
+                  detail={staying.length > 0 ? `Stays in ${andList(staying)}` : null}
+                  onSelect={() => setAsking({ kind: "remove", person, divisionId: role.divisionId, short: role.short })}
+                >
+                  Remove from this division
+                </MenuItem>
+              )}
+            </RowMenu>
+          )
+        }
+      >
+        {onMove && place !== null && moveFields(place)}
+        {place !== null && (
+          <RowTitle
+            name={rowFieldName(place)}
+            label={titleLabelOf(place)}
+            value={rowTitleOf(place)}
+            error={rowErrors[placeKey(place)]}
+            onChange={(next) => setRowTitle(place, next)}
+          />
+        )}
+        {ownTitle && <RowTitle name="title" label={ownTitleLabel} value={draft.title} error={errors.title} onChange={(next) => set("title", next)} />}
+        {place !== null && stepsDown(place) && person !== null && position !== null && (
+          <div className="mt-4">
+            <RemovedLeadChoice
+              lead={{ id: person.id, name: person.name, removal: removal?.removal ?? { kind: "only-division" }, leave: position.leave }}
+              short={role.short}
+              value={stepDownOf(place).outcome}
+              onChange={(outcome) => setStepDown(place, { outcome })}
+              scope={{
+                value: stepDownOf(place).scope,
+                names: { division: role.short, department: role.department },
+                onChange: (scope) => setStepDown(place, { scope }),
+              }}
+            />
+          </div>
+        )}
+      </RoleRow>
+    );
+  };
+
+  /** A head's row: "Head of <department>" in the pill, and Move to… moving the headship (boards 98a to 98c). */
+  const headRow = (place: Extract<MovablePlace, { kind: "head" }>) => {
+    const onMove = moving.has(placeKey(place));
+    const to = moveToOf(place, choiceFor(place), departments);
+    return (
+      <RoleRow
+        key={placeKey(place)}
+        name={place.department}
+        department="Department"
+        pill={onMove ? null : <FixedPill>Head of {place.department}</FixedPill>}
+        menu={<RowMenu label={`More for ${place.department}`}>{moveItem(place)}</RowMenu>}
+      >
+        {onMove && moveFields(place)}
+        {place === seatPlace && (
+          <RowTitle name="title" label={titleLabelOf(place)} value={draft.title} error={errors.title} required={to === null} onChange={(next) => set("title", next)} />
+        )}
+      </RoleRow>
+    );
+  };
+
+  // A seat's title (the team leader's, a team-level seat's, a head's the viewer does not move) is the form's own (issue #626).
+  const seatTitleShown = titledPlace === null && titleDivision === null && title?.kind === "seat";
+
+  /** A team seat, listed only: the Team tree's seat drawers change it. The form's own seat title sits under the first. */
+  const seatRow = (seat: string, index: number) => (
+    <RoleRow key={`s${index}`} name={seat} department="Team" pill={<FixedPill locked>Seat</FixedPill>} menu={null}>
+      {index === 0 && seatTitleShown && <RowTitle name="title" label="Role" value={draft.title} error={errors.title} required onChange={(next) => set("title", next)} />}
+    </RoleRow>
+  );
+
+  /** A division picked under "+ Add division": a member there on Save, with its title; its ⋯ takes it back off. */
+  const addedRow = (division: AddedDivision) => (
+    <RoleRow
+      key={addedKey(division)}
+      name={division.short}
+      department={division.department}
+      pill={<FixedPill>Member</FixedPill>}
+      menu={
+        <RowMenu label={`More for ${division.short}`}>
+          <MenuItem
+            icon={<UserMinus className="h-3.5 w-3.5" strokeWidth={1.75} />}
+            onSelect={() => {
+              setAdded((all) => all.filter((x) => x.id !== division.id));
+              setRowErrors(({ [addedKey(division)]: _dropped, ...rest }) => rest);
+            }}
+          >
+            Remove from this division
+          </MenuItem>
+        </RowMenu>
+      }
+    >
+      <RowTitle
+        name={`title-${addedKey(division)}`}
+        label={`Role in ${division.short}`}
+        value={division.title}
+        error={rowErrors[addedKey(division)]}
+        onChange={(next) => setAddedTitle(division, next)}
+      />
+    </RoleRow>
+  );
 
   /** The form's own role title field: "Role in <division>", or a seat's "Role" (issue #626). */
   const titleField = (label: string, required: boolean) => (
@@ -1487,28 +1656,37 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
           </Section>
         )}
 
-        <Section title="Role">
-          {titledPlace === null &&
-            (titleDivision !== null || title?.kind === "seat"
-              ? // A division's title, or a seat's: the head's, the team leader's or a team-level seat's (issue #626).
-                titleField(ownTitleLabel, titleDivision === null)
-              : title?.kind === "fixed" && (
-                  <Field label="Role" hint="set on the Team tree">
-                    {(id) => (
-                      <span id={id} className={LOCKED_INPUT}>
-                        <span className="min-w-0 flex-1 truncate">{title.label}</span>
-                        <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-                      </span>
-                    )}
-                  </Field>
-                ))}
-          {places.length > 0 && (
-            // One set of boxes per place they hold: a division, or the department they head (boards 98a, 98b).
-            <div className={`flex flex-col gap-6 ${titledPlace === null && title !== null ? "mt-4" : ""}`}>
-              {places.map(placeFields)}
-            </div>
+        <Section title="Roles">
+          {person === null || position === null ? (
+            // Fill details: the role title in the division they wait to join.
+            titleDivision !== null && titleField(ownTitleLabel, false)
+          ) : (
+            <>
+              {/* One row per place they hold (boards 103b to 103d): their seats, a headship, each division. */}
+              <ul className="flex flex-col gap-3">
+                {position.seats.map(seatRow)}
+                {places.flatMap((p) => (p.kind === "head" ? [headRow(p)] : []))}
+                {position.roles.map(divisionRow)}
+                {added.map(addedRow)}
+              </ul>
+              {seatTitleShown && position.seats.length === 0 && titleField("Role", true)}
+              {title?.kind === "fixed" && position.seats.length === 0 && position.roles.length === 0 && places.length === 0 && (
+                <Field label="Role" hint="set on the Team tree">
+                  {(id) => (
+                    <span id={id} className={LOCKED_INPUT}>
+                      <span className="min-w-0 flex-1 truncate">{title.label}</span>
+                      <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                    </span>
+                  )}
+                </Field>
+              )}
+              <AddDivision
+                departments={departments}
+                taken={[...person.divisions.map((d) => d.divisionId), ...added.map((a) => a.id)]}
+                onPick={(division) => setAdded((all) => [...all, { ...division, title: "" }])}
+              />
+            </>
           )}
-          {person && position && <AdvisorAction person={person} position={position} onAsk={setAsking} />}
         </Section>
 
         <Section title="Contact">
@@ -1583,86 +1761,29 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
   );
 }
 
-/**
- * Becomes an advisor in Edit details (issue #901): the row menu's own action
- * (`membersRowMenu`), here too so every view of the Members page and the Team
- * tree's Edit details reach it. It opens the same "are you sure", with the
- * #900 advisor choice; locked with the menu's reason where the viewer may not.
- */
-function AdvisorAction({ person, position, onAsk }: { person: EditPerson; position: MemberPosition; onAsk: (asking: Asking) => void }) {
-  const entry = membersRowMenu(position).find((e) => e.action === "become-advisor");
-  if (entry === undefined) return null;
-  const asking = advisorAsking(person, position, null);
-  const { permission } = entry;
-  return (
-    <div className="mt-5">
-      <button
-        type="button"
-        disabled={!permission.allowed || asking === null}
-        onClick={() => asking !== null && onAsk(asking)}
-        className={GHOST_PILL}
-      >
-        {permission.allowed ? <GraduationCap aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} /> : <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
-        Becomes an advisor
-      </button>
-      <p className="mt-2 text-[12px] leading-snug text-prt-muted">
-        {permission.allowed ? "Their role in a division ends; they stay on the team with the Advisor role." : permission.reason}
-      </p>
-    </div>
-  );
-}
-
-const LEAVING_BUTTON = `inline-flex h-9 items-center gap-2 rounded-full border border-danger/60 px-4 text-[13px] font-semibold text-danger transition-colors duration-300 ease-out hover:border-danger hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-danger/60 disabled:hover:bg-transparent ${FOCUS}`;
+/** A division picked under "+ Add division" (board 103b), with the title typed for it. */
+type AddedDivision = { readonly id: number; readonly short: string; readonly department: string; readonly title: string };
 
 /**
- * Leaving the team (board 46b), the end of Edit details: Remove from each of
- * the person's divisions the viewer reaches, where `removalFrom` offers it,
- * then Move to alumni. Each opens the row ⋯ menu's own "are you sure"; an
- * action the viewer may not take is locked with the reason the menu gives.
+ * Leaves the team (board 103b), the end of Edit details: one danger button and
+ * what it does, opening the row ⋯ menu's own "are you sure" (Move to alumni,
+ * board 59d); locked with its reason where the viewer may not. Remove from a
+ * division is each division row's ⋯ (board 103d).
  */
 function LeavingSection({ person, position, onAsk }: { person: EditPerson; position: MemberPosition; onAsk: (asking: Asking) => void }) {
-  const firstName = person.name.split(" ")[0];
-  const removals = position.removals.filter((r) => r.removal.kind === "offered" || r.removal.kind === "locked");
+  const { leave } = position;
   return (
-    <section className="mt-8 rounded-xl border border-danger/40 bg-danger/[0.06] p-4">
-      <h3 className="text-[14px] font-semibold text-prt-text">Leaving the team</h3>
-      <p className="mt-2 text-[12px] leading-relaxed text-prt-muted">
-        {removals.length > 0 && `Remove from a division ends only that role; ${firstName} keeps the others. `}
-        Move to alumni moves {firstName} to Alumni with the years on the team. The account stays; dashboard access ends.
-      </p>
-      <div className="mt-4 flex flex-wrap gap-2.5">
-        {removals.map((r) => (
-          <button
-            key={r.divisionId}
-            type="button"
-            disabled={r.removal.kind === "locked"}
-            title={r.removal.kind === "locked" ? r.removal.reason : undefined}
-            onClick={() => onAsk({ kind: "remove", person, divisionId: r.divisionId, short: r.short })}
-            className={LEAVING_BUTTON}
-          >
-            {r.removal.kind === "locked" ? <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} /> : <UserMinus aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
-            Remove from {r.short}
-          </button>
-        ))}
-        <button
-          type="button"
-          disabled={!position.leave.allowed}
-          title={position.leave.allowed ? undefined : position.leave.reason}
-          onClick={() => onAsk({ kind: "leave", person })}
-          className={LEAVING_BUTTON}
-        >
-          {!position.leave.allowed && <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
-          Move to alumni
-        </button>
-      </div>
-      {[...removals.flatMap((r) => (r.removal.kind === "locked" ? [r.removal.reason] : [])), ...(position.leave.allowed ? [] : [position.leave.reason])]
-        .filter((reason, i, all) => all.indexOf(reason) === i)
-        .map((reason) => (
-          <p key={reason} className="mt-2.5 flex items-start gap-2 text-[12px] leading-snug text-prt-muted">
-            <Lock aria-hidden className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={1.75} />
-            {reason}
-          </p>
-        ))}
+    <section className="mt-8 border-t border-hairline pt-6">
+      <button
+        type="button"
+        disabled={!leave.allowed}
+        onClick={() => onAsk({ kind: "leave", person })}
+        className={`inline-flex items-center gap-2 rounded-sm text-[14px] font-semibold text-danger transition-colors duration-300 ease-out hover:text-danger/80 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`}
+      >
+        {leave.allowed ? <LogOut aria-hidden className="h-4 w-4" strokeWidth={1.75} /> : <Lock aria-hidden className="h-4 w-4" strokeWidth={1.75} />}
+        Leaves the team
+      </button>
+      <p className="mt-1.5 text-[12px] leading-snug text-prt-muted">{leave.allowed ? "Ends every role. They move to alumni." : leave.reason}</p>
     </section>
   );
 }

@@ -1,17 +1,21 @@
 import { ONE_LEAD_NEEDED, type PeopleChange, type RemovedLeadOutcome } from "./division-edit";
 import type { DivisionRoleChange, MemberPosition } from "./division-members";
-import type { AdvisorScope, SteppedDownKind } from "./hand-over";
+import { ADVISOR_SCOPES, type AdvisorScope } from "./hand-over";
 import type { Permission, Removal } from "./team";
+import { andList } from "./team-structure";
 
 // The member actions a ⋯ menu offers (issue #901; Owner decision,
 // 2026-11-02): the Members page and the Team tree offer the same actions on
 // a member, each open where the viewer may take it and locked with the
 // reason where not. Both menus are built here from the one `MemberPosition`
 // the server worked out, so the two places cannot drift apart; each action
-// saves through the write its place already uses.
+// saves through the write its place already uses. A member's role and title
+// in a division are Edit details' (issue #972; Owner decision, 2026-11-03):
+// its role pill picks Member, Lead or Advisor (`roleOptions`), so no menu
+// offers Change title, Make lead or Becomes an advisor.
 
 /** Every member action, in the order a menu lists them. */
-export const MEMBER_ACTIONS = ["change-title", "make-lead", "become-advisor", "edit-details", "move", "remove", "leave"] as const;
+export const MEMBER_ACTIONS = ["edit-details", "move", "remove", "leave"] as const;
 export type MemberAction = (typeof MEMBER_ACTIONS)[number];
 
 /** One ⋯ menu item: the action, the division it acts on (none for Edit details and Leaves the team), and whether it is open. */
@@ -52,47 +56,35 @@ export function removalPermission(removal: Removal, short: string): Permission |
 
 export const ADVISORS_LEAD_NOTHING = "An advisor leads nothing";
 
-/** Make lead in one division: not shown for someone who leads it already; open where the viewer may change who leads it. */
-export function makeLeadPermission(role: DivisionRoleChange): Permission | null {
-  if (role.role === "lead") return null;
-  return role.advisor ? locked(ADVISORS_LEAD_NOTHING) : role.change;
+/** "Already an advisor in Mission Analysis": why an advisor's other roles there are locked. */
+export function alreadyAdvisorReason(short: string): string {
+  return `Already an advisor in ${short}`;
 }
 
 /**
  * Whether they may stop leading one division: locked for its only lead, since
  * a division keeps at least one (`planDivisionSave`); open for anyone else.
- * Edit details' Member choice under As (issue #965) and Becomes an advisor
- * both read it.
+ * Edit details' Member choice reads it, and so does becoming an advisor.
  */
 export function stepDownPermission(role: Pick<DivisionRoleChange, "role" | "leads">): Permission {
   return role.role === "lead" && role.leads < 2 ? locked(ONE_LEAD_NEEDED) : OPEN;
 }
 
 /**
- * Becomes an advisor in one division: locked for someone who advises there
+ * Becoming an advisor in one division: locked for someone who advises there
  * already, where the viewer may not change who leads it, and for its only
  * lead (`stepDownPermission`); else open.
  */
 export function becomeAdvisorPermission(role: DivisionRoleChange): Permission {
-  if (role.advisor) return locked(`Already an advisor in ${role.short}`);
+  if (role.advisor) return locked(alreadyAdvisorReason(role.short));
   if (!role.change.allowed) return role.change;
   return stepDownPermission(role);
 }
 
-/** What the person steps down from when they become an advisor in a division: their lead role, or their member role. */
-export function advisorStep(role: Pick<DivisionRoleChange, "role">): SteppedDownKind {
-  return { kind: role.role === "lead" ? "lead" : "member" };
-}
-
-/** The divisions Becomes an advisor may start from: each one where it is open (`becomeAdvisorPermission`). */
-export function advisorDivisions(position: Pick<MemberPosition, "roles">): readonly DivisionRoleChange[] {
-  return position.roles.filter((r) => becomeAdvisorPermission(r).allowed);
-}
-
 /**
- * What Becomes an advisor saves (`PeopleChange`): a lead steps down with
- * "Stays as an advisor", as Remove in Edit division does; a member becomes
- * one. Either way they advise at `scope`.
+ * What saves someone becoming an advisor (`PeopleChange`): a lead steps down
+ * with "Stays as an advisor", as Remove in Edit division does; a member
+ * becomes one. Either way they advise at `scope`.
  */
 export function advisorChange(personId: number, role: Pick<DivisionRoleChange, "role">, scope: AdvisorScope): PeopleChange {
   return role.role === "lead"
@@ -105,24 +97,88 @@ export function leadStepDown(personId: number, outcome: RemovedLeadOutcome, scop
   return { oldLeads: [{ personId, via: "removed", outcome, scope }], advisors: [] };
 }
 
+// Edit details' role pill (issue #972, boards 103b and 103c): one per division
+// row, picking what they are in that division. Member and Lead, then Advisor at
+// the #900 scopes. A pick is staged and Save applies it through the write each
+// one already has.
+
+/** What a division row's role pill holds: member, lead, or an advisor at one #900 scope. */
+export type RoleChoice = { readonly kind: "member" } | { readonly kind: "lead" } | { readonly kind: "advisor"; readonly scope: AdvisorScope };
+
+/** One item of the role pill's menu: the choice, whether the viewer may pick it, and the line under it. */
+export type RoleOption = {
+  readonly choice: RoleChoice;
+  readonly permission: Permission;
+  /** "With Anna Rossi": who else leads the division, under Lead; null for no line. */
+  readonly detail: string | null;
+};
+
+/** What they are in the division now: an Advisor role there advises the division itself. */
+export function roleNow(role: Pick<DivisionRoleChange, "role" | "advisor">): RoleChoice {
+  return role.advisor ? { kind: "advisor", scope: "division" } : { kind: role.role };
+}
+
+export function sameRole(a: RoleChoice, b: RoleChoice): boolean {
+  return a.kind === b.kind && (a.kind !== "advisor" || (b.kind === "advisor" && a.scope === b.scope));
+}
+
+/** "Member", "Lead", "Advisor · this division": the role pill's own words. */
+export function roleLabel(choice: RoleChoice): string {
+  switch (choice.kind) {
+    case "member":
+      return "Member";
+    case "lead":
+      return "Lead";
+    case "advisor":
+      return `Advisor · ${ADVISOR_SCOPE_LABELS[choice.scope].toLowerCase()}`;
+  }
+}
+
+/** The advisor scopes as the role pill's menu lists them (board 103c). */
+export const ADVISOR_SCOPE_LABELS: Readonly<Record<AdvisorScope, string>> = {
+  division: "This division",
+  department: "Its department",
+  team: "Whole team",
+};
+
+/**
+ * Every item of one division row's role pill (board 103c), each open or
+ * locked with its reason by the rules the server checks: what they are now is
+ * always open; an advisor stays one (an advisor leads nothing); where the
+ * viewer may not change who leads the division, every other choice carries
+ * that reason; a lead may become a member or an advisor only while another
+ * lead stays (`ONE_LEAD_NEEDED`). Lead names the division's other leads.
+ */
+export function roleOptions(role: DivisionRoleChange): readonly RoleOption[] {
+  const now = roleNow(role);
+  const others = role.otherLeads.length > 0 ? `With ${andList(role.otherLeads)}` : null;
+  const option = (choice: RoleChoice, permission: Permission, detail: string | null = null): RoleOption => ({
+    choice,
+    permission: sameRole(choice, now) ? OPEN : permission,
+    detail,
+  });
+  const advisors = ADVISOR_SCOPES.map((scope) => option({ kind: "advisor", scope }, becomeAdvisorPermission(role)));
+  if (role.advisor) {
+    return [option({ kind: "member" }, locked(alreadyAdvisorReason(role.short))), option({ kind: "lead" }, locked(ADVISORS_LEAD_NOTHING), others), ...advisors];
+  }
+  const change = (permission: Permission) => (role.change.allowed ? permission : role.change);
+  return [option({ kind: "member" }, change(stepDownPermission(role))), option({ kind: "lead" }, change(OPEN), others), ...advisors];
+}
+
 /**
  * A member row's ⋯ menu in the Team tree's division and department drawers
- * (issue #901): Change title, Make lead, Becomes an advisor, Edit details,
- * Move to…, Remove from the division and Leaves the team, for their role in
- * `divisionId`. Empty when the viewer reaches no role of theirs there.
+ * (issue #901, narrowed by #972): Edit details, Move to…, Remove from the
+ * division and Leaves the team, for their role in `divisionId`. Empty when
+ * the viewer reaches no role of theirs there.
  */
 export function divisionRowMenu(position: MemberPosition, divisionId: number): readonly MenuEntry[] {
   const role = position.roles.find((r) => r.divisionId === divisionId);
   if (role === undefined) return [];
   const division = { divisionId, short: role.short };
-  const lead = makeLeadPermission(role);
   const removal = position.removals.find((r) => r.divisionId === divisionId);
   const removing = removal === undefined ? null : removalPermission(removal.removal, role.short);
   const moves = position.moves.some((m) => m.kind === "division" && m.divisionId === divisionId);
   return [
-    { action: "change-title", division, permission: OPEN },
-    ...(lead === null ? [] : [{ action: "make-lead" as const, division, permission: lead }]),
-    { action: "become-advisor", division, permission: becomeAdvisorPermission(role) },
     { action: "edit-details", division: null, permission: OPEN },
     ...(moves ? [{ action: "move" as const, division, permission: OPEN }] : []),
     ...(removing === null ? [] : [{ action: "remove" as const, division, permission: removing }]),
@@ -131,21 +187,14 @@ export function divisionRowMenu(position: MemberPosition, divisionId: number): r
 }
 
 /**
- * A Members page row's ⋯ menu (issue #901): Becomes an advisor, Remove from
- * each division the viewer reaches, and Leaves the team. Change title, Make
- * lead and Move to… are Edit details' there, which the row opens. Becomes an
- * advisor is open when one division offers it, and asks which when several do;
- * otherwise it is locked with the first division's reason.
+ * A Members page row's ⋯ menu (issue #901, narrowed by #972): Remove from
+ * each division the viewer reaches, and Leaves the team. The row opens Edit
+ * details, which holds Move to… and the role in each division.
  */
 export function membersRowMenu(position: MemberPosition): readonly MenuEntry[] {
-  const [first] = position.roles;
-  const advisor: MenuEntry[] =
-    first === undefined
-      ? []
-      : [{ action: "become-advisor", division: null, permission: advisorDivisions(position).length > 0 ? OPEN : becomeAdvisorPermission(first) }];
   const removals = position.removals.flatMap((r): MenuEntry[] => {
     const permission = removalPermission(r.removal, r.short);
     return permission === null ? [] : [{ action: "remove", division: { divisionId: r.divisionId, short: r.short }, permission }];
   });
-  return [...advisor, ...removals, { action: "leave", division: null, permission: position.leave }];
+  return [...removals, { action: "leave", division: null, permission: position.leave }];
 }

@@ -44,7 +44,6 @@ import {
   addOutcome,
   checkAddMember,
   checkMemberEdit,
-  checkRoleTitle,
   editedFields,
   lookupForAdd,
   positionsOf,
@@ -1273,35 +1272,11 @@ async function saveMemberDetails(
 /**
  * The rows a role title in `divisionId` is written on: the person's lead and
  * member rows there, when the viewer reaches the division; null when they are
- * not in it or it is out of the viewer's reach. Edit details and Change title
- * both read it.
+ * not in it or it is out of the viewer's reach. Edit details reads it.
  */
 function titledRowsIn(actor: TeamActor, active: readonly ActiveRole[], divisionId: number, org: OrgChart): number[] | null {
   const ids = divisionRowsIn(active, divisionId).map((r) => r.id);
   return ids.length === 0 || !reachesDivision(actor, divisionId, org) ? null : ids;
-}
-
-/**
- * Change title on a Team tree member row (issue #901): their role title in
- * `divisionId`, for someone the viewer may edit, written on the rows Edit
- * details writes it on (`titledRowsIn`). Nothing else changes.
- */
-async function saveDivisionTitle(identity: DashboardIdentity, personId: number, divisionId: number, input: unknown): Promise<WriteResult<null>> {
-  const checked = checkRoleTitle(input);
-  if (!checked.ok) return refused(checked.error);
-  const { org } = await readTeamSnapshot();
-  const actor = await readMembersActor(identity, org);
-  const active = await rolesTheViewerChanges(identity, actor, personId);
-  const titled = actor === null || active === null ? null : titledRowsIn(actor, active, divisionId, org);
-  if (titled === null) return refused(NOT_IN_SCOPE);
-  await runAuditQuery((db) =>
-    db
-      .update(roles)
-      .set({ title: checked.value ?? "" })
-      .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
-  );
-  done();
-  return written(null);
 }
 
 /** The photo in Edit details (board 61g): a square JPEG under 500 KB in the public store, or none; for anyone the viewer may edit. */
@@ -2278,7 +2253,6 @@ export function databaseTeamWrites(
     removeFromDivision: (personId, divisionId) => removeFromDivision(identity, personId, divisionId),
     moveMember: (input) => moveMember(identity, input),
     saveMemberDetails: (target, divisionId, input) => saveMemberDetails(identity, target, divisionId, input),
-    saveDivisionTitle: (personId, divisionId, input) => saveDivisionTitle(identity, personId, divisionId, input),
     setMemberPhoto: (personId, photo) => setMemberPhoto(identity, personId, photo),
     createDivision: (departmentId, input) => createDivision(identity, departmentId, input),
     saveDivision: (divisionId, input) => saveDivision(identity, divisionId, input),

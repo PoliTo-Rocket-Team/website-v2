@@ -37,7 +37,8 @@ function stored(title: string | null | undefined): string | null {
   return t === "" ? null : t;
 }
 
-function seatPlace(role: RoleBeyondDivisions, org: OrgChart): PersonPlace {
+/** One role held beyond every division as its placement row: its title as stored, else its default. */
+export function seatPlace(role: RoleBeyondDivisions, org: OrgChart): PersonPlace {
   const department = (id: number | null) => org.departments.find((d) => d.id === id) ?? null;
   switch (role.kind) {
     case "team-leader":

@@ -897,9 +897,8 @@ function MemberItem({
 /**
  * The Team tree's ⋯ menu on someone's role in one division (issue #901), in
  * the division drawer and the department drawer alike (`divisionRowMenu`):
- * Change title, Make lead, Becomes an advisor, Edit details, Move to… (issue
- * #647, the move Edit details makes, through the same control), Remove from
- * the division and Leaves the team. None on the viewer's own row, or where
+ * Edit details, Move to… (issue #647, the move Edit details makes, through
+ * the same control), Remove from the division and Leaves the team (#972). None on the viewer's own row, or where
  * they may change nothing about the person.
  */
 export function DivisionMemberMenu({
@@ -933,7 +932,6 @@ export function DivisionMemberMenu({
       )}
       <MemberMenu
         person={person}
-        position={position}
         entries={entries}
         onAsk={onAsk}
         onEdit={onEdit === undefined ? undefined : () => onEdit(person)}
