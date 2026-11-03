@@ -1,10 +1,11 @@
-// The crop dialogs' math. My profile's (board 55a, issue #169) is a square
-// crop box over the photo, which the person drags and zooms; a project
-// background's (board 93f, issue #529) is the same with a frame of any shape,
-// Tall 9:16 or Wide 2:1. The frame stays still and the photo moves under it,
-// so the crop always has the frame's shape and always lies inside the photo.
-// Pure math, in the frame's own pixels; the dialogs draw it and cut the saved
-// picture from `sourceRect` (`sourceSquare` for the square).
+// The crop dialog's math (components/dashboard/crop-dialog.tsx). A square
+// photo's crop (board 55a, issue #169) is a square box over the photo, which
+// the person drags and zooms; a project background's (board 93f, issue #529)
+// is the same with a frame of any shape, Tall 9:16 or Wide 2:1. The frame
+// stays still and the photo moves under it, so the crop always has the
+// frame's shape and always lies inside the photo. Pure math, in the frame's
+// own pixels; the dialog draws it and cuts the saved picture from
+// `sourceRect` (`sourceSquare` for the square).
 
 export const ZOOM_MIN = 1;
 export const ZOOM_MAX = 3;
@@ -113,4 +114,10 @@ export function zoomCrop(crop: Crop, zoom: number): Crop {
 export function sourceSquare(crop: Crop): { readonly sx: number; readonly sy: number; readonly side: number } {
   const { sx, sy, sw } = sourceRect(frameOf(crop));
   return { sx, sy, side: sw };
+}
+
+/** The largest frame of `aspect` that fits in `room`, in whole pixels. */
+export function frameIn(aspect: { readonly width: number; readonly height: number }, room: { readonly width: number; readonly height: number }): { readonly width: number; readonly height: number } {
+  const scale = Math.min(room.width / aspect.width, room.height / aspect.height);
+  return { width: Math.round(aspect.width * scale), height: Math.round(aspect.height * scale) };
 }
