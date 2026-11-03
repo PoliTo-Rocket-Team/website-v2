@@ -79,7 +79,7 @@ export function CropDialog<E extends FixedEntry>({
   entry: E;
   /** The photo to crop; null keeps the dialog closed. */
   file: File | null;
-  /** The result is uploading. */
+  /** The result is uploading; the dialog also holds itself while it prepares the photo. */
   pending: boolean;
   onCancel: () => void;
   /** Swaps the file, where the place offers it; the square layout draws "Choose another photo" for it. */
@@ -95,6 +95,11 @@ export function CropDialog<E extends FixedEntry>({
   const [frames, setFrames] = useState<Frames>({});
   const [set, setSet] = useState<ReadonlySet<string>>(new Set());
   const image = useRef<HTMLImageElement | null>(null);
+  // "Use this photo" encodes the photo before it hands it back. While it does,
+  // the ref refuses a second confirm in the same tick and the state disables
+  // every button, so one confirm hands back exactly one photo (issue #969).
+  const preparing = useRef(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (file === null) return;
@@ -135,7 +140,9 @@ export function CropDialog<E extends FixedEntry>({
   const ready = shapes.every((shape) => frames[shape.name]);
 
   const done = async () => {
-    if (image.current === null || !ready) return;
+    if (image.current === null || !ready || pending || preparing.current) return;
+    preparing.current = true;
+    setBusy(true);
     try {
       if (entry.kind === "cut") {
         const files: Record<string, File> = {};
@@ -155,12 +162,21 @@ export function CropDialog<E extends FixedEntry>({
       }
     } catch (err) {
       toast.error("Could not use that photo", { description: err instanceof Error ? err.message : "Please try again." });
+    } finally {
+      preparing.current = false;
+      setBusy(false);
     }
   };
+  const held = pending || busy;
+  // Skip goes through the same guard: it does nothing while a confirm is preparing.
+  const skip = () => {
+    if (!held && !preparing.current) queue?.onSkip();
+  };
+  const place = queue !== undefined && queue.count > 1 ? { ...queue, onSkip: skip } : undefined;
 
-  const layout = { entry, src, frames, ready, pending, measured, changed, done, onChooseAnother, queue: queue !== undefined && queue.count > 1 ? queue : undefined };
+  const layout = { entry, src, frames, ready, pending: held, measured, changed, done, onChooseAnother, queue: place };
   return (
-    <Dialog open={file !== null} onOpenChange={(open) => !open && !pending && onCancel()}>
+    <Dialog open={file !== null} onOpenChange={(open) => !open && !held && !preparing.current && onCancel()}>
       <DialogPortal>{shapes.length === 1 ? <SquareLayout {...layout} shape={shapes[0]} /> : <SideBySideLayout {...layout} shapes={shapes} />}</DialogPortal>
     </Dialog>
   );
