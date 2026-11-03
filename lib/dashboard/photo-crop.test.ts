@@ -1,6 +1,59 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { centredCrop, centredFrameCrop, moveCrop, moveFrameCrop, sourceRect, sourceSquare, zoomCrop, zoomFrameCrop, ZOOM_MAX, type Crop } from "./photo-crop";
+import {
+  centredCrop,
+  centredFrameCrop,
+  FREE_HANDLES,
+  FREE_MIN_SIDE,
+  freeSourceRect,
+  moveCrop,
+  moveFrameCrop,
+  moveFreeCrop,
+  resizeFreeCrop,
+  sourceRect,
+  sourceSquare,
+  wholeFreeCrop,
+  zoomCrop,
+  zoomFrameCrop,
+  ZOOM_MAX,
+  type Crop,
+} from "./photo-crop";
+
+// A free frame (issue #971): a partner logo's frame resizes by any edge or
+// corner and moves, and whatever the editor does it stays inside the logo.
+
+test("a free frame opens round the whole photo, and its source rectangle is all of it", () => {
+  assert.deepEqual(freeSourceRect(wholeFreeCrop(1200, 400)), { sx: 0, sy: 0, sw: 1200, sh: 400 });
+});
+
+test("a handle moves only the edges it holds, and stops at the photo's edge and at the smallest side", () => {
+  const crop = wholeFreeCrop(1000, 500);
+  // The left edge in by 100; a sideways handle leaves the top alone.
+  assert.deepEqual(freeSourceRect(resizeFreeCrop(crop, "w", 100, 80)), { sx: 100, sy: 0, sw: 900, sh: 500 });
+  // A corner moves both its edges; the opposite corner stays put.
+  assert.deepEqual(freeSourceRect(resizeFreeCrop(crop, "se", -300, -100)), { sx: 0, sy: 0, sw: 700, sh: 400 });
+  // Pulled past the photo, the edge stops on it.
+  assert.deepEqual(freeSourceRect(resizeFreeCrop(resizeFreeCrop(crop, "n", 0, 200), "n", 0, -9999)), { sx: 0, sy: 0, sw: 1000, sh: 500 });
+  // Pulled past the opposite edge, the frame keeps its smallest side.
+  assert.deepEqual(freeSourceRect(resizeFreeCrop(crop, "e", -9999, 0)), { sx: 0, sy: 0, sw: FREE_MIN_SIDE, sh: 500 });
+  // A photo smaller than the smallest side keeps its own.
+  assert.deepEqual(freeSourceRect(resizeFreeCrop(wholeFreeCrop(10, 10), "nw", 50, 50)), { sx: 0, sy: 0, sw: 10, sh: 10 });
+});
+
+test("a free frame stays inside the photo, in whole pixels, through any resize and move", () => {
+  let crop = wholeFreeCrop(640, 480);
+  for (const [i, [dx, dy]] of [[120, 90], [-9999, 30], [9999, -9999], [-45, 9999], [33.3, -12.7], [7, 7], [-500, 500], [0.4, 0.6]].entries()) {
+    crop = moveFreeCrop(resizeFreeCrop(crop, FREE_HANDLES[i], dx, dy), -dy, dx);
+    const { sx, sy, sw, sh } = freeSourceRect(crop);
+    const label = `${FREE_HANDLES[i]} by ${dx},${dy}`;
+    assert.ok(sw >= FREE_MIN_SIDE && sh >= FREE_MIN_SIDE, label);
+    assert.ok(sx >= 0 && sy >= 0 && sx + sw <= 640 && sy + sh <= 480, label);
+    assert.ok([sx, sy, sw, sh].every(Number.isInteger), label);
+  }
+  // A move keeps the frame's size and stops at the edge.
+  const small = resizeFreeCrop(wholeFreeCrop(640, 480), "se", -440, -380);
+  assert.deepEqual(freeSourceRect(moveFreeCrop(small, 9999, 9999)), { sx: 440, sy: 380, sw: 200, sh: 100 });
+});
 
 // The crop dialog (board 55a, issue #169): whatever the person does, the saved
 // photo is a square cut from inside the photo.

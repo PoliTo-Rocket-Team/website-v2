@@ -14,8 +14,9 @@
 import { BACKGROUND_CROP_MAX_BYTES, BACKGROUND_FRAMES } from "@/lib/project-content/record";
 import { PHOTO_MAX_BYTES } from "@/lib/outreach-photos";
 import { MAX_MEMBER_PHOTO_BYTES } from "./division-members";
-import { GALLERY_PHOTO, LAUNCH_PHOTO, POST_PHOTO, PROJECT_PHOTO, type ShapeCrop, type ShapeCrops, type Size } from "@/lib/photo-crops";
-import { sourceRect, type FrameCrop } from "./photo-crop";
+import { GALLERY_PHOTO, GROUP_PHOTO, LAUNCH_PHOTO, POST_PHOTO, PROJECT_PHOTO, type ShapeCrop, type ShapeCrops, type Size } from "@/lib/photo-crops";
+import { LOGO_MAX_BYTES } from "@/lib/partners";
+import { freeSourceRect, sourceRect, type FrameCrop, type FreeCrop } from "./photo-crop";
 import { MAX_PHOTO_BYTES, PHOTO_TYPES } from "./self";
 
 export type { ShapeCrop, ShapeCrops, Size };
@@ -94,8 +95,19 @@ export type CropResult<E extends CropEntry> =
 /** The shape names an entry's shapes carry. */
 export type ShapeName<E extends CropEntry> = E["shapes"][number]["name"];
 
-/** An entry whose shapes are all fixed: what the dialog draws until a later slice adds the free frame's stage. */
+/** An entry whose shapes are all fixed: the dialog draws one frame per shape over a moving photo. */
 export type FixedEntry = CropEntry & { readonly shapes: NonEmpty<FixedShape> };
+
+/** A PNG cut to one free frame (issue #971): the dialog draws the photo still, with the frame resized over it. */
+export type FreeEntry = CutEntry & { readonly output: PngOutput; readonly shapes: readonly [FreeShape] };
+
+/** An entry the dialog draws: every shape fixed, or one free frame. A cut entry mixing the two has no stage yet. */
+export type DialogEntry = FixedEntry | FreeEntry;
+
+/** Whether the dialog draws `entry` on the free frame's stage. */
+export function isFreeEntry(entry: DialogEntry): entry is FreeEntry {
+  return entry.shapes[0].kind === "free";
+}
 
 /** One frame's cut: the part of the photo it shows (`sx`, `sy`, `sw`, `sh`, in the photo's pixels) and the file's size. */
 export type Cut = { readonly sx: number; readonly sy: number; readonly sw: number; readonly sh: number; readonly width: number; readonly height: number };
@@ -105,6 +117,13 @@ export function cutOf(shape: CutShape, crop: FrameCrop): Cut {
   const rect = sourceRect(crop);
   const width = Math.round(Math.min(rect.sw, shape.size.width));
   return { ...rect, width, height: Math.round((width * shape.size.height) / shape.size.width) };
+}
+
+/** The file a free frame makes: the part of the photo it holds, its long side at most the shape's `maxSide`, never larger than the photo gives. */
+export function freeCutOf(shape: FreeShape, crop: FreeCrop): Cut {
+  const rect = freeSourceRect(crop);
+  const scale = Math.min(1, shape.maxSide / Math.max(rect.sw, rect.sh));
+  return { ...rect, width: Math.max(1, Math.round(rect.sw * scale)), height: Math.max(1, Math.round(rect.sh * scale)) };
 }
 
 /** A frame's crop in fractions of the photo, as a "crops" entry stores it. */
@@ -162,6 +181,9 @@ const TWO_SHAPE_WORDS: CropWords = {
   description: "One photo, two shapes. Drag the photo inside each frame to choose what shows. A frame you leave as it is stays centred.",
   note: "JPG, PNG or WebP. The photo is kept once, with a crop for each shape.",
 };
+
+/** A partner logo's longest side: the Partners page draws logos far smaller, so this only keeps a huge file under the logo limit. */
+const LOGO_SIDE = 1600;
 
 /** The dialog's entry for each place that crops. */
 export const CROP_SETTINGS = {
@@ -254,6 +276,37 @@ export const CROP_SETTINGS = {
       { kind: "fixed", name: "phone", label: "Phones", use: "Project gallery", aspect: GALLERY_PHOTO.phone },
       { kind: "fixed", name: "desktop", label: "Laptops", use: "Project gallery", aspect: GALLERY_PHOTO.desktop },
     ],
+  },
+  /** The Team page group photo (issue #971): one photo, cropped for the box's 350:210 on phones and 1312:520 from md, stored by `checkPhotoUpload` under 4 MB. */
+  groupPhoto: {
+    kind: "crops",
+    words: TWO_SHAPE_WORDS,
+    accept: PHOTO_ACCEPT,
+    maxBytes: PHOTO_MAX_BYTES,
+    maxSide: STORED_PHOTO_SIDE,
+    output: { type: "image/jpeg", quality: STORED_PHOTO_QUALITY },
+    shapes: [
+      { kind: "fixed", name: "phone", label: "Phones", use: "Team page", aspect: GROUP_PHOTO.phone },
+      { kind: "fixed", name: "desktop", label: "Laptops", use: "Team page", aspect: GROUP_PHOTO.desktop },
+    ],
+  },
+  /**
+   * A partner logo (issue #971; Owner decision, 2026-11-03, on #964): one
+   * free frame, cut to a PNG that keeps its transparency, its long side at
+   * most 1600 px, under the 1 MB `measurePartnerLogo` takes.
+   */
+  partnerLogo: {
+    kind: "cut",
+    words: {
+      title: "Crop the logo",
+      confirm: "Use this logo",
+      description: "Drag the frame's edges or corners to trim the logo, or drag inside it to move it.",
+      note: "PNG, up to 1 MB. The transparent background is kept.",
+    },
+    accept: ["image/png"],
+    maxBytes: LOGO_MAX_BYTES,
+    output: { type: "image/png" },
+    shapes: [{ kind: "free", name: "logo", label: "Logo", use: "Partners page", maxSide: LOGO_SIDE }],
   },
 } as const satisfies Readonly<Record<string, CropEntry>>;
 

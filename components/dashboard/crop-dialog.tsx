@@ -7,17 +7,35 @@ import { ImageIcon, Info, LoaderCircle, Move, X } from "lucide-react";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import {
   cutOf,
+  freeCutOf,
+  isFreeEntry,
   shapeCropsOf,
   type CropOutput,
   type CropPreview,
   type CropResult,
   type Cut,
   type CutShape,
+  type DialogEntry,
   type FixedEntry,
   type FixedShape,
+  type FreeEntry,
   type Size,
 } from "@/lib/dashboard/crop-settings";
-import { centredFrameCrop, frameIn, frameScaleOf, moveFrameCrop, zoomFrameCrop, ZOOM_MIN, type FrameCrop } from "@/lib/dashboard/photo-crop";
+import {
+  centredFrameCrop,
+  FREE_HANDLES,
+  frameIn,
+  frameScaleOf,
+  moveFrameCrop,
+  moveFreeCrop,
+  resizeFreeCrop,
+  wholeFreeCrop,
+  zoomFrameCrop,
+  ZOOM_MIN,
+  type FrameCrop,
+  type FreeCrop,
+  type FreeHandle,
+} from "@/lib/dashboard/photo-crop";
 import { SHEET_BUTTONS, SHEET_CANCEL, SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber, sheetConfirm } from "./confirm-dialog";
 import { CONTENT_FOCUS } from "./content-parts";
 import { EYEBROW } from "./page-header";
@@ -36,7 +54,10 @@ import { ZoomSlider } from "./zoom-slider";
 // the rest left centred. For a pick of several files (issue #969) it says
 // which photo of how many it shows and adds Skip; Cancel stops the rest. A dialog on a
 // redesigned page: it fades in under motion-safe only and closes at once
-// (design-system-manifest.md).
+// (design-system-manifest.md). A free frame (issue #971, a partner logo)
+// draws the square layout's sheet with the photo shown whole and still: the
+// frame's edges and corners resize it, a drag inside moves it, and it never
+// leaves the photo; the result is the frame's PNG cut, transparency kept.
 
 /** The square layout's frame: its share of the stage. */
 const BOX_SHARE = 0.78;
@@ -66,15 +87,7 @@ async function encoded(image: HTMLImageElement, cut: Cut, output: CropOutput, na
 
 const bytesText = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${Math.round(bytes / (1024 * 1024))} MB`);
 
-export function CropDialog<E extends FixedEntry>({
-  entry,
-  file,
-  pending,
-  onCancel,
-  onChooseAnother,
-  queue,
-  onDone,
-}: {
+type CropDialogProps<E extends DialogEntry> = {
   /** The place's settings entry. */
   entry: E;
   /** The photo to crop; null keeps the dialog closed. */
@@ -87,43 +100,76 @@ export function CropDialog<E extends FixedEntry>({
   /** Where the photo is in a pick of several, which the dialog crops in turn: Skip leaves this one out, and Cancel stops the rest. */
   queue?: CropQueuePlace;
   onDone: (result: CropResult<E>) => void;
-}) {
-  const shapes: readonly FixedShape[] = entry.shapes;
-  const [src, setSrc] = useState<string | null>(null);
-  const [natural, setNatural] = useState<Size | null>(null);
-  const [widths, setWidths] = useState<Readonly<Record<string, number>>>({});
-  const [frames, setFrames] = useState<Frames>({});
-  const [set, setSet] = useState<ReadonlySet<string>>(new Set());
-  const image = useRef<HTMLImageElement | null>(null);
-  // "Use this photo" encodes the photo before it hands it back. While it does,
-  // the ref refuses a second confirm in the same tick and the state disables
-  // every button, so one confirm hands back exactly one photo (issue #969).
+};
+
+/** The place's entry picks the stage: a frame per fixed shape over a moving photo, or one free frame over a still one. */
+export function CropDialog<E extends DialogEntry>(props: CropDialogProps<E>) {
+  const { entry, onDone } = props;
+  if (isFreeEntry(entry)) return <FreeCropDialog {...props} entry={entry} onDone={(result) => onDone(result as CropResult<E>)} />;
+  return <FixedCropDialog {...props} entry={entry} onDone={(result) => onDone(result as CropResult<E>)} />;
+}
+
+/** Encodes the photo once on confirm: the ref refuses a second confirm in the same tick and `busy` disables every button, so one confirm hands back exactly one photo (issue #969). */
+function usePreparing() {
   const preparing = useRef(false);
   const [busy, setBusy] = useState(false);
+  const run = async (task: () => Promise<void>) => {
+    if (preparing.current) return;
+    preparing.current = true;
+    setBusy(true);
+    try {
+      await task();
+    } catch (err) {
+      toast.error("Could not use that photo", { description: err instanceof Error ? err.message : "Please try again." });
+    } finally {
+      preparing.current = false;
+      setBusy(false);
+    }
+  };
+  return { run, busy, preparing };
+}
 
+/** The photo's object URL and, once it has loaded, the image and its natural size. */
+function useLoadedPhoto(file: File | null) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [natural, setNatural] = useState<Size | null>(null);
+  const image = useRef<HTMLImageElement | null>(null);
   useEffect(() => {
     if (file === null) return;
     const url = URL.createObjectURL(file);
     setSrc(url);
     setNatural(null);
-    setFrames({});
-    setSet(new Set());
+    image.current = null;
     const img = new Image();
     img.onload = () => {
       image.current = img;
       setNatural({ width: img.naturalWidth, height: img.naturalHeight });
     };
     img.src = url;
-    return () => URL.revokeObjectURL(url);
+    return () => {
+      img.onload = null;
+      URL.revokeObjectURL(url);
+    };
   }, [file]);
+  return { src, natural, image };
+}
 
-  // A new photo, or a frame's new width, starts that frame centred at zoom 1.
+function FixedCropDialog<E extends FixedEntry>({ entry, file, pending, onCancel, onChooseAnother, queue, onDone }: CropDialogProps<E>) {
+  const shapes: readonly FixedShape[] = entry.shapes;
+  const { src, natural, image } = useLoadedPhoto(file);
+  const [widths, setWidths] = useState<Readonly<Record<string, number>>>({});
+  const [frames, setFrames] = useState<Frames>({});
+  const [set, setSet] = useState<ReadonlySet<string>>(new Set());
+  const { run, busy, preparing } = usePreparing();
+
+  // A new photo, or a frame's new width, starts that frame centred at zoom 1; a photo still loading has no frames.
   useEffect(() => {
-    if (natural === null) return;
     const next: Record<string, FrameCrop | null> = {};
-    for (const shape of shapes) {
-      const width = widths[shape.name] ?? 0;
-      next[shape.name] = width > 0 ? centredFrameCrop(natural.width, natural.height, width, (width * shape.aspect.height) / shape.aspect.width) : null;
+    if (natural !== null) {
+      for (const shape of shapes) {
+        const width = widths[shape.name] ?? 0;
+        next[shape.name] = width > 0 ? centredFrameCrop(natural.width, natural.height, width, (width * shape.aspect.height) / shape.aspect.width) : null;
+      }
     }
     setFrames(next);
     setSet(new Set());
@@ -137,35 +183,29 @@ export function CropDialog<E extends FixedEntry>({
     setFrames((all) => ({ ...all, [name]: crop }));
     setSet((all) => (all.has(name) ? all : new Set(all).add(name)));
   };
-  const ready = shapes.every((shape) => frames[shape.name]);
+  const ready = natural !== null && shapes.every((shape) => frames[shape.name]);
 
-  const done = async () => {
-    if (image.current === null || !ready || pending || preparing.current) return;
-    preparing.current = true;
-    setBusy(true);
-    try {
+  const done = () => {
+    const photo = image.current;
+    if (photo === null || !ready || pending) return;
+    void run(async () => {
       if (entry.kind === "cut") {
         const files: Record<string, File> = {};
-        for (const shape of entry.shapes as readonly CutShape[]) files[shape.name] = await encoded(image.current, cutOf(shape, frames[shape.name]!), entry.output, shape.name);
+        for (const shape of entry.shapes as readonly CutShape[]) files[shape.name] = await encoded(photo, cutOf(shape, frames[shape.name]!), entry.output, shape.name);
         const over = Object.values(files).find((f) => f.size > entry.maxBytes);
         if (over !== undefined) return void toast.error("Could not use that photo", { description: `The cropped photo must be under ${bytesText(entry.maxBytes)}.` });
         onDone({ kind: "cut", files } as CropResult<E>);
       } else {
-        const { naturalWidth: sw, naturalHeight: sh } = image.current;
+        const { naturalWidth: sw, naturalHeight: sh } = photo;
         // The photo is kept whole, its long side at most the entry's; the crops are fractions of it, so they hold at any size.
         const scale = Math.min(1, entry.maxSide / Math.max(sw, sh));
         const whole = { sx: 0, sy: 0, sw, sh, width: Math.round(sw * scale), height: Math.round(sh * scale) };
-        const photo = await encoded(image.current, whole, entry.output, "photo");
-        if (photo.size > entry.maxBytes) return void toast.error("Could not use that photo", { description: `The photo must be under ${bytesText(entry.maxBytes)}.` });
+        const kept = await encoded(photo, whole, entry.output, "photo");
+        if (kept.size > entry.maxBytes) return void toast.error("Could not use that photo", { description: `The photo must be under ${bytesText(entry.maxBytes)}.` });
         const placed = Object.fromEntries(shapes.map((shape) => [shape.name, frames[shape.name] ?? undefined]));
-        onDone({ kind: "crops", file: photo, crops: shapeCropsOf(placed, set) } as CropResult<E>);
+        onDone({ kind: "crops", file: kept, crops: shapeCropsOf(placed, set) } as CropResult<E>);
       }
-    } catch (err) {
-      toast.error("Could not use that photo", { description: err instanceof Error ? err.message : "Please try again." });
-    } finally {
-      preparing.current = false;
-      setBusy(false);
-    }
+    });
   };
   const held = pending || busy;
   // Skip goes through the same guard: it does nothing while a confirm is preparing.
@@ -303,19 +343,7 @@ function SquareLayout({ entry, shape, src, frames, ready, pending, measured, cha
       <DialogOverlay className={SHEET_OVERLAY} />
       <DialogPrimitive.Content aria-describedby={undefined} className={`${SHEET_CONTENT} sm:w-[640px]`}>
         <SheetGrabber />
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <DialogTitle className="text-[20px] font-bold leading-snug">{entry.words.title}</DialogTitle>
-            {queue && <QueueLine queue={queue} />}
-          </div>
-          <DialogClose
-            aria-label="Close"
-            disabled={pending}
-            className="-mr-2 flex h-8 w-8 items-center justify-center rounded-full text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-          >
-            <X aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-          </DialogClose>
-        </div>
+        <SquareHead title={entry.words.title} queue={queue} pending={pending} />
 
         <div className="mt-6 grid gap-6 sm:grid-cols-[360px_1fr]">
           <div
@@ -363,21 +391,47 @@ function SquareLayout({ entry, shape, src, frames, ready, pending, measured, cha
         )}
         {entry.words.note && <Note text={entry.words.note} />}
 
-        <div className={SHEET_BUTTONS}>
-          <DialogClose disabled={pending} className={SHEET_CANCEL}>
-            Cancel
-          </DialogClose>
-          {queue && (
-            <button type="button" onClick={queue.onSkip} disabled={pending} className={SHEET_CANCEL}>
-              Skip this photo
-            </button>
-          )}
-          <button type="button" onClick={done} disabled={pending || !ready} className={sheetConfirm(false)}>
-            {entry.words.confirm}
-          </button>
-        </div>
+        <SquareButtons confirm={entry.words.confirm} queue={queue} pending={pending} ready={ready} done={done} />
       </DialogPrimitive.Content>
     </>
+  );
+}
+
+/** The square sheet's title row: the title, the place in a pick of several, and Close. */
+function SquareHead({ title, queue, pending }: { title: string; queue?: CropQueuePlace; pending: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div>
+        <DialogTitle className="text-[20px] font-bold leading-snug">{title}</DialogTitle>
+        {queue && <QueueLine queue={queue} />}
+      </div>
+      <DialogClose
+        aria-label="Close"
+        disabled={pending}
+        className="-mr-2 flex h-8 w-8 items-center justify-center rounded-full text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+      >
+        <X aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+      </DialogClose>
+    </div>
+  );
+}
+
+/** The square sheet's buttons: Cancel, Skip in a pick of several, and the place's confirm. */
+function SquareButtons({ confirm, queue, pending, ready, done }: { confirm: string; queue?: CropQueuePlace; pending: boolean; ready: boolean; done: () => void }) {
+  return (
+    <div className={SHEET_BUTTONS}>
+      <DialogClose disabled={pending} className={SHEET_CANCEL}>
+        Cancel
+      </DialogClose>
+      {queue && (
+        <button type="button" onClick={queue.onSkip} disabled={pending} className={SHEET_CANCEL}>
+          Skip this photo
+        </button>
+      )}
+      <button type="button" onClick={done} disabled={pending || !ready} className={sheetConfirm(false)}>
+        {confirm}
+      </button>
+    </div>
   );
 }
 
@@ -523,6 +577,163 @@ function ShapeFrame({
         <Move aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
         Drag to move
       </span>
+    </div>
+  );
+}
+
+/** The free stage's room around the photo, so the handles on its edges stay on the stage. */
+const FREE_PAD = 16;
+
+/** Where each handle sits on the frame and the cursor it shows. */
+const HANDLE_AT: Readonly<Record<FreeHandle, string>> = {
+  nw: "-left-1.5 -top-1.5 cursor-nwse-resize",
+  n: "-top-1.5 left-1/2 -translate-x-1/2 cursor-ns-resize",
+  ne: "-right-1.5 -top-1.5 cursor-nesw-resize",
+  e: "-right-1.5 top-1/2 -translate-y-1/2 cursor-ew-resize",
+  se: "-bottom-1.5 -right-1.5 cursor-nwse-resize",
+  s: "-bottom-1.5 left-1/2 -translate-x-1/2 cursor-ns-resize",
+  sw: "-bottom-1.5 -left-1.5 cursor-nesw-resize",
+  w: "-left-1.5 top-1/2 -translate-y-1/2 cursor-ew-resize",
+};
+
+/** A free frame's dialog: the photo whole and still on the square sheet, one frame over it the editor resizes and moves. */
+function FreeCropDialog<E extends FreeEntry>({ entry, file, pending, onCancel, queue, onDone }: CropDialogProps<E>) {
+  const [shape] = entry.shapes;
+  const { src, natural, image } = useLoadedPhoto(file);
+  const [crop, setCrop] = useState<FreeCrop | null>(null);
+  const { run, busy, preparing } = usePreparing();
+
+  // A new photo opens with the frame round all of it.
+  useEffect(() => setCrop(natural === null ? null : wholeFreeCrop(natural.width, natural.height)), [natural]);
+
+  const cut = crop === null ? null : freeCutOf(shape, crop);
+  const done = () => {
+    const photo = image.current;
+    if (photo === null || cut === null || pending) return;
+    void run(async () => {
+      const logo = await encoded(photo, cut, entry.output, shape.name);
+      if (logo.size > entry.maxBytes) return void toast.error("Could not use that image", { description: `The cropped file must be under ${bytesText(entry.maxBytes)}.` });
+      onDone({ kind: "cut", files: { [shape.name]: logo } } as CropResult<E>);
+    });
+  };
+  const held = pending || busy;
+  const skip = () => {
+    if (!held && !preparing.current) queue?.onSkip();
+  };
+  const place = queue !== undefined && queue.count > 1 ? { ...queue, onSkip: skip } : undefined;
+
+  return (
+    <Dialog open={file !== null} onOpenChange={(open) => !open && !held && !preparing.current && onCancel()}>
+      <DialogPortal>
+        <DialogOverlay className={SHEET_OVERLAY} />
+        <DialogPrimitive.Content {...(entry.words.description ? {} : { "aria-describedby": undefined })} className={`${SHEET_CONTENT} sm:w-[640px]`}>
+          <SheetGrabber />
+          <SquareHead title={entry.words.title} queue={place} pending={held} />
+          {entry.words.description && (
+            <DialogPrimitive.Description className="mt-1 text-[14px] leading-relaxed text-text-2">{entry.words.description}</DialogPrimitive.Description>
+          )}
+
+          <div className="mt-6 grid gap-6 sm:grid-cols-[360px_1fr]">
+            <FreeStage src={src} crop={crop} label={`${shape.label} crop, for the ${shape.use}`} onCrop={setCrop} />
+            <div className="flex flex-row items-center gap-6 sm:flex-col sm:items-start sm:gap-4">
+              <div>
+                <p className={EYEBROW}>Size</p>
+                <p className="mt-1.5 font-mono text-[13px] text-text-2">{cut === null ? "–" : `${cut.width} × ${cut.height} px`}</p>
+              </div>
+              <p className="text-[13px] leading-relaxed text-prt-muted">Drag an edge or corner to trim. Shift and the arrow keys resize it.</p>
+            </div>
+          </div>
+
+          {entry.words.note && <Note text={entry.words.note} />}
+
+          <SquareButtons confirm={entry.words.confirm} queue={place} pending={held} ready={cut !== null} done={done} />
+        </DialogPrimitive.Content>
+      </DialogPortal>
+    </Dialog>
+  );
+}
+
+/**
+ * The free frame's stage: the photo contained in a square, the outside of the
+ * frame dimmed. A drag on a handle resizes the frame from that edge or corner
+ * and a drag inside moves it, each measured from where the drag began, so a
+ * pointer pulled past the photo's edge and back finds the frame where it left
+ * it. The arrow keys move it; with Shift they move its bottom right corner.
+ */
+function FreeStage({ src, crop, label, onCrop }: { src: string | null; crop: FreeCrop | null; label: string; onCrop: (crop: FreeCrop) => void }) {
+  const [stage, setStage] = useState(0);
+  const measure = useMeasuredWidth(setStage);
+  const drag = useRef<{ readonly id: number; readonly handle: FreeHandle | "move"; readonly x: number; readonly y: number; readonly from: FreeCrop } | null>(null);
+  const room = Math.max(0, stage - 2 * FREE_PAD);
+  const scale = crop === null ? 0 : Math.min(room / crop.width, room / crop.height);
+  const shown = crop === null ? null : { width: crop.width * scale, height: crop.height * scale };
+
+  const dragged = (handle: FreeHandle | "move", from: FreeCrop, dx: number, dy: number) =>
+    handle === "move" ? moveFreeCrop(from, dx, dy) : resizeFreeCrop(from, handle, dx, dy);
+
+  const end = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (drag.current?.id === e.pointerId) drag.current = null;
+  };
+
+  return (
+    <div
+      ref={measure}
+      role="application"
+      tabIndex={0}
+      aria-label={`${label}. Drag an edge or corner to trim it, or drag inside to move it; the arrow keys move it, with Shift they resize it.`}
+      onPointerDown={(e) => {
+        const handle = (e.target as HTMLElement).closest<HTMLElement>("[data-handle]")?.dataset.handle as FreeHandle | "move" | undefined;
+        if (crop === null || scale === 0 || handle === undefined || drag.current !== null) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.current = { id: e.pointerId, handle, x: e.clientX, y: e.clientY, from: crop };
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current;
+        if (d === null || d.id !== e.pointerId) return;
+        onCrop(dragged(d.handle, d.from, (e.clientX - d.x) / scale, (e.clientY - d.y) / scale));
+      }}
+      onPointerUp={end}
+      onPointerCancel={end}
+      onKeyDown={(e) => {
+        const by: Readonly<Record<string, readonly [number, number]>> = {
+          ArrowLeft: [-KEY_STEP, 0],
+          ArrowRight: [KEY_STEP, 0],
+          ArrowUp: [0, -KEY_STEP],
+          ArrowDown: [0, KEY_STEP],
+        };
+        const step = by[e.key];
+        if (step === undefined || crop === null || scale === 0) return;
+        e.preventDefault();
+        onCrop(dragged(e.shiftKey ? "se" : "move", crop, step[0] / scale, step[1] / scale));
+      }}
+      className={`relative aspect-square w-full touch-none select-none overflow-hidden rounded-xl bg-ground ${CONTENT_FOCUS}`}
+    >
+      {src !== null && crop !== null && shown !== null && (
+        <div className="absolute" style={{ left: (stage - shown.width) / 2, top: (stage - shown.height) / 2, width: shown.width, height: shown.height }}>
+          {/* A blob: URL of the editor's own file; next/image cannot take one. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt="" draggable={false} className="pointer-events-none absolute inset-0 h-full w-full select-none" />
+          {/* The frame: dimmed outside, its edge, its grid of thirds and the eight handles that resize it. */}
+          <div
+            data-handle="move"
+            className="absolute cursor-move border-2 border-prt-text shadow-[0_0_0_9999px_rgba(10,10,10,0.6)]"
+            style={{ left: crop.sx * scale, top: crop.sy * scale, width: crop.sw * scale, height: crop.sh * scale }}
+          >
+            <span aria-hidden className="pointer-events-none absolute inset-y-0 left-1/3 w-px bg-prt-text/40" />
+            <span aria-hidden className="pointer-events-none absolute inset-y-0 left-2/3 w-px bg-prt-text/40" />
+            <span aria-hidden className="pointer-events-none absolute inset-x-0 top-1/3 h-px bg-prt-text/40" />
+            <span aria-hidden className="pointer-events-none absolute inset-x-0 top-2/3 h-px bg-prt-text/40" />
+            {FREE_HANDLES.map((handle) => (
+              <span
+                key={handle}
+                aria-hidden
+                data-handle={handle}
+                className={`absolute h-3 w-3 rounded-[2px] bg-prt-text before:absolute before:-inset-2 before:content-[''] ${HANDLE_AT[handle]}`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -44,6 +44,10 @@ export type LaunchPhotoShape = keyof typeof LAUNCH_PHOTO;
 export const PROJECT_PHOTO = { phone: { width: 350, height: 220 }, desktop: { width: 1312, height: 620 } } as const satisfies PhotoPlace<string>;
 export type ProjectPhotoShape = keyof typeof PROJECT_PHOTO;
 
+/** The Team page group photo (components/about/core-members.tsx, issue #971): its box is 350:210 on phones and 1312:520 from md. */
+export const GROUP_PHOTO = { phone: { width: 350, height: 210 }, desktop: { width: 1312, height: 520 } } as const satisfies PhotoPlace<string>;
+export type GroupPhotoShape = keyof typeof GROUP_PHOTO;
+
 /** The crops an outreach post photo may carry. */
 export type PostPhotoCrops = ShapeCrops<PostPhotoShape>;
 /** The crops a gallery photo may carry. */
@@ -52,6 +56,8 @@ export type GalleryPhotoCrops = ShapeCrops<GalleryPhotoShape>;
 export type LaunchPhotoCrops = ShapeCrops<LaunchPhotoShape>;
 /** The crops a project page's photo may carry. */
 export type ProjectPhotoCrops = ShapeCrops<ProjectPhotoShape>;
+/** The crops the Team page group photo may carry. */
+export type GroupPhotoCrops = ShapeCrops<GroupPhotoShape>;
 
 /** A new photo's `crops` key as it is kept: absent when the editor framed no shape, so it reads as a photo with none. */
 export function cropsKey<N extends string>(crops: ShapeCrops<N>): { readonly crops?: ShapeCrops<N> } {

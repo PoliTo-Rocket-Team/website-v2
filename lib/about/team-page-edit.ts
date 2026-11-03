@@ -1,4 +1,5 @@
 import { textLength } from "@/lib/content/text";
+import { cropsKey, type GroupPhotoCrops } from "@/lib/photo-crops";
 import {
   isLinkedinHandle,
   TEAM_PAGE_FIGURE_LABEL_MAX,
@@ -283,9 +284,20 @@ export function groupPhotoDescriptions(photo: GroupPhoto, original: GroupPhoto):
   return { [original.src]: original.alt, [photo.src]: photo.alt };
 }
 
-/** The photo `src` with its own description: the one typed for it, else none. */
-export function describedGroupPhoto(src: PersonPhoto, descriptions: GroupPhotoDescriptions): GroupPhoto {
-  return { src, alt: descriptions[src] ?? "" };
+/**
+ * Each uploaded group photo's crops, by photo file (issue #971): picking
+ * another photo and back keeps the crops set when it was uploaded.
+ */
+export type GroupPhotoCropsBySrc = Readonly<Record<string, GroupPhotoCrops>>;
+
+/** The crops the box opens on: the shown photo's own, when it has any. */
+export function groupPhotoCropsOf(photo: GroupPhoto): GroupPhotoCropsBySrc {
+  return photo.crops === undefined ? {} : { [photo.src]: photo.crops };
+}
+
+/** The photo `src` with its own description (the one typed for it, else none) and its own crops (none for a photo never cropped). */
+export function describedGroupPhoto(src: PersonPhoto, descriptions: GroupPhotoDescriptions, crops: GroupPhotoCropsBySrc = {}): GroupPhoto {
+  return { src, alt: descriptions[src] ?? "", ...cropsKey(crops[src] ?? {}) };
 }
 
 /**
@@ -298,11 +310,12 @@ export function groupPhotoRow(site: readonly PhotoChoice[], uploads: readonly Pe
   return uniqueBySrc<PersonPhoto>([...uploaded, ...site]);
 }
 
-/** A group photo put back as the record has it is no edit. */
+/** A group photo put back as the record has it is no edit; a photo's crops go with it (issue #971). */
 export function withGroupPhoto(base: TeamPage, text: TeamPageText, photo: GroupPhoto): TeamPageText {
   const original = base.coreMembers.groupPhoto;
-  const same = photo.src === original.src && photo.alt.trim() === original.alt;
-  return { ...text, groupPhoto: same ? null : { src: photo.src, alt: photo.alt.trim() } };
+  const crops = cropsKey(photo.crops ?? {});
+  const same = photo.src === original.src && photo.alt.trim() === original.alt && crops.crops === undefined && original.crops === undefined;
+  return { ...text, groupPhoto: same ? null : { src: photo.src, alt: photo.alt.trim(), ...crops } };
 }
 
 /** The intro as typed in place; blank or as the record has it is no edit. */

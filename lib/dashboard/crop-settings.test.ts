@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BACKGROUND_CROP_MAX_BYTES, BACKGROUND_FRAMES } from "@/lib/project-content/record";
 import { PHOTO_MAX_BYTES } from "@/lib/outreach-photos";
-import { GALLERY_PHOTO, LAUNCH_PHOTO, POST_PHOTO, PROJECT_PHOTO } from "@/lib/photo-crops";
+import { GALLERY_PHOTO, GROUP_PHOTO, LAUNCH_PHOTO, POST_PHOTO, PROJECT_PHOTO } from "@/lib/photo-crops";
+import { LOGO_MAX_BYTES } from "@/lib/partners";
 import {
   CROP_SETTINGS,
   cutOf,
+  freeCutOf,
+  isFreeEntry,
   shapeCropsOf,
   type CropResult,
   type CropsEntry,
@@ -15,7 +18,7 @@ import {
   type FreeShape,
 } from "./crop-settings";
 import { MAX_MEMBER_PHOTO_BYTES } from "./division-members";
-import { centredFrameCrop, frameIn, moveFrameCrop, zoomFrameCrop } from "./photo-crop";
+import { centredFrameCrop, frameIn, moveFrameCrop, resizeFreeCrop, wholeFreeCrop, zoomFrameCrop } from "./photo-crop";
 import { MAX_PHOTO_BYTES, PHOTO_TYPES } from "./self";
 
 // The crop settings (epic #964, issue #968): each place's entry keeps the
@@ -52,13 +55,14 @@ test("a project background is Tall 9:16 and Wide 2:1 JPEG files at the presets' 
   for (const shape of entry.shapes) assert.equal(shape.aspect.width / shape.aspect.height, shape.size.width / shape.size.height, shape.name);
 });
 
-test("outreach and project photos, gallery photos and launch covers are kept once, cropped for each shape their public box is shown at, under the photo limit", () => {
+test("outreach and project photos, gallery photos, launch covers and the Team page group photo are kept once, cropped for each shape their public box is shown at, under the photo limit", () => {
   const places = [
     [CROP_SETTINGS.outreachPhoto, POST_PHOTO],
     [CROP_SETTINGS.outreachGallery, GALLERY_PHOTO],
     [CROP_SETTINGS.launchPhoto, LAUNCH_PHOTO],
     [CROP_SETTINGS.projectPhoto, PROJECT_PHOTO],
     [CROP_SETTINGS.projectGallery, GALLERY_PHOTO],
+    [CROP_SETTINGS.groupPhoto, GROUP_PHOTO],
   ] as const;
   for (const [entry, place] of places) {
     assert.equal(entry.kind, "crops");
@@ -68,6 +72,24 @@ test("outreach and project photos, gallery photos and launch covers are kept onc
     assert.equal(entry.maxBytes, PHOTO_MAX_BYTES);
     assert.deepEqual(Object.fromEntries(entry.shapes.map((s) => [s.name, s.aspect])), place);
   }
+});
+
+test("a partner logo is one free frame cut to a PNG, under the logo limit, its long side capped and never enlarged", () => {
+  const entry = CROP_SETTINGS.partnerLogo;
+  assert.equal(entry.kind, "cut");
+  assert.deepEqual(entry.output, { type: "image/png" });
+  assert.equal(entry.maxBytes, LOGO_MAX_BYTES);
+  assert.deepEqual(entry.accept, ["image/png"]);
+  assert.ok(isFreeEntry(entry));
+  const [shape] = entry.shapes;
+  // A huge logo trimmed to its middle half: the file keeps the frame's aspect at the capped long side.
+  const huge = freeCutOf(shape, resizeFreeCrop(resizeFreeCrop(wholeFreeCrop(8000, 2000), "nw", 2000, 500), "se", -2000, -500));
+  assert.deepEqual(huge, { sx: 2000, sy: 500, sw: 4000, sh: 1000, width: shape.maxSide, height: shape.maxSide / 4 });
+  // A small logo keeps its own pixels.
+  const small = freeCutOf(shape, wholeFreeCrop(300, 120));
+  assert.deepEqual([small.width, small.height], [300, 120]);
+  // Every fixed-shape place draws the moving-photo stage.
+  for (const [place, other] of Object.entries(CROP_SETTINGS)) if (place !== "partnerLogo") assert.equal(isFreeEntry(other), false, place);
 });
 
 test("one shape: a square photo cuts to at most 800 px, smaller only when the photo gives fewer pixels", () => {
