@@ -11,7 +11,17 @@ import { PHONE_PLACEHOLDER } from "@/lib/phone";
 import { addMember, changeDivisionPeople, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
 import type { RemovedLeadOutcome } from "@/lib/dashboard/division-edit";
 import type { AdvisorScope } from "@/lib/dashboard/hand-over";
-import { advisorChange, leadStepDown, removalPermission, roleNow, roleOptions, sameRole, stepDownPermission, type RoleChoice } from "@/lib/dashboard/member-actions";
+import {
+  advisorChange,
+  advisorRoleSave,
+  leadStepDown,
+  removalPermission,
+  roleNow,
+  roleOptions,
+  sameRole,
+  stepDownPermission,
+  type RoleChoice,
+} from "@/lib/dashboard/member-actions";
 import { andList } from "@/lib/dashboard/team-structure";
 import { cancelAliasRequest, removeTeamAddress, requestAlias, requestTeamAddress } from "@/app/dashboard/actions";
 import { ALIAS_FORM_HINT, aliasPrefill, checkAliasAddress, personalRequestChoice, TEAM_DOMAIN, type MemberAlias } from "@/lib/dashboard/alias-request";
@@ -1186,11 +1196,17 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
   // an advisor pick is held here, by place, and Save makes them an advisor at its scope (#900).
   const [advisorPicks, setAdvisorPicks] = useState<Readonly<Record<string, AdvisorScope>>>({});
   const dropAdvisorPick = (key: string) => setAdvisorPicks(({ [key]: _dropped, ...rest }) => rest);
+  // An advisor's row is no place to move (`movablePlacesOf`), so its pill's pick is held here, by division: Member or
+  // Lead again, or another scope (issue #972); Save writes it through `advisorRoleSave`.
+  const [advisorRoles, setAdvisorRoles] = useState<Readonly<Record<number, RoleChoice>>>({});
+  const pickAdvisorRole = (role: DivisionRoleChange, choice: RoleChoice) =>
+    setAdvisorRoles(({ [role.divisionId]: _dropped, ...rest }) => (sameRole(choice, roleNow(role)) ? rest : { ...rest, [role.divisionId]: choice }));
   /** What a division row's pill shows: the advisor picked, their lead or member choice, or, with no place to change, what they are now. */
   const pillOf = (role: DivisionRoleChange, place: MovablePlace | null): RoleChoice => {
-    const scope = place === null ? undefined : advisorPicks[placeKey(place)];
+    if (place === null) return advisorRoles[role.divisionId] ?? roleNow(role);
+    const scope = advisorPicks[placeKey(place)];
     if (scope !== undefined) return { kind: "advisor", scope };
-    const as = place === null ? null : choiceFor(place).as;
+    const as = choiceFor(place).as;
     return as === "member" || as === "lead" ? { kind: as } : roleNow(role);
   };
   const pickRole = (place: MovablePlace, choice: RoleChoice) => {
@@ -1367,6 +1383,18 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
           }
         }
       }
+      for (const role of person === null ? [] : (position?.roles ?? [])) {
+        // An advisor's pill (issue #972): Member or Lead again through the lead or member switch, another scope through
+        // Edit division's people change; each checked on the server.
+        const picked = advisorRoles[role.divisionId];
+        const write = picked === undefined || !role.advisor ? null : advisorRoleSave(person!.id, picked);
+        if (write === null) continue;
+        const changed = write.kind === "role" ? await saveMember(person!.id, role.divisionId, write.role) : await changeDivisionPeople(role.divisionId, write.change);
+        if (!changed.ok) {
+          setRefusal(`Could not change their role in ${role.short}. ${changed.error}`);
+          return;
+        }
+      }
       for (const division of person === null ? [] : added) {
         // "+ Add division": Add member's own write for someone on the team, with the row's title.
         const joined = await addMember({ kind: "member", divisionId: division.id, personId: person!.id, title: division.title });
@@ -1480,7 +1508,10 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
               options={roleOptions(role)}
               value={value}
               staged={!sameRole(value, roleNow(role))}
-              onChange={(choice) => place !== null && pickRole(place, choice)}
+              onChange={(choice) => {
+                if (place !== null) pickRole(place, choice);
+                else if (role.advisor) pickAdvisorRole(role, choice);
+              }}
             />
           )
         }

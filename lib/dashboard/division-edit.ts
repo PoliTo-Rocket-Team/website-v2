@@ -501,9 +501,32 @@ export function divisionClosing(divisionId: number, held: readonly DivisionRow[]
   return { people: peopleInDivision(divisionId, held.filter((r) => r.type !== "advisor")), advisors };
 }
 
+/**
+ * What Edit details' Member or Lead writes in one division (issues #584,
+ * #972): their lead or member rows there change type; for someone whose only
+ * role there is an Advisor role, that role ends and a new lead or member role
+ * starts there today, so an advisor becomes a member or a lead again. None
+ * when they hold no role there.
+ */
+export type RoleSwitch =
+  | { readonly kind: "retype"; readonly rows: readonly [number, ...number[]] }
+  | { readonly kind: "from-advisor"; readonly ending: readonly [number, ...number[]] }
+  | { readonly kind: "none" };
+
+/** The switch for `held`, someone's active rows kept on one division (`RoleSwitch`). */
+export function roleSwitchOf(held: readonly Pick<DivisionRow, "id" | "type">[]): RoleSwitch {
+  const [first, ...rest] = held.filter((r) => r.type === "lead" || r.type === "core").map((r) => r.id);
+  if (first !== undefined) return { kind: "retype", rows: [first, ...rest] };
+  const [advisor, ...others] = held.filter((r) => r.type === "advisor").map((r) => r.id);
+  return advisor === undefined ? { kind: "none" } : { kind: "from-advisor", ending: [advisor, ...others] };
+}
+
 /** The rows of the division a plan's writes end or change, by row id. */
 export type DivisionRowWrites = {
-  /** Rows that end: the old leads who leave this division, and the lead or member rows of people who become advisors (an Advisor row they hold here stays). */
+  /**
+   * Rows that end: the old leads who leave this division, the lead or member rows of people who become advisors (an
+   * Advisor row they hold here stays), and the Advisor row of someone who advises only here and now advises elsewhere.
+   */
   readonly end: readonly number[];
   /** Rows that become a lead's. */
   readonly toLead: readonly number[];
@@ -523,8 +546,13 @@ export function divisionRowWrites(plan: DivisionPlan, divisionId: number, held: 
   const of = (people: readonly number[]) => rows.filter((r) => people.includes(r.memberId));
   // Someone who becomes an advisor loses the lead or member role here, never an Advisor role they already hold here (issues #900, #901).
   const advising = of(plan.advise.map((a) => a.memberId)).filter((r) => r.type !== "advisor");
+  // An advisor here whose only role here is that Advisor role, and who now advises elsewhere, moves it there
+  // (issue #972, Edit details' role pill): the row here ends, and `steppingDownWrites` starts the one at the new place.
+  const onlyAdvises = (memberId: number) => rows.every((r) => r.memberId !== memberId || r.type === "advisor");
+  const elsewhere = plan.advise.filter((a) => !(a.step.place.kind === "division" && a.step.place.divisionId === divisionId) && onlyAdvises(a.memberId));
+  const rescoped = of(elsewhere.map((a) => a.memberId));
   return {
-    end: [...of(plan.leaveDivision), ...advising].map((r) => r.id),
+    end: [...of(plan.leaveDivision), ...advising, ...rescoped].map((r) => r.id),
     toLead: of(plan.promote).map((r) => r.id),
     toMember: of(plan.demote)
       .filter((r) => r.type === "lead")

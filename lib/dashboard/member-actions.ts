@@ -1,7 +1,7 @@
 import { ONE_LEAD_NEEDED, type PeopleChange, type RemovedLeadOutcome } from "./division-edit";
 import type { DivisionRoleChange, MemberPosition } from "./division-members";
 import { ADVISOR_SCOPES, type AdvisorScope } from "./hand-over";
-import type { Permission, Removal } from "./team";
+import type { EditableRole, Permission, Removal } from "./team";
 import { andList } from "./team-structure";
 
 // The member actions a ⋯ menu offers (issue #901; Owner decision,
@@ -54,13 +54,6 @@ export function removalPermission(removal: Removal, short: string): Permission |
   }
 }
 
-export const ADVISORS_LEAD_NOTHING = "An advisor leads nothing";
-
-/** "Already an advisor in Mission Analysis": why an advisor's other roles there are locked. */
-export function alreadyAdvisorReason(short: string): string {
-  return `Already an advisor in ${short}`;
-}
-
 /**
  * Whether they may stop leading one division: locked for its only lead, since
  * a division keeps at least one (`planDivisionSave`); open for anyone else.
@@ -71,12 +64,12 @@ export function stepDownPermission(role: Pick<DivisionRoleChange, "role" | "lead
 }
 
 /**
- * Becoming an advisor in one division: locked for someone who advises there
- * already, where the viewer may not change who leads it, and for its only
- * lead (`stepDownPermission`); else open.
+ * A lead or member becoming an advisor in one division: locked where the
+ * viewer may not change who leads it, and for its only lead
+ * (`stepDownPermission`); else open. An advisor there already picks another
+ * scope under `roleOptions`' own rule.
  */
-export function becomeAdvisorPermission(role: DivisionRoleChange): Permission {
-  if (role.advisor) return locked(alreadyAdvisorReason(role.short));
+export function becomeAdvisorPermission(role: Pick<DivisionRoleChange, "role" | "leads" | "change">): Permission {
   if (!role.change.allowed) return role.change;
   return stepDownPermission(role);
 }
@@ -144,10 +137,12 @@ export const ADVISOR_SCOPE_LABELS: Readonly<Record<AdvisorScope, string>> = {
 /**
  * Every item of one division row's role pill (board 103c), each open or
  * locked with its reason by the rules the server checks: what they are now is
- * always open; an advisor stays one (an advisor leads nothing); where the
- * viewer may not change who leads the division, every other choice carries
- * that reason; a lead may become a member or an advisor only while another
- * lead stays (`ONE_LEAD_NEEDED`). Lead names the division's other leads.
+ * always open; where the viewer may not change who leads the division, every
+ * other choice carries that reason; a lead may become a member or an advisor
+ * only while another lead stays (`ONE_LEAD_NEEDED`). An advisor there may
+ * become a member or a lead again, or advise at another scope (issue #972;
+ * Owner decision, 2026-11-03): no rule but the viewer's reach locks those.
+ * Lead names the division's other leads.
  */
 export function roleOptions(role: DivisionRoleChange): readonly RoleOption[] {
   const now = roleNow(role);
@@ -157,12 +152,36 @@ export function roleOptions(role: DivisionRoleChange): readonly RoleOption[] {
     permission: sameRole(choice, now) ? OPEN : permission,
     detail,
   });
-  const advisors = ADVISOR_SCOPES.map((scope) => option({ kind: "advisor", scope }, becomeAdvisorPermission(role)));
   if (role.advisor) {
-    return [option({ kind: "member" }, locked(alreadyAdvisorReason(role.short))), option({ kind: "lead" }, locked(ADVISORS_LEAD_NOTHING), others), ...advisors];
+    const advisors = ADVISOR_SCOPES.map((scope) => option({ kind: "advisor", scope }, role.change));
+    return [option({ kind: "member" }, role.change), option({ kind: "lead" }, role.change, others), ...advisors];
   }
+  const advisors = ADVISOR_SCOPES.map((scope) => option({ kind: "advisor", scope }, becomeAdvisorPermission(role)));
   const change = (permission: Permission) => (role.change.allowed ? permission : role.change);
   return [option({ kind: "member" }, change(stepDownPermission(role))), option({ kind: "lead" }, change(OPEN), others), ...advisors];
+}
+
+/**
+ * What Save writes for an advisor's role pill pick in one division (issue
+ * #972), through the writes each choice already has: Member or Lead is the
+ * lead or member switch (`saveMember`, which ends their Advisor role there
+ * and starts the new one); another scope is Edit division's people change
+ * (`changeDivisionPeople`), which moves their Advisor role there. Null for
+ * what they are now: nothing to save.
+ */
+export type AdvisorRoleSave =
+  | { readonly kind: "role"; readonly role: EditableRole }
+  | { readonly kind: "advise"; readonly change: PeopleChange };
+
+export function advisorRoleSave(personId: number, choice: RoleChoice): AdvisorRoleSave | null {
+  switch (choice.kind) {
+    case "member":
+      return { kind: "role", role: "member" };
+    case "lead":
+      return { kind: "role", role: "division-lead" };
+    case "advisor":
+      return choice.scope === "division" ? null : { kind: "advise", change: advisorChange(personId, { role: "member" }, choice.scope) };
+  }
 }
 
 /**

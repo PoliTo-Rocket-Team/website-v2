@@ -118,6 +118,7 @@ import {
   divisionRowWrites,
   peopleSaveOf,
   planDivisionSave,
+  roleSwitchOf,
   searchTeam,
   type DivisionPlan,
   type DivisionRow,
@@ -706,7 +707,9 @@ const today = () => new Date().toISOString().slice(0, 10);
  * Only for someone the viewer may edit, in a division they reach, and only
  * where `mayChangeDivision` lets them change its leads: a division lead only in
  * a division they lead by role (issue #594). The panel offers the switch by
- * the same rule (`positionOf`).
+ * the same rule (`positionOf`). An advisor there becomes a member or a lead
+ * again from Edit details' role pill (issue #972): their Advisor role there
+ * ends and the new role starts today, untitled (`roleSwitchOf`).
  */
 async function saveMember(identity: DashboardIdentity, personId: number, edit: MemberEdit): Promise<boolean> {
   const { org } = await readTeamSnapshot();
@@ -714,15 +717,28 @@ async function saveMember(identity: DashboardIdentity, personId: number, edit: M
   const active = await rolesTheViewerChanges(identity, actor, personId);
   if (actor === null || active === null) return false;
   if (!org.divisions.some((d) => d.id === edit.divisionId) || !mayChangeDivision(actor, edit.divisionId, org).allowed) return false;
-  const ids = active.filter((r) => r.division_id === edit.divisionId && (r.type === "lead" || r.type === "core")).map((r) => r.id);
-  if (ids.length === 0) return false;
-  await runAuditQuery((db) =>
-    db
-      .update(roles)
-      .set({ type: ROLE_TYPE[edit.role] })
-      .where(and(inArray(roles.id, ids), isNull(roles.leavedAt))),
-  );
-  return done();
+  const change = roleSwitchOf(active.filter((r) => r.division_id === edit.divisionId));
+  const type = ROLE_TYPE[edit.role];
+  switch (change.kind) {
+    case "none":
+      return false;
+    case "retype":
+      await runAuditQuery((db) =>
+        db
+          .update(roles)
+          .set({ type })
+          .where(and(inArray(roles.id, [...change.rows]), isNull(roles.leavedAt))),
+      );
+      return done();
+    case "from-advisor": {
+      const on = today();
+      await runAuditBatch((db) => [
+        db.update(roles).set({ leavedAt: on }).where(and(inArray(roles.id, [...change.ending]), isNull(roles.leavedAt))),
+        db.insert(roles).values({ memberId: personId, divisionId: edit.divisionId, title: "", type, startedAt: on }),
+      ]);
+      return done();
+    }
+  }
 }
 
 /**

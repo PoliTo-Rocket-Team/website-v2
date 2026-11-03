@@ -9,7 +9,7 @@ import { roles, scopes } from "@/db/schema";
 import type { DashboardData } from "./data";
 import type { DivisionMembers, DivisionPerson } from "./division-members";
 import { divisionActionsOf } from "./members-view";
-import { advisorChange, leadStepDown } from "./member-actions";
+import { advisorChange, advisorRoleSave, leadStepDown } from "./member-actions";
 import { openDashboard } from "./open";
 import { addRows, resetDatabase, tableRows } from "./access-matrix/test-database";
 import { accountOf, EXTRA, IDS, seedFixture } from "./access-matrix/fixture";
@@ -136,6 +136,46 @@ describe("each member action saves through its place's write", () => {
     assert.deepEqual(await roleIn(MOVER, DM), []);
     assert.deepEqual(await roleIn(MOVER, EXTRA.testing), ["core"]);
   });
+
+  // An advisor's pill (issue #972; Owner decision, 2026-11-03): back to Member or Lead, or another scope.
+  const asAdvisor = async () => {
+    assert.deepEqual(await teamActions.changeDivisionPeople(DM, advisorChange(MEMBER, { role: "member" }, "division")), { ok: true });
+    assert.deepEqual(await roleIn(MEMBER, DM), ["advisor"]);
+  };
+
+  for (const [pick, type] of [
+    ["member", "core"],
+    ["lead", "lead"],
+  ] as const) {
+    test(`an advisor's pill back to ${pick}: their Advisor role there ends and a ${pick} role starts, untitled`, async () => {
+      await asAdvisor();
+      const write = advisorRoleSave(MEMBER, { kind: pick });
+      assert.ok(write?.kind === "role");
+      assert.deepEqual(await teamActions.saveMember(MEMBER, DM, write.role), { ok: true });
+      const here = (await activeOf(MEMBER)).filter((r) => r.divisionId === DM);
+      assert.deepEqual(
+        here.map((r) => [r.type, r.title]),
+        [[type, ""]],
+      );
+      assert.equal((await activeOf(MEMBER)).filter((r) => r.type === "advisor").length, 0, "no Advisor role is left");
+    });
+  }
+
+  for (const [scope, at] of [
+    ["department", (r: Record<string, unknown>) => r.deptId === STRUCTURES && r.divisionId == null],
+    ["team", (r: Record<string, unknown>) => r.deptId == null && r.divisionId == null],
+  ] as const) {
+    test(`an advisor's pill to ${scope}: their one Advisor role moves there`, async () => {
+      await asAdvisor();
+      const write = advisorRoleSave(MEMBER, { kind: "advisor", scope });
+      assert.ok(write?.kind === "advise");
+      assert.deepEqual(await teamActions.changeDivisionPeople(DM, write.change), { ok: true });
+      const advisor = (await activeOf(MEMBER)).filter((r) => r.type === "advisor");
+      assert.equal(advisor.length, 1, "one Advisor role");
+      assert.ok(at(advisor[0]), `it sits at the ${scope}`);
+      assert.deepEqual(await roleIn(MEMBER, DM), [], "nothing left in the division");
+    });
+  }
 
   test("a division lead elsewhere changes nobody here", async () => {
     signInAs(accountOf("division lead").userId);
@@ -321,6 +361,28 @@ describe("the Team tree and the Members page offer the same member actions", () 
     const text = ui.text();
     assert.ok(text.includes(question), "asked once switched to member");
     for (const option of ["Stays as a member", "Stays as an advisor", "Leaves Design & Manufacturing", "Leaves the team"]) assert.ok(text.includes(option), option);
+    await ui.unmount();
+  });
+
+  test("Edit details, an advisor: every choice of the pill is open, and Save makes the pick (#972)", async () => {
+    assert.deepEqual(await teamActions.changeDivisionPeople(DM, advisorChange(MEMBER, { role: "member" }, "division")), { ok: true });
+    const page = await dmPage();
+    const actions = divisionActionsOf(personIn(page, MEMBER));
+    assert.ok(actions, "the team leader edits the advisor");
+    const { createElement } = await import("react");
+    const { EditDetailsDrawer } = await import("@/components/dashboard/member-panels");
+    let closed = false;
+    const ui = await mount(createElement(EditDetailsDrawer, { target: { kind: "person", actions, googleEmails: [] }, openedFrom: "members", onClose: () => (closed = true) }));
+    const items = await ui.open("Role in Design & Manufacturing: Advisor · this division");
+    assert.ok(items.every((m) => !m.locked), "Member, Lead and each scope are open");
+    await ui.click(items.find((m) => m.text.startsWith("Lead"))!.item);
+    await ui.settle();
+    const save = [...window.document.querySelectorAll("button")].find((b) => b.getAttribute("type") === "submit");
+    assert.ok(save, "a Save button");
+    await ui.click(save);
+    for (let i = 0; i < 50 && !closed; i++) await ui.settle(20);
+    assert.ok(closed, "Save closes the panel");
+    assert.deepEqual(await roleIn(MEMBER, DM), ["lead"], "they lead the division, no longer advise it");
     await ui.unmount();
   });
 });

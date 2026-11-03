@@ -614,13 +614,17 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
       (as Edit division allows: the department's head, the team leader, full access, and a lead of
       that division by role, #594; a Members grant never may), every other choice carries that
       reason; the division's only lead may not become a member or an advisor ("A division needs at
-      least one lead."); an advisor leads nothing and is already an advisor there.
+      least one lead."). An advisor there may become a member or a lead again, or advise at
+      another scope (Owner decision, 2026-11-03); only the editor's reach locks those choices.
     - A pick is staged and Save applies it through the write each one already has: Lead and Member
       the lead or member switch; a lead switched to Member asks the Team tree's "What happens to
       {name}?" (Stays as a member, Stays as an advisor where the editor picks, Leaves {division},
       Leaves the team), and Save makes Edit division's Remove with that outcome (#901); Advisor
       makes Edit division's save with the scope picked, so their role there and their access end
-      and they keep their other divisions (#900).
+      and they keep their other divisions (#900). For an advisor there, Member or Lead is the lead
+      or member switch: their Advisor role there ends and a member or lead role starts that day,
+      with no title. Another scope is Edit division's save with that scope: their Advisor role
+      moves there, and they hold one Advisor role.
     - The row ⋯ has Move to… (the Division and As boxes open under the row, and Save makes the
       move, #647) and Remove from this division (it names the divisions they stay in, and is locked
       with "{division} is their only division" under the rules of the ⋯ menu below).

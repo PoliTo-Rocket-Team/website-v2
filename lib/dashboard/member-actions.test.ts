@@ -4,8 +4,8 @@ import { ONE_LEAD_NEEDED } from "./division-edit";
 import type { DivisionRoleChange, MemberPosition } from "./division-members";
 import { advisingAt, advisorScopes } from "./hand-over";
 import {
-  ADVISORS_LEAD_NOTHING,
   advisorChange,
+  advisorRoleSave,
   divisionRowMenu,
   leadStepDown,
   membersRowMenu,
@@ -131,15 +131,25 @@ test("the role pill: where the viewer may not change who leads the division, eve
   for (const choice of [{ kind: "lead" } as const, ...ADVISOR_CHOICES]) assert.deepEqual(permissionOf(options, choice), LEADS_BY_HEAD);
 });
 
-test("the role pill: an advisor shows Advisor · this division, leads nothing and advises nowhere else from here", () => {
-  const advisor = role({ advisor: true });
+test("the role pill: an advisor shows Advisor · this division and may become a member or a lead again, or advise at another scope", () => {
+  const advisor = role({ advisor: true, otherLeads: ["Anna Rossi"] });
   assert.deepEqual(roleNow(advisor), { kind: "advisor", scope: "division" });
   const options = roleOptions(advisor);
-  const already = { allowed: false, reason: "Already an advisor in Mission Analysis" };
-  assert.deepEqual(permissionOf(options, { kind: "advisor", scope: "division" }), OPEN);
-  assert.deepEqual(permissionOf(options, { kind: "lead" }), { allowed: false, reason: ADVISORS_LEAD_NOTHING });
-  assert.deepEqual(permissionOf(options, { kind: "member" }), already);
-  assert.deepEqual(permissionOf(options, { kind: "advisor", scope: "team" }), already);
+  assert.ok(options.every((o) => o.permission.allowed));
+  assert.equal(options.find((o) => o.choice.kind === "lead")?.detail, "With Anna Rossi");
+  // Only the viewer's reach locks them, as for anyone else's row.
+  const unreached = roleOptions(role({ advisor: true, change: LEADS_BY_HEAD }));
+  assert.deepEqual(permissionOf(unreached, { kind: "advisor", scope: "division" }), OPEN, "what they are now stays open");
+  for (const choice of [{ kind: "member" } as const, { kind: "lead" } as const, ...ADVISOR_CHOICES.filter((c) => !sameRole(c, { kind: "advisor", scope: "division" }))]) {
+    assert.deepEqual(permissionOf(unreached, choice), LEADS_BY_HEAD);
+  }
+});
+
+test("an advisor's pick saves through the writes each choice has: the lead or member switch, or Edit division's people change", () => {
+  assert.deepEqual(advisorRoleSave(5, { kind: "member" }), { kind: "role", role: "member" });
+  assert.deepEqual(advisorRoleSave(5, { kind: "lead" }), { kind: "role", role: "division-lead" });
+  assert.deepEqual(advisorRoleSave(5, { kind: "advisor", scope: "team" }), { kind: "advise", change: { oldLeads: [], advisors: [{ personId: 5, scope: "team" }] } });
+  assert.equal(advisorRoleSave(5, { kind: "advisor", scope: "division" }), null, "what they are now saves nothing");
 });
 
 test("stepping down to member is locked for a division's only lead, with the server's reason, and open while another lead stays", () => {
