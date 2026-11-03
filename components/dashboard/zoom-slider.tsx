@@ -7,8 +7,8 @@ import { CONTENT_FOCUS } from "./content-parts";
 
 /**
  * A crop dialog's zoom (board 93f): the filled part of the track is the
- * accent, the knob paper, between a zoom-out and a zoom-in glass. The photo
- * and the background crop dialogs both draw this one, so no browser draws its
+ * accent, the knob paper, between a zoom-out and a zoom-in glass. The shared
+ * crop dialog draws this one under every frame, so no browser draws its
  * own range input there (issue #895).
  */
 export function ZoomSlider({

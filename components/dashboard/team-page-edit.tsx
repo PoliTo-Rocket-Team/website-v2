@@ -93,7 +93,7 @@ import { ConfirmDialog } from "./confirm-dialog";
 import { CONTENT_FOCUS, TextField } from "./content-parts";
 import { BarButton, EditableBlock, EditShell } from "./edit-shell";
 import { shrunkPhoto } from "./outreach-post-photos";
-import { PHOTO_ACCEPT } from "./photo-crop-dialog";
+import { PHOTO_TYPES } from "@/lib/dashboard/self";
 import { TeamAdvisorsPanel, type KeyedAdvisorRow } from "./team-advisors-panel";
 import { TeamGroupsPanel } from "./team-groups-panel";
 import { TeamHeadPanel } from "./team-head-panel";
@@ -1085,7 +1085,7 @@ function GroupPhotoUpload({ onUploaded }: { onUploaded: (src: PersonPhoto) => vo
       <input
         ref={input}
         type="file"
-        accept={PHOTO_ACCEPT}
+        accept={PHOTO_TYPES.join(",")}
         className="sr-only"
         tabIndex={-1}
         aria-hidden

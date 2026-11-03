@@ -5,11 +5,12 @@ import Image from "next/image";
 import { Upload } from "lucide-react";
 import { toast } from "sonner";
 import { uploadProjectBackground } from "@/app/dashboard/project-actions";
+import { CROP_SETTINGS, type CropResult } from "@/lib/dashboard/crop-settings";
 import { FACTS_LIMIT, pickableModelsOf, type BackgroundFields, type FactFields, type ProjectFields, type VisualFields } from "@/lib/project-content/fields";
 import { BACKGROUND_MAX_BYTES, BACKGROUND_PRESETS, backgroundSrc, type BackgroundPreset, type ProjectRecord } from "@/lib/project-content/record";
 import type { TopPart } from "@/lib/project-pages";
 import { MODEL_NAMES, cardPosterOf, type RocketModel } from "@/lib/rocket-model";
-import { BackgroundCropDialog, type BackgroundCrops } from "./background-crop-dialog";
+import { CropDialog } from "./crop-dialog";
 import { CONTENT_FOCUS, TextField } from "./content-parts";
 import { PanelSection } from "./edit-panel";
 import { PhotosSection, type PhotoUploads } from "./outreach-post-photos";
@@ -281,7 +282,7 @@ function RocketPicker({ models, picked, onPick }: { models: readonly RocketModel
 }
 
 /** The picture types the Upload tile takes, as board 93f says them. */
-const PICTURE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const PICTURE_TYPES: readonly string[] = CROP_SETTINGS.projectBackground.accept;
 
 /**
  * The Background picker (board 93d): the 17 presets, then the Upload tile.
@@ -326,7 +327,7 @@ function BackgroundPicker({
     form.set("background", crop);
     return uploadProjectBackground(form);
   };
-  const use = async (crops: BackgroundCrops) => {
+  const use = async ({ files: crops }: CropResult<typeof CROP_SETTINGS.projectBackground>) => {
     setUploading(true);
     try {
       const tall = await sent(crops.tall);
@@ -407,7 +408,7 @@ function BackgroundPicker({
           }}
         />
       </div>
-      <BackgroundCropDialog file={cropping} pending={uploading} onCancel={() => setCropping(null)} onUse={use} />
+      <CropDialog entry={CROP_SETTINGS.projectBackground} file={cropping} pending={uploading} onCancel={() => setCropping(null)} onDone={use} />
     </div>
   );
 }

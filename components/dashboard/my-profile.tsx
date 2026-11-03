@@ -23,6 +23,7 @@ import { AliasSetupLink } from "./alias-setup";
 import { PrtEmailInput, PrtEmailRequest, PrtEmailWarning } from "./own-prt-email";
 import { MarkFallback } from "@/components/mark-fallback";
 import type { WriteResult } from "@/lib/dashboard/write";
+import { CROP_SETTINGS } from "@/lib/dashboard/crop-settings";
 import { AccountCard, Card, DANGER_GHOST_PILL, DANGER_PILL, DangerBox, DangerRow, DeleteAccountDialog, RemoveFromAlumniBox } from "./account-parts";
 import { ConfirmDialog } from "./confirm-dialog";
 import { Drawer } from "./drawer";
@@ -30,7 +31,7 @@ import { Field, inputClass, LOCKED_INPUT } from "./field";
 import { GoogleAccountsCard } from "./google-accounts";
 import { HandOverDialog, handOverRowText } from "./hand-over-dialog";
 import { GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
-import { PHOTO_ACCEPT, PhotoCropDialog } from "./photo-crop-dialog";
+import { CropDialog } from "./crop-dialog";
 import { DetailValue, EditPill, YourDetailsCard } from "./your-details";
 
 type Actions = {
@@ -201,7 +202,7 @@ export function PhotoCard({
           <input
             ref={input}
             type="file"
-            accept={PHOTO_ACCEPT}
+            accept={CROP_SETTINGS.profilePhoto.accept.join(",")}
             className="sr-only"
             tabIndex={-1}
             aria-hidden
@@ -227,12 +228,13 @@ export function PhotoCard({
           )}
         </div>
       </div>
-      <PhotoCropDialog
+      <CropDialog
+        entry={CROP_SETTINGS.profilePhoto}
         file={cropping}
-        onOpenChange={(open) => !open && setCropping(null)}
-        onChooseAnother={() => input.current?.click()}
-        onSave={save}
         pending={pending}
+        onCancel={() => setCropping(null)}
+        onChooseAnother={() => input.current?.click()}
+        onDone={({ files }) => save(files.square)}
       />
     </Card>
   );
