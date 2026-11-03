@@ -165,11 +165,12 @@ export function checkDivisionSave(input: unknown): { ok: true; value: DivisionSa
 }
 
 /**
- * A change to who leads or advises in an open division, made at once from a
- * member row's menu on the Team tree or the Members page (issue #901): an old
- * lead stepping down with one of Remove's outcomes, or a member becoming an
- * advisor. It is Edit division's save with nothing else changed
- * (`peopleSaveOf`), so the rules and the writes are that save's.
+ * A change to who leads or advises in an open division, saved from Edit
+ * details' role pill on the Team tree or the Members page (issues #901,
+ * #972): an old lead stepping down with one of Remove's outcomes, or a member
+ * or advisor taking the pill's Advisor choice. It is Edit division's save
+ * with nothing else changed (`peopleSaveOf`), so the rules and the writes are
+ * that save's.
  */
 export type PeopleChange = Pick<DivisionSave, "oldLeads" | "advisors">;
 

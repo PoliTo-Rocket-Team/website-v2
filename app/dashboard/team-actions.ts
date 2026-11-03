@@ -167,7 +167,7 @@ export async function saveMemberDetails(target: DetailsTarget, divisionId: numbe
   return answered(await writes.saveMemberDetails(target, divisionId, input));
 }
 
-/** A member row's lead or advisor change (issue #901), from the Team tree and the Members page: Edit division's save with only that change. */
+/** A lead or advisor change from Edit details' role pill (issues #901, #972), on the Team tree and the Members page: Edit division's save with only that change. */
 export async function changeDivisionPeople(divisionId: number, input: unknown): Promise<TeamActionResult> {
   const writes = await writesOn("members");
   if (!writes || !isId(divisionId)) return REFUSED;

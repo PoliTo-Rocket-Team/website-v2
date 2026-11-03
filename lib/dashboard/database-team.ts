@@ -1549,8 +1549,8 @@ async function saveDivision(identity: DashboardIdentity, divisionId: number, inp
 }
 
 /**
- * A member row's lead or advisor change (issue #901), from the Team tree's
- * member menu and the Members page alike: Edit division's save with only
+ * A lead or advisor change from Edit details' role pill (issues #901, #972),
+ * on the Team tree and the Members page alike: Edit division's save with only
  * that change in it (`peopleSaveOf`), planned and written as Edit division's
  * is. It is a Members write, so the viewer acts as `readMembersActor` says,
  * and `planDivisionSave` still asks `mayChangeDivision`.

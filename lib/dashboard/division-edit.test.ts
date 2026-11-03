@@ -311,7 +311,7 @@ test("a picked person carries every seat they hold, not only the first (#857)", 
   assert.deepEqual(unseated.people[0].seats, [], "a member with no seat carries none");
 });
 
-// A member row's "Becomes an advisor" and lead step-down (issue #901): Edit division's save with only that change.
+// Edit details' role pill (issue #972): its Advisor choice and a lead's step-down are Edit division's save with only that change (issue #901).
 
 test("a member of the division becomes an advisor where the editor picked: their member row ends, nothing else changes", () => {
   for (const [scope, place] of [
