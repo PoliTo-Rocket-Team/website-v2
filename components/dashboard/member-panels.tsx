@@ -1344,7 +1344,7 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
             return;
           }
         } else if (place.kind === "division" && advisorPicks[placeKey(place)] !== undefined) {
-          // The role pill's Advisor (issue #972): Edit division's save, as Becomes an advisor saved it (#900, #901).
+          // The role pill's Advisor (issue #972): saved through Edit division's people change (#900, #901).
           const changed = await changeDivisionPeople(place.divisionId, advisorChange(person!.id, place, advisorPicks[placeKey(place)]!));
           if (!changed.ok) {
             setRefusal(`Could not make them an advisor in ${place.short}. ${changed.error}`);

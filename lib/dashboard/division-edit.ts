@@ -105,17 +105,18 @@ export type OldLead =
 export type AdvisingLead = { readonly memberId: number; readonly step: Advising };
 
 /**
- * A member of the open division who becomes an advisor (issue #901), from a
- * member row's "Becomes an advisor": their member role here ends and they
- * advise where the editor picked, as an old lead does (`advisingAt`).
+ * A member of the open division who becomes an advisor (issue #901), from
+ * the Advisor choice of Edit details' role pill (issue #972): their member
+ * role here ends and they advise where the editor picked, as an old lead
+ * does (`advisingAt`).
  */
 export type NewAdvisor = { readonly personId: number; readonly scope: AdvisorScope | null };
 
 /**
  * What New division and Edit division send. Members and emails are sent only
  * by New division: an open division adds its members one by one, as the
- * Members page does. `advisors` is sent only for an open division, by a
- * member row's "Becomes an advisor" (`PeopleChange`).
+ * Members page does. `advisors` is sent only for an open division, by the
+ * Advisor choice of Edit details' role pill (`PeopleChange`).
  */
 export type DivisionSave = {
   /** As typed, without "Division". */
@@ -286,7 +287,7 @@ function pickError(person: TeamPerson | undefined): string | null {
   return person ? null : "They are not on the team.";
 }
 
-/** Why a save, or Becomes an advisor for a division's only lead, would leave a division with no lead. */
+/** Why a save, or a role pill change in Edit details for a division's only lead, would leave a division with no lead. */
 export const ONE_LEAD_NEEDED = "A division needs at least one lead.";
 
 /**

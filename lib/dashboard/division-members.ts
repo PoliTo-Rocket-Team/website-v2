@@ -129,9 +129,9 @@ export type PositionTitle =
   | { readonly kind: "fixed"; readonly label: string };
 
 /**
- * Someone's role in one division the viewer reaches, as the member menus
- * read it (issue #901): Make lead and Becomes an advisor change who leads or
- * advises there, which `change` says the viewer may (`mayChangeDivision`).
+ * Someone's role in one division the viewer reaches, as Edit details' role
+ * pill reads it (issue #972): picking Lead or Advisor there changes who leads
+ * or advises, which `change` says the viewer may (`mayChangeDivision`).
  */
 export type DivisionRoleChange = {
   readonly divisionId: number;
