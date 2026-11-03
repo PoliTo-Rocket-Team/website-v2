@@ -14,11 +14,11 @@
 import { BACKGROUND_CROP_MAX_BYTES, BACKGROUND_FRAMES } from "@/lib/project-content/record";
 import { PHOTO_MAX_BYTES } from "@/lib/outreach-photos";
 import { MAX_MEMBER_PHOTO_BYTES } from "./division-members";
+import { GALLERY_PHOTO, LAUNCH_PHOTO, POST_PHOTO, type ShapeCrop, type ShapeCrops, type Size } from "@/lib/photo-crops";
 import { sourceRect, type FrameCrop } from "./photo-crop";
 import { MAX_PHOTO_BYTES, PHOTO_TYPES } from "./self";
 
-/** A width and height in pixels, or the two sides of an aspect. */
-export type Size = { readonly width: number; readonly height: number };
+export type { ShapeCrop, ShapeCrops, Size };
 
 /** At least one. */
 export type NonEmpty<T> = readonly [T, ...T[]];
@@ -75,20 +75,15 @@ export type CutEntry<N extends string = string> = EntryBase & { readonly kind: "
     | { readonly output: PngOutput; readonly shapes: NonEmpty<CutShape<N> | FreeShape<N>> }
   );
 
-/** The photo stored once, with a crop per fixed shape. */
+/** The photo stored once, with a crop per fixed shape; its long side at most `maxSide` pixels. */
 export type CropsEntry<N extends string = string> = EntryBase & {
   readonly kind: "crops";
   readonly output: CropOutput;
+  readonly maxSide: number;
   readonly shapes: NonEmpty<FixedShape<N>>;
 };
 
 export type CropEntry<N extends string = string> = CutEntry<N> | CropsEntry<N>;
-
-/** A shape's crop in fractions of the photo (0 to 1), its aspect the shape's. */
-export type ShapeCrop = { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
-
-/** A "crops" entry's crops: a shape left unset has none, and shows centred. */
-export type ShapeCrops<N extends string = string> = { readonly [name in N]?: ShapeCrop };
 
 /** What the dialog hands back: a file per frame, or the photo and its crops. */
 export type CropResult<E extends CropEntry> =
@@ -154,6 +149,20 @@ function squarePhoto(maxBytes: number) {
 /** The entry of every square photo place: one 800 px JPEG frame. */
 export type SquarePhotoEntry = ReturnType<typeof squarePhoto>;
 
+/** The longest side a photo stored once is kept at, a JPEG at 0.86, as outreach photos were sent before crops. */
+const STORED_PHOTO_SIDE = 2400;
+const STORED_PHOTO_QUALITY = 0.86;
+
+const PHOTO_ACCEPT = ["image/jpeg", "image/png", "image/webp"] as const;
+
+/** What the dialog says over a photo stored once and shown at two shapes. */
+const TWO_SHAPE_WORDS: CropWords = {
+  title: "Crop your photo",
+  confirm: "Use this photo",
+  description: "One photo, two shapes. Drag the photo inside each frame to choose what shows. A frame you leave as it is stays centred.",
+  note: "JPG, PNG or WebP. The photo is kept once, with a crop for each shape.",
+};
+
 /** The dialog's entry for each place that crops. */
 export const CROP_SETTINGS = {
   /** My profile's photo (board 55a), stored by `checkedPhoto`: at most 2 MB. */
@@ -180,6 +189,42 @@ export const CROP_SETTINGS = {
       { kind: "fixed", name: "tall", label: "Tall", use: "Home card, phones", aspect: { width: 9, height: 16 }, size: BACKGROUND_FRAMES.tall },
       { kind: "fixed", name: "wide", label: "Wide", use: "Project page, laptops", aspect: { width: 2, height: 1 }, size: BACKGROUND_FRAMES.wide },
     ],
+  },
+  /** An outreach post's cover and photos (issue #969): one photo, cropped for the post page's 3:2 on phones and 9:5 from md, under 4 MB. */
+  outreachPhoto: {
+    kind: "crops",
+    words: TWO_SHAPE_WORDS,
+    accept: PHOTO_ACCEPT,
+    maxBytes: PHOTO_MAX_BYTES,
+    maxSide: STORED_PHOTO_SIDE,
+    output: { type: "image/jpeg", quality: STORED_PHOTO_QUALITY },
+    shapes: [
+      { kind: "fixed", name: "phone", label: "Phones", use: "Post page", aspect: POST_PHOTO.phone },
+      { kind: "fixed", name: "desktop", label: "Laptops", use: "Post page and cards", aspect: POST_PHOTO.desktop },
+    ],
+  },
+  /** An outreach post's gallery photo (issue #969): one photo, cropped for the carousel's 300:220 on phones and 760:480 from md, under 4 MB. */
+  outreachGallery: {
+    kind: "crops",
+    words: TWO_SHAPE_WORDS,
+    accept: PHOTO_ACCEPT,
+    maxBytes: PHOTO_MAX_BYTES,
+    maxSide: STORED_PHOTO_SIDE,
+    output: { type: "image/jpeg", quality: STORED_PHOTO_QUALITY },
+    shapes: [
+      { kind: "fixed", name: "phone", label: "Phones", use: "Gallery", aspect: GALLERY_PHOTO.phone },
+      { kind: "fixed", name: "desktop", label: "Laptops", use: "Gallery", aspect: GALLERY_PHOTO.desktop },
+    ],
+  },
+  /** A launch's cover photo (issue #969): one photo, cropped for its 5:3 slot beside the launch, under 4 MB. */
+  launchPhoto: {
+    kind: "crops",
+    words: { title: "Crop your photo", confirm: "Use this photo" },
+    accept: PHOTO_ACCEPT,
+    maxBytes: PHOTO_MAX_BYTES,
+    maxSide: STORED_PHOTO_SIDE,
+    output: { type: "image/jpeg", quality: STORED_PHOTO_QUALITY },
+    shapes: [{ kind: "fixed", name: "card", label: "Card", use: "Launch card", aspect: LAUNCH_PHOTO.card }],
   },
 } as const satisfies Readonly<Record<string, CropEntry>>;
 

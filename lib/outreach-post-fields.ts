@@ -1,6 +1,7 @@
 import type { PublishCheck } from "@/lib/content/edit-shell";
 import { refused, type WriteResult } from "@/lib/dashboard/write";
-import { GALLERY_MAX, type GalleryItemFields } from "@/lib/gallery-fields";
+import { GALLERY_MAX, readGalleryItem, type GalleryItemFields } from "@/lib/gallery-fields";
+import { POST_PHOTO, readShapeCrops, type PostPhotoCrops } from "@/lib/photo-crops";
 import type { NonEmpty } from "./about/alumni-types";
 import { isPhotoSrc } from "./outreach-photos";
 import { isIsoDate } from "./outreach-rows";
@@ -12,6 +13,7 @@ import {
   type ChannelName,
   type Channels,
   type IsoDate,
+  type OutreachPhoto,
   type OutreachPost,
   type OutreachTag,
   type PhotoSrc,
@@ -42,8 +44,15 @@ export type ChannelFields = {
   readonly account?: string;
 };
 
-/** One photo as the panel edits it: the file, uploaded already, and its alt text, which may stay empty. */
-export type PhotoFields = { readonly src: PhotoSrc; readonly alt: string };
+/**
+ * One photo as the panel edits it: the file, uploaded already, its alt text,
+ * which may stay empty, and its crop for each post page shape the editor
+ * framed (issue #969), absent for a photo with none.
+ */
+export type PhotoFields = { readonly src: PhotoSrc; readonly alt: string; readonly crops?: PostPhotoCrops };
+
+/** A photo as a post keeps it: its alt text trimmed, its crops kept. */
+const keptPhoto = (p: PhotoFields): OutreachPhoto => ({ src: p.src, alt: p.alt.trim(), ...(p.crops !== undefined && { crops: p.crops }) });
 
 /** Everything the panel edits, as typed: text may be empty and lists may be too, until a save checks them. */
 export type PostFields = {
@@ -84,12 +93,17 @@ export function postFieldsOf(post: OutreachDraft): PostFields {
     lead: post.lead,
     summary: post.summary.text,
     body: [...post.body],
-    photos: post.photos.map((p) => ({ src: p.src, alt: p.alt })),
+    photos: post.photos.map((p) => ({ src: p.src, alt: p.alt, ...(p.crops !== undefined && { crops: p.crops }) })),
     channels: CHANNEL_NAMES.flatMap((name) => {
       const channel = post.channels[name];
       return channel === undefined ? [] : [{ name, ...channel }];
     }),
-    gallery: (post.gallery?.items ?? []).map((item) => ({ src: item.src, alt: item.alt, caption: item.caption ?? "" })),
+    gallery: (post.gallery?.items ?? []).map((item) => ({
+      src: item.src,
+      alt: item.alt,
+      caption: item.caption ?? "",
+      ...(item.crops !== undefined && { crops: item.crops }),
+    })),
   };
 }
 
@@ -102,7 +116,7 @@ function galleryOfFields(items: readonly GalleryItemFields[]): PostGallery | und
   const photos = items.flatMap((item): PostGalleryPhoto[] => {
     if (item.src === null || !isPhotoSrc(item.src)) return [];
     const caption = item.caption.trim();
-    return [{ src: item.src, alt: item.alt.trim(), ...(caption !== "" && { caption }) }];
+    return [{ src: item.src, alt: item.alt.trim(), ...(caption !== "" && { caption }), ...(item.crops !== undefined && { crops: item.crops }) }];
   });
   const [first, ...rest] = photos;
   return first === undefined ? undefined : { items: [first, ...rest] };
@@ -187,7 +201,7 @@ export function draftOfFields(fields: PostFields, opened: OpenedPost, tags: read
       summary: summaryOf(fields.summary.trim(), opened.summary),
       lead: fields.lead.trim(),
       body: fields.body.map(trimmedBlock),
-      photos: fields.photos.map((p) => ({ src: p.src, alt: p.alt.trim() })),
+      photos: fields.photos.map(keptPhoto),
       channels: channelRecord(fields.channels),
       ...(gallery !== undefined && { gallery }),
     },
@@ -269,7 +283,7 @@ export function checkPostFields(fields: PostFields, opened: OpenedPost, tags: re
 
   const picked = nonEmpty(fields.tags);
   const body = nonEmpty(fields.body.map(trimmedBlock));
-  const photos = nonEmpty(fields.photos.map((p) => ({ src: p.src, alt: p.alt.trim() })));
+  const photos = nonEmpty(fields.photos.map(keptPhoto));
   const gallery = galleryOfFields(fields.gallery);
   const { date } = fields;
   if (Object.keys(errors).length > 0 || picked === null || body === null || photos === null || !isIsoDate(date)) {
@@ -349,9 +363,12 @@ function blockFieldsOf(value: unknown): BodyBlock | null {
   return null;
 }
 
+/** A photo the panel sent; its crops are kept when well formed, absent ones read as centred, and malformed ones refuse it. */
 function photoFieldsOf(value: unknown): PhotoFields | null {
   if (!isShape(value) || !isPhotoSrc(value.src) || !isString(value.alt)) return null;
-  return { src: value.src, alt: value.alt };
+  const crops = readShapeCrops(value.crops, POST_PHOTO);
+  if (crops === null) return null;
+  return { src: value.src, alt: value.alt, ...(crops !== undefined && { crops }) };
 }
 
 const isChannelName = (value: unknown): value is ChannelName => (CHANNEL_NAMES as readonly unknown[]).includes(value);
@@ -375,8 +392,8 @@ function listOf<T>(value: unknown, read: (item: unknown) => T | null): T[] | nul
 
 /** A gallery photo the panel sent: an uploaded one, since the post panel never makes a placeholder; null otherwise. */
 function galleryItemFieldsOf(value: unknown): GalleryItemFields | null {
-  if (!isShape(value) || !isPhotoSrc(value.src) || !isString(value.alt) || !isString(value.caption)) return null;
-  return { src: value.src, alt: value.alt, caption: value.caption };
+  const item = readGalleryItem(value);
+  return item !== null && isPhotoSrc(item.src) ? item : null;
 }
 
 /** The gallery's photos the panel sent, up to the most a gallery holds; null otherwise. */

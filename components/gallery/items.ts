@@ -3,11 +3,15 @@
 // placeholder instead: it has no `src`, so a placeholder can never be drawn as
 // a broken image, and a photo can never be drawn as a placeholder.
 
+import type { GalleryPhotoCrops } from "@/lib/photo-crops";
+
 export type GalleryPhoto = {
   /** A path under public/ or an allowed remote URL; drawn through next/image. */
   src: string;
   alt: string;
   caption?: string;
+  /** Its crop for each carousel shape the editor framed (issue #969); none shows it centred. */
+  crops?: GalleryPhotoCrops;
 };
 
 export type GalleryPlaceholder = {
