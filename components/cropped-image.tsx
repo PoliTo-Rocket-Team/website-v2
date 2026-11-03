@@ -3,8 +3,9 @@ import Image, { type ImageProps } from "next/image";
 import { placementStyle, type Placement } from "@/lib/photo-crops";
 
 // A stored photo drawn in its box with the crop for the box's shape (epic
-// #964, issue #969): the outreach post page and cards, the landing card and
-// the gallery carousel draw their photos through it. A photo with no crop
+// #964, issues #969 and #970): the outreach post page and cards, the landing
+// card, the gallery carousel, and a project page's photo panels and launch
+// covers draw their photos through it. A photo with no crop
 // draws exactly as before, centred and covering its box. With one, the box
 // becomes a size container and the photo is placed in it by
 // lib/photo-crops.ts, below md by `base` and from md by `md`, so one photo
