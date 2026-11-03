@@ -1,32 +1,48 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { ArrowRightLeft, Lock, Pencil, RefreshCw, Undo2, UserMinus, UserX, X } from "lucide-react";
+import { Pencil, RefreshCw, Undo2, UserMinus, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { addMember, createDivision, findPeople, saveDivision } from "@/app/dashboard/team-actions";
 import {
   divisionCodeError,
   divisionNameError,
+  divisionTitle,
   normalizeDivisionCode,
-  storedDivisionName,
+  renamesDivision,
   type DivisionSave,
   type OldLead,
   type RemovedLeadOutcome,
   type TeamPick,
   type TeamSearch,
 } from "@/lib/dashboard/division-edit";
-import { matchesPerson, mayNotKnowTheyWereAdded, type DivisionMembers, type DivisionPerson, type WaitingPerson } from "@/lib/dashboard/division-members";
-import { fullAccessMovesLine, seatOfHandedRole, steppingDown, steppingDownLine, type HandOverOutcome, type HeldSeat } from "@/lib/dashboard/hand-over";
-import { divisionLabel, type Permission } from "@/lib/dashboard/team";
+import { GOOGLE_EMAIL_NOTE, matchesPerson, mayNotKnowTheyWereAdded, type DivisionMembers, type DivisionPerson, type WaitingPerson } from "@/lib/dashboard/division-members";
+import {
+  advisingLine,
+  defaultAdvisorScope,
+  fullAccessMovesLine,
+  seatOfHandedRole,
+  steppingDown,
+  steppingDownLine,
+  type AdvisorScope,
+  type HandOverOutcome,
+  type HeldSeat,
+  type ScopeNames,
+} from "@/lib/dashboard/hand-over";
+import { departmentLabel } from "@/lib/dashboard/recruitment";
+import { divisionLabel } from "@/lib/dashboard/team";
 import type { FullAccessSeat } from "@/lib/dashboard/viewer";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { ConfirmNdaButton, MailAvatar, MemberDialogs, MenuItem, NoEmailNote, RowMenu, WaitingLine, matchesWaiting, type Asking } from "./division-members";
+import { MemberMenu } from "./member-menu";
 import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, inputClass } from "./field";
-import { HandOverChoice } from "./hand-over-choice";
+import { FooterSummary, useFormSummary } from "./form-summary";
+import { HandOverChoice, RemovedLeadChoice, type AdvisorScopeField } from "./hand-over-choice";
 import { MoveDialog } from "./member-move";
 import type { MovablePlace } from "@/lib/dashboard/member-move";
+import { divisionRowMenu } from "@/lib/dashboard/member-actions";
 import { PersonCombobox } from "./person-combobox";
 import { SearchField } from "./search-field";
 
@@ -37,15 +53,18 @@ import { SearchField } from "./search-field";
 // Name, code and leads are a draft until "Save changes", which asks "are you
 // sure" first; the server checks every rule again (lib/dashboard/division-
 // edit.ts). An open division's members are changed one by one, as on the
-// Members page: Add member, Confirm NDA, Remove and Leaves the team act at
-// once, each behind its own confirm. New division gathers its members in the
-// draft, since the division is not open yet.
+// Members page: Add member, Confirm NDA and each member row's actions
+// (`DivisionMemberMenu`, issue #901) act at once, each behind its own
+// confirm. New division gathers its members in the draft, since the division
+// is not open yet.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const ADD_LINK = `inline-flex items-center gap-1.5 rounded-md text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:text-accent-hover ${FOCUS}`;
 const LIST = "overflow-hidden rounded-xl border border-hairline";
 const SECTION_LABEL = "text-[13px] text-prt-text";
 const MEMBERS_SHOWN = 5;
+/** What an old lead steps down from, as the advisor scope rules read it (issue #900). */
+const LEAD_STEP = { kind: "lead" } as const;
 
 /** What the drawer is about: a new division in a department, or an open division. */
 export type DivisionDrawerTarget =
@@ -68,6 +87,8 @@ type Draft = {
   readonly outcomes: Readonly<Record<number, RemovedLeadOutcome>>;
   /** What each replaced lead does next (issue #253, board 68b4): nothing is picked for them. */
   readonly handOvers: Readonly<Record<number, HandOverOutcome>>;
+  /** Where each old lead who becomes an advisor advises (issue #900); the division until another place is picked. */
+  readonly scopes: Readonly<Record<number, AdvisorScope>>;
   /** New division only: people from the team, and emails new to it. */
   readonly members: readonly TeamPick[];
   readonly emails: readonly string[];
@@ -82,13 +103,10 @@ function draftOf(target: DivisionDrawerTarget): Draft {
     removed: [],
     outcomes: {},
     handOvers: {},
+    scopes: {},
     members: [],
     emails: [],
   };
-}
-
-function firstName(name: string): string {
-  return name.split(" ")[0] ?? name;
 }
 
 export function DivisionDrawer({
@@ -98,6 +116,7 @@ export function DivisionDrawer({
   editable,
   onClose,
   onFill,
+  onEdit,
   mayClose,
   onCloseDivision,
 }: {
@@ -109,6 +128,8 @@ export function DivisionDrawer({
   onClose: () => void;
   /** Fill details on someone waiting for their NDA: the page's Edit details drawer. */
   onFill: (waiting: WaitingPerson, division: DivisionMembers) => void;
+  /** Edit details on a member row (issue #901): the page's Edit details drawer, the Members page's own panel. */
+  onEdit?: (person: DivisionPerson) => void;
   /** Whether the viewer may close the division: a lead's Edit division has no Close division (issue #594). */
   mayClose: (division: DivisionMembers) => boolean;
   /** Close division in Edit division's footer (boards 77g, 68b): the page's Close division dialog. */
@@ -129,6 +150,7 @@ export function DivisionDrawer({
       editable={editable}
       onClose={onClose}
       onFill={onFill}
+      onEdit={onEdit}
       mayClose={mayClose}
       onCloseDivision={onCloseDivision}
     />
@@ -143,6 +165,7 @@ function DrawerForm({
   editable,
   onClose,
   onFill,
+  onEdit,
   mayClose,
   onCloseDivision,
 }: {
@@ -153,13 +176,13 @@ function DrawerForm({
   editable: boolean;
   onClose: () => void;
   onFill: (waiting: WaitingPerson, division: DivisionMembers) => void;
+  onEdit?: (person: DivisionPerson) => void;
   mayClose: (division: DivisionMembers) => boolean;
   onCloseDivision: (division: DivisionMembers) => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(target));
   const [picking, setPicking] = useState<{ readonly replaces: number | null } | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const tab = target.kind === "edit" ? target.tab : null;
@@ -172,6 +195,14 @@ function DrawerForm({
   // The full-access seat a lead's role carries moves to whoever replaces them (issue #501).
   const seatOfLead = (leadId: number) => (divisionId === null ? null : seatOfHandedRole(seats, leadId, { kind: "lead", divisionId }));
   const gone = leads.filter((l) => draft.removed.includes(l.id) || replacedBy(l.id) !== null);
+  // Where an old lead advises (issue #900): this division, its department or the whole team.
+  const scopeOf = (leadId: number) => draft.scopes[leadId] ?? defaultAdvisorScope(LEAD_STEP);
+  const names: ScopeNames = { division: short, department: tab?.division.department ?? null };
+  const scopeField = (leadId: number): AdvisorScopeField => ({
+    value: scopeOf(leadId),
+    names,
+    onChange: (scope) => setDraft((d) => ({ ...d, scopes: { ...d.scopes, [leadId]: scope } })),
+  });
   const leadCount = leads.length - gone.length + draft.added.length;
 
   const code = normalizeDivisionCode(draft.code);
@@ -180,10 +211,17 @@ function DrawerForm({
   const leadError = leadCount < 1 ? "A division needs at least one lead." : null;
   const undecided = gone.find((l) => replacedBy(l.id) !== null && draft.handOvers[l.id] === undefined);
   const handOverError = undecided ? `Choose what happens to ${undecided.name}: Become an advisor or Leave the team.` : null;
-  const valid = nameError === null && codeError === null && leadError === null && handOverError === null;
+  const { summary, showErrors, check, refuse } = useFormSummary([
+    { name: "name", label: "Name", error: nameError ?? undefined },
+    { name: "code", label: "Code", error: codeError ?? undefined },
+    { name: "lead", label: "Leads", error: leadError ?? undefined },
+    ...(undecided ? [{ name: `hand-over-${undecided.id}`, label: `What happens to ${undecided.name}`, error: handOverError ?? undefined }] : []),
+  ], { open, values: [draft] });
+  // An empty code shows its error once a click was refused (issue #927); a typed one shows it at once.
+  const codeShown = codeError !== null && (draft.code !== "" || showErrors);
 
   const original = draftOf(target);
-  const nameChanged = target.kind === "edit" && storedDivisionName(draft.name) !== storedDivisionName(original.name);
+  const nameChanged = target.kind === "edit" && renamesDivision(draft.name, original.name);
   const codeChanged = target.kind === "edit" && code !== normalizeDivisionCode(original.code);
   const changes = Number(nameChanged) + Number(codeChanged) + draft.added.length + draft.removed.length;
 
@@ -192,10 +230,12 @@ function DrawerForm({
     code,
     newLeads: draft.added.map((a) => a.pick.id),
     oldLeads: gone.flatMap((l): OldLead[] => {
-      if (replacedBy(l.id) === null) return [{ personId: l.id, via: "removed", outcome: draft.outcomes[l.id] ?? "member" }];
+      const scope = scopeOf(l.id);
+      if (replacedBy(l.id) === null) return [{ personId: l.id, via: "removed", outcome: draft.outcomes[l.id] ?? "member", scope }];
       const outcome = draft.handOvers[l.id];
-      return outcome === undefined ? [] : [{ personId: l.id, via: "replaced", outcome }];
+      return outcome === undefined ? [] : [{ personId: l.id, via: "replaced", outcome, scope }];
     }),
+    advisors: [],
     members: draft.members.map((m) => m.id),
     emails: draft.emails,
   };
@@ -216,8 +256,7 @@ function DrawerForm({
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setShowErrors(true);
-    if (!valid) return;
+    if (!check(e.currentTarget)) return;
     if (target.kind === "edit" && changes === 0) {
       onClose();
       return;
@@ -230,14 +269,17 @@ function DrawerForm({
       if (target.kind === "new") {
         const result = await createDivision(target.department.id, save);
         if (!result.ok) {
-          toast.error("Could not create the division", { description: result.error });
+          // Shown above the main button, where the form's own errors show (issue #927).
+          refuse(`Could not create the division. ${result.error}`);
+          setConfirming(false);
           return;
         }
-        toast.success(`${storedDivisionName(draft.name)} is open`);
+        toast.success(`${divisionTitle(draft.name)} is open`);
       } else {
         const result = await saveDivision(divisionId!, save);
         if (!result.ok) {
-          toast.error("Could not save the division", { description: result.error });
+          refuse(`Could not save the division. ${result.error}`);
+          setConfirming(false);
           return;
         }
         toast.success("Division saved");
@@ -247,10 +289,9 @@ function DrawerForm({
     });
 
   const title = target.kind === "new" ? "New division" : "Edit division";
-  const detail = target.kind === "new" ? `In ${target.department.name} Department` : `${target.tab.division.name} · ${target.tab.division.department} Department`;
+  const detail = target.kind === "new" ? `In ${departmentLabel(target.department.name)}` : `${target.tab.division.name} · ${departmentLabel(target.tab.division.department)}`;
   const submitLabel = target.kind === "new" ? "Create division" : changes > 0 ? `Save changes · ${changes}` : "Save changes";
   const formId = `division-${divisionId ?? "new"}-form`;
-  const blocked = target.kind === "new" && !valid;
 
   return (
     <SidePanel
@@ -260,6 +301,7 @@ function DrawerForm({
       detail={detail}
       footer={
         <>
+          <FooterSummary summary={summary} />
           {tab && mayClose(tab) ? (
             <button type="button" onClick={() => onCloseDivision(tab)} className={PANEL_DANGER_BUTTON}>
               Close division
@@ -269,7 +311,7 @@ function DrawerForm({
               Cancel
             </button>
           )}
-          <button type="submit" form={formId} disabled={pending || blocked} className={`${PANEL_PRIMARY_BUTTON} disabled:cursor-not-allowed disabled:opacity-50`}>
+          <button type="submit" form={formId} disabled={pending} className={PANEL_PRIMARY_BUTTON}>
             {submitLabel}
           </button>
         </>
@@ -281,6 +323,7 @@ function DrawerForm({
             <label className="min-w-0">
               <span className={`mb-2 block ${SECTION_LABEL}`}>Name</span>
               <input
+                name="name"
                 value={draft.name}
                 maxLength={60}
                 autoComplete="off"
@@ -293,18 +336,19 @@ function DrawerForm({
             <label className="min-w-0">
               <span className={`mb-2 block ${SECTION_LABEL}`}>Code</span>
               <input
+                name="code"
                 value={draft.code}
                 maxLength={3}
                 autoComplete="off"
                 placeholder="FD"
                 onChange={(e) => set({ code: e.target.value.toUpperCase() })}
-                aria-invalid={draft.code !== "" && codeError !== null}
-                className={`${inputClass(draft.code !== "" && codeError !== null ? codeError : undefined)} font-mono uppercase tracking-[0.15em]`}
+                aria-invalid={codeShown}
+                className={`${inputClass(codeShown ? (codeError ?? undefined) : undefined)} font-mono uppercase tracking-[0.15em]`}
               />
             </label>
           </div>
           {showErrors && nameError !== null && <p className="mt-1.5 text-[12px] text-danger">{nameError}</p>}
-          {draft.code !== "" && codeError !== null ? (
+          {codeShown ? (
             <p className="mt-2 text-[12px] text-danger">{codeError}</p>
           ) : (
             <p className="mt-2 text-[12px] text-prt-muted">2–3 letters. Used in position codes, like MA-01.</p>
@@ -341,6 +385,7 @@ function DrawerForm({
             {picking !== null ? (
               <PeoplePicker
                 mode="lead"
+                name="lead"
                 short={short}
                 taken={(p) =>
                   leads.some((l) => l.id === p.id) || draft.added.some((a) => a.pick.id === p.id) ? "Already a lead" : null
@@ -350,7 +395,7 @@ function DrawerForm({
                 multi={picking.replaces === null}
               />
             ) : (
-              <button type="button" onClick={() => setPicking({ replaces: null })} className={`${ADD_LINK} mt-3`}>
+              <button type="button" name="lead" onClick={() => setPicking({ replaces: null })} className={`${ADD_LINK} mt-3`}>
                 <PlusIcon />
                 Add lead
               </button>
@@ -384,23 +429,26 @@ function DrawerForm({
                     seat={seatOfLead(lead.id)}
                     successor={by.pick.name}
                     onChange={(outcome) => set({ handOvers: { ...draft.handOvers, [lead.id]: outcome } })}
+                    scope={scopeField(lead.id)}
                   />
                 </div>
               ) : (
-                <OutcomeChoice
-                  key={lead.id}
-                  lead={lead}
-                  short={short}
-                  value={draft.outcomes[lead.id] ?? "member"}
-                  onChange={(outcome) => set({ outcomes: { ...draft.outcomes, [lead.id]: outcome } })}
-                />
+                <div key={lead.id} className="mt-5">
+                  <RemovedLeadChoice
+                    lead={lead}
+                    short={short}
+                    value={draft.outcomes[lead.id] ?? "member"}
+                    onChange={(outcome) => set({ outcomes: { ...draft.outcomes, [lead.id]: outcome } })}
+                    scope={scopeField(lead.id)}
+                  />
+                </div>
               );
             })}
             {showErrors && handOverError !== null && <p className="mt-2 text-[12px] text-danger">{handOverError}</p>}
           </section>
 
           {tab ? (
-            <LiveMembers tab={tab} editable={editable} onFill={(w) => onFill(w, tab)} />
+            <LiveMembers tab={tab} editable={editable} onFill={(w) => onFill(w, tab)} onEdit={onEdit} />
           ) : (
             <DraftMembers
               short={short}
@@ -422,7 +470,7 @@ function DrawerForm({
         onOpenChange={setConfirming}
         pending={pending}
         target={target}
-        name={storedDivisionName(draft.name)}
+        name={divisionTitle(draft.name)}
         original={original}
         code={code}
         nameChanged={nameChanged}
@@ -432,9 +480,11 @@ function DrawerForm({
           const by = replacedBy(l.id);
           return goneLine(
             l,
-            by === null ? { via: "removed", outcome: draft.outcomes[l.id] ?? "member" } : { via: "replaced", outcome: draft.handOvers[l.id] ?? null, by: by.pick.name, seat: seatOfLead(l.id) },
+            by === null
+              ? { via: "removed", outcome: draft.outcomes[l.id] ?? "member", scope: scopeOf(l.id) }
+              : { via: "replaced", outcome: draft.handOvers[l.id] ?? null, scope: scopeOf(l.id), by: by.pick.name, seat: seatOfLead(l.id) },
             divisionId,
-            short,
+            names,
           );
         })}
         members={draft.members.length + draft.emails.length}
@@ -550,84 +600,6 @@ function ReplacesSelect({ added, leads, onChange }: { added: NewLead; leads: rea
   );
 }
 
-/** Whether each of a removed lead's three outcomes is open, with the reason when it is not. */
-function outcomesFor(lead: DivisionPerson, short: string): Readonly<Record<RemovedLeadOutcome, Permission>> {
-  // Someone in another division, or with a seat, keeps a place on the team (`mayLeaveDivision`).
-  const mayLeave = lead.removal.kind !== "only-division";
-  return {
-    member: { allowed: true },
-    "leave-division": mayLeave ? { allowed: true } : { allowed: false, reason: `${short} is their only division` },
-    "leave-team": lead.leave,
-  };
-}
-
-/**
- * "What happens to Marco?" for a lead taken off with Remove (board 68b4):
- * stays as a member, leaves this division, or leaves the team. Remove is not
- * a hand-over, so it keeps these three; a replaced lead gets `HandOverChoice`.
- */
-function OutcomeChoice({
-  lead,
-  short,
-  value,
-  onChange,
-}: {
-  lead: DivisionPerson;
-  short: string;
-  value: RemovedLeadOutcome;
-  onChange: (outcome: RemovedLeadOutcome) => void;
-}) {
-  const open = outcomesFor(lead, short);
-  const options: readonly { value: RemovedLeadOutcome; title: string; detail: string; danger?: boolean }[] = [
-    { value: "member", title: "Stays as a member", detail: `Keeps ${short}, loses lead access` },
-    { value: "leave-division", title: `Leaves ${short}`, detail: "Keeps their other divisions, if any" },
-    { value: "leave-team", title: "Leaves the team", detail: "Moves to Alumni; their access ends", danger: true },
-  ];
-  return (
-    <fieldset className="mt-5">
-      <legend className={`mb-2 ${SECTION_LABEL}`}>What happens to {firstName(lead.name)}?</legend>
-      <div className={`${LIST} divide-y divide-hairline`}>
-        {options.map((o) => {
-          const permission = open[o.value];
-          const disabled = !permission.allowed;
-          const checked = value === o.value;
-          return (
-            <label
-              key={o.value}
-              className={`flex items-start gap-3 px-3.5 py-3 transition-colors duration-300 ease-out ${disabled ? "cursor-not-allowed" : "cursor-pointer hover:bg-white-5"}`}
-            >
-              <input
-                type="radio"
-                name={`outcome-${lead.id}`}
-                value={o.value}
-                checked={checked}
-                disabled={disabled}
-                onChange={() => onChange(o.value)}
-                className="peer sr-only"
-              />
-              <span
-                aria-hidden
-                className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent ${
-                  checked ? "border-accent" : "border-white-10"
-                }`}
-              >
-                {checked && <span className="h-2 w-2 rounded-full bg-accent" />}
-              </span>
-              <span className="min-w-0">
-                <span className={`flex items-center gap-1.5 text-[14px] ${disabled ? "text-prt-muted" : o.danger ? "text-danger" : "text-prt-text"}`}>
-                  {disabled && <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
-                  {o.title}
-                </span>
-                <span className="block text-[12px] leading-snug text-prt-muted">{permission.allowed ? o.detail : permission.reason}</span>
-              </span>
-            </label>
-          );
-        })}
-      </div>
-    </fieldset>
-  );
-}
-
 /**
  * The picker under "+ Add lead", "+ Add member" (boards 68b2, 68b6, 68b7) or
  * "+ Pick head" (77d, 77e), or who takes over as team leader (77i): the
@@ -643,6 +615,7 @@ export function PeoplePicker({
   onEmail,
   onClose,
   multi = false,
+  name,
 }: {
   mode: "lead" | "member" | "head" | "leader" | "seat";
   /** The division or department the pick joins: "Mission Analysis", "the new department". */
@@ -653,6 +626,8 @@ export function PeoplePicker({
   onEmail?: (email: string) => void;
   onClose: () => void;
   multi?: boolean;
+  /** The search field's form name: the field a refused form focuses while the picker is open (issue #927). */
+  name?: string;
 }) {
   const id = useId();
   const [query, setQuery] = useState("");
@@ -674,9 +649,9 @@ export function PeoplePicker({
     mode === "leader"
       ? "Search anyone in the team. They become Team Leader when you save and keep their roles."
       : mode === "head"
-        ? `Search anyone in the team. They head ${short} and keep their divisions.`
+        ? `Search anyone in the team. They head ${short} and keep their roles and divisions.`
         : mode === "seat"
-          ? `Search anyone in the team. They hold ${short} and keep their divisions.`
+          ? `Search anyone in the team. They hold ${short} and keep their roles and divisions.`
         : mode === "lead"
           ? `Search anyone in the team. They join ${short} as a lead and keep their other divisions.`
           : newEmail !== null
@@ -703,6 +678,7 @@ export function PeoplePicker({
       <div className="min-w-0 flex-1">
         <PersonCombobox
           id={id}
+          name={name}
           people={people.map((p) => ({ id: p.id, name: p.name, photoUrl: p.photoUrl, aside: p.place, line: pickLine(mode, p), taken: taken(p) }))}
           value={null}
           onChoose={choose}
@@ -711,7 +687,16 @@ export function PeoplePicker({
           heading={mode === "member" ? "In the team" : undefined}
           note={found.kind === "new-email" ? "No one in the team uses this email." : null}
           extra={newEmail !== null && onEmail ? { label: `Add ${newEmail}`, detail: `New member of ${short}, after the NDA`, onChoose: () => onEmail(newEmail) } : null}
-          hint={footer}
+          hint={
+            mode === "member" ? (
+              <>
+                {footer}
+                <span className="mt-1 block">{GOOGLE_EMAIL_NOTE}</span>
+              </>
+            ) : (
+              footer
+            )
+          }
           multi={multi}
           autoFocus
           onEscape={onClose}
@@ -729,9 +714,12 @@ export function PeoplePicker({
   );
 }
 
-/** A picker row's line: their role, and in a head or seat picker a seat they keep reads "Already Head of Propulsion" (issue #837). */
+/**
+ * A picker row's line: their role, and in a head or seat picker every seat
+ * they keep reads "Already Head of Propulsion · Advisor" (issues #837, #857).
+ */
 function pickLine(mode: "lead" | "member" | "head" | "leader" | "seat", pick: TeamPick): string {
-  return pick.seated && (mode === "head" || mode === "seat") ? `Already ${pick.role}` : pick.role;
+  return pick.seats.length > 0 && (mode === "head" || mode === "seat") ? `Already ${pick.seats.join(" · ")}` : pick.role;
 }
 
 /** "Also in Structures · Design & Manufacturing", else their title here (board 68b). */
@@ -746,7 +734,17 @@ function memberLine(person: DivisionPerson): string {
  * for their NDA, then everyone who is not a lead, five at first. Each change
  * here is the Members page's own, made at once behind its confirm.
  */
-function LiveMembers({ tab, editable, onFill }: { tab: DivisionMembers; editable: boolean; onFill: (waiting: WaitingPerson) => void }) {
+function LiveMembers({
+  tab,
+  editable,
+  onFill,
+  onEdit,
+}: {
+  tab: DivisionMembers;
+  editable: boolean;
+  onFill: (waiting: WaitingPerson) => void;
+  onEdit?: (person: DivisionPerson) => void;
+}) {
   const [query, setQuery] = useState("");
   const [all, setAll] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -785,7 +783,7 @@ function LiveMembers({ tab, editable, onFill }: { tab: DivisionMembers; editable
               row.kind === "waiting" ? (
                 <WaitingItem key={`w${row.w.joinId}`} waiting={row.w} editable={editable} short={short} onAsk={setAsking} onFill={() => onFill(row.w)} division={division.name} />
               ) : (
-                <MemberItem key={row.p.id} person={row.p} editable={editable} short={short} divisionId={division.id} onAsk={setAsking} />
+                <MemberItem key={row.p.id} person={row.p} editable={editable} divisionId={division.id} onAsk={setAsking} onEdit={onEdit} />
               ),
             )}
           </ul>
@@ -867,27 +865,23 @@ function WaitingItem({
 }
 
 /**
- * A member's row and ⋯ menu (board 68b5): Move to… (issue #647), the move
- * Edit details makes, through the same control; Remove from the division,
- * and Leaves the team, each locked with a reason when it is not theirs.
+ * A member's row and ⋯ menu (board 68b5, issue #901): the Team tree's member
+ * menu (`DivisionMemberMenu`), each item locked with a reason when it is not
+ * theirs.
  */
 function MemberItem({
   person,
   editable,
-  short,
   divisionId,
   onAsk,
+  onEdit,
 }: {
   person: DivisionPerson;
   editable: boolean;
-  short: string;
   divisionId: number;
   onAsk: (asking: Asking) => void;
+  onEdit?: (person: DivisionPerson) => void;
 }) {
-  const { removal, leave } = person;
-  const [moving, setMoving] = useState(false);
-  const others = person.divisions.filter((d) => d.divisionId !== divisionId).map((d) => d.name);
-  const place = person.position?.moves.find((m): m is Extract<MovablePlace, { kind: "division" }> => m.kind === "division" && m.divisionId === divisionId) ?? null;
   return (
     <li className="flex items-center gap-3 px-3.5 py-2.5">
       <Avatar size="md" person={person} />
@@ -895,7 +889,38 @@ function MemberItem({
         <span className="shrink-0 text-[14px] text-prt-text">{person.name}</span>
         <span className="truncate text-[12px] text-prt-muted">{memberLine(person)}</span>
       </span>
-      {editable && !person.self && place !== null && (
+      {editable && <DivisionMemberMenu person={person} divisionId={divisionId} onAsk={onAsk} onEdit={onEdit} />}
+    </li>
+  );
+}
+
+/**
+ * The Team tree's ⋯ menu on someone's role in one division (issue #901), in
+ * the division drawer and the department drawer alike (`divisionRowMenu`):
+ * Edit details, Move to… (issue #647, the move Edit details makes, through
+ * the same control), Remove from the division and Leaves the team (#972). None on the viewer's own row, or where
+ * they may change nothing about the person.
+ */
+export function DivisionMemberMenu({
+  person,
+  divisionId,
+  onAsk,
+  onEdit,
+}: {
+  person: DivisionPerson;
+  divisionId: number;
+  onAsk: (asking: Asking) => void;
+  onEdit?: (person: DivisionPerson) => void;
+}) {
+  const [moving, setMoving] = useState(false);
+  const { position } = person;
+  if (person.self || position === null) return null;
+  const entries = divisionRowMenu(position, divisionId);
+  if (entries.length === 0) return null;
+  const place = position.moves.find((m): m is Extract<MovablePlace, { kind: "division" }> => m.kind === "division" && m.divisionId === divisionId) ?? null;
+  return (
+    <>
+      {place !== null && (
         <MoveDialog
           open={moving}
           onOpenChange={setMoving}
@@ -905,29 +930,14 @@ function MemberItem({
           taken={person.divisions.map((d) => d.divisionId).filter((id) => id !== divisionId)}
         />
       )}
-      {editable && !person.self && (
-        <RowMenu label={`Actions for ${person.name}`}>
-          {place !== null && (
-            <MenuItem onSelect={() => setMoving(true)} icon={<ArrowRightLeft className="h-3.5 w-3.5" strokeWidth={1.75} />}>
-              Move to…
-            </MenuItem>
-          )}
-          {(removal.kind === "offered" || removal.kind === "locked") && (
-            <MenuItem
-              onSelect={() => onAsk({ kind: "remove", person, divisionId, short })}
-              icon={<UserMinus className="h-3.5 w-3.5" strokeWidth={1.75} />}
-              locked={removal.kind === "locked" ? removal.reason : null}
-              detail={`Stays in ${others.join(", ")}`}
-            >
-              Remove from {short}
-            </MenuItem>
-          )}
-          <MenuItem onSelect={() => onAsk({ kind: "leave", person })} danger locked={leave.allowed ? null : leave.reason}>
-            Leaves the team
-          </MenuItem>
-        </RowMenu>
-      )}
-    </li>
+      <MemberMenu
+        person={person}
+        entries={entries}
+        onAsk={onAsk}
+        onEdit={onEdit === undefined ? undefined : () => onEdit(person)}
+        onMove={place === null ? undefined : () => setMoving(true)}
+      />
+    </>
   );
 }
 
@@ -1012,11 +1022,17 @@ function DraftMembers({
   );
 }
 
-const OUTCOME_LINES: Readonly<Record<RemovedLeadOutcome, (short: string) => string>> = {
+/** What the confirm says of a removed lead; an advisor's line names the place picked (`advisingLine`, issue #900). */
+const OUTCOME_LINES: Readonly<Record<Exclude<RemovedLeadOutcome, "advisor">, (short: string) => string>> = {
   member: (short) => `stays in ${short} as a member`,
   "leave-division": (short) => `leaves ${short} and keeps their other divisions`,
   "leave-team": () => "leaves the team: they move to Alumni and all their access ends",
 };
+
+function removedLine(outcome: RemovedLeadOutcome, scope: AdvisorScope, names: ScopeNames): string {
+  if (outcome !== "advisor") return OUTCOME_LINES[outcome](names.division ?? "this division");
+  return `${advisingLine(LEAD_STEP, scope, names)}; they keep their other divisions`;
+}
 
 /**
  * An old lead as the confirm lists them: what becomes of them, whether they
@@ -1028,16 +1044,17 @@ type GoneLine = { readonly lead: DivisionPerson; readonly line: string; readonly
 function goneLine(
   lead: DivisionPerson,
   old:
-    | { readonly via: "removed"; readonly outcome: RemovedLeadOutcome }
-    | { readonly via: "replaced"; readonly outcome: HandOverOutcome | null; readonly by: string; readonly seat: FullAccessSeat | null },
+    | { readonly via: "removed"; readonly outcome: RemovedLeadOutcome; readonly scope: AdvisorScope }
+    | { readonly via: "replaced"; readonly outcome: HandOverOutcome | null; readonly scope: AdvisorScope; readonly by: string; readonly seat: FullAccessSeat | null },
   divisionId: number | null,
-  short: string,
+  names: ScopeNames,
 ): GoneLine {
-  if (old.via === "removed") return { lead, line: `${lead.name} ${OUTCOME_LINES[old.outcome](short)}.`, leaving: old.outcome === "leave-team", fullAccess: null };
+  if (old.via === "removed") return { lead, line: `${lead.name} ${removedLine(old.outcome, old.scope, names)}.`, leaving: old.outcome === "leave-team", fullAccess: null };
   const step = old.outcome === null || divisionId === null ? null : steppingDown({ kind: "lead", divisionId }, old.outcome);
   const fullAccess = fullAccessMovesLine({ seat: old.seat, successor: old.by, from: lead.name, step });
   if (step === null) return { lead, line: `${lead.name} is replaced.`, leaving: false, fullAccess };
-  return { lead, line: `${lead.name} is replaced and ${steppingDownLine(step, short)}.`, leaving: step.kind === "leave", fullAccess };
+  const next = step.kind === "leave" ? steppingDownLine(step, null) : advisingLine(LEAD_STEP, old.scope, names);
+  return { lead, line: `${lead.name} is replaced and ${next}.`, leaving: step.kind === "leave", fullAccess };
 }
 
 /** The "are you sure" before Save changes or Create division, saying what will change. */

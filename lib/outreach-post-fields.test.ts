@@ -6,7 +6,7 @@ import { awardPosts, outreachRecord, postBySlug, slugOf } from "./outreach";
 import { outreachEditor, publicOutreach, type OutreachEditor } from "./outreach-editor";
 import { importedOutreach } from "./outreach-import";
 import { memoryOutreachStore, memoryPhotoFiles } from "./outreach-memory";
-import { checkPostFields, draftOfFields, postFieldsOf, removePostGalleryPhoto, type PostFields } from "./outreach-post-fields";
+import { checkPostFields, draftOfFields, postFieldsOf, readPostFields, removePostGalleryPhoto, type PostFields } from "./outreach-post-fields";
 import { postColumns, postFromColumns } from "./outreach-rows";
 import type { OutreachPost, PostItem } from "./outreach-types";
 
@@ -138,4 +138,30 @@ test("checkPostFields and draftOfFields never refuse because of the gallery, wit
 test("the last gallery photo can be removed, and its uploaded file is let go", () => {
   const photo = { src: "/outreach/gallery-one.webp", alt: "", caption: "" };
   assert.deepEqual(removePostGalleryPhoto([photo], 0), { items: [], letGo: [photo.src] });
+});
+
+test("the panel's photos and gallery photos keep their crops through a read and a save; with none they read as before, and a malformed crop is refused", () => {
+  const post: OutreachPost = outreachRecord.posts[0];
+  const crops = { desktop: { x: 0.1, y: 0.2, width: 0.5, height: 0.4 } };
+  const cover = { ...post.photos[0], crops };
+  const gallery = [
+    { src: "/outreach/gallery-one.webp", alt: "", caption: "", crops: { phone: { x: 0, y: 0, width: 0.6, height: 0.8 } } },
+    { src: "/outreach/gallery-two.webp", alt: "", caption: "" },
+  ];
+  const fields: PostFields = { ...postFieldsOf(post), photos: [cover], gallery };
+  assert.deepEqual(readPostFields(JSON.parse(JSON.stringify(fields))), fields);
+  for (const saved of [checkPostFields(fields, post, outreachRecord.tags), draftOfFields(fields, post, outreachRecord.tags)]) {
+    assert.ok(saved.ok, JSON.stringify(saved));
+    assert.deepEqual(saved.value.photos[0].crops, crops);
+    assert.deepEqual(saved.value.gallery?.items.map((item) => item.crops), [gallery[0].crops, undefined]);
+    // Opening the saved post again gives the same photos.
+    assert.deepEqual(postFieldsOf(saved.value).photos, fields.photos);
+    assert.deepEqual(postFieldsOf(saved.value).gallery, fields.gallery);
+  }
+  const plain = postFieldsOf(post);
+  assert.equal(plain.photos[0].crops, undefined);
+  assert.deepEqual(readPostFields(JSON.parse(JSON.stringify(plain))), plain);
+  const outside = { x: 0.8, y: 0, width: 0.5, height: 0.5 };
+  assert.equal(readPostFields({ ...fields, photos: [{ ...cover, crops: { desktop: outside } }] }), null);
+  assert.equal(readPostFields({ ...fields, gallery: [{ ...gallery[1], crops: { phone: outside } }] }), null);
 });

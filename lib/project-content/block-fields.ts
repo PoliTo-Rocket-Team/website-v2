@@ -1,6 +1,7 @@
-import { isPhotoSrc } from "@/lib/outreach-photos";
+import { PROJECT_PHOTO } from "@/lib/photo-crops";
 import type { BlockFacts, BlockKind, Fact, Part, PartList, Photo, Prose, Reason, Reasons, TextWidth } from "@/lib/project-pages/types";
 import { copyFields, copyOf, titleOf, titleText, type CopyFields } from "./copy-fields";
+import { readPhotoIn, storedPhotoOf } from "./photos";
 import {
   blankGallery,
   blankLaunches,
@@ -70,7 +71,7 @@ export type TextFields = {
 
 export type FactsFields = { readonly facts: readonly FactFields[] };
 
-/** One wide photo, none until it is uploaded, and its caption. */
+/** One wide photo, none until it is uploaded, and its caption. The photo keeps its crop for each shape the editor framed (issue #970). */
 export type PhotoFields = { readonly photo: Photo | null; readonly caption: string };
 
 export type PointsFields = { readonly eyebrow: string; readonly title: string; readonly items: readonly ReasonFields[] };
@@ -196,7 +197,7 @@ export function blockOf(fields: BlockFields): ProjectBlock | null {
       return facts === null ? null : { ...meta, kind: "facts", facts };
     }
     case "photo":
-      return fields.photo === null ? null : { ...meta, kind: "photo", photo: { src: fields.photo.src, alt: fields.photo.alt.trim() }, caption: fields.caption.trim() };
+      return fields.photo === null ? null : { ...meta, kind: "photo", photo: storedPhotoOf(fields.photo), caption: fields.caption.trim() };
     case "gallery": {
       const gallery = galleryOf(fields);
       return gallery === null ? null : { ...meta, kind: "gallery", ...gallery };
@@ -344,9 +345,9 @@ function readContent(kind: BlockKind, v: Loose): ContentOf[BlockKind] | null {
     }
     case "photo": {
       const caption = strings(v, ["caption"]);
-      const photo = v.photo === null ? null : strings(v.photo, ["src", "alt"]);
-      if (caption === null || (v.photo !== null && (photo === null || !isPhotoSrc(photo.src)))) return null;
-      return { caption: caption.caption, photo: photo === null ? null : { src: photo.src as Photo["src"], alt: photo.alt } };
+      const photo = v.photo === null ? null : readPhotoIn(v.photo, PROJECT_PHOTO);
+      if (caption === null || (v.photo !== null && photo === null)) return null;
+      return { caption: caption.caption, photo };
     }
     case "gallery":
       return readGalleryFields(v);

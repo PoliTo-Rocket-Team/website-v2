@@ -2,12 +2,17 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   checkDivisionSave,
+  checkPeopleChange,
   closeRefusal,
   divisionClosing,
   divisionCodeError,
   divisionRowWrites,
+  divisionTitle,
   peopleInDivision,
+  peopleSaveOf,
   planDivisionSave,
+  renamesDivision,
+  roleSwitchOf,
   searchTeam,
   storedDivisionName,
   type DivisionRow,
@@ -51,12 +56,12 @@ const team: FoundPerson[] = [
   person(5, "Davide Russo", [[1, "member"], [3, "member"]]),
   person(6, "Chiara Rinaldi", [], [{ kind: "head", departmentId: 1, title: "Head of Aerodynamics" }]),
   person(7, "Alessandro Greco", [], [{ kind: "team-leader", title: "" }]),
-  person(8, "Federica Moretti", [[3, "member"]], [{ kind: "board", seat: { roleId: 28, title: "Chief Engineer", flag: "chief-engineer", since: "2025-10-01" } }]),
+  person(8, "Federica Moretti", [[3, "member"]], [{ kind: "board", seat: { roleId: 28, title: "Chief Engineer", fullAccess: "chief-engineer", type: "core", since: "2025-10-01" } }]),
 ];
 
 const head: TeamActor = { kind: "head", departmentIds: [1] };
 const missionAnalysis: DivisionSubject = { kind: "open", division: org.divisions[0] };
-const keep: DivisionSave = { name: "Mission Analysis", code: "MA", newLeads: [], oldLeads: [], members: [], emails: [] };
+const keep: DivisionSave = { name: "Mission Analysis", code: "MA", newLeads: [], oldLeads: [], advisors: [], members: [], emails: [] };
 
 const plan = (save: Partial<DivisionSave>, subject: DivisionSubject = missionAnalysis, actor: TeamActor = head) =>
   planDivisionSave({ actor, org, subject, save: { ...keep, ...save }, team });
@@ -102,7 +107,7 @@ test("a lead's save keeps every rule of Edit division (#594)", () => {
   assert.ok(asLead({ oldLeads: [removed(2, "leave-division")] }).ok, "Pietro is also in Optimization and Analysis");
   assert.equal(asLead({ oldLeads: [removed(2, "leave-team")] }).ok, false, "Pietro is also in a division the lead does not reach");
   const replaced = asLead({ newLeads: [3], oldLeads: [{ personId: 1, via: "replaced", outcome: "advisor" }] });
-  assert.ok(replaced.ok && replaced.plan.advise.includes(1) && replaced.plan.promote.includes(3), "a replaced lead becomes an advisor");
+  assert.ok(replaced.ok && replaced.plan.advise.some((a) => a.memberId === 1) && replaced.plan.promote.includes(3), "a replaced lead becomes an advisor");
 });
 
 test("an open division always keeps a lead: an edit or a create with none is refused", () => {
@@ -152,7 +157,10 @@ test("each outcome for an old lead is planned as chosen, within the rules", () =
 test("a replaced lead hands the division over: an advisor in it or Alumni, never a member (#253)", () => {
   const advises = plan({ newLeads: [3], oldLeads: [{ personId: 1, via: "replaced", outcome: "advisor" }] });
   assert.ok(advises.ok);
-  assert.deepEqual([advises.plan.advise, advises.plan.demote, advises.plan.leaveTeam], [[1], [], []]);
+  assert.deepEqual(
+    [advises.plan.advise, advises.plan.demote, advises.plan.leaveTeam],
+    [[{ memberId: 1, step: { kind: "advisor", place: { kind: "division", divisionId: 1 }, access: "ends" } }], [], []],
+  );
   assert.deepEqual(divisionRowWrites(advises.plan, 1, [{ id: 101, memberId: 1, type: "lead" }]).end, [101], "the lead row ends; the Advisor role starts beside it");
   const leaves = plan({ newLeads: [3], oldLeads: [{ personId: 1, via: "replaced", outcome: "leave" }] });
   assert.ok(leaves.ok);
@@ -211,13 +219,36 @@ test("every division write touches only lead and member rows: a seat kept on the
   assert.deepEqual(divisionRowWrites({ ...picked.plan, joinAsLead: [], promote: [6, 7] }, 1, seatRows).toLead, [105], "a seat row never becomes a lead's");
 });
 
-test("a code change is planned as one, and the name is kept with 'Division'", () => {
+test("a code change is planned as one, and a rename stores the name without 'Division' (#938)", () => {
   const result = plan({ name: "Mission Design", code: "MD" });
   assert.ok(result.ok);
   assert.equal(result.plan.code, "MD");
   assert.equal(result.plan.codeChanged, true);
-  assert.equal(result.plan.name, "Mission Design Division");
-  assert.equal(storedDivisionName("Flight Dynamics Division"), "Flight Dynamics Division");
+  assert.equal(result.plan.nameChanged, true);
+  assert.equal(result.plan.name, "Mission Design");
+  assert.equal(storedDivisionName("  Flight   Dynamics Division "), "Flight Dynamics", "trimmed, one space, a typed 'Division' removed");
+  assert.equal(divisionTitle("Flight Dynamics"), "Flight Dynamics Division", "the drawer says it with 'Division', on screen only");
+});
+
+test("a save that keeps the name does not rename the division, even when the stored name ends in 'Division' (#938)", () => {
+  // Mission Analysis is stored as "Mission Analysis Division" here, as the drawer's save used to leave it.
+  for (const typed of ["Mission Analysis", " Mission  Analysis ", "Mission Analysis Division"]) {
+    const kept = plan({ name: typed, newLeads: [3] });
+    assert.ok(kept.ok);
+    assert.equal(kept.plan.nameChanged, false, `"${typed}" is the same name`);
+  }
+  const plain: DivisionSubject = { kind: "open", division: { ...org.divisions[0], name: "Mission Analysis" } };
+  const same = plan({}, plain);
+  assert.ok(same.ok && !same.plan.nameChanged && same.plan.name === "Mission Analysis");
+  assert.equal(renamesDivision("Mission Analysis", "Mission Analysis Division"), false);
+  assert.equal(renamesDivision("Mission Design", "Mission Analysis"), true);
+});
+
+test("New division stores the name without 'Division', a typed one removed (#938)", () => {
+  const created = plan({ name: "Flight Dynamics Division", code: "FD", newLeads: [3] }, { kind: "new", departmentId: 1 });
+  assert.ok(created.ok);
+  assert.equal(created.plan.name, "Flight Dynamics");
+  assert.equal(created.plan.nameChanged, false, "a new division is inserted with its name, not renamed");
 });
 
 test("Close division is refused while anyone is in it, people waiting for their NDA included", () => {
@@ -264,4 +295,91 @@ test("the pickers search the whole team, the team leader, board and heads includ
   const narrowed = searchTeam("l", team, org);
   assert.ok(narrowed.kind === "people" && narrowed.people.length < team.length && narrowed.people.every((p) => p.name.toLowerCase().includes("l")));
   assert.equal(plan({ name: "Flight Dynamics", code: "FD", newLeads: [3], emails: ["sara@prt.it"] }, { kind: "new", departmentId: 1 }).ok, false, "a team address is a person, not a new email");
+});
+
+test("a picked person carries every seat they hold, not only the first (#857)", () => {
+  const twoSeats = person(9, "Giulia Ferri", [[1, "member"]], [
+    { kind: "head", departmentId: 2, title: "Head of Structures" },
+    { kind: "advisor", departmentId: 1 },
+  ]);
+  const found = searchTeam("giulia", [twoSeats], org);
+  assert.ok(found.kind === "people");
+  assert.deepEqual(found.people[0].seats, ["Head of Structures", "Advisor"]);
+  assert.equal(found.people[0].role, "Head of Structures", "their role is still the first seat");
+  const unseated = searchTeam("sara", team, org);
+  assert.ok(unseated.kind === "people");
+  assert.deepEqual(unseated.people[0].seats, [], "a member with no seat carries none");
+});
+
+// Edit details' role pill (issue #972): its Advisor choice and a lead's step-down are Edit division's save with only that change (issue #901).
+
+test("a member of the division becomes an advisor where the editor picked: their member row ends, nothing else changes", () => {
+  for (const [scope, place] of [
+    ["division", { kind: "division", divisionId: 1 }],
+    ["department", { kind: "department", departmentId: 1 }],
+    ["team", { kind: "team" }],
+  ] as const) {
+    const planned = plan({ advisors: [{ personId: 3, scope }] });
+    assert.ok(planned.ok, scope);
+    assert.deepEqual(planned.plan.advise, [{ memberId: 3, step: { kind: "advisor", place, access: "ends" } }]);
+    assert.deepEqual([planned.plan.promote, planned.plan.demote, planned.plan.leaveDivision, planned.plan.nameChanged, planned.plan.codeChanged], [[], [], [], false, false]);
+    assert.deepEqual(divisionRowWrites(planned.plan, 1, [{ id: 103, memberId: 3, type: "core" }]).end, [103]);
+  }
+});
+
+test("an advisor of the division who advises elsewhere now moves their Advisor role there; one picked here again keeps it (#972)", () => {
+  const advisorRow: DivisionRow = { id: 108, memberId: 3, type: "advisor" };
+  for (const scope of ["department", "team"] as const) {
+    const planned = plan({ advisors: [{ personId: 3, scope }] });
+    assert.ok(planned.ok, scope);
+    assert.deepEqual(divisionRowWrites(planned.plan, 1, [advisorRow]).end, [108], `the Advisor row here ends for the ${scope}`);
+  }
+  const here = plan({ advisors: [{ personId: 3, scope: "division" }] });
+  assert.ok(here.ok);
+  assert.deepEqual(divisionRowWrites(here.plan, 1, [advisorRow]).end, [], "advising here again ends nothing");
+  // Someone with a member row here and an Advisor row here keeps the old rule: only the member row ends.
+  const both = plan({ advisors: [{ personId: 3, scope: "team" }] });
+  assert.ok(both.ok);
+  assert.deepEqual(divisionRowWrites(both.plan, 1, [{ id: 103, memberId: 3, type: "core" }, advisorRow]).end, [103]);
+});
+
+test("Edit details' Member or Lead retypes a lead or member row, and turns an Advisor role into a new role (#972)", () => {
+  assert.deepEqual(roleSwitchOf([{ id: 103, type: "core" }]), { kind: "retype", rows: [103] });
+  assert.deepEqual(roleSwitchOf([{ id: 101, type: "lead" }, { id: 108, type: "advisor" }]), { kind: "retype", rows: [101] });
+  assert.deepEqual(roleSwitchOf([{ id: 108, type: "advisor" }]), { kind: "from-advisor", ending: [108] });
+  assert.deepEqual(roleSwitchOf([{ id: 105, type: "head" }]), { kind: "none" }, "a seat kept on the division is no role to switch");
+  assert.deepEqual(roleSwitchOf([]), { kind: "none" });
+});
+
+test("only a member of this division becomes an advisor here, once, never in New division, and only for who may change its leads", () => {
+  const refusal = { ok: false, error: "Only a member of this division can become an advisor here." };
+  assert.deepEqual(plan({ advisors: [{ personId: 1, scope: null }] }), refusal, "a lead steps down through oldLeads");
+  assert.deepEqual(plan({ advisors: [{ personId: 4, scope: null }] }), refusal, "someone in another division");
+  assert.equal(plan({ advisors: [{ personId: 3, scope: null }, { personId: 3, scope: "team" }] }).ok, false);
+  assert.equal(plan({ advisors: [{ personId: 3, scope: null }] }, { kind: "new", departmentId: 1 }).ok, false);
+  assert.equal(plan({ advisors: [{ personId: 3, scope: null }] }, missionAnalysis, { kind: "lead", divisionIds: [1], ledDivisionIds: [] }).ok, false);
+});
+
+test("a people change keeps the stored name and code, a division stored with no code included", () => {
+  const change = { oldLeads: [], advisors: [{ personId: 3, scope: null }] };
+  assert.deepEqual(peopleSaveOf({ name: "Mission Analysis Division", code: "MA" }, change), {
+    name: "Mission Analysis Division",
+    code: "MA",
+    newLeads: [],
+    members: [],
+    emails: [],
+    ...change,
+  });
+  const uncoded: DivisionSubject = { kind: "open", division: { ...org.divisions[0], code: null } };
+  if (uncoded.kind !== "open") return;
+  const planned = planDivisionSave({ actor: head, org, subject: uncoded, save: peopleSaveOf(uncoded.division, change), team });
+  assert.ok(planned.ok && !planned.plan.codeChanged && !planned.plan.nameChanged);
+  assert.deepEqual(checkPeopleChange({}), { ok: false, error: "Nothing to change." });
+  assert.ok(checkPeopleChange({ advisors: [{ personId: 3, scope: "team" }] }).ok);
+});
+
+test("a save sent before issue #901 carries no advisors and still reads", () => {
+  const checked = checkDivisionSave({ name: "Mission Analysis", code: "MA", newLeads: [], oldLeads: [], members: [], emails: [] });
+  assert.ok(checked.ok);
+  assert.deepEqual(checked.value.advisors, []);
 });

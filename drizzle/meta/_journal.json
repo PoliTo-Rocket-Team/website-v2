@@ -519,6 +519,76 @@
       "when": 1795454400000,
       "tag": "0075_drop_members_email_alias",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1795540800000,
+      "tag": "0076_team_page_layout",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1795627200000,
+      "tag": "0077_roles_several_seat_holders",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1795713600000,
+      "tag": "0078_sync_auth_users_skip_held_and_closed_rows",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1795800000000,
+      "tag": "0079_sync_auth_users_fresh_row_on_refused_take_over",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1795886400000,
+      "tag": "0080_sync_auth_users_email_case",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1795972800000,
+      "tag": "0081_audit_log_skip_auth_secrets",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1796059200000,
+      "tag": "0082_repair_division_name_suffix",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1796232000000,
+      "tag": "0084_prt_email_removals",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1796318400000,
+      "tag": "0085_account_google_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1796404800000,
+      "tag": "0086_members_joined_team_on",
+      "breakpoints": true
     }
   ]
 }

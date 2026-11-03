@@ -15,7 +15,7 @@ Tailwind breakpoint, not a second component per screen size.
    [confirm-dialog.tsx](../components/dashboard/confirm-dialog.tsx),
    [decision-dialog.tsx](../components/dashboard/decision-dialog.tsx),
    [interview-dialog.tsx](../components/dashboard/interview-dialog.tsx) and
-   [photo-crop-dialog.tsx](../components/dashboard/photo-crop-dialog.tsx). The user menu does the
+   [crop-dialog.tsx](../components/dashboard/crop-dialog.tsx) (its one-shape layout). The user menu does the
    same as `UserSheet` in [user-card.tsx](../components/dashboard/user-card.tsx).
 
 2. **Right-side panels are full pages on phones.** `SidePanel` in

@@ -1,12 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, Lock, Mail, MailX, Upload, UserMinus, UserPlus, X } from "lucide-react";
+import { useEffect, useId, useRef, useState, useTransition, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { ArrowRightLeft, AtSign, Building2, Check, ChevronDown, Eye, EyeOff, FileCheck2, Lock, LogOut, Mail, MailX, Upload, UserMinus, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { addMember, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
+import { usePhoneGrouping } from "@/components/use-phone-grouping";
+import { PHONE_PLACEHOLDER } from "@/lib/phone";
+import { addMember, changeDivisionPeople, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
+import type { RemovedLeadOutcome } from "@/lib/dashboard/division-edit";
+import type { AdvisorScope } from "@/lib/dashboard/hand-over";
+import {
+  advisorChange,
+  advisorRoleSave,
+  leadStepDown,
+  removalPermission,
+  roleNow,
+  roleOptions,
+  sameRole,
+  stepDownPermission,
+  type RoleChoice,
+} from "@/lib/dashboard/member-actions";
+import { andList } from "@/lib/dashboard/team-structure";
 import { cancelAliasRequest, removeTeamAddress, requestAlias, requestTeamAddress } from "@/app/dashboard/actions";
 import { ALIAS_FORM_HINT, aliasPrefill, checkAliasAddress, personalRequestChoice, TEAM_DOMAIN, type MemberAlias } from "@/lib/dashboard/alias-request";
 import type { Permission } from "@/lib/dashboard/team";
@@ -24,10 +40,14 @@ import {
   checkAddMember,
   checkMemberEdit,
   checkMemberPhoto,
+  GOOGLE_EMAIL_NOTE,
+  roleTitleError,
   type AddLookup,
   type AddMemberErrors,
   type DivisionHeader,
   type DivisionPerson,
+  type DivisionRoleChange,
+  type LandedSent,
   type MemberPosition,
   type TeamMatch,
   type WaitingPerson,
@@ -37,13 +57,15 @@ import { PLACE_TAG_LABELS, placeHeaderLine, type PersonPlace, type PlaceTag } fr
 import { MAX_NAME, type PersonName } from "@/lib/dashboard/person-name";
 import { divisionLabel } from "@/lib/dashboard/team";
 import { shortDate } from "@/lib/dashboard/write";
+import { CROP_SETTINGS } from "@/lib/dashboard/crop-settings";
 import { Avatar } from "./avatar";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CopyButton, IconButton } from "./copy-button";
-import { RadioChoice } from "./hand-over-choice";
+import { RadioChoice, RemovedLeadChoice } from "./hand-over-choice";
 import { Chips } from "./division-chips";
-import { MemberDialogs, type Asking } from "./division-members";
+import { MemberDialogs, MenuItem, RowMenu, type Asking } from "./division-members";
+import { AddDivision, FixedPill, RolePill, RoleRow, RowTitle } from "./role-rows";
 import {
   choiceOf,
   HeadMoveConfirm,
@@ -57,14 +79,16 @@ import {
   type HeadMoveAnswer,
   type MoveChoice,
 } from "./member-move";
-import { titleOnMove, type MovablePlace } from "@/lib/dashboard/member-move";
+import { headsAfterMove, titleOnMove, type MovablePlace } from "@/lib/dashboard/member-move";
 import { ConfirmDialog, SHEET_BUTTONS, SHEET_CANCEL, SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber, sheetConfirm } from "./confirm-dialog";
 import { Drawer, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
-import { Field, inputClass, LOCKED_INPUT } from "./field";
+import { fieldSummaryOf, type FormSummary, type SummaryField } from "@/lib/dashboard/error-summary";
+import { focusField } from "./error-summary";
+import { Field, GroupLabel, inputClass, LOCKED_INPUT } from "./field";
 import { PersonCombobox } from "./person-combobox";
 import { Toggle } from "./controls";
 import { EYEBROW, GHOST_PILL } from "./page-header";
-import { PHOTO_ACCEPT, PhotoCropDialog } from "./photo-crop-dialog";
+import { CropDialog } from "./crop-dialog";
 
 // The member panels of every Members page (issues #231, #584 and #647): the
 // member panel with their placement and private data (boards 61f, 98), Edit
@@ -184,12 +208,15 @@ export function PersonDrawer<P extends PanelPerson>({
   person,
   alias,
   teamAddresses,
+  googleEmails,
   movesWith,
   editable,
   onClose,
   onEdit,
 }: {
   person: P | null;
+  /** The other Google accounts they sign in with, as the page read them for this viewer (issue #908); empty for none. */
+  googleEmails: readonly string[];
   /** Their email alias, their PRT email, as the viewer sees it (epic #538, issue #563); null when it was not read. */
   alias: MemberAlias | null;
   /**
@@ -251,6 +278,7 @@ export function PersonDrawer<P extends PanelPerson>({
               movesWith={movesWith}
             />
             <Fact label="Personal email" value={p.signInEmail} copy="Email" wrap stack />
+            <GoogleEmailsFact emails={googleEmails} />
             <Fact label="Phone" value={memberDetailText(d, "phone")} hidden />
             <Fact label="Discord" value={memberDetailText(d, "discord")} copy="Discord" />
             <Fact label="LinkedIn" value={memberDetailText(d, "linkedin")} />
@@ -302,6 +330,33 @@ function AddressText({ address }: { address: string }) {
       <wbr />
       <span className="whitespace-nowrap">{address.slice(at)}</span>
     </span>
+  );
+}
+
+/**
+ * The other Google accounts a member signs in with (issue #908), under the
+ * personal email, which stays the one sign-in address: one per line with its
+ * copy button, as the PRT emails row lists its addresses. Left out when they
+ * have none.
+ */
+function GoogleEmailsFact({ emails }: { emails: readonly string[] }) {
+  if (emails.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-start gap-x-3 md:flex-nowrap">
+      <dt className={`${factLabel(true)} md:py-1`}>Also signs in with</dt>
+      <dd className="min-w-0 flex-1">
+        <ul className="flex w-full flex-col gap-1">
+          {emails.map((email) => (
+            <li key={email} className="flex items-start gap-x-3">
+              <span className="min-w-0 flex-1 py-1">
+                <AddressText address={email} />
+              </span>
+              <CopyButton value={email} what="Email" />
+            </li>
+          ))}
+        </ul>
+      </dd>
+    </div>
   );
 }
 
@@ -829,7 +884,12 @@ function SpecialRequestForm({
  * to join a division (Fill details).
  */
 export type EditTarget =
-  | { readonly kind: "person"; readonly actions: MemberActions }
+  | {
+      readonly kind: "person";
+      readonly actions: MemberActions;
+      /** The other Google accounts they sign in with, as the Members page read them (issue #908); empty for none. */
+      readonly googleEmails: readonly string[];
+    }
   | { readonly kind: "waiting"; readonly waiting: WaitingPerson; readonly division: DivisionHeader };
 
 type Draft = Record<MemberDetailKey, string> & { title: string };
@@ -840,6 +900,7 @@ function draftOf(title: string | null, details: MemberDetails): Draft {
 
 function SelectBox({
   id,
+  name,
   describedBy,
   value,
   error,
@@ -848,6 +909,7 @@ function SelectBox({
   label = (o) => o,
 }: {
   id: string;
+  name: string;
   describedBy: string | undefined;
   value: string;
   error?: string;
@@ -859,6 +921,7 @@ function SelectBox({
     <div className="relative">
       <select
         id={id}
+        name={name}
         value={value}
         aria-describedby={describedBy}
         aria-invalid={error !== undefined}
@@ -882,37 +945,51 @@ function SelectBox({
 const PLACEHOLDERS: Partial<Record<MemberDetailKey, string>> = {
   prtEmail: "name@politorocketteam.it",
   linkedin: "linkedin.com/in/...",
-  phone: "+39 333 123 4567",
+  phone: PHONE_PLACEHOLDER,
   discord: "username",
   politoId: "s312456",
   country: "Italy",
 };
 
-/** One member detail as a form control: a select for the lists, a date, or text. */
+/** Each member detail's label in Edit details and Add member, which the error summary names it by too. */
+const DETAIL_LABEL: Readonly<Record<MemberDetailKey, string>> = {
+  prtEmail: "PRT email",
+  phone: "Phone",
+  discord: "Discord",
+  linkedin: "LinkedIn",
+  politoId: "PoliTo ID",
+  programme: "Program",
+  level: "Level",
+  country: "From",
+  birthDate: "Date of birth",
+  gender: "Gender",
+};
+
+/** One member detail as a form control, named by its key: a select for the lists, a date, or text. */
 function DetailInput({
   name,
-  label,
   draft,
   errors,
   set,
   className = "",
 }: {
   name: MemberDetailKey;
-  label: string;
   draft: Draft;
   errors: MemberDetailErrors;
   set: (key: keyof Draft, value: string) => void;
   className?: string;
 }) {
   const error = errors[name];
+  const phone = usePhoneGrouping((value) => set("phone", value));
   return (
-    <Field label={label} error={error} className={className}>
+    <Field label={DETAIL_LABEL[name]} error={error} className={className}>
       {(id, describedBy) =>
         name === "programme" ? (
-          <SelectBox id={id} describedBy={describedBy} value={draft.programme} error={error} onChange={(v) => set("programme", v)} options={DEGREE_PROGRAMMES} />
+          <SelectBox id={id} name={name} describedBy={describedBy} value={draft.programme} error={error} onChange={(v) => set("programme", v)} options={DEGREE_PROGRAMMES} />
         ) : name === "level" ? (
           <SelectBox
             id={id}
+            name={name}
             describedBy={describedBy}
             value={draft.level}
             error={error}
@@ -921,20 +998,85 @@ function DetailInput({
             label={(o) => levelLabel(o as (typeof STUDY_PROGRAMMES)[number])}
           />
         ) : name === "gender" ? (
-          <SelectBox id={id} describedBy={describedBy} value={draft.gender} error={error} onChange={(v) => set("gender", v)} options={GENDERS} />
+          <SelectBox id={id} name={name} describedBy={describedBy} value={draft.gender} error={error} onChange={(v) => set("gender", v)} options={GENDERS} />
         ) : (
           <input
             id={id}
+            name={name}
             type={name === "birthDate" ? "date" : name === "phone" ? "tel" : name === "prtEmail" ? "email" : "text"}
             value={draft[name]}
             aria-describedby={describedBy}
             aria-invalid={error !== undefined}
             placeholder={PLACEHOLDERS[name]}
-            onChange={(e) => set(name, e.target.value)}
+            {...(name === "phone" ? phone : { onChange: (e: ChangeEvent<HTMLInputElement>) => set(name, e.target.value) })}
             className={inputClass(error)}
           />
         )
       }
+    </Field>
+  );
+}
+
+/**
+ * Edit details' other Google accounts (issue #908): under the personal email,
+ * which stays the one sign-in email and the only one Save may correct, each
+ * account locked on its own line, since only the member adds or removes them
+ * (My profile's Google accounts). Left out when they have none.
+ */
+function GoogleEmailsField({ emails }: { emails: readonly string[] }) {
+  const labelId = useId();
+  if (emails.length === 0) return null;
+  return (
+    <div role="group" aria-labelledby={labelId} className="min-w-0 sm:col-span-2">
+      <GroupLabel id={labelId} label="Also signs in with" hint="linked Google accounts" />
+      <ul className="flex flex-col gap-2">
+        {emails.map((email) => (
+          <li key={email} className={LOCKED_INPUT}>
+            <span className="min-w-0 flex-1 truncate">{email}</span>
+            <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Edit details' Contact details in the order it shows them; the sign-in email sits after the PRT email. */
+const CONTACT_DETAILS: readonly MemberDetailKey[] = ["prtEmail", "phone", "discord", "linkedin"];
+/** Its Studies and Personal details, in order. */
+const OTHER_DETAILS: readonly MemberDetailKey[] = ["politoId", "programme", "level", "country", "birthDate", "gender"];
+
+/** A role title box, named `name` in the form: "Role in <division>", or a seat's "Role" (issues #626, #911). */
+function TitleInput({
+  name,
+  label,
+  value,
+  error,
+  required,
+  onChange,
+}: {
+  name: string;
+  label: string;
+  value: string;
+  error: string | undefined;
+  required: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Field label={label} hint="shown on the Team page" error={error}>
+      {(id, describedBy) => (
+        <input
+          id={id}
+          name={name}
+          value={value}
+          maxLength={80}
+          aria-required={required}
+          aria-describedby={describedBy}
+          aria-invalid={error !== undefined}
+          onChange={(e) => onChange(e.target.value)}
+          className={inputClass(error)}
+        />
+      )}
     </Field>
   );
 }
@@ -956,31 +1098,44 @@ function detailsOf(draft: Draft): Record<MemberDetailKey, string> {
 
 /**
  * Edit details (board 61g), the one member editor of every Members page
- * (issue #584): the photo, the role title, contact, studies and personal
- * details, and for someone on the team the position part: for each place the
- * viewer may move them out of, where they go and what they are there (boards
- * 98a and 98b, issue #647; lead or member in the same division is the switch
- * it always was), and Leaving the team (board 46b: Remove from a division,
- * Move to alumni), each locked with its reason where the viewer may not. A
- * head's move asks on Save who heads the department they leave (board 98c).
+ * (issue #584): the photo, contact, studies and personal details, and for
+ * someone on the team the Roles rows (boards 103b to 103d, issue #972): one
+ * per seat, headship and division, each with its role pill, its ⋯ (Move to…,
+ * Remove from this division) and its title box, then "+ Add division", and
+ * Leaves the team at the bottom; each choice locked with its reason where the
+ * viewer may not. A head's move asks on Save who heads the department they
+ * leave (board 98c).
  * Fill details, for someone waiting, holds the role in their division and the
- * details.
+ * details. `openedFrom` is the page it opens on: from the Team tree, the
+ * "Also on the Team tree" link would lead back to where it is (issue #965).
  */
-export function EditDetailsDrawer({ target, onClose }: { target: EditTarget | null; onClose: () => void }) {
+export function EditDetailsDrawer({ target, openedFrom, onClose }: { target: EditTarget | null; openedFrom: EditOpenedFrom; onClose: () => void }) {
   const [shown, setShown] = useState(target);
   if (target !== null && target !== shown) setShown(target);
   const t = target ?? shown;
   if (t === null) return null;
-  return <EditForm key={t.kind === "person" ? `p${t.actions.person.id}` : `w${t.waiting.joinId}`} open={target !== null} target={t} onClose={onClose} />;
+  return (
+    <EditForm
+      key={t.kind === "person" ? `p${t.actions.person.id}` : `w${t.waiting.joinId}`}
+      open={target !== null}
+      target={t}
+      openedFrom={openedFrom}
+      onClose={onClose}
+    />
+  );
 }
 
-function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget; onClose: () => void }) {
+/** The page Edit details opens on. */
+export type EditOpenedFrom = "members" | "team-tree";
+
+function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target: EditTarget; openedFrom: EditOpenedFrom; onClose: () => void }) {
   const person = target.kind === "person" ? target.actions.person : null;
   const position = target.kind === "person" ? target.actions.position : null;
   const waiting = target.kind === "waiting" ? target.waiting : null;
   const name = person?.name ?? waiting?.name ?? waiting?.email ?? "";
   const email = person?.signInEmail ?? waiting?.email ?? "";
-  // Full access corrects a mistyped sign-in email while no sign-in account holds it (issue #741); the server sets the flag.
+  const googleEmails = target.kind === "person" ? target.googleEmails : [];
+  // Full access changes a member's sign-in email in one Save (issues #741, #864); the server sets the flag.
   const correctsEmail = target.kind === "person" ? target.actions.correctsSignInEmail : target.waiting.correctsSignInEmail;
   const title = position?.title ?? null;
   // The division whose role title the form sets: the waiting person's, or the person's titled one; none for a seat.
@@ -991,26 +1146,113 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         ? { id: title.divisionId, short: title.short }
         : null;
   const startTitle = waiting?.title ?? (title?.kind === "division" || title?.kind === "seat" ? title.value : null);
-  const { draft, errors, setErrors, set } = useDraft(draftOf(startTitle, person?.details ?? waiting?.details ?? NO_MEMBER_DETAILS));
+  const openedDetails = person?.details ?? waiting?.details ?? NO_MEMBER_DETAILS;
+  const { draft, errors, setErrors, set } = useDraft(draftOf(startTitle, openedDetails));
   // Where each place they hold goes, and what they are there (boards 98a, 98b); a seat is never one (issue #647).
   const places = position?.moves ?? [];
-  const departments = useMoveTargets(places.length > 0 && person !== null ? person.id : null);
+  // Where a move or "+ Add division" may place them, read once for anyone on the team.
+  const departments = useMoveTargets(person !== null && position !== null ? person.id : null);
   const [choices, setChoices] = useState<Readonly<Record<string, MoveChoice>>>(() => Object.fromEntries(places.map((p) => [placeKey(p), choiceOf(p)])));
   const choiceFor = (place: MovablePlace) => choices[placeKey(place)] ?? choiceOf(place);
-  // The place whose role title the form sets: its title field sits under its boxes and follows its move.
-  const titledPlace =
-    places.find((p) =>
-      title?.kind === "division" ? p.kind === "division" && p.divisionId === title.divisionId : title?.kind === "seat" && p.kind === "head" && p.title === title.value,
-    ) ?? null;
+  // Every division row holds its own title, from its stored one (issue #911); the row of the division the form
+  // opened titled in sends its title as the form's own, the others as `divisionTitles`.
+  const [rowTitles, setRowTitles] = useState<Readonly<Record<string, string>>>(() =>
+    Object.fromEntries(places.flatMap((p) => (p.kind === "division" ? [[placeKey(p), p.title ?? ""] as const] : []))),
+  );
+  const [rowErrors, setRowErrors] = useState<Readonly<Record<string, string>>>({});
+  const rowTitleOf = (place: MovablePlace) => rowTitles[placeKey(place)] ?? "";
+  const setRowTitle = (place: MovablePlace, value: string) => {
+    const key = placeKey(place);
+    setRowTitles((t) => ({ ...t, [key]: value }));
+    setRowErrors(({ [key]: _fixed, ...rest }) => rest);
+  };
+  const titledRow = title?.kind === "division" ? (places.find((p) => p.kind === "division" && p.divisionId === title.divisionId) ?? null) : null;
+  // A seat's title stays the form's one, under the boxes of the department they head (issue #626).
+  const seatPlace = title?.kind === "seat" ? (places.find((p) => p.kind === "head" && p.title === title.value) ?? null) : null;
+  const titledPlace = titledRow ?? seatPlace;
   const titledMove = titledPlace === null ? null : moveToOf(titledPlace, choiceFor(titledPlace), departments);
-  /** A new choice for `place`; a new unit for the titled place empties its title, and back where they are shows the stored one (issue #777). */
+  /** A new choice for `place`; a new unit empties that place's title, and back where they are shows its stored one (issue #777). */
   const choose = (place: MovablePlace, next: MoveChoice) => {
-    if (place === titledPlace) {
-      const from = moveToOf(place, choiceFor(place), departments);
-      const nextTitle = titleOnMove({ current: draft.title, stored: startTitle, from, to: moveToOf(place, next, departments) });
+    const from = moveToOf(place, choiceFor(place), departments);
+    const to = moveToOf(place, next, departments);
+    if (place.kind === "division") {
+      const nextTitle = titleOnMove({ current: rowTitleOf(place), stored: place.title, from, to });
+      if (nextTitle !== rowTitleOf(place)) setRowTitle(place, nextTitle);
+    } else if (place === seatPlace) {
+      const nextTitle = titleOnMove({ current: draft.title, stored: startTitle, from, to });
       if (nextTitle !== draft.title) set("title", nextTitle);
     }
     setChoices((c) => ({ ...c, [placeKey(place)]: next }));
+  };
+  // A lead switched to member here is asked "What happens to Marco?", as Remove in the Team tree asks (issue #901):
+  // the outcome and the advisor's scope, per division place, from "Stays as a member" and the division.
+  const [stepDowns, setStepDowns] = useState<Readonly<Record<string, { readonly outcome: RemovedLeadOutcome; readonly scope: AdvisorScope | null }>>>({});
+  const stepDownOf = (place: MovablePlace) => stepDowns[placeKey(place)] ?? { outcome: "member" as const, scope: null };
+  const setStepDown = (place: MovablePlace, next: Partial<{ outcome: RemovedLeadOutcome; scope: AdvisorScope | null }>) =>
+    setStepDowns((s) => ({ ...s, [placeKey(place)]: { ...stepDownOf(place), ...next } }));
+  /** Whether `place` is a division they lead, switched to member and not moved: the step-down the question is about. */
+  const stepsDown = (place: MovablePlace) =>
+    place.kind === "division" && place.role === "lead" && choiceFor(place).as === "member" && moveToOf(place, choiceFor(place), departments) === null;
+  // A division row's role pill (issue #972, board 103c): Member and Lead are the place's lead or member choice;
+  // an advisor pick is held here, by place, and Save makes them an advisor at its scope (#900).
+  const [advisorPicks, setAdvisorPicks] = useState<Readonly<Record<string, AdvisorScope>>>({});
+  const dropAdvisorPick = (key: string) => setAdvisorPicks(({ [key]: _dropped, ...rest }) => rest);
+  // An advisor's row is no place to move (`movablePlacesOf`), so its pill's pick is held here, by division: Member or
+  // Lead again, or another scope (issue #972); Save writes it through `advisorRoleSave`.
+  const [advisorRoles, setAdvisorRoles] = useState<Readonly<Record<number, RoleChoice>>>({});
+  const pickAdvisorRole = (role: DivisionRoleChange, choice: RoleChoice) =>
+    setAdvisorRoles(({ [role.divisionId]: _dropped, ...rest }) => (sameRole(choice, roleNow(role)) ? rest : { ...rest, [role.divisionId]: choice }));
+  /** What a division row's pill shows: the advisor picked, their lead or member choice, or, with no place to change, what they are now. */
+  const pillOf = (role: DivisionRoleChange, place: MovablePlace | null): RoleChoice => {
+    if (place === null) return advisorRoles[role.divisionId] ?? roleNow(role);
+    const scope = advisorPicks[placeKey(place)];
+    if (scope !== undefined) return { kind: "advisor", scope };
+    const as = choiceFor(place).as;
+    return as === "member" || as === "lead" ? { kind: as } : roleNow(role);
+  };
+  const pickRole = (place: MovablePlace, choice: RoleChoice) => {
+    const key = placeKey(place);
+    const start = choiceOf(place);
+    if (choice.kind === "advisor") {
+      setAdvisorPicks((p) => ({ ...p, [key]: choice.scope }));
+      setChoices((c) => ({ ...c, [key]: start }));
+      return;
+    }
+    dropAdvisorPick(key);
+    choose(place, { ...start, as: choice.kind });
+  };
+  // Move to… (board 103d) opens a row's move boxes; closing them puts the place back where it is.
+  const [moving, setMoving] = useState<ReadonlySet<string>>(() => new Set());
+  const startMove = (place: MovablePlace) => {
+    dropAdvisorPick(placeKey(place));
+    setMoving((m) => new Set(m).add(placeKey(place)));
+  };
+  const stopMove = (place: MovablePlace) => {
+    choose(place, choiceOf(place));
+    setMoving((m) => {
+      const next = new Set(m);
+      next.delete(placeKey(place));
+      return next;
+    });
+  };
+  // "+ Add division" (board 103b): each division picked is a new member row, with its title, added on Save.
+  const [added, setAdded] = useState<readonly AddedDivision[]>([]);
+  const addedKey = (a: Pick<AddedDivision, "id">) => `a${a.id}`;
+  const setAddedTitle = (a: AddedDivision, value: string) => {
+    setAdded((all) => all.map((x) => (x.id === a.id ? { ...x, title: value } : x)));
+    setRowErrors(({ [addedKey(a)]: _fixed, ...rest }) => rest);
+  };
+  /** Whether Member is open in the division `place` is: locked for its only lead (issue #965), from the lead counts the page read. */
+  const stepDownOfPlace = (place: MovablePlace): Permission => {
+    const role = place.kind === "division" ? position?.roles.find((r) => r.divisionId === place.divisionId) : undefined;
+    return role === undefined ? { allowed: true } : stepDownPermission(role);
+  };
+  // Why the last Save was refused by the server, until the next Save starts (issue #911). A refusal closes the
+  // head-move question, so the summary above Save is in view.
+  const [refusal, setRefusalState] = useState<string | null>(null);
+  const setRefusal = (message: string | null) => {
+    setRefusalState(message);
+    if (message !== null) setConfirming(false);
   };
   // Their first and last name, for someone on the team (issue #668); someone waiting keeps the name they were added with.
   const [names, setNames] = useState<PersonName | null>(position?.name ?? null);
@@ -1018,34 +1260,74 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   const [asking, setAsking] = useState<Asking | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
+  // What this form's last Save wrote, once one did: a retry then writes only what changed since, so a record
+  // that Save moved onto another login keeps that login's own fields (issue #864).
+  const [landed, setLanded] = useState<LandedSent | null>(null);
 
   const setName = (key: keyof PersonName, value: string) => {
     setNames((n) => (n === null ? n : { ...n, [key]: value }));
     setErrors((errs) => ({ ...errs, [key]: undefined }));
   };
 
-  // A head's move leaves their department with no head, so Save asks first (board 98c).
+  // A head's move changes who heads their department, so Save asks first (board 98c).
   const headMove = places.flatMap((p) => {
     const to = p.kind === "head" ? moveToOf(p, choiceFor(p), departments) : null;
     return p.kind === "head" && to !== null ? [{ place: p, to }] : [];
   })[0];
 
-  /** The details as Save sends them: a moved place's title goes with its move, so the details keep the one it had. */
+  /**
+   * The details as Save sends them, checked: a moved place's title goes with its move, so the details keep the
+   * one it had; a division row that stays sends its title only when it changed (issue #911). `ok` false holds the
+   * errors to show, each row title's under its row's key.
+   */
   const checkedDetails = () => {
     // The sign-in email is sent only when corrected, so a save that leaves it as shown asks for no correction.
     const corrected = correctsEmail && signInEmail.trim().toLowerCase() !== email.toLowerCase();
+    const staying = (p: MovablePlace) => moveToOf(p, choiceFor(p), departments) === null;
+    const divisionTitles = places.flatMap((p) =>
+      p.kind === "division" && p !== titledRow && staying(p) && rowTitleOf(p).trim() !== (p.title ?? "") ? [{ divisionId: p.divisionId, title: rowTitleOf(p) }] : [],
+    );
     const input = {
-      title: titledMove === null ? draft.title : (startTitle ?? ""),
+      title: titledMove !== null ? (startTitle ?? "") : titledRow !== null ? rowTitleOf(titledRow) : draft.title,
+      divisionTitles,
       details: detailsOf(draft),
       ...names,
       ...(corrected ? { signInEmail } : {}),
+      ...(landed === null ? {} : { landed }),
     };
-    return { input, checked: checkMemberEdit(input, title?.kind === "seat" && titledMove === null ? "required" : "optional") };
+    const rowErrs: Record<string, string> = Object.fromEntries([
+      ...places.flatMap((p) => {
+        const error = p.kind === "division" ? roleTitleError(rowTitleOf(p)) : null;
+        return error === null ? [] : [[placeKey(p), error] as const];
+      }),
+      ...added.flatMap((a) => {
+        const error = roleTitleError(a.title);
+        return error === null ? [] : [[addedKey(a), error] as const];
+      }),
+    ]);
+    // The phone the form opened with saves as it is, whatever its format (issue #887).
+    const checked = checkMemberEdit(input, openedDetails.phone, title?.kind === "seat" && titledMove === null ? "required" : "optional");
+    if (checked.ok && Object.keys(rowErrs).length === 0) return { ok: true as const, input, value: checked.value };
+    // A titled row's title is checked as its row's, so its error shows under that row and nowhere else.
+    const { title: titleError, ...rest }: AddMemberErrors = checked.ok ? {} : checked.errors;
+    return { ok: false as const, errors: titledRow === null ? { ...rest, title: titleError } : rest, rowErrors: rowErrs };
+  };
+
+  /** Shows why Save was refused: each field's error, the summary above Save, and the first field in error scrolled to and focused. */
+  const refuse = (form: HTMLFormElement, refused: { errors: AddMemberErrors; rowErrors: Readonly<Record<string, string>> }) => {
+    setErrors(refused.errors);
+    setRowErrors(refused.rowErrors);
+    const shown = fieldSummaryOf(summaryFields(refused.errors, refused.rowErrors));
+    if (shown === null) setRefusal("Check the form and try again.");
+    else if (shown.kind === "fields") focusField(form, shown.first);
   };
 
   const save = async (answer: HeadMoveAnswer | null) => {
-    const { input, checked } = checkedDetails();
-    if (!checked.ok) return setErrors(checked.errors);
+    const checked = checkedDetails();
+    // Field errors are caught on submit, before any Save starts.
+    if (!checked.ok) return;
+    const { input } = checked;
+    setRefusal(null);
     setPending(true);
     try {
       const result = await saveMemberDetails(
@@ -1054,9 +1336,10 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         input,
       );
       if (!result.ok) {
-        toast.error("Could not save the details", { description: result.error });
+        setRefusal(`Could not save the details. ${result.error}`);
         return;
       }
+      setLanded({ details: checked.value.details, ...(checked.value.name ?? {}) });
       for (const place of person === null ? [] : places) {
         const choice = choiceFor(place);
         const to = moveToOf(place, choice, departments);
@@ -1066,29 +1349,66 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
             personId: person!.id,
             from: place.kind === "division" ? { kind: "division", divisionId: place.divisionId } : { kind: "head", departmentId: place.departmentId },
             to,
-            // Only the titled place's title is typed for the new unit; any other starts blank, never with the old unit's title (issue #777).
-            title: place === titledPlace ? draft.title : "",
+            // Each division row's own title goes with its move, and a seat's with its head place's; a new unit's
+            // title is typed, never the old unit's (issues #777, #911).
+            title: place.kind === "division" ? rowTitleOf(place) : place === seatPlace ? draft.title : "",
             replaced: place.kind === "head" ? (answer?.replaced ?? null) : null,
+            replacing: place.kind === "head" ? (answer?.replacing ?? null) : null,
             successor: place.kind === "head" ? (answer?.successor ?? null) : null,
           });
           if (!moved.ok) {
-            toast.error(`Could not move them from ${place.kind === "division" ? place.short : place.department}`, { description: moved.error });
+            setRefusal(`Could not move them from ${place.kind === "division" ? place.short : place.department}. ${moved.error}`);
+            return;
+          }
+        } else if (place.kind === "division" && advisorPicks[placeKey(place)] !== undefined) {
+          // The role pill's Advisor (issue #972): saved through Edit division's people change (#900, #901).
+          const changed = await changeDivisionPeople(place.divisionId, advisorChange(person!.id, place, advisorPicks[placeKey(place)]!));
+          if (!changed.ok) {
+            setRefusal(`Could not make them an advisor in ${place.short}. ${changed.error}`);
+            return;
+          }
+        } else if (stepsDown(place) && place.kind === "division") {
+          // A lead who stops leading: Edit division's Remove, with what happens to them (issue #901).
+          const step = stepDownOf(place);
+          const changed = await changeDivisionPeople(place.divisionId, leadStepDown(person!.id, step.outcome, step.scope));
+          if (!changed.ok) {
+            setRefusal(`Could not change who leads ${place.short}. ${changed.error}`);
             return;
           }
         } else if (place.kind === "division" && choice.as !== place.role && choice.as !== "head") {
-          // Lead or member in the same division: the switch it always was, checked on the server.
+          // Member to lead in the same division: the switch it always was, checked on the server.
           const changed = await saveMember(person!.id, place.divisionId, choice.as === "lead" ? "division-lead" : "member");
           if (!changed.ok) {
-            toast.error(`Could not change who leads ${place.short}`, { description: changed.error });
+            setRefusal(`Could not change who leads ${place.short}. ${changed.error}`);
             return;
           }
+        }
+      }
+      for (const role of person === null ? [] : (position?.roles ?? [])) {
+        // An advisor's pill (issue #972): Member or Lead again through the lead or member switch, another scope through
+        // Edit division's people change; each checked on the server.
+        const picked = advisorRoles[role.divisionId];
+        const write = picked === undefined || !role.advisor ? null : advisorRoleSave(person!.id, picked);
+        if (write === null) continue;
+        const changed = write.kind === "role" ? await saveMember(person!.id, role.divisionId, write.role) : await changeDivisionPeople(role.divisionId, write.change);
+        if (!changed.ok) {
+          setRefusal(`Could not change their role in ${role.short}. ${changed.error}`);
+          return;
+        }
+      }
+      for (const division of person === null ? [] : added) {
+        // "+ Add division": Add member's own write for someone on the team, with the row's title.
+        const joined = await addMember({ kind: "member", divisionId: division.id, personId: person!.id, title: division.title });
+        if (!joined.ok) {
+          setRefusal(`Could not add them to ${division.short}. ${joined.error}`);
+          return;
         }
       }
       toast.success(`Saved ${checked.value.name === null ? name : `${checked.value.name.firstName} ${checked.value.name.lastName}`}`);
       setConfirming(false);
       onClose();
     } catch (err) {
-      toast.error("Could not save the details", { description: err instanceof Error ? err.message : "Please try again." });
+      setRefusal(`Could not save the details. ${err instanceof Error ? err.message : "Please try again."}`);
     } finally {
       setPending(false);
     }
@@ -1096,56 +1416,218 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (headMove !== undefined) {
-      const { checked } = checkedDetails();
-      if (!checked.ok) return setErrors(checked.errors);
-      setConfirming(true);
-      return;
-    }
+    setRefusal(null);
+    const checked = checkedDetails();
+    if (!checked.ok) return refuse(e.currentTarget, checked);
+    if (headMove !== undefined) return setConfirming(true);
     void save(null);
   };
 
-  /** The boxes of one place, its title field when it carries the form's title, the hint and the no-head note. */
-  const placeFields = (place: MovablePlace) => {
+  /** The label of a place's title field: its division's, or where its move takes it (issue #777). */
+  const titleLabelOf = (place: MovablePlace): string => {
     const choice = choiceFor(place);
     const to = moveToOf(place, choice, departments);
-    const short = unitShort(departments, choice.unit);
+    if (to === null) return place.kind === "division" ? `Role in ${place.short}` : "Role";
+    return to.kind === "division" ? `Role in ${unitShort(departments, choice.unit) ?? ""}` : "Role";
+  };
+  /** The form's own title field, when no place carries it: the waiting person's division, a seat, or a division they cannot be moved out of. */
+  const ownTitleShown = titledPlace === null && (titleDivision !== null || title?.kind === "seat");
+  const ownTitleLabel = titleDivision !== null ? `Role in ${titleDivision.short}` : "Role";
+  const rowFieldName = (place: MovablePlace) => `title-${placeKey(place)}`;
+
+  /** Every field the error summary may name, in the order the form shows them, with its error. */
+  const summaryFields = (errs: AddMemberErrors, rowErrs: Readonly<Record<string, string>>): SummaryField[] => [
+    ...(names === null
+      ? []
+      : [
+          { name: "firstName", label: "First name", error: errs.firstName },
+          { name: "lastName", label: "Last name", error: errs.lastName },
+        ]),
+    ...(ownTitleShown ? [{ name: "title", label: ownTitleLabel, error: errs.title }] : []),
+    ...places.flatMap((p) =>
+      p.kind === "division"
+        ? [{ name: rowFieldName(p), label: titleLabelOf(p), error: rowErrs[placeKey(p)] }]
+        : p === seatPlace
+          ? [{ name: "title", label: titleLabelOf(p), error: errs.title }]
+          : [],
+    ),
+    ...added.map((a) => ({ name: `title-${addedKey(a)}`, label: `Role in ${a.short}`, error: rowErrs[addedKey(a)] })),
+    ...CONTACT_DETAILS.flatMap((key) => [
+      { name: key, label: DETAIL_LABEL[key], error: errs[key] },
+      ...(key === "prtEmail" && correctsEmail ? [{ name: "signInEmail", label: "Personal email", error: errs.signInEmail }] : []),
+    ]),
+    ...OTHER_DETAILS.map((key) => ({ name: key, label: DETAIL_LABEL[key], error: errs[key] })),
+  ];
+  // The summary above Save: the fields still in error, or the server's refusal (issue #911).
+  const summary: FormSummary | null = refusal !== null ? { kind: "refusal", message: refusal } : fieldSummaryOf(summaryFields(errors, rowErrors));
+
+  /** Under a row on the move (board 103d): the Division (or Move to) and As boxes, what Save does, and a way back. */
+  const moveFields = (place: MovablePlace) => {
+    const choice = choiceFor(place);
+    const to = moveToOf(place, choice, departments);
     // Every division they are in, the ones this viewer does not reach included: none is a place to move into.
     const taken = (person?.divisions ?? []).map((d) => d.divisionId).filter((id) => place.kind !== "division" || id !== place.divisionId);
     return (
-      <div key={placeKey(place)}>
-        <MoveFields
-          place={place}
-          departments={departments}
-          value={choice}
-          taken={taken}
-          onChange={(next) => choose(place, next)}
-        />
-        {place === titledPlace && (
-          <div className="mt-4">{titleField(to === null ? null : to.kind === "division" ? `Role in ${short ?? ""}` : "Role", to === null && title?.kind === "seat")}</div>
+      <div className="mt-3">
+        <MoveFields place={place} departments={departments} value={choice} taken={taken} stepDown={stepDownOfPlace(place)} onChange={(next) => choose(place, next)} />
+        <MoveHint place={place} moving={to !== null} treeLink={openedFrom === "members"} />
+        <button type="button" onClick={() => stopMove(place)} className={`mt-2 rounded-sm text-[13px] text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}>
+          {place.kind === "division" ? `Keep them in ${place.short}` : `Keep them head of ${place.department}`}
+        </button>
+        {place.kind === "head" && to !== null && person !== null && headsAfterMove(departments, place.departmentId, person.id).kind === "none" && (
+          <NoHeadNote department={place.department} />
         )}
-        <MoveHint place={place} moving={to !== null} />
-        {place.kind === "head" && to !== null && <NoHeadNote department={place.department} />}
       </div>
     );
   };
 
-  /** The role title field: "Role in <division>", or a seat's "Role" (issue #626); `label` null keeps the form's own. */
-  const titleField = (label: string | null, required: boolean) => (
-    <Field label={label ?? (titleDivision !== null ? `Role in ${titleDivision.short}` : "Role")} hint="shown on the Team page" error={errors.title}>
-      {(id, describedBy) => (
-        <input
-          id={id}
-          value={draft.title}
-          maxLength={80}
-          aria-required={required}
-          aria-describedby={describedBy}
-          aria-invalid={errors.title !== undefined}
-          onChange={(e) => set("title", e.target.value)}
-          className={inputClass(errors.title)}
-        />
-      )}
-    </Field>
+  const moveItem = (place: MovablePlace) => (
+    <MenuItem icon={<ArrowRightLeft className="h-3.5 w-3.5" strokeWidth={1.75} />} detail="Pick where they go; they move on Save" onSelect={() => startMove(place)}>
+      Move to…
+    </MenuItem>
+  );
+
+  /** A division row (boards 103b to 103d): the role pill, the ⋯ with Move to… and Remove from this division, and the title box. */
+  const divisionRow = (role: DivisionRoleChange) => {
+    const place = places.find((p) => p.kind === "division" && p.divisionId === role.divisionId) ?? null;
+    const onMove = place !== null && moving.has(placeKey(place));
+    const value = pillOf(role, place);
+    const removal = position?.removals.find((r) => r.divisionId === role.divisionId);
+    const removing = removal === undefined ? null : removalPermission(removal.removal, role.short);
+    const staying = (person?.divisions ?? []).filter((d) => d.divisionId !== role.divisionId).map((d) => d.name);
+    // The form's own title is a division's when that division is no place of theirs here (an advisor, a lead the viewer does not change).
+    const ownTitle = place === null && titledPlace === null && titleDivision?.id === role.divisionId;
+    return (
+      <RoleRow
+        key={role.divisionId}
+        name={role.short}
+        department={role.department}
+        pill={
+          onMove ? null : (
+            <RolePill
+              label={`Role in ${role.short}`}
+              options={roleOptions(role)}
+              value={value}
+              staged={!sameRole(value, roleNow(role))}
+              onChange={(choice) => {
+                if (place !== null) pickRole(place, choice);
+                else if (role.advisor) pickAdvisorRole(role, choice);
+              }}
+            />
+          )
+        }
+        menu={
+          (place !== null || removing !== null) && (
+            <RowMenu label={`More for ${role.short}`}>
+              {place !== null && moveItem(place)}
+              {removing !== null && person !== null && (
+                <MenuItem
+                  icon={<UserMinus className="h-3.5 w-3.5" strokeWidth={1.75} />}
+                  locked={removing.allowed ? null : removing.reason}
+                  detail={staying.length > 0 ? `Stays in ${andList(staying)}` : null}
+                  onSelect={() => setAsking({ kind: "remove", person, divisionId: role.divisionId, short: role.short })}
+                >
+                  Remove from this division
+                </MenuItem>
+              )}
+            </RowMenu>
+          )
+        }
+      >
+        {onMove && place !== null && moveFields(place)}
+        {place !== null && (
+          <RowTitle
+            name={rowFieldName(place)}
+            label={titleLabelOf(place)}
+            value={rowTitleOf(place)}
+            error={rowErrors[placeKey(place)]}
+            onChange={(next) => setRowTitle(place, next)}
+          />
+        )}
+        {ownTitle && <RowTitle name="title" label={ownTitleLabel} value={draft.title} error={errors.title} onChange={(next) => set("title", next)} />}
+        {place !== null && stepsDown(place) && person !== null && position !== null && (
+          <div className="mt-4">
+            <RemovedLeadChoice
+              lead={{ id: person.id, name: person.name, removal: removal?.removal ?? { kind: "only-division" }, leave: position.leave }}
+              short={role.short}
+              value={stepDownOf(place).outcome}
+              onChange={(outcome) => setStepDown(place, { outcome })}
+              scope={{
+                value: stepDownOf(place).scope,
+                names: { division: role.short, department: role.department },
+                onChange: (scope) => setStepDown(place, { scope }),
+              }}
+            />
+          </div>
+        )}
+      </RoleRow>
+    );
+  };
+
+  /** A head's row: "Head of <department>" in the pill, and Move to… moving the headship (boards 98a to 98c). */
+  const headRow = (place: Extract<MovablePlace, { kind: "head" }>) => {
+    const onMove = moving.has(placeKey(place));
+    const to = moveToOf(place, choiceFor(place), departments);
+    return (
+      <RoleRow
+        key={placeKey(place)}
+        name={place.department}
+        department="Department"
+        pill={onMove ? null : <FixedPill>Head of {place.department}</FixedPill>}
+        menu={<RowMenu label={`More for ${place.department}`}>{moveItem(place)}</RowMenu>}
+      >
+        {onMove && moveFields(place)}
+        {place === seatPlace && (
+          <RowTitle name="title" label={titleLabelOf(place)} value={draft.title} error={errors.title} required={to === null} onChange={(next) => set("title", next)} />
+        )}
+      </RoleRow>
+    );
+  };
+
+  // A seat's title (the team leader's, a team-level seat's, a head's the viewer does not move) is the form's own (issue #626).
+  const seatTitleShown = titledPlace === null && titleDivision === null && title?.kind === "seat";
+
+  /** A team seat, listed only: the Team tree's seat drawers change it. The form's own seat title sits under the first. */
+  const seatRow = (seat: string, index: number) => (
+    <RoleRow key={`s${index}`} name={seat} department="Team" pill={<FixedPill locked>Seat</FixedPill>} menu={null}>
+      {index === 0 && seatTitleShown && <RowTitle name="title" label="Role" value={draft.title} error={errors.title} required onChange={(next) => set("title", next)} />}
+    </RoleRow>
+  );
+
+  /** A division picked under "+ Add division": a member there on Save, with its title; its ⋯ takes it back off. */
+  const addedRow = (division: AddedDivision) => (
+    <RoleRow
+      key={addedKey(division)}
+      name={division.short}
+      department={division.department}
+      pill={<FixedPill>Member</FixedPill>}
+      menu={
+        <RowMenu label={`More for ${division.short}`}>
+          <MenuItem
+            icon={<UserMinus className="h-3.5 w-3.5" strokeWidth={1.75} />}
+            onSelect={() => {
+              setAdded((all) => all.filter((x) => x.id !== division.id));
+              setRowErrors(({ [addedKey(division)]: _dropped, ...rest }) => rest);
+            }}
+          >
+            Remove from this division
+          </MenuItem>
+        </RowMenu>
+      }
+    >
+      <RowTitle
+        name={`title-${addedKey(division)}`}
+        label={`Role in ${division.short}`}
+        value={division.title}
+        error={rowErrors[addedKey(division)]}
+        onChange={(next) => setAddedTitle(division, next)}
+      />
+    </RoleRow>
+  );
+
+  /** The form's own role title field: "Role in <division>", or a seat's "Role" (issue #626). */
+  const titleField = (label: string, required: boolean) => (
+    <TitleInput name="title" label={label} value={draft.title} error={errors.title} required={required} onChange={(value) => set("title", value)} />
   );
 
   return (
@@ -1159,6 +1641,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         submitLabel="Save"
         submitting={pending}
         onSubmit={submit}
+        summary={summary}
       >
         {person && (
           <Section title="Photo">
@@ -1173,6 +1656,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
                 {(id, describedBy) => (
                   <input
                     id={id}
+                    name="firstName"
                     value={names.firstName}
                     maxLength={MAX_NAME}
                     autoComplete="off"
@@ -1188,6 +1672,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
                 {(id, describedBy) => (
                   <input
                     id={id}
+                    name="lastName"
                     value={names.lastName}
                     maxLength={MAX_NAME}
                     autoComplete="off"
@@ -1203,37 +1688,48 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
           </Section>
         )}
 
-        <Section title="Role">
-          {titledPlace === null &&
-            (titleDivision !== null || title?.kind === "seat"
-              ? // A division's title, or a seat's: the head's, the team leader's or a team-level seat's (issue #626).
-                titleField(null, titleDivision === null)
-              : title?.kind === "fixed" && (
-                  <Field label="Role" hint="set on the Team tree">
-                    {(id) => (
-                      <span id={id} className={LOCKED_INPUT}>
-                        <span className="min-w-0 flex-1 truncate">{title.label}</span>
-                        <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-                      </span>
-                    )}
-                  </Field>
-                ))}
-          {places.length > 0 && (
-            // One set of boxes per place they hold: a division, or the department they head (boards 98a, 98b).
-            <div className={`flex flex-col gap-6 ${titledPlace === null && title !== null ? "mt-4" : ""}`}>
-              {places.map(placeFields)}
-            </div>
+        <Section title="Roles">
+          {person === null || position === null ? (
+            // Fill details: the role title in the division they wait to join.
+            titleDivision !== null && titleField(ownTitleLabel, false)
+          ) : (
+            <>
+              {/* One row per place they hold (boards 103b to 103d): their seats, a headship, each division. */}
+              <ul className="flex flex-col gap-4">
+                {position.seats.map(seatRow)}
+                {places.flatMap((p) => (p.kind === "head" ? [headRow(p)] : []))}
+                {position.roles.map(divisionRow)}
+                {added.map(addedRow)}
+              </ul>
+              {seatTitleShown && position.seats.length === 0 && titleField("Role", true)}
+              {title?.kind === "fixed" && position.seats.length === 0 && position.roles.length === 0 && places.length === 0 && (
+                <Field label="Role" hint="set on the Team tree">
+                  {(id) => (
+                    <span id={id} className={LOCKED_INPUT}>
+                      <span className="min-w-0 flex-1 truncate">{title.label}</span>
+                      <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                    </span>
+                  )}
+                </Field>
+              )}
+              <AddDivision
+                departments={departments}
+                taken={[...person.divisions.map((d) => d.divisionId), ...added.map((a) => a.id)]}
+                onPick={(division) => setAdded((all) => [...all, { ...division, title: "" }])}
+              />
+            </>
           )}
         </Section>
 
         <Section title="Contact">
           <div className="grid gap-x-3 gap-y-4 sm:grid-cols-2">
-            <DetailInput name="prtEmail" label="PRT email" draft={draft} errors={errors} set={set} />
+            <DetailInput name="prtEmail" draft={draft} errors={errors} set={set} />
             <Field label="Personal email" hint="sign-in email" error={correctsEmail ? errors.signInEmail : undefined}>
               {(id, describedBy) =>
                 correctsEmail ? (
                   <input
                     id={id}
+                    name="signInEmail"
                     type="email"
                     value={signInEmail}
                     maxLength={200}
@@ -1254,36 +1750,38 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
                 )
               }
             </Field>
-            <DetailInput name="phone" label="Phone" draft={draft} errors={errors} set={set} />
-            <DetailInput name="discord" label="Discord" draft={draft} errors={errors} set={set} />
-            <DetailInput name="linkedin" label="LinkedIn" draft={draft} errors={errors} set={set} className="sm:col-span-2" />
+            <GoogleEmailsField emails={googleEmails} />
+            <DetailInput name="phone" draft={draft} errors={errors} set={set} />
+            <DetailInput name="discord" draft={draft} errors={errors} set={set} />
+            <DetailInput name="linkedin" draft={draft} errors={errors} set={set} className="sm:col-span-2" />
           </div>
         </Section>
 
         <Section title="Studies">
           <div className="grid gap-x-3 gap-y-4 sm:grid-cols-2">
-            <DetailInput name="politoId" label="PoliTo ID" draft={draft} errors={errors} set={set} />
-            <DetailInput name="programme" label="Program" draft={draft} errors={errors} set={set} />
-            <DetailInput name="level" label="Level" draft={draft} errors={errors} set={set} />
-            <DetailInput name="country" label="From" draft={draft} errors={errors} set={set} />
+            <DetailInput name="politoId" draft={draft} errors={errors} set={set} />
+            <DetailInput name="programme" draft={draft} errors={errors} set={set} />
+            <DetailInput name="level" draft={draft} errors={errors} set={set} />
+            <DetailInput name="country" draft={draft} errors={errors} set={set} />
           </div>
         </Section>
 
         <Section title="Personal">
           <div className="grid gap-x-3 gap-y-4 sm:grid-cols-2">
-            <DetailInput name="birthDate" label="Date of birth" draft={draft} errors={errors} set={set} />
-            <DetailInput name="gender" label="Gender" draft={draft} errors={errors} set={set} />
+            <DetailInput name="birthDate" draft={draft} errors={errors} set={set} />
+            <DetailInput name="gender" draft={draft} errors={errors} set={set} />
           </div>
         </Section>
 
         {person && position && <LeavingSection person={person} position={position} onAsk={setAsking} />}
       </Drawer>
       <MemberDialogs asking={asking} onClose={() => setAsking(null)} onDone={onClose} />
-      {headMove !== undefined && headMove.place.kind === "head" && (
+      {headMove !== undefined && headMove.place.kind === "head" && person !== null && (
         <HeadMoveConfirm
           open={confirming}
           onOpenChange={setConfirming}
           person={name}
+          personId={person.id}
           from={{ id: headMove.place.departmentId, name: headMove.place.department }}
           to={headMove.to}
           departments={departments}
@@ -1295,62 +1793,34 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   );
 }
 
-const LEAVING_BUTTON = `inline-flex h-9 items-center gap-2 rounded-full border border-danger/60 px-4 text-[13px] font-semibold text-danger transition-colors duration-300 ease-out hover:border-danger hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-danger/60 disabled:hover:bg-transparent ${FOCUS}`;
+/** A division picked under "+ Add division" (board 103b), with the title typed for it. */
+type AddedDivision = { readonly id: number; readonly short: string; readonly department: string; readonly title: string };
 
 /**
- * Leaving the team (board 46b), the end of Edit details: Remove from each of
- * the person's divisions the viewer reaches, where `removalFrom` offers it,
- * then Move to alumni. Each opens the row ⋯ menu's own "are you sure"; an
- * action the viewer may not take is locked with the reason the menu gives.
+ * Leaves the team (board 103b), the end of Edit details: one danger button and
+ * what it does, opening the row ⋯ menu's own "are you sure" (Move to alumni,
+ * board 59d); locked with its reason where the viewer may not. Remove from a
+ * division is each division row's ⋯ (board 103d).
  */
 function LeavingSection({ person, position, onAsk }: { person: EditPerson; position: MemberPosition; onAsk: (asking: Asking) => void }) {
-  const firstName = person.name.split(" ")[0];
-  const removals = position.removals.filter((r) => r.removal.kind === "offered" || r.removal.kind === "locked");
+  const { leave } = position;
   return (
-    <section className="mt-8 rounded-xl border border-danger/40 bg-danger/[0.06] p-4">
-      <h3 className="text-[14px] font-semibold text-prt-text">Leaving the team</h3>
-      <p className="mt-2 text-[12px] leading-relaxed text-prt-muted">
-        {removals.length > 0 && `Remove from a division ends only that role; ${firstName} keeps the others. `}
-        Move to alumni moves {firstName} to Alumni with the years on the team. The account stays; dashboard access ends.
-      </p>
-      <div className="mt-4 flex flex-wrap gap-2.5">
-        {removals.map((r) => (
-          <button
-            key={r.divisionId}
-            type="button"
-            disabled={r.removal.kind === "locked"}
-            title={r.removal.kind === "locked" ? r.removal.reason : undefined}
-            onClick={() => onAsk({ kind: "remove", person, divisionId: r.divisionId, short: r.short })}
-            className={LEAVING_BUTTON}
-          >
-            {r.removal.kind === "locked" ? <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} /> : <UserMinus aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
-            Remove from {r.short}
-          </button>
-        ))}
-        <button
-          type="button"
-          disabled={!position.leave.allowed}
-          title={position.leave.allowed ? undefined : position.leave.reason}
-          onClick={() => onAsk({ kind: "leave", person })}
-          className={LEAVING_BUTTON}
-        >
-          {!position.leave.allowed && <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
-          Move to alumni
-        </button>
-      </div>
-      {[...removals.flatMap((r) => (r.removal.kind === "locked" ? [r.removal.reason] : [])), ...(position.leave.allowed ? [] : [position.leave.reason])]
-        .filter((reason, i, all) => all.indexOf(reason) === i)
-        .map((reason) => (
-          <p key={reason} className="mt-2.5 flex items-start gap-2 text-[12px] leading-snug text-prt-muted">
-            <Lock aria-hidden className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={1.75} />
-            {reason}
-          </p>
-        ))}
+    <section className="mt-8 border-t border-hairline pt-6">
+      <button
+        type="button"
+        disabled={!leave.allowed}
+        onClick={() => onAsk({ kind: "leave", person })}
+        className={`inline-flex items-center gap-2 rounded-sm text-[14px] font-semibold text-danger transition-colors duration-300 ease-out hover:text-danger/80 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`}
+      >
+        {leave.allowed ? <LogOut aria-hidden className="h-4 w-4" strokeWidth={1.75} /> : <Lock aria-hidden className="h-4 w-4" strokeWidth={1.75} />}
+        Leaves the team
+      </button>
+      <p className="mt-1.5 text-[12px] leading-snug text-prt-muted">{leave.allowed ? "Ends every role. They move to alumni." : leave.reason}</p>
     </section>
   );
 }
 
-/** The photo row of Edit details: Upload photo opens the square crop; the saved photo is a JPEG under 500 KB. */
+/** The photo row of Edit details: Upload photo opens the shared crop dialog; the saved photo is a JPEG under 500 KB (`CROP_SETTINGS.memberPhoto`). */
 function PhotoField({ person }: { person: Pick<EditPerson, "id" | "photoUrl"> }) {
   const [cropping, setCropping] = useState<File | null>(null);
   const [pending, setPending] = useState(false);
@@ -1388,7 +1858,7 @@ function PhotoField({ person }: { person: Pick<EditPerson, "id" | "photoUrl"> })
       <input
         ref={input}
         type="file"
-        accept={PHOTO_ACCEPT}
+        accept={CROP_SETTINGS.memberPhoto.accept.join(",")}
         className="sr-only"
         tabIndex={-1}
         aria-hidden
@@ -1405,12 +1875,13 @@ function PhotoField({ person }: { person: Pick<EditPerson, "id" | "photoUrl"> })
       <span className="text-[13px] text-prt-muted">
         Square JPEG, under <span className="whitespace-nowrap">500 KB</span>
       </span>
-      <PhotoCropDialog
+      <CropDialog
+        entry={CROP_SETTINGS.memberPhoto}
         file={cropping}
-        onOpenChange={(next) => !next && setCropping(null)}
-        onChooseAnother={() => input.current?.click()}
-        onSave={save}
         pending={pending}
+        onCancel={() => setCropping(null)}
+        onChooseAnother={() => input.current?.click()}
+        onDone={({ files }) => save(files.square)}
       />
     </div>
   );
@@ -1637,7 +2108,8 @@ function AddForm({ open, onOpenChange, target }: { open: boolean; onOpenChange: 
           )
         }
       </Field>
-      {picked !== null && target.kind === "division" && <p className="mt-2 text-[12px] text-prt-muted">Already in other divisions? They keep them.</p>}
+      {picked === null && <p className="mt-2 text-[12px] text-prt-muted">{GOOGLE_EMAIL_NOTE}</p>}
+      {picked !== null && target.kind === "division" &&<p className="mt-2 text-[12px] text-prt-muted">Already in other divisions? They keep them.</p>}
       {picked === null && lookup.kind === "waiting" && (
         <p className="mt-2 flex items-start gap-2 text-[13px] text-warning">
           <UserPlus aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
@@ -1686,16 +2158,16 @@ function AddForm({ open, onOpenChange, target }: { open: boolean; onOpenChange: 
           {fillNow ? (
             <>
               <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4">
-                <DetailInput name="prtEmail" label="PRT email" draft={draft} errors={errors} set={set} />
-                <DetailInput name="linkedin" label="LinkedIn" draft={draft} errors={errors} set={set} />
-                <DetailInput name="phone" label="Phone" draft={draft} errors={errors} set={set} />
-                <DetailInput name="discord" label="Discord" draft={draft} errors={errors} set={set} />
-                <DetailInput name="politoId" label="PoliTo ID" draft={draft} errors={errors} set={set} />
-                <DetailInput name="programme" label="Program" draft={draft} errors={errors} set={set} />
-                <DetailInput name="level" label="Level" draft={draft} errors={errors} set={set} />
-                <DetailInput name="country" label="From" draft={draft} errors={errors} set={set} />
-                <DetailInput name="birthDate" label="Date of birth" draft={draft} errors={errors} set={set} />
-                <DetailInput name="gender" label="Gender" draft={draft} errors={errors} set={set} />
+                <DetailInput name="prtEmail" draft={draft} errors={errors} set={set} />
+                <DetailInput name="linkedin" draft={draft} errors={errors} set={set} />
+                <DetailInput name="phone" draft={draft} errors={errors} set={set} />
+                <DetailInput name="discord" draft={draft} errors={errors} set={set} />
+                <DetailInput name="politoId" draft={draft} errors={errors} set={set} />
+                <DetailInput name="programme" draft={draft} errors={errors} set={set} />
+                <DetailInput name="level" draft={draft} errors={errors} set={set} />
+                <DetailInput name="country" draft={draft} errors={errors} set={set} />
+                <DetailInput name="birthDate" draft={draft} errors={errors} set={set} />
+                <DetailInput name="gender" draft={draft} errors={errors} set={set} />
               </div>
               <p className="mt-4 text-[12px] text-prt-muted">Everything here is optional. Empty fields can be filled later by you or by them.</p>
             </>

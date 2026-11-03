@@ -5,6 +5,7 @@ import { GripVertical, Plus, X } from "lucide-react";
 import { discardOutreachPhoto, uploadOutreachPhoto } from "@/app/dashboard/actions";
 import { CHANNEL_ICONS } from "@/components/outreach/channel-icons";
 import { shortDayMonthYear } from "@/lib/outreach";
+import { CROP_SETTINGS } from "@/lib/dashboard/crop-settings";
 import { written } from "@/lib/dashboard/write";
 import { removePostGalleryPhoto, type ChannelFields, type PostFieldErrors, type PostFields } from "@/lib/outreach-post-fields";
 import { isIsoDate } from "@/lib/outreach-rows";
@@ -96,6 +97,7 @@ export function OutreachPostPanel({
           photos={fields.photos}
           onChange={(change) => onChange((f) => ({ ...f, photos: change(f.photos) }))}
           uploads={OUTREACH_UPLOADS}
+          crop={CROP_SETTINGS.outreachPhoto}
           cover
           max={null}
           error={errors.photos}
@@ -112,6 +114,7 @@ export function OutreachPostPanel({
           onChange={(change) => onChange((f) => ({ ...f, gallery: change(f.gallery) }))}
           remove={(index) => written(removePostGalleryPhoto(fields.gallery, index))}
           uploads={OUTREACH_UPLOADS}
+          crop={CROP_SETTINGS.outreachGallery}
         />
       </PanelSection>
     </EditPanel>

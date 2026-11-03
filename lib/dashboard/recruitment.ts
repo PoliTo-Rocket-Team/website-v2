@@ -3,7 +3,7 @@ import type { ApplicantDetails } from "./applicant-details";
 import type { ApplicantStanding, ApplicationState } from "./application-flow";
 import type { ApplicationStatus, BuiltInStatusKey, ListedStatus } from "./application-status";
 import type { DivisionChoice, PositionContent } from "./new-position";
-import { areaUnitsOf, type AreaReader } from "./viewer";
+import { areaUnitsOf, isFullAccess, readsArea, type AreaReader, type GrantArea, type ViewerStanding } from "./viewer";
 
 // What the Positions and Applications pages show (Dashboard v2 boards 57 and
 // 58, issue #171, after boards 41 to 41c of issue #142). The dashboard data
@@ -106,6 +106,20 @@ export function grantReachOf(
     ...named(open.divisions, units.divisionIds).map((name): GrantPlace => ({ kind: "division", name })),
   ];
   return first === undefined ? null : { kind: "places", places: [first, ...rest] };
+}
+
+/**
+ * The whole team, for a viewer whose `team` grant on `area` reaches it, at
+ * either level, whatever their role (issue #957): the page then reads as a
+ * member's with that grant reads, never as their own division or department.
+ * Null for full access, whose page is the team's by its standing, and for
+ * anyone without that grant.
+ */
+export function wholeTeamReachOf(
+  viewer: ViewerStanding & { readonly wholeTeamAreas: readonly GrantArea[] },
+  area: "positions" | "applications",
+): GrantReach | null {
+  return !isFullAccess(viewer) && readsArea(viewer, area) && viewer.wholeTeamAreas.includes(area) ? { kind: "team" } : null;
 }
 
 /**

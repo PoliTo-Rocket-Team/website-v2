@@ -1,0 +1,16 @@
+-- The Team page keeps its own layout of page seats (issue #850, ADR 0019),
+-- one beside each stored version of its visual layer, so the layout has the
+-- same draft and published rows, the same save guard and the same audit
+-- trigger as the layer. lib/about/team-layout.ts owns the layout's shape.
+--
+-- Additive only: every preview build applies this to the shared preview
+-- database. One new nullable column; nothing is dropped, renamed or
+-- rewritten, and no row is changed. The layer and `departments.kind` stay
+-- until follow-up #855. No SQL here builds a layout: a post-migration step in
+-- TypeScript (lib/about/team-layout-fill.ts) fills it from the roles and each
+-- row's layer, and until it has, the page reads a row with no layout from its
+-- layer (lib/about/team-page-stored.ts).
+--
+-- Written to apply again over a database that already holds it, so a
+-- renumbered copy applies cleanly.
+ALTER TABLE "team_page_layer_versions" ADD COLUMN IF NOT EXISTS "layout" jsonb;

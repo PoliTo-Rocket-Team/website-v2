@@ -1,14 +1,5 @@
 import type { PersonRecord } from "@/lib/dashboard/division-members";
-import {
-  boardTitleOf,
-  bySeatOrder,
-  DEPARTMENT_KINDS,
-  divisionLabel,
-  roleIn,
-  type DepartmentKind,
-  type OrgChart as TeamOrg,
-  type RosterEntry,
-} from "@/lib/dashboard/team";
+import { boardTitleOf, bySeatOrder, divisionLabel, roleIn, type DepartmentKind, type OrgChart as TeamOrg, type RosterEntry } from "@/lib/dashboard/team";
 import {
   applyLayer,
   arcSeatOf,
@@ -16,13 +7,15 @@ import {
   NO_TEAM_LAYER,
   type BuiltDepartment,
   type BuiltLeader,
-  type ShownDepartment,
+  type DrawnGroup,
+  type DrawnTeam,
+  type LeadsDrawn,
   type ShownTeam,
   type TeamBuild,
   type TeamPageLayer,
 } from "./team-layer";
-import { byName, personOf, titleOf, type TeamPerson } from "./team-person";
-import type { DepartmentGroup, GroupMember, Member, TeamPage, UpTo } from "./types";
+import { byName, furtherSeatsOf, personOf, titleOf, type TeamPerson } from "./team-person";
+import type { DepartmentGroup, FilledTeamPage, GroupMember, Member, TeamPage, UpTo } from "./types";
 
 // The Team page built from the team's roles (issue #282, ADR 0015): who
 // leads, every department and every core member come from the roles the
@@ -49,6 +42,7 @@ export function teamPeopleOf(roster: readonly RosterEntry[], records: readonly P
       id: entry.id,
       name: entry.name,
       placement: entry.placement,
+      furtherSeats: furtherSeatsOf(entry.placement, record?.beyondDivisions ?? []),
       pageTitle: entry.pageTitle,
       photo: record?.photoUrl ?? null,
       linkedin: record?.details.linkedin ?? null,
@@ -61,8 +55,35 @@ export function teamPeopleOf(roster: readonly RosterEntry[], records: readonly P
 export const SLIDE_MEMBERS = 10;
 export const SLIDES = 5;
 
-/** A slide's heading, by the kind of department its people come from (boards 26, 26e, 26f, 26m; issue #325). */
-export const SLIDE_NAMES: Readonly<Record<DepartmentKind, string>> = { technical: "Technical Departments", operations: "Operations" };
+/**
+ * Today's grouping, before department groups (issue #325, boards 26, 26e,
+ * 26f, 26m): a department's kind on the team record put its head on the
+ * "Technical Departments" slides, its leads under them, or on the
+ * "Operations" slides, its leads beside them. Since issue #856 the page draws
+ * the groups its stored layout names, and this is read only to snapshot
+ * today's page into a first layout (./team-layout.ts `snapshot`) and by the
+ * roles build that snapshot reads: no other Team page code reads a
+ * department's kind.
+ */
+export const TODAYS_GROUPS: readonly { readonly kind: DepartmentKind; readonly name: string; readonly leadsDrawn: LeadsDrawn }[] = [
+  { kind: "technical", name: "Technical Departments", leadsDrawn: "under" },
+  { kind: "operations", name: "Operations", leadsDrawn: "beside" },
+];
+
+/** Today's group of a department of kind `kind` (`TODAYS_GROUPS`). */
+export function todaysGroupOf(kind: DepartmentKind): (typeof TODAYS_GROUPS)[number] {
+  return TODAYS_GROUPS.find((g) => g.kind === kind) ?? TODAYS_GROUPS[0];
+}
+
+/** `departments` in today's two groups, in that order, each drawing its leads as its kind did (`TODAYS_GROUPS`). */
+export function todaysGroupsOf<D extends { readonly kind: DepartmentKind }>(
+  departments: readonly D[],
+): { readonly name: string; readonly departments: readonly (D & { readonly leadsDrawn: LeadsDrawn })[] }[] {
+  return TODAYS_GROUPS.map((group) => ({
+    name: group.name,
+    departments: departments.filter((d) => d.kind === group.kind).map((d) => ({ ...d, leadsDrawn: group.leadsDrawn })),
+  }));
+}
 
 /**
  * One place on a carousel slide: a head with the division leads drawn under
@@ -71,19 +92,23 @@ export const SLIDE_NAMES: Readonly<Record<DepartmentKind, string>> = { technical
  */
 export type CarouselPlace<H, L> = { readonly kind: "head"; readonly head: H; readonly leads: readonly L[] } | { readonly kind: "division"; readonly lead: L };
 
-/** One carousel slide, before it is drawn: the kind it groups and its places, at most ten. */
-export type CarouselSlide<H, L> = { readonly kind: DepartmentKind; readonly places: readonly CarouselPlace<H, L>[] };
+/** One carousel slide, before it is drawn: the name of the group it shows and its places, at most ten. */
+export type CarouselSlide<H, L> = { readonly name: string; readonly places: readonly CarouselPlace<H, L>[] };
 
-type KindedDepartment<H, L> = { readonly kind: DepartmentKind; readonly heads: readonly H[]; readonly leads: readonly L[] };
+/** A department block as the carousel reads it: how it draws its leads, its heads and its leads. */
+type CarouselDepartment<H, L> = { readonly leadsDrawn: LeadsDrawn; readonly heads: readonly H[]; readonly leads: readonly L[] };
+
+/** A department group as the carousel reads it: its name and its blocks in order (issue #856). */
+export type CarouselGroup<H, L> = { readonly name: string; readonly departments: readonly CarouselDepartment<H, L>[] };
 
 /**
- * A department's places: a technical head over their division leads; an
- * operations head beside them. Leads come with a head, so a department whose
- * heads are all hidden shows no one, whatever its kind.
+ * A department's places: each head over their division leads, or each head
+ * with the leads beside them. Leads come with a head, so a department whose
+ * heads are all hidden shows no one, however it draws its leads.
  */
-function placesOf<H, L>(department: KindedDepartment<H, L>): CarouselPlace<H, L>[] {
+function placesOf<H, L>(department: CarouselDepartment<H, L>): CarouselPlace<H, L>[] {
   if (department.heads.length === 0) return [];
-  if (department.kind === "technical") return department.heads.map((head) => ({ kind: "head", head, leads: department.leads }));
+  if (department.leadsDrawn === "under") return department.heads.map((head) => ({ kind: "head", head, leads: department.leads }));
   return [
     ...department.heads.map((head): CarouselPlace<H, L> => ({ kind: "head", head, leads: [] })),
     ...department.leads.map((lead): CarouselPlace<H, L> => ({ kind: "division", lead })),
@@ -91,18 +116,20 @@ function placesOf<H, L>(department: KindedDepartment<H, L>): CarouselPlace<H, L>
 }
 
 /**
- * The departments carousel (ADR 0015, amended by issue #325): the heads
- * grouped by their department's kind, "Technical Departments" first, then
- * "Operations", each in department order. A kind fills slides of up to ten
- * places; the carousel keeps at most five slides.
+ * The departments carousel (ADR 0015, amended by issues #325 and #856): the
+ * department groups in their order, each named as stored, each block's places
+ * in block order. A group fills slides of up to ten places, and a group that
+ * draws no one fills none; the carousel keeps at most five slides.
  */
-export function carouselOf<H, L>(departments: readonly KindedDepartment<H, L>[]): CarouselSlide<H, L>[] {
-  return DEPARTMENT_KINDS.flatMap((kind) => {
-    const places = departments.filter((d) => d.kind === kind).flatMap((d) => placesOf(d));
-    const slides: CarouselSlide<H, L>[] = [];
-    for (let i = 0; i < places.length; i += SLIDE_MEMBERS) slides.push({ kind, places: places.slice(i, i + SLIDE_MEMBERS) });
-    return slides;
-  }).slice(0, SLIDES);
+export function carouselOf<H, L>(groups: readonly CarouselGroup<H, L>[]): CarouselSlide<H, L>[] {
+  return groups
+    .flatMap((group) => {
+      const places = group.departments.flatMap((d) => placesOf(d));
+      const slides: CarouselSlide<H, L>[] = [];
+      for (let i = 0; i < places.length; i += SLIDE_MEMBERS) slides.push({ name: group.name, places: places.slice(i, i + SLIDE_MEMBERS) });
+      return slides;
+    })
+    .slice(0, SLIDES);
 }
 
 /** The first `n` items as an `UpTo`, or null for an empty list. */
@@ -165,11 +192,22 @@ export function teamBuildOf(roles: TeamRoles): TeamBuild {
   const leaderPerson = roles.people.filter((p) => p.placement.role === "team-leader").sort(byName)[0];
   const arc = arcOf(roles.people);
   const departments = departmentsOf(roles);
-  const carousel = carouselOf(departments).flatMap((slide) =>
+  const carousel = carouselOf(todaysGroupsOf(departments)).flatMap((slide) =>
     slide.places.flatMap((place) => (place.kind === "head" ? [place.head.person, ...place.leads.map((l) => l.person)] : [place.lead.person])),
   );
-  const shown = new Set([leaderPerson, ...arc.slice(0, ARC_LEADERS).map((l) => l.person), ...carousel].map((p) => p?.id));
-  const core = roles.people
+  const shown = new Set([leaderPerson, ...arc.slice(0, ARC_LEADERS).map((l) => l.person), ...carousel].flatMap((p) => p?.id ?? []));
+  return {
+    people: roles.people,
+    leader: leaderPerson === undefined ? null : { person: leaderPerson, role: titleOf(leaderPerson) ?? "Team Leader" },
+    arc,
+    departments,
+    core: coreMembersOf(roles.people, shown),
+  };
+}
+
+/** The core members: everyone in `people` whose id `shown` does not hold, by name, with their title. */
+export function coreMembersOf(people: readonly TeamPerson[], shown: ReadonlySet<number>): Member[] {
+  return people
     .filter((p) => !shown.has(p.id))
     .sort(byName)
     .map((p): Member => {
@@ -182,19 +220,12 @@ export function teamBuildOf(roles: TeamRoles): TeamBuild {
         ...(linkedin !== undefined && { linkedin }),
       };
     });
-  return {
-    people: roles.people,
-    leader: leaderPerson === undefined ? null : { person: leaderPerson, role: titleOf(leaderPerson) ?? "Team Leader" },
-    arc,
-    departments,
-    core,
-  };
 }
 
-/** The shown departments as carousel slides, each named by its kind. */
-function slidesOf(departments: readonly ShownDepartment[]): DepartmentGroup[] {
-  return carouselOf(departments).map((slide) => ({
-    name: SLIDE_NAMES[slide.kind],
+/** The shown department groups as carousel slides, each named by its group. */
+function slidesOf(groups: readonly DrawnGroup[]): DepartmentGroup[] {
+  return carouselOf(groups).map((slide) => ({
+    name: slide.name,
     members: upTo(
       slide.places.map((place): GroupMember =>
         place.kind === "head"
@@ -208,15 +239,21 @@ function slidesOf(departments: readonly ShownDepartment[]): DepartmentGroup[] {
 
 /**
  * Where each member of the carousel comes from, in the order the slides draw
- * them: a head's spot, or null for a division lead drawn at a head's level,
- * which the editor reaches through its head.
+ * them: a head's `at` (its page seat's id, in the editor), or null for a
+ * division lead drawn at a head's level, which the editor reaches through its
+ * head.
  */
-export function carouselSpotsOf(departments: readonly ShownDepartment[]): (ShownDepartment["heads"][number]["at"] | null)[] {
-  return carouselOf(departments).flatMap((slide) => slide.places.map((place) => (place.kind === "head" ? place.head.at : null)));
+export function carouselSpotsOf<A>(groups: readonly CarouselGroup<{ readonly at: A }, unknown>[]): (A | null)[] {
+  return carouselOf(groups).flatMap((slide) => slide.places.map((place) => (place.kind === "head" ? place.head.at : null)));
+}
+
+/** The page the roles build with the layer laid on, as drawn: its departments in today's two groups (`TODAYS_GROUPS`). */
+export function todaysDrawnTeam(shown: ShownTeam): DrawnTeam {
+  return { ...shown, groups: todaysGroupsOf(shown.departments) };
 }
 
 /** `page` with the layer's intro text, figures and group photo, where it sets them. */
-export function withLayerText(page: TeamPage, layer: Pick<TeamPageLayer, "intro" | "figures" | "groupPhoto">): TeamPage {
+export function withLayerText<P extends TeamPage>(page: P, layer: Pick<TeamPageLayer, "intro" | "figures" | "groupPhoto">): P {
   return {
     ...page,
     header: {
@@ -231,48 +268,57 @@ export function withLayerText(page: TeamPage, layer: Pick<TeamPageLayer, "intro"
 /** The most department heads the carousel shows: five slides of ten. */
 export const HEADS_SHOWN_MAX = SLIDES * SLIDE_MEMBERS;
 
-/** How many department heads `shown` puts on the page, before the carousel drops any past `HEADS_SHOWN_MAX`. */
-export function headsShown(shown: ShownTeam): number {
-  return shown.departments.reduce((sum, d) => sum + d.heads.length, 0);
-}
-
 /** A section the page always draws: the team leader, the arc of leaders, the departments area, the core members. */
 export type TeamPageSection = "leader" | "arc" | "departments" | "core";
 
-/** The page `shown` lays out, or the first section the page always draws that it leaves empty. */
-function laidOut(build: TeamBuild, shown: ShownTeam, base: TeamPage): { readonly page: TeamPage } | { readonly empty: TeamPageSection } {
-  const leaders = upTo(
-    shown.leaders.map((l) => l.shown),
-    ARC_LEADERS,
-  );
-  const groups = upTo(slidesOf(shown.departments), SLIDES);
-  const [firstCore, ...restCore] = build.core;
-  if (!shown.leader) return { empty: "leader" };
-  if (!leaders) return { empty: "arc" };
-  if (!groups) return { empty: "departments" };
-  if (!firstCore) return { empty: "core" };
+/**
+ * The Team page as `shown` lays it out, with the core members of `build`,
+ * onto `base` (the hand-typed ./team.ts) for everything else. A section
+ * `shown` fills no one in is drawn empty, never filled from `base` (ADR 0019
+ * Decision 9): the stored layout's page reads it so (./team-layout.ts).
+ */
+export function drawnTeamPage(build: Pick<TeamBuild, "core">, shown: DrawnTeam, base: TeamPage): TeamPage {
   const page: TeamPage = {
     ...base,
-    orgChart: { ...base.orgChart, leader: shown.leader, leaders },
-    departments: { ...base.departments, groups },
-    coreMembers: { ...base.coreMembers, members: [firstCore, ...restCore] },
+    orgChart: { ...base.orgChart, leader: shown.leader, leaders: upTo(shown.leaders.map((l) => l.shown), ARC_LEADERS) ?? [] },
+    departments: { ...base.departments, groups: upTo(slidesOf(shown.groups), SLIDES) ?? [] },
+    coreMembers: { ...base.coreMembers, members: build.core },
   };
-  return { page: withLayerText(page, shown) };
+  return withLayerText(page, shown);
+}
+
+/** `page` as one that fills every section the page always draws, or the first section it leaves empty. */
+function filledOrEmpty(page: TeamPage): { readonly page: FilledTeamPage } | { readonly empty: TeamPageSection } {
+  const { leader, leaders } = page.orgChart;
+  const { groups } = page.departments;
+  const [firstCore, ...restCore] = page.coreMembers.members;
+  if (leader === null) return { empty: "leader" };
+  if (leaders.length === 0) return { empty: "arc" };
+  if (groups.length === 0) return { empty: "departments" };
+  if (firstCore === undefined) return { empty: "core" };
+  return {
+    page: {
+      ...page,
+      orgChart: { ...page.orgChart, leader, leaders },
+      departments: { ...page.departments, groups },
+      coreMembers: { ...page.coreMembers, members: [firstCore, ...restCore] },
+    },
+  };
 }
 
 /**
- * The Team page as `shown` lays it out, with the core members of `build`,
- * onto `base` (the hand-typed ./team.ts) for everything else. Null when a
- * section the page always draws is empty (`emptySectionOf`).
+ * The Team page as `shown` lays it out (`drawnTeamPage`), or null when a
+ * section the page always draws is empty (`emptySectionOf`): the editor's
+ * working layer, which may not empty one.
  */
-export function teamPageOf(build: TeamBuild, shown: ShownTeam, base: TeamPage): TeamPage | null {
-  const laid = laidOut(build, shown, base);
+export function teamPageOf(build: Pick<TeamBuild, "core">, shown: DrawnTeam, base: TeamPage): FilledTeamPage | null {
+  const laid = filledOrEmpty(drawnTeamPage(build, shown, base));
   return "page" in laid ? laid.page : null;
 }
 
-/** The first section the page always draws that `shown` leaves empty: no team leader, no one on the arc, no department head, no one left for core members; null when none is. */
-export function emptySectionOf(build: TeamBuild, shown: ShownTeam, base: TeamPage): TeamPageSection | null {
-  const laid = laidOut(build, shown, base);
+/** The first section the page always draws that `page` leaves empty: no team leader, no one on the arc, no department head, no one left for core members; null when none is. */
+export function emptySectionOf(page: TeamPage): TeamPageSection | null {
+  const laid = filledOrEmpty(page);
   return "empty" in laid ? laid.empty : null;
 }
 
@@ -281,7 +327,7 @@ export function emptySectionOf(build: TeamBuild, shown: ShownTeam, base: TeamPag
  * onto `base` for everything else; null when the roles cannot fill a section
  * the page always draws (`teamPageOf`).
  */
-export function teamPageFromRoles(roles: TeamRoles, base: TeamPage, layer: TeamPageLayer = NO_TEAM_LAYER): TeamPage | null {
+export function teamPageFromRoles(roles: TeamRoles, base: TeamPage, layer: TeamPageLayer = NO_TEAM_LAYER): FilledTeamPage | null {
   const build = teamBuildOf(roles);
-  return teamPageOf(build, applyLayer(build, layer), base);
+  return teamPageOf(build, todaysDrawnTeam(applyLayer(build, layer)), base);
 }

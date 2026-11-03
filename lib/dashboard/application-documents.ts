@@ -1,7 +1,6 @@
 import type { PrivatePathname } from "@/lib/storage/pathname";
-import { recruitmentManagerDivision } from "./notices";
 import type { ApplicationDocument } from "./recruitment";
-import { divisionRoleOf } from "./team";
+import { leadsRecruitmentManagerDivision } from "./recruitment-manager";
 import { isOffTeam, readsArea, readsAreaIn, type AreaGrant, type DivisionUnit, type GrantArea, type ScopedRole, type ViewerStanding } from "./viewer";
 
 // Who reads an application on the dashboard, and where its documents open
@@ -83,17 +82,15 @@ export function readsRecruitment(viewer: ViewerStanding, area: RecruitmentArea):
  * of the division `recruitmentManagerDivision` finds, the open Logistics
  * division (Owner decisions on #194, 2026-10-22 and 2026-10-25). They read
  * every open division's applications and may make every move a lead may make
- * on them, team-wide; the Positions area stays their own division's. While
- * Logistics is closed nobody is the recruitment manager. It is a role's
+ * on them, team-wide. Since issue #885 the same lead seat is a full-access
+ * seat (`fullAccessSeatOf`, ./viewer.ts), which reaches all of this and more.
+ * While Logistics is closed nobody is the recruitment manager. It is a role's
  * standing, so a member's never is, a grant's reach read as a member's
  * included, and nor is anyone's off the team.
  */
 export function managesRecruitment(viewer: RecruitmentReader): boolean {
   if (viewer.kind === "member" || isOffTeam(viewer.kind)) return false;
-  const led = viewer.roles.flatMap((r) =>
-    r.divisionId !== null && divisionRoleOf(r.type) === "lead" ? [{ id: r.divisionId, code: r.divisionCode, closedAt: r.divisionClosedAt }] : [],
-  );
-  return recruitmentManagerDivision(led) !== null;
+  return leadsRecruitmentManagerDivision(viewer.roles);
 }
 
 /**

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildTeamTree, homeDivisionOf, inDivisions, NO_MEMBERSHIPS, type BoardFlag, type OrgChart, type RosterEntry } from "./team";
-import { boxOf, layoutTeamTree } from "./tree-layout";
+import { boxOf, layoutTeamTree, peopleOn, seatCaption, type TreeNode } from "./tree-layout";
+
+/** Whether `personId` is drawn on the node, as any of a card's holders or as the row. */
+const on = (node: TreeNode, personId: number) => peopleOn(node).some((p) => p.id === personId);
 
 const org: OrgChart = {
   departments: [
@@ -16,7 +19,7 @@ const org: OrgChart = {
 };
 
 function person(id: number, name: string, placement: RosterEntry["placement"]): RosterEntry {
-  return { id, name, email: `${id}@prt.it`, photoUrl: null, placement, pageTitle: null, joined: 2024, program: null, study: null, access: [] };
+  return { id, name, email: `${id}@prt.it`, photoUrl: null, placement, furtherSeats: [], pageTitle: null, joined: 2024, program: null, study: null, access: [] };
 }
 
 const lead = (divisionId: number) => inDivisions([{ divisionId, role: "lead", since: "2024-10-01" }]);
@@ -24,7 +27,7 @@ const member = (divisionId: number) => inDivisions([{ divisionId, role: "member"
 /** A team-level seat's placement, from its role row: flagged as `flag`, or a further seat (null). */
 const seat = (roleId: number, title: string, flag: BoardFlag | null, since = "2024-10-01"): RosterEntry["placement"] => ({
   role: "board",
-  seat: { roleId, title, flag, since },
+  seat: { roleId, title, fullAccess: flag, type: "core", since },
   memberships: NO_MEMBERSHIPS,
 });
 const head = (departmentId: number, title: string): RosterEntry["placement"] => ({ role: "head", departmentId, title, memberships: NO_MEMBERSHIPS });
@@ -67,7 +70,7 @@ const divisionsOf = (tree: ReturnType<typeof buildTeamTree>) => tree.departments
 test("someone in several divisions is listed under each, with the role they hold there (#398)", () => {
   const tree = buildTeamTree([...roster.filter((p) => p.id !== 9), both, leadsOne], org, "2026–27", 6);
   const safety = divisionsOf(tree).find((v) => v.id === 20)!;
-  assert.equal(safety.lead?.name, "Giada Rizzo");
+  assert.deepEqual(safety.leads.map((p) => p.name), ["Giada Rizzo"]);
   assert.deepEqual(safety.members.map((m) => m.name), ["Matteo Greco"]);
   const mission = divisionsOf(tree).find((v) => v.id === 10)!;
   assert.deepEqual(mission.members.map((m) => m.name), ["Elif Kaya", "Giada Rizzo", "Sofia Neri"], "a member here, by name, like anyone else");
@@ -79,14 +82,14 @@ test("a seat holder or head who leads a division is that division's lead card to
   const leaderLeads = person(1, "Alessandro Greco", { role: "team-leader", memberships: inDivisions([{ divisionId: 20, role: "lead", since: "2025-10-01" }]).memberships });
   const tree = buildTeamTree([leaderLeads, ...roster.filter((p) => p.id !== 1 && p.id !== 9)], org, "2026–27", 6);
   const safety = divisionsOf(tree).find((v) => v.id === 20)!;
-  assert.equal(safety.lead?.id, 1);
-  assert.equal(safety.lead?.first, false, "their first place is the leader's seat");
-  assert.equal(tree.leader?.first, true);
+  assert.deepEqual(safety.leads.map((p) => p.id), [1]);
+  assert.equal(safety.leads[0].first, false, "their first place is the leader's seat");
+  assert.equal(tree.leaders[0].first, true);
 });
 
 test("a multi-division person is drawn in every division, with distinct keys, and nothing overlaps", () => {
   const layout = layoutTeamTree(buildTeamTree([...roster, both, leadsOne], org, "2026–27", 6));
-  const matteo = layout.nodes.filter((n) => n.person?.id === 10);
+  const matteo = layout.nodes.filter((n) => on(n, 10));
   assert.equal(matteo.length, 2);
   assert.equal(new Set(layout.nodes.map((n) => n.key)).size, layout.nodes.length, "every node key is distinct");
   assertApart(layout);
@@ -96,13 +99,13 @@ test("Find someone and Show me go to the first place: the highest role, then the
   assert.equal(homeDivisionOf(both.placement), 20, "the oldest membership: Safety, from 2024");
   assert.equal(homeDivisionOf(leadsOne.placement), 20, "the division they lead, though Mission Analysis is older");
   const layout = layoutTeamTree(buildTeamTree([...roster.filter((p) => p.id !== 9), both, leadsOne], org, "2026–27", 11));
-  const rizzo = layout.nodes.filter((n) => n.person?.id === 11);
-  assert.equal(rizzo.filter((n) => n.person?.first).length, 1, "one first place");
+  const rizzo = layout.nodes.filter((n) => on(n, 11));
+  assert.equal(rizzo.filter((n) => peopleOn(n).some((p) => p.id === 11 && p.first)).length, 1, "one first place");
   const box = boxOf(layout, 11)!;
   const safetyLead = layout.nodes.find((n) => n.key === "lead-20")!;
   assert.deepEqual([box.x, box.y], [safetyLead.x, safetyLead.y], "her Safety lead card, not her Mission Analysis row");
-  // Her path ends there too: only that card is on it, and no row of hers is.
-  assert.ok(layout.nodes.filter((n) => n.person?.id === 11 && n.onPath).every((n) => n.key === "lead-20"));
+  // Her path reaches both her places (#862): the Safety card she leads and her Mission Analysis row.
+  assert.deepEqual(layout.nodes.filter((n) => on(n, 11) && n.onPath).map((n) => n.key).sort(), ["lead-20", "row-10-11"]);
   const matteo = boxOf(layout, 10)!;
   const safetyRow = layout.nodes.find((n) => n.key === "row-20-10")!;
   assert.deepEqual([matteo.x, matteo.y], [safetyRow.x, safetyRow.y], "Matteo's Safety row, his oldest division");
@@ -121,6 +124,23 @@ test("a long name or subtitle wraps: its box grows and pushes the rows under it 
   assertApart(long);
 });
 
+test("the lead cards of one row share the tallest one's height, so their member lists start on one line (#897)", () => {
+  // Aerodynamics has two divisions: Mission Analysis, led by a name that wraps, and Optimization and Analysis, led by a short one.
+  const longName = "Maria Alessandra Benedetta Castelnuovo di Sant'Agata";
+  const plain = layoutTeamTree(buildTeamTree(roster, org, "2026–27", null));
+  const layout = layoutTeamTree(
+    buildTeamTree([...roster.map((p) => (p.id === 5 ? { ...p, name: longName } : p)), person(12, "Nadia Russo", member(11))], org, "2026–27", null),
+  );
+  const node = (key: string) => layout.nodes.find((n) => n.key === key)!;
+  const [wraps, short] = [node("lead-10"), node("lead-11")];
+  assert.equal(short.h, wraps.h, "both lead cards are as tall as the taller one");
+  assert.ok(wraps.h > plain.nodes.find((n) => n.key === "lead-10")!.h, "the wrapped name's card still grows to show it all");
+  const [missionRow, optimizationRow] = [node("row-10-6"), node("row-11-12")];
+  assert.equal(optimizationRow.y, missionRow.y, "the first member row under each lead starts at the same y");
+  assert.ok(missionRow.y > wraps.y + wraps.h, "and below the lead cards");
+  assertApart(layout);
+});
+
 test("member rows take the plain width and each division column is the lead card's width", () => {
   const layout = layoutTeamTree(buildTeamTree([...roster, both, leadsOne], org, "2026–27", 6));
   const rows = layout.nodes.filter((n) => n.kind === "row");
@@ -132,10 +152,10 @@ test("member rows take the plain width and each division column is the lead card
 test("the board seats sit under the leader, Project Manager first", () => {
   const tree = buildTeamTree(roster, org, "2026–27", 6);
   assert.deepEqual(
-    tree.board.map((b) => [b.title, b.person.name]),
+    tree.board.map((b) => [b.title, b.holders.map((p) => p.name)]),
     [
-      ["Project Manager", "Lorenzo Gallo"],
-      ["Chief Engineer", "Federica Moretti"],
+      ["Project Manager", ["Lorenzo Gallo"]],
+      ["Chief Engineer", ["Federica Moretti"]],
     ],
   );
   const layout = layoutTeamTree(tree);
@@ -147,7 +167,7 @@ test("the board seats sit under the leader, Project Manager first", () => {
 
 /** Each card's level, x and subtitle, by the person on it. */
 const cards = (tree: ReturnType<typeof buildTeamTree>) =>
-  new Map(layoutTeamTree(tree).nodes.flatMap((n) => (n.kind === "card" && n.person ? [[n.person.id, { level: n.level, x: n.x, subtitle: n.subtitle }] as const] : [])));
+  new Map(layoutTeamTree(tree).nodes.flatMap((n) => (n.kind === "card" ? n.holders.map((p) => [p.id, { level: n.level, x: n.x, subtitle: n.subtitle }] as const) : [])));
 
 test("renaming the Project Manager's or Chief Engineer's title keeps them on the seat row, in the same place (issue #625)", () => {
   const renamed = roster.map((p) =>
@@ -164,28 +184,37 @@ test("renaming the Project Manager's or Chief Engineer's title keeps them on the
 test("a further team-level seat sits on the seat row after the flagged seats, oldest first (issue #625)", () => {
   const more = [...roster, person(11, "Marco Dona", seat(11, "Head of R&D", null, "2025-10-01")), person(12, "Ada Ferri", seat(40, "Safety Officer", null, "2023-10-01"))];
   assert.deepEqual(
-    buildTeamTree(more, org, "2026–27", 6).board.map((b) => [b.title, b.person.name]),
+    buildTeamTree(more, org, "2026–27", 6).board.map((b) => [b.title, b.holders.map((p) => p.name)]),
     [
-      ["Project Manager", "Lorenzo Gallo"],
-      ["Chief Engineer", "Federica Moretti"],
-      ["Safety Officer", "Ada Ferri"],
-      ["Head of R&D", "Marco Dona"],
+      ["Project Manager", ["Lorenzo Gallo"]],
+      ["Chief Engineer", ["Federica Moretti"]],
+      ["Safety Officer", ["Ada Ferri"]],
+      ["Head of R&D", ["Marco Dona"]],
     ],
   );
+});
+
+test("a team-level seat's card capitalises Head in a lowercase stored title, on the canvas and the phone caption (#916)", () => {
+  const lower = [...roster, person(11, "Marco Dona", seat(11, "head of R&D", null))];
+  assert.equal(cards(buildTeamTree(lower, org, "2026–27", 6)).get(11)!.subtitle, "Head of R&D");
+  assert.equal(seatCaption("head of R&D"), "Head of R&D");
+  assert.equal(cards(buildTeamTree(roster, org, "2026–27", 6)).get(3)!.subtitle, "Project Manager", "a title with no head reads as stored");
 });
 
 test("a head's card shows their stored title; a blank one reads Head of the department (issue #625)", () => {
   const renamed = roster.map((p) => (p.id === 4 ? { ...p, placement: head(1, "Chief of Aerodynamics") } : p));
   assert.equal(cards(buildTeamTree(renamed, org, "2026–27", 6)).get(4)!.subtitle, "Chief of Aerodynamics");
-  assert.equal(buildTeamTree(renamed, org, "2026–27", 6).departments[0].head?.title, "Chief of Aerodynamics");
+  assert.deepEqual(buildTeamTree(renamed, org, "2026–27", 6).departments[0].heads.map((h) => h.title), ["Chief of Aerodynamics"]);
   const blank = roster.map((p) => (p.id === 4 ? { ...p, placement: head(1, " ") } : p));
   assert.equal(cards(buildTeamTree(blank, org, "2026–27", 6)).get(4)!.subtitle, "Head of Aerodynamics");
   assert.equal(cards(buildTeamTree(roster, org, "2026–27", 6)).get(4)!.subtitle, "Head of Aerodynamics", "today's stored title reads as before");
+  const lower = roster.map((p) => (p.id === 4 ? { ...p, placement: head(1, "head of aerodynamics") } : p));
+  assert.equal(cards(buildTeamTree(lower, org, "2026–27", 6)).get(4)!.subtitle, "Head of aerodynamics", "the role word is capitalised (#916)");
 });
 
 test("someone in one place is drawn once, heads in one row over their leads", () => {
   const layout = layoutTeamTree(buildTeamTree(roster, org, "2026–27", 6));
-  const ids = layout.nodes.flatMap((n) => (n.person ? [n.person.id] : []));
+  const ids = layout.nodes.flatMap((n) => peopleOn(n).map((p) => p.id));
   assert.deepEqual([...ids].sort((a, b) => a - b), roster.map((p) => p.id));
   const head = boxOf(layout, 4)!;
   const lead = boxOf(layout, 5)!;
@@ -196,7 +225,7 @@ test("someone in one place is drawn once, heads in one row over their leads", ()
 
 test("the viewer's path runs from the leader down to their row, and the canvas opens on their department", () => {
   const layout = layoutTeamTree(buildTeamTree(roster, org, "2026–27", 6));
-  const onPath = layout.nodes.filter((n) => n.kind === "card" && n.onPath).map((n) => n.person?.name);
+  const onPath = layout.nodes.filter((n) => n.kind === "card" && n.onPath).flatMap((n) => peopleOn(n).map((p) => p.name));
   assert.deepEqual(onPath, ["Alessandro Greco", "Chiara Rinaldi", "Marco Bianchi"]);
   const me = boxOf(layout, 6)!;
   const ends = layout.edges.filter((e) => e.onPath).map((e) => e.points[e.points.length - 1]);
@@ -204,6 +233,115 @@ test("the viewer's path runs from the leader down to their row, and the canvas o
   const head = boxOf(layout, 4)!;
   assert.ok(layout.focus && layout.focus.x <= head.x && layout.focus.y === head.y);
   assert.ok(layout.focus.x + layout.focus.w < boxOf(layout, 9)!.x);
+});
+
+test("the path of a viewer in three divisions across two departments reaches all three, and nothing else (#862)", () => {
+  const three = person(12, "Nadia Russo", inDivisions([
+    { divisionId: 11, role: "member", since: "2025-10-01" },
+    { divisionId: 10, role: "member", since: "2024-10-01" },
+    { divisionId: 20, role: "member", since: "2023-10-01" },
+  ]));
+  const tree = buildTeamTree([...roster, three], org, "2026–27", 12);
+  assert.deepEqual(tree.path, [
+    { kind: "division", departmentId: 2, divisionId: 20 },
+    { kind: "division", departmentId: 1, divisionId: 10 },
+    { kind: "division", departmentId: 1, divisionId: 11 },
+  ], "her first place, Safety, first");
+  const layout = layoutTeamTree(tree);
+  const on = layout.nodes.filter((n) => n.onPath).map((n) => n.key).sort();
+  assert.deepEqual(on, ["head-1", "head-2", "lead-10", "lead-11", "lead-20", "leader-1", "row-10-12", "row-11-12", "row-20-12"]);
+
+  // Each accent line ends at a head, a lead card or one of her rows: the trunk to both heads, each head to her divisions, each lead to her row.
+  const node = (key: string) => layout.nodes.find((n) => n.key === key)!;
+  const top = (key: string) => [node(key).x + node(key).w / 2, node(key).y];
+  const rowEnd = (key: string) => [node(key).x, node(key).y + node(key).h / 2];
+  const ends = layout.edges.filter((e) => e.onPath).map((e) => [...e.points[e.points.length - 1]]);
+  assert.deepEqual(
+    ends.map(String).sort(),
+    [top("head-1"), top("head-2"), top("lead-10"), top("lead-11"), top("lead-20"), rowEnd("row-10-12"), rowEnd("row-11-12"), rowEnd("row-20-12")].map(String).sort(),
+  );
+
+  // The canvas still opens on her first place's department, and Show me still goes to her Safety row.
+  const safety = node("head-2");
+  assert.ok(layout.focus && layout.focus.x <= safety.x && layout.focus.x + layout.focus.w >= safety.x + safety.w);
+  assert.deepEqual(boxOf(layout, 12), node("row-20-12"));
+});
+
+test("a seat's path stops at the seat: the leader, a board seat and a head (#862)", () => {
+  const onPath = (selfId: number) => layoutTeamTree(buildTeamTree(roster, org, "2026–27", selfId)).nodes.filter((n) => n.onPath).map((n) => n.key);
+  assert.deepEqual(onPath(1), ["leader-1"]);
+  assert.deepEqual(onPath(2), ["leader-1", "board-flag:chief-engineer"]);
+  assert.deepEqual(onPath(4), ["leader-1", "head-1"]);
+});
+
+// Several holders on one card (issue #916). Each co-holder sorts after the
+// one already in the roster, so the viewer can be the second holder.
+const coHolders: RosterEntry[] = [
+  person(30, "Zeno Russo", { role: "team-leader", memberships: NO_MEMBERSHIPS }),
+  person(31, "Marta Riva", seat(29, "Project Manager", "project-manager", "2025-10-01")),
+  person(32, "Silvia Moro", head(1, "Head of Aerodynamics")),
+  person(33, "Sara Villa", lead(10)),
+];
+const card = (layout: ReturnType<typeof layoutTeamTree>, key: string) => {
+  const node = layout.nodes.find((n) => n.key === key);
+  assert.ok(node && node.kind === "card", `no card ${key}`);
+  return node;
+};
+
+test("a card with one holder lays out as before #916: the same height, under its unit's key", () => {
+  const layout = layoutTeamTree(buildTeamTree(roster, org, "2026–27", 6));
+  // The heights the one-holder cards had before #916: a long name or title wraps, so some are past the smallest card.
+  // Since #897 a card takes its level row's tallest height: the Project Manager's seat matches the Chief Engineer's.
+  assert.deepEqual(
+    ["leader-1", "board-flag:project-manager", "head-1", "lead-10"].map((key) => [key, card(layout, key).h, card(layout, key).holders.length]),
+    [
+      ["leader-1", 59, 1],
+      ["board-flag:project-manager", 59, 1],
+      ["head-1", 56, 1],
+      ["lead-10", 72, 1],
+    ],
+  );
+  assert.deepEqual([card(layout, "leader-1").subtitle, card(layout, "lead-10").subtitle], ["Team Leader", "Mission Analysis · Lead"]);
+});
+
+test("two team leaders, two holders of a seat, two heads and two leads each share one card, sized so nothing overlaps (#916)", () => {
+  const plain = layoutTeamTree(buildTeamTree(roster, org, "2026–27", null));
+  const layout = layoutTeamTree(buildTeamTree([...roster, ...coHolders], org, "2026–27", null));
+  const names = (key: string) => card(layout, key).holders.map((p) => p.name);
+  assert.deepEqual(names("leader-1"), ["Alessandro Greco", "Zeno Russo"]);
+  assert.deepEqual(names("board-flag:project-manager"), ["Lorenzo Gallo", "Marta Riva"]);
+  assert.deepEqual(names("head-1"), ["Chiara Rinaldi", "Silvia Moro"]);
+  assert.deepEqual(names("lead-10"), ["Marco Bianchi", "Sara Villa"]);
+  assert.equal(layout.nodes.filter((n) => n.kind === "card").length, plain.nodes.filter((n) => n.kind === "card").length, "no card of its own for a co-holder");
+  assert.deepEqual(
+    [card(layout, "leader-1").subtitle, card(layout, "board-flag:project-manager").subtitle, card(layout, "head-1").subtitle, card(layout, "lead-10").subtitle],
+    ["Team Leaders", "Project Manager", "Head of Aerodynamics", "Mission Analysis · Leads"],
+  );
+  for (const key of ["leader-1", "board-flag:project-manager", "head-1", "lead-10"]) assert.ok(card(layout, key).h > card(plain, key).h, `${key} grows for its second holder`);
+  // Everything under a taller card moves down with it.
+  const row = layout.nodes.find((n) => n.key === "row-10-6")!;
+  assert.ok(row.y >= card(layout, "lead-10").y + card(layout, "lead-10").h);
+  assert.ok(card(layout, "lead-10").y > card(layout, "head-1").y + card(layout, "head-1").h);
+  assert.ok(card(layout, "head-1").y > card(layout, "board-flag:project-manager").y + card(layout, "board-flag:project-manager").h);
+  assert.ok(card(layout, "board-flag:project-manager").y > card(layout, "leader-1").y + card(layout, "leader-1").h);
+  assertApart(layout);
+});
+
+test("the path, the you mark and Find someone reach the second holder of a card as they reach the first (#916)", () => {
+  const all = [...roster, ...coHolders];
+  for (const [selfId, key, onPathKeys] of [
+    [30, "leader-1", ["leader-1"]],
+    [31, "board-flag:project-manager", ["leader-1", "board-flag:project-manager"]],
+    [32, "head-1", ["leader-1", "head-1"]],
+    [33, "lead-10", ["leader-1", "head-1", "lead-10"]],
+  ] as const) {
+    const layout = layoutTeamTree(buildTeamTree(all, org, "2026–27", selfId));
+    assert.deepEqual(layout.nodes.filter((n) => n.onPath).map((n) => n.key), onPathKeys, `the path of ${selfId}`);
+    const shown = card(layout, key);
+    assert.deepEqual(shown.holders.map((p) => p.self), [false, true], `${selfId} is marked you as the second holder`);
+    assert.deepEqual(boxOf(layout, selfId), shown, "Show me goes to their card");
+    assert.deepEqual(boxOf(layout, shown.holders[0].id), shown, "Find someone goes to the same card for the first holder");
+  }
 });
 
 test("the team leader's canvas opens on the top of the tree down to its lowest row", () => {

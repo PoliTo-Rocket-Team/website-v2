@@ -1,4 +1,5 @@
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
+import { GALLERY_PHOTO, readShapeCrops, type GalleryPhotoCrops } from "@/lib/photo-crops";
 
 // A gallery as an editor's panel types it: a Gallery block of the Edit
 // <project> panel (board 93, epic #522) and the Gallery section of the Edit
@@ -8,8 +9,12 @@ import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 // slot with no photo yet is a placeholder. A photo's description and caption
 // are optional.
 
-/** One slot of the carousel: an uploaded photo, or a placeholder (`src` null) until one is uploaded. */
-export type GalleryItemFields = { readonly src: string | null; readonly alt: string; readonly caption: string };
+/**
+ * One slot of the carousel: an uploaded photo, or a placeholder (`src` null)
+ * until one is uploaded. A photo may carry its crop for each carousel shape
+ * the editor framed (issue #969); with none it is shown centred.
+ */
+export type GalleryItemFields = { readonly src: string | null; readonly alt: string; readonly caption: string; readonly crops?: GalleryPhotoCrops };
 
 /** A project's gallery block as the panel types it. */
 export type GalleryFields = {
@@ -53,9 +58,12 @@ type Loose = Record<string, unknown>;
 const isObject = (v: unknown): v is Loose => typeof v === "object" && v !== null && !Array.isArray(v);
 const isString = (v: unknown): v is string => typeof v === "string";
 
-function readGalleryItem(v: unknown): GalleryItemFields | null {
+/** A slot the panel sent; its crops are kept when well formed, absent ones read as centred, and malformed ones refuse it. */
+export function readGalleryItem(v: unknown): GalleryItemFields | null {
   if (!isObject(v) || !isString(v.alt) || !isString(v.caption) || !(v.src === null || isString(v.src))) return null;
-  return { src: v.src, alt: v.alt, caption: v.caption };
+  const crops = readShapeCrops(v.crops, GALLERY_PHOTO);
+  if (crops === null || (v.src === null && crops !== undefined)) return null;
+  return { src: v.src, alt: v.alt, caption: v.caption, ...(crops !== undefined && { crops }) };
 }
 
 /** The gallery a request carries, or null when it does not carry one in this shape. Whose files its photos are, a save checks. */

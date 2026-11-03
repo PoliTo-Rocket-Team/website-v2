@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Pencil } from "lucide-react";
 import { toast } from "sonner";
+import { usePhoneGrouping } from "@/components/use-phone-grouping";
+import { PHONE_PLACEHOLDER } from "@/lib/phone";
 import { DEGREE_PROGRAMMES, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
 import {
   DETAIL_FIELDS,
@@ -121,7 +123,8 @@ function DetailsDrawer({
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const checked = parseDetailsChange(draft, editor);
+    // The phone the drawer opened with saves as it is, whatever its format (issue #887).
+    const checked = parseDetailsChange(draft, editor, details.phone);
     if (!checked.ok) return setErrors(checked.errors);
     setPending(true);
     try {
@@ -141,6 +144,7 @@ function DetailsDrawer({
     setDraft((d) => ({ ...d, [key]: value }));
     setErrors((errs) => ({ ...errs, [key]: undefined }));
   };
+  const phone = usePhoneGrouping((value) => set("phone", value));
 
   return (
     <Drawer
@@ -180,7 +184,7 @@ function DetailsDrawer({
                 <input
                   {...common}
                   type={key === "birthDate" ? "date" : key === "phone" ? "tel" : "text"}
-                  onChange={(e) => set(key, e.target.value)}
+                  {...(key === "phone" ? phone : { onChange: (e: ChangeEvent<HTMLInputElement>) => set(key, e.target.value) })}
                   placeholder={PLACEHOLDERS[key]}
                   autoComplete={AUTOCOMPLETE[key]}
                 />
@@ -194,7 +198,7 @@ function DetailsDrawer({
 }
 
 const PLACEHOLDERS: Partial<Record<DetailKey, string>> = {
-  phone: "+39 333 123 4567",
+  phone: PHONE_PLACEHOLDER,
   politoId: "s312456",
   linkedin: "linkedin.com/in/your-name",
 };

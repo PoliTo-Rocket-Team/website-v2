@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import Image from "next/image";
+import { CroppedImage } from "@/components/cropped-image";
 import { MarkFallback } from "@/components/mark-fallback";
+import { LAUNCH_PHOTO, placementOf, type LaunchPhotoShape } from "@/lib/photo-crops";
 import type { Copy } from "@/lib/projects";
 import type { Fact, LaunchPhoto, Title } from "@/lib/project-pages";
 
@@ -125,13 +126,37 @@ export function Pill({ tone, children, className = "" }: { tone: PillTone; child
   );
 }
 
-/** A photo slot: the launch's photo when it has one, else the project's texture under a dark fade, with the PRT mark (issue #366). */
-export function PhotoSlot({ texture, photo, sizes, className = "" }: { texture: string; photo?: LaunchPhoto; sizes: string; className?: string }) {
+/**
+ * A photo slot: the launch's photo when it has one, with its crop for the
+ * slot's shape (issue #970), else the project's texture under a dark fade,
+ * with the PRT mark (issue #366). Both slots stretch with the page, so the
+ * crop covers the slot at its zoom (lib/photo-crops.ts).
+ */
+export function PhotoSlot({
+  texture,
+  photo,
+  shape,
+  sizes,
+  className = "",
+}: {
+  texture: string;
+  photo?: LaunchPhoto;
+  /** The phone card's strip, or the slot beside a launch. */
+  shape: LaunchPhotoShape;
+  sizes: string;
+  className?: string;
+}) {
   if (photo !== undefined) {
     return (
       <div className={`relative overflow-hidden rounded-xl ${className}`}>
         {/* An uploaded photo (the public store, or a preview's data URL) is served as it is, as Outreach photos are. */}
-        <Image src={photo.src} alt={photo.alt} fill sizes={sizes} unoptimized={!photo.src.startsWith("/")} className="object-cover" />
+        <CroppedImage
+          base={placementOf(LAUNCH_PHOTO, photo.crops, { shape, box: "framed" })}
+          src={photo.src}
+          alt={photo.alt}
+          sizes={sizes}
+          unoptimized={!photo.src.startsWith("/")}
+        />
       </div>
     );
   }

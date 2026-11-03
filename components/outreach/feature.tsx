@@ -3,7 +3,7 @@ import Link from "next/link";
 import { CopyText } from "@/components/project-page/parts";
 import type { FeaturedCard } from "@/lib/outreach";
 import type { UpToTwo } from "@/lib/outreach-types";
-import { Photo } from "./photo";
+import { CARD_FIT, Photo } from "./photo";
 
 // Boards 32 and 32m, "Featured": the posts featured at the top of the page
 // (issue #496), each drawn from the post alone as one glass card. From md the
@@ -26,7 +26,7 @@ function FeatureCard({ feature }: { feature: FeaturedCard }) {
   return (
     <article className="glass-card glass-linked mx-auto grid max-w-[1312px] overflow-hidden rounded-xl md:grid-cols-[minmax(0,47fr)_minmax(0,53fr)]">
       <div className="relative h-[200px] md:h-auto md:min-h-[460px]">
-        <Photo photo={feature.photo} sizes="(min-width: 1440px) 620px, (min-width: 768px) 47vw, 100vw" />
+        <Photo photo={feature.photo} sizes="(min-width: 1440px) 620px, (min-width: 768px) 47vw, 100vw" fit={CARD_FIT} />
       </div>
       <div className="flex flex-col justify-center p-5 md:p-12">
         <p className="font-mono text-[11px] tracking-[0.2em] text-accent">{feature.eyebrow}</p>

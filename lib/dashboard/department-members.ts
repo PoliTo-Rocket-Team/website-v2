@@ -57,7 +57,6 @@ export function departmentMembers(input: {
       divisionId,
       actor,
       selfId: input.selfId,
-      reach: divisionIds,
       waiting: input.waiting[divisionId] ?? [],
       joining: input.joining[divisionId] ?? [],
     });
@@ -95,9 +94,12 @@ function everyoneIn(tabs: readonly DivisionMembers[], divisionIds: readonly numb
 
 /** "Aerodynamics Department · 16 people in 2 divisions" under the title (board 69). */
 export function departmentLine(page: Pick<DepartmentMembers, "department" | "everyone" | "tabs">): string {
-  const people = page.everyone.length;
-  const divisions = page.tabs.length;
-  return `${page.department.name} Department · ${people} ${people === 1 ? "person" : "people"} in ${divisions} ${divisions === 1 ? "division" : "divisions"}`;
+  return `${page.department.name} Department · ${peopleIn(page.everyone.length, page.tabs.length)}`;
+}
+
+/** "16 people in 2 divisions". */
+export function peopleIn(people: number, divisions: number): string {
+  return `${people} ${people === 1 ? "person" : "people"} in ${divisions} ${divisions === 1 ? "division" : "divisions"}`;
 }
 
 /** The open tab: All divisions, or one division (by id). */

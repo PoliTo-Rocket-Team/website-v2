@@ -124,6 +124,42 @@ test("only the next level up answers: a head of the lead's department, the team 
   assert.deepEqual(approverIdsOf({ kind: "lead", divisionId: 2 }, 30, both, org), [CHIARA]);
 });
 
+test("every holder of the seat above answers: each team leader for a head, each head for a lead; never the sender (epic #861)", () => {
+  const GIULIA = 23; // a second team leader
+  const LUCIA = 24; // a second Head of Aerodynamics
+  const coHeld = [
+    ...team,
+    person(GIULIA, "Giulia Ferri", { beyond: [{ kind: "team-leader", title: "" }] }),
+    person(LUCIA, "Lucia Gallo", { beyond: [{ kind: "head", departmentId: 1, title: "" }] }),
+  ];
+  assert.deepEqual(approverIdsOf(leadRequest.role, MARCO, coHeld, org), [CHIARA, LUCIA]);
+  assert.deepEqual(approverIdsOf(headRequest.role, CHIARA, coHeld, org), [ALESSANDRO, GIULIA]);
+  // A co-head sends their own head's request: the team leaders answer it, never the other co-head.
+  const fromLucia: HandOverRequest = { ...headRequest, id: 3, fromId: LUCIA };
+  assert.deepEqual(approverIdsOf(fromLucia.role, LUCIA, coHeld, org), [ALESSANDRO, GIULIA]);
+  assert.equal(planHandOverAnswer({ viewerId: CHIARA, request: fromLucia, answer: "decline", team: coHeld, org }).ok, false, "a co-head answers no head's request");
+  // A lead who also co-heads the department sends a lead's request: the other head answers, never them.
+  const both = [...coHeld, person(30, "Both", { memberships: lead(2), beyond: [{ kind: "head", departmentId: 1, title: "" }] })];
+  assert.deepEqual(approverIdsOf({ kind: "lead", divisionId: 2 }, 30, both, org), [CHIARA, LUCIA]);
+
+  for (const [request, approvers] of [
+    [leadRequest, [CHIARA, LUCIA]],
+    [headRequest, [ALESSANDRO, GIULIA]],
+  ] as const) {
+    for (const viewerId of approvers) {
+      for (const answer of ["confirm", "decline"] as const) {
+        assert.ok(planHandOverAnswer({ viewerId, request, answer, team: coHeld, org }).ok, `${viewerId} may ${answer} request ${request.id}`);
+      }
+      assert.deepEqual(
+        handOverAttentionFor(viewerId, [leadRequest, headRequest], coHeld, org, now).map((r) => r.action),
+        [{ answerHandOver: request.id }],
+        `${viewerId} sees request ${request.id} on their Overview`,
+      );
+    }
+    assert.equal(planHandOverAnswer({ viewerId: request.fromId, request, answer: "confirm", team: coHeld, org }).ok, false, "the sender answers nothing");
+  }
+});
+
 test("Confirm hands the role over as the sender chose; Decline changes no role; both notify the sender", () => {
   const confirmed = planHandOverAnswer({ viewerId: CHIARA, request: leadRequest, answer: "confirm", team, org });
   assert.ok(confirmed.ok && confirmed.value.answer === "confirm");

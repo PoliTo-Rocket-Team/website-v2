@@ -40,7 +40,10 @@ express (functions, triggers, data fixes) goes in hand-written migration files i
 
 5. **Apply.** `pnpm db:migrate` runs [db/migrate.ts](../db/migrate.ts): the `postgres-js` driver,
    one connection, `migrate(db, { migrationsFolder: "./drizzle" })`. The app itself uses the
-   `neon-http` driver ([db/client.ts](../db/client.ts)); the migrator does not. `pnpm db:seed`
+   `neon-http` driver ([db/client.ts](../db/client.ts)); the migrator does not. A Vercel preview
+   or production build applies the same migrations itself before `next build`
+   ([db/preview-build.ts](../db/preview-build.ts); production: [ADR 0020](../.decisions/0020-production-builds-migrate.md)),
+   so a migration must only add until the code that reads the old shape is gone. `pnpm db:seed`
    ([db/seed.ts](../db/seed.ts)) then checks the target with the guard in
    [lib/seed/target.ts](../lib/seed/target.ts) and runs the modules in
    [db/seed/registry.ts](../db/seed/registry.ts) in one transaction: every reset, then every insert.

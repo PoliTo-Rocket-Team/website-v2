@@ -167,6 +167,13 @@ export async function saveMemberDetails(target: DetailsTarget, divisionId: numbe
   return answered(await writes.saveMemberDetails(target, divisionId, input));
 }
 
+/** A lead or advisor change from Edit details' role pill (issues #901, #972), on the Team tree and the Members page: Edit division's save with only that change. */
+export async function changeDivisionPeople(divisionId: number, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes || !isId(divisionId)) return REFUSED;
+  return answered(await writes.changeDivisionPeople(divisionId, input));
+}
+
 /** Edit details' photo: the cropped square JPEG in the form's `photo` field, or none to remove it. */
 export async function setMemberPhoto(personId: number, form: FormData | null): Promise<TeamActionResult> {
   const writes = await writesOn("members");
@@ -259,9 +266,34 @@ export async function addSeat(input: unknown): Promise<TeamActionResult> {
   return answered(await writes.addSeat(input));
 }
 
-/** Remove seat (issue #643): the seat `roleId` ends with no successor; its holder stays on the team. */
-export async function removeSeat(roleId: number): Promise<TeamActionResult> {
+/** Remove seat (issue #643): the seat `roleId` ends with no successor; its holder stays on the team, or stays as an advisor (issue #900). */
+export async function removeSeat(roleId: number, input?: unknown): Promise<TeamActionResult> {
   const writes = await writesOn("team-tree");
   if (!writes || !isId(roleId)) return REFUSED;
-  return answered(await writes.removeSeat(roleId));
+  return answered(await writes.removeSeat(roleId, input));
+}
+
+// Add another holder (epic #861, issue #868): one more person holds a seat,
+// beside the holders it has. The rules are checked again behind each of these
+// (lib/dashboard/seat-holders.ts): only the team leader and full access.
+
+/** Add another team leader: who joins the team leader's seat. */
+export async function addTeamLeader(input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes) return REFUSED;
+  return answered(await writes.addTeamLeader(input));
+}
+
+/** Add another holder on the team-level seat `roleId`. */
+export async function addSeatHolder(roleId: number, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes || !isId(roleId)) return REFUSED;
+  return answered(await writes.addSeatHolder(roleId, input));
+}
+
+/** Add another head of `departmentId`. */
+export async function addDepartmentHead(departmentId: number, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes || !isId(departmentId)) return REFUSED;
+  return answered(await writes.addDepartmentHead(departmentId, input));
 }

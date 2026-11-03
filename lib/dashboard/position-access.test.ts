@@ -101,16 +101,16 @@ test("someone off the team changes nothing, whatever scope rows remain (issue #2
 
 // The recruitment manager (issue #194, Owner decisions on the issue,
 // 2026-10-22 and 2026-10-25): the lead of the open Logistics division moves
-// every division's applications, team-wide, and still changes positions only
-// in Logistics.
+// every division's applications, team-wide. Since issue #885 that lead seat
+// is a full-access seat, so it changes positions in every division too.
 
 const OPEN_UNITS = [...UNITS, LOGISTICS];
 const where = (viewer: PositionWriter, area: "positions" | "applications") => OPEN_UNITS.filter((unit) => mayChangePositionIn(viewer, area, unit));
 
-test("the Logistics lead moves applications in every open division, and changes positions only in Logistics (issue #194)", () => {
+test("the Logistics lead, a full-access seat, moves applications and changes positions in every open division (issues #194, #885)", () => {
   const manager = writerOf([role("lead", LOGISTICS)]);
   assert.deepEqual(where(manager, "applications"), OPEN_UNITS, "in Logistics and in every other division");
-  assert.deepEqual(where(manager, "positions"), [LOGISTICS]);
+  assert.deepEqual(where(manager, "positions"), OPEN_UNITS);
 });
 
 test("with Logistics closed, its former lead moves applications only where their role lets them, as before (issue #194)", () => {

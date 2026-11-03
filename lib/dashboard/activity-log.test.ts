@@ -108,6 +108,34 @@ test("the rows one write stored at once read as one change, said by the row that
   assert.deepEqual(sentences(entries), ["Moved Applicant D to Interview for Role Z"]);
 });
 
+test("a personal PRT email removal's answer reads as itself, not as the PRT email it clears (issue #931)", () => {
+  const at = "2026-10-25T09:00:00.000Z";
+  const removal = (outcome: string) =>
+    row({ table: "prt_email_removals", operation: "UPDATE", at, before: { member_id: 4, address: "e@team.test", outcome: null }, after: { member_id: 4, address: "e@team.test", outcome } });
+  const cleared = row({ table: "members", operation: "UPDATE", at, before: { member_id: 4, prt_email: "e@team.test" }, after: { member_id: 4, prt_email: null } });
+  assert.deepEqual(sentences(read([cleared, removal("removed")])), ["Removed e@team.test of Person E"]);
+  assert.deepEqual(sentences(read([removal("kept")])), ["Kept e@team.test for Person E"]);
+});
+
+test("a sign-in email change names the old and the new address, whether the address changed on the row or the record moved rows (issue #864)", () => {
+  const at = "2026-10-25T09:00:00.000Z";
+  const users = (operation: string, before: Record<string, unknown> | null, after: Record<string, unknown>) => row({ table: "users", operation, at, before, after });
+  const details = row({ table: "members", operation: "UPDATE", at, before: { member_id: 4, discord: null }, after: { member_id: 4, discord: null } });
+  const retyped = read([details, users("UPDATE", { id: "added:1", email: "old@mail.test", member: 4 }, { id: "added:1", email: "new@mail.test", member: 4 })]);
+  assert.deepEqual(sentences(retyped), ["Changed the sign-in email of Person E: old@mail.test → new@mail.test"]);
+  const moved = read([
+    details,
+    users("INSERT", null, { id: "added:2", email: "new@mail.test", member: null }),
+    users("UPDATE", { id: "added:2", email: "new@mail.test", member: null }, { id: "added:2", email: "new@mail.test", member: 4 }),
+    users("UPDATE", { id: "login-old", email: "old@mail.test", member: 4 }, { id: "login-old", email: "old@mail.test", member: null }),
+    row({ table: "session", schema: "better_auth", operation: "DELETE", at, before: { userId: "login-old" } }),
+  ]);
+  assert.deepEqual(sentences(moved), ["Changed the sign-in email of Person E: old@mail.test → new@mail.test"]);
+  assert.equal(moved[0].change.kind === "write" && moved[0].change.area, "members");
+  const anonymized = read([users("UPDATE", { id: "acct-d", email: "old@mail.test", anonymized_at: null }, { id: "acct-d", email: "anonymized@invalid", anonymized_at: at })]);
+  assert.deepEqual(sentences(anonymized), ["Updated the details of Applicant D"], "anonymization is no sign-in email change");
+});
+
 test("a status move names the status it set by its stored name, built-in or added, and an unlisted key by the key", () => {
   const move = (before: string | null, after: string, extra: Record<string, unknown> = {}) =>
     row({
@@ -204,6 +232,29 @@ test("Give access with several areas names them all; a change made during View a
   ]);
   assert.equal(sentenceOf(entry.change), "Gave Orders and Members access to Person E");
   assert.deepEqual(entry.who, { kind: "as", id: "acct-b", name: "Person B", actingTitle: "Seat Title", actingId: "acct-c", actingName: "Person C" });
+});
+
+test("a Google account linked or removed reads as one sentence in the Account area, under the person, naming its email (issue #906)", () => {
+  const google = (operation: string, email: string | null, at: string) =>
+    row({ schema: "better_auth", table: "account", operation, recordId: "row-1", by: "acct-d", at, after: { email } });
+  const entries = read([
+    google("GOOGLE_ACCOUNT_LINK", "second@example.com", "2026-10-25T09:00:00.000Z"),
+    google("GOOGLE_ACCOUNT_UNLINK", "second@example.com", "2026-10-25T10:00:00.000Z"),
+    google("GOOGLE_ACCOUNT_LINK", null, "2026-10-25T08:00:00.000Z"),
+  ]);
+  assert.deepEqual(sentences(entries), ["Removed the Google account second@example.com", "Linked the Google account second@example.com", "Linked a Google account"]);
+  assert.ok(entries.every((e) => e.change.kind === "write" && e.change.area === "account" && e.who.kind === "self" && e.who.name === "Applicant D"));
+});
+
+test("removing the account the login signs in with reads as one change naming the removal and the moved sign-in email, in the Account area (issue #949)", () => {
+  const at = "2026-10-25T09:00:00.000Z";
+  const google = (operation: string, recordId: string, email: string) => row({ schema: "better_auth", table: "account", operation, recordId, by: "acct-d", at, after: { email } });
+  const entries = read([
+    google("GOOGLE_ACCOUNT_SIGN_IN_EMAIL", "row-2", "second@example.com"),
+    google("GOOGLE_ACCOUNT_UNLINK", "row-1", "first@example.com"),
+  ]);
+  assert.deepEqual(sentences(entries), ["Removed the Google account first@example.com and changed their sign-in email to second@example.com"]);
+  assert.ok(entries.every((e) => e.change.kind === "write" && e.change.area === "account" && e.who.kind === "self"));
 });
 
 test("a write stored under no account is left out", () => {

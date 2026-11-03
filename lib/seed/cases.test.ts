@@ -471,7 +471,8 @@ test("the team-page module writes only the Team page's own tables, so no seeded 
   assert.deepEqual(teamPageSeed.seed.keyed ?? [], []);
   assert.deepEqual(tables(teamPageSeed.seed.rows.map((set) => set.table)), tables(teamPageSeed.seed.owns));
   // The roles read the same with and without the layer.
-  assert.deepEqual(teamRolesOf({ ...data, teamPageLayerVersions: [] }), teamRolesOf(data));
+  const withoutLayer: typeof data = { ...data, teamPageLayerVersions: [] };
+  assert.deepEqual(teamRolesOf(withoutLayer), teamRolesOf(data));
 });
 
 test("the seeded layer is published, is one the editor could have saved, and every edit lands on the page", () => {

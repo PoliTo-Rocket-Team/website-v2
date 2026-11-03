@@ -72,7 +72,7 @@ export function sameVersions<T extends D, D = T>(a: Versioned<T, D> | null, b: V
 }
 
 /** The same versions with each one's content put through `f`. */
-export function mapVersions<T>(version: Versioned<T>, f: (content: T) => T): Versioned<T> {
+export function mapVersions<T, U = T>(version: Versioned<T>, f: (content: T) => U): Versioned<U> {
   return version.state === "draft"
     ? { state: "draft", draft: f(version.draft) }
     : { state: "published", published: f(version.published), draft: version.draft === null ? null : f(version.draft) };

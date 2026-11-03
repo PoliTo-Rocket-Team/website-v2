@@ -56,3 +56,7 @@ cloudflare-env.d.ts
 
 # personal Claude Code settings
 .claude/settings.local.json
+
+# Pencil design files stay local: they carry a random per-save fileToken
+# and are large, so they are never committed.
+*.pen

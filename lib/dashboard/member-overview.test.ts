@@ -57,6 +57,31 @@ test("every team seat gets the personal panels: profile with Edit profile, Your 
   }
 });
 
+// Issue #948 (owner decision, 2026-11-01): "In the team since" shows the day
+// the member joined the team, stored in `members.joined_team_on` from the
+// roster's "Joined the Team on" column, and never a role's start: the roster's
+// role starts are academic-year placeholders. With no stored day it is hidden.
+test("the header's team-since line reads the stored team join day, never a role's start, and is hidden without one", async () => {
+  /** Ended yearly roles before the seeded current one (2025-10-01), with a gap: a member who left and came back. */
+  const yearlyRoles = async (memberId: number) =>
+    addRows(roles, [
+      { id: 9_481, memberId, title: "Member", type: "core", startedAt: "2021-10-01", leavedAt: "2022-09-30" },
+      { id: 9_482, memberId, title: "Member", type: "core", startedAt: "2023-10-01", leavedAt: "2024-09-30" },
+      { id: 9_483, memberId, title: "Member", type: "core", startedAt: "2024-10-01", leavedAt: "2025-09-30" },
+    ]);
+  const sinceOf = async (joinedTeamOn: string | null) =>
+    (
+      await overviewOf("member", async ({ memberId }) => {
+        assert.ok(memberId !== null);
+        await yearlyRoles(memberId);
+        await changeRows(members, { memberId }, { joinedTeamOn });
+      })
+    ).person.since;
+  assert.equal(await sinceOf("2021-11-15"), "In the team since November 2021", "several yearly roles and a rejoin: the stored join day");
+  assert.equal(await sinceOf("2025-11-03"), "In the team since November 2025", "the stored join day wins over an earlier role start");
+  assert.equal(await sinceOf(null), null, "no stored join day: hidden, never the current or earliest role's start");
+});
+
 // Issue #652: a grant reaches more of the team on the Members page, never on the Overview's roster.
 test("a member with a Members grant across the team gets their own division's roster, with See all to the Members page", async () => {
   const own = (await overviewOf("member")).rosters;

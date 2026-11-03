@@ -53,9 +53,9 @@ test("copy all copies every listed email, the hidden rows included, once each, c
 
 test("only the team leader gets the list; a division lead and a department head get none", () => {
   const viewer = (roles: ActiveRoleRef[]) => viewerStandingOf({ scopes: [], activeRoles: roles });
-  const teamLeader = viewer([{ type: "president", divisionId: null, fullAccess: null }]);
-  const head = viewer([{ type: "head", divisionId: null, fullAccess: null }]);
-  const lead = viewer([{ type: "lead", divisionId: 1, fullAccess: null }]);
+  const teamLeader = viewer([{ type: "president", divisionId: null, divisionCode: null, divisionClosedAt: null, fullAccess: null }]);
+  const head = viewer([{ type: "head", divisionId: null, divisionCode: null, divisionClosedAt: null, fullAccess: null }]);
+  const lead = viewer([{ type: "lead", divisionId: 1, divisionCode: null, divisionClosedAt: null, fullAccess: null }]);
   const all = [toBeSent, addedUnder, alreadySent];
   assert.deepEqual(
     acceptanceEmailsFor(teamLeader, all)?.map((c) => c.id),

@@ -107,6 +107,80 @@ export const VIEW_AS_OPERATIONS: Readonly<Record<ViewAsEntry["event"], string>> 
   stop: "VIEW_AS_STOP",
 };
 
+// Stopping View as (issue #899). The acting account's own session is kept,
+// signed, in the admin plugin's `admin_session` cookie while it views as
+// someone; Stop ends the View as session and signs that session back in. A
+// View as session lasts an hour (VIEW_AS_SESSION_SECONDS), so Stop has to
+// work after it ended too: then there is nothing left to end, and Stop only
+// returns the acting account to its own session.
+
+/**
+ * The request's session as Stop reads it: no session cookie at all (signed
+ * out), a cookie whose session has ended (a View as session that ran out), a
+ * plain session, or a live View as session and the account that started it.
+ */
+export type StopSession<Session> =
+  | { readonly kind: "signed-out" }
+  | { readonly kind: "ended" }
+  | { readonly kind: "plain" }
+  | { readonly kind: "viewing-as"; readonly session: Session; readonly actingAccountId: string };
+
+/** The acting account's own session, as the `admin_session` cookie names it while it views as someone. */
+export type OwnSession = { readonly accountId: string };
+
+/** Why Stop is refused. */
+export type ViewAsStopRefusal = "signed-out" | "not-viewing-as" | "own-session-gone" | "other-acting-account";
+
+/** The plain message each Stop refusal answers with; the banner shows it. */
+export const VIEW_AS_STOP_REFUSAL_MESSAGES: Readonly<Record<ViewAsStopRefusal, string>> = {
+  "signed-out": "You are signed out, so there is no View as session to stop.",
+  "not-viewing-as": "This is not a View as session, so there is nothing to stop.",
+  "own-session-gone": "Your own session has ended, so View as cannot return you to it. Sign out, then sign in again.",
+  "other-acting-account": "This View as session was started from another account. Sign out, then sign in again.",
+};
+
+/**
+ * What Stop does: end the live View as session and return to the acting
+ * account's own session, only return to it (the View as session already ran
+ * out), or refuse.
+ */
+export type ViewAsStop<Session, Own extends OwnSession> =
+  | { readonly kind: "end-and-return"; readonly ending: Session; readonly own: Own }
+  | { readonly kind: "return"; readonly own: Own }
+  | { readonly kind: "refused"; readonly refusal: ViewAsStopRefusal };
+
+/**
+ * What Stop does for this request: its session, and the acting account's own
+ * session the `admin_session` cookie still names (null when the cookie is
+ * missing or that session ended too). Signing out drops that cookie, so a
+ * signed-out browser is never signed back in here. A plain session has
+ * nothing to stop. The own session is returned to only when it belongs to the
+ * account that started the View as session.
+ */
+export function viewAsStopOf<Session, Own extends OwnSession>(session: StopSession<Session>, own: Own | null): ViewAsStop<Session, Own> {
+  if (session.kind === "signed-out") return { kind: "refused", refusal: "signed-out" };
+  if (session.kind === "plain") return { kind: "refused", refusal: "not-viewing-as" };
+  if (own === null) return { kind: "refused", refusal: "own-session-gone" };
+  if (session.kind === "ended") return { kind: "return", own };
+  if (session.actingAccountId !== own.accountId) return { kind: "refused", refusal: "other-acting-account" };
+  return { kind: "end-and-return", ending: session.session, own };
+}
+
+/** A Stop or sign-out that did not succeed, as the browser reads it: the server's answer, or no answer at all. */
+export type ViewAsCallFailure =
+  | { readonly kind: "answered"; readonly status: number; readonly statusText: string; readonly message: string | null }
+  | { readonly kind: "unreached" };
+
+/** What the banner says when Stop or the fallback sign-out fails: the server's reason, else the status it answered with. */
+export function viewAsFailureLine(action: "stop" | "sign-out", failure: ViewAsCallFailure): string {
+  const lead = action === "stop" ? "View as could not stop" : "Could not sign out";
+  if (failure.kind === "unreached") return `${lead}: the request did not reach the server.`;
+  const message = failure.message?.trim() ?? "";
+  if (message !== "") return `${lead}. ${/[.!?]$/.test(message) ? message : `${message}.`}`;
+  const status = failure.statusText.trim() === "" ? `${failure.status}` : `${failure.status} ${failure.statusText.trim()}`;
+  return `${lead} (the server answered ${status}).`;
+}
+
 // The View as banner (issue #611): what every dashboard page of a View as
 // session says across its top. The live site and a test site open the line
 // differently (boards 96b and 96c), chosen on the server from the site; both

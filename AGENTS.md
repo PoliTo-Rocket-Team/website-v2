@@ -67,8 +67,9 @@ Tailwind 3.
 - Before a change, read the rows of [.patterns/index.md](.patterns/index.md) that match it, and
   follow the docs they link. Update a doc when your change moves the shape it describes.
 - Rendered UI follows [design-system-manifest.md](design-system-manifest.md). Its source is the
-  Pencil design in `design/` (`prt-website.pen` plus `HANDOFF.md`). Open `.pen` files only
-  through the Pencil MCP tools.
+  Pencil design in `design/` (`prt-website.pen` plus `HANDOFF.md`). The `.pen` file is local
+  only and never committed (`.gitignore`); boards reach issues as exported PNGs. Open `.pen`
+  files only through the Pencil MCP tools.
 
 ## Work flows through Fabrika
 
