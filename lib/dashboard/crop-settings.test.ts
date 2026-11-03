@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BACKGROUND_CROP_MAX_BYTES, BACKGROUND_FRAMES } from "@/lib/project-content/record";
 import { PHOTO_MAX_BYTES } from "@/lib/outreach-photos";
+import { GALLERY_PHOTO, LAUNCH_PHOTO, POST_PHOTO } from "@/lib/photo-crops";
 import {
   CROP_SETTINGS,
   cutOf,
@@ -49,6 +50,22 @@ test("a project background is Tall 9:16 and Wide 2:1 JPEG files at the presets' 
     [["tall", BACKGROUND_FRAMES.tall], ["wide", BACKGROUND_FRAMES.wide]],
   );
   for (const shape of entry.shapes) assert.equal(shape.aspect.width / shape.aspect.height, shape.size.width / shape.size.height, shape.name);
+});
+
+test("outreach post, gallery and launch photos are kept once, cropped for each shape their public box is shown at, under the photo limit", () => {
+  const places = [
+    [CROP_SETTINGS.outreachPhoto, POST_PHOTO],
+    [CROP_SETTINGS.outreachGallery, GALLERY_PHOTO],
+    [CROP_SETTINGS.launchPhoto, LAUNCH_PHOTO],
+  ] as const;
+  for (const [entry, place] of places) {
+    assert.equal(entry.kind, "crops");
+    // As outreach photos were sent before crops: a JPEG at 0.86, its long side at most 2400 px.
+    assert.deepEqual(entry.output, { type: "image/jpeg", quality: 0.86 });
+    assert.equal(entry.maxSide, 2400);
+    assert.equal(entry.maxBytes, PHOTO_MAX_BYTES);
+    assert.deepEqual(Object.fromEntries(entry.shapes.map((s) => [s.name, s.aspect])), place);
+  }
 });
 
 test("one shape: a square photo cuts to at most 800 px, smaller only when the photo gives fewer pixels", () => {
@@ -104,7 +121,7 @@ export const typeChecks = [
   // @ts-expect-error a free frame is never cut to a JPEG
   { ...base, kind: "cut", output: { type: "image/jpeg", quality: 0.9 }, shapes: [free] } satisfies CutEntry,
   // @ts-expect-error a crop-per-shape entry has no free shape
-  { ...base, kind: "crops", output: { type: "image/png" }, shapes: [free] } satisfies CropsEntry,
+  { ...base, kind: "crops", output: { type: "image/png" }, maxSide: 2400, shapes: [free] } satisfies CropsEntry,
   { ...base, kind: "cut", output: { type: "image/png" }, shapes: [free, square] } satisfies CutEntry,
 ];
 export const resultChecks = (background: CropResult<typeof CROP_SETTINGS.projectBackground>, photo: CropResult<typeof CROP_SETTINGS.memberPhoto>): File[] => [

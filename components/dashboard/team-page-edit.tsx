@@ -92,7 +92,7 @@ import { YearSelect } from "./alumni-panels";
 import { ConfirmDialog } from "./confirm-dialog";
 import { CONTENT_FOCUS, TextField } from "./content-parts";
 import { BarButton, EditableBlock, EditShell } from "./edit-shell";
-import { shrunkPhoto } from "./outreach-post-photos";
+import { shrunkPhoto } from "./crop-queue";
 import { PHOTO_TYPES } from "@/lib/dashboard/self";
 import { TeamAdvisorsPanel, type KeyedAdvisorRow } from "./team-advisors-panel";
 import { TeamGroupsPanel } from "./team-groups-panel";

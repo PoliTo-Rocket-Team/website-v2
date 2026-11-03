@@ -31,8 +31,10 @@ import { ZoomSlider } from "./zoom-slider";
 // Several shapes draw the background crop of board 93f: one frame per shape,
 // side by side. In both, dragging (or the arrow keys) moves the photo under a
 // frame, and its slider or a pinch zooms it. A "cut" entry hands back a file
-// per frame at its preset size; a "crops" entry hands back the photo and a
-// crop for each shape the editor moved, the rest left centred. A dialog on a
+// per frame at its preset size; a "crops" entry hands back the photo, its
+// long side at most the entry's, and a crop for each shape the editor moved,
+// the rest left centred. For a pick of several files (issue #969) it says
+// which photo of how many it shows and adds Skip; Cancel stops the rest. A dialog on a
 // redesigned page: it fades in under motion-safe only and closes at once
 // (design-system-manifest.md).
 
@@ -70,6 +72,7 @@ export function CropDialog<E extends FixedEntry>({
   pending,
   onCancel,
   onChooseAnother,
+  queue,
   onDone,
 }: {
   /** The place's settings entry. */
@@ -81,6 +84,8 @@ export function CropDialog<E extends FixedEntry>({
   onCancel: () => void;
   /** Swaps the file, where the place offers it; the square layout draws "Choose another photo" for it. */
   onChooseAnother?: () => void;
+  /** Where the photo is in a pick of several, which the dialog crops in turn: Skip leaves this one out, and Cancel stops the rest. */
+  queue?: CropQueuePlace;
   onDone: (result: CropResult<E>) => void;
 }) {
   const shapes: readonly FixedShape[] = entry.shapes;
@@ -139,7 +144,10 @@ export function CropDialog<E extends FixedEntry>({
         if (over !== undefined) return void toast.error("Could not use that photo", { description: `The cropped photo must be under ${bytesText(entry.maxBytes)}.` });
         onDone({ kind: "cut", files } as CropResult<E>);
       } else {
-        const whole = { sx: 0, sy: 0, sw: image.current.naturalWidth, sh: image.current.naturalHeight, width: image.current.naturalWidth, height: image.current.naturalHeight };
+        const { naturalWidth: sw, naturalHeight: sh } = image.current;
+        // The photo is kept whole, its long side at most the entry's; the crops are fractions of it, so they hold at any size.
+        const scale = Math.min(1, entry.maxSide / Math.max(sw, sh));
+        const whole = { sx: 0, sy: 0, sw, sh, width: Math.round(sw * scale), height: Math.round(sh * scale) };
         const photo = await encoded(image.current, whole, entry.output, "photo");
         if (photo.size > entry.maxBytes) return void toast.error("Could not use that photo", { description: `The photo must be under ${bytesText(entry.maxBytes)}.` });
         const placed = Object.fromEntries(shapes.map((shape) => [shape.name, frames[shape.name] ?? undefined]));
@@ -150,7 +158,7 @@ export function CropDialog<E extends FixedEntry>({
     }
   };
 
-  const layout = { entry, src, frames, ready, pending, measured, changed, done, onChooseAnother };
+  const layout = { entry, src, frames, ready, pending, measured, changed, done, onChooseAnother, queue: queue !== undefined && queue.count > 1 ? queue : undefined };
   return (
     <Dialog open={file !== null} onOpenChange={(open) => !open && !pending && onCancel()}>
       <DialogPortal>{shapes.length === 1 ? <SquareLayout {...layout} shape={shapes[0]} /> : <SideBySideLayout {...layout} shapes={shapes} />}</DialogPortal>
@@ -168,7 +176,21 @@ type LayoutProps = {
   changed: (name: string) => (crop: FrameCrop) => void;
   done: () => void;
   onChooseAnother?: () => void;
+  /** Set only for a pick of more than one photo. */
+  queue?: CropQueuePlace;
 };
+
+/** A photo's place in a pick of several: its position (from 1), how many were picked, and the Skip action. */
+export type CropQueuePlace = { readonly position: number; readonly count: number; readonly onSkip: () => void };
+
+/** "Photo 2 of 5", under the title of a pick of several. */
+function QueueLine({ queue }: { queue: CropQueuePlace }) {
+  return (
+    <p className="mt-1 font-mono text-[11px] tracking-[0.15em] text-prt-muted">
+      PHOTO {queue.position} OF {queue.count}
+    </p>
+  );
+}
 
 /** The pointer and key handlers that move and zoom the photo under one frame: drag or arrow keys move it, a pinch zooms it. */
 function useFrameGestures(crop: FrameCrop | null, onCrop: (crop: FrameCrop) => void) {
@@ -249,7 +271,7 @@ function Placed({ src, crop, width }: { src: string; crop: FrameCrop; width: num
 }
 
 /** Board 55a: one frame still on a square stage, the outside dimmed, the previews beside it. */
-function SquareLayout({ entry, shape, src, frames, ready, pending, measured, changed, done, onChooseAnother }: LayoutProps & { shape: FixedShape }) {
+function SquareLayout({ entry, shape, src, frames, ready, pending, measured, changed, done, onChooseAnother, queue }: LayoutProps & { shape: FixedShape }) {
   const [stage, setStage] = useState(0);
   const measureStage = useMeasuredWidth(setStage);
   const room = Math.round(stage * BOX_SHARE);
@@ -266,7 +288,10 @@ function SquareLayout({ entry, shape, src, frames, ready, pending, measured, cha
       <DialogPrimitive.Content aria-describedby={undefined} className={`${SHEET_CONTENT} sm:w-[640px]`}>
         <SheetGrabber />
         <div className="flex items-center justify-between gap-4">
-          <DialogTitle className="text-[20px] font-bold leading-snug">{entry.words.title}</DialogTitle>
+          <div>
+            <DialogTitle className="text-[20px] font-bold leading-snug">{entry.words.title}</DialogTitle>
+            {queue && <QueueLine queue={queue} />}
+          </div>
           <DialogClose
             aria-label="Close"
             disabled={pending}
@@ -326,6 +351,11 @@ function SquareLayout({ entry, shape, src, frames, ready, pending, measured, cha
           <DialogClose disabled={pending} className={SHEET_CANCEL}>
             Cancel
           </DialogClose>
+          {queue && (
+            <button type="button" onClick={queue.onSkip} disabled={pending} className={SHEET_CANCEL}>
+              Skip this photo
+            </button>
+          )}
           <button type="button" onClick={done} disabled={pending || !ready} className={sheetConfirm(false)}>
             {entry.words.confirm}
           </button>
@@ -348,7 +378,7 @@ function Preview({ src, crop, shape, preview }: { src: string | null; crop: Fram
 }
 
 /** Board 93f: one frame per shape, side by side, each with its own zoom. A portrait frame takes a 232 px column from sm. */
-function SideBySideLayout({ entry, shapes, src, frames, ready, pending, measured, changed, done }: LayoutProps & { shapes: readonly FixedShape[] }) {
+function SideBySideLayout({ entry, shapes, src, frames, ready, pending, measured, changed, done, queue }: LayoutProps & { shapes: readonly FixedShape[] }) {
   const portrait = (shape: FixedShape) => shape.aspect.width < shape.aspect.height;
   const columns = shapes.map((shape) => (portrait(shape) ? "232px" : "minmax(0,1fr)")).join(" ");
   return (
@@ -359,6 +389,7 @@ function SideBySideLayout({ entry, shapes, src, frames, ready, pending, measured
         <div className="flex items-start justify-between gap-4">
           <div>
             <DialogTitle className="text-[20px] font-bold leading-snug">{entry.words.title}</DialogTitle>
+            {queue && <QueueLine queue={queue} />}
             {entry.words.description && (
               <DialogPrimitive.Description className="mt-1 text-[14px] leading-relaxed text-text-2">{entry.words.description}</DialogPrimitive.Description>
             )}
@@ -408,6 +439,16 @@ function SideBySideLayout({ entry, shapes, src, frames, ready, pending, measured
           <DialogClose disabled={pending} className={`${WIDE_BUTTON} border border-white-10 transition-colors duration-300 ease-out enabled:hover:border-border-strong`}>
             Cancel
           </DialogClose>
+          {queue && (
+            <button
+              type="button"
+              onClick={queue.onSkip}
+              disabled={pending}
+              className={`${WIDE_BUTTON} border border-white-10 transition-colors duration-300 ease-out enabled:hover:border-border-strong`}
+            >
+              Skip this photo
+            </button>
+          )}
           <button
             type="button"
             onClick={done}

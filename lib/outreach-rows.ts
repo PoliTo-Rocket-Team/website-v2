@@ -14,6 +14,7 @@ import {
   type PostGalleryPhoto,
 } from "./outreach-types";
 import { isPhotoSrc } from "./outreach-photos";
+import { GALLERY_PHOTO, POST_PHOTO, readShapeCrops } from "./photo-crops";
 import type { Copy } from "./projects";
 
 // An Outreach post version as its rows hold it (db/schema, issue #287), and
@@ -131,16 +132,29 @@ export function isStoredPhotoSrc(src: unknown): src is Exclude<PhotoSrc, `data:$
   return isPhotoSrc(src) && !src.startsWith("data:");
 }
 
-/** A photo; its alt text may be empty (issue #430), but is always a string. */
+/**
+ * A photo; its alt text may be empty (issue #430), but is always a string.
+ * Its crops (issue #969) are kept when well formed; a row saved before them
+ * has none, and a malformed one is no photo.
+ */
 function photoOf(value: unknown): OutreachPhoto | null {
   if (!isShape(value) || !isStoredPhotoSrc(value.src) || !isString(value.alt)) return null;
-  return { src: value.src, alt: value.alt };
+  const crops = readShapeCrops(value.crops, POST_PHOTO);
+  if (crops === null) return null;
+  return { src: value.src, alt: value.alt, ...(crops !== undefined && { crops }) };
 }
 
+/** A gallery photo: a photo with an optional caption, its crops the carousel's shapes. */
 function galleryPhotoOf(value: unknown): PostGalleryPhoto | null {
-  const photo = photoOf(value);
-  if (photo === null || !isShape(value) || !optionalText(value.caption)) return null;
-  return { ...photo, ...(value.caption !== undefined && { caption: value.caption }) };
+  if (!isShape(value) || !isStoredPhotoSrc(value.src) || !isString(value.alt) || !optionalText(value.caption)) return null;
+  const crops = readShapeCrops(value.crops, GALLERY_PHOTO);
+  if (crops === null) return null;
+  return {
+    src: value.src,
+    alt: value.alt,
+    ...(value.caption !== undefined && { caption: value.caption }),
+    ...(crops !== undefined && { crops }),
+  };
 }
 
 /**

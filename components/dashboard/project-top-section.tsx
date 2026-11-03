@@ -236,6 +236,7 @@ function TopVisualEditor({
               })
             }
             uploads={uploads}
+            crop={null}
             cover={false}
             max={1}
             error={errors["hero.visual"]}

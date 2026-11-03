@@ -590,6 +590,7 @@ function PhotoBlockEditor({
             })
           }
           uploads={uploads}
+          crop={null}
           cover={false}
           max={1}
           error={errors["photo.photo"]}
