@@ -1,11 +1,12 @@
 "use client";
 
 import { useId, useState, type ReactNode } from "react";
-import Image from "next/image";
 import { ChevronDown, Linkedin, Search } from "lucide-react";
+import { CroppedImage } from "@/components/cropped-image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { linkedinUrl, searchMembers } from "@/lib/about/people";
+import { GROUP_PHOTO, placementOf } from "@/lib/photo-crops";
 import type { CoreMembers as CoreMembersData, Member } from "@/lib/about/types";
 import { Avatar } from "./person";
 import { SectionHead } from "./section-head";
@@ -22,8 +23,10 @@ import { groupPhotoBlur } from "./team-blur";
 const FIRST_PHONE = 10;
 const FIRST_WIDE = 36;
 
-/** The group photo's box: the board's crop on phones, the wide band from md. */
+/** The group photo's box: the board's crop on phones, the wide band from md, each of its shape's own aspect (`GROUP_PHOTO`). */
 const PHOTO_BOX = "relative aspect-[350/210] overflow-hidden rounded-xl md:aspect-[1312/520]";
+const PHONE_BOX = { shape: "phone", box: "exact" } as const;
+const LAPTOP_BOX = { shape: "desktop", box: "exact" } as const;
 
 function MemberRow({ member, hiddenClass }: { member: Member; hiddenClass: string }) {
   return (
@@ -65,17 +68,19 @@ export function CoreMembers({
   const everyone = showAll || searching;
   // A photo uploaded in the editor (issue #510) is a store URL, served as
   // stored as person photos are (./person.tsx), with no blur of its own.
+  // Its crop for each box shape (issue #971) is drawn by the shared public
+  // photo; a photo with none draws centred, as every photo did before.
   const uploaded = !core.groupPhoto.src.startsWith("/");
   const photo = (
-    <Image
+    <CroppedImage
+      base={placementOf(GROUP_PHOTO, core.groupPhoto.crops, PHONE_BOX)}
+      md={placementOf(GROUP_PHOTO, core.groupPhoto.crops, LAPTOP_BOX)}
       src={core.groupPhoto.src}
       alt={core.groupPhoto.alt}
-      fill
       sizes="(min-width: 1440px) 1312px, 100vw"
       unoptimized={uploaded}
       placeholder={uploaded ? "empty" : "blur"}
       blurDataURL={uploaded ? undefined : groupPhotoBlur}
-      className="object-cover"
     />
   );
 

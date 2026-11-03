@@ -1,3 +1,4 @@
+import type { GroupPhotoCrops } from "@/lib/photo-crops";
 import type { Copy } from "@/lib/projects";
 
 // The Team page (/about/the-team) as data: one record, drawn by
@@ -131,8 +132,8 @@ export type CoreMembers = {
   /** The eyebrow before the member count. */
   eyebrow: string;
   title: string;
-  /** A photo in public/team/, or one uploaded in the Team page editor (issue #510). */
-  groupPhoto: { src: PersonPhoto; alt: string };
+  /** A photo in public/team/, or one uploaded in the Team page editor (issue #510), with its crop for each shape the editor framed (issue #971). */
+  groupPhoto: { src: PersonPhoto; alt: string; crops?: GroupPhotoCrops };
   /** None while the stored layout shows everyone with an active role (ADR 0019 Decision 9): the section then draws its heading and group photo alone. */
   members: readonly Member[];
 };

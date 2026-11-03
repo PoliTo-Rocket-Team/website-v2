@@ -65,6 +65,9 @@ export type Partner = {
   story?: PartnerStory;
 };
 
+/** The largest logo file the panel takes: the server's check (lib/partners-editor.ts) and the logo's crop entry (lib/dashboard/crop-settings.ts) read it here. */
+export const LOGO_MAX_BYTES = 1024 * 1024;
+
 /**
  * The most characters (Unicode code points) each partner text may hold.
  * Every desktop card has one fixed height, sized in
