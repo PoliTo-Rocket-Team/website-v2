@@ -608,7 +608,8 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
     division (#911).
     - A division row's pill opens the dashboard's own menu, never the browser's dropdown: Member,
       Lead (naming the division's other leads), then "Advisor · advises" with This division, Its
-      department and Whole team (the #900 scopes). The current choice has a check. A choice the
+      department and Whole team (the #900 scopes), the first two naming the unit they advise. Each
+      choice has its icon, and the current one has a check. A choice the
       editor may not make is locked with its reason, from one rule (`roleOptions` in
       `lib/dashboard/member-actions.ts`): where the editor may not change who leads the division
       (as Edit division allows: the department's head, the team leader, full access, and a lead of

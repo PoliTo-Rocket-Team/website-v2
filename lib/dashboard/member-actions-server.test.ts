@@ -321,12 +321,12 @@ describe("the Team tree and the Members page offer the same member actions", () 
       assert.equal(pill.closest("ul")?.querySelectorAll("select").length, 0, "no browser dropdown in the role rows");
     }
     const items = await ui.open("Role in Design & Manufacturing: Member");
-    assert.deepEqual(
-      items.map((m) => m.text.split(/(?=With )/)[0]),
-      ["Member", "Lead", "This division", "Its department", "Whole team"],
-    );
+    const labels = ["Member", "Lead", "This division", "Its department", "Whole team"];
+    assert.equal(items.length, labels.length);
+    labels.forEach((label, i) => assert.ok(items[i]?.text.startsWith(label), `item ${i} is ${label}`));
     assert.ok(items[0]?.checked, "the current role carries the check");
-    assert.ok(items[1]?.text.includes("With "), "Lead names the division's lead");
+    assert.ok(items[1]?.text.includes("Leads beside "), "Lead names the division's lead");
+    assert.ok(items[2]?.text.endsWith("Design & Manufacturing"), "This division names the division");
     assert.ok(items.every((m) => !m.locked), "the team leader may pick each");
     assert.ok(ui.text().includes("Leaves the team") && ui.text().includes("Ends every role. They move to alumni."));
     assert.ok(!ui.text().includes("Also on the Team tree"), "no link back to the Team tree it was opened from");

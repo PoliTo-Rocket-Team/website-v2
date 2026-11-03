@@ -110,8 +110,19 @@ test("the role pill offers Member, Lead, then Advisor at this division, its depa
 
 test("the role pill's Lead names the division's other leads, and nothing when there are none", () => {
   const lead = (r: DivisionRoleChange) => roleOptions(r).find((o) => o.choice.kind === "lead")?.detail;
-  assert.equal(lead(role({ otherLeads: ["Anna Rossi", "Luca Neri"] })), "With Anna Rossi and Luca Neri");
+  assert.equal(lead(role({ otherLeads: ["Anna Rossi", "Luca Neri"] })), "Leads beside Anna Rossi and Luca Neri");
   assert.equal(lead(role()), null);
+});
+
+test("the role pill's advisor scopes name the unit each advises: the division, its department, nothing for the whole team", () => {
+  const r = role();
+  for (const advisor of [false, true]) {
+    const options = roleOptions({ ...r, advisor });
+    assert.deepEqual(
+      ADVISOR_CHOICES.map((c) => options.find((o) => sameRole(o.choice, c))?.detail),
+      [r.short, r.department, null],
+    );
+  }
 });
 
 test("the role pill: a division's only lead may not become a member or an advisor (ONE_LEAD_NEEDED); with another lead they may", () => {
@@ -136,7 +147,7 @@ test("the role pill: an advisor shows Advisor · this division and may become a 
   assert.deepEqual(roleNow(advisor), { kind: "advisor", scope: "division" });
   const options = roleOptions(advisor);
   assert.ok(options.every((o) => o.permission.allowed));
-  assert.equal(options.find((o) => o.choice.kind === "lead")?.detail, "With Anna Rossi");
+  assert.equal(options.find((o) => o.choice.kind === "lead")?.detail, "Leads beside Anna Rossi");
   // Only the viewer's reach locks them, as for anyone else's row.
   const unreached = roleOptions(role({ advisor: true, change: LEADS_BY_HEAD }));
   assert.deepEqual(permissionOf(unreached, { kind: "advisor", scope: "division" }), OPEN, "what they are now stays open");

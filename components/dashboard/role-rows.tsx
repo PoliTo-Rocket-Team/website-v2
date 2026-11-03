@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { Check, ChevronDown, Lock, Plus } from "lucide-react";
+import { Check, ChevronDown, Crown, GraduationCap, Lock, Plus, User } from "lucide-react";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ADVISOR_SCOPE_LABELS, roleLabel, sameRole, type RoleChoice, type RoleOption } from "@/lib/dashboard/member-actions";
 import type { MoveDepartment } from "@/lib/dashboard/member-move";
@@ -22,26 +22,28 @@ const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 const MENU_CONTENT =
   "z-50 rounded-xl border border-hairline bg-panel p-1.5 text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0";
 
-const PILL = `inline-flex h-8 max-w-full shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors duration-300 ease-out ${FOCUS}`;
+const PILL = `inline-flex h-8 min-w-0 max-w-full items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors duration-300 ease-out ${FOCUS}`;
 
 /** The muted group heading inside a menu: "ADVISOR · ADVISES". */
 const MENU_LABEL = "px-2.5 pb-1 pt-2 font-mono text-[10px] uppercase tracking-[0.3em] text-dim";
 
 /**
- * One place's row (board 103b): the unit's name over nothing, its department
- * muted beside it, then the pill and the ⋯; `children` sit under the row (the
- * title box, a move's boxes, the step-down question).
+ * One place's row (board 103b), flat on the panel: the unit's name, its
+ * department muted beside it, then the pill and the ⋯; `children` sit under
+ * the row (the title box, a move's boxes, the step-down question). The name is
+ * the row's identity, so it never truncates: it wraps, the department
+ * truncates first, and a long pill gives way before either.
  */
 export function RoleRow({ name, department, pill, menu, children }: { name: string; department: string | null; pill: ReactNode; menu: ReactNode; children?: ReactNode }) {
   return (
-    <li className="rounded-xl border border-hairline bg-white-5 p-3.5">
+    <li>
       <div className="flex min-h-8 items-center gap-2.5">
-        <p className="flex min-w-0 flex-1 items-baseline gap-2">
-          <span className="truncate text-[14px] font-medium text-prt-text">{name}</span>
-          {department !== null && department !== "" && <span className="shrink-0 truncate text-[13px] text-prt-muted">{department}</span>}
+        <p className="flex min-w-[45%] flex-1 flex-wrap items-baseline gap-x-2">
+          <span className="min-w-0 text-[14px] font-medium text-prt-text [overflow-wrap:anywhere]">{name}</span>
+          {department !== null && department !== "" && <span className="min-w-0 max-w-full truncate text-[13px] text-prt-muted">{department}</span>}
         </p>
         {pill}
-        {menu}
+        {menu !== null && menu !== false && <div className="flex shrink-0">{menu}</div>}
       </div>
       {children}
     </li>
@@ -126,6 +128,11 @@ function RoleItem({ option, current, onChange, children }: { option: RoleOption;
         disabled ? "text-prt-muted" : "text-text-2 data-[highlighted]:text-prt-text data-[state=checked]:text-prt-text"
       }`}
     >
+      <RoleIcon kind={option.choice.kind} />
+      <span className="min-w-0 flex-1">
+        <span className="block">{children}</span>
+        {under !== null && <span className="mt-0.5 block text-[12px] leading-snug text-dim">{under}</span>}
+      </span>
       <span aria-hidden className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center">
         {disabled ? (
           <Lock className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -135,12 +142,14 @@ function RoleItem({ option, current, onChange, children }: { option: RoleOption;
           </DropdownMenuPrimitive.ItemIndicator>
         )}
       </span>
-      <span className="min-w-0">
-        <span className="block">{children}</span>
-        {under !== null && <span className="mt-0.5 block text-[12px] leading-snug text-dim">{under}</span>}
-      </span>
     </DropdownMenuPrimitive.CheckboxItem>
   );
+}
+
+/** Each role's icon in the pill's menu (board 103c): a person for Member, a crown for Lead, a mortarboard for every advisor scope. */
+function RoleIcon({ kind }: { kind: RoleChoice["kind"] }) {
+  const Icon = kind === "member" ? User : kind === "lead" ? Crown : GraduationCap;
+  return <Icon aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />;
 }
 
 /** A place's title box under its row (board 103b): no label of its own, its name read aloud; the error under it. */

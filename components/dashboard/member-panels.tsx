@@ -1694,7 +1694,7 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
           ) : (
             <>
               {/* One row per place they hold (boards 103b to 103d): their seats, a headship, each division. */}
-              <ul className="flex flex-col gap-3">
+              <ul className="flex flex-col gap-4">
                 {position.seats.map(seatRow)}
                 {places.flatMap((p) => (p.kind === "head" ? [headRow(p)] : []))}
                 {position.roles.map(divisionRow)}

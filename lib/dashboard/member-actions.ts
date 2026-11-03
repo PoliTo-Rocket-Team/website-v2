@@ -102,7 +102,7 @@ export type RoleChoice = { readonly kind: "member" } | { readonly kind: "lead" }
 export type RoleOption = {
   readonly choice: RoleChoice;
   readonly permission: Permission;
-  /** "With Anna Rossi": who else leads the division, under Lead; null for no line. */
+  /** The muted line under it (board 103c): "Leads beside Anna Rossi" under Lead, the unit an advisor scope names; null for no line. */
   readonly detail: string | null;
 };
 
@@ -142,21 +142,23 @@ export const ADVISOR_SCOPE_LABELS: Readonly<Record<AdvisorScope, string>> = {
  * only while another lead stays (`ONE_LEAD_NEEDED`). An advisor there may
  * become a member or a lead again, or advise at another scope (issue #972;
  * Owner decision, 2026-11-03): no rule but the viewer's reach locks those.
- * Lead names the division's other leads.
+ * Lead names the division's other leads; each advisor scope names the unit it
+ * advises (the division, its department), the whole team none.
  */
 export function roleOptions(role: DivisionRoleChange): readonly RoleOption[] {
   const now = roleNow(role);
-  const others = role.otherLeads.length > 0 ? `With ${andList(role.otherLeads)}` : null;
+  const others = role.otherLeads.length > 0 ? `Leads beside ${andList(role.otherLeads)}` : null;
+  const unitOf: Readonly<Record<AdvisorScope, string | null>> = { division: role.short, department: role.department, team: null };
   const option = (choice: RoleChoice, permission: Permission, detail: string | null = null): RoleOption => ({
     choice,
     permission: sameRole(choice, now) ? OPEN : permission,
     detail,
   });
   if (role.advisor) {
-    const advisors = ADVISOR_SCOPES.map((scope) => option({ kind: "advisor", scope }, role.change));
+    const advisors = ADVISOR_SCOPES.map((scope) => option({ kind: "advisor", scope }, role.change, unitOf[scope]));
     return [option({ kind: "member" }, role.change), option({ kind: "lead" }, role.change, others), ...advisors];
   }
-  const advisors = ADVISOR_SCOPES.map((scope) => option({ kind: "advisor", scope }, becomeAdvisorPermission(role)));
+  const advisors = ADVISOR_SCOPES.map((scope) => option({ kind: "advisor", scope }, becomeAdvisorPermission(role), unitOf[scope]));
   const change = (permission: Permission) => (role.change.allowed ? permission : role.change);
   return [option({ kind: "member" }, change(stepDownPermission(role))), option({ kind: "lead" }, change(OPEN), others), ...advisors];
 }
