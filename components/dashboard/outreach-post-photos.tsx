@@ -8,9 +8,9 @@ import type { CropsEntry, ShapeCrops } from "@/lib/dashboard/crop-settings";
 import type { WriteResult } from "@/lib/dashboard/write";
 import type { PhotoSrc } from "@/lib/outreach-types";
 import { cropsKey } from "@/lib/photo-crops";
-import { describePhoto, movePhoto, neighbourOf, pickedPhoto, removePhoto, reorderPhotos } from "@/lib/photo-list";
+import { describePhoto, movePhoto, neighbourOf, pickedPhoto, recropPhoto, removePhoto, reorderPhotos } from "@/lib/photo-list";
 import { CONTENT_FOCUS, useDragOrder } from "./content-parts";
-import { useCropQueue, useInOrder, type CroppedPhoto } from "./crop-queue";
+import { useCropQueue, useInOrder, useRecrop, type CroppedPhoto } from "./crop-queue";
 import { inputClass } from "./field";
 
 // The Photos section of the Edit post panel (board 74h, issue #291): the
@@ -31,7 +31,9 @@ import { inputClass } from "./field";
 //
 // The place's crop entry (issue #969) opens the shared crop dialog on each
 // picked file in turn, Skip and Cancel included, and keeps the photo once
-// with its crop for each shape.
+// with its crop for each shape. Edit crop in the box re-opens that dialog on
+// the picked photo (issue #975), at its stored crops; Save changes only its
+// crops, with no new upload.
 
 /** A photo in a panel's list: its file, its description, and its crop for each shape the editor framed. */
 export type CroppablePhoto<N extends string> = { readonly src: PhotoSrc; readonly alt: string; readonly crops?: ShapeCrops<N> };
@@ -101,6 +103,7 @@ export function PhotosSection<N extends string>({
     });
   };
   const queue = useCropQueue(crop, store);
+  const recrop = useRecrop(crop, (src, crops) => onChange((list) => recropPhoto(list, src, crops)));
 
   const room = max === null ? Infinity : max - photos.length - uploading;
   const add = (picked: readonly File[]) => {
@@ -215,6 +218,7 @@ export function PhotosSection<N extends string>({
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <TextButton label="Move earlier" onClick={picked.index > 0 ? () => move(picked.photo.src, -1) : null} />
             <TextButton label="Move later" onClick={picked.index < photos.length - 1 ? () => move(picked.photo.src, 1) : null} />
+            <TextButton label="Edit crop" onClick={() => recrop.open(picked.photo)} />
             <button
               type="button"
               onClick={() => remove(picked.photo.src)}
@@ -227,6 +231,7 @@ export function PhotosSection<N extends string>({
       )}
 
       {queue.dialog}
+      {recrop.dialog}
       {error !== undefined && <p className="text-[12px] text-danger">{error}</p>}
       <p className="text-[12px] text-prt-muted">Click a photo to describe it for screen readers (optional). The text is kept as you type.</p>
     </>

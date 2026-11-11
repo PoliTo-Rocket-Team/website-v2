@@ -6,6 +6,8 @@
 // next arrows move the pick to another photo and never carry the text
 // along. Each edit answers the whole list, for the panel to keep.
 
+import { withCrops, type ShapeCrops } from "./photo-crops";
+
 /** A photo in a list: its file, which is its id there, and its description. */
 export type ListedPhoto = { readonly src: string; readonly alt: string };
 
@@ -27,6 +29,15 @@ export function neighbourOf(photos: readonly ListedPhoto[], picked: string | nul
 /** The list with the description of the photo `src` set to `alt`; every other photo keeps its own. */
 export function describePhoto<P extends ListedPhoto>(photos: readonly P[], src: string, alt: string): P[] {
   return photos.map((p) => (p.src === src ? { ...p, alt } : p));
+}
+
+/**
+ * The list with the photo `src` re-cropped (issue #975): only its crops
+ * change, its file, words and place stay, and every other photo keeps its
+ * own. A gallery's empty slot (no file) is never the one re-cropped.
+ */
+export function recropPhoto<N extends string, P extends { readonly src: string | null; readonly crops?: ShapeCrops<N> }>(photos: readonly P[], src: string, crops: ShapeCrops<N>): P[] {
+  return photos.map((p) => (p.src === src ? withCrops(p, crops) : p));
 }
 
 /** The list with the photo `src` moved one place earlier or later, taking its description with it. */

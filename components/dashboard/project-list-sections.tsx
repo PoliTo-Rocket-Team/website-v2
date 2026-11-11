@@ -9,6 +9,7 @@ import { discardProjectPhoto, uploadProjectPhoto } from "@/app/dashboard/project
 import { CROP_SETTINGS, type CropsEntry } from "@/lib/dashboard/crop-settings";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { cropsKey, type GalleryPhotoShape } from "@/lib/photo-crops";
+import { recropPhoto } from "@/lib/photo-list";
 import {
   blankLaunch,
   blankStep,
@@ -39,7 +40,7 @@ import { specRows, twoDigits, type Outcome, type PlanStatus } from "@/lib/projec
 import { CONTENT_FOCUS, TextField, useDragOrder } from "./content-parts";
 import { ErrorLine } from "./edit-panel";
 import { Field, inputClass } from "./field";
-import { useCropQueue, useInOrder } from "./crop-queue";
+import { useCropQueue, useInOrder, useRecrop } from "./crop-queue";
 import { PhotosSection, type PhotoUploads } from "./outreach-post-photos";
 import { CopyField, EditableList, RowButton, type FieldErrors } from "./project-panel-parts";
 
@@ -695,6 +696,8 @@ export function GalleryPhotosEditor({
       else onChange((now) => [...now, { src: result.value, alt: "", caption: "", ...cropsKey(crops) }]);
     });
   });
+  // Edit crop on a stored photo (issue #975): the same dialog at its stored crops; only its crops change, with no new upload.
+  const recrop = useRecrop(crop, (src, crops) => onChange((now) => recropPhoto(now, src, crops)));
 
   return (
     <>
@@ -715,9 +718,21 @@ export function GalleryPhotosEditor({
           for (const src of result.value.letGo) void uploads.discard(src);
           return { ok: true, value: result.value.items };
         }}
-        row={(item: GalleryItemFields, _, update) => (
+        row={(item: GalleryItemFields, index, update) => (
           <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-2.5">
-            <GalleryThumb src={item.src} />
+            <div className="space-y-1.5">
+              <GalleryThumb src={item.src} />
+              {item.src !== null && (
+                <button
+                  type="button"
+                  aria-label={`Edit crop of photo ${index + 1}`}
+                  onClick={() => item.src !== null && recrop.open({ src: item.src, crops: item.crops })}
+                  className={`rounded-md text-[13px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text ${CONTENT_FOCUS}`}
+                >
+                  Edit crop
+                </button>
+              )}
+            </div>
             <div className="space-y-2.5">
               <TextField label="Description" hint="optional, for screen readers" value={item.alt} onChange={(alt) => update({ ...item, alt })} />
               <TextField label="Caption" hint="optional" value={item.caption} onChange={(caption) => update({ ...item, caption })} />
@@ -746,6 +761,7 @@ export function GalleryPhotosEditor({
         }}
       />
       {queue.dialog}
+      {recrop.dialog}
     </>
   );
 }

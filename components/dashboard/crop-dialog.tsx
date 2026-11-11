@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { toast } from "sonner";
 import { ImageIcon, Info, LoaderCircle, Move, X } from "lucide-react";
@@ -9,20 +9,24 @@ import {
   cutOf,
   freeCutOf,
   isFreeEntry,
+  openingFrameCrop,
+  RECROP_WORDS,
+  recroppedCrops,
   shapeCropsOf,
   type CropOutput,
   type CropPreview,
   type CropResult,
+  type CropsEntry,
   type Cut,
   type CutShape,
   type DialogEntry,
   type FixedEntry,
   type FixedShape,
   type FreeEntry,
+  type ShapeCrops,
   type Size,
 } from "@/lib/dashboard/crop-settings";
 import {
-  centredFrameCrop,
   FREE_HANDLES,
   frameIn,
   frameScaleOf,
@@ -59,6 +63,10 @@ import { ZoomSlider } from "./zoom-slider";
 // draws the square layout's sheet with the photo shown whole and still: the
 // frame's edges and corners resize it, a drag inside moves it, and it never
 // leaves the photo; the result is the frame's PNG cut, transparency kept.
+// A stored photo of a "crops" place re-opens in the same dialog (issue #975,
+// `RecropDialog`): each frame opens at the photo's stored crop, or centred
+// where it has none, and Save hands back only the crops, the stored file
+// kept as it is.
 
 /** The square layout's frame: its share of the stage. */
 const BOX_SHARE = 0.78;
@@ -105,9 +113,53 @@ type CropDialogProps<E extends DialogEntry> = {
 
 /** The place's entry picks the stage: a frame per fixed shape over a moving photo, or one free frame over a still one. */
 export function CropDialog<E extends DialogEntry>(props: CropDialogProps<E>) {
-  const { entry, onDone } = props;
+  const { entry, file, onDone } = props;
   if (isFreeEntry(entry)) return <FreeCropDialog {...props} entry={entry} onDone={(result) => onDone(result as CropResult<E>)} />;
-  return <FixedCropDialog {...props} entry={entry} onDone={(result) => onDone(result as CropResult<E>)} />;
+  const finish = async ({ image, frames, crops }: Confirmed) => {
+    if (entry.kind === "cut") {
+      const files: Record<string, File> = {};
+      for (const shape of entry.shapes as readonly CutShape[]) files[shape.name] = await encoded(image, cutOf(shape, frames[shape.name]!), entry.output, shape.name);
+      const over = Object.values(files).find((f) => f.size > entry.maxBytes);
+      if (over !== undefined) return void toast.error("Could not use that photo", { description: `The cropped photo must be under ${bytesText(entry.maxBytes)}.` });
+      onDone({ kind: "cut", files } as CropResult<E>);
+    } else {
+      const { naturalWidth: sw, naturalHeight: sh } = image;
+      // The photo is kept whole, its long side at most the entry's; the crops are fractions of it, so they hold at any size.
+      const scale = Math.min(1, entry.maxSide / Math.max(sw, sh));
+      const whole = { sx: 0, sy: 0, sw, sh, width: Math.round(sw * scale), height: Math.round(sh * scale) };
+      const kept = await encoded(image, whole, entry.output, "photo");
+      if (kept.size > entry.maxBytes) return void toast.error("Could not use that photo", { description: `The photo must be under ${bytesText(entry.maxBytes)}.` });
+      onDone({ kind: "crops", file: kept, crops } as CropResult<E>);
+    }
+  };
+  const { pending, onCancel, onChooseAnother, queue } = props;
+  return <FixedCropDialog entry={entry} photo={file} pending={pending} onCancel={onCancel} onChooseAnother={onChooseAnother} queue={queue} finish={finish} />;
+}
+
+/** A stored photo of a "crops" place (issue #975): its file, and the crops it has, none for a photo stored before crops. */
+export type StoredPhoto<N extends string, S extends string = string> = { readonly src: S; readonly crops?: ShapeCrops<N> };
+
+/**
+ * The crop dialog re-opened on a stored photo (issue #975): the place's own
+ * frames, each at the photo's stored crop or centred where it has none. Save
+ * hands back the photo's crops, the ones the editor moved new and the rest as
+ * they were; the stored file is not read back or sent again.
+ */
+export function RecropDialog<N extends string>({
+  entry,
+  photo,
+  onCancel,
+  onDone,
+}: {
+  entry: CropsEntry<N>;
+  /** The photo to re-crop; null keeps the dialog closed. */
+  photo: StoredPhoto<N> | null;
+  onCancel: () => void;
+  onDone: (crops: ShapeCrops<N>) => void;
+}) {
+  const shown = useMemo(() => ({ ...entry, words: RECROP_WORDS }), [entry]);
+  const finish = async ({ crops }: Confirmed) => onDone(crops as ShapeCrops<N>);
+  return <FixedCropDialog entry={shown} photo={photo?.src ?? null} start={photo?.crops} pending={false} onCancel={onCancel} finish={finish} />;
 }
 
 /** Encodes the photo once on confirm: the ref refuses a second confirm in the same tick and `busy` disables every button, so one confirm hands back exactly one photo (issue #969). */
@@ -130,14 +182,18 @@ function usePreparing() {
   return { run, busy, preparing };
 }
 
-/** The photo's object URL and, once it has loaded, the image and its natural size. */
-function useLoadedPhoto(file: File | null) {
+/**
+ * The photo's URL and, once it has loaded, the image and its natural size: a
+ * picked file's object URL, or a stored photo's own URL. A stored photo is
+ * only shown and measured, never drawn to a canvas, so it needs no CORS.
+ */
+function useLoadedPhoto(photo: File | string | null) {
   const [src, setSrc] = useState<string | null>(null);
   const [natural, setNatural] = useState<Size | null>(null);
   const image = useRef<HTMLImageElement | null>(null);
   useEffect(() => {
-    if (file === null) return;
-    const url = URL.createObjectURL(file);
+    if (photo === null) return;
+    const url = typeof photo === "string" ? photo : URL.createObjectURL(photo);
     setSrc(url);
     setNatural(null);
     image.current = null;
@@ -146,26 +202,46 @@ function useLoadedPhoto(file: File | null) {
       image.current = img;
       setNatural({ width: img.naturalWidth, height: img.naturalHeight });
     };
+    img.onerror = () => toast.error("Could not open that photo", { description: "Please try again." });
     img.src = url;
     return () => {
       img.onload = null;
-      URL.revokeObjectURL(url);
+      img.onerror = null;
+      if (typeof photo !== "string") URL.revokeObjectURL(url);
     };
-  }, [file]);
+  }, [photo]);
   return { src, natural, image };
 }
 
-function FixedCropDialog<E extends FixedEntry>({ entry, file, pending, onCancel, onChooseAnother, queue, onDone }: CropDialogProps<E>) {
+/** What a confirm hands the place: the loaded photo, each frame as it stands, and the photo's crops (the moved shapes' new ones over the stored ones). */
+type Confirmed = { readonly image: HTMLImageElement; readonly frames: Frames; readonly crops: ShapeCrops };
+
+type FixedCropDialogProps<E extends FixedEntry> = Omit<CropDialogProps<E>, "file" | "onDone"> & {
+  /** A picked file, or a stored photo's URL; null keeps the dialog closed. */
+  photo: File | string | null;
+  /** The photo's stored crops, which its frames open at; none for a new photo. */
+  start?: ShapeCrops;
+  finish: (confirmed: Confirmed) => Promise<void>;
+};
+
+function FixedCropDialog<E extends FixedEntry>({ entry, photo, start, pending, onCancel, onChooseAnother, queue, finish }: FixedCropDialogProps<E>) {
   const shapes: readonly FixedShape[] = entry.shapes;
-  const { src, natural, image } = useLoadedPhoto(file);
+  const { src, natural, image } = useLoadedPhoto(photo);
   const [widths, setWidths] = useState<Readonly<Record<string, number>>>({});
   const [frames, setFrames] = useState<Frames>({});
   const [set, setSet] = useState<ReadonlySet<string>>(new Set());
   const { run, busy, preparing } = usePreparing();
+  // The stored crops go with the photo they came with; read when it loads.
+  // Kept before the frames' effect, which runs after this one.
+  const startRef = useRef(start);
+  useEffect(() => {
+    startRef.current = start;
+  });
 
-  // A new photo starts every frame centred at zoom 1, and none set; a photo
-  // still loading has no frames. A frame's new width, as on a window resize,
-  // keeps the part of the photo it showed.
+  // A newly loaded photo starts every frame at its stored crop, or centred at
+  // zoom 1 where it has none, and none moved; a photo still loading has no
+  // frames. A frame's new width, as on a window resize, keeps the part of the
+  // photo it showed.
   const framesFor = useRef<{ natural: Size | null; shapes: readonly FixedShape[] } | null>(null);
   useEffect(() => {
     const fresh = framesFor.current?.natural !== natural || framesFor.current?.shapes !== shapes;
@@ -178,7 +254,7 @@ function FixedCropDialog<E extends FixedEntry>({ entry, file, pending, onCancel,
           const height = (width * shape.aspect.height) / shape.aspect.width;
           const before = fresh ? null : all[shape.name];
           next[shape.name] =
-            width <= 0 ? null : before ? resizedFrameCrop(before, width, height) : centredFrameCrop(natural.width, natural.height, width, height);
+            width <= 0 ? null : before ? resizedFrameCrop(before, width, height) : openingFrameCrop(natural, { width, height }, startRef.current?.[shape.name]);
         }
       }
       return next;
@@ -197,26 +273,11 @@ function FixedCropDialog<E extends FixedEntry>({ entry, file, pending, onCancel,
   const ready = natural !== null && shapes.every((shape) => frames[shape.name]);
 
   const done = () => {
-    const photo = image.current;
-    if (photo === null || !ready || pending) return;
-    void run(async () => {
-      if (entry.kind === "cut") {
-        const files: Record<string, File> = {};
-        for (const shape of entry.shapes as readonly CutShape[]) files[shape.name] = await encoded(photo, cutOf(shape, frames[shape.name]!), entry.output, shape.name);
-        const over = Object.values(files).find((f) => f.size > entry.maxBytes);
-        if (over !== undefined) return void toast.error("Could not use that photo", { description: `The cropped photo must be under ${bytesText(entry.maxBytes)}.` });
-        onDone({ kind: "cut", files } as CropResult<E>);
-      } else {
-        const { naturalWidth: sw, naturalHeight: sh } = photo;
-        // The photo is kept whole, its long side at most the entry's; the crops are fractions of it, so they hold at any size.
-        const scale = Math.min(1, entry.maxSide / Math.max(sw, sh));
-        const whole = { sx: 0, sy: 0, sw, sh, width: Math.round(sw * scale), height: Math.round(sh * scale) };
-        const kept = await encoded(photo, whole, entry.output, "photo");
-        if (kept.size > entry.maxBytes) return void toast.error("Could not use that photo", { description: `The photo must be under ${bytesText(entry.maxBytes)}.` });
-        const placed = Object.fromEntries(shapes.map((shape) => [shape.name, frames[shape.name] ?? undefined]));
-        onDone({ kind: "crops", file: kept, crops: shapeCropsOf(placed, set) } as CropResult<E>);
-      }
-    });
+    const loaded = image.current;
+    if (loaded === null || !ready || pending) return;
+    const placed = Object.fromEntries(shapes.map((shape) => [shape.name, frames[shape.name] ?? undefined]));
+    const crops = recroppedCrops(start, shapeCropsOf(placed, set));
+    void run(() => finish({ image: loaded, frames, crops }));
   };
   const held = pending || busy;
   // Skip goes through the same guard: it does nothing while a confirm is preparing.
@@ -227,7 +288,7 @@ function FixedCropDialog<E extends FixedEntry>({ entry, file, pending, onCancel,
 
   const layout = { entry, src, frames, ready, pending: held, measured, changed, done, onChooseAnother, queue: place };
   return (
-    <Dialog open={file !== null} onOpenChange={(open) => !open && !held && !preparing.current && onCancel()}>
+    <Dialog open={photo !== null} onOpenChange={(open) => !open && !held && !preparing.current && onCancel()}>
       <DialogPortal>{shapes.length === 1 ? <SquareLayout {...layout} shape={shapes[0]} /> : <SideBySideLayout {...layout} shapes={shapes} />}</DialogPortal>
     </Dialog>
   );
