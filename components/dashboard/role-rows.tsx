@@ -2,10 +2,12 @@
 
 import type { ReactNode } from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { Check, ChevronDown, Crown, GraduationCap, Lock, Plus, User } from "lucide-react";
+import { Check, ChevronDown, Crown, GraduationCap, Lock, Plus, User, UserMinus } from "lucide-react";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { sameAdvisorChoice, type AdvisorPlaceChoice, type AdvisorPlaceOption } from "@/lib/dashboard/advisor-roles";
 import { ADVISOR_SCOPE_LABELS, roleLabel, sameRole, type RoleChoice, type RoleOption } from "@/lib/dashboard/member-actions";
 import type { MoveDepartment } from "@/lib/dashboard/member-move";
+import type { Permission } from "@/lib/dashboard/team";
 import { inputClass } from "./field";
 import { Chips } from "./division-chips";
 
@@ -116,19 +118,112 @@ export function RolePill({
 }
 
 function RoleItem({ option, current, onChange, children }: { option: RoleOption; current: boolean; onChange: (choice: RoleChoice) => void; children: ReactNode }) {
-  const { permission } = option;
+  return (
+    <ChoiceItem permission={option.permission} detail={option.detail} current={current} icon={<RoleIcon kind={option.choice.kind} />} onSelect={() => onChange(option.choice)}>
+      {children}
+    </ChoiceItem>
+  );
+}
+
+/**
+ * The pill of a department or whole-team Advisor role (issue #976), in the
+ * role pill's own look (board 103c): the places the role may move to under
+ * "Advisor · advises", then End this role. Locked choices carry their reason.
+ */
+export function AdvisorPlacePill({
+  label,
+  options,
+  value,
+  shown,
+  staged,
+  onChange,
+}: {
+  /** "Role in Aerodynamics": the pill's accessible name, before its value. */
+  label: string;
+  options: readonly AdvisorPlaceOption[];
+  value: AdvisorPlaceChoice;
+  /** "Advisor", "Advisor · Mission Analysis", "Ends on Save" (`advisorPillLabel`). */
+  shown: string;
+  staged: boolean;
+  onChange: (choice: AdvisorPlaceChoice) => void;
+}) {
+  const places = options.filter((o) => o.choice.kind === "advise");
+  const end = options.filter((o) => o.choice.kind === "end");
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`${label}: ${shown}`}
+        className={`${PILL} ${staged ? "border-accent text-prt-text" : "border-white-10 text-prt-text hover:border-border-strong"} data-[state=open]:border-accent`}
+      >
+        <span className="truncate">{shown}</span>
+        <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={1.75} />
+      </DropdownMenuTrigger>
+      <DropdownMenuPortal>
+        <DropdownMenuPrimitive.Content
+          align="end"
+          sideOffset={6}
+          className={`${MENU_CONTENT} max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-[280px] overflow-y-auto`}
+        >
+          <DropdownMenuPrimitive.Label className={MENU_LABEL}>Advisor · advises</DropdownMenuPrimitive.Label>
+          {places.map((o) => (
+            <ChoiceItem
+              key={o.label}
+              permission={o.permission}
+              detail={o.detail}
+              current={sameAdvisorChoice(o.choice, value)}
+              icon={<GraduationCap aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />}
+              onSelect={() => onChange(o.choice)}
+            >
+              {o.label}
+            </ChoiceItem>
+          ))}
+          {end.length > 0 && <DropdownMenuPrimitive.Separator className="my-1.5 h-px bg-hairline" />}
+          {end.map((o) => (
+            <ChoiceItem
+              key={o.label}
+              permission={o.permission}
+              detail={o.detail}
+              current={sameAdvisorChoice(o.choice, value)}
+              icon={<UserMinus aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />}
+              onSelect={() => onChange(o.choice)}
+            >
+              {o.label}
+            </ChoiceItem>
+          ))}
+        </DropdownMenuPrimitive.Content>
+      </DropdownMenuPortal>
+    </DropdownMenu>
+  );
+}
+
+/** One checkable item of a pill's menu: open, or disabled with its reason under it; the current one carries a check. */
+function ChoiceItem({
+  permission,
+  detail,
+  current,
+  icon,
+  onSelect,
+  children,
+}: {
+  permission: Permission;
+  detail: string | null;
+  current: boolean;
+  icon: ReactNode;
+  onSelect: () => void;
+  children: ReactNode;
+}) {
   const disabled = !permission.allowed;
-  const under = permission.allowed ? option.detail : permission.reason;
+  const under = permission.allowed ? detail : permission.reason;
   return (
     <DropdownMenuPrimitive.CheckboxItem
       checked={current}
       disabled={disabled}
-      onSelect={() => onChange(option.choice)}
+      onSelect={onSelect}
       className={`flex cursor-pointer items-start gap-2.5 rounded-lg px-2.5 py-2 text-[13px] outline-none transition-colors data-[disabled]:cursor-not-allowed data-[highlighted]:bg-white-5 ${
         disabled ? "text-prt-muted" : "text-text-2 data-[highlighted]:text-prt-text data-[state=checked]:text-prt-text"
       }`}
     >
-      <RoleIcon kind={option.choice.kind} />
+      {icon}
       <span className="min-w-0 flex-1">
         <span className="block">{children}</span>
         {under !== null && <span className="mt-0.5 block text-[12px] leading-snug text-dim">{under}</span>}

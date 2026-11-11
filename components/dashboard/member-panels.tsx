@@ -8,7 +8,8 @@ import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@
 import { cn } from "@/lib/utils";
 import { usePhoneGrouping } from "@/components/use-phone-grouping";
 import { PHONE_PLACEHOLDER } from "@/lib/phone";
-import { addMember, changeDivisionPeople, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
+import { addMember, changeAdvisorPlace, changeDivisionPeople, findForAdd, moveMember, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
+import { advisorPillLabel, sameAdvisorChoice, type AdvisorPlaceChoice, type AdvisorRoleChange } from "@/lib/dashboard/advisor-roles";
 import type { RemovedLeadOutcome } from "@/lib/dashboard/division-edit";
 import type { AdvisorScope } from "@/lib/dashboard/hand-over";
 import {
@@ -65,7 +66,7 @@ import { CopyButton, IconButton } from "./copy-button";
 import { RadioChoice, RemovedLeadChoice } from "./hand-over-choice";
 import { Chips } from "./division-chips";
 import { MemberDialogs, MenuItem, RowMenu, type Asking } from "./division-members";
-import { AddDivision, FixedPill, RolePill, RoleRow, RowTitle } from "./role-rows";
+import { AddDivision, AdvisorPlacePill, FixedPill, RolePill, RoleRow, RowTitle } from "./role-rows";
 import {
   choiceOf,
   HeadMoveConfirm,
@@ -1221,6 +1222,14 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
     dropAdvisorPick(key);
     choose(place, { ...start, as: choice.kind });
   };
+  // A department or whole-team Advisor row's pill (issue #976): the place it moves to, or End this role, by the
+  // place it sits at now; Save writes each through `changeAdvisorPlace`.
+  const [advisorPlaces, setAdvisorPlaces] = useState<Readonly<Record<string, AdvisorPlaceChoice>>>({});
+  const advisorKey = (row: AdvisorRoleChange) => (row.place.kind === "team" ? "team" : `d${row.place.departmentId}`);
+  const advisorNow = (row: AdvisorRoleChange): AdvisorPlaceChoice => ({ kind: "advise", place: row.place });
+  const advisorPlaceOf = (row: AdvisorRoleChange) => advisorPlaces[advisorKey(row)] ?? advisorNow(row);
+  const pickAdvisorPlace = (row: AdvisorRoleChange, choice: AdvisorPlaceChoice) =>
+    setAdvisorPlaces(({ [advisorKey(row)]: _dropped, ...rest }) => (sameAdvisorChoice(choice, advisorNow(row)) ? rest : { ...rest, [advisorKey(row)]: choice }));
   // Move to… (board 103d) opens a row's move boxes; closing them puts the place back where it is.
   const [moving, setMoving] = useState<ReadonlySet<string>>(() => new Set());
   const startMove = (place: MovablePlace) => {
@@ -1393,6 +1402,16 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
         const changed = write.kind === "role" ? await saveMember(person!.id, role.divisionId, write.role) : await changeDivisionPeople(role.divisionId, write.change);
         if (!changed.ok) {
           setRefusal(`Could not change their role in ${role.short}. ${changed.error}`);
+          return;
+        }
+      }
+      for (const row of person === null ? [] : (position?.advising ?? [])) {
+        // A department or whole-team Advisor role (issue #976): it moves to the place picked, or ends.
+        const picked = advisorPlaces[advisorKey(row)];
+        if (picked === undefined) continue;
+        const changed = await changeAdvisorPlace({ personId: person!.id, from: row.place, to: picked.kind === "end" ? null : picked.place });
+        if (!changed.ok) {
+          setRefusal(`Could not change their Advisor role in ${row.name}. ${changed.error}`);
           return;
         }
       }
@@ -1584,6 +1603,46 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
     );
   };
 
+  /**
+   * A department or whole-team Advisor role's row (issue #976), flat like a division's (board 103b): the
+   * department's name or "Whole team", its pill moving the role or ending it, and the ⋯ with End this role.
+   */
+  const advisorRow = (row: AdvisorRoleChange) => {
+    const value = advisorPlaceOf(row);
+    const end = row.options.find((o) => o.choice.kind === "end");
+    return (
+      <RoleRow
+        key={`v${advisorKey(row)}`}
+        name={row.name}
+        department={row.place.kind === "department" ? "Department" : null}
+        pill={
+          <AdvisorPlacePill
+            label={`Role in ${row.name}`}
+            options={row.options}
+            value={value}
+            shown={advisorPillLabel(value, row.place, row.options)}
+            staged={!sameAdvisorChoice(value, advisorNow(row))}
+            onChange={(choice) => pickAdvisorPlace(row, choice)}
+          />
+        }
+        menu={
+          end !== undefined && (
+            <RowMenu label={`More for ${row.name}`}>
+              <MenuItem
+                icon={<UserMinus className="h-3.5 w-3.5" strokeWidth={1.75} />}
+                locked={end.permission.allowed ? null : end.permission.reason}
+                detail={end.detail}
+                onSelect={() => pickAdvisorPlace(row, end.choice)}
+              >
+                {end.label}
+              </MenuItem>
+            </RowMenu>
+          )
+        }
+      />
+    );
+  };
+
   // A seat's title (the team leader's, a team-level seat's, a head's the viewer does not move) is the form's own (issue #626).
   const seatTitleShown = titledPlace === null && titleDivision === null && title?.kind === "seat";
 
@@ -1694,15 +1753,16 @@ function EditForm({ open, target, openedFrom, onClose }: { open: boolean; target
             titleDivision !== null && titleField(ownTitleLabel, false)
           ) : (
             <>
-              {/* One row per place they hold (boards 103b to 103d): their seats, a headship, each division. */}
+              {/* One row per place they hold (boards 103b to 103d): their seats, a headship, each division, each department or whole-team Advisor role. */}
               <ul className="flex flex-col gap-4">
                 {position.seats.map(seatRow)}
                 {places.flatMap((p) => (p.kind === "head" ? [headRow(p)] : []))}
                 {position.roles.map(divisionRow)}
+                {position.advising.map(advisorRow)}
                 {added.map(addedRow)}
               </ul>
               {seatTitleShown && position.seats.length === 0 && titleField("Role", true)}
-              {title?.kind === "fixed" && position.seats.length === 0 && position.roles.length === 0 && places.length === 0 && (
+              {title?.kind === "fixed" && position.seats.length === 0 && position.roles.length === 0 && position.advising.length === 0 && places.length === 0 && (
                 <Field label="Role" hint="set on the Team tree">
                   {(id) => (
                     <span id={id} className={LOCKED_INPUT}>

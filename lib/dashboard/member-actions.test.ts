@@ -41,6 +41,7 @@ function position(over: Partial<MemberPosition> = {}): MemberPosition {
     leads: [],
     roles: [role()],
     seats: [],
+    advising: [],
     moves: [{ kind: "division", divisionId: 7, short: "Mission Analysis", department: "Aerodynamics", role: "member", title: "CAD Engineer" }],
     removals: [{ divisionId: 7, short: "Mission Analysis", removal: { kind: "offered" } }],
     leave: OPEN,

@@ -82,6 +82,7 @@ import {
   type TeamActor,
 } from "./team";
 import { departmentMembers } from "./department-members";
+import { checkAdvisorPlaceChange, planAdvisorPlaceChange } from "./advisor-roles";
 import { checkMove, moveTargetsOf, planMove, type MoveLookup, type MovePlan } from "./member-move";
 import { wholeTeamMembers } from "./team-members";
 import {
@@ -1568,6 +1569,40 @@ async function changeDivisionPeople(identity: DashboardIdentity, divisionId: num
   return writeDivisionPlan(identity, divisionId, planned.plan, null);
 }
 
+/**
+ * A department or whole-team Advisor role's pill in Edit details (issue #976),
+ * as `planAdvisorPlaceChange` (./advisor-roles.ts) allows it, in one batch:
+ * the Advisor row ends, and one starts at the place picked, or none when the
+ * role ends. Their access stays as it is: an advisor who moves keeps the
+ * access they hold. The row ends through `endRoleRows`, so of two overlapping
+ * saves only the first lands.
+ */
+async function changeAdvisorPlace(identity: DashboardIdentity, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkAdvisorPlaceChange(input);
+  if (!checked.ok) return refused(checked.error);
+  const change = checked.value;
+  const snapshot = await readTeamSnapshot();
+  const actor = await readMembersActor(identity, snapshot.org);
+  const active = await rolesTheViewerChanges(identity, actor, change.personId);
+  if (actor === null || active === null) return refused(NOT_IN_SCOPE);
+  const held = active.map(roleSeat);
+  const planned = planAdvisorPlaceChange({ actor, org: snapshot.org, change, roles: held, standing: standingOfRoles(held, snapshot.org) });
+  if (!planned.ok) return refused(planned.error);
+  const { ending, start } = planned.value;
+  const on = today();
+  try {
+    await runAuditBatch((db) => [
+      endRoleRows(db, [ending], on),
+      ...(start === null ? [] : [db.insert(roles).values({ memberId: change.personId, ...advisorUnit(start), title: ADVISOR_TITLE, type: "advisor", startedAt: on })]),
+    ]);
+  } catch (error) {
+    if (!isEndGuardFailure(error)) throw error;
+    return refused(MOVED_SINCE);
+  }
+  done();
+  return written(null);
+}
+
 function refreshPositions() {
   refreshAfter("positions", updateTag);
 }
@@ -2273,6 +2308,7 @@ export function databaseTeamWrites(
     createDivision: (departmentId, input) => createDivision(identity, departmentId, input),
     saveDivision: (divisionId, input) => saveDivision(identity, divisionId, input),
     changeDivisionPeople: (divisionId, input) => changeDivisionPeople(identity, divisionId, input),
+    changeAdvisorPlace: (input) => changeAdvisorPlace(identity, input),
     closeDivision: (divisionId) => closeDivision(identity, divisionId),
     createDepartment: (input) => createDepartment(identity, input),
     saveDepartment: (departmentId, input) => saveDepartment(identity, departmentId, input),
