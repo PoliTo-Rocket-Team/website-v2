@@ -9,6 +9,9 @@ import {
   cutOf,
   freeCutOf,
   isFreeEntry,
+  openingFrameCrop,
+  recroppedCrops,
+  shapeCropOf,
   shapeCropsOf,
   type CropResult,
   type CropsEntry,
@@ -131,6 +134,29 @@ test("two shapes kept as crops: only the shapes the editor set carry a crop, in 
   const { x, y, width, height } = crops.card!;
   assert.ok(Math.abs(x + width - 1) < 1e-9 && Math.abs(y + height - 1) < 1e-9, "dragged to the bottom right corner");
   assert.ok(Math.abs((width * 4000) / (height * 2000) - card.aspect.width / card.aspect.height) < 1e-9);
+});
+
+test("a stored photo re-opened (issue #975): each frame opens at its stored crop, or centred where it has none, and Save changes only the moved shapes", () => {
+  const photo = { width: 4000, height: 2000 };
+  const card = { width: 300, height: 200 };
+  const page = { width: 360, height: 200 };
+  const stored = shapeCropOf(moveFrameCrop(zoomFrameCrop(centredFrameCrop(photo.width, photo.height, card.width, card.height), 2.5), -400, 120));
+
+  // The frame opens where the crop was saved, at any frame width the dialog measures.
+  for (const scale of [1, 0.6, 1.8]) {
+    const frame = { width: card.width * scale, height: card.height * scale };
+    const back = shapeCropOf(openingFrameCrop(photo, frame, stored));
+    for (const key of ["x", "y", "width", "height"] as const) assert.ok(Math.abs(back[key] - stored[key]) < 1e-9, `${key} at ${scale}`);
+  }
+  // A photo stored before crops opens centred, as the site shows it.
+  assert.deepEqual(openingFrameCrop(photo, page, undefined), centredFrameCrop(photo.width, photo.height, page.width, page.height));
+
+  // Saving after moving only the page frame keeps the card's stored crop.
+  const moved = shapeCropsOf<"card" | "page">({ page: moveFrameCrop(centredFrameCrop(photo.width, photo.height, page.width, page.height), 50, 0) }, new Set(["page"]));
+  const saved = recroppedCrops<"card" | "page">({ card: stored }, moved);
+  assert.deepEqual(saved, { card: stored, page: moved.page });
+  // A new photo has nothing stored: its crops are the moved shapes' alone.
+  assert.deepEqual(recroppedCrops<"card" | "page">(undefined, moved), moved);
 });
 
 // The types refuse the three entries the settings model rules out, and the

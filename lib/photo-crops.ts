@@ -68,6 +68,25 @@ export function cropsKey<N extends string>(crops: ShapeCrops<N>): { readonly cro
   return Object.keys(crops).length > 0 ? { crops } : {};
 }
 
+/**
+ * A stored photo with new crops and nothing else changed (issue #975): its
+ * file, its words and its place in a list stay as they are, and with no shape
+ * framed it has no `crops` key, as a photo stored before crops.
+ */
+export function withCrops<N extends string, P extends { readonly crops?: ShapeCrops<N> }>(photo: P, crops: ShapeCrops<N>): P {
+  const { crops: _old, ...rest } = photo;
+  return { ...rest, ...cropsKey(crops) } as P;
+}
+
+/** Whether two photos' crops frame every shape the same; none and an empty map are the same, a photo with no crop. */
+export function sameCrops<N extends string>(a: ShapeCrops<N> | undefined, b: ShapeCrops<N> | undefined): boolean {
+  const names = new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})]) as Set<N>;
+  return [...names].every((name) => {
+    const [p, q] = [a?.[name], b?.[name]];
+    return p !== undefined && q !== undefined && p.x === q.x && p.y === q.y && p.width === q.width && p.height === q.height;
+  });
+}
+
 const isFraction = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
 
 /** How far a stored edge may pass 1 by rounding alone. */

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { GALLERY_PHOTO, placedRect, placementOf, POST_PHOTO, readShapeCrops, type ShapeCrop } from "./photo-crops";
+import { GALLERY_PHOTO, placedRect, placementOf, POST_PHOTO, readShapeCrops, sameCrops, type ShapeCrop } from "./photo-crops";
 
 // A photo stored once with a crop per shape (epic #964, issue #969): how a
 // stored `crops` key reads back, and where the photo sits in a box of the
@@ -80,4 +80,13 @@ test("a photo with no crop is today's centred cover, and a shape left unset is c
   assert.ok(unset !== null && unset.kind === "centre");
   assert.deepEqual([unset.x, unset.y], [0.5, 0.5]);
   assert.deepEqual(placedRect(unset, { width: 300, height: 200 }), { left: 0, top: 0, width: 300, height: 200 });
+});
+
+test("a photo's crops match another's only when every shape frames the same; none and an empty map both mean uncropped (issue #975)", () => {
+  const half = { x: 0, y: 0, width: 0.5, height: 1 };
+  assert.ok(sameCrops(undefined, {}));
+  assert.ok(sameCrops({ phone: half }, { phone: { ...half } }));
+  assert.equal(sameCrops({ phone: half }, undefined), false);
+  assert.equal(sameCrops({ phone: half }, { phone: half, desktop: half }), false);
+  assert.equal(sameCrops({ phone: half }, { phone: { ...half, x: 0.1 } }), false);
 });
