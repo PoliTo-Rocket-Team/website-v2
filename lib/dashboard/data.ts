@@ -549,6 +549,13 @@ export interface TeamWrites {
    */
   changeDivisionPeople(divisionId: number, input: unknown): Promise<WriteResult<null>>;
   /**
+   * A department or whole-team Advisor role's pill in Edit details (issue
+   * #976): the role moves to another place or ends, checked by
+   * `planAdvisorPlaceChange` (./advisor-roles.ts). The team leader and full
+   * access only, as for every role beyond the divisions.
+   */
+  changeAdvisorPlace(input: unknown): Promise<WriteResult<null>>;
+  /**
    * Close division (board 68c): refused while anyone is in it; closing also
    * closes its open positions and removes the access given in it.
    */

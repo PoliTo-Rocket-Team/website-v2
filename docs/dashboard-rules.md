@@ -631,13 +631,24 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
       with "{division} is their only division" under the rules of the ⋯ menu below).
     - A department head the editor moves gets a row for the department, "Head of {department}" in
       the pill, and Move to… moves the headship (boards 98a to 98c).
+    - An Advisor role kept on a department or on the whole team gets a row of its own in the same
+      flat style, named by the department or "Whole team" (#976, Owner decision, 2026-11-11). Its
+      pill reads "Advisor" and lists, under "Advisor · advises", where the role may go: a
+      department's role to the department, the whole team or a division in that department; the
+      whole team's to the whole team or a department. Then End this role, which the row ⋯ offers
+      too. One rule decides each choice (`advisorPlaceOptions` in `lib/dashboard/advisor-roles.ts`):
+      only the team leader and full access change a role beyond the divisions, so for anyone else
+      every other choice is locked with "Only the team leader can do this"; a division they are in,
+      or a place they advise already, is locked with that reason; and End this role is locked while
+      it is their only role (Leaves the team ends that). Save ends the Advisor row and starts one at
+      the place picked, or none; their access stays as it is.
     - Team seats (the team leader, the Project Manager, the Chief Engineer and other team-level
       seats, and a headship the editor does not move) are listed and never changed here: the Team
       tree's seat drawers change them. The first one's stored title is the editable title (issue
       #626). A blank stored title shows as the seat's default name ("Team Leader", "Head of
       Aerodynamics"). It may not be blank. Save writes that seat row's title and nothing else:
-      never its type, department, division or full access. Someone with no division, seat or
-      headship here (an Advisor role, a role kept on a department) shows their role locked.
+      never its type, department, division or full access. Someone with no division, seat,
+      headship or Advisor row here (a role kept on a department) shows their role locked.
     - "+ Add division" under the rows adds a division the editor may place them in, as a member,
       with its title, on Save (Add member's own write for someone on the team).
   - Leaves the team, at the bottom of the panel in the danger colour, with "Ends every role. They

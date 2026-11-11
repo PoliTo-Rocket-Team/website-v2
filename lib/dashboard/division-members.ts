@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { advisorRolesOf, type AdvisorRoleChange } from "./advisor-roles";
 import { NO_MEMBER_DETAILS, noDetailsFilled, parseMemberDetails, type MemberDetailErrors, type MemberDetails } from "./details";
 import { movablePlacesOf, type MovablePlace } from "./member-move";
 import { placesOf, seatPlace, type PersonPlace } from "./member-places";
@@ -177,6 +178,8 @@ export type MemberPosition = {
    * not move. The Team tree's seat drawers change them.
    */
   readonly seats: readonly string[];
+  /** Their Advisor roles kept on a department or the whole team, each a row of its own with its pill (issue #976). */
+  readonly advising: readonly AdvisorRoleChange[];
   /** The places the viewer may move them out of, from Edit details and the Team tree (`movablePlacesOf`, issue #647). */
   readonly moves: readonly MovablePlace[];
   /** Every division of theirs the viewer reaches; the panel and the ⋯ menu show those offered or locked. */
@@ -236,6 +239,7 @@ export function positionOf(record: PersonRecord, org: OrgChart, actor: TeamActor
     seats: (["team-leader", "board", "head"] as const).flatMap((kind) =>
       record.beyondDivisions.filter((b) => b.kind === kind && listed(b)).map((b) => seatPlace(b, org).title),
     ),
+    advising: advisorRolesOf(standing, org, actor),
     moves,
     removals: reached.map((m) => ({ divisionId: m.divisionId, short: short(m.divisionId), removal: removalFrom(actor, standing, m.divisionId, org) })),
     leave: mayLeaveTeam(actor, standing, org),

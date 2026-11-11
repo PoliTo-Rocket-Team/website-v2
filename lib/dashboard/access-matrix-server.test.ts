@@ -629,6 +629,17 @@ const ACTION_CASES: readonly ActionCase[] = [
     may: changesDM("members"),
     control: by("team leader"),
   },
+  // A department Advisor role's pill (issue #976): a role beyond every division, so only who changes Members as the team.
+  // The Advisor role is added first, as the fixture holds none on a department.
+  {
+    action: "team-actions.changeAdvisorPlace",
+    run: async () => (
+      await addRows(roles, [{ id: 9_400, memberId: EXTRA.mover, deptId: IDS.department(DM), title: "Advisor", startedAt: "2025-10-01", type: "advisor" }]),
+      teamActions.changeAdvisorPlace({ personId: EXTRA.mover, from: { kind: "department", departmentId: IDS.department(DM) }, to: { kind: "team" } })
+    ),
+    may: (r) => r.expect.membersAsTeam,
+    control: by("team leader"),
+  },
   {
     action: "team-actions.setMemberPhoto",
     run: () => teamActions.setMemberPhoto(IDS.person(DM), form({ photo: PHOTO() })),

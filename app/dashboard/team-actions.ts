@@ -174,6 +174,13 @@ export async function changeDivisionPeople(divisionId: number, input: unknown): 
   return answered(await writes.changeDivisionPeople(divisionId, input));
 }
 
+/** A department or whole-team Advisor role's pill from Edit details (issue #976): it moves to another place, or ends. */
+export async function changeAdvisorPlace(input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes) return REFUSED;
+  return answered(await writes.changeAdvisorPlace(input));
+}
+
 /** Edit details' photo: the cropped square JPEG in the form's `photo` field, or none to remove it. */
 export async function setMemberPhoto(personId: number, form: FormData | null): Promise<TeamActionResult> {
   const writes = await writesOn("members");
