@@ -6,15 +6,17 @@ import type { PhotoSrc } from "@/lib/outreach-types";
 import { publicPathname, publicPathnameOfUrl, publicStoreHost, type PublicStoreHost } from "@/lib/storage/pathname";
 
 // The carousel photos (issue #886). Each is read from the export, shaped as
-// the Edit post panel shapes a picked photo before it uploads it
-// (components/dashboard/outreach-post-photos.tsx, `shrunkPhoto`): turned
-// upright, its longest side at most 2400 px, a JPEG at quality 0.86. It must
-// then pass the panel's own upload check (`checkPhotoUpload`), and it is
-// stored as the panel stores one: under `post-photos/`, with a new name.
+// the Edit post panel keeps a picked photo before it uploads it: the
+// `outreachPhoto` crop entry (lib/dashboard/crop-settings.ts, `CROP_SETTINGS`)
+// stores the photo once, its longest side at most 2400 px, a JPEG at quality
+// 0.86; here it is also turned upright. It is stored with no crops, so the
+// site shows it centred. It must then pass the panel's own upload check
+// (`checkPhotoUpload`), and it is stored as the panel stores one: under
+// `post-photos/`, with a new name.
 
-/** The longest side of a stored photo, as the panel's `PHOTO_EDGE`. */
+/** The longest side of a stored photo, as the `outreachPhoto` crop entry's `maxSide`. */
 export const PHOTO_EDGE = 2400;
-/** The JPEG quality of a stored photo, as the panel's 0.86. */
+/** The JPEG quality of a stored photo, as the `outreachPhoto` crop entry's 0.86. */
 export const PHOTO_QUALITY = 86;
 
 /** The bytes of one photo of the export, by its path inside it. */

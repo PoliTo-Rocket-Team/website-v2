@@ -16,7 +16,7 @@ import { PHOTO_MAX_BYTES } from "@/lib/outreach-photos";
 import { MAX_MEMBER_PHOTO_BYTES } from "./division-members";
 import { GALLERY_PHOTO, GROUP_PHOTO, LAUNCH_PHOTO, POST_PHOTO, PROJECT_PHOTO, type ShapeCrop, type ShapeCrops, type Size } from "@/lib/photo-crops";
 import { LOGO_MAX_BYTES } from "@/lib/partners";
-import { freeSourceRect, sourceRect, type FrameCrop, type FreeCrop } from "./photo-crop";
+import { centredFrameCrop, clampFrameCrop, freeSourceRect, sourceRect, type FrameCrop, type FreeCrop } from "./photo-crop";
 import { MAX_PHOTO_BYTES, PHOTO_TYPES } from "./self";
 
 export type { ShapeCrop, ShapeCrops, Size };
@@ -141,6 +141,47 @@ export function shapeCropsOf<N extends string>(frames: { readonly [name in N]?: 
   }
   return crops;
 }
+
+/**
+ * The frame a stored crop opens at (issue #975): the photo under a frame of
+ * `frame`'s size, placed and zoomed so the frame shows `crop` again. The
+ * inverse of `shapeCropOf`, for a crop whose aspect is the frame's.
+ */
+export function frameCropFrom(crop: ShapeCrop, photo: Size, frame: Size): FrameCrop {
+  const scale = frame.width / (crop.width * photo.width);
+  const cover = Math.max(frame.width / photo.width, frame.height / photo.height);
+  return clampFrameCrop({
+    width: photo.width,
+    height: photo.height,
+    frameWidth: frame.width,
+    frameHeight: frame.height,
+    zoom: scale / cover,
+    x: -crop.x * photo.width * scale,
+    y: -crop.y * photo.height * scale,
+  });
+}
+
+/** Where a frame opens: at the photo's stored crop for its shape, or centred at zoom 1 for a shape that has none (a photo stored before crops). */
+export function openingFrameCrop(photo: Size, frame: Size, stored: ShapeCrop | undefined): FrameCrop {
+  return stored === undefined ? centredFrameCrop(photo.width, photo.height, frame.width, frame.height) : frameCropFrom(stored, photo, frame);
+}
+
+/**
+ * A photo's crops once the dialog closes on it: each shape the editor moved
+ * takes its new crop, and every other shape keeps the one it had, or stays
+ * centred. A new photo has none to keep; a stored one re-opened (issue #975)
+ * changes only the shapes the editor moved.
+ */
+export function recroppedCrops<N extends string>(stored: ShapeCrops<N> | undefined, moved: ShapeCrops<N>): ShapeCrops<N> {
+  return { ...stored, ...moved };
+}
+
+/** What the dialog says when it re-opens a stored photo (issue #975): the photo stays, and only its crops change. */
+export const RECROP_WORDS: CropWords = {
+  title: "Edit crop",
+  confirm: "Save crop",
+  description: "Drag the photo inside each frame to choose what shows. A frame you leave as it is keeps its crop.",
+};
 
 /** The square photos' side, a JPEG at 0.9, as the photo crop dialog cut them (board 55a). */
 const SQUARE_SIDE = 800;

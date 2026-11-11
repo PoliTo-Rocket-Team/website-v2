@@ -94,8 +94,9 @@ import { ConfirmDialog } from "./confirm-dialog";
 import { CONTENT_FOCUS, TextField } from "./content-parts";
 import { BarButton, EditableBlock, EditShell } from "./edit-shell";
 import { CROP_SETTINGS, type CropResult } from "@/lib/dashboard/crop-settings";
-import type { GroupPhotoCrops } from "@/lib/photo-crops";
+import { sameCrops, type GroupPhotoCrops } from "@/lib/photo-crops";
 import { CropDialog } from "./crop-dialog";
+import { useRecrop } from "./crop-queue";
 import { TeamAdvisorsPanel, type KeyedAdvisorRow } from "./team-advisors-panel";
 import { TeamGroupsPanel } from "./team-groups-panel";
 import { TeamHeadPanel } from "./team-head-panel";
@@ -1006,6 +1007,12 @@ function GroupPhotoBox({
     setUploads((list) => [next, ...list.filter((s) => s !== next)]);
     onChange(describedGroupPhoto(next, descriptions, cropsBySrc));
   };
+  // Edit crop on the shown photo (issue #975): the same dialog at its stored crops, or centred for a photo with none; only its crops change.
+  const recrop = useRecrop(CROP_SETTINGS.groupPhoto, (recropped: PersonPhoto, nextCrops) => {
+    const cropsBySrc = { ...crops, [recropped]: nextCrops };
+    setCrops(cropsBySrc);
+    onChange(describedGroupPhoto(recropped, descriptions, cropsBySrc));
+  });
   return (
     <div className="mt-6 rounded-xl border border-hairline bg-panel p-4 md:mt-8 md:p-5">
       <p className="text-[13px] font-semibold text-prt-text">Group photo</p>
@@ -1042,12 +1049,21 @@ function GroupPhotoBox({
           }}
         />
       </div>
+      {recrop.dialog}
       <div className="mt-4 flex justify-end gap-2">
         <button
           type="button"
-          disabled={src === original.src && alt.trim() === original.alt}
+          onClick={() => recrop.open({ src, crops: crops[src] })}
+          className={`mr-auto ${IN_PLACE_BUTTON} border border-white-10 text-prt-text transition-colors duration-300 ease-out hover:border-border-strong`}
+        >
+          Edit crop
+        </button>
+        <button
+          type="button"
+          disabled={src === original.src && alt.trim() === original.alt && sameCrops(crops[src], original.crops)}
           onClick={() => {
             setDescriptions((d) => ({ ...d, [original.src]: original.alt }));
+            setCrops((c) => ({ ...c, [original.src]: original.crops ?? {} }));
             onChange(original);
           }}
           className={`${IN_PLACE_BUTTON} border border-white-10 text-prt-text transition-colors duration-300 ease-out enabled:hover:border-border-strong disabled:opacity-50`}

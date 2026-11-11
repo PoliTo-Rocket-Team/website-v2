@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { describePhoto, movePhoto, neighbourOf, pickedPhoto, removePhoto, reorderPhotos } from "./photo-list";
+import { describePhoto, movePhoto, neighbourOf, pickedPhoto, recropPhoto, removePhoto, reorderPhotos } from "./photo-list";
 
 // The description box of a panel's photo list (issue #430): each photo keeps
 // the description typed for it, whichever photo the arrows pick next, and a
@@ -51,4 +51,21 @@ test("moving, dragging and removing a photo take its description with it", () =>
   const left = removePhoto(described, b.src);
   assert.deepEqual(left.map((p) => p.alt), ["first", "third"]);
   assert.equal(pickedPhoto(left, b.src), null, "a removed photo is no longer picked");
+});
+
+test("re-cropping a stored photo changes its crops alone: its file, words and place stay (issue #975)", () => {
+  const old = { x: 0, y: 0, width: 1, height: 0.5 };
+  const fresh = { x: 0.2, y: 0.1, width: 0.6, height: 0.3 };
+  const gallery = [
+    { src: "/outreach/a.webp", alt: "first", caption: "At the stand", crops: { phone: old } },
+    { src: null, alt: "", caption: "" },
+    { src: "/outreach/b.webp", alt: "second", caption: "" },
+  ];
+
+  const recropped = recropPhoto(gallery, "/outreach/a.webp", { phone: fresh, desktop: old });
+  assert.deepEqual(recropped, [{ ...gallery[0], crops: { phone: fresh, desktop: old } }, gallery[1], gallery[2]]);
+
+  // A photo stored before crops gets them; with no shape framed it has no crops key, as before.
+  assert.deepEqual(recropPhoto(gallery, "/outreach/b.webp", { phone: fresh })[2], { ...gallery[2], crops: { phone: fresh } });
+  assert.equal("crops" in recropPhoto(gallery, "/outreach/a.webp", {})[0], false);
 });
