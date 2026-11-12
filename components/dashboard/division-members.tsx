@@ -50,7 +50,7 @@ export function MemberDialogs({ asking, onClose, onDone }: { asking: Asking | nu
         <AlumniDialog
           open
           onOpenChange={(next) => !next && onClose()}
-          person={{ id: asking.person.id, name: asking.person.name, joined: asking.person.since }}
+          person={{ id: asking.person.id, name: asking.person.name }}
           onDone={() => {
             onClose();
             onDone?.();

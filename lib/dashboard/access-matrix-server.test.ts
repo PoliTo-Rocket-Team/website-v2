@@ -585,7 +585,7 @@ const ACTION_CASES: readonly ActionCase[] = [
 
   // Members, in DM.
   { action: "team-actions.saveMember", run: () => teamActions.saveMember(IDS.person(DM), IDS.division(DM), "member"), may: changesDM("members"), control: by("team leader") },
-  { action: "team-actions.moveToAlumni", run: () => teamActions.moveToAlumni(IDS.person(DM), "2024 – 2026", null), may: changesDM("members"), control: by("team leader") },
+  { action: "team-actions.moveToAlumni", run: () => teamActions.moveToAlumni(IDS.person(DM), null), may: changesDM("members"), control: by("team leader") },
   // Confirm join is the Applications area's on the Members banner too (Owner decision, 2026-10-22, issue #584).
   { action: "team-actions.confirmJoin", run: () => teamActions.confirmJoin(IDS.joining(DM)), may: changesDM("applications"), control: by("team leader") },
   { action: "team-actions.findForAdd", run: () => teamActions.findForAdd(IDS.division(DM), "person"), may: changesDM("members"), control: by("team leader", "answer") },
@@ -2390,10 +2390,10 @@ describe("a whole-team grant acts as full access within its own area, and the Te
   });
 
   test("Leaves the team for a seat holder lands exactly where the viewer changes Members as the team", async () => {
-    const control = await attempt(accountOf("team leader").userId, () => teamActions.moveToAlumni(seatHolder(), "2024 – 2026", null));
+    const control = await attempt(accountOf("team leader").userId, () => teamActions.moveToAlumni(seatHolder(), null));
     assert.ok(!isRefusal(control.answer) && control.writes.length > 0, `the team leader: ${JSON.stringify(control.answer)}`);
     for (const { name, expect } of GRANT_ROWS) {
-      const { answer, writes } = await attempt(accountOf(name).userId, () => teamActions.moveToAlumni(seatHolder(), "2024 – 2026", null));
+      const { answer, writes } = await attempt(accountOf(name).userId, () => teamActions.moveToAlumni(seatHolder(), null));
       assert.equal(!isRefusal(answer), expect.membersAsTeam, `${name}: ${JSON.stringify(answer)}`);
       assert.equal(writes.length > 0, expect.membersAsTeam, `${name}: the writes`);
     }

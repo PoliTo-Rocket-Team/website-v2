@@ -893,6 +893,26 @@ export const LEAVE_REASON_LABELS: Readonly<Record<LeaveReason, string>> = {
 };
 
 /**
+ * The Leaves the team dialog's reason as sent: a reason from the list, or
+ * none for "No reason" (an empty string or null). Anything else is refused.
+ */
+export function checkLeaveReason(value: unknown): { ok: true; value: LeaveReason | null } | { ok: false; error: string } {
+  if (value === null || value === "") return { ok: true, value: null };
+  if (typeof value === "string" && (LEAVE_REASONS as readonly string[]).includes(value)) return { ok: true, value: value as LeaveReason };
+  return { ok: false, error: "Choose a reason from the list." };
+}
+
+/**
+ * What is stored about someone's time on the team when they leave (issue
+ * #980): the day they joined, and the start of their earliest role, ended
+ * roles included. Either is null when none is stored.
+ */
+export type TeamStay = {
+  readonly joinedTeamOn: string | null;
+  readonly firstRoleStart: string | null;
+};
+
+/**
  * Moving someone to alumni (board 59d): the years they were on the team, and
  * why they left when the lead says. Their roles end and their access goes;
  * their account stays, so they can still sign in and apply again.
@@ -903,51 +923,23 @@ export type Departure = {
   readonly reason: LeaveReason | null;
 };
 
-/** The earliest year a Move to alumni accepts. */
-export const FIRST_SEASON = 2010;
-
-/** "2024 – 2026" for the years field. */
-export function yearsLabel(from: number, to: number): string {
-  return from === to ? String(from) : `${from} – ${to}`;
-}
-
 /**
- * What Move to alumni's years field opens with: from the year they joined
- * the team to this year; empty for the lead to fill in when no join day is
- * stored (issue #948), never a year read off a role.
+ * A Leaves the team on `leftOn` (a stored day, "2026-11-12"), with the years
+ * read off stored data and never typed (Owner decision, 2026-11-12, issue
+ * #980): from the year they joined the team, or the year their earliest role
+ * started when no join day is stored, to the year they leave. With neither,
+ * or a start after the leave, the years are the leave year alone.
  */
-export function departureYearsOf(joined: number | null, thisYear: number): string {
-  return joined === null ? "" : yearsLabel(Math.min(joined, thisYear), thisYear);
+export function departureOf(stay: TeamStay, leftOn: string, reason: LeaveReason | null): Departure {
+  const to = Number(leftOn.slice(0, 4));
+  const started = joinedYearOf(stay.joinedTeamOn) ?? roleStartYearOf(stay.firstRoleStart);
+  return { from: started === null ? to : Math.min(started, to), to, reason };
 }
 
-/** The years field as the lead typed it: "2024 – 2026", "2024-2026", or one year. */
-export function parseYears(text: string): { from: number; to: number } | null {
-  const match = /^\s*(\d{4})\s*(?:[-–—]\s*(\d{4}))?\s*$/.exec(text);
-  if (!match) return null;
-  const from = Number(match[1]);
-  return { from, to: match[2] === undefined ? from : Number(match[2]) };
-}
-
-/**
- * Checks a Move to alumni request: years in order, none after this year and
- * none before the team's first season; a reason from the list or none. Runs
- * in the browser and again on the server.
- */
-export function checkDeparture(
-  input: { years: string; reason: string | null },
-  thisYear: number,
-): { ok: true; value: Departure } | { ok: false; error: string } {
-  const years = parseYears(input.years);
-  if (years === null) return { ok: false, error: "Write the years like 2024 – 2026." };
-  if (years.from > years.to) return { ok: false, error: "The first year comes before the last." };
-  if (years.from < FIRST_SEASON || years.to > thisYear) {
-    return { ok: false, error: `Use years from ${FIRST_SEASON} to ${thisYear}.` };
-  }
-  const reason = input.reason === null || input.reason === "" ? null : input.reason;
-  if (reason !== null && !(LEAVE_REASONS as readonly string[]).includes(reason)) {
-    return { ok: false, error: "Choose a reason from the list." };
-  }
-  return { ok: true, value: { from: years.from, to: years.to, reason: reason as LeaveReason | null } };
+/** The year a stored `roles.started_at` day falls in; null when none is stored or it does not read as a day. */
+function roleStartYearOf(stored: string | null): number | null {
+  const day = stored === null ? null : new Date(`${stored.slice(0, 10)}T00:00:00Z`);
+  return day === null || Number.isNaN(day.getTime()) ? null : day.getUTCFullYear();
 }
 
 /** A name or email holds every word of the query, in any case. */

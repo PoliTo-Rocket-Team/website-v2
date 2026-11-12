@@ -58,6 +58,7 @@ import {
 } from "./division-members";
 import {
   defaultHeadTitle,
+  departureOf,
   headDepartmentOf,
   isDivisionRole,
   leadActor,
@@ -70,9 +71,9 @@ import {
   roleBeyondDivisions,
   standingOfRoles,
   titledSeatOf,
-  type Departure,
   type EditableRole,
   type Joining,
+  type LeaveReason,
   type MemberDirectory,
   type MemberEdit,
   type Memberships,
@@ -80,6 +81,7 @@ import {
   type RoleSeat,
   type RoleType,
   type TeamActor,
+  type TeamStay,
 } from "./team";
 import { departmentMembers } from "./department-members";
 import { checkAdvisorPlaceChange, planAdvisorPlaceChange } from "./advisor-roles";
@@ -745,10 +747,10 @@ async function saveMember(identity: DashboardIdentity, personId: number, edit: M
 /**
  * "Leaves the team" (board 59d, widened by #231): when `mayLeaveTeam` allows
  * it, every open role ends, every access grant goes, and the years and the
- * team_leaves row are written, in one batch. The account and the member row
- * stay.
+ * team_leaves row are written, in one batch. The years come from stored data
+ * (`departureOf`, issue #980). The account and the member row stay.
  */
-async function moveToAlumni(identity: DashboardIdentity, personId: number, departure: Departure): Promise<boolean> {
+async function moveToAlumni(identity: DashboardIdentity, personId: number, reason: LeaveReason | null): Promise<boolean> {
   if (personId === identity.memberId) return false;
   const { org } = await readTeamSnapshot();
   const actor = await readMembersActor(identity, org);
@@ -762,13 +764,27 @@ async function moveToAlumni(identity: DashboardIdentity, personId: number, depar
   const move = alumniMove(active.map((r) => ({ id: r.id, divisionId: r.division_id })));
   if (move === null) return false;
   const ending = move.ending.map((r) => r.id);
+  const on = today();
+  const departure = departureOf(await teamStayOf(personId), on, reason);
   await runAuditBatch((db) => [
-    db.update(roles).set({ leavedAt: today() }).where(and(inArray(roles.id, ending), isNull(roles.leavedAt))),
+    db.update(roles).set({ leavedAt: on }).where(and(inArray(roles.id, ending), isNull(roles.leavedAt))),
     db.delete(scopes).where(eq(scopes.memberId, personId)),
     db.update(members).set({ teamFrom: departure.from, teamTo: departure.to }).where(eq(members.memberId, personId)),
     db.insert(teamLeaves).values({ memberId: personId, reason: departure.reason }),
   ]);
   return done();
+}
+
+/** The stored join day and earliest role start `departureOf` reads the years from. */
+async function teamStayOf(personId: number): Promise<TeamStay> {
+  const [row] = await getDb()
+    .select({
+      joinedTeamOn: members.joinedTeamOn,
+      firstRoleStart: sql<string | null>`(select min(${roles.startedAt})::text from ${roles} where ${roles.memberId} = ${members.memberId})`,
+    })
+    .from(members)
+    .where(eq(members.memberId, personId));
+  return { joinedTeamOn: row?.joinedTeamOn ?? null, firstRoleStart: row?.firstRoleStart ?? null };
 }
 
 /**
@@ -2296,7 +2312,7 @@ export function databaseTeamWrites(
 ): Omit<TeamWrites, "setAlumnusShown" | "fixAlumnus" | "setAlumnusPhoto" | "addAdvisor"> {
   return {
     saveMember: (personId, edit) => saveMember(identity, personId, edit),
-    moveToAlumni: (personId, departure) => moveToAlumni(identity, personId, departure),
+    moveToAlumni: (personId, reason) => moveToAlumni(identity, personId, reason),
     confirmJoin: (applicationId) => confirmJoin(identity, applicationId),
     addMember: (input) => addMember(identity, input),
     confirmNda: (joinId) => confirmNda(identity, joinId),

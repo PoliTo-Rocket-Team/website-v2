@@ -8,7 +8,7 @@ import type { TeamSearch } from "@/lib/dashboard/division-edit";
 import { isDetailsTarget, type AddLookup, type DetailsTarget } from "@/lib/dashboard/division-members";
 import type { MoveLookup } from "@/lib/dashboard/member-move";
 import { openDashboard } from "@/lib/dashboard/open";
-import { checkDeparture, type EditableRole } from "@/lib/dashboard/team";
+import { checkLeaveReason, type EditableRole } from "@/lib/dashboard/team";
 import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
 
 // The Team pages' writes (issues #143 and #172). Each goes through the dashboard data
@@ -81,13 +81,13 @@ export async function saveMember(personId: number, divisionId: number, role: Edi
   return done(await writes.saveMember(personId, { divisionId, role }));
 }
 
-/** Board 59d: the years as typed ("2024 – 2026") and the reason, or none. */
-export async function moveToAlumni(personId: number, years: string, reason: string | null): Promise<TeamActionResult> {
+/** Board 59d: the reason, or none. The years on the team are read from stored data on the server (issue #980). */
+export async function moveToAlumni(personId: number, reason: string | null): Promise<TeamActionResult> {
   const writes = await writesOn("members");
-  if (!writes || !isId(personId) || typeof years !== "string") return REFUSED;
-  const departure = checkDeparture({ years, reason: typeof reason === "string" ? reason : null }, new Date().getUTCFullYear());
-  if (!departure.ok) return { ok: false, error: departure.error };
-  return done(await writes.moveToAlumni(personId, departure.value));
+  if (!writes || !isId(personId)) return REFUSED;
+  const checked = checkLeaveReason(reason);
+  if (!checked.ok) return { ok: false, error: checked.error };
+  return done(await writes.moveToAlumni(personId, checked.value));
 }
 
 /**

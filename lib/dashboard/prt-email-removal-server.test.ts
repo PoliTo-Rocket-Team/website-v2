@@ -49,7 +49,7 @@ async function openIdOf(address: string): Promise<number> {
 /** Moves someone to alumni as the team leader, the leave a lead or the team leader makes. */
 async function moveToAlumni(memberId: number) {
   signInAs(TEAM_LEADER);
-  assert.deepEqual(await teamActions.moveToAlumni(memberId, "2024 – 2026", null), { ok: true }, "the leave is never refused");
+  assert.deepEqual(await teamActions.moveToAlumni(memberId, null), { ok: true }, "the leave is never refused");
 }
 
 async function removalRowsSeenBy(userId: string) {

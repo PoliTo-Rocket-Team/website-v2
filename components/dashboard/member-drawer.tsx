@@ -4,7 +4,7 @@ import { useId, useState, useTransition } from "react";
 import { ChevronDown, GraduationCap } from "lucide-react";
 import { toast } from "sonner";
 import { moveToAlumni } from "@/app/dashboard/team-actions";
-import { checkDeparture, departureYearsOf, LEAVE_REASONS, LEAVE_REASON_LABELS } from "@/lib/dashboard/team";
+import { LEAVE_REASONS, LEAVE_REASON_LABELS } from "@/lib/dashboard/team";
 import { ConfirmDialog } from "./confirm-dialog";
 import { inputClass } from "./field";
 
@@ -15,9 +15,10 @@ import { inputClass } from "./field";
 // #584).
 
 /**
- * Board 59d, and "Leaves the team" on a division's Members page (#231): the
- * years on the team and an optional reason. Every role and every access
- * grant ends; the account stays.
+ * Board 59d, and "Leaves the team" on a division's Members page (#231): an
+ * optional reason. The years on the team are read from stored data on the
+ * server (Owner decision, 2026-11-12, issue #980). Every role and every
+ * access grant ends; the account stays.
  */
 export function AlumniDialog({
   open,
@@ -27,24 +28,17 @@ export function AlumniDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  person: { readonly id: number; readonly name: string; readonly joined: number | null };
+  person: { readonly id: number; readonly name: string };
   onDone: () => void;
 }) {
-  const thisYear = new Date().getFullYear();
-  const [years, setYears] = useState(departureYearsOf(person.joined, thisYear));
   const [reason, setReason] = useState("");
-  const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
-  const yearsId = useId();
   const reasonId = useId();
   const firstName = person.name.split(" ")[0];
 
   const confirm = () => {
-    const checked = checkDeparture({ years, reason }, thisYear);
-    if (!checked.ok) return setError(checked.error);
-    setError(undefined);
     startTransition(async () => {
-      const result = await moveToAlumni(person.id, years, reason === "" ? null : reason);
+      const result = await moveToAlumni(person.id, reason === "" ? null : reason);
       if (!result.ok) {
         toast.error(result.error);
         return;
@@ -68,49 +62,26 @@ export function AlumniDialog({
       pending={pending}
       onConfirm={confirm}
     >
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        <div className="min-w-0">
-          <label htmlFor={yearsId} className="mb-2 block text-[13px] text-prt-text">
-            On the team
-          </label>
-          <input
-            id={yearsId}
-            value={years}
-            onChange={(e) => {
-              setYears(e.target.value);
-              setError(undefined);
-            }}
-            aria-invalid={error !== undefined}
-            aria-describedby={error ? `${yearsId}-error` : undefined}
-            className={inputClass(error)}
-          />
-        </div>
-        <div className="relative min-w-0">
-          <label htmlFor={reasonId} className="mb-2 block text-[13px] text-prt-text">
-            Reason <span className="ml-1 text-prt-muted">optional</span>
-          </label>
-          <select
-            id={reasonId}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            className={`${inputClass()} cursor-pointer appearance-none pr-10`}
-          >
-            <option value="" className="bg-panel">
-              No reason
+      <div className="relative mt-5 min-w-0">
+        <label htmlFor={reasonId} className="mb-2 block text-[13px] text-prt-text">
+          Reason <span className="ml-1 text-prt-muted">optional</span>
+        </label>
+        <select
+          id={reasonId}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          className={`${inputClass()} cursor-pointer appearance-none pr-10`}
+        >
+          <option value="" className="bg-panel">
+            No reason
+          </option>
+          {LEAVE_REASONS.map((r) => (
+            <option key={r} value={r} className="bg-panel">
+              {LEAVE_REASON_LABELS[r]}
             </option>
-            {LEAVE_REASONS.map((r) => (
-              <option key={r} value={r} className="bg-panel">
-                {LEAVE_REASON_LABELS[r]}
-              </option>
-            ))}
-          </select>
-          <ChevronDown aria-hidden className="pointer-events-none absolute bottom-3.5 right-3.5 h-4 w-4 text-prt-muted" strokeWidth={1.75} />
-        </div>
-        {error && (
-          <p id={`${yearsId}-error`} className="col-span-2 -mt-1 text-[12px] text-danger">
-            {error}
-          </p>
-        )}
+          ))}
+        </select>
+        <ChevronDown aria-hidden className="pointer-events-none absolute bottom-3.5 right-3.5 h-4 w-4 text-prt-muted" strokeWidth={1.75} />
       </div>
     </ConfirmDialog>
   );
