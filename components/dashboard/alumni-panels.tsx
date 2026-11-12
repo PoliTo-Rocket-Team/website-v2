@@ -13,6 +13,7 @@ import {
   FIRST_ALUMNI_YEAR,
   MAX_ALUMNI_NAME,
   MAX_ALUMNI_ROLE,
+  spanOf,
   yearTab,
   type AlumniUnit,
   type AlumnusRow,
@@ -180,7 +181,7 @@ function FixForm({
       open={open}
       onOpenChange={(next) => !next && onClose()}
       title={row.name}
-      detail={`Alumni · on the team ${row.from} – ${row.to}`}
+      detail={row.to === null ? `Still on the team · since ${row.from}` : `Alumni · on the team ${spanOf(row)}`}
       leading={<Avatar size="panel" person={{ photoUrl: photo }} />}
       submitLabel={saving ? "Saving…" : "Save"}
       submitting={saving || !editable}
@@ -294,7 +295,9 @@ function FixForm({
 
       <p className="mt-6 flex items-start gap-3 rounded-xl border border-hairline px-4 py-3.5 text-[13px] leading-relaxed text-text-2">
         <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-        These fixes only change the Alumni page. Roles, dates and divisions stay as the team record has them.
+        {row.to === null
+          ? "They are still on the team. These fixes only change how the Alumni page shows their past years: their roles stay as they are."
+          : "These fixes only change the Alumni page. Roles, dates and divisions stay as the team record has them."}
       </p>
     </Drawer>
   );

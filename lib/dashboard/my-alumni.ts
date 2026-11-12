@@ -1,5 +1,5 @@
 import type { Alumnus, AlumnusKey } from "@/lib/about/alumni-record";
-import { alumnusRow, yearTab } from "./alumni";
+import { alumnusRow, spanOf, yearTab } from "./alumni";
 import {
   applicantApplicationsOf,
   nextStepOf,
@@ -65,7 +65,7 @@ export function myAlumniOf(alumnus: Alumnus): MyAlumni {
     hiddenByTeam: !alumnus.shown,
     lastRole: row.lastRole,
     lastUnit: row.lastUnit,
-    years: `${row.from} – ${row.to}`,
+    years: spanOf(row),
     history: newestFirst.map((line) => ({ year: yearTab(line.year).replace("–", " – "), role: line.title, unit: line.unit })),
   };
 }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { alumniOf, alumniYears, withEntryChange, type AlumniRecord, type RecordRole } from "@/lib/about/alumni-record";
-import { alumniDirectory, alumnusRow, checkAdvisor, checkAlumnusFix } from "./alumni";
+import { alumniOf, alumniYears, foundersOf, withEntryChange, type AlumniRecord, type RecordRole } from "@/lib/about/alumni-record";
+import { alumniDirectory, alumnusRow, checkAdvisor, checkAlumnusFix, spanOf } from "./alumni";
 
 // The checks behind boards 78b and 78c (issue #257), run on the server by both data sides.
 
@@ -56,8 +56,6 @@ test("an advisor's years run from 2021–22 to this one, first to last", () => {
   assert.equal(checkAdvisor({ ...base, from: 2024, to: 2023 }, 2026).ok, false);
 });
 
-// Board 78 lists people who have left the team; current members are on Members (#271).
-
 const role = (memberId: number, over: Partial<RecordRole>): RecordRole => ({
   memberId,
   type: "core",
@@ -105,30 +103,56 @@ const record: AlumniRecord = {
   imported: [{ entryId: 7, year: 2021, group: "Operations", role: "Logistics", position: 0 }],
 };
 
-test("the directory leaves out a member who still holds a role and keeps one who left", () => {
-  const alumni = alumniOf(record, 2025);
-  assert.deepEqual(
-    alumni.filter((a) => a.kind === "member").map((a) => [a.name, a.onTeam]),
-    [
-      ["Ada Rossi", true],
-      ["Bo Kim", false],
-    ],
-  );
-  const members = alumniDirectory(alumni, 2025, record.units).rows.filter((r) => r.kind === "member").map((r) => r.name);
-  assert.deepEqual(members, ["Bo Kim"]);
+// Board 78 lists everyone the public Alumni page shows, current members in
+// their past years included (#982).
+
+/** Everyone the public page names: in a finished year's groups, or in The founders. */
+function publicNames(on: AlumniRecord, thisYear: number): string[] {
+  const alumni = alumniOf(on, thisYear);
+  const inYears = alumniYears(alumni, thisYear - 1).flatMap((y) => y.groups.flatMap((g) => g.entries.map((e) => e.name)));
+  return [...new Set([...inYears, ...foundersOf(alumni).map((f) => f.name)])].sort();
+}
+
+const directoryNames = (on: AlumniRecord, thisYear: number) => alumniDirectory(alumniOf(on, thisYear), thisYear, on.units).rows.map((r) => r.name);
+
+test("every person the public Alumni page shows has a row, a current member in their past years included", () => {
+  const names = directoryNames(record, 2025);
+  assert.ok(publicNames(record, 2025).includes("Ada Rossi"), "Ada still holds a role and the public page lists her 2022 and 2024");
+  for (const name of publicNames(record, 2025)) assert.ok(names.includes(name), `${name} has a row`);
 });
 
-test("imported people and external advisors stay in the directory", () => {
-  const names = alumniDirectory(alumniOf(record, 2025), 2025, record.units).rows.map((r) => r.name);
-  assert.ok(names.includes("Carla Neri"));
-  assert.ok(names.includes("Dario Fo"));
+test("a current member's row says they are still on the team; one who left has an end year", () => {
+  const rows = alumniDirectory(alumniOf(record, 2025), 2025, record.units).rows;
+  const span = (name: string) => spanOf(rows.find((r) => r.name === name)!);
+  assert.equal(span("Ada Rossi"), "2022 – now");
+  assert.equal(span("Bo Kim"), "2023 – 2024");
 });
 
-test("the year and group filters come only from the people left in the directory", () => {
+test("a hidden person keeps their row, and one who asked to be removed has none", () => {
+  const hidden = withEntryChange(withEntryChange(record, "m1", { shown: false }), "m2", { removed: true });
+  const names = directoryNames(hidden, 2025);
+  assert.ok(names.includes("Ada Rossi"));
+  assert.ok(!names.includes("Bo Kim"));
+});
+
+test("a current member the public page cannot show yet has no row, unless they are a founder", () => {
+  // Gia joined this year, 2025–26: the page lists finished years only.
+  const joined: AlumniRecord = {
+    ...record,
+    roles: [...record.roles, role(6, { title: "Recovery Engineer", startedAt: "2025-10-15", departmentId: 2 })],
+    people: [...record.people, { memberId: 6, name: "Gia Russo", email: null }],
+  };
+  assert.ok(!directoryNames(joined, 2025).includes("Gia Russo"));
+  const founder = withEntryChange(joined, "m6", { founder: "co-founder" });
+  assert.ok(publicNames(founder, 2025).includes("Gia Russo"));
+  assert.ok(directoryNames(founder, 2025).includes("Gia Russo"));
+});
+
+test("the year and group filters come from the rows, a current member's included", () => {
   const directory = alumniDirectory(alumniOf(record, 2025), 2025, record.units);
-  // Ada's years (2022, 2024, 2025) and her Recovery group are not offered: only Bo, Carla and Dario remain.
-  assert.deepEqual(directory.years, [2023, 2021]);
-  assert.deepEqual(directory.groups, ["Advisors", "Aerodynamics", "Operations"]);
+  // Ada adds 2022 and 2024 and her Recovery group; 2025, the running year, is not a tab.
+  assert.deepEqual(directory.years, [2024, 2023, 2022, 2021]);
+  assert.deepEqual(directory.groups, ["Advisors", "Aerodynamics", "Operations", "Recovery"]);
 });
 
 test("the year filter offers finished years only; someone who left this year stays under All years (#391)", () => {
@@ -140,7 +164,7 @@ test("the year filter offers finished years only; someone who left this year sta
   };
   const directory = alumniDirectory(alumniOf(leftThisYear, 2025), 2025, record.units);
   assert.ok(directory.rows.some((r) => r.name === "Eva Gallo" && r.years.includes(2025)));
-  assert.deepEqual(directory.years, [2024, 2023, 2021]);
+  assert.deepEqual(directory.years, [2024, 2023, 2022, 2021]);
 });
 
 // "+ Add a year" in the fix panel (issue #981): a year the record lacks, kept

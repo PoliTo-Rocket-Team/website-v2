@@ -5,13 +5,12 @@ import { Check, ChevronDown, ExternalLink, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { setAlumnusShown } from "@/app/dashboard/team-actions";
 import type { AlumnusKey } from "@/lib/about/alumni-record";
-import { alumniRowsFor, RECENT_YEAR_TABS, yearTab, type AlumniDirectory, type AlumnusRow } from "@/lib/dashboard/alumni";
-import { pageCount, pageOf } from "@/lib/dashboard/team";
+import { alumniRowsFor, RECENT_YEAR_TABS, spanOf, yearTab, type AlumniDirectory, type AlumnusRow } from "@/lib/dashboard/alumni";
 import { AddAdvisorPanel, AlumniSwitch, AlumnusPanel } from "./alumni-panels";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar } from "./avatar";
-import { Controls, DepartmentFilter, Pager, TH } from "./directory";
+import { Controls, DepartmentFilter, TH } from "./directory";
 import { DrawerPage } from "./drawer";
 import { GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
@@ -19,8 +18,9 @@ import { RowOpen } from "./row-open";
 import { SearchField } from "./search-field";
 
 // The Alumni page (board 78, issue #257): everyone the public Alumni page
-// lists, filled in from the team's roles. Year tabs (the two latest, then
-// "Earlier"), the department filter and search narrow the rows in the
+// lists, current members in their past years included, in one list with no
+// pages (#982), filled in from the team's roles. Year tabs (the two latest,
+// then "Earlier"), the department filter and search narrow the rows in the
 // browser. The switch shows or hides someone on the public page; a click on
 // the row opens the fix panel (78b, issue #616), and "Add alumni" adds an external advisor
 // (78c). Every write goes through the data interface (a cookie for a test
@@ -34,21 +34,13 @@ export function AlumniView({ directory, editable }: { directory: AlumniDirectory
   const [year, setYear] = useState<number | null>(null);
   const [group, setGroup] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
   const [open, setOpen] = useState<Open>({ kind: "none" });
 
   const searched = useMemo(() => alumniRowsFor(directory.rows, { year: null, group, query }), [directory.rows, group, query]);
-  const inTab = year === null ? searched : alumniRowsFor(searched, { year, group, query: "" });
-  const last = pageCount(inTab.length);
-  const current = Math.min(page, last);
-  const rows = pageOf(inTab, current);
-  const showing = `Showing ${rows.length} of ${inTab.length}`;
+  const rows = year === null ? searched : alumniRowsFor(searched, { year, group, query: "" });
+  const showing = `${rows.length} ${rows.length === 1 ? "person" : "people"}`;
   const fixing = open.kind === "fix" ? (directory.rows.find((r) => r.key === open.key) ?? null) : null;
 
-  const narrow = (apply: () => void) => {
-    apply();
-    setPage(1);
-  };
   const countIn = (start: number) => searched.filter((row) => row.years.includes(start)).length;
   const openFix = (key: AlumnusKey) => setOpen({ kind: "fix", key });
 
@@ -70,7 +62,7 @@ export function AlumniView({ directory, editable }: { directory: AlumniDirectory
       <Controls
         search={
           <div className="flex w-full items-center gap-3 md:w-auto">
-            <SearchField value={query} onChange={(next) => narrow(() => setQuery(next))} placeholder="Search name or email" className="md:w-[260px]" />
+            <SearchField value={query} onChange={setQuery} placeholder="Search name or email" className="md:w-[260px]" />
             <a href="/about/alumni" target="_blank" rel="noopener noreferrer" className={`${GHOST_PILL} hidden h-10 px-4 text-[14px] lg:inline-flex`}>
               <ExternalLink aria-hidden className="h-4 w-4" strokeWidth={1.75} />
               View Alumni page
@@ -83,9 +75,9 @@ export function AlumniView({ directory, editable }: { directory: AlumniDirectory
           value={year}
           all={searched.length}
           countIn={countIn}
-          onChange={(next) => narrow(() => setYear(next))}
+          onChange={setYear}
         />
-        <DepartmentFilter departments={directory.groups} value={group} onChange={(next) => narrow(() => setGroup(next))} />
+        <DepartmentFilter departments={directory.groups} value={group} onChange={setGroup} />
       </Controls>
 
       <ul aria-label="Alumni" className="mt-4 flex flex-col gap-2.5 md:hidden">
@@ -93,10 +85,7 @@ export function AlumniView({ directory, editable }: { directory: AlumniDirectory
           <AlumnusCard key={row.key} row={row} editable={editable} onOpen={() => openFix(row.key)} />
         ))}
       </ul>
-      <div className="mt-4 flex min-h-7 items-center justify-between gap-4 text-[13px] text-prt-muted md:hidden">
-        <span>{showing}</span>
-        <Pager page={current} last={last} onPage={setPage} />
-      </div>
+      <p className="mt-4 text-[13px] text-prt-muted md:hidden">{showing}</p>
 
       <section className={`${PANEL} mt-6 hidden overflow-hidden md:block`}>
         <table className="w-full table-fixed border-collapse">
@@ -129,10 +118,7 @@ export function AlumniView({ directory, editable }: { directory: AlumniDirectory
             ))}
           </tbody>
         </table>
-        <footer className="flex min-h-[52px] items-center justify-between gap-4 border-t border-hairline px-5 py-3 text-[13px] text-prt-muted">
-          <span>{showing}</span>
-          <Pager page={current} last={last} onPage={setPage} />
-        </footer>
+        <footer className="flex min-h-[52px] items-center border-t border-hairline px-5 py-3 text-[13px] text-prt-muted">{showing}</footer>
       </section>
 
       <AlumnusPanel
@@ -230,11 +216,10 @@ function YearTabs({
   );
 }
 
-function years(row: AlumnusRow): string {
-  return `${row.from} – ${row.to}`;
-}
-
-/** The tags beside a name: Founder or Co-founder, then "Name fixed" and "Role fixed". */
+/**
+ * The tags beside a name: Founder or Co-founder, "On the team" for a current
+ * member listed in their past years (#982), then "Name fixed" and "Role fixed".
+ */
 function Tags({ row }: { row: AlumnusRow }) {
   const fixed = [row.nameFixed && "Name fixed", row.roleFixed && "Role fixed"].filter((tag): tag is string => tag !== false);
   return (
@@ -243,6 +228,9 @@ function Tags({ row }: { row: AlumnusRow }) {
         <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.2em] text-accent">
           {row.founder === "founder" ? "Founder" : "Co-founder"}
         </span>
+      )}
+      {row.to === null && (
+        <span className="shrink-0 rounded-full border border-white-10 px-2 py-0.5 text-[11px] text-text-2">Still on the team</span>
       )}
       {fixed.map((tag) => (
         <span key={tag} className="hidden shrink-0 items-center gap-1 rounded-full border border-white-10 px-2 py-0.5 text-[11px] text-prt-muted lg:inline-flex">
@@ -269,7 +257,7 @@ function AlumnusCard({ row, editable, onOpen }: { row: AlumnusRow; editable: boo
           {/* Only the role may be cut; the years always show whole (issue #222). */}
           <span className="flex min-w-0 text-[13px] text-prt-muted">
             <span className="min-w-0 truncate">{row.lastRole}</span>
-            <span className="shrink-0 whitespace-nowrap">&nbsp;· {years(row)}</span>
+            <span className="shrink-0 whitespace-nowrap">&nbsp;· {spanOf(row)}</span>
           </span>
         </span>
       </button>
@@ -310,7 +298,7 @@ function AlumnusTableRow({
         <span className="block truncate text-[14px] text-prt-text">{row.lastRole}</span>
         <span className="block truncate text-[12px] text-prt-muted">{row.lastUnit}</span>
       </td>
-      <td className={`hidden px-5 py-2.5 text-[14px] text-text-2 lg:table-cell ${panelOpen ? "xl:hidden" : ""}`}>{years(row)}</td>
+      <td className={`hidden px-5 py-2.5 text-[14px] text-text-2 lg:table-cell ${panelOpen ? "xl:hidden" : ""}`}>{spanOf(row)}</td>
       {/* The switch only shows or hides them: its click stops here, short of the row. */}
       <td className="px-5 py-2.5" onClick={(event) => event.stopPropagation()}>
         <SiteSwitch row={row} editable={editable} />
