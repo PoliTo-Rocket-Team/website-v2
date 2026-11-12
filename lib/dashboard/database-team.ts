@@ -96,6 +96,7 @@ import {
   seatHandOver,
   type AdvisorPlace,
   type SeatMove,
+  type Advising,
   type SeatRow,
   type SteppingDown,
 } from "./hand-over";
@@ -1062,7 +1063,14 @@ async function moveMember(identity: DashboardIdentity, input: unknown): Promise<
   if (!planned.ok) return refused(planned.error);
   const plan = planned.value;
   const on = today();
-  const replacedRoles = plan.replaced === null ? [] : await activeRoles(plan.replaced.memberId);
+  const replaced =
+    plan.replaced === null
+      ? null
+      : {
+          memberId: plan.replaced.memberId,
+          active: await activeRoles(plan.replaced.memberId),
+          step: await stepDownOf(plan.replaced.memberId, plan.replaced.steppingDown),
+        };
   const aliasAsked = await automaticAliasRequests(plan.newLeads);
   const [leadsThere, leadsLeft] = await Promise.all([
     plan.start.kind === "division" && plan.start.type === "lead" ? heldRows(plan.start.divisionId).then(leadsIn) : [],
@@ -1074,7 +1082,7 @@ async function moveMember(identity: DashboardIdentity, input: unknown): Promise<
   try {
     await runAuditBatch((db) => [
       endRoleRows(db, ending, on),
-      ...moveWrites(db, plan, replacedRoles, on),
+      ...moveWrites(db, plan, replaced, on),
       ...aliasAsked(db),
       ...reroutesAsked(db),
     ]);
@@ -1137,7 +1145,13 @@ function leadsIn(held: readonly HeldRow[]): number[] {
  * the place they leave goes, the head they replace steps down, the new row
  * starts and the head picked for the department they leave starts.
  */
-function moveWrites(db: Tx, plan: MovePlan, replacedRoles: readonly ActiveRole[], on: string): BatchItem<"pg">[] {
+function moveWrites(
+  db: Tx,
+  plan: MovePlan,
+  /** The replaced head's active roles and how they step down; null when the move replaces no head. */
+  replaced: { readonly memberId: number; readonly active: readonly ActiveRole[]; readonly step: StepDown } | null,
+  on: string,
+): BatchItem<"pg">[] {
   const { personId, start, leaves } = plan;
   return [
     leaves.kind === "division"
@@ -1146,7 +1160,7 @@ function moveWrites(db: Tx, plan: MovePlan, replacedRoles: readonly ActiveRole[]
     // The head they replace steps down before their headship starts. A replace ends that head's row by choice; the database
     // would take a second active head (epic #861, drizzle/0077).
     // Their head rows already ended in `endRoleRows`, so none is passed to end here.
-    ...(plan.replaced === null ? [] : steppingDownWrites(db, { memberId: plan.replaced.memberId, active: replacedRoles }, plan.replaced.steppingDown, [], on)),
+    ...(replaced === null ? [] : steppingDownWrites(db, replaced, replaced.step, [], on)),
     start.kind === "division"
       ? db.insert(roles).values({ memberId: personId, divisionId: start.divisionId, title: start.title, type: start.type, startedAt: on })
       : db
@@ -1383,22 +1397,31 @@ async function heldRows(divisionId: number): Promise<HeldRow[]> {
 }
 
 /**
- * Someone who leaves the team from a structure edit (an old lead's or head's
- * "Leave the team"): every active role ends and every
- * access row goes, their years on the team are set from their roles, and the
- * leave is recorded, so they appear on Alumni.
+ * A hand-over's way of stepping down, as the batch writes it: a leave carries
+ * the stored stay its years are read from (`departureOf`, issue #986), so no
+ * leave reaches the batch without it.
  */
-function leaveTeamWrites(db: Tx, leaver: { readonly memberId: number; readonly active: readonly ActiveRole[] }, on: string): [BatchItem<"pg">, ...BatchItem<"pg">[]] {
-  const { memberId, active } = leaver;
-  const year = Number(on.slice(0, 4));
+type StepDown = Advising | { readonly kind: "leave"; readonly stay: TeamStay };
+
+/** The step a hand-over picked for `memberId`, with their stored stay read when they leave the team. */
+async function stepDownOf(memberId: number, step: SteppingDown): Promise<StepDown> {
+  return step.kind === "leave" ? { kind: "leave", stay: await teamStayOf(memberId) } : step;
+}
+
+/**
+ * Someone who leaves the team from a structure edit (an old lead's or head's
+ * "Leave the team"): every active role ends and every access row goes, their
+ * years on the team are set by the rule Leaves the team uses (`departureOf`,
+ * issue #986), and the leave is recorded, so they appear on Alumni.
+ */
+function leaveTeamWrites(db: Tx, leaver: { readonly memberId: number; readonly stay: TeamStay }, on: string): [BatchItem<"pg">, ...BatchItem<"pg">[]] {
+  const { memberId, stay } = leaver;
+  const departure = departureOf(stay, on, null);
   return [
     db.update(roles).set({ leavedAt: on }).where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt))),
     db.delete(scopes).where(eq(scopes.memberId, memberId)),
-    db
-      .update(members)
-      .set({ teamFrom: Math.min(year, ...active.map((r) => Number(r.started_at.slice(0, 4)))), teamTo: year })
-      .where(eq(members.memberId, memberId)),
-    db.insert(teamLeaves).values({ memberId, reason: null }),
+    db.update(members).set({ teamFrom: departure.from, teamTo: departure.to }).where(eq(members.memberId, memberId)),
+    db.insert(teamLeaves).values({ memberId, reason: departure.reason }),
   ];
 }
 
@@ -1427,13 +1450,13 @@ function advisorUnit(place: AdvisorPlace): { deptId: number | null; divisionId: 
 function steppingDownWrites(
   db: Tx,
   person: { readonly memberId: number; readonly active: readonly ActiveRole[] },
-  step: SteppingDown,
+  step: StepDown,
   ending: readonly number[],
   on: string,
   /** Org-wide or admin rows they hold now: a former team leader who holds one keeps it, and gets no second. */
   fullAccessRows = 0,
 ): BatchItem<"pg">[] {
-  if (step.kind === "leave") return leaveTeamWrites(db, person, on);
+  if (step.kind === "leave") return leaveTeamWrites(db, { memberId: person.memberId, stay: step.stay }, on);
   const { memberId } = person;
   // Someone who advises at the place already keeps that one Advisor role (issue #900).
   const advisesThere = person.active.some((r) => !ending.includes(r.id) && isAdvisorRowAt({ type: r.type, departmentId: r.dept_id, divisionId: r.division_id }, step.place));
@@ -1475,7 +1498,7 @@ async function writeDivisionPlan(
   );
   if (!handed.ok) return refused(handed.error);
   const seat = handed.value;
-  const leavers = await Promise.all(plan.leaveTeam.map(async (memberId) => ({ memberId, active: await activeRoles(memberId) })));
+  const leavers = await Promise.all(plan.leaveTeam.map(async (memberId) => ({ memberId, stay: await teamStayOf(memberId) })));
   // Their active roles say whether they advise at the picked place already (`steppingDownWrites`).
   const advisors = await Promise.all(plan.advise.map(async (a) => ({ ...a, active: await activeRoles(a.memberId) })));
   const newRole = (memberId: number, type: "lead" | "core") => ({ memberId, divisionId, title: "", type, startedAt: on });
@@ -1728,7 +1751,10 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
   const on = today();
   // Change head replaces the one head picked (issue #872): only their head rows end, and every other head stays.
   const replaces = head?.replaces ?? null;
-  const replaced = replaces === null ? null : { ...replaces, active: await activeRoles(replaces.memberId) };
+  const replaced =
+    replaces === null
+      ? null
+      : { memberId: replaces.memberId, active: await activeRoles(replaces.memberId), step: await stepDownOf(replaces.memberId, replaces.steppingDown) };
   // A seat on a head row they hand over moves to the new head's row (issue #501).
   const handed = head === null ? null : seatHandOver(replaced === null ? [] : replaced.active.filter(isHeadRow), [head.to]);
   if (handed !== null && !handed.ok) return refused(handed.error);
@@ -1759,7 +1785,7 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
         ]
       : []),
     // Change head (issue #253): the head they replace steps down as the editor picked, then the new head's role starts.
-    ...(replaced === null ? [] : steppingDownWrites(db, replaced, replaced.steppingDown, replaced.active.filter(isHeadRow).map((r) => r.id), on)),
+    ...(replaced === null ? [] : steppingDownWrites(db, replaced, replaced.step, replaced.active.filter(isHeadRow).map((r) => r.id), on)),
     ...(head === null
       ? []
       : [db.insert(roles).values({ memberId: head.to, deptId: departmentId, divisionId: null, title: defaultHeadTitle(name), type: "head", startedAt: on, ...seatFor(seat, head.to) })]),
@@ -1886,9 +1912,10 @@ async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): 
     team: teamPeopleOf(snapshot),
   });
   if (!planned.ok) return refused(planned.error);
-  const { from, to, steppingDown: step } = planned.value;
-  const [active, [held]] = await Promise.all([
+  const { from, to } = planned.value;
+  const [active, step, [held]] = await Promise.all([
     activeRoles(from),
+    stepDownOf(from, planned.value.steppingDown),
     getDb()
       .select({ count: sql<number>`count(*)::int` })
       .from(scopes)
@@ -2014,7 +2041,7 @@ async function changeSeatHolder(identity: DashboardIdentity, roleId: number, inp
   // A full-access flag on the seat's row moves to the successor's (`seatHandOver`, issue #501).
   const handed = seatHandOver([{ fullAccess: seatOfFlag(row.full_access) }], [to]);
   if (!handed.ok) return refused(handed.error);
-  const active = await activeRoles(from);
+  const [active, stepDown] = await Promise.all([activeRoles(from), stepDownOf(from, step)]);
   // A team address tied to the full-access seat is owed a routing item (issue #789); one a staying co-holder holds is not (issue #872).
   const reroutesAsked = await automaticTeamAddressReroutes(seatHandedOver(handed.value, from, await holdersNow(snapshot.org)));
   const pageSeats = row.full_access === null ? await pageSeatsHandOver(roleId, reservedRoleId) : null;
@@ -2026,7 +2053,7 @@ async function changeSeatHolder(identity: DashboardIdentity, roleId: number, inp
     roleId,
     on,
     (db) => [
-      ...steppingDownWrites(db, { memberId: from, active }, step, [], on),
+      ...steppingDownWrites(db, { memberId: from, active }, stepDown, [], on),
       db.insert(roles).values({
         ...(pageSeats?.to != null && { id: pageSeats.to }),
         memberId: to,
@@ -2187,9 +2214,8 @@ async function confirmedHandOverWrites(
   org: OrgChart,
   on: string,
 ): Promise<(db: Tx) => BatchItem<"pg">[]> {
-  const { request, steppingDown: step } = plan;
-  const { fromId, toId, role } = request;
-  const active = await activeRoles(fromId);
+  const { fromId, toId, role } = plan.request;
+  const [active, step] = await Promise.all([activeRoles(fromId), stepDownOf(fromId, plan.steppingDown)]);
   const ending = active.filter(
     role.kind === "lead" ? (r) => r.division_id === role.divisionId && r.type === "lead" : headRowOf(role.departmentId, org),
   );
