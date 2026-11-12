@@ -217,7 +217,7 @@ function YearTabs({
 }
 
 /**
- * The tags beside a name: Founder or Co-founder, "On the team" for a current
+ * The tags beside a name: Founder or Co-founder, "Still on the team" for a current
  * member listed in their past years (#982), then "Name fixed" and "Role fixed".
  */
 function Tags({ row }: { row: AlumnusRow }) {
