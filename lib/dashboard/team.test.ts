@@ -3,7 +3,8 @@ import { test } from "node:test";
 import { standingIn } from "./viewer";
 import {
   buildTeamTree,
-  checkDeparture,
+  checkLeaveReason,
+  departureOf,
   inDivisions,
   isDivisionRole,
   leadsChangedBy,
@@ -367,16 +368,22 @@ test("a lead renames, recodes and changes the leads of the divisions they lead a
   assert.equal(leadsChangedBy(10, twoDepartments), "Leads are changed by the Head of Aerodynamics");
 });
 
-test("the years on the team are read as typed, in order and not after this year; the reason is optional", () => {
-  assert.deepEqual(checkDeparture({ years: "2024 – 2026", reason: "graduated" }, 2026), {
-    ok: true,
-    value: { from: 2024, to: 2026, reason: "graduated" },
+test("Leaves the team reads the years from the join day, else the earliest role start, to the leave day (#980)", () => {
+  assert.deepEqual(departureOf({ joinedTeamOn: "2022-10-03", firstRoleStart: "2020-10-01" }, "2026-11-12", "graduated"), {
+    from: 2022,
+    to: 2026,
+    reason: "graduated",
   });
-  assert.deepEqual(checkDeparture({ years: "2025", reason: "" }, 2026), { ok: true, value: { from: 2025, to: 2025, reason: null } });
-  assert.equal(checkDeparture({ years: "2026 - 2024", reason: null }, 2026).ok, false);
-  assert.equal(checkDeparture({ years: "2024 – 2027", reason: null }, 2026).ok, false);
-  assert.equal(checkDeparture({ years: "last year", reason: null }, 2026).ok, false);
-  assert.equal(checkDeparture({ years: "2024 – 2026", reason: "fired" }, 2026).ok, false);
+  assert.deepEqual(departureOf({ joinedTeamOn: null, firstRoleStart: "2023-10-01" }, "2026-11-12", null), { from: 2023, to: 2026, reason: null });
+  assert.deepEqual(departureOf({ joinedTeamOn: null, firstRoleStart: null }, "2026-11-12", null), { from: 2026, to: 2026, reason: null });
+  assert.deepEqual(departureOf({ joinedTeamOn: "2027-01-10", firstRoleStart: null }, "2026-11-12", null), { from: 2026, to: 2026, reason: null });
+});
+
+test("the leave reason is one from the list or none (#980)", () => {
+  assert.deepEqual(checkLeaveReason("graduated"), { ok: true, value: "graduated" });
+  assert.deepEqual(checkLeaveReason(""), { ok: true, value: null });
+  assert.deepEqual(checkLeaveReason(null), { ok: true, value: null });
+  assert.equal(checkLeaveReason("fired").ok, false);
 });
 
 test("the seat whose title Edit details sets: the team leader's, else a head's, else a team-level seat's by seat order; none for an advisor (#626)", () => {

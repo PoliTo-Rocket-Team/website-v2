@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { placeHeaderLine, type PersonPlace } from "./member-places";
-import { departureYearsOf, joinedYearOf, memberRowOf, type OrgChart } from "./team";
+import { joinedYearOf, memberRowOf, type OrgChart } from "./team";
 import { recordsOf, rosterOf, type TeamSnapshot } from "./team-snapshot";
 
 // Issue #948 (owner decision, 2026-11-01): every dashboard place that shows
@@ -90,10 +90,4 @@ test("the member panel's header line names the join year only when one is stored
   const places: PersonPlace[] = [{ title: "Mission Analysis Lead", unit: "Operations · Mission Analysis", code: "MA", tag: "lead" }];
   assert.equal(placeHeaderLine(places, 2022), "Mission Analysis Lead · member since 2022");
   assert.equal(placeHeaderLine(places, null), "Mission Analysis Lead");
-});
-
-test("Move to alumni's years open from the join year, and empty for the lead to fill without one", () => {
-  assert.equal(departureYearsOf(2022, 2026), "2022 – 2026");
-  assert.equal(departureYearsOf(2026, 2026), "2026");
-  assert.equal(departureYearsOf(null, 2026), "");
 });

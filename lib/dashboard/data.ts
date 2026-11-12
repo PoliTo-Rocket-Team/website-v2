@@ -30,7 +30,7 @@ import type { HandOverAnswer } from "./hand-over-request";
 import type { MemberAliases } from "./alias-request";
 import type { MemberTeamAddresses, OwnTeamAddress } from "./team-address";
 import type { OwnAlias } from "./alias-setup";
-import type { Departure, MemberDirectory, MemberEdit, TeamTree } from "./team";
+import type { LeaveReason, MemberDirectory, MemberEdit, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
 import type { Upload, WriteResult } from "./write";
 
@@ -488,9 +488,10 @@ export interface TeamWrites {
   /**
    * "Leaves the team" (board 59d, widened by #231): every role and every
    * access grant ends and the person moves to Alumni; their account stays.
-   * Refused unless `mayLeaveTeam` (./team.ts) allows it.
+   * Refused unless `mayLeaveTeam` (./team.ts) allows it. The years on the
+   * team come from stored data (`departureOf`, issue #980).
    */
-  moveToAlumni(personId: number, departure: Departure): Promise<boolean>;
+  moveToAlumni(personId: number, reason: LeaveReason | null): Promise<boolean>;
   /**
    * Board 59: the accepted applicant joins the division the position belongs
    * to. It is the Applications page's Confirm join, decided by the same rule
