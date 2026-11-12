@@ -589,6 +589,13 @@
       "when": 1796404800000,
       "tag": "0086_members_joined_team_on",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1796491200000,
+      "tag": "0087_alumni_added_years",
+      "breakpoints": true
     }
   ]
 }

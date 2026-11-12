@@ -706,6 +706,10 @@ const SENTENCES: Readonly<Record<string, Sentence>> = {
   },
   alumni_role_fixes: () => ({ sentence: "Fixed a role line on the Alumni page", area: "alumni" }),
   alumni_imported_roles: () => ({ sentence: "Changed an imported role line on the Alumni page", area: "alumni" }),
+  alumni_added_years: (row) => ({
+    sentence: `${row.operation === "INSERT" ? "Added" : row.operation === "DELETE" ? "Removed" : "Changed"} a year on the Alumni page`,
+    area: "alumni",
+  }),
 
   outreach_post_versions: versioned("post", "outreach", "title"),
   outreach_posts: listRow("posts", "post", "outreach"),

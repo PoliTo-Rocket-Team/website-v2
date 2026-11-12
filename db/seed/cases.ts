@@ -293,6 +293,7 @@ export function alumniRecordOf(data: SeedData): AlumniRecord {
           shown: e.shown ?? true,
           removed: (e.removedAt ?? null) !== null,
           fixes: [],
+          added: [],
         },
       ];
     }),

@@ -256,7 +256,7 @@ function alumniRecordAfter(entry: Pick<AlumniEntry, "who" | "founder" | "removed
     roles: [{ memberId: 7, type: "core", title: "Aerodynamicist", startedAt: "2024-10-01", leftAt: "2025-09-15", departmentId: null, divisionId: 4 }],
     // Anonymized: the team record holds no name any more.
     people: [{ memberId: 7, name: null, email: ANONYMIZED_EMAIL }],
-    entries: [{ id: 3, name: null, photo: null, shown: true, fixes: [], ...entry }],
+    entries: [{ id: 3, name: null, photo: null, shown: true, fixes: [], added: [], ...entry }],
     imported: [],
   };
 }

@@ -1369,3 +1369,25 @@ test("0086 keeps every member's values, leaves the new date empty, and applies a
     before.map((row) => [row, null]),
   );
 });
+
+// Years added for the Alumni page only (issue #981): one new table beside the
+// alumni entries, with its audit trigger. No team table changes.
+const ALUMNI_ADDED_YEARS_TAG = "0087_alumni_added_years";
+
+test("0087_alumni_added_years.sql drops, renames and rewrites nothing", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${ALUMNI_ADDED_YEARS_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/981/);
+});
+
+test("0087 applies again, and an added year sits in exactly one department or division", async () => {
+  const { db, apply } = await databaseBefore(ALUMNI_ADDED_YEARS_TAG);
+  // 0021 imported entries already; these ids sit past them.
+  await db.exec(`insert into departments (id, name) values (9001, 'Recovery'); insert into alumni_entries (id, kind, record_name) values (9001, 'imported', 'Carla Neri');`);
+  await apply();
+  await apply();
+  await db.exec(`insert into alumni_added_years (entry_id, year, department_id, role) values (9001, 2021, 9001, 'Recovery Engineer');`);
+  await assert.rejects(db.exec(`insert into alumni_added_years (entry_id, year, role) values (9001, 2022, 'No unit');`));
+  const logged = await db.query(`select operation from public.logs where table_name = 'alumni_added_years'`);
+  assert.deepEqual(logged.rows, [{ operation: "INSERT" }], "the audit trigger logs the write");
+});

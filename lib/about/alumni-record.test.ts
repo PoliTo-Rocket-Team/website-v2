@@ -174,7 +174,7 @@ test("an added advisor shows under Advisors in each year they advised", () => {
     ...record,
     entries: [
       ...record.entries,
-      { id: 900, who: { kind: "advisor", name: "Prof. Ivo Neri", role: "Faculty Advisor", from: 2023, to: 2024 }, name: null, founder: null, photo: null, shown: true, removed: false, fixes: [] },
+      { id: 900, who: { kind: "advisor", name: "Prof. Ivo Neri", role: "Faculty Advisor", from: 2023, to: 2024 }, name: null, founder: null, photo: null, shown: true, removed: false, fixes: [], added: [] },
     ],
   };
   for (const year of [2023, 2024]) {
