@@ -881,6 +881,25 @@ export const alumniRoleFixes = pgTable("alumni_role_fixes", {
   oneFixPerLine: uniqueIndex("alumni_role_fixes_line").on(table.entryId, table.year, table.groupName),
 }));
 
+/**
+ * A year added for the Alumni page only (drizzle/0087, issue #981): the
+ * person listed in one department or division that year with this text,
+ * where the team record holds no role. It never writes a role.
+ */
+export const alumniAddedYears = pgTable("alumni_added_years", {
+  id: serial("id").primaryKey(),
+  entryId: integer("entry_id")
+    .references(() => alumniEntries.id, { onDelete: "cascade" })
+    .notNull(),
+  year: integer("year").notNull(),
+  departmentId: integer("department_id").references(() => departments.id, { onDelete: "cascade" }),
+  divisionId: integer("division_id").references(() => divisions.id, { onDelete: "cascade" }),
+  role: text("role").notNull(),
+}, (table) => ({
+  entryIdx: index("alumni_added_years_entry_idx").on(table.entryId),
+  oneUnit: check("alumni_added_years_one_unit", sql`num_nonnulls(${table.departmentId}, ${table.divisionId}) = 1`),
+}));
+
 export const scopes = pgTable(
   "scopes",
   {

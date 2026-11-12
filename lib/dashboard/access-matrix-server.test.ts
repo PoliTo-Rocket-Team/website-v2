@@ -690,7 +690,7 @@ const ACTION_CASES: readonly ActionCase[] = [
   // control is a member holding Content at Can edit, so each write is proven
   // to land for them, and every Can view `website` row is refused above.
   { action: "team-actions.setAlumnusShown", run: () => teamActions.setAlumnusShown(ALUMNUS, false), may: reaches("alumni"), control: by("member with a Content grant") },
-  { action: "team-actions.fixAlumnus", run: () => teamActions.fixAlumnus(ALUMNUS, { shown: true, name: "Alum", founder: null, roles: [] }), may: reaches("alumni"), control: by("member with a Content grant") },
+  { action: "team-actions.fixAlumnus", run: () => teamActions.fixAlumnus(ALUMNUS, { shown: true, name: "Alum", founder: null, roles: [], added: [] }), may: reaches("alumni"), control: by("member with a Content grant") },
   { action: "team-actions.setAlumnusPhoto", run: () => teamActions.setAlumnusPhoto(ALUMNUS, form({ photo: PHOTO() })), may: reaches("alumni"), control: by("member with a Content grant") },
   {
     action: "team-actions.addAdvisor",

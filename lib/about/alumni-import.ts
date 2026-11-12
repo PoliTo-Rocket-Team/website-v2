@@ -263,6 +263,7 @@ export function importedEntries(firstId = 1): { entries: AlumniEntry[]; imported
       shown: true,
       removed: false,
       fixes: [],
+      added: [],
     };
   });
   return { entries, imported };

@@ -135,7 +135,12 @@ export function AlumniView({ directory, editable }: { directory: AlumniDirectory
         </footer>
       </section>
 
-      <AlumnusPanel row={fixing} editable={editable} onClose={() => setOpen({ kind: "none" })} />
+      <AlumnusPanel
+        row={fixing}
+        editable={editable}
+        choices={{ units: directory.units, thisYear: directory.thisYear }}
+        onClose={() => setOpen({ kind: "none" })}
+      />
       {editable && (
         <AddAdvisorPanel open={open.kind === "add"} thisYear={directory.thisYear} onClose={() => setOpen({ kind: "none" })} />
       )}
