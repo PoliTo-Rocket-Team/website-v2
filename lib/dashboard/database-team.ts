@@ -32,6 +32,7 @@ import { automaticAliasRequests } from "./database-alias";
 import { readMemberGoogleEmails } from "./database-google-accounts";
 import { readWaitingHandOvers } from "./database-hand-over";
 import { automaticTeamAddressReroutes, readActiveTieRoles } from "./database-team-address";
+import { teamStayOf } from "./database-team-stay";
 import { pageSeatsHandOver, type PageSeatsHandOver } from "./database-team-page";
 import { addedBeside, handedOver, handedTo, holdersOf, seatHandedOver, seatHandedTo, type MovesWith, type TiedRoleChange } from "./team-address";
 import { moveApplication } from "./database-recruitment";
@@ -774,18 +775,6 @@ async function moveToAlumni(identity: DashboardIdentity, personId: number, reaso
     db.insert(teamLeaves).values({ memberId: personId, reason: departure.reason }),
   ]);
   return done();
-}
-
-/** The stored join day and earliest role start `departureOf` reads the years from. */
-async function teamStayOf(personId: number): Promise<TeamStay> {
-  const [row] = await getDb()
-    .select({
-      joinedTeamOn: members.joinedTeamOn,
-      firstRoleStart: sql<string | null>`(select min(${roles.startedAt})::text from ${roles} where ${roles.memberId} = ${members.memberId})`,
-    })
-    .from(members)
-    .where(eq(members.memberId, personId));
-  return { joinedTeamOn: row?.joinedTeamOn ?? null, firstRoleStart: row?.firstRoleStart ?? null };
 }
 
 /**
