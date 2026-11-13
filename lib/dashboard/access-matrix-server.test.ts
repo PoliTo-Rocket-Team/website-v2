@@ -3221,7 +3221,17 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
     const leader = await openAs("team leader");
     const roster = await leader.members();
     assert.ok(roster.scope === "whole-team" && roster.people.some((p) => p.id === pm), "they are on the roster");
-    assert.ok(!(await leader.alumni()).rows.some((r) => r.key === `m${pm}`), "they are not on Alumni");
+    // Their past years keep them on the dashboard Alumni list, marked as still on the team (#982).
+    const listed = (await leader.alumni()).rows.find((r) => r.key === `m${pm}`);
+    assert.ok(listed !== undefined && listed.to === null, "they are on Alumni, still on the team");
+    assert.deepEqual(
+      await teamActions.fixAlumnus(`m${pm}`, { shown: true, name: "Project Manager on the page", founder: null, roles: [], added: [] }),
+      { ok: true },
+      "their page-only fix saves like anyone else's",
+    );
+    const fixed = (await (await openAs("team leader")).alumni()).rows.find((r) => r.key === `m${pm}`);
+    assert.equal(fixed?.name, "Project Manager on the page", "the page shows the fixed name");
+    assert.deepEqual((await active(pm)).map((r) => r.type), ["advisor"], "the fix ends no role");
     assert.notEqual((await openAs("Project Manager")).viewer.kind, "operations-lead", "the seat's full access ended with it");
   });
 

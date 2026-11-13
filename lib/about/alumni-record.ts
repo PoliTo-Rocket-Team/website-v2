@@ -158,8 +158,8 @@ export type Alumnus = {
   readonly removed: boolean;
   /**
    * A member who still holds a role (one with no `leftAt`). The public page
-   * lists them in their years like anyone else; the dashboard's Alumni list
-   * leaves them out, as current members are managed on Members (#271).
+   * lists them in their finished years like anyone else, and so does the
+   * dashboard's Alumni list, marked as still on the team (#982).
    * Imported people and advisors are never on the team.
    */
   readonly onTeam: boolean;
