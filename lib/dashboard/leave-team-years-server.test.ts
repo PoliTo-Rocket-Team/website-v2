@@ -2,6 +2,7 @@ import "./access-matrix/install";
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import * as actions from "@/app/dashboard/actions";
 import * as teamActions from "@/app/dashboard/team-actions";
 import { members, roles } from "@/db/schema";
 import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
@@ -10,7 +11,8 @@ import { addRows, changeRows, tableRows } from "./access-matrix/test-database";
 
 // Leaves the team on the migrated in-memory Postgres (issue #980): the years
 // written for the Alumni page come from stored data, never from the browser.
-// Leaving through a Team tree structure edit uses the same rule (issue #986).
+// Leaving through a Team tree structure edit uses the same rule (issue #986),
+// and so does leaving on one's own from My profile (issue #987).
 
 const PERSON = IDS.person("DM");
 const LEAD = IDS.lead("DM");
@@ -60,6 +62,28 @@ test("a structure edit: with no stored join day, the years run from their earlie
   await changeRows(members, { memberId: LEAD }, { joinedTeamOn: null });
   await addRows(roles, [{ memberId: LEAD, divisionId: DM, title: "", type: "core", startedAt: "2019-10-01", leavedAt: "2020-09-30" }]);
   assert.deepEqual(await leaveThroughStructureEdit(), { from: 2019, to: THIS_YEAR });
+});
+
+/** A member leaves the team on their own, from My profile (issue #987). */
+async function leaveOnTheirOwn(memberId: number, userId: string): Promise<{ from: unknown; to: unknown }> {
+  signInAs(userId);
+  assert.equal((await actions.leaveTeam("Moving on", false)).ok, true);
+  return yearsOf(memberId);
+}
+
+test("leaving on one's own: someone who joined before their only remaining role is on the team from the year they joined", async () => {
+  await seedFixture();
+  const self = accountOf("member");
+  await joinedBeforeTheirOnlyRole(self.memberId!);
+  assert.deepEqual(await leaveOnTheirOwn(self.memberId!, self.userId), { from: 2022, to: THIS_YEAR });
+});
+
+test("leaving on one's own: with no stored join day, the years run from their earliest role start, ended roles included", async () => {
+  await seedFixture();
+  const self = accountOf("member");
+  await changeRows(members, { memberId: self.memberId! }, { joinedTeamOn: null });
+  await addRows(roles, [{ memberId: self.memberId!, divisionId: DM, title: "", type: "core", startedAt: "2019-10-01", leavedAt: "2020-09-30" }]);
+  assert.deepEqual(await leaveOnTheirOwn(self.memberId!, self.userId), { from: 2019, to: THIS_YEAR });
 });
 
 test("the years run from the stored join day to the year they leave", async () => {

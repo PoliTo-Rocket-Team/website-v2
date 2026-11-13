@@ -36,6 +36,7 @@ import type { DashboardIdentity } from "./database";
 import { readPrtEmailsHeldByOthers, requestOwnAlias } from "./database-alias";
 import { linkedGoogleAccountsOf } from "./database-google-accounts";
 import { readHandOverOffer } from "./database-hand-over";
+import { teamStayOf } from "./database-team-stay";
 import { ownPrtEmailOf, planOwnPrtEmailEdit } from "./own-prt-email";
 import { memberLeftNoticesFor } from "./database-notices";
 import {
@@ -80,6 +81,7 @@ import {
 import { refreshAfter } from "@/lib/cache-tags";
 import { namesThemselves } from "./person-name";
 import { hasOwnProfile, isOffTeam } from "./viewer";
+import { departureOf } from "./team";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
 // The viewer's own pages read from and written to the database (boards 50 to
@@ -240,8 +242,10 @@ function removeFromAlumni(db: ReturnType<typeof getDb>, memberId: number) {
 
 /**
  * Board 55b: every role the member still holds ends today, so the Alumni page
- * lists them, and the reason is kept. Their access grants go, so they come
- * back as an alumnus holding none (issue #317), and the lead of each division they were in gets a
+ * lists them, and the reason is kept. Their years on the team are read from
+ * stored data by the rule every leave uses (`departureOf`, issue #987). Their
+ * access grants go, so they come back as an alumnus holding none (issue
+ * #317), and the lead of each division they were in gets a
  * notice on their dashboard (issue #201), all in one batch. Their sign-in,
  * users row and member row stay. With the box ticked, the Alumni page stops
  * listing them (issue #257).
@@ -253,10 +257,14 @@ async function leaveTeam(identity: DashboardIdentity, reason: string, removeFrom
   // A lead or head leaves through "Hand over your role", which the next level up confirms (issue #262).
   if ((await readHandOverOffer(identity)) !== null) return refused(HAND_OVER_FIRST);
   const why = leaveReason(reason);
-  const notices = await memberLeftNoticesFor(memberId, why);
+  const on = today();
+  // The typed reason is free text, kept on team_leaves; only the years come from the shared rule.
+  const [notices, stay] = await Promise.all([memberLeftNoticesFor(memberId, why), teamStayOf(memberId)]);
+  const years = departureOf(stay, on, null);
   await runAuditBatch((db) => [
-    db.update(roles).set({ leavedAt: today() }).where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt))),
+    db.update(roles).set({ leavedAt: on }).where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt))),
     db.delete(scopes).where(eq(scopes.memberId, memberId)),
+    db.update(members).set({ teamFrom: years.from, teamTo: years.to }).where(eq(members.memberId, memberId)),
     db.insert(teamLeaves).values({ memberId, reason: why }),
     ...(removeFromAlumniPage ? [removeFromAlumni(db, memberId)] : []),
     ...(notices.length > 0
