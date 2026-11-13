@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
 import { Plus, Trash2, TriangleAlert, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { useServerState } from "@/lib/dashboard/server-state";
 import { measurePartnerLogo, removePartner, reorderPartners, savePartner } from "@/app/dashboard/actions";
 import { moveTo } from "@/lib/content/order";
 import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
@@ -42,7 +43,8 @@ function shownOf(item: ContentItem<Partner>): Partner {
 }
 
 export function PartnersView({ items: initial }: { items: readonly ContentItem<Partner>[] }) {
-  const [items, setItems] = useState<readonly ContentItem<Partner>[]>(initial);
+  // The partners follow each refresh the server sends after a write (issue #984).
+  const [items, setItems] = useServerState<readonly ContentItem<Partner>[]>(initial);
   const [panel, setPanel] = useState<Panel>(CLOSED);
   const ordered = [...items].sort((a, b) => a.siteOrder - b.siteOrder);
   const editing = panel.kind === "edit" ? (items.find((item) => item.id === panel.id) ?? null) : null;

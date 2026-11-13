@@ -6,6 +6,7 @@ import { EyeOff, ExternalLink, Instagram, Linkedin, Plus, Star, StarOff, Trash2 
 import { toast } from "sonner";
 import { deleteOutreachPost, featureOutreachPost, unfeatureOutreachPost, unpublishOutreachPost } from "@/app/dashboard/outreach-actions";
 import { Photo } from "@/components/outreach/photo";
+import { useServerState } from "@/lib/dashboard/server-state";
 import {
   FEATURE_LOCKED,
   FEATURED_FULL,
@@ -46,9 +47,9 @@ import { EditChip } from "./row-open";
 // and one with no photo yet shows an empty thumbnail. Featured is a setting
 // on any published post (issue #496): a featured post takes a Featured card
 // of its own at the top of /outreach, a Featured mark sits on its row, and at
-// most two are featured at once. The page keeps the rows it was sent and each
-// answer from the server; every write is checked there again, behind the
-// site-content gate.
+// most two are featured at once. The page shows the rows the server last
+// sent, with each answer from the server applied at once; every write is
+// checked there again, behind the site-content gate.
 
 const STATUS_OPTIONS = (Object.keys(LIST_STATUS_LABELS) as ListStatus[]).map((value) => ({ value, label: LIST_STATUS_LABELS[value] }));
 
@@ -62,8 +63,9 @@ export function OutreachView({
   /** The featured posts' ids: none, one or two. */
   featured: FeaturedIds;
 }) {
-  const [rows, setRows] = useState<readonly OutreachRow[]>(initial);
-  const [featured, setFeatured] = useState<FeaturedIds>(initialFeatured);
+  // The rows and the featured posts follow each refresh the server sends after a write (issue #984).
+  const [rows, setRows] = useServerState<readonly OutreachRow[]>(initial);
+  const [featured, setFeatured] = useServerState<FeaturedIds>(initialFeatured);
   const [filter, setFilter] = useState<OutreachFilter>(NO_FILTER);
   const [deleting, setDeleting] = useState<OutreachRow | null>(null);
   const shown = filterRows(rows, filter);

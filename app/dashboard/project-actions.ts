@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { editorVersion, isPublishStep, type ContentItem, type PublishStep } from "@/lib/content/versioned";
 import { uploadOf } from "@/lib/dashboard/form-upload";
 import { openDashboard } from "@/lib/dashboard/open";
+import { refreshDashboard } from "@/lib/dashboard/refresh";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import type { PhotoSrc } from "@/lib/outreach-types";
 import { readProjectFields } from "@/lib/project-content/fields";
@@ -13,7 +14,8 @@ import type { ProjectRecord, UploadedSrc } from "@/lib/project-content/record";
 // The project editor's writes (boards 75 and 75c, issues #297 and #298). Each opens the
 // dashboard as the page did; the projects editor checks the site-content gate
 // and the fields again, and writes to the database. The write refreshes the cached public read; every
-// page that shows a project renders again.
+// page that shows a project renders again, and so does every dashboard page, the Projects list among
+// them (issue #984). A photo stored before a save changes no page, so it refreshes none.
 
 /** The pages a project shows on: its own page and /projects (both under the /projects layout), and Home. */
 function refreshPublicProjects(): void {
@@ -30,14 +32,17 @@ export async function saveProject(projectId: number, step: PublishStep, input: u
   const opening = await openDashboard();
   if (opening.kind !== "open") return refused("Sign in again to make changes.");
   const result = await opening.data.projects.saveFields(projectId, step, fields);
-  if (result.ok) refreshPublicProjects();
+  if (result.ok) {
+    refreshPublicProjects();
+    refreshDashboard();
+  }
   return result;
 }
 
 /**
  * New project on the Projects page (issue #301): a draft project with the
  * name, address and kind given, answered with the address its editor opens
- * at. A draft shows on no public page, so none is refreshed.
+ * at. A draft shows on no public page, so only the dashboard reads again.
  */
 export async function createProject(input: unknown): Promise<WriteResult<{ slug: string }>> {
   const project = readNewProject(input);
@@ -45,7 +50,9 @@ export async function createProject(input: unknown): Promise<WriteResult<{ slug:
   const opening = await openDashboard();
   if (opening.kind !== "open") return refused("Sign in again to make changes.");
   const result = await opening.data.projects.create(project);
-  return result.ok ? written({ slug: editorVersion(result.value.version).slug }) : result;
+  if (!result.ok) return result;
+  refreshDashboard();
+  return written({ slug: editorVersion(result.value.version).slug });
 }
 
 /**
@@ -61,7 +68,7 @@ export async function deleteProject(projectId: number): Promise<WriteResult<null
   const result = await opening.data.projects.remove(projectId);
   if (result.ok) {
     refreshPublicProjects();
-    revalidatePath("/dashboard/projects");
+    refreshDashboard();
   }
   return result;
 }

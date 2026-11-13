@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useRef, useState, useTransition, type DragEvent, type FormEvent, type ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { useServerState } from "@/lib/dashboard/server-state";
 import {
   Check,
   ChevronDown,
@@ -109,11 +110,13 @@ const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 // a request for one of the viewer's divisions. While a side panel is open the Department
 // column is hidden (board 61b), and Requested by too from xl to 1439px wide
 // (rowGrid). Props in, nothing fetched; the list lives in
-// this page's state, so a sent, edited or cancelled request shows at once. On a
+// this page's state, so a sent, edited or cancelled request shows at once, and
+// it takes the fresh list each refresh after a write brings. On a
 // phone the table is a stack of cards, the filters are chips, and each panel
 // is a full page.
 export function OrdersView({ data, writes }: { data: OrdersPage; writes: OrderWrites }) {
-  const [orders, setOrders] = useState(data.orders);
+  // The orders follow each refresh the server sends after a write (issue #984).
+  const [orders, setOrders] = useServerState(data.orders);
   const [filters, setFilters] = useState<OrderFilters>(NO_FILTERS);
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState<Open>(CLOSED);
