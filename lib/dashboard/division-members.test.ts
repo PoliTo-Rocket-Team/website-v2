@@ -47,7 +47,7 @@ const records = [
 ];
 
 test("a division's page lists its people with this division first, a code chip inside the department and the department's name outside it", () => {
-  const page = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1], ledDivisionIds: [1] }, selfId: 2, reach: [1], waiting: [], joining: [] })!;
+  const page = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1], ledDivisionIds: [1] }, selfId: 2, waiting: [], joining: [] })!;
   assert.deepEqual(page.people.map((p) => p.name), ["Marco Bianchi", "Davide Russo"], "leads first, and nobody from outside the division");
   const davide = page.people[1];
   assert.equal(davide.title, "Mission Analyst");
@@ -58,7 +58,7 @@ test("a division's page lists its people with this division first, a code chip i
   assert.deepEqual(davide.chips.map((c) => [c.label, c.code]), [["MA", true], ["Structures", false]]);
   assert.equal(page.people[0].self, true);
   assert.equal(page.division.leadsHint, null, "its own lead changes its leads (#594)");
-  const granted = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1], ledDivisionIds: [] }, selfId: null, reach: [1], waiting: [], joining: [] })!;
+  const granted = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1], ledDivisionIds: [] }, selfId: null, waiting: [], joining: [] })!;
   assert.equal(granted.division.leadsHint, "Leads are changed by the Head of Aerodynamics", "a Members grant does not");
   assert.equal(headcountLine({ people: page.people, waiting: [{ joinId: 1, email: "e@x.it", correctsSignInEmail: false, name: null, title: null, details: NO_MEMBER_DETAILS, addedOn: "2026-10-20", signedIn: false, addedBy: { kind: "viewer" } }] }), "1 lead, 3 members");
 });
@@ -99,7 +99,7 @@ test("Add member's field finds a member by name or by either email, and says whe
 // Issue #351: the page offers a change only where the viewer may make it.
 test("a viewer who changes nobody in the division sees its people with no action on any row", () => {
   for (const actor of [null, { kind: "lead" as const, divisionIds: [2], ledDivisionIds: [2] }]) {
-    const page = divisionMembers({ records, org, divisionId: 1, actor, selfId: null, reach: [1, 2], waiting: [], joining: [] })!;
+    const page = divisionMembers({ records, org, divisionId: 1, actor, selfId: null, waiting: [], joining: [] })!;
     assert.equal(page.editable, false);
     assert.deepEqual(page.people.map((p) => p.name), ["Marco Bianchi", "Davide Russo"], "viewing is unchanged");
     assert.ok(page.people.every((p) => p.removal.kind === "not-in-reach" && !p.leave.allowed));
@@ -107,16 +107,50 @@ test("a viewer who changes nobody in the division sees its people with no action
 });
 
 test("a viewer who may change the division gets the row actions their actor allows", () => {
-  const page = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1, 2], ledDivisionIds: [1, 2] }, selfId: null, reach: [1, 2], waiting: [], joining: [] })!;
+  const page = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1, 2], ledDivisionIds: [1, 2] }, selfId: null, waiting: [], joining: [] })!;
   assert.equal(page.editable, true);
   assert.equal(page.people.find((p) => p.name === "Davide Russo")!.removal.kind, "offered");
 });
 
 test("a corrected sign-in email is checked like the other email fields, and its error lands on its own field (issue #741)", () => {
-  const edit = (signInEmail?: string) => checkMemberEdit({ title: "", details: NO_MEMBER_DETAILS, ...(signInEmail === undefined ? {} : { signInEmail }) });
-  assert.deepEqual(edit(), { ok: true, value: { title: null, details: NO_MEMBER_DETAILS, name: null, signInEmail: null } });
-  assert.deepEqual(edit(" New.Person@Example.com "), { ok: true, value: { title: null, details: NO_MEMBER_DETAILS, name: null, signInEmail: "new.person@example.com" } });
+  const edit = (signInEmail?: string) => checkMemberEdit({ title: "", details: NO_MEMBER_DETAILS, ...(signInEmail === undefined ? {} : { signInEmail }) }, "");
+  assert.deepEqual(edit(), { ok: true, value: { title: null, divisionTitles: [], details: NO_MEMBER_DETAILS, name: null, signInEmail: null, landed: null } });
+  assert.deepEqual(edit(" New.Person@Example.com "), {
+    ok: true,
+    value: { title: null, divisionTitles: [], details: NO_MEMBER_DETAILS, name: null, signInEmail: "new.person@example.com", landed: null },
+  });
   for (const bad of ["", "not-an-email"]) assert.deepEqual(edit(bad), { ok: false, errors: { signInEmail: "Write an email address." } }, JSON.stringify(bad));
+});
+
+// Issue #887: imported phones often have no country code, and a save that leaves the phone alone must not fail on it.
+test("Edit details keeps an unchanged phone whatever its format, and checks a changed one", () => {
+  const opened = "3890247022";
+  const edit = (phone: string, landed?: string) =>
+    checkMemberEdit(
+      { title: "", details: { ...NO_MEMBER_DETAILS, phone }, ...(landed === undefined ? {} : { landed: { details: { ...NO_MEMBER_DETAILS, phone: landed } } }) },
+      opened,
+    );
+  const kept = edit(opened);
+  assert.ok(kept.ok);
+  assert.equal(kept.value.details.phone, opened);
+  assert.ok(edit(opened, opened).ok, "a retry of the same open form after an earlier Save");
+  assert.ok(edit("+39 389 024 7022").ok);
+  assert.ok(edit("").ok);
+  assert.deepEqual(edit("3890247023"), { ok: false, errors: { phone: "Start with + and the country code." } });
+  // The phone the form opened with is the only one kept: one that opened empty checks every phone.
+  assert.deepEqual(checkMemberEdit({ title: "", details: { ...NO_MEMBER_DETAILS, phone: opened } }, ""), {
+    ok: false,
+    errors: { phone: "Start with + and the country code." },
+  });
+});
+
+// Issue #911: the error summary lists every field in error, so a bad LinkedIn is named beside the other bad details.
+test("Edit details names a bad LinkedIn together with the other details in error", () => {
+  const edit = checkMemberEdit({ title: "", details: { ...NO_MEMBER_DETAILS, linkedin: "not a link", politoId: "abc" } }, "");
+  assert.deepEqual(edit, {
+    ok: false,
+    errors: { linkedin: "Paste your profile link, like linkedin.com/in/your-name.", politoId: "Numbers only, like s312456." },
+  });
 });
 
 // Issue #799: the "hasn't signed in yet" box names who added the person.

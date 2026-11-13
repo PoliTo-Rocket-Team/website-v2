@@ -6,6 +6,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
 import {
+  aliasRequests,
   alumniEntries,
   applicationFiles,
   applicationStatuses,
@@ -32,7 +33,11 @@ import { uploadPublicFile } from "@/lib/storage/public-store";
 import { deleteUnreferencedAfter } from "@/lib/storage/unreferenced-delete";
 import { canReach } from "./access";
 import type { DashboardIdentity } from "./database";
+import { readPrtEmailsHeldByOthers, requestOwnAlias } from "./database-alias";
+import { linkedGoogleAccountsOf } from "./database-google-accounts";
 import { readHandOverOffer } from "./database-hand-over";
+import { teamStayOf } from "./database-team-stay";
+import { ownPrtEmailOf, planOwnPrtEmailEdit } from "./own-prt-email";
 import { memberLeftNoticesFor } from "./database-notices";
 import {
   columnsFromDetails,
@@ -76,6 +81,7 @@ import {
 import { refreshAfter } from "@/lib/cache-tags";
 import { namesThemselves } from "./person-name";
 import { hasOwnProfile, isOffTeam } from "./viewer";
+import { departureOf } from "./team";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
 // The viewer's own pages read from and written to the database (boards 50 to
@@ -110,11 +116,17 @@ async function readLeaveState(memberId: number): Promise<LeaveState> {
 async function readProfile(identity: DashboardIdentity): Promise<MyProfile | null> {
   if (!hasOwnProfile(identity)) return null;
   const memberId = identity.memberId;
-  const [[member], details, leave, handOver] = await Promise.all([
+  const [[member], openRequests, details, leave, handOver, googleAccounts] = await Promise.all([
     getDb().select({ prt_email: members.prtEmail }).from(members).where(eq(members.memberId, memberId)).limit(1),
+    getDb()
+      .select({ id: aliasRequests.id })
+      .from(aliasRequests)
+      .where(and(eq(aliasRequests.memberId, memberId), isNull(aliasRequests.outcome)))
+      .limit(1),
     readDetails(identity.userId),
     readLeaveState(memberId),
     readHandOverOffer(identity),
+    linkedGoogleAccountsOf(identity.userId),
   ]);
   const linkedin = identity.linkedin === null ? null : normalizeLinkedin(identity.linkedin);
   return {
@@ -122,10 +134,11 @@ async function readProfile(identity: DashboardIdentity): Promise<MyProfile | nul
     detailsEditor: namesThemselves(identity.kind) ? "lead" : "member",
     // Every division they are in, not only the one a single-division page names (issue #185).
     roles: profileRolesOf(identity.role, identity.roles),
-    teamEmail: member?.prt_email ?? null,
+    prtEmail: ownPrtEmailOf({ name: identity.name, prtEmail: member?.prt_email ?? null, requested: openRequests.length > 0 }),
     linkedin: linkedin === null ? null : linkedin.ok ? linkedin.value : identity.linkedin,
     photoUrl: identity.picture,
     signIn: { provider: "google", email: identity.email },
+    googleAccounts,
     leave,
     details,
     handOver,
@@ -139,6 +152,37 @@ async function saveLinkedin(identity: DashboardIdentity, text: string): Promise<
   const url = checked.value === null ? null : `https://www.${checked.value}`;
   await runAuditQuery((db) => db.update(users).set({ linkedin: url }).where(eq(users.id, identity.userId)));
   return written(checked.value);
+}
+
+/**
+ * The member's own PRT email (issue #921), checked by `planOwnPrtEmailEdit`
+ * against every address someone else holds; an unchanged one writes nothing.
+ * A request of theirs still open asked for the address they now have, so it
+ * closes as cancelled in the same batch: an open request stays one for a
+ * member with no PRT email, as the request rules read it. The PRT email is on
+ * the Team page, which reads the cached team.
+ */
+async function savePrtEmail(identity: DashboardIdentity, text: string): Promise<WriteResult<string | null>> {
+  if (!hasOwnProfile(identity)) return refused("This page is for team members.");
+  const memberId = identity.memberId;
+  const [[row], taken] = await Promise.all([
+    getDb().select({ prt_email: members.prtEmail }).from(members).where(eq(members.memberId, memberId)).limit(1),
+    readPrtEmailsHeldByOthers(memberId),
+  ]);
+  const stored = row?.prt_email ?? null;
+  const planned = planOwnPrtEmailEdit({ stored, typed: text, taken });
+  if (!planned.ok) return refused(planned.error);
+  if (planned.value.kind === "unchanged") return written(stored);
+  const { address } = planned.value;
+  await runAuditBatch((db) => [
+    db.update(members).set({ prtEmail: address }).where(eq(members.memberId, memberId)),
+    db
+      .update(aliasRequests)
+      .set({ outcome: "cancelled", answeredBy: memberId, answeredByActingAccount: identity.actingAccountId, answeredAt: new Date().toISOString() })
+      .where(and(eq(aliasRequests.memberId, memberId), isNull(aliasRequests.outcome))),
+  ]);
+  refreshAfter("team", updateTag);
+  return written(address);
 }
 
 /**
@@ -198,8 +242,10 @@ function removeFromAlumni(db: ReturnType<typeof getDb>, memberId: number) {
 
 /**
  * Board 55b: every role the member still holds ends today, so the Alumni page
- * lists them, and the reason is kept. Their access grants go, so they come
- * back as an alumnus holding none (issue #317), and the lead of each division they were in gets a
+ * lists them, and the reason is kept. Their years on the team are read from
+ * stored data by the rule every leave uses (`departureOf`, issue #987). Their
+ * access grants go, so they come back as an alumnus holding none (issue
+ * #317), and the lead of each division they were in gets a
  * notice on their dashboard (issue #201), all in one batch. Their sign-in,
  * users row and member row stay. With the box ticked, the Alumni page stops
  * listing them (issue #257).
@@ -211,10 +257,14 @@ async function leaveTeam(identity: DashboardIdentity, reason: string, removeFrom
   // A lead or head leaves through "Hand over your role", which the next level up confirms (issue #262).
   if ((await readHandOverOffer(identity)) !== null) return refused(HAND_OVER_FIRST);
   const why = leaveReason(reason);
-  const notices = await memberLeftNoticesFor(memberId, why);
+  const on = today();
+  // The typed reason is free text, kept on team_leaves; only the years come from the shared rule.
+  const [notices, stay] = await Promise.all([memberLeftNoticesFor(memberId, why), teamStayOf(memberId)]);
+  const years = departureOf(stay, on, null);
   await runAuditBatch((db) => [
-    db.update(roles).set({ leavedAt: today() }).where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt))),
+    db.update(roles).set({ leavedAt: on }).where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt))),
     db.delete(scopes).where(eq(scopes.memberId, memberId)),
+    db.update(members).set({ teamFrom: years.from, teamTo: years.to }).where(eq(members.memberId, memberId)),
     db.insert(teamLeaves).values({ memberId, reason: why }),
     ...(removeFromAlumniPage ? [removeFromAlumni(db, memberId)] : []),
     ...(notices.length > 0
@@ -259,17 +309,19 @@ const USED_ONLY_BY_APPLICATIONS_WITHDRAWN_NOW = sql`exists (select 1 from ${appl
 
 async function readAccount(identity: DashboardIdentity): Promise<MyAccount | null> {
   if (!isOffTeam(identity.kind)) return null;
-  const [details, unwithdrawn] = await Promise.all([
+  const [details, unwithdrawn, googleAccounts] = await Promise.all([
     readDetails(identity.userId),
     getDb()
       .select({ id: applications.id })
       .from(applications)
       .where(and(eq(applications.userId, identity.userId), isNull(applications.withdrawnAt))),
+    linkedGoogleAccountsOf(identity.userId),
   ]);
   return {
     name: identity.name,
     photoUrl: identity.picture,
     signIn: { provider: "google", email: identity.email },
+    googleAccounts,
     details,
     unwithdrawnApplications: unwithdrawn.length,
   };
@@ -278,10 +330,13 @@ async function readAccount(identity: DashboardIdentity): Promise<MyAccount | nul
 /**
  * Someone off the team edits every field on My account; anyone on the team
  * only My profile's, their own name only when they rename themselves
- * (`detailsEditorOf`, issue #668): a member's name sent here is dropped.
+ * (`detailsEditorOf`, issue #668): a member's name sent here is dropped. The
+ * phone is checked against the stored one the form opened with, so an
+ * unchanged phone saves whatever its format (issue #887).
  */
 async function saveDetails(identity: DashboardIdentity, input: unknown): Promise<WriteResult<YourDetails>> {
-  const parsed = parseDetailsChange(input, detailsEditorOf(identity.kind));
+  const stored = await readDetails(identity.userId);
+  const parsed = parseDetailsChange(input, detailsEditorOf(identity.kind), stored.phone);
   if (!parsed.ok) return refused(firstDetailError(parsed.errors));
   await runAuditQuery((db) =>
     db
@@ -548,6 +603,8 @@ export function databaseSelfPages(identity: DashboardIdentity) {
   return {
     myProfile: () => readProfile(identity),
     saveLinkedin: (text: string) => saveLinkedin(identity, text),
+    savePrtEmail: (text: string) => savePrtEmail(identity, text),
+    requestOwnAlias: (address: string) => requestOwnAlias(identity, address),
     setPhoto: (photo: Upload | null) => setPhoto(identity, photo),
     leaveTeam: (reason: string, removeFromAlumniPage: boolean) => leaveTeam(identity, reason, removeFromAlumniPage),
     myAccount: () => readAccount(identity),

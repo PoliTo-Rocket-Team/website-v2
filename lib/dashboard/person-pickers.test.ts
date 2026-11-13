@@ -7,8 +7,8 @@ import { JSDOM } from "jsdom";
 import { betterAuthUsers } from "@/db/schema";
 import { SEED_DATA, teamRolesOf } from "@/db/seed/cases";
 import { NO_TEAM_LAYER } from "@/lib/about/team-layer";
+import { snapshot } from "@/lib/about/team-layout";
 import { leaderFieldErrors, leaderGaps, newLeaderFields, teamByName } from "@/lib/about/team-page-add";
-import { teamBuildOf } from "@/lib/about/team-roles";
 import type { DashboardData } from "./data";
 import { openDashboard } from "./open";
 import { addRows, resetDatabase } from "./access-matrix/test-database";
@@ -45,6 +45,9 @@ class StillObserver {
 }
 globals.ResizeObserver = StillObserver;
 globals.IntersectionObserver = StillObserver;
+// A refused form scrolls to and focuses its first field in error (issue #927); JSDOM draws no layout.
+window.matchMedia = ((query: string) => ({ matches: false, media: query })) as unknown as typeof window.matchMedia;
+window.HTMLElement.prototype.scrollIntoView = () => {};
 // The test database starts its Postgres engine with Node's own globals, so it
 // starts before the page's globals take their place.
 before(async () => {
@@ -134,7 +137,9 @@ test("Edit team tree, Add seat: the Holder field lists the team as it opens, and
   const { createElement } = await import("react");
   const { SeatDrawer } = await import("@/components/dashboard/seat-drawers");
   const ui = await mount(createElement(SeatDrawer, { target: { kind: "new" }, structure, onClose: () => {} }));
-  assert.equal(ui.button("Add seat").disabled, true, "no holder, no seat");
+  // Add seat stays clickable and says what is missing beside it (issue #927): no holder, no seat.
+  await ui.press("Add seat");
+  assert.match(window.document.querySelector('[role="alert"]')?.textContent ?? "", /Holder/, "no holder, no seat");
   await ui.press("Pick holder");
   // Before #618 the open field showed only its help sentence.
   await listsOnOpenAndNarrows(ui, "a");
@@ -184,7 +189,8 @@ test("View as: the field lists people as it opens with nobody chosen, and neithe
 });
 
 test("Team page editor, Add leader: the Person field opens on the whole team with nobody picked, and shows why Add to page is refused", async () => {
-  const build = teamBuildOf(teamRolesOf(SEED_DATA));
+  const roles = teamRolesOf(SEED_DATA);
+  const layout = snapshot(roles, NO_TEAM_LAYER).layout;
   const fields = newLeaderFields(0);
   const { createElement } = await import("react");
   const { TeamLeaderPanel } = await import("@/components/dashboard/team-leader-panel");
@@ -192,9 +198,9 @@ test("Team page editor, Add leader: the Person field opens on the whole team wit
     createElement(TeamLeaderPanel, {
       adding: true,
       fields,
-      gaps: leaderGaps(build, NO_TEAM_LAYER, null),
-      people: teamByName(build),
-      errors: leaderFieldErrors(build, NO_TEAM_LAYER, null, fields),
+      gaps: leaderGaps(roles, layout, null),
+      people: teamByName(roles),
+      errors: leaderFieldErrors(layout, null, fields),
       photoChoices: [],
       onChange: () => {},
       onPerson: () => {},

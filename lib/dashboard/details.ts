@@ -6,6 +6,7 @@ import {
   STUDY_PROGRAMMES,
   type FormDefaults,
 } from "@/lib/apply/application-form";
+import { phoneOnLeave } from "@/lib/phone";
 import { nameRule, namesThemselves } from "./person-name";
 import { normalizeLinkedin } from "./self";
 import { isOffTeam, type ViewerKind } from "./viewer";
@@ -131,10 +132,30 @@ function isPastDate(iso: string): boolean {
 /** Empty, or the rule the apply form checks the same field with (lib/apply/application-form.ts). */
 const optional = <T extends z.ZodType<string>>(rule: T) => z.union([z.literal(""), rule]);
 
+const PHONE = /^\+[0-9][0-9 ]{5,18}[0-9]$/;
+
+/**
+ * A phone as a details form sends it, checked against `opened`, the phone the
+ * form opened with (issue #887). Sent back unchanged, it is kept whatever its
+ * format: phones imported from the old roster often have no country code, and
+ * a save that leaves the phone alone must not fail on it. A changed phone is
+ * empty or starts with + and the country code; the lone `+` an empty field
+ * gets on entry (issue #953) counts as empty. A form that opened empty
+ * passes "".
+ */
+function phoneRule(opened: string) {
+  const kept = opened.trim();
+  return z
+    .string()
+    .trim()
+    .transform(phoneOnLeave)
+    .refine((phone) => phone === "" || phone === kept || PHONE.test(phone), "Start with + and the country code.");
+}
+
 const detailsSchema = z.object({
   firstName: z.string().trim().max(100, "Too long."),
   lastName: z.string().trim().max(100, "Too long."),
-  phone: z.string().trim().pipe(optional(z.string().regex(/^\+[0-9][0-9 ]{5,18}[0-9]$/, "Start with + and the country code."))),
+  phone: phoneRule(""),
   politoId: z
     .string()
     .trim()
@@ -175,16 +196,19 @@ export function parseDetails(input: unknown): { ok: true; value: YourDetails } |
  * A save of "Your details" as the edit form sent it, checked: only the
  * fields `editor` may write are read, so anything else sent is dropped
  * before it reaches a column. The browser and the server run the same check.
+ * `openedPhone` is the phone the form opened with: the browser's own, the
+ * server's the stored `users.phone`, never one the form sends.
  */
 export function parseDetailsChange(
   input: unknown,
   editor: DetailsEditor,
+  openedPhone: string,
 ): { ok: true; value: DetailsChange } | { ok: false; errors: DetailErrors } {
   const keys = editableDetailKeys(editor);
   const picked: Record<string, unknown> = {};
   const sent = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
   for (const key of keys) picked[key] = sent[key];
-  const schema = detailsSchema.pick(Object.fromEntries(keys.map((k) => [k, true] as const)));
+  const schema = detailsSchema.extend({ phone: phoneRule(openedPhone) }).pick(Object.fromEntries(keys.map((k) => [k, true] as const)));
   // An applicant's name may wait for the apply form; a lead's is on the Team page, so it is never blank.
   const result = (editor === "lead" ? schema.extend(OWN_NAME) : schema).safeParse(picked);
   if (!result.success) return { ok: false, errors: errorsOf(result.error) };
@@ -310,11 +334,20 @@ export function noDetailsFilled(details: MemberDetails): boolean {
   return Object.values(details).every((value) => value === "");
 }
 
+/** A LinkedIn link in its short form, "" when empty: checked inside the schema so its error lands beside every other field's. */
+const linkedinRule = z.string().transform((raw, ctx) => {
+  const linkedin = normalizeLinkedin(raw);
+  if (linkedin.ok) return linkedin.value ?? "";
+  ctx.addIssue({ code: "custom", message: linkedin.error });
+  return z.NEVER;
+});
+
 const memberDetailsSchema = detailsSchema
-  .pick({ phone: true, politoId: true, programme: true, level: true, country: true, birthDate: true, linkedin: true })
+  .pick({ phone: true, politoId: true, programme: true, level: true, country: true, birthDate: true })
   .extend({
     prtEmail: z.string().trim().toLowerCase().pipe(optional(z.email("Write an email address.").max(200, "Too long."))),
     discord: z.string().trim().max(40, "Too long."),
+    linkedin: linkedinRule,
     gender: z.union([z.literal(""), z.enum(GENDERS, "Pick one.")]),
   });
 
@@ -323,18 +356,17 @@ export type MemberDetailErrors = Partial<Record<MemberDetailKey, string>>;
 /**
  * The member's details as the Edit details or Add member form sent them,
  * checked: the clean values, or one message per bad field. The browser and
- * the server run the same check.
+ * the server run the same check. `openedPhone` is the phone the form opened
+ * with, as the page reads the person's record; "" for Add member.
  */
-export function parseMemberDetails(input: unknown): { ok: true; value: MemberDetails } | { ok: false; errors: MemberDetailErrors } {
-  const result = memberDetailsSchema.safeParse(input);
+export function parseMemberDetails(input: unknown, openedPhone: string): { ok: true; value: MemberDetails } | { ok: false; errors: MemberDetailErrors } {
+  const result = memberDetailsSchema.extend({ phone: phoneRule(openedPhone) }).safeParse(input);
   if (!result.success) {
     const errors: MemberDetailErrors = {};
     for (const issue of result.error.issues) errors[issue.path[0] as MemberDetailKey] ??= issue.message;
     return { ok: false, errors };
   }
-  const linkedin = normalizeLinkedin(result.data.linkedin);
-  if (!linkedin.ok) return { ok: false, errors: { linkedin: linkedin.error } };
-  return { ok: true, value: { ...result.data, linkedin: linkedin.value ?? "" } };
+  return { ok: true, value: result.data };
 }
 
 /** A member detail as the drawer shows it (board 61f); null for an empty one. */
@@ -347,26 +379,45 @@ export function memberDetailText(details: MemberDetails, key: MemberDetailKey): 
   return value;
 }
 
+/** The columns member details are stored in, each holding `V`: a value, null to clear it, or undefined where it is not written. */
+type MemberDetailColumns<V> = {
+  readonly user: {
+    readonly phone: V;
+    readonly linkedin: V;
+    readonly politoId: V;
+    readonly program: V;
+    readonly levelOfStudy: V;
+    readonly country: V;
+    readonly dateOfBirth: V;
+    readonly gender: V;
+  };
+  readonly member: { readonly prtEmail: V; readonly discord: V };
+};
+
 /**
  * Where each member detail is stored: the person's `users` row, or their
  * `members` row for the PRT email and Discord (a person waiting for their NDA
  * keeps those two on their `team_joins` row). An empty field clears its
- * column.
+ * column; a field left out is not written, so neither is its column.
  */
-export function columnsFromMemberDetails(details: MemberDetails) {
-  const value = (text: string) => (text === "" ? null : text);
+export function columnsFromMemberDetails(details: MemberDetails): MemberDetailColumns<string | null>;
+export function columnsFromMemberDetails(details: Partial<MemberDetails>): MemberDetailColumns<string | null | undefined>;
+export function columnsFromMemberDetails(details: Partial<MemberDetails>): MemberDetailColumns<string | null | undefined> {
+  const value = (text: string | undefined) => (text === undefined ? undefined : text === "" ? null : text);
+  const sent = <T extends Record<string, string | null | undefined>>(columns: T) =>
+    Object.fromEntries(Object.entries(columns).filter(([, v]) => v !== undefined)) as T;
   return {
-    user: {
+    user: sent({
       phone: value(details.phone),
-      linkedin: details.linkedin === "" ? null : `https://www.${details.linkedin}`,
+      linkedin: details.linkedin === undefined ? undefined : details.linkedin === "" ? null : `https://www.${details.linkedin}`,
       politoId: value(details.politoId),
       program: value(details.programme),
       levelOfStudy: value(details.level),
       country: value(details.country),
       dateOfBirth: value(details.birthDate),
       gender: value(details.gender),
-    },
-    member: { prtEmail: value(details.prtEmail), discord: value(details.discord) },
+    }),
+    member: sent({ prtEmail: value(details.prtEmail), discord: value(details.discord) }),
   };
 }
 

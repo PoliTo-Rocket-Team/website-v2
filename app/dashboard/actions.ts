@@ -9,11 +9,12 @@ import { isHandOverAnswer } from "@/lib/dashboard/hand-over-request";
 import type { InterviewSlot } from "@/lib/dashboard/my-applications";
 import { uploadOf } from "@/lib/dashboard/form-upload";
 import { openDashboard } from "@/lib/dashboard/open";
+import { refreshDashboard } from "@/lib/dashboard/refresh";
 import type { Order } from "@/lib/dashboard/orders";
 import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { isPublishStep, type ContentItem, type PublishStep, type Versioned } from "@/lib/content/versioned";
-import type { TeamPageLayer } from "@/lib/about/team-layer";
 import type { TeamPageSaved } from "@/lib/about/team-page-editor";
+import type { TeamPageContent } from "@/lib/about/team-page-stored";
 import type { PersonPhoto } from "@/lib/about/types";
 import type { Partner, PartnerTier } from "@/lib/partners";
 import type { MeasuredLogo } from "@/lib/partners-editor";
@@ -25,7 +26,9 @@ import type { OutreachTag, PhotoSrc, PostItem } from "@/lib/outreach-types";
 // The dashboard's writes (issues #145 and #169). Each one opens the dashboard as the
 // page did, checks the viewer reaches the page the write belongs to, and
 // hands what the browser sent to the data interface, which checks it again
-// and writes to the database.
+// and writes to the database. A write that lands refreshes every dashboard
+// page (`refreshDashboard`, issue #984); a file stored before a save changes
+// no page, so it refreshes none (`onPage`).
 
 /** The dashboard, when the viewer reaches one of `pages`; else why not. */
 async function dataFor(pages: DashboardPageKey | readonly DashboardPageKey[]): Promise<DashboardData | string> {
@@ -36,12 +39,27 @@ async function dataFor(pages: DashboardPageKey | readonly DashboardPageKey[]): P
   return opening.data;
 }
 
-async function write<T>(
+/**
+ * Runs `run` for a viewer who reaches one of `pages`, and refreshes nothing:
+ * for a file stored or measured before a save uses it, which no page shows
+ * yet, and for a closed account, whose page signs out next.
+ */
+async function onPage<T>(
   pages: DashboardPageKey | readonly DashboardPageKey[],
   run: (data: DashboardData) => Promise<WriteResult<T>>,
 ): Promise<WriteResult<T>> {
   const data = await dataFor(pages);
   return typeof data === "string" ? refused(data) : run(data);
+}
+
+/** A write: once it lands, every dashboard page reads again, so lists and panels show it at once. */
+async function write<T>(
+  pages: DashboardPageKey | readonly DashboardPageKey[],
+  run: (data: DashboardData) => Promise<WriteResult<T>>,
+): Promise<WriteResult<T>> {
+  const result = await onPage(pages, run);
+  if (result.ok) refreshDashboard();
+  return result;
 }
 
 function textFields(form: FormData, names: readonly string[]): Record<string, string> {
@@ -51,9 +69,7 @@ function textFields(form: FormData, names: readonly string[]): Record<string, st
 /** Dismiss on a notice under "Needs your attention" (issue #201); the Overview reads again without it. */
 export async function dismissNotice(noticeId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(noticeId)) return refused("Unknown notice.");
-  const result = await write("overview", (data) => data.dismissNotice(noticeId));
-  if (result.ok) revalidatePath("/dashboard");
-  return result;
+  return write("overview", (data) => data.dismissNotice(noticeId));
 }
 
 /** Give access or Edit access (boards 60b and 60c). */
@@ -115,7 +131,7 @@ export async function markOrdered(orderId: number): Promise<WriteResult<Order>> 
 export async function measurePartnerLogo(form: FormData): Promise<WriteResult<MeasuredLogo>> {
   const logo = await uploadOf(form, "logo");
   if (logo === null) return refused("Choose a logo.");
-  return write("partners", (data) => data.partners.measure(logo));
+  return onPage("partners", (data) => data.partners.measure(logo));
 }
 
 /**
@@ -185,26 +201,27 @@ export async function reorderFaqs(faqIds: readonly number[]): Promise<WriteResul
   return result;
 }
 
-// The Team page's visual layer (issue #283) and advisors (board 80d, issue
-// #286), behind the same site-content gate. Save draft and Reset to team
-// change only the draft; Publish changes what /about/the-team shows, so it
-// renders the page again. None of them writes a role, division, department,
-// scope or member.
+// The Team page's layout and text (issues #283 and #851) and advisors (board
+// 80d, issue #286), behind the same site-content gate. Save draft and Reset
+// to team change only the draft; Publish changes what /about/the-team shows,
+// so it renders the page again. None of them writes a role, division,
+// department, scope or member.
 
 /**
- * Save draft or Publish the whole layer and the Advisors panel's rows, in
- * page order, as the editor holds them: one write, so either both land or
- * neither does (issue #321), and one render of the page on Publish.
+ * Save draft or Publish the whole content (the layout and the intro text,
+ * figures and group photo) and the Advisors panel's rows, in page order, as
+ * the editor holds them: one write, so either both land or neither does
+ * (issue #321), and one render of the page on Publish.
  */
-export async function saveTeamPage(step: PublishStep, layer: unknown, advisors: unknown): Promise<WriteResult<TeamPageSaved>> {
+export async function saveTeamPage(step: PublishStep, content: unknown, advisors: unknown): Promise<WriteResult<TeamPageSaved>> {
   if (!isPublishStep(step)) return refused("Save a draft or publish.");
-  const result = await write("team-page", (data) => data.teamPage.save(step, layer, advisors));
+  const result = await write("team-page", (data) => data.teamPage.save(step, content, advisors));
   if (result.ok && step === "publish") revalidatePath("/about/the-team");
   return result;
 }
 
-/** Reset to team (board 80h): a draft with every edit gone except the intro text and the group photo. */
-export async function resetTeamPageLayer(): Promise<WriteResult<Versioned<TeamPageLayer>>> {
+/** Reset to team (board 80h): a draft whose layout is rebuilt from the team, with the intro text, figures and group photo kept. */
+export async function resetTeamPageLayer(): Promise<WriteResult<Versioned<TeamPageContent>>> {
   return write("team-page", (data) => data.teamPage.reset());
 }
 
@@ -216,7 +233,7 @@ export async function resetTeamPageLayer(): Promise<WriteResult<Versioned<TeamPa
 export async function uploadTeamPagePhoto(form: FormData): Promise<WriteResult<PersonPhoto>> {
   const photo = await uploadOf(form, "photo");
   if (photo === null) return refused("Choose a photo.");
-  return write("team-page", (data) => data.teamPage.uploadPhoto(photo));
+  return onPage("team-page", (data) => data.teamPage.uploadPhoto(photo));
 }
 
 /** End advising: the advisor leaves the Team page and joins the Alumni page's Advisors group for `years`. */
@@ -226,7 +243,6 @@ export async function endAdvising(advisorId: number, years: unknown): Promise<Wr
   if (result.ok) {
     revalidatePath("/about/the-team");
     revalidatePath("/about/alumni");
-    revalidatePath("/dashboard/alumni");
   }
   return result;
 }
@@ -236,9 +252,17 @@ export async function endAdvising(advisorId: number, years: unknown): Promise<Wr
 // write, as it decides who opens the post page. The writes refresh the cached
 // published read themselves; the pages that show posts render again.
 
-async function contentWrite<T>(run: (data: DashboardData) => Promise<WriteResult<T>>): Promise<WriteResult<T>> {
+/** A photo stored for the Edit post panel before a save: no page shows it yet. */
+async function contentStore<T>(run: (data: DashboardData) => Promise<WriteResult<T>>): Promise<WriteResult<T>> {
   const opening = await openDashboard();
   return opening.kind === "open" ? run(opening.data) : refused("Sign in again to make changes.");
+}
+
+/** A post or tag write: once it lands, every dashboard page reads again, the Outreach list among them. */
+async function contentWrite<T>(run: (data: DashboardData) => Promise<WriteResult<T>>): Promise<WriteResult<T>> {
+  const result = await contentStore(run);
+  if (result.ok) refreshDashboard();
+  return result;
 }
 
 function refreshPublicOutreach(): void {
@@ -268,16 +292,26 @@ export async function addOutreachTag(name: string): Promise<WriteResult<Outreach
 export async function uploadOutreachPhoto(form: FormData): Promise<WriteResult<PhotoSrc>> {
   const photo = await uploadOf(form, "photo");
   if (photo === null) return refused("Choose a photo.");
-  return contentWrite((data) => data.outreach.uploadPhoto(photo));
+  return contentStore((data) => data.outreach.uploadPhoto(photo));
 }
 
 /** A photo removed before a save used it: its file goes, unless a post version shows it. */
 export async function discardOutreachPhoto(src: string): Promise<WriteResult<null>> {
-  return contentWrite((data) => data.outreach.discardPhoto(String(src ?? "")));
+  return contentStore((data) => data.outreach.discardPhoto(String(src ?? "")));
 }
 
 export async function saveLinkedin(text: string): Promise<WriteResult<string | null>> {
   return write("my-profile", (data) => data.saveLinkedin(String(text)));
+}
+
+/** The PRT email on My profile (issue #921): the Overview's alias card and the profile read it again. */
+export async function savePrtEmail(text: string): Promise<WriteResult<string | null>> {
+  return write("my-profile", (data) => data.savePrtEmail(String(text ?? "")));
+}
+
+/** Request my PRT email on My profile (issue #921): the profile reads again with the request waiting. */
+export async function requestOwnAlias(address: string): Promise<WriteResult<null>> {
+  return write("my-profile", (data) => data.requestOwnAlias(String(address ?? "")));
 }
 
 export async function uploadPhoto(form: FormData): Promise<WriteResult<null>> {
@@ -291,10 +325,8 @@ export async function removePhoto(): Promise<WriteResult<null>> {
 }
 
 export async function leaveTeam(reason: string, removeFromAlumni: boolean): Promise<WriteResult<DashboardLanding>> {
-  const result = await write("my-profile", (data) => data.leaveTeam(String(reason ?? ""), removeFromAlumni === true));
   // Off the team, the sidebar and every page change to an alumnus's (issues #201, #317).
-  if (result.ok) revalidatePath("/dashboard", "layout");
-  return result;
+  return write("my-profile", (data) => data.leaveTeam(String(reason ?? ""), removeFromAlumni === true));
 }
 
 /**
@@ -303,9 +335,7 @@ export async function leaveTeam(reason: string, removeFromAlumni: boolean): Prom
  */
 export async function setMyAlumniShown(shown: boolean): Promise<WriteResult<null>> {
   if (typeof shown !== "boolean") return refused("Check the switch.");
-  const result = await write("my-alumni", (data) => data.setMyAlumniShown(shown));
-  if (result.ok) revalidatePath("/dashboard", "layout");
-  return result;
+  return write("my-alumni", (data) => data.setMyAlumniShown(shown));
 }
 
 /** My alumni's photo: the one the Alumni page shows beside their name. */
@@ -321,18 +351,14 @@ export async function removeMyAlumniPhoto(): Promise<WriteResult<null>> {
 
 /** "Send for confirmation" on My profile (board 55d, issue #262): the hand-over waits; no role changes. */
 export async function sendHandOver(input: unknown): Promise<WriteResult<null>> {
-  const result = await write("my-profile", (data) => data.sendHandOver(input));
-  if (result.ok) revalidatePath("/dashboard/profile");
-  return result;
+  return write("my-profile", (data) => data.sendHandOver(input));
 }
 
 /** Decline or Confirm on the Overview (board 62c): Confirm hands the role over, so every page reads again. */
 export async function answerHandOver(requestId: number, answer: unknown): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(requestId)) return refused("Unknown hand-over.");
   if (!isHandOverAnswer(answer)) return refused("Choose Decline or Confirm.");
-  const result = await write("overview", (data) => data.answerHandOver(requestId, answer));
-  if (result.ok) revalidatePath("/dashboard", "layout");
-  return result;
+  return write("overview", (data) => data.answerHandOver(requestId, answer));
 }
 
 /**
@@ -341,64 +367,57 @@ export async function answerHandOver(requestId: number, answer: unknown): Promis
  * again with the request waiting.
  */
 export async function requestAlias(input: unknown): Promise<WriteResult<null>> {
-  const result = await write("members", (data) => data.requestAlias(input));
-  if (result.ok) revalidatePath("/dashboard", "layout");
-  return result;
+  return write("members", (data) => data.requestAlias(input));
 }
 
 /** Request team address in the member drawer (board 102b, epic #578): the drawer reads again; the request waits for an approver. */
 export async function requestTeamAddress(input: unknown): Promise<WriteResult<null>> {
-  const result = await write("members", (data) => data.requestTeamAddress(input));
-  if (result.ok) revalidatePath("/dashboard", "layout");
-  return result;
+  return write("members", (data) => data.requestTeamAddress(input));
 }
 
 /** Decline or Mark created on the Overview (epic #578, issue #788): the row leaves, and Mark created shows the address in the member drawer. */
 export async function answerTeamAddress(requestId: number, answer: unknown): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(requestId)) return refused("Unknown PRT email request.");
-  const result = await write("overview", (data) => data.answerTeamAddress(requestId, answer));
-  if (result.ok) revalidatePath("/dashboard", "layout");
-  return result;
+  return write("overview", (data) => data.answerTeamAddress(requestId, answer));
 }
 
 /** Mark done on a team address routing item (epic #578, issue #789): the row leaves, and the address shows under its new holder. */
 export async function markTeamAddressRerouteDone(rerouteId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(rerouteId)) return refused("Unknown PRT email routing item.");
-  const result = await write("overview", (data) => data.markTeamAddressRerouteDone(rerouteId));
-  if (result.ok) revalidatePath("/dashboard", "layout");
-  return result;
+  return write("overview", (data) => data.markTeamAddressRerouteDone(rerouteId));
 }
 
 /** Remove on a team address in the member drawer (issue #797): the drawer reads again with the removal waiting for an approver. */
 export async function removeTeamAddress(addressId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(addressId)) return refused("Unknown PRT email.");
-  const result = await write("members", (data) => data.removeTeamAddress(addressId));
-  if (result.ok) revalidatePath("/dashboard", "layout");
-  return result;
+  return write("members", (data) => data.removeTeamAddress(addressId));
 }
 
 /** Mark done on a team address removal (issue #797): the row leaves, and the address leaves its holder and can be requested again. */
 export async function markTeamAddressRemovalDone(removalId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(removalId)) return refused("Unknown PRT email removal.");
-  const result = await write("overview", (data) => data.markTeamAddressRemovalDone(removalId));
-  if (result.ok) revalidatePath("/dashboard", "layout");
-  return result;
+  return write("overview", (data) => data.markTeamAddressRemovalDone(removalId));
+}
+
+/**
+ * Mark done or Keep address on a personal PRT email removal (issue #931): the
+ * row leaves, and Mark done clears the member's PRT email.
+ */
+export async function answerPrtEmailRemoval(removalId: number, answer: unknown): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(removalId)) return refused("Unknown PRT email removal.");
+  return write("overview", (data) => data.answerPrtEmailRemoval(removalId, answer));
 }
 
 /** Cancel request in the member drawer (board 94b). */
 export async function cancelAliasRequest(requestId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(requestId)) return refused("Unknown PRT email request.");
-  const result = await write("members", (data) => data.cancelAliasRequest(requestId));
-  if (result.ok) revalidatePath("/dashboard", "layout");
-  return result;
+  return write("members", (data) => data.cancelAliasRequest(requestId));
 }
 
 /** Decline or Mark created on the Overview (boards 94c, 94d): the row leaves, and the member drawer shows the alias. */
 export async function answerAlias(requestId: number, answer: unknown): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(requestId)) return refused("Unknown PRT email request.");
-  const result = await write("overview", (data) => data.answerAlias(requestId, answer));
-  if (result.ok) revalidatePath("/dashboard", "layout");
-  return result;
+  return write("overview", (data) => data.answerAlias(requestId, answer));
 }
 
 /**
@@ -407,9 +426,7 @@ export async function answerAlias(requestId: number, answer: unknown): Promise<W
  * Overview reads again without the card.
  */
 export async function confirmAliasSetUp(): Promise<WriteResult<null>> {
-  const result = await write(["overview", "my-profile"], (data) => data.confirmAliasSetUp());
-  if (result.ok) revalidatePath("/dashboard", "layout");
-  return result;
+  return write(["overview", "my-profile"], (data) => data.confirmAliasSetUp());
 }
 
 /**
@@ -419,9 +436,7 @@ export async function confirmAliasSetUp(): Promise<WriteResult<null>> {
  */
 export async function confirmTeamAddressSetUp(addressId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(addressId)) return refused("Unknown PRT email.");
-  const result = await write("overview", (data) => data.confirmTeamAddressSetUp(addressId));
-  if (result.ok) revalidatePath("/dashboard", "layout");
-  return result;
+  return write("overview", (data) => data.confirmTeamAddressSetUp(addressId));
 }
 
 export async function withdrawApplication(applicationId: number): Promise<WriteResult<null>> {
@@ -442,7 +457,7 @@ export async function saveDetails(input: unknown): Promise<WriteResult<YourDetai
 }
 
 export async function deleteAccount(withdrawOpenApplications: boolean, removeFromAlumni: boolean): Promise<WriteResult<null>> {
-  return write(OWN_PAGES, (data) =>
+  return onPage(OWN_PAGES, (data) =>
     data.deleteAccount({ withdrawOpenApplications: withdrawOpenApplications === true, removeFromAlumni: removeFromAlumni === true }),
   );
 }

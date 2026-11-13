@@ -19,14 +19,17 @@ import {
   planAliasAnswer,
   planAliasCancel,
   planAliasRequest,
+  planOwnAliasRequest,
   teamAddressOf,
   type AliasRequest,
   type MemberAliases,
+  type PlannedAliasRequest,
 } from "./alias-request";
 import { ownAliasOf, planAliasSetUp, type OwnAlias } from "./alias-setup";
 import { actingTitleIn, readActingTitles } from "./database-acting-account";
 import type { DashboardIdentity } from "./database";
-import { isOffTeam } from "./viewer";
+import type { TeamPerson } from "./division-edit";
+import { hasOwnProfile, isOffTeam } from "./viewer";
 import type { AttentionItem } from "./overview";
 import { aliasTeamOf, readTeamSnapshot, teamPeopleOf } from "./team-database";
 import { refused, written, type WriteResult } from "./write";
@@ -146,20 +149,68 @@ export async function requestAlias(identity: DashboardIdentity, input: unknown):
     taken: [...addresses.values(), ...special],
   });
   if (!planned.ok) return refused(planned.error);
+  return storeAliasRequest(identity, planned.value, team);
+}
+
+/**
+ * Request my PRT email on My profile (issue #921): the member asks for
+ * themselves, checked by `checkAliasRequest` and `planOwnAliasRequest`, and
+ * the request is stored as Request PRT email stores one, so the approvers
+ * see it under Needs your attention.
+ */
+export async function requestOwnAlias(identity: DashboardIdentity, address: string): Promise<WriteResult<null>> {
+  if (!hasOwnProfile(identity)) return refused("This page is for team members.");
+  const memberId = identity.memberId;
+  const checked = checkAliasRequest({ memberId, address });
+  if (!checked.ok) return refused(checked.error);
+  const [snapshot, addresses, open, special] = await Promise.all([
+    readTeamSnapshot(),
+    readAliasAddresses(),
+    readOpenAliasRequests(),
+    readSpecialSameAs(checked.value.address),
+  ]);
+  const team = teamPeopleOf(snapshot);
+  const planned = planOwnAliasRequest({
+    memberId,
+    team,
+    prtEmail: addresses.get(memberId) ?? null,
+    open,
+    address: checked.value.address,
+    taken: [...addresses.values(), ...special],
+  });
+  if (!planned.ok) return refused(planned.error);
+  return storeAliasRequest(identity, planned.value, team);
+}
+
+/** Stores a planned personal request as open; the index refuses a second one for the member. */
+async function storeAliasRequest(identity: DashboardIdentity, planned: PlannedAliasRequest, team: readonly TeamPerson[]): Promise<WriteResult<null>> {
   try {
     await runAuditQuery((db) =>
       db.insert(aliasRequests).values({
-        memberId,
-        requestedBy: planned.value.requesterId,
+        memberId: planned.memberId,
+        requestedBy: planned.requesterId,
         requestedByActingAccount: identity.actingAccountId,
-        address: planned.value.address,
+        address: planned.address,
       }),
     );
   } catch (error) {
-    if (isUniqueViolation(error)) return refused(aliasAlreadyRequested(team.find((p) => p.id === memberId)?.name ?? "this member"));
+    if (isUniqueViolation(error)) return refused(aliasAlreadyRequested(team.find((p) => p.id === planned.memberId)?.name ?? "this member"));
     throw error;
   }
   return written(null);
+}
+
+/**
+ * The PRT emails a member's own edit may not take (issue #921): every other
+ * member's PRT email and every special PRT email, as stored. The edit reads
+ * them in any letter case (`planOwnPrtEmailEdit`).
+ */
+export async function readPrtEmailsHeldByOthers(memberId: number): Promise<string[]> {
+  const [addresses, special] = await Promise.all([
+    readAliasAddresses(),
+    getDb().select({ address: teamAddresses.address }).from(teamAddresses),
+  ]);
+  return [...[...addresses].flatMap(([id, address]) => (id === memberId ? [] : [address])), ...special.map((r) => r.address)];
 }
 
 /**

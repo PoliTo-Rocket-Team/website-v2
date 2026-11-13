@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { asc, eq, isNotNull, sql } from "drizzle-orm";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
 import { getDb } from "@/db/client";
-import { alumniEntries, alumniImportedRoles, alumniRoleFixes, departments, divisions, members, roles, users } from "@/db/schema";
+import { alumniAddedYears, alumniEntries, alumniImportedRoles, alumniRoleFixes, departments, divisions, members, roles, users } from "@/db/schema";
 import { currentAcademicYearStart } from "@/lib/about/academic-year";
 import {
   alumniOf,
@@ -13,6 +13,7 @@ import {
   type Alumnus,
   type AlumnusKey,
   type EntryWho,
+  type UnitRef,
 } from "@/lib/about/alumni-record";
 import type { FounderMark } from "@/lib/about/alumni-types";
 import { runAuditBatch } from "@/lib/db-audit";
@@ -21,7 +22,7 @@ import { referencedPublicFiles } from "@/lib/storage/public-references";
 import { uploadPublicFile } from "@/lib/storage/public-store";
 import { deleteUnreferencedAfter } from "@/lib/storage/unreferenced-delete";
 import { canReach } from "./access";
-import { alumniDirectory, checkAdvisor, checkAlumnusFix, alumnusRow, type AlumniDirectory } from "./alumni";
+import { alumniDirectory, checkAdvisor, checkAlumnusFix, alumnusRow, type AddedYearGround, type AlumniDirectory } from "./alumni";
 import type { DashboardIdentity } from "./database";
 import { photoPathnames } from "./database-self";
 import { myAlumniOf, type MyAlumni } from "./my-alumni";
@@ -43,6 +44,12 @@ const FOUNDER_COLUMN: Readonly<Record<FounderMark, "founder" | "co_founder">> = 
 
 type EntryRow = typeof alumniEntries.$inferSelect;
 
+/** An added year's unit: the check on the table keeps exactly one of the two columns set. */
+function unitOf(row: Pick<typeof alumniAddedYears.$inferSelect, "departmentId" | "divisionId">): UnitRef | null {
+  if (row.departmentId !== null) return { kind: "department", id: row.departmentId };
+  return row.divisionId === null ? null : { kind: "division", id: row.divisionId };
+}
+
 function whoOf(row: EntryRow): EntryWho | null {
   switch (row.kind) {
     case "member":
@@ -58,10 +65,16 @@ function whoOf(row: EntryRow): EntryWho | null {
 
 async function queryAlumniRecord(): Promise<AlumniRecord> {
   const db = getDb();
-  const [departmentRows, divisionRows, roleRows, personRows, entryRows, fixRows, importedRows] = await Promise.all([
+  const [departmentRows, divisionRows, roleRows, personRows, entryRows, fixRows, importedRows, addedRows] = await Promise.all([
     // Closed departments and divisions stay on the page as names.
-    db.select({ id: departments.id, name: departments.name }).from(departments).orderBy(asc(departments.id)),
-    db.select({ id: divisions.id, name: divisions.name, departmentId: divisions.deptId }).from(divisions).orderBy(asc(divisions.id)),
+    db
+      .select({ id: departments.id, name: departments.name, closed: sql<boolean>`${departments.closedAt} is not null` })
+      .from(departments)
+      .orderBy(asc(departments.id)),
+    db
+      .select({ id: divisions.id, name: divisions.name, departmentId: divisions.deptId, closed: sql<boolean>`${divisions.closedAt} is not null` })
+      .from(divisions)
+      .orderBy(asc(divisions.id)),
     db
       .select({
         memberId: roles.memberId,
@@ -82,6 +95,7 @@ async function queryAlumniRecord(): Promise<AlumniRecord> {
     db.select().from(alumniEntries).orderBy(asc(alumniEntries.id)),
     db.select().from(alumniRoleFixes),
     db.select().from(alumniImportedRoles).orderBy(asc(alumniImportedRoles.position)),
+    db.select().from(alumniAddedYears).orderBy(asc(alumniAddedYears.id)),
   ]);
   const entries = entryRows.flatMap((row): AlumniEntry[] => {
     const who = whoOf(row);
@@ -96,6 +110,10 @@ async function queryAlumniRecord(): Promise<AlumniRecord> {
         shown: row.shown,
         removed: row.removedAt !== null,
         fixes: fixRows.filter((f) => f.entryId === row.id).map((f) => ({ year: f.year, group: f.groupName, role: f.role })),
+        added: addedRows.filter((a) => a.entryId === row.id).flatMap((a) => {
+          const unit = unitOf(a);
+          return unit === null ? [] : [{ year: a.year, unit, role: a.role }];
+        }),
       },
     ];
   });
@@ -135,13 +153,17 @@ export async function readAlumni(): Promise<Alumnus[]> {
 
 /** Board 78, for a viewer who reaches it. */
 export async function readAlumniDirectory(viewer: ViewerStanding): Promise<AlumniDirectory> {
-  return alumniDirectory(canReach(viewer, "alumni") ? await readAlumni() : [], await currentAcademicYearStart());
+  const year = await currentAcademicYearStart();
+  if (!canReach(viewer, "alumni")) return alumniDirectory([], year, { departments: [], divisions: [] });
+  const record = await readAlumniRecord();
+  return alumniDirectory(alumniOf(record, year), year, record.units);
 }
 
-/** Fresh, not cached: a write checks against the record as it is now. */
-async function findAlumnus(key: AlumnusKey): Promise<Alumnus | null> {
-  const alumni = alumniOf(await queryAlumniRecord(), await currentAcademicYearStart());
-  return alumni.find((a) => a.key === key && !a.removed) ?? null;
+/** Fresh, not cached: a write checks against the record as it is now, with its units and this academic year. */
+async function findAlumnus(key: AlumnusKey): Promise<{ person: Alumnus; ground: AddedYearGround } | null> {
+  const [record, thisYear] = await Promise.all([queryAlumniRecord(), currentAcademicYearStart()]);
+  const person = alumniOf(record, thisYear).find((a) => a.key === key && !a.removed);
+  return person === undefined ? null : { person, ground: { units: record.units, thisYear } };
 }
 
 function refreshAlumni(): void {
@@ -179,12 +201,16 @@ async function setAlumnusShown(viewer: ViewerStanding, key: AlumnusKey, shown: b
   return true;
 }
 
-/** Board 78b's Save: the entry and its per-year role text, in one batch. Roles, divisions and access are not touched. */
+/**
+ * Board 78b's Save: the entry, its per-year role text and the years added for
+ * the page only (issue #981), in one batch. Roles, divisions and access are
+ * not touched.
+ */
 async function fixAlumnus(viewer: ViewerStanding, key: AlumnusKey, input: unknown): Promise<WriteResult<null>> {
   if (!canReach(viewer, "alumni")) return refused("You cannot edit the Alumni page.");
-  const person = await findAlumnus(key);
-  if (person === null) return refused("They are not on the Alumni page.");
-  const checked = checkAlumnusFix(input, alumnusRow(person));
+  const found = await findAlumnus(key);
+  if (found === null) return refused("They are not on the Alumni page.");
+  const checked = checkAlumnusFix(input, alumnusRow(found.person), found.ground);
   if (!checked.ok) return checked;
   const fix = checked.value;
   await runAuditBatch((db) => [
@@ -195,6 +221,20 @@ async function fixAlumnus(viewer: ViewerStanding, key: AlumnusKey, input: unknow
       : [
           db.insert(alumniRoleFixes).values(
             fix.fixes.map((f) => ({ entryId: entryIdOf(key), year: f.year, groupName: f.group, role: f.role })),
+          ),
+        ]),
+    db.delete(alumniAddedYears).where(eq(alumniAddedYears.entryId, entryIdOf(key))),
+    ...(fix.added.length === 0
+      ? []
+      : [
+          db.insert(alumniAddedYears).values(
+            fix.added.map((a) => ({
+              entryId: entryIdOf(key),
+              year: a.year,
+              departmentId: a.unit.kind === "department" ? a.unit.id : null,
+              divisionId: a.unit.kind === "division" ? a.unit.id : null,
+              role: a.role,
+            })),
           ),
         ]),
   ]);
@@ -225,11 +265,11 @@ async function replaceEntryPhoto(key: AlumnusKey, shownBefore: string | null, ph
 /** The fix panel's photo: a new one replaces the old, whose stored file goes; null removes it. */
 async function setAlumnusPhoto(viewer: ViewerStanding, key: AlumnusKey, photo: Upload | null): Promise<WriteResult<null>> {
   if (!canReach(viewer, "alumni")) return refused("You cannot edit the Alumni page.");
-  const person = await findAlumnus(key);
-  if (person === null) return refused("They are not on the Alumni page.");
+  const found = await findAlumnus(key);
+  if (found === null) return refused("They are not on the Alumni page.");
   const uploaded = photo === null ? written(null) : await uploadAlumniPhoto(photo);
   if (!uploaded.ok) return uploaded;
-  await replaceEntryPhoto(key, person.photo, uploaded.value);
+  await replaceEntryPhoto(key, found.person.photo, uploaded.value);
   refreshAlumni();
   return written(null);
 }

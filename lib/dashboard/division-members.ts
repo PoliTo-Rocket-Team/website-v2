@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { advisorRolesOf, type AdvisorRoleChange } from "./advisor-roles";
 import { NO_MEMBER_DETAILS, noDetailsFilled, parseMemberDetails, type MemberDetailErrors, type MemberDetails } from "./details";
 import { movablePlacesOf, type MovablePlace } from "./member-move";
-import { placesOf, type PersonPlace } from "./member-places";
+import { placesOf, seatPlace, type PersonPlace } from "./member-places";
 import { nameRule, NO_NAME, type PersonName } from "./person-name";
 import {
   beyondTitle,
@@ -71,8 +72,8 @@ export type DivisionPerson = {
   /** The account they sign in with, or the email they were added with: locked in Edit details. */
   readonly signInEmail: string;
   readonly photoUrl: string | null;
-  /** The year they joined the team. */
-  readonly since: number;
+  /** The year they joined the team; null when no join day is stored (issue #948). */
+  readonly since: number | null;
   /** Their role in this division. */
   readonly role: DivisionRole;
   /** Their title in this division; the Role column shows it, or "Division Lead". */
@@ -128,12 +129,57 @@ export type PositionTitle =
   | { readonly kind: "seat"; readonly value: string }
   | { readonly kind: "fixed"; readonly label: string };
 
+/**
+ * Someone's role in one division the viewer reaches, as Edit details' role
+ * pill reads it (issue #972): picking Lead or Advisor there changes who leads
+ * or advises, which `change` says the viewer may (`mayChangeDivision`).
+ */
+export type DivisionRoleChange = {
+  readonly divisionId: number;
+  /** "Mission Analysis" */
+  readonly short: string;
+  /** "Structures": the department the division sits in, which an advisor's department scope names. */
+  readonly department: string;
+  readonly role: DivisionRole;
+  /** Their role here is an Advisor role. */
+  readonly advisor: boolean;
+  /** How many lead this division now, them included when they lead it: a lead becomes an advisor only while another lead stays. */
+  readonly leads: number;
+  /** Who else leads it, by name: Edit details' Lead choice names them (issue #972). */
+  readonly otherLeads: readonly string[];
+  readonly change: Permission;
+};
+
+/** Who leads each division, by division id (`divisionLeadsOf`). */
+export type DivisionLeads = ReadonlyMap<number, readonly Pick<PersonRecord, "id" | "name">[]>;
+
+/** Who leads each division across `records`, as Edit division's save counts them (`planDivisionSave`). */
+export function divisionLeadsOf(records: readonly Pick<PersonRecord, "id" | "name" | "memberships">[]): DivisionLeads {
+  const leads = new Map<number, Pick<PersonRecord, "id" | "name">[]>();
+  for (const record of records) {
+    for (const m of record.memberships) {
+      if (m.role === "lead") leads.set(m.divisionId, [...(leads.get(m.divisionId) ?? []), { id: record.id, name: record.name }]);
+    }
+  }
+  return leads;
+}
+
 /** What the viewer may change about someone's place on the team from Edit details. */
 export type MemberPosition = {
   /** Their first and last name as stored, which Edit details renames them by (issue #668): anyone who may edit them may. */
   readonly name: PersonName;
   readonly title: PositionTitle;
   readonly leads: readonly LeadChoice[];
+  /** Their role in every division of theirs the viewer reaches, home first (issue #901). */
+  readonly roles: readonly DivisionRoleChange[];
+  /**
+   * The seats Edit details lists but never changes (issue #972), by title:
+   * the team leader's, a team-level seat's, and a headship the viewer does
+   * not move. The Team tree's seat drawers change them.
+   */
+  readonly seats: readonly string[];
+  /** Their Advisor roles kept on a department or the whole team, each a row of its own with its pill (issue #976). */
+  readonly advising: readonly AdvisorRoleChange[];
   /** The places the viewer may move them out of, from Edit details and the Team tree (`movablePlacesOf`, issue #647). */
   readonly moves: readonly MovablePlace[];
   /** Every division of theirs the viewer reaches; the panel and the ⋯ menu show those offered or locked. */
@@ -156,13 +202,18 @@ export function editsPerson(actor: TeamActor, record: Pick<PersonRecord, "member
 /**
  * The position part for `record` as `actor` sees it. `titleIn` is the
  * division the page lists them under; the title falls back to their first
- * division the actor reaches, and to their seat when there is none.
+ * division the actor reaches, and to their seat when there is none. `leads`
+ * names each division's leads across the whole team (`divisionLeadsOf`).
  */
-export function positionOf(record: PersonRecord, org: OrgChart, actor: TeamActor, titleIn: number | null): MemberPosition {
+export function positionOf(record: PersonRecord, org: OrgChart, actor: TeamActor, titleIn: number | null, leads: DivisionLeads): MemberPosition {
   const standing = { memberships: record.memberships, beyond: record.beyondDivisions };
   const reached = homeFirst(record.memberships).filter((m) => org.divisions.some((d) => d.id === m.divisionId) && reachesDivision(actor, m.divisionId, org));
   const short = (divisionId: number) => divisionLabel(org.divisions.find((d) => d.id === divisionId)?.name ?? "");
   const titled = reached.find((m) => m.divisionId === titleIn) ?? reached[0];
+  const moves = movablePlacesOf(record, org, actor);
+  const leadsOf = (divisionId: number) => leads.get(divisionId) ?? [];
+  // A headship the viewer moves is a place of its own; every other seat is only listed.
+  const listed = (b: RoleBeyondDivisions) => b.kind !== "head" || !moves.some((m) => m.kind === "head" && m.departmentId === b.departmentId);
   return {
     name: record.storedName,
     title:
@@ -173,7 +224,23 @@ export function positionOf(record: PersonRecord, org: OrgChart, actor: TeamActor
     leads: reached
       .filter((m) => !record.advising.includes(m.divisionId) && mayChangeDivision(actor, m.divisionId, org).allowed)
       .map((m) => ({ divisionId: m.divisionId, short: short(m.divisionId), role: m.role })),
-    moves: movablePlacesOf(record, org, actor),
+    roles: reached.map((m) => ({
+      divisionId: m.divisionId,
+      short: short(m.divisionId),
+      department: departmentNameOf(org, org.divisions.find((d) => d.id === m.divisionId)?.departmentId ?? -1),
+      role: m.role,
+      advisor: record.advising.includes(m.divisionId),
+      leads: leadsOf(m.divisionId).length,
+      otherLeads: leadsOf(m.divisionId)
+        .filter((l) => l.id !== record.id)
+        .map((l) => l.name),
+      change: mayChangeDivision(actor, m.divisionId, org),
+    })),
+    seats: (["team-leader", "board", "head"] as const).flatMap((kind) =>
+      record.beyondDivisions.filter((b) => b.kind === kind && listed(b)).map((b) => seatPlace(b, org).title),
+    ),
+    advising: advisorRolesOf(standing, org, actor),
+    moves,
     removals: reached.map((m) => ({ divisionId: m.divisionId, short: short(m.divisionId), removal: removalFrom(actor, standing, m.divisionId, org) })),
     leave: mayLeaveTeam(actor, standing, org),
   };
@@ -190,7 +257,8 @@ function seatTitleOf(record: PersonRecord, org: OrgChart): PositionTitle {
 /** The whole team's positions: everyone `actor` may edit, never the viewer; none for no actor. */
 export function positionsOf(records: readonly PersonRecord[], org: OrgChart, actor: TeamActor | null, selfId: number | null): PersonPosition[] {
   if (actor === null) return [];
-  return records.flatMap((r) => (r.id === selfId || !editsPerson(actor, r, org) ? [] : [{ id: r.id, ...positionOf(r, org, actor, null) }]));
+  const leads = divisionLeadsOf(records);
+  return records.flatMap((r) => (r.id === selfId || !editsPerson(actor, r, org) ? [] : [{ id: r.id, ...positionOf(r, org, actor, null, leads) }]));
 }
 
 /**
@@ -257,6 +325,13 @@ export function mayNotKnowTheyWereAdded(waiting: Pick<WaitingPerson, "signedIn" 
   return !waiting.signedIn && noDetailsFilled(waiting.details);
 }
 
+/**
+ * The note under every field that adds a new member by email (issue #923):
+ * sign-in is Google only, so another address leaves them on an empty login.
+ * Advice only; any email is still accepted.
+ */
+export const GOOGLE_EMAIL_NOTE = "Use their Google account email. Sign-in is with Google only.";
+
 export type DivisionHeader = {
   readonly id: number;
   /** "Mission Analysis Division" */
@@ -269,8 +344,6 @@ export type DivisionHeader = {
 
 export type DivisionMembers = {
   readonly division: DivisionHeader;
-  /** Every division the viewer's page reaches; a switch shows when there is more than one. */
-  readonly divisions: readonly { readonly id: number; readonly name: string }[];
   readonly people: readonly DivisionPerson[];
   readonly waiting: readonly WaitingPerson[];
   /** Accepted applicants waiting for Confirm join (board 59). */
@@ -292,7 +365,8 @@ export type PersonRecord = {
   readonly storedName: PersonName;
   readonly signInEmail: string;
   readonly photoUrl: string | null;
-  readonly since: number;
+  /** The year they joined the team; null when no join day is stored (issue #948). */
+  readonly since: number | null;
   readonly memberships: Memberships;
   /** Every role they hold in no division (team leader, board seat, department): "Leaves the team" ends these too. */
   readonly beyondDivisions: readonly RoleBeyondDivisions[];
@@ -361,7 +435,6 @@ export function divisionMembers(input: {
   readonly divisionId: number;
   readonly actor: TeamActor | null;
   readonly selfId: number | null;
-  readonly reach: readonly number[];
   readonly waiting: readonly WaitingPerson[];
   readonly joining: readonly Joining[];
 }): DivisionMembers | null {
@@ -369,6 +442,7 @@ export function divisionMembers(input: {
   const division = org.divisions.find((d) => d.id === divisionId);
   if (!division) return null;
   const changer = actor !== null && reachesDivision(actor, divisionId, org) ? actor : null;
+  const leads = divisionLeadsOf(input.records);
   const people = input.records.flatMap((record): DivisionPerson[] => {
     const role = roleIn(record.memberships, divisionId);
     if (role === null) return [];
@@ -398,7 +472,7 @@ export function divisionMembers(input: {
           : {
               leave: mayLeaveTeam(changer, standing, org),
               removal: removalFrom(changer, standing, divisionId, org),
-              position: record.id === input.selfId ? null : positionOf(record, org, changer, divisionId),
+              position: record.id === input.selfId ? null : positionOf(record, org, changer, divisionId, leads),
             }),
       },
     ];
@@ -411,10 +485,6 @@ export function divisionMembers(input: {
       department: departmentNameOf(org, division.departmentId),
       leadsHint: changer !== null && mayChangeDivision(changer, division.id, org).allowed ? null : leadsChangedBy(division.id, org),
     },
-    divisions: input.reach.flatMap((id) => {
-      const d = org.divisions.find((x) => x.id === id);
-      return d ? [{ id: d.id, name: d.name }] : [];
-    }),
     people: people.sort(byRoleThenName),
     waiting: input.waiting,
     joining: input.joining,
@@ -422,28 +492,69 @@ export function divisionMembers(input: {
   };
 }
 
+/**
+ * A division lead's Members page (issue #903): every division they reach,
+ * their own and every one a grant gives them, all held at once, each as its
+ * own division page. The page opens on all of them; the selects narrow it.
+ */
+export type ReachMembers = {
+  /** One page per reached division on the chart, in the reach's order. */
+  readonly divisions: readonly DivisionMembers[];
+};
+
+/** The lead's page as `actor` sees it; `waiting` and `joining` are keyed by division id. */
+export function reachMembers(input: {
+  readonly records: readonly PersonRecord[];
+  readonly org: OrgChart;
+  readonly divisionIds: readonly number[];
+  readonly actor: TeamActor | null;
+  readonly selfId: number | null;
+  readonly waiting: Readonly<Record<number, readonly WaitingPerson[]>>;
+  readonly joining: Readonly<Record<number, readonly Joining[]>>;
+}): ReachMembers {
+  return {
+    divisions: [...new Set(input.divisionIds)].flatMap((divisionId) => {
+      const page = divisionMembers({
+        records: input.records,
+        org: input.org,
+        divisionId,
+        actor: input.actor,
+        selfId: input.selfId,
+        waiting: input.waiting[divisionId] ?? [],
+        joining: input.joining[divisionId] ?? [],
+      });
+      return page === null ? [] : [page];
+    }),
+  };
+}
+
 /** "2 leads, 7 members" under the title (board 61e): everyone listed counts as a member, those waiting included. */
 export function headcountLine(page: Pick<DivisionMembers, "people" | "waiting">): string {
-  const leads = page.people.filter((p) => p.role === "lead").length;
-  const all = page.people.length + page.waiting.length;
+  return headcount(page.people.filter((p) => p.role === "lead").length, page.people.length + page.waiting.length);
+}
+
+/** "2 leads, 7 members": `all` counts everyone listed, leads and those waiting included. */
+export function headcount(leads: number, all: number): string {
   return `${leads} ${leads === 1 ? "lead" : "leads"}, ${all} ${all === 1 ? "member" : "members"}`;
 }
 
 /**
  * The page's search (board 61e: "Search name, email, phone"): every word in
- * the name, an email or the phone. `teamAddresses` are the shared team
- * addresses the person holds (issue #800), so a lead who knows only a team
- * address finds who holds it; a search with no address data passes none.
+ * the name, an email or the phone. `otherEmails` are the other addresses the
+ * page holds for the person: the shared team addresses they hold (issue
+ * #800) and the linked Google emails they sign in with (issue #908), so a
+ * lead who knows only one of those finds who it is; a search with no such
+ * data passes none.
  */
 export function matchesPerson(
   person: Pick<DivisionPerson, "name" | "signInEmail" | "details">,
   query: string,
-  teamAddresses: readonly string[] = [],
+  otherEmails: readonly string[] = [],
 ): boolean {
   const digits = person.details.phone.replace(/\D/g, "");
   const typed = query.replace(/\D/g, "");
   if (typed.length >= 3 && digits.includes(typed)) return true;
-  return matchesQuery([person.name, person.signInEmail, person.details.prtEmail, ...teamAddresses], query);
+  return matchesQuery([person.name, person.signInEmail, person.details.prtEmail, ...otherEmails], query);
 }
 
 // Add member (boards 61h and 61h2)
@@ -497,6 +608,12 @@ const title = z
   .nullable()
   .transform((s) => (s === null || s === "" ? null : s));
 
+/** What is wrong with a role title as typed, by the rule every save checks it with; null when it saves. */
+export function roleTitleError(text: string): string | null {
+  const t = title.safeParse(text);
+  return t.success ? null : (t.error.issues[0]?.message ?? "Check the role.");
+}
+
 const id = z.number().int().positive();
 
 /** An email as both sides key a person by it: trimmed and lower case, as Google answers it. */
@@ -531,7 +648,8 @@ export function checkAddMember(input: unknown): { ok: true; value: AddMember } |
   const value = result.data;
   if (value.kind === "member") return { ok: true, value };
   if (value.details === null || value.details === undefined) return { ok: true, value: { ...value, details: null } };
-  const details = parseMemberDetails(value.details);
+  // Someone new has no stored phone, so the form opened with none.
+  const details = parseMemberDetails(value.details, "");
   if (!details.ok) return { ok: false, errors: details.errors };
   return { ok: true, value: { ...value, details: details.value } };
 }
@@ -590,7 +708,7 @@ export function lookupForAdd(
       storedName: NO_NAME,
       signInEmail: c.emails[0] ?? "",
       photoUrl: c.photoUrl,
-      since: 0,
+      since: null,
       memberships: c.memberships,
       beyondDivisions: [],
       titles: {},
@@ -625,14 +743,65 @@ export function lookupForAdd(
  * details, and for someone on the team their first and last name (issue
  * #668). `name` is null when the form sent none, as Fill details does for
  * someone waiting: nothing renames them. `signInEmail` is a corrected
- * sign-in email (issue #741), null when the form sent none.
+ * sign-in email (issue #741), null when the form sent none. `landed` is what
+ * an earlier Save of the same open form already wrote, when it sent that:
+ * then only what changed since is written (`editedFields`). `divisionTitles`
+ * are the titles of their other division rows that Save writes (issue #911):
+ * each goes to that division's role rows only, and one division appears once.
  */
 export type MemberEditDetails = {
   readonly title: string | null;
+  readonly divisionTitles: readonly DivisionTitle[];
   readonly details: MemberDetails;
   readonly name: PersonName | null;
   readonly signInEmail: string | null;
+  readonly landed: ShownEdit | null;
 };
+
+/**
+ * The details and name an open Edit details form stood on (issue #864): what
+ * it showed when it opened, or what an earlier Save of it wrote. When the
+ * record moves onto another login's row, that row's own values never showed
+ * in the form, so Save writes only the fields that differ from these, and a
+ * field the viewer left keeps the value the login holds. That holds on the
+ * Save that moves the record and on a retry of the same open form after it,
+ * as when a placement move after Save fails and leaves the form open.
+ */
+export type ShownEdit = { readonly details: MemberDetails; readonly name: PersonName | null };
+
+/** One division row's role title as Edit details sends it: blank is none. */
+export type DivisionTitle = { readonly divisionId: number; readonly title: string | null };
+
+const divisionTitlesSchema = z
+  .array(z.object({ divisionId: id, title }))
+  .max(50)
+  .refine((rows) => new Set(rows.map((r) => r.divisionId)).size === rows.length, "Check the roles.");
+
+/** What an earlier Save wrote, as Edit details sends it in its input's `landed`: the names beside the details, as the form sends its own. */
+export type LandedSent = { readonly details: MemberDetails } & Partial<PersonName>;
+
+/**
+ * Details and a name as an Edit details form shows them, read as Save reads
+ * what it sends (`checkMemberEdit`), so the two compare field by field. A
+ * stored value Save would refuse stays as it reads.
+ */
+export function shownEditOf(details: MemberDetails, name: PersonName | null): ShownEdit {
+  const parsed = parseMemberDetails(details, details.phone);
+  return { details: parsed.ok ? parsed.value : details, name: name === null ? null : { firstName: name.firstName.trim(), lastName: name.lastName.trim() } };
+}
+
+/**
+ * The details and name a checked save writes: all it sent, or, against what
+ * the form `shown`, only each one that differs from it. An empty object
+ * writes nothing.
+ */
+export function editedFields(edit: MemberEditDetails, shown: ShownEdit | null): { readonly details: Partial<MemberDetails>; readonly name: Partial<PersonName> } {
+  const { details, name } = edit;
+  if (shown === null) return { details, name: name ?? {} };
+  const changed = <T extends object>(sent: T, was: T | null): Partial<T> =>
+    Object.fromEntries(Object.entries(sent).filter(([key, value]) => was === null || was[key as keyof T] !== value)) as Partial<T>;
+  return { details: changed(details, shown.details), name: name === null ? {} : changed(name, shown.name) };
+}
 
 /** A corrected sign-in email: the rule of the other email fields, never blank, keyed as Google answers it. */
 const signInEmailRule = z.string().transform(signInEmailOf).pipe(z.email("Write an email address.").max(200, "Too long."));
@@ -654,31 +823,60 @@ export function isDetailsTarget(value: unknown): value is DetailsTarget {
 export const SEAT_TITLE_REQUIRED = "Enter their role.";
 
 /**
- * What Edit details sends, checked. `titled` says whether the role title may
- * be blank: a division title may, a seat's is `required` (issue #626).
+ * What Edit details sends, checked. `openedPhone` is the phone the form opened
+ * with, as the page reads the person's record: sent back unchanged it is kept
+ * whatever its format (issue #887). The browser passes its own; the server
+ * reads it, never taking it from the form. `titled` says whether the role
+ * title may be blank: a division title may, a seat's is `required` (issue
+ * #626). A refusal names every field in error, not only the first, so the
+ * form's error summary lists them all (issue #911).
  */
 export function checkMemberEdit(
   input: unknown,
+  openedPhone: string,
   titled: "optional" | "required" = "optional",
 ): { ok: true; value: MemberEditDetails } | { ok: false; errors: AddMemberErrors } {
   const sent = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+  const errors: AddMemberErrors = {};
   const t = title.safeParse(sent.title ?? "");
-  if (!t.success) return { ok: false, errors: { title: t.error.issues[0]?.message ?? "Check the role." } };
-  if (titled === "required" && t.data === null) return { ok: false, errors: { title: SEAT_TITLE_REQUIRED } };
-  const details = parseMemberDetails(sent.details);
-  if (!details.ok) return { ok: false, errors: details.errors };
-  const email = sent.signInEmail === undefined ? null : signInEmailRule.safeParse(sent.signInEmail);
-  if (email !== null && !email.success) return { ok: false, errors: { signInEmail: email.error.issues[0]?.message ?? "Write an email address." } };
-  const signInEmail = email === null ? null : email.data;
-  if (sent.firstName === undefined && sent.lastName === undefined) return { ok: true, value: { title: t.data, details: details.value, name: null, signInEmail } };
+  if (!t.success) errors.title = t.error.issues[0]?.message ?? "Check the role.";
+  else if (titled === "required" && t.data === null) errors.title = SEAT_TITLE_REQUIRED;
+  const rows = divisionTitlesSchema.safeParse(sent.divisionTitles ?? []);
+  if (!rows.success) errors.title ??= rows.error.issues[0]?.message ?? "Check the roles.";
   // A rename sends both names, each trimmed and never blank, so the Team page never shows a nameless person.
-  const name = renameSchema.safeParse({ firstName: sent.firstName ?? "", lastName: sent.lastName ?? "" });
-  if (!name.success) {
-    const errors: AddMemberErrors = {};
-    for (const issue of name.error.issues) errors[issue.path[0] as "firstName" | "lastName"] ??= issue.message;
-    return { ok: false, errors };
-  }
-  return { ok: true, value: { title: t.data, details: details.value, name: name.data, signInEmail } };
+  const renamed = sent.firstName !== undefined || sent.lastName !== undefined;
+  const name = renamed ? renameSchema.safeParse({ firstName: sent.firstName ?? "", lastName: sent.lastName ?? "" }) : null;
+  if (name !== null && !name.success) for (const issue of name.error.issues) errors[issue.path[0] as "firstName" | "lastName"] ??= issue.message;
+  const details = parseMemberDetails(sent.details, openedPhone);
+  if (!details.ok) Object.assign(errors, details.errors);
+  const email = sent.signInEmail === undefined ? null : signInEmailRule.safeParse(sent.signInEmail);
+  if (email !== null && !email.success) errors.signInEmail = email.error.issues[0]?.message ?? "Write an email address.";
+  if (Object.keys(errors).length > 0 || !t.success || !rows.success || !details.ok || name?.success === false || email?.success === false) return { ok: false, errors };
+  const landed = checkLanded(sent.landed, openedPhone);
+  if (landed === "bad") return { ok: false, errors: {} };
+  return {
+    ok: true,
+    value: {
+      title: t.data,
+      divisionTitles: rows.data,
+      details: details.value,
+      name: name === null ? null : name.data,
+      signInEmail: email === null ? null : email.data,
+      landed,
+    },
+  };
+}
+
+/** What an earlier Save landed, checked as the sent values are so the two compare; null when none was sent, "bad" when it does not read. */
+function checkLanded(input: unknown, openedPhone: string): ShownEdit | null | "bad" {
+  if (input === undefined) return null;
+  if (typeof input !== "object" || input === null) return "bad";
+  const sent = input as Record<string, unknown>;
+  const details = parseMemberDetails(sent.details, openedPhone);
+  if (!details.ok) return "bad";
+  if (sent.firstName === undefined && sent.lastName === undefined) return { details: details.value, name: null };
+  if (typeof sent.firstName !== "string" || typeof sent.lastName !== "string") return "bad";
+  return { details: details.value, name: { firstName: sent.firstName.trim(), lastName: sent.lastName.trim() } };
 }
 
 /** A member photo set from Edit details (board 61g): a square JPEG under 500 KB, as the crop dialog makes it. */

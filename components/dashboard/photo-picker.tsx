@@ -2,11 +2,13 @@
 
 import { useRef, useState } from "react";
 import { Upload } from "lucide-react";
-import { PHOTO_ACCEPT, PhotoCropDialog } from "./photo-crop-dialog";
+import type { SquarePhotoEntry } from "@/lib/dashboard/crop-settings";
+import { CropDialog } from "./crop-dialog";
 
-// Pick a photo and crop it square (the member photo's flow, board 61g),
-// shared by the Alumni panels (issue #257) and the Team page editor's
-// Replace photo (issue #323).
+// Pick a photo and crop it square in the shared crop dialog (the member
+// photo's flow, board 61g), shared by the Alumni panels (issue #257) and the
+// Team page editor's Replace photo (issue #323). Each hands in its own
+// settings entry, which holds its server's size limit.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -15,12 +17,15 @@ export const PHOTO_BUTTON = `inline-flex items-center gap-1.5 rounded-md text-[1
 
 /** A file input kept off screen, its button, and the square crop it opens. */
 export function PhotoPicker({
+  entry,
   label,
   pending,
   onCropped,
   buttonClass = PHOTO_BUTTON,
   iconClass = "h-4 w-4",
 }: {
+  /** The place's settings entry (lib/dashboard/crop-settings.ts). */
+  entry: SquarePhotoEntry;
   label: string;
   pending: boolean;
   /** The cropped square; true closes the crop. */
@@ -36,7 +41,7 @@ export function PhotoPicker({
       <input
         ref={input}
         type="file"
-        accept={PHOTO_ACCEPT}
+        accept={entry.accept.join(",")}
         className="sr-only"
         tabIndex={-1}
         aria-hidden
@@ -50,14 +55,15 @@ export function PhotoPicker({
         <Upload aria-hidden className={iconClass} strokeWidth={1.75} />
         {label}
       </button>
-      <PhotoCropDialog
+      <CropDialog
+        entry={entry}
         file={cropping}
-        onOpenChange={(next) => !next && setCropping(null)}
-        onChooseAnother={() => input.current?.click()}
-        onSave={async (square) => {
-          if (await onCropped(square)) setCropping(null);
-        }}
         pending={pending}
+        onCancel={() => setCropping(null)}
+        onChooseAnother={() => input.current?.click()}
+        onDone={async ({ files }) => {
+          if (await onCropped(files.square)) setCropping(null);
+        }}
       />
     </>
   );

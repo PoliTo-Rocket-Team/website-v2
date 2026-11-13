@@ -5,15 +5,12 @@ import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { measureLogo } from "./logo-luminance";
 import { checkPartnerFields, withLogo, type PartnerFields } from "./partners-fields";
-import { logoKindOf, type Partner, type PartnerLogo, type PartnerTier } from "./partners";
+import { LOGO_MAX_BYTES, logoKindOf, type Partner, type PartnerLogo, type PartnerTier } from "./partners";
 
 // The Partners page's reads and writes (boards 76 and 76b, issue #256): the
 // shared content editor (lib/content/editor.ts) with the partner's own
 // fields and logo. Both sides of the dashboard data interface build it, each
 // with its own store and its own place for logo files.
-
-/** The largest logo file the panel takes. */
-export const LOGO_MAX_BYTES = 1024 * 1024;
 
 /**
  * A logo as measured on upload, before it is stored: what the partner keeps

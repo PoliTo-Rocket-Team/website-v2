@@ -3,13 +3,16 @@
 import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
 import { Plus, Trash2, TriangleAlert, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { useServerState } from "@/lib/dashboard/server-state";
 import { measurePartnerLogo, removePartner, reorderPartners, savePartner } from "@/app/dashboard/actions";
 import { moveTo } from "@/lib/content/order";
 import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
+import { CROP_SETTINGS } from "@/lib/dashboard/crop-settings";
 import { PARTNER_TEXT_LIMITS, type Partner, type PartnerLogo, type PartnerTier } from "@/lib/partners";
 import { fieldsOf, partnerFieldErrors, websiteLabel, type PartnerFieldErrors, type PartnerFields } from "@/lib/partners-fields";
 import type { MeasuredLogo } from "@/lib/partners-editor";
 import { ConfirmDialog } from "./confirm-dialog";
+import { CropDialog } from "./crop-dialog";
 import { CONTENT_FOCUS as FOCUS, DragGrip, PublishFooter, RowMenu, StatusPill, TextField, useDragOrder, type DragRow } from "./content-parts";
 import { Toggle } from "./controls";
 import { DrawerPage } from "./drawer";
@@ -40,7 +43,8 @@ function shownOf(item: ContentItem<Partner>): Partner {
 }
 
 export function PartnersView({ items: initial }: { items: readonly ContentItem<Partner>[] }) {
-  const [items, setItems] = useState<readonly ContentItem<Partner>[]>(initial);
+  // The partners follow each refresh the server sends after a write (issue #984).
+  const [items, setItems] = useServerState<readonly ContentItem<Partner>[]>(initial);
   const [panel, setPanel] = useState<Panel>(CLOSED);
   const ordered = [...items].sort((a, b) => a.siteOrder - b.siteOrder);
   const editing = panel.kind === "edit" ? (items.find((item) => item.id === panel.id) ?? null) : null;
@@ -332,6 +336,8 @@ function PartnerPanel({
   const current = item === null ? null : shownOf(item);
   const [fields, setFields] = useState<PartnerFields>(() => fieldsOf(current));
   const [picked, setPicked] = useState<PickedLogo | null>(null);
+  /** A logo file picked and not yet cut: the crop dialog is open on it. */
+  const [cropping, setCropping] = useState<File | null>(null);
   const [darkLogo, setDarkLogo] = useState(current?.logo.darkLogo ?? false);
   const [logoError, setLogoError] = useState<string | undefined>();
   const [errors, setErrors] = useState<PartnerFieldErrors>({});
@@ -349,8 +355,8 @@ function PartnerPanel({
     setErrors((e) => ({ ...e, [name]: undefined }));
   };
 
-  const pick = (file: File | null) => {
-    if (file === null) return;
+  /** The logo as cut in the crop dialog (issue #971), measured on the server as any picked logo was. */
+  const pick = (file: File) => {
     const form = new FormData();
     form.set("logo", file);
     setLogoError(undefined);
@@ -436,12 +442,24 @@ function PartnerPanel({
               <input
                 ref={fileInput}
                 type="file"
-                accept="image/png,.png"
+                accept={CROP_SETTINGS.partnerLogo.accept.join(",")}
                 aria-label="Logo file"
                 className="sr-only"
                 onChange={(e) => {
-                  pick(e.target.files?.[0] ?? null);
+                  const file = e.target.files?.[0];
                   e.target.value = "";
+                  if (file) setCropping(file);
+                }}
+              />
+              <CropDialog
+                entry={CROP_SETTINGS.partnerLogo}
+                file={cropping}
+                pending={pending}
+                onCancel={() => setCropping(null)}
+                onDone={({ files }) => {
+                  // The cut keeps the picked file's name, which the panel shows beside the logo's size.
+                  pick(new File([files.logo], cropping?.name ?? files.logo.name, { type: files.logo.type }));
+                  setCropping(null);
                 }}
               />
               <button

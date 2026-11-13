@@ -4,20 +4,25 @@ import { revalidatePath } from "next/cache";
 import { canReach } from "@/lib/dashboard/access";
 import type { DashboardData } from "@/lib/dashboard/data";
 import { openDashboard } from "@/lib/dashboard/open";
+import { refreshDashboard } from "@/lib/dashboard/refresh";
 import { refused, type WriteResult } from "@/lib/dashboard/write";
 import type { PostItem } from "@/lib/outreach-types";
 
 // The Outreach list's writes (board 74, issue #289). Each opens the dashboard
 // as the page did and checks the viewer reaches the Outreach page; the
 // outreach editor then checks the site-content gate again and writes to the
-// database. The write refreshes the cached public read; /outreach and its post pages render again.
+// database. The write refreshes the cached public read; /outreach and its post pages render again,
+// and so does every dashboard page, the Outreach list among them (issue #984).
 
 async function onOutreach<T>(run: (data: DashboardData) => Promise<WriteResult<T>>): Promise<WriteResult<T>> {
   const opening = await openDashboard();
   if (opening.kind !== "open") return refused("Sign in again to make changes.");
   if (!canReach(opening.data.viewer, "outreach")) return refused("You do not have this page.");
   const result = await run(opening.data);
-  if (result.ok) revalidatePath("/outreach", "layout");
+  if (result.ok) {
+    revalidatePath("/outreach", "layout");
+    refreshDashboard();
+  }
   return result;
 }
 

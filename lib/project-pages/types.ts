@@ -1,5 +1,6 @@
 import type { FilledGallery } from "@/components/gallery/items";
 import type { PhotoSrc } from "@/lib/outreach-types";
+import type { LaunchPhotoCrops, ProjectPhotoCrops } from "@/lib/photo-crops";
 import type { Award, Copy } from "@/lib/projects";
 import type { OwnModel, OwnRocket } from "@/lib/rocket-model";
 
@@ -30,8 +31,13 @@ export type KeyFacts =
   | readonly [Fact, Fact, Fact, Fact, Fact]
   | readonly [Fact, Fact, Fact, Fact, Fact, Fact];
 
-/** A photo uploaded from the dashboard (lib/outreach-photos.ts) and what it shows, for assistive tech. */
-export type Photo = { src: PhotoSrc; alt: string };
+/**
+ * A photo uploaded from the dashboard (lib/outreach-photos.ts) and what it
+ * shows, for assistive tech: a Photo block's or the top's photo panel's. It
+ * may carry its crop for each shape the panel is shown at (issue #970); with
+ * none it is shown centred, as before crops.
+ */
+export type Photo = { src: PhotoSrc; alt: string; crops?: ProjectPhotoCrops };
 
 /**
  * The top of the page's visual (Owner decision on #522): the project's 3D
@@ -110,8 +116,12 @@ export type Versions = {
 
 export type Outcome = "nominal" | "recovery-failed" | "did-not-fly";
 
-/** A photo of a campaign. A launch card has one cover photo (Owner decision on #522); with none the key is absent and its slot shows the background. */
-export type LaunchPhoto = Photo;
+/**
+ * A photo of a campaign. A launch card has one cover photo (Owner decision on
+ * #522); with none the key is absent and its slot shows the background. It
+ * may carry its crop for the phone card and the slot beside a launch (issue #970).
+ */
+export type LaunchPhoto = { src: PhotoSrc; alt: string; crops?: LaunchPhotoCrops };
 
 /** One campaign on the launch history, as the page draws it. */
 export type LogEntry = {

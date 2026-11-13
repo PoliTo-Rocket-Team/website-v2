@@ -26,7 +26,7 @@ import {
   type OutreachDraft,
 } from "@/lib/outreach-types";
 import { CHANNEL_ICONS } from "./channel-icons";
-import { Photo } from "./photo";
+import { CARD_FIT, Photo, type PhotoFit } from "./photo";
 
 // Boards 33 and 33m: one outreach post, Medium-style. Everything shares one
 // width, 1116px from lg (Huey's ruling, issue #110): the back link, the
@@ -44,8 +44,18 @@ import { Photo } from "./photo";
 // block rather than running across the page (Owner decision, issue #519):
 // `[overflow-wrap:anywhere]` also lowers the block's min-content width, so a
 // grid track cannot grow to fit the word.
+//
+// Each photo shows the crop for its frame's shape (issue #969): the top
+// photo is the phone shape below md and the laptop shape from md, and every
+// other frame shows the laptop crop at its zoom.
 
 const width = "mx-auto max-w-[1116px]";
+
+/** The top photo's frame: the phone crop's 3:2 below md, the laptop crop's 9:5 from md. */
+const COVER_FIT: PhotoFit = { base: { shape: "phone", box: "exact" }, md: { shape: "desktop", box: "exact" } };
+
+/** The grid's big photo: 3:2 below md, as tall as the grid from md. */
+const BIG_FIT: PhotoFit = { base: { shape: "phone", box: "exact" }, md: { shape: "desktop", box: "framed" } };
 
 /** Lets a long unbroken word break inside its block, at any width. */
 const wrapWords = "[overflow-wrap:anywhere]";
@@ -153,7 +163,7 @@ export function PostHeader({ post, frame = bare, hints = false }: PostPartsProps
         {frame(
           "cover",
           <div className="relative aspect-[3/2] overflow-hidden rounded-xl md:aspect-[9/5]">
-            {cover === undefined ? <NoCover /> : <Photo photo={cover} sizes="(min-width: 1246px) 1116px, 100vw" priority />}
+            {cover === undefined ? <NoCover /> : <Photo photo={cover} sizes="(min-width: 1246px) 1116px, 100vw" priority fit={COVER_FIT} />}
           </div>,
         )}
       </div>
@@ -231,7 +241,7 @@ function ChannelCard({ name, channel, post }: { name: ChannelName; channel: Chan
       </div>
       {name === "instagram" && post.photos.length > 0 && (
         <div className="relative h-[200px] lg:h-[220px]">
-          <Photo photo={post.photos[0]} sizes="(min-width: 1024px) 300px, 100vw" />
+          <Photo photo={post.photos[0]} sizes="(min-width: 1024px) 300px, 100vw" fit={CARD_FIT} />
         </div>
       )}
       <div className="p-3.5">
@@ -257,14 +267,14 @@ function PhotoGrid({ photos }: { photos: readonly OutreachPhoto[] }) {
   return (
     <div className="grid grid-cols-2 gap-3 md:h-[420px] md:grid-cols-2 md:grid-rows-2 md:gap-4">
       <div className={`relative col-span-2 aspect-[3/2] overflow-hidden rounded-xl md:aspect-auto ${small.length > 0 ? "md:col-span-1 md:row-span-2" : "md:row-span-2"}`}>
-        <Photo photo={big} sizes="(min-width: 1246px) 550px, 100vw" />
+        <Photo photo={big} sizes="(min-width: 1246px) 550px, 100vw" fit={BIG_FIT} />
       </div>
       {small.map((p) => (
         <div
           key={p.src}
           className={`relative h-[120px] overflow-hidden rounded-xl md:h-auto ${small.length === 1 ? "col-span-2 md:col-span-1 md:row-span-2" : ""}`}
         >
-          <Photo photo={p} sizes="(min-width: 1246px) 550px, 50vw" />
+          <Photo photo={p} sizes="(min-width: 1246px) 550px, 50vw" fit={CARD_FIT} />
         </div>
       ))}
     </div>
@@ -375,7 +385,7 @@ function Neighbour({ post, side }: { post: OutreachPost; side: "older" | "newer"
       className="glass-card glass-linked group flex h-[96px] overflow-hidden rounded-xl md:h-[150px]"
     >
       <div className="relative w-[120px] shrink-0 md:w-[190px]">
-        <Photo photo={post.photos[0]} sizes="190px" />
+        <Photo photo={post.photos[0]} sizes="190px" fit={CARD_FIT} />
       </div>
       <div className="flex min-w-0 flex-col justify-center px-4 md:px-6">
         <p className="flex items-center gap-2 font-mono text-[10px] tracking-[0.2em] text-prt-muted">

@@ -37,7 +37,7 @@ function record(entry: Partial<AlumniEntry> | null = null): AlumniRecord {
     entries:
       entry === null
         ? []
-        : [{ id: 1, who: { kind: "member", memberId: 7, keptName: null }, name: null, founder: null, photo: null, shown: true, removed: false, fixes: [], ...entry }],
+        : [{ id: 1, who: { kind: "member", memberId: 7, keptName: null }, name: null, founder: null, photo: null, shown: true, removed: false, fixes: [], added: [], ...entry }],
     imported: [],
   };
 }

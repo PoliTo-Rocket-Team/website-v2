@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { parseAlumnusKey } from "@/lib/about/alumni-record";
 import { canReach, type DashboardPageKey } from "@/lib/dashboard/access";
 import type { TeamWrites } from "@/lib/dashboard/data";
@@ -8,7 +7,8 @@ import type { TeamSearch } from "@/lib/dashboard/division-edit";
 import { isDetailsTarget, type AddLookup, type DetailsTarget } from "@/lib/dashboard/division-members";
 import type { MoveLookup } from "@/lib/dashboard/member-move";
 import { openDashboard } from "@/lib/dashboard/open";
-import { checkDeparture, type EditableRole } from "@/lib/dashboard/team";
+import { refreshDashboard } from "@/lib/dashboard/refresh";
+import { checkLeaveReason, type EditableRole } from "@/lib/dashboard/team";
 import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
 
 // The Team pages' writes (issues #143 and #172). Each goes through the dashboard data
@@ -30,7 +30,7 @@ function isId(value: unknown): value is number {
 
 function done(ok: boolean): TeamActionResult {
   if (!ok) return REFUSED;
-  revalidatePath("/dashboard", "layout");
+  refreshDashboard();
   return { ok: true };
 }
 
@@ -81,13 +81,13 @@ export async function saveMember(personId: number, divisionId: number, role: Edi
   return done(await writes.saveMember(personId, { divisionId, role }));
 }
 
-/** Board 59d: the years as typed ("2024 – 2026") and the reason, or none. */
-export async function moveToAlumni(personId: number, years: string, reason: string | null): Promise<TeamActionResult> {
+/** Board 59d: the reason, or none. The years on the team are read from stored data on the server (issue #980). */
+export async function moveToAlumni(personId: number, reason: string | null): Promise<TeamActionResult> {
   const writes = await writesOn("members");
-  if (!writes || !isId(personId) || typeof years !== "string") return REFUSED;
-  const departure = checkDeparture({ years, reason: typeof reason === "string" ? reason : null }, new Date().getUTCFullYear());
-  if (!departure.ok) return { ok: false, error: departure.error };
-  return done(await writes.moveToAlumni(personId, departure.value));
+  if (!writes || !isId(personId)) return REFUSED;
+  const checked = checkLeaveReason(reason);
+  if (!checked.ok) return { ok: false, error: checked.error };
+  return done(await writes.moveToAlumni(personId, checked.value));
 }
 
 /**
@@ -107,7 +107,7 @@ export async function confirmJoin(applicationId: number): Promise<TeamActionResu
 /** What a write that can say why it was refused answers. */
 function answered<T>(result: WriteResult<T>): TeamActionResult {
   if (!result.ok) return { ok: false, error: result.error };
-  revalidatePath("/dashboard", "layout");
+  refreshDashboard();
   return { ok: true };
 }
 
@@ -124,7 +124,7 @@ export async function addMember(input: unknown): Promise<WriteResult<"joined" | 
   const writes = await writesOn("members");
   if (!writes) return refused("This change could not be saved.");
   const result = await writes.addMember(input);
-  if (result.ok) revalidatePath("/dashboard", "layout");
+  if (result.ok) refreshDashboard();
   return result;
 }
 
@@ -167,6 +167,20 @@ export async function saveMemberDetails(target: DetailsTarget, divisionId: numbe
   return answered(await writes.saveMemberDetails(target, divisionId, input));
 }
 
+/** A lead or advisor change from Edit details' role pill (issues #901, #972), on the Team tree and the Members page: Edit division's save with only that change. */
+export async function changeDivisionPeople(divisionId: number, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes || !isId(divisionId)) return REFUSED;
+  return answered(await writes.changeDivisionPeople(divisionId, input));
+}
+
+/** A department or whole-team Advisor role's pill from Edit details (issue #976): it moves to another place, or ends. */
+export async function changeAdvisorPlace(input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes) return REFUSED;
+  return answered(await writes.changeAdvisorPlace(input));
+}
+
 /** Edit details' photo: the cropped square JPEG in the form's `photo` field, or none to remove it. */
 export async function setMemberPhoto(personId: number, form: FormData | null): Promise<TeamActionResult> {
   const writes = await writesOn("members");
@@ -193,7 +207,7 @@ export async function createDivision(departmentId: number, input: unknown): Prom
   const writes = await writesOn("members");
   if (!writes || !isId(departmentId)) return refused("This change could not be saved.");
   const result = await writes.createDivision(departmentId, input);
-  if (result.ok) revalidatePath("/dashboard", "layout");
+  if (result.ok) refreshDashboard();
   return result;
 }
 
@@ -218,7 +232,7 @@ export async function createDepartment(input: unknown): Promise<WriteResult<numb
   const writes = await writesOn("team-tree");
   if (!writes) return refused("This change could not be saved.");
   const result = await writes.createDepartment(input);
-  if (result.ok) revalidatePath("/dashboard", "layout");
+  if (result.ok) refreshDashboard();
   return result;
 }
 
@@ -259,9 +273,34 @@ export async function addSeat(input: unknown): Promise<TeamActionResult> {
   return answered(await writes.addSeat(input));
 }
 
-/** Remove seat (issue #643): the seat `roleId` ends with no successor; its holder stays on the team. */
-export async function removeSeat(roleId: number): Promise<TeamActionResult> {
+/** Remove seat (issue #643): the seat `roleId` ends with no successor; its holder stays on the team, or stays as an advisor (issue #900). */
+export async function removeSeat(roleId: number, input?: unknown): Promise<TeamActionResult> {
   const writes = await writesOn("team-tree");
   if (!writes || !isId(roleId)) return REFUSED;
-  return answered(await writes.removeSeat(roleId));
+  return answered(await writes.removeSeat(roleId, input));
+}
+
+// Add another holder (epic #861, issue #868): one more person holds a seat,
+// beside the holders it has. The rules are checked again behind each of these
+// (lib/dashboard/seat-holders.ts): only the team leader and full access.
+
+/** Add another team leader: who joins the team leader's seat. */
+export async function addTeamLeader(input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes) return REFUSED;
+  return answered(await writes.addTeamLeader(input));
+}
+
+/** Add another holder on the team-level seat `roleId`. */
+export async function addSeatHolder(roleId: number, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes || !isId(roleId)) return REFUSED;
+  return answered(await writes.addSeatHolder(roleId, input));
+}
+
+/** Add another head of `departmentId`. */
+export async function addDepartmentHead(departmentId: number, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes || !isId(departmentId)) return REFUSED;
+  return answered(await writes.addDepartmentHead(departmentId, input));
 }

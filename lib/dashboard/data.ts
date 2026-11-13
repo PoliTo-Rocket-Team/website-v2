@@ -30,7 +30,7 @@ import type { HandOverAnswer } from "./hand-over-request";
 import type { MemberAliases } from "./alias-request";
 import type { MemberTeamAddresses, OwnTeamAddress } from "./team-address";
 import type { OwnAlias } from "./alias-setup";
-import type { Departure, MemberDirectory, MemberEdit, TeamTree } from "./team";
+import type { LeaveReason, MemberDirectory, MemberEdit, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
 import type { Upload, WriteResult } from "./write";
 
@@ -89,11 +89,11 @@ export interface DashboardData {
    */
   dismissNotice(noticeId: number): Promise<WriteResult<null>>;
   /**
-   * The Members page: the whole team (#143), or one of the lead's divisions
-   * (`divisionId`, else their first) with the people waiting for Confirm NDA
-   * and the accepted applicants joining it (boards 59 and 61e, #172, #231).
+   * The Members page: the whole team (#143), or every division the lead
+   * reaches, all at once (#903), with the people waiting for Confirm NDA and
+   * the accepted applicants joining each (boards 59 and 61e, #172, #231).
    */
-  members(divisionId?: number | null): Promise<MemberDirectory>;
+  members(): Promise<MemberDirectory>;
   /**
    * Add member's field (boards 61h, 69c): the team members whose name or
    * email matches, or whether an email is new to the team. Nothing for a
@@ -295,6 +295,20 @@ export interface DashboardData {
   /** Board 55: a team member's own profile. */
   myProfile(): Promise<MyProfile | null>;
   saveLinkedin(text: string): Promise<WriteResult<string | null>>;
+  /**
+   * The member's own PRT email on My profile (issue #921), checked by
+   * `planOwnPrtEmailEdit` (./own-prt-email.ts): a team-domain address nobody
+   * else holds, in any letter case; an unchanged one always saves. Their open
+   * request closes with it. Answers the PRT email as saved.
+   */
+  savePrtEmail(text: string): Promise<WriteResult<string | null>>;
+  /**
+   * Request my PRT email on My profile (issue #921): the member asks for
+   * themselves, checked by `checkAliasRequest` and `planOwnAliasRequest`;
+   * refused while their PRT email is set or a request is open, and for an
+   * address someone already holds. The approvers answer it as any request.
+   */
+  requestOwnAlias(address: string): Promise<WriteResult<null>>;
   /** A new photo, already cropped square by the browser, or null to remove it. */
   setPhoto(photo: Upload | null): Promise<WriteResult<null>>;
   /**
@@ -373,6 +387,14 @@ export interface DashboardData {
    * the removal as history; a second Mark done is refused.
    */
   markTeamAddressRemovalDone(removalId: number): Promise<WriteResult<null>>;
+  /**
+   * Mark done (`"removed"`) or Keep address (`"kept"`) on an open personal
+   * PRT email removal (issue #931), checked by `planPrtEmailRemovalAnswer`:
+   * only the team leader, the operations lead and the IT lead. Mark done
+   * clears the member's PRT email; Keep address leaves it. Either closes the
+   * removal; a second answer is refused and writes nothing.
+   */
+  answerPrtEmailRemoval(removalId: number, answer: unknown): Promise<WriteResult<null>>;
   /**
    * The team addresses the viewer holds and whether they set each up
    * (`ownTeamAddressesOf`, ./team-address.ts), for the Overview's ready
@@ -466,9 +488,10 @@ export interface TeamWrites {
   /**
    * "Leaves the team" (board 59d, widened by #231): every role and every
    * access grant ends and the person moves to Alumni; their account stays.
-   * Refused unless `mayLeaveTeam` (./team.ts) allows it.
+   * Refused unless `mayLeaveTeam` (./team.ts) allows it. The years on the
+   * team come from stored data (`departureOf`, issue #980).
    */
-  moveToAlumni(personId: number, departure: Departure): Promise<boolean>;
+  moveToAlumni(personId: number, reason: LeaveReason | null): Promise<boolean>;
   /**
    * Board 59: the accepted applicant joins the division the position belongs
    * to. It is the Applications page's Confirm join, decided by the same rule
@@ -498,7 +521,9 @@ export interface TeamWrites {
    * Edit details or Fill details (board 61g, issue #584): the details of
    * anyone the viewer may edit, and the title in `divisionId`, which they
    * must reach and the person be in; null for someone in no division the
-   * viewer reaches (a seat), whose title is not set here.
+   * viewer reaches (a seat), whose title is not set here. A changed sign-in
+   * email lands in the same batch, moving the member record onto another
+   * login where it must (issue #864, ./sign-in-email.ts).
    */
   saveMemberDetails(target: DetailsTarget, divisionId: number | null, input: unknown): Promise<WriteResult<null>>;
   /** The photo in Edit details, for anyone the viewer may edit: a square JPEG under 500 KB, or null to remove it. */
@@ -515,6 +540,22 @@ export interface TeamWrites {
    * division never opens again (#251).
    */
   saveDivision(divisionId: number, input: unknown): Promise<WriteResult<null>>;
+  /**
+   * A lead or advisor change from Edit details' role pill (issues #901,
+   * #972), on the Team tree and the Members page alike: a lead stepping down
+   * with one of Remove's outcomes, or the pill's Advisor choice at the scope
+   * the editor picked. It is
+   * Edit division's save with only that change (`peopleSaveOf`,
+   * ./division-edit.ts), checked by `planDivisionSave`.
+   */
+  changeDivisionPeople(divisionId: number, input: unknown): Promise<WriteResult<null>>;
+  /**
+   * A department or whole-team Advisor role's pill in Edit details (issue
+   * #976): the role moves to another place or ends, checked by
+   * `planAdvisorPlaceChange` (./advisor-roles.ts). The team leader and full
+   * access only, as for every role beyond the divisions.
+   */
+  changeAdvisorPlace(input: unknown): Promise<WriteResult<null>>;
   /**
    * Close division (board 68c): refused while anyone is in it; closing also
    * closes its open positions and removes the access given in it.
@@ -559,11 +600,31 @@ export interface TeamWrites {
   addSeat(input: unknown): Promise<WriteResult<null>>;
   /**
    * Remove seat (issue #643): the seat row `roleId` ends and no successor's
-   * starts, so its full access ends with it; the holder stays on the team,
-   * checked by `planSeatRemoval` (./team-seats.ts). The team leader and full
-   * access only.
+   * starts, so its full access ends with it; the holder stays on the team, or
+   * stays as an advisor when `input` picks it (issue #900), checked by
+   * `planSeatRemoval` (./team-seats.ts). The team leader and full access only.
    */
-  removeSeat(roleId: number): Promise<WriteResult<null>>;
+  removeSeat(roleId: number, input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Add another holder on the team leader's seat (epic #861, issue #868): a
+   * `president` row starts for the person, and every team leader stays one;
+   * checked by `planTeamLeaderAdd` (./team-seats.ts). The team leader and
+   * full access only.
+   */
+  addTeamLeader(input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Add another holder on the team-level seat `roleId` (issue #868): a row
+   * with the seat's type, title and full-access flag starts for the person,
+   * and every holder keeps it; checked by `planSeatHolderAdd`. The team
+   * leader and full access only.
+   */
+  addSeatHolder(roleId: number, input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Add another head of `departmentId` (issue #868): a head row on it starts
+   * for the person, and every head of it stays one; checked by `planHeadAdd`
+   * (./department-edit.ts). The team leader and full access only.
+   */
+  addDepartmentHead(departmentId: number, input: unknown): Promise<WriteResult<null>>;
 }
 
 /** A read or write the viewer does not reach. */

@@ -1,4 +1,5 @@
 import { isPhotoSrc } from "@/lib/outreach-photos";
+import { GALLERY_PHOTO, LAUNCH_PHOTO, PROJECT_PHOTO, readShapeCrops, type PhotoPlace } from "@/lib/photo-crops";
 import { specRows } from "@/lib/project-pages/types";
 import { ownModels, ownRocketModels } from "@/lib/rocket-model";
 import { BACKGROUND_PRESETS, isUploadedSrc, presetNamed, type ProjectRecord } from "./record";
@@ -37,7 +38,13 @@ const prose = shape({ text: list(isString, 1), phone: isString });
 const award = shape({ name: isString, short: optional(isString), citation: optional(isString) });
 const pageStat = shape({ value: isString, label: isString, phoneLabel: optional(isString) });
 
-const photo = shape({ src: isPhotoSrc, alt: isString });
+/** A photo's crops for `place`'s shapes (issue #970); a photo stored before crops has none. */
+const cropsIn =
+  (place: PhotoPlace<string>): Check =>
+  (v) =>
+    readShapeCrops(v, place) != null;
+const photoIn = (place: PhotoPlace<string>) => shape({ src: isPhotoSrc, alt: isString, crops: optional(cropsIn(place)) });
+const photo = photoIn(PROJECT_PHOTO);
 const fact = shape({ value: isString, label: copy });
 
 /** The top of the page, its visual naming one of `models`: a rocket's names a rocket, an engine's any model. */
@@ -84,7 +91,7 @@ const launchBase = {
   version: isString,
   motor: isString,
   summary: copyWithPhone,
-  cover: optional(photo),
+  cover: optional(photoIn(LAUNCH_PHOTO)),
 };
 
 const flown = shape({
@@ -105,7 +112,7 @@ const grounded = shape({
 const planStep = shape({ date: optional(isString), title: isString, text: copy });
 
 const galleryItem: Check = (v) =>
-  shape({ src: isString, alt: isString, caption: optional(isString) })(v) ||
+  shape({ src: isString, alt: isString, caption: optional(isString), crops: optional(cropsIn(GALLERY_PHOTO)) })(v) ||
   shape({ placeholder: oneOf(true), alt: isString, caption: optional(isString) })(v);
 
 // The page blocks (epic #522), each with its id and hidden flag.

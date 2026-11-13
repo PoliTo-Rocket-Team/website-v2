@@ -2,9 +2,11 @@
 
 import { Calendar, ChevronDown, FileText, Lock, Upload, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
+import { useId, useRef, useState, type ChangeEvent, type DragEvent, type FocusEvent, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { RocketLaunch } from "@/components/landing/rocket-arrow";
+import { usePhoneGrouping } from "@/components/use-phone-grouping";
+import { PHONE_PLACEHOLDER } from "@/lib/phone";
 import {
   DEGREE_PROGRAMMES,
   GENDERS,
@@ -57,6 +59,7 @@ export function ApplicationForm({
   const [cv, setCv] = useState<PdfPick>(() => previousPick(previous.cv));
   const [letter, setLetter] = useState<PdfPick>(() => previousPick(previous.motivationLetter));
   const [sending, setSending] = useState(false);
+  const phone = usePhoneGrouping();
 
   const clear = (field: string) =>
     setErrors((e) => {
@@ -153,14 +156,16 @@ export function ApplicationForm({
             hint="with country code"
             type="tel"
             autoComplete="tel"
-            placeholder="+39 351 234 5678"
+            placeholder={PHONE_PLACEHOLDER}
             defaultValue={defaults.phone}
             errors={errors}
+            {...phone}
           />
           <Field label="Date of birth" error={errors.dateOfBirth}>
             {(id, describedBy) => (
               <div className="relative">
-                <Calendar aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" />
+                {/* Chrome, Edge and Safari hide their own picker button under this icon; Firefox draws its own and offers no way to hide it, so there the field shows Firefox's alone (issue #895). */}
+                <Calendar aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted supports-[-moz-appearance:none]:hidden" />
                 <input
                   id={id}
                   name="dateOfBirth"
@@ -169,7 +174,7 @@ export function ApplicationForm({
                   defaultValue={defaults.dateOfBirth}
                   aria-invalid={errors.dateOfBirth !== undefined}
                   aria-describedby={describedBy}
-                  className={`${inputClass(errors.dateOfBirth)} relative pl-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0`}
+                  className={`${inputClass(errors.dateOfBirth)} relative pl-10 supports-[-moz-appearance:none]:pl-3.5 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0`}
                 />
               </div>
             )}
@@ -324,6 +329,9 @@ function TextField({
   autoComplete?: string;
   inputMode?: "numeric";
   placeholder?: string;
+  onChange?: (e: ChangeEvent<HTMLInputElement>) => void;
+  onFocus?: (e: FocusEvent<HTMLInputElement>) => void;
+  onBlur?: (e: FocusEvent<HTMLInputElement>) => void;
 }) {
   const error = errors[name];
   return (
@@ -504,10 +512,18 @@ function PdfField({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[14px] text-prt-text">{pick.file.name}</span>
-                <span className="block truncate text-[11px] text-prt-muted">
-                  {pick.kind === "previous"
-                    ? [PREVIOUS_NOTE, pick.file.size === null ? null : formatSize(pick.file.size)].filter(Boolean).join(" · ")
-                    : formatSize(pick.file.size)}
+                {/* Only the note shortens on a narrow screen; the size always shows in full (issue #857). */}
+                <span className="flex min-w-0 text-[11px] text-prt-muted">
+                  {pick.kind === "previous" ? (
+                    <>
+                      <span className="truncate">{PREVIOUS_NOTE}</span>
+                      {pick.file.size === null ? null : (
+                        <span className="shrink-0 whitespace-pre">{` · ${formatSize(pick.file.size)}`}</span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="shrink-0">{formatSize(pick.file.size)}</span>
+                  )}
                 </span>
               </span>
               {pick.kind === "previous" ? (

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { groupPhone } from "../phone";
 import { MAX_PDF_BYTES, parseApplicationForm, pdfProblem, setPdfField } from "./application-form";
 
 const asks = { questions: [], requiresMotivationLetter: false };
@@ -29,6 +30,22 @@ function formWith(cv: File): FormData {
   fd.set("cv", cv);
   return fd;
 }
+
+// Issue #953: the phone field groups the digits as the person types.
+test("the form takes a grouped phone, and still asks one without + for the country code", () => {
+  const withPhone = (phone: string) => {
+    const fd = formWith(pdfOf(10));
+    fd.set("phone", phone);
+    return parseApplicationForm(fd, asks);
+  };
+  const grouped = withPhone(groupPhone("+393891234567"));
+  assert.ok(grouped.ok);
+  assert.equal(grouped.fields.phone, "+39 389 123 4567");
+
+  const bare = withPhone(groupPhone("3891234567"));
+  assert.ok(!bare.ok);
+  assert.equal(bare.errors.phone, "Start with + and the country code.");
+});
 
 describe("the PDF size limit", () => {
   test("the schema accepts a PDF of exactly the limit", () => {

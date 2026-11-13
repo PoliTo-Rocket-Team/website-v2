@@ -1,6 +1,7 @@
 // The Team page seed (issues #311, #326): the visual layer /about/the-team
 // lays on the page the seeded roles build (lib/about/team-layer.ts, issue
-// #283), and the hand-added advisors (lib/about/advisors.ts, issue #286).
+// #283), stored with the layout of page seats it snapshots to (issue #850),
+// and the hand-added advisors (lib/about/advisors.ts, issue #286).
 //
 // The layer is published, so the public page shows it. Two of its edits put
 // on the arc the two leaders lib/about/team.ts draws there whom no board seat
@@ -24,11 +25,14 @@ import { teamPageAdvisors, teamPageAdvisorVersions, teamPageLayerVersions } from
 import { importedAdvisors } from "@/lib/about/advisors-import";
 import type { AdvisorItem } from "@/lib/about/advisors";
 import type { TeamPageLayer } from "@/lib/about/team-layer";
+import { storedTeamPage } from "@/lib/about/team-page-stored";
 import { team } from "@/lib/about/team";
 import { contentVersionRows } from "./content";
+import { MEMBER_ROWS, ROLE_ROWS, USER_ROWS } from "./people";
 import { publicMember } from "./public-team";
-import { DEPARTMENT, DIVISION } from "./structure";
+import { DEPARTMENT, DEPARTMENT_ROWS, DIVISION, DIVISION_ROWS } from "./structure";
 import { rowsOf, tableSeedModule } from "./rows";
+import { teamRolesOf } from "./team-roles";
 
 const CREATED = "2026-10-01 10:00:00+00";
 const PUBLISHED = "2026-10-12 10:00:00+00";
@@ -71,7 +75,22 @@ export const TEAM_PAGE_LAYER: TeamPageLayer = {
   groupPhoto: { src: "/team/team-2022-06.jpg", alt: "The whole Team on the steps of Politecnico di Torino, June 2022" },
 };
 
-export const TEAM_PAGE_LAYER_ROWS = rowsOf(teamPageLayerVersions, [{ version: "published", layer: TEAM_PAGE_LAYER, updatedAt: PUBLISHED }]);
+/** The seeded team, as the Team page reads it from the structure and people modules' rows. */
+const SEEDED_ROLES = teamRolesOf({
+  departments: DEPARTMENT_ROWS.rows,
+  divisions: DIVISION_ROWS.rows,
+  members: MEMBER_ROWS.rows,
+  users: USER_ROWS.rows,
+  roles: ROLE_ROWS.rows,
+});
+
+/**
+ * The published version, with the layout its layer snapshots to on the
+ * seeded team (issue #850), as a save from the editor stores it.
+ */
+export const TEAM_PAGE_LAYER_ROWS = rowsOf(teamPageLayerVersions, [
+  { version: "published", ...storedTeamPage(SEEDED_ROLES, TEAM_PAGE_LAYER), updatedAt: PUBLISHED },
+]);
 
 /** An invented address for advisor `id`, on a domain reserved for examples (RFC 2606). */
 export const seededAdvisorEmail = (id: number) => `advisor-${id}@example.com`;

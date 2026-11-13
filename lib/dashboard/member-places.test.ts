@@ -17,7 +17,7 @@ const none = { memberships: membershipsOf([]), titles: {}, advising: [] };
 test("a department head and a team-level seat holder each get one row, with the stored title", () => {
   const head = placesOf({ ...none, beyondDivisions: [{ kind: "head", departmentId: 1, title: "" }] }, org);
   assert.deepEqual(head, [{ title: "Head of Operations", unit: null, code: "OPS", tag: "head" }]);
-  const seat = placesOf({ ...none, beyondDivisions: [{ kind: "board", seat: { roleId: 9, title: "Chief Engineer", flag: "chief-engineer", since: "2025-10-01" } }] }, org);
+  const seat = placesOf({ ...none, beyondDivisions: [{ kind: "board", seat: { roleId: 9, title: "Chief Engineer", fullAccess: "chief-engineer", type: "core", since: "2025-10-01" } }] }, org);
   assert.deepEqual(seat, [{ title: "Chief Engineer", unit: null, code: null, tag: "seat" }]);
 });
 

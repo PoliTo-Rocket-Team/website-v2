@@ -193,6 +193,23 @@ test("a row whose JSON is not a post's is refused, never shown", () => {
   assert.equal(postFromColumns({ ...row(), photos: [{ ...row().photos[0], alt: "" }] }, ["Award"]).photos[0].alt, "");
 });
 
+test("a stored photo's and gallery photo's crops read back from the row; a row saved before crops reads as it did, and a malformed crop is refused", () => {
+  const post = outreachRecord.posts[0];
+  const crops = { phone: { x: 0.25, y: 0, width: 0.5, height: 1 } };
+  const cropped: OutreachPost = {
+    ...post,
+    photos: [{ ...post.photos[0], crops }],
+    gallery: { items: [{ src: "/outreach/gallery-one.webp", alt: "", crops: { desktop: { x: 0, y: 0.1, width: 1, height: 0.8 } } }] },
+  };
+  assert.deepEqual(throughRow(cropped), cropped);
+  assert.equal(throughRow(post).photos[0].crops, undefined);
+  const row = () => JSON.parse(JSON.stringify(postColumns(cropped)));
+  const outside = { x: 0.5, y: 0, width: 0.6, height: 1 };
+  assert.throws(() => postFromColumns({ ...row(), photos: [{ ...row().photos[0], crops: { phone: outside } }] }, ["Award"]));
+  assert.throws(() => postFromColumns({ ...row(), photos: [{ ...row().photos[0], crops: { wide: crops.phone } }] }, ["Award"]));
+  assert.throws(() => postFromColumns({ ...row(), gallery: { items: [{ ...row().gallery.items[0], crops: "centre" }] } }, ["Award"]));
+});
+
 test("a stored post gallery reads back as its photos only, whatever switch or title a row saved before kept (issue #451)", () => {
   const row = () => JSON.parse(JSON.stringify(postColumns(outreachRecord.posts[0])));
   const photo = { ...row().photos[0], caption: "At the stand" };

@@ -4,7 +4,7 @@ import { CopyText } from "@/components/project-page/parts";
 import { monthYear, slugOf, yearOf } from "@/lib/outreach";
 import type { Copy } from "@/lib/projects";
 import { titleOf, type OutreachDraft, type OutreachPhoto } from "@/lib/outreach-types";
-import { Photo } from "./photo";
+import { CARD_FIT, Photo } from "./photo";
 
 /** What a post card shows, worked out on the server from the record. */
 export type PostCardData = {
@@ -38,7 +38,7 @@ export function PostCard({ post, className = "" }: { post: PostCardData; classNa
   return (
     <article className={`glass-card glass-linked group flex-col overflow-hidden rounded-xl ${className}`}>
       <div className="relative h-[190px] shrink-0 md:h-[220px]">
-        <Photo photo={post.photo} sizes="(min-width: 1440px) 421px, (min-width: 1024px) 30vw, (min-width: 768px) 45vw, 100vw" />
+        <Photo photo={post.photo} sizes="(min-width: 1440px) 421px, (min-width: 1024px) 30vw, (min-width: 768px) 45vw, 100vw" fit={CARD_FIT} />
       </div>
       <div className="flex flex-1 flex-col p-5 md:p-6">
         <p className="font-mono text-[11px] tracking-[0.2em] text-accent">{post.date}</p>

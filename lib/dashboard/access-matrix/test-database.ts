@@ -23,23 +23,33 @@ const JOURNAL_OFF = "test_journal.off";
 
 const client = new PGlite();
 
+/** The batch running now, which the next one waits for. */
+let batchRunning: Promise<unknown> = Promise.resolve();
+
 /**
  * Runs a batch as one transaction, its statements in order, as the
  * neon-http driver sends `db.batch` in production (lib/db-audit.ts): the
  * PGlite driver has none of its own. A statement that fails rolls every
- * statement before it back.
+ * statement before it back. PGlite is one connection, so two batches sent
+ * at once would share one transaction; each waits for the one before it to
+ * end instead, as a second batch on Postgres waits for the row locks the
+ * first one holds.
  */
-async function batch(queries: readonly PromiseLike<unknown>[]): Promise<unknown[]> {
-  await client.exec("begin");
-  try {
-    const results: unknown[] = [];
-    for (const query of queries) results.push(await query);
-    await client.exec("commit");
-    return results;
-  } catch (error) {
-    await client.exec("rollback");
-    throw error;
-  }
+function batch(queries: readonly PromiseLike<unknown>[]): Promise<unknown[]> {
+  const run = batchRunning.then(async () => {
+    await client.exec("begin");
+    try {
+      const results: unknown[] = [];
+      for (const query of queries) results.push(await query);
+      await client.exec("commit");
+      return results;
+    } catch (error) {
+      await client.exec("rollback");
+      throw error;
+    }
+  });
+  batchRunning = run.catch(() => undefined);
+  return run;
 }
 
 /** The Drizzle client the stand-in `getDb()` answers. */

@@ -24,7 +24,7 @@ import { GHOST_PILL } from "./page-header";
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
 /** Who a removal or a move to Alumni is about: a division page's person or one on the whole team. */
-type AskedPerson = Pick<DivisionPerson, "id" | "name" | "since" | "divisions">;
+export type AskedPerson = Pick<DivisionPerson, "id" | "name" | "since" | "divisions">;
 
 /** The "are you sure" a row, a note or Edit details opened, with the division it is about. */
 export type Asking =
@@ -50,7 +50,7 @@ export function MemberDialogs({ asking, onClose, onDone }: { asking: Asking | nu
         <AlumniDialog
           open
           onOpenChange={(next) => !next && onClose()}
-          person={{ id: asking.person.id, name: asking.person.name, joined: asking.person.since }}
+          person={{ id: asking.person.id, name: asking.person.name }}
           onDone={() => {
             onClose();
             onDone?.();
@@ -78,10 +78,15 @@ export function Private({ children, label }: { children: ReactNode; label: strin
   );
 }
 
-export function MailAvatar() {
+/** The mail mark of someone waiting: the List's row size, or "xs" at the Members Table's avatar size. */
+export function MailAvatar({ size = "md" }: { size?: "md" | "xs" }) {
+  const small = size === "xs";
   return (
-    <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white-10 text-prt-muted">
-      <Mail className="h-3.5 w-3.5" strokeWidth={1.75} />
+    <span
+      aria-hidden
+      className={`flex shrink-0 items-center justify-center rounded-full border border-white-10 text-prt-muted ${small ? "h-5 w-5" : "h-8 w-8"}`}
+    >
+      <Mail className={small ? "h-3 w-3" : "h-3.5 w-3.5"} strokeWidth={1.75} />
     </span>
   );
 }
@@ -107,11 +112,16 @@ export function ConfirmNdaButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-export function RowMenu({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * A row's "…" actions. `name` names the trigger as a form control, so a
+ * refused form can focus it when it is the first place to act (issue #927).
+ */
+export function RowMenu({ label, name, children }: { label: string; name?: string; children: ReactNode }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={label}
+        name={name}
         className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-prt-muted transition-colors duration-300 ease-out hover:bg-white-5 hover:text-prt-text data-[state=open]:bg-white-5 data-[state=open]:text-prt-text ${FOCUS}`}
       >
         <MoreHorizontal aria-hidden className="h-4 w-4" strokeWidth={1.75} />

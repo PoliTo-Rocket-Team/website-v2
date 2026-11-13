@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import type { Hero, Photo, TopPart, TopVisual } from "@/lib/project-pages";
+import type { Hero, TopPart, TopVisual } from "@/lib/project-pages";
 import type { Project } from "@/lib/projects";
 import { stageStillOf, stageTextureOf, type OwnRocket } from "@/lib/rocket-model";
 import { CopyText, FactList, Pill } from "./parts";
+import { ProjectPhotoFill } from "./photo";
 
 // Boards 23, 24 and 25 hero (1440): breadcrumb, the 128px name, intro left
 // with the status pill and dates right, then the visual panel on the
@@ -48,21 +49,6 @@ function RocketStill({ own }: { own: OwnRocket | undefined }) {
   );
 }
 
-/** An uploaded photo filling the panel; one from the public store, or a preview's data URL, is served as it is. */
-function PhotoFill({ photo }: { photo: Photo }) {
-  return (
-    <Image
-      src={photo.src}
-      alt={photo.alt}
-      fill
-      priority
-      sizes="(min-width: 768px) 1312px, 100vw"
-      unoptimized={!photo.src.startsWith("/")}
-      className="object-cover"
-    />
-  );
-}
-
 /**
  * The visual panel. A model's still lies on the project's background; an
  * engine's still is centred on the orange streak texture in its place
@@ -86,7 +72,7 @@ function VisualPanel({ texture, visual, className }: { texture: string; visual: 
           <RocketStill own={visual.own} />
         </>
       ) : (
-        <PhotoFill photo={visual.photo} />
+        <ProjectPhotoFill photo={visual.photo} priority />
       )}
       <p className="pointer-events-none absolute bottom-4 left-5 z-[2] font-mono text-[10px] tracking-[0.2em] text-prt-text/80 md:bottom-12 md:left-8 md:text-[11px]">
         {visual.caption}

@@ -274,6 +274,9 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
         title: roles.title,
         full_access: roles.fullAccess,
         division_id: roles.divisionId,
+        // What finds the Logistics lead seat (issue #885): the role's division code and the day it closed.
+        division_code: divisions.code,
+        division_closed_at: divisions.closedAt,
         dept_id: roles.deptId,
         first_name: users.firstName,
         last_name: users.lastName,
@@ -283,6 +286,7 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
       .from(roles)
       .innerJoin(users, eq(users.member, roles.memberId))
       .leftJoin(members, eq(members.memberId, roles.memberId))
+      .leftJoin(divisions, eq(divisions.id, roles.divisionId))
       .where(
         and(
           isNull(roles.leavedAt),
@@ -311,14 +315,20 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
     readActingSeats(inArray(users.id, listedActing)),
   ]);
 
-  // The full-access seat each member holds (issue #238): only a team page shows them, each across the whole team.
+  // The full-access seat each member holds (issues #238, #885): only a team page shows them, each across the whole team.
   const seatByMember = new Map<number, FullAccessSeat>();
   if (unit.kind === "team") {
     for (const id of new Set(team.flatMap((t) => (t.member_id === null ? [] : [t.member_id])))) {
       const seat = fullAccessSeatOf(
         team
           .filter((t) => t.member_id === id)
-          .map((t) => ({ type: t.type, divisionId: t.division_id, fullAccess: t.full_access === null ? null : SEAT_OF_FLAG[t.full_access] })),
+          .map((t) => ({
+            type: t.type,
+            divisionId: t.division_id,
+            divisionCode: t.division_code,
+            divisionClosedAt: t.division_closed_at,
+            fullAccess: t.full_access === null ? null : SEAT_OF_FLAG[t.full_access],
+          })),
       );
       if (seat !== null) seatByMember.set(id, seat);
     }

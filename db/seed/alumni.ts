@@ -8,7 +8,7 @@
 // removed, and the name kept for an account that was anonymized
 // (lib/dashboard/anonymize.ts).
 
-import { alumniEntries, alumniImportedRoles, alumniRoleFixes } from "@/db/schema";
+import { alumniAddedYears, alumniEntries, alumniImportedRoles, alumniRoleFixes } from "@/db/schema";
 import { importedEntries } from "@/lib/about/alumni-import";
 import { ANONYMIZED_ALUMNUS, HIDDEN_ALUMNUS, REMOVED_ALUMNUS, RENAMED_ALUMNUS } from "./people";
 import { rowsOf, tableSeedModule } from "./rows";
@@ -52,6 +52,6 @@ export const ALUMNI_IMPORTED_ROLE_ROWS = rowsOf(
 
 export const alumni = tableSeedModule({
   name: "alumni",
-  owns: [alumniEntries, alumniImportedRoles, alumniRoleFixes],
+  owns: [alumniEntries, alumniImportedRoles, alumniRoleFixes, alumniAddedYears],
   rows: [ALUMNI_ENTRY_ROWS, ALUMNI_IMPORTED_ROLE_ROWS],
 });

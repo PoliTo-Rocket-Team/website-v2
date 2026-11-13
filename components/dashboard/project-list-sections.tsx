@@ -6,7 +6,10 @@ import { ArrowDown, ArrowUp, ChevronDown, GripVertical, ImagePlus, LoaderCircle,
 import { toast } from "sonner";
 import { MarkFallback } from "@/components/mark-fallback";
 import { discardProjectPhoto, uploadProjectPhoto } from "@/app/dashboard/project-actions";
+import { CROP_SETTINGS, type CropsEntry } from "@/lib/dashboard/crop-settings";
 import type { WriteResult } from "@/lib/dashboard/write";
+import { cropsKey, type GalleryPhotoShape } from "@/lib/photo-crops";
+import { recropPhoto } from "@/lib/photo-list";
 import {
   blankLaunch,
   blankStep,
@@ -37,7 +40,8 @@ import { specRows, twoDigits, type Outcome, type PlanStatus } from "@/lib/projec
 import { CONTENT_FOCUS, TextField, useDragOrder } from "./content-parts";
 import { ErrorLine } from "./edit-panel";
 import { Field, inputClass } from "./field";
-import { PhotosSection, shrunkPhoto, type PhotoUploads } from "./outreach-post-photos";
+import { useCropQueue, useInOrder, useRecrop } from "./crop-queue";
+import { PhotosSection, type PhotoUploads } from "./outreach-post-photos";
 import { CopyField, EditableList, RowButton, type FieldErrors } from "./project-panel-parts";
 
 // The list blocks of the Edit <project> panel (board 75c, issue #299; page
@@ -485,6 +489,7 @@ function LaunchCard({
           photos={launch.photos}
           onChange={(change) => onChange((l) => ({ ...l, photos: change(l.photos) }))}
           uploads={uploads}
+          crop={CROP_SETTINGS.launchPhoto}
           cover={false}
           max={LAUNCH_PHOTOS_MAX}
           error={errors[`${at}.photos`]}
@@ -645,6 +650,7 @@ export function GalleryEditor({
           return result.ok ? { ok: true, value: { items: result.value.fields.items, letGo: result.value.letGo } } : result;
         }}
         uploads={uploads}
+        crop={CROP_SETTINGS.projectGallery}
       />
     </>
   );
@@ -665,6 +671,7 @@ export function GalleryPhotosEditor({
   onChange,
   remove,
   uploads,
+  crop,
 }: {
   items: readonly GalleryItemFields[];
   error?: string;
@@ -672,21 +679,25 @@ export function GalleryPhotosEditor({
   remove: (index: number) => WriteResult<GalleryPhotoRemoval>;
   /** Where its photos are stored and let go. */
   uploads: PhotoUploads;
+  /** The gallery's crop entry (lib/dashboard/crop-settings.ts). */
+  crop: CropsEntry<GalleryPhotoShape>;
 }) {
   const [uploading, setUploading] = useState(0);
   const input = useRef<HTMLInputElement>(null);
-
-  const add = async (files: readonly File[]) => {
-    setUploading((n) => n + files.length);
-    for (const file of files) {
+  const inOrder = useInOrder();
+  const queue = useCropQueue(crop, ({ file, crops }) => {
+    setUploading((n) => n + 1);
+    inOrder(async () => {
       const form = new FormData();
-      form.set("photo", await shrunkPhoto(file));
+      form.set("photo", file);
       const result = await uploads.upload(form);
       setUploading((n) => n - 1);
       if (!result.ok) toast.error(result.error);
-      else onChange((now) => [...now, { src: result.value, alt: "", caption: "" }]);
-    }
-  };
+      else onChange((now) => [...now, { src: result.value, alt: "", caption: "", ...cropsKey(crops) }]);
+    });
+  });
+  // Edit crop on a stored photo (issue #975): the same dialog at its stored crops; only its crops change, with no new upload.
+  const recrop = useRecrop(crop, (src, crops) => onChange((now) => recropPhoto(now, src, crops)));
 
   return (
     <>
@@ -707,9 +718,21 @@ export function GalleryPhotosEditor({
           for (const src of result.value.letGo) void uploads.discard(src);
           return { ok: true, value: result.value.items };
         }}
-        row={(item: GalleryItemFields, _, update) => (
+        row={(item: GalleryItemFields, index, update) => (
           <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-2.5">
-            <GalleryThumb src={item.src} />
+            <div className="space-y-1.5">
+              <GalleryThumb src={item.src} />
+              {item.src !== null && (
+                <button
+                  type="button"
+                  aria-label={`Edit crop of photo ${index + 1}`}
+                  onClick={() => item.src !== null && recrop.open({ src: item.src, crops: item.crops })}
+                  className={`rounded-md text-[13px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text ${CONTENT_FOCUS}`}
+                >
+                  Edit crop
+                </button>
+              )}
+            </div>
             <div className="space-y-2.5">
               <TextField label="Description" hint="optional, for screen readers" value={item.alt} onChange={(alt) => update({ ...item, alt })} />
               <TextField label="Caption" hint="optional" value={item.caption} onChange={(caption) => update({ ...item, caption })} />
@@ -727,16 +750,18 @@ export function GalleryPhotosEditor({
       <input
         ref={input}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept={crop.accept.join(",")}
         multiple
         hidden
         aria-label="Add photos"
         onChange={(e) => {
           const files = [...(e.target.files ?? [])];
           e.target.value = "";
-          if (files.length > 0) void add(files);
+          if (files.length > 0) queue.pick(files);
         }}
       />
+      {queue.dialog}
+      {recrop.dialog}
     </>
   );
 }

@@ -83,6 +83,22 @@ test("a role the viewer may change draws a live switch, with no status text adde
   assert.equal(switches.filter((s) => /^<span[^>]*>Open<\/span>/.test(s.after)).length, 1);
 });
 
+test("on a division's page the recruitment manager gets the live site-wide switch, and a lead who may not flip it the notice (issue #875)", () => {
+  const page: PositionsPage = { scope: "division", division: "Logistics", positions: [], newPosition: { divisions: [], nextId: 9 }, readsApplications: false };
+  const asViewer = (canSwitch: boolean) =>
+    renderToStaticMarkup(createElement(PositionsView, { page, recruitment: { recruitment: { isOpen: true }, canSwitch } }));
+
+  const manager = asViewer(true);
+  const switches = switchesOf(manager, "Recruitment");
+  assert.equal(switches.length, 1, "one site-wide switch");
+  assert.doesNotMatch(switches[0].tag, /\sdisabled=""/);
+  assert.doesNotMatch(manager, /Recruitment is open\.<\/span>/, "no notice beside the switch");
+
+  const lead = asViewer(false);
+  assert.equal(switchesOf(lead, "Recruitment").length, 0);
+  assert.match(lead, /Recruitment is open\.<\/span>/);
+});
+
 test("a role the viewer cannot change opens to view, not to edit, and a grant holder's notice names no owner (issue #577)", () => {
   const html = rendered([position(1, "Injector Engineer", true, false), position(2, "Valve Technician", false, true)]);
   // The row and the card each open the role: read-only where the viewer may not change it.

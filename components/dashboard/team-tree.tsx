@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronDown, LocateFixed, Maximize2, Minus, Pencil, Plus } from "lucide-react";
-import { divisionLabel, matchesQuery, type TeamTree, type TreePerson } from "@/lib/dashboard/team";
-import { boxOf, layoutTeamTree, type Box, type TreeLayout, type TreeNode } from "@/lib/dashboard/tree-layout";
+import { departmentsOnPath, divisionLabel, divisionsOnPath, matchesQuery, viewersSeat, type TeamTree, type TreeHolders, type TreePerson } from "@/lib/dashboard/team";
+import { boxOf, headCaption, layoutTeamTree, leadCaption, leaderCaption, seatCaption, type Box, type TreeLayout, type TreeNode } from "@/lib/dashboard/tree-layout";
 import { Avatar } from "./avatar";
 import { SearchField } from "./search-field";
 
@@ -26,12 +26,9 @@ const EDIT_PILL = `inline-flex h-10 shrink-0 items-center gap-2 rounded-full bor
 
 function everyone(tree: TeamTree): TreePerson[] {
   return [
-    ...(tree.leader ? [tree.leader] : []),
-    ...tree.board.map((b) => b.person),
-    ...tree.departments.flatMap((d) => [
-      ...(d.head ? [d.head] : []),
-      ...d.divisions.flatMap((v) => [...(v.lead ? [v.lead] : []), ...v.members]),
-    ]),
+    ...tree.leaders,
+    ...tree.board.flatMap((s) => s.holders),
+    ...tree.departments.flatMap((d) => [...d.heads, ...d.divisions.flatMap((v) => [...v.leads, ...v.members])]),
   ];
 }
 
@@ -97,40 +94,65 @@ export function TeamTreeView({ tree, editHref = null }: { tree: TeamTree; /** Th
 
 // The card every tree node above the member lists is drawn as. Its title and
 // subtitle wrap rather than cut off; the canvas layout and the phone list each
-// let the card grow to fit (Owner decision, 2026-10-19, on #398).
+// let the card grow to fit (Owner decision, 2026-10-19, on #398). A seat or
+// unit with several holders names each on the one card, one line per holder,
+// as the edit view does (epic #861, issues #869 and #916).
 
 function TreeCard({
-  person,
+  holders,
   title,
   subtitle,
   onPath,
   found,
   trailing,
 }: {
-  person: TreePerson | null;
+  holders: TreeHolders;
+  /** The unit the card stands for: its heading when nobody holds it. */
   title: string;
   subtitle: string | null;
   onPath: boolean;
   found: boolean;
   trailing?: ReactNode;
 }) {
+  const caption = (className: string) =>
+    subtitle && <span className={`block break-words text-[11px] leading-[1.25] ${onPath ? "text-accent" : "text-prt-muted"} ${className}`}>{subtitle}</span>;
+  const frame = `relative flex h-full w-full items-center gap-2.5 rounded-xl border px-2.5 text-left ${
+    onPath ? "border-accent/70 bg-accent/[0.06]" : "border-hairline bg-panel"
+  } ${found ? "ring-1 ring-accent" : ""}`;
+
+  if (holders.length > 1) {
+    // The paddings and gaps `holdersCardHeight` in lib/dashboard/tree-layout.ts sizes the card by; the caption lines up under the names.
+    return (
+      <div className={`${frame} py-2`}>
+        <span className="min-w-0 flex-1">
+          <ul className="flex flex-col gap-1.5">
+            {holders.map((person) => (
+              <li key={person.id} className="flex items-center gap-2.5">
+                <Avatar size="sm" accent person={person} />
+                <span className="min-w-0 break-words text-[13px] font-semibold leading-tight text-prt-text">
+                  {person.name}
+                  {person.self && " · you"}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {caption("mt-1 pl-[38px]")}
+        </span>
+        {trailing}
+      </div>
+    );
+  }
+
+  const person = holders.at(0);
   return (
-    <div
-      className={`relative flex h-full w-full items-center gap-2.5 rounded-xl border px-2.5 py-1 text-left ${
-        onPath ? "border-accent/70 bg-accent/[0.06]" : "border-hairline bg-panel"
-      } ${found ? "ring-1 ring-accent" : ""}`}
-    >
+    <div className={`${frame} py-1`}>
       {person && <Avatar size="sm" accent person={person} />}
       <span className="min-w-0 flex-1">
         <span className="block break-words text-[13px] font-semibold leading-tight text-prt-text">
-          {title}
+          {person ? person.name : title}
           {person?.self && " · you"}
         </span>
-        {subtitle && (
-          <span className={`mt-0.5 block break-words text-[11px] leading-[1.25] ${onPath ? "text-accent" : "text-prt-muted"}`}>
-            {subtitle}
-          </span>
-        )}
+        {caption("mt-0.5")}
       </span>
       {trailing}
     </div>
@@ -158,8 +180,9 @@ function MemberRow({ person, onPath, found }: { person: TreePerson; onPath: bool
   );
 }
 
-/** Whether this card or row is `personId`'s first place: "Find someone" and "Show me" go only there. */
-const atFirstPlace = (person: TreePerson | null, personId: number | null) => personId !== null && person?.id === personId && person.first;
+/** Whether this card or row is `personId`'s first place, whichever of its holders they are: "Find someone" and "Show me" go only there. */
+const atFirstPlace = (people: readonly TreePerson[], personId: number | null) =>
+  personId !== null && people.some((person) => person.id === personId && person.first);
 
 // Desktop (board 54c): the tree on a pan and zoom canvas.
 
@@ -342,9 +365,9 @@ function TreeCanvas({ tree, found, target }: { tree: TeamTree; found: number | n
         {layout.nodes.map((node) => (
           <div key={node.key} className="absolute" style={{ left: node.x, top: node.y, width: node.w, height: node.h }}>
             {node.kind === "card" ? (
-              <TreeCard person={node.person} title={node.title} subtitle={node.subtitle} onPath={node.onPath} found={atFirstPlace(node.person, found)} />
+              <TreeCard holders={node.holders} title={node.title} subtitle={node.subtitle} onPath={node.onPath} found={atFirstPlace(node.holders, found)} />
             ) : (
-              <MemberRow person={node.person} onPath={node.onPath} found={atFirstPlace(node.person, found)} />
+              <MemberRow person={node.person} onPath={node.onPath} found={atFirstPlace([node.person], found)} />
             )}
           </div>
         ))}
@@ -371,9 +394,17 @@ function TreeCanvas({ tree, found, target }: { tree: TeamTree; found: number | n
   );
 }
 
-/** The connectors, grey first, then the viewer's path over them in accent, at 1px whatever the zoom. */
+/**
+ * The connectors, grey first, then the viewer's path over them in accent, at
+ * 1px whatever the zoom. The path is one shape, so a stretch two of its lines
+ * share (the trunk, a department reached by two divisions) is stroked once.
+ */
 function TreeLines({ layout }: { layout: TreeLayout }) {
   const line = (points: readonly (readonly [number, number])[]) => points.map(([x, y]) => `${x},${y}`).join(" ");
+  const path = layout.edges
+    .filter((e) => e.onPath)
+    .flatMap((e) => e.points.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x},${y}`))
+    .join(" ");
   return (
     <svg aria-hidden className="pointer-events-none absolute inset-0 overflow-visible" width={layout.width} height={layout.height}>
       {layout.edges
@@ -381,11 +412,7 @@ function TreeLines({ layout }: { layout: TreeLayout }) {
         .map((e, i) => (
           <polyline key={`g${i}`} points={line(e.points)} fill="none" className="stroke-border-strong" strokeWidth={1} vectorEffect="non-scaling-stroke" />
         ))}
-      {layout.edges
-        .filter((e) => e.onPath)
-        .map((e, i) => (
-          <polyline key={`a${i}`} points={line(e.points)} fill="none" className="stroke-accent" strokeWidth={1} vectorEffect="non-scaling-stroke" />
-        ))}
+      {path !== "" && <path d={path} fill="none" className="stroke-accent" strokeWidth={1} vectorEffect="non-scaling-stroke" />}
     </svg>
   );
 }
@@ -452,11 +479,12 @@ const TICK = 18;
 
 /**
  * Items hung on one vertical rail, each joined to it by a short tick at its
- * card's middle. The rail stops at the last item; the part down to the item
- * on the viewer's path is in accent.
+ * card's middle. The rail stops at the last item; the part down to the last
+ * item on the viewer's path is in accent.
  */
 function Rail({ items, middle, gap }: { items: { key: string | number; onPath: boolean; node: ReactNode }[]; middle: number; gap: number }) {
-  const pathIndex = items.findIndex((item) => item.onPath);
+  // The rail is accent down to the last item on the path, so it reaches every one of them.
+  const pathIndex = items.findLastIndex((item) => item.onPath);
   return (
     <ul className="flex flex-col">
       {items.map((item, i) => {
@@ -478,11 +506,9 @@ function Rail({ items, middle, gap }: { items: { key: string | number; onPath: b
 
 type Opened = { readonly departments: ReadonlySet<number>; readonly divisions: ReadonlySet<number> };
 
+/** Every department and division on the viewer's path opens first, so each place they are in shows. */
 function openedOnPath(tree: TeamTree): Opened {
-  return {
-    departments: new Set(tree.path ? [tree.path.departmentId] : []),
-    divisions: new Set(tree.path?.divisionId != null ? [tree.path.divisionId] : []),
-  };
+  return { departments: departmentsOnPath(tree.path), divisions: divisionsOnPath(tree.path) };
 }
 
 function toggled(set: ReadonlySet<number>, id: number): Set<number> {
@@ -500,6 +526,9 @@ function Chevron({ open }: { open: boolean }) {
     />
   );
 }
+
+/** Remembers the element a card or row is drawn as for each of its people whose first place it is. */
+type Keep = (people: readonly TreePerson[]) => (el: HTMLElement | null) => void;
 
 /**
  * The seat row on a phone (board 54c-m, issue #627): every team-level seat in
@@ -521,12 +550,12 @@ function SeatRow({
   trunk: string;
   down: string;
   found: number | null;
-  keep: (person: TreePerson | null) => (el: HTMLElement | null) => void;
+  keep: Keep;
 }) {
   const n = board.length;
   // Each card's middle, as a share of the row; the trunk runs down the row's middle.
   const middleOf = (i: number) => ((i + 0.5) / n) * 100;
-  const mine = board.findIndex((b) => b.person.self);
+  const mine = board.findIndex((s) => viewersSeat(s.holders));
   const top = hasLeader ? "top-3" : "top-0";
   return (
     <div className="relative">
@@ -541,10 +570,10 @@ function SeatRow({
       )}
       <span aria-hidden className={`absolute bottom-0 left-1/2 border-l ${down} ${top}`} />
       <div className="grid gap-3 pt-3" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
-        {board.map(({ roleId, title, person }) => (
-          <div key={roleId} ref={keep(person)} className="relative flex min-h-[52px]">
-            <span aria-hidden className={`absolute -top-3 left-1/2 h-3 border-l ${person.self ? "border-accent" : "border-border-strong"}`} />
-            <TreeCard person={person} title={person.name} subtitle={title} onPath={person.self} found={atFirstPlace(person, found)} />
+        {board.map(({ key, title, holders }, i) => (
+          <div key={key} ref={keep(holders)} className="relative flex min-h-[52px]">
+            <span aria-hidden className={`absolute -top-3 left-1/2 h-3 border-l ${i === mine ? "border-accent" : "border-border-strong"}`} />
+            <TreeCard holders={holders} title={title} subtitle={seatCaption(title)} onPath={i === mine} found={atFirstPlace(holders, found)} />
           </div>
         ))}
       </div>
@@ -555,20 +584,23 @@ function SeatRow({
 function PhoneTree({ tree, found, target }: { tree: TeamTree; found: number | null; target: Target | null }) {
   const [opened, setOpened] = useState<Opened>(() => openedOnPath(tree));
   const nodes = useRef(new Map<number, HTMLElement>());
-  const path = tree.path;
-  const aboveDepartments = tree.leader?.self === true || tree.board.some((b) => b.person.self);
-  const trunkOnPath = path !== null;
+  const pathDepartments = departmentsOnPath(tree.path);
+  const pathDivisions = divisionsOnPath(tree.path);
+  /** The leader and the trunk down to the seats: on any path. */
+  const onTop = tree.path !== null;
+  /** The trunk on down to the heads: on a path that reaches a department. */
+  const trunkOnPath = pathDepartments.size > 0;
 
   // "Find someone" opens the branch of the person's first place and scrolls to them there.
   useEffect(() => {
     if (!target) return;
-    const here = (person: TreePerson | null) => atFirstPlace(person, target.personId);
+    const here = (people: readonly TreePerson[]) => atFirstPlace(people, target.personId);
     for (const department of tree.departments) {
-      const division = department.divisions.find((v) => here(v.lead) || v.members.some(here));
-      if (here(department.head) || division) {
+      const division = department.divisions.find((v) => here(v.leads) || here(v.members));
+      if (here(department.heads) || division) {
         setOpened((o) => ({
           departments: new Set([...o.departments, department.id]),
-          divisions: division && !here(division.lead) ? new Set([...o.divisions, division.id]) : o.divisions,
+          divisions: division && !here(division.leads) ? new Set([...o.divisions, division.id]) : o.divisions,
         }));
       }
     }
@@ -577,29 +609,37 @@ function PhoneTree({ tree, found, target }: { tree: TeamTree; found: number | nu
     requestAnimationFrame(scroll);
   }, [target, tree]);
 
-  /** Remembers the element of a person's first place, the one "Find someone" scrolls to. */
-  const keep = (person: TreePerson | null) => (el: HTMLElement | null) => {
-    if (!person?.first) return;
-    const id = person.id;
-    if (el) nodes.current.set(id, el);
-    else nodes.current.delete(id);
+  /** Remembers the element of each person's first place on it, the one "Find someone" scrolls to. */
+  const keep: Keep = (people) => (el) => {
+    for (const person of people) {
+      if (!person.first) continue;
+      if (el) nodes.current.set(person.id, el);
+      else nodes.current.delete(person.id);
+    }
   };
 
   const line = (accent: boolean) => (accent ? "border-accent" : "border-border-strong");
+  const hasLeader = tree.leaders.length > 0;
 
   return (
     <div>
-      {tree.leader && (
-        <div ref={keep(tree.leader)} className="mx-auto flex min-h-[52px] w-[200px]">
-          <TreeCard person={tree.leader} title={tree.leader.name} subtitle="Team Leader" onPath={trunkOnPath || aboveDepartments} found={atFirstPlace(tree.leader, found)} />
+      {hasLeader && (
+        <div ref={keep(tree.leaders)} className="mx-auto flex min-h-[52px] w-[200px]">
+          <TreeCard
+            holders={tree.leaders}
+            title={leaderCaption(tree.leaders)}
+            subtitle={leaderCaption(tree.leaders)}
+            onPath={onTop}
+            found={atFirstPlace(tree.leaders, found)}
+          />
         </div>
       )}
 
       {tree.board.length > 0 && (
         <SeatRow
           board={tree.board}
-          hasLeader={tree.leader !== null}
-          trunk={line(trunkOnPath || aboveDepartments)}
+          hasLeader={hasLeader}
+          trunk={line(onTop)}
           down={line(trunkOnPath)}
           found={found}
           keep={keep}
@@ -618,7 +658,7 @@ function PhoneTree({ tree, found, target }: { tree: TeamTree; found: number | nu
             middle={26}
             gap={12}
             items={tree.departments.map((department) => {
-              const onDepartment = path?.departmentId === department.id;
+              const onDepartment = pathDepartments.has(department.id);
               const isOpen = opened.departments.has(department.id);
               return {
                 key: department.id,
@@ -626,18 +666,18 @@ function PhoneTree({ tree, found, target }: { tree: TeamTree; found: number | nu
                 node: (
                   <div>
                     <button
-                      ref={keep(department.head)}
+                      ref={keep(department.heads)}
                       type="button"
                       aria-expanded={isOpen}
                       onClick={() => setOpened((o) => ({ ...o, departments: toggled(o.departments, department.id) }))}
                       className={`flex min-h-[52px] w-full rounded-xl ${FOCUS}`}
                     >
                       <TreeCard
-                        person={department.head}
-                        title={department.head?.name ?? department.name}
-                        subtitle={department.head?.title ?? null}
+                        holders={department.heads}
+                        title={department.name}
+                        subtitle={headCaption(department.heads)}
                         onPath={onDepartment}
-                        found={atFirstPlace(department.head, found)}
+                        found={atFirstPlace(department.heads, found)}
                         trailing={<Chevron open={isOpen} />}
                       />
                     </button>
@@ -647,27 +687,26 @@ function PhoneTree({ tree, found, target }: { tree: TeamTree; found: number | nu
                           middle={26}
                           gap={8}
                           items={department.divisions.map((division) => {
-                            const onDivision = onDepartment && path?.divisionId === division.id;
+                            const onDivision = pathDivisions.has(division.id);
                             const divisionOpen = opened.divisions.has(division.id);
-                            const label = divisionLabel(division.name);
                             return {
                               key: division.id,
                               onPath: onDivision,
                               node: (
                                 <div>
                                   <button
-                                    ref={keep(division.lead)}
+                                    ref={keep(division.leads)}
                                     type="button"
                                     aria-expanded={divisionOpen}
                                     onClick={() => setOpened((o) => ({ ...o, divisions: toggled(o.divisions, division.id) }))}
                                     className={`flex min-h-[52px] w-full rounded-xl ${FOCUS}`}
                                   >
                                     <TreeCard
-                                      person={division.lead}
-                                      title={division.lead?.name ?? label}
-                                      subtitle={division.lead ? `${label} · lead` : null}
+                                      holders={division.leads}
+                                      title={divisionLabel(division.name)}
+                                      subtitle={leadCaption(division.name, division.leads)}
                                       onPath={onDivision}
-                                      found={atFirstPlace(division.lead, found)}
+                                      found={atFirstPlace(division.leads, found)}
                                       trailing={division.members.length > 0 ? <Chevron open={divisionOpen} /> : undefined}
                                     />
                                   </button>
@@ -680,8 +719,8 @@ function PhoneTree({ tree, found, target }: { tree: TeamTree; found: number | nu
                                           key: person.id,
                                           onPath: onDivision && person.self,
                                           node: (
-                                            <div ref={keep(person)} className="flex min-h-8">
-                                              <MemberRow person={person} onPath={onDivision && person.self} found={atFirstPlace(person, found)} />
+                                            <div ref={keep([person])} className="flex min-h-8">
+                                              <MemberRow person={person} onPath={onDivision && person.self} found={atFirstPlace([person], found)} />
                                             </div>
                                           ),
                                         }))}

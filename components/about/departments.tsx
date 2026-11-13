@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import type { DepartmentGroup, Departments as DepartmentsData, DivisionLead, GroupMember } from "@/lib/about/types";
+import type { CoHolder, DepartmentGroup, Departments as DepartmentsData, DivisionLead, GroupMember } from "@/lib/about/types";
 import { GAP, groupLayout } from "./group-layout";
 import { Avatar, Contacts, PersonCell } from "./person";
 import { SectionHead } from "./section-head";
@@ -39,19 +39,46 @@ function Lead({ lead }: { lead: DivisionLead }) {
   );
 }
 
+/**
+ * A department's several heads side by side in its one place (issue #880),
+ * two to a row: each a photo over their name, role and icons, so two fit
+ * the narrowest cell, a phone's column included.
+ */
+function Heads({ heads }: { heads: readonly CoHolder[] }) {
+  return (
+    <ul className="grid grid-cols-2 gap-x-4 gap-y-6 lg:gap-x-6">
+      {heads.map((h, i) => (
+        <li key={`${h.name}-${i}`} className="min-w-0">
+          <Avatar photo={h.photo} sizeClass="h-[60px] w-[60px] lg:h-20 lg:w-20" sizes="80px" />
+          <p className="mt-2.5 text-[16px] font-semibold leading-tight tracking-[-0.01em] text-prt-text lg:mt-3 lg:text-[19px]">{h.name}</p>
+          <p className="mt-0.5 text-[13px] leading-tight text-accent lg:mt-1 lg:text-[14px]">{h.role}</p>
+          <Contacts person={h} iconClass="h-4 w-4" className="mt-1.5 lg:mt-2 lg:gap-2.5" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Member({ member }: { member: GroupMember }) {
   const head = member.kind === "head";
   const leads = head ? member.leads : [];
+  const coHeads = head ? member.coHolders : undefined;
   return (
     <div>
-      <PersonCell
-        person={member}
-        role={head ? member.role : member.division}
-        accent={head}
-        phone={{ avatar: "h-[60px] w-[60px]", gap: "gap-3" }}
-      />
+      {member.kind === "head" && member.coHolders !== undefined ? (
+        <Heads heads={[member, ...member.coHolders]} />
+      ) : (
+        <PersonCell
+          person={member}
+          role={head ? member.role : member.division}
+          accent={head}
+          phone={{ avatar: "h-[60px] w-[60px]", gap: "gap-3" }}
+        />
+      )}
       {leads.length > 0 && (
-        <ul className="ml-[72px] mt-3 grid grid-cols-2 gap-x-2.5 gap-y-3 lg:ml-0 lg:mt-5 lg:gap-x-3 lg:gap-y-4 lg:border-l lg:border-white-10 lg:pl-5">
+        <ul
+          className={`${coHeads === undefined ? "ml-[72px]" : ""} mt-3 grid grid-cols-2 gap-x-2.5 gap-y-3 lg:ml-0 lg:mt-5 lg:gap-x-3 lg:gap-y-4 lg:border-l lg:border-white-10 lg:pl-5`}
+        >
           {leads.map((l, i) => (
             <Lead key={`${l.division}-${l.name}-${i}`} lead={l} />
           ))}
@@ -293,7 +320,9 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
   );
 }
 
+/** With no group (no department head on the stored layout has a holder, ADR 0019 Decision 9), the page leaves the section out, as it does Advisors. */
 export function Departments({ departments, frames = {} }: { departments: DepartmentsData; frames?: DepartmentFrames }) {
+  if (departments.groups.length === 0) return null;
   return (
     <section className="px-5 pt-section md:px-16">
       <div className="mx-auto max-w-[1312px]">

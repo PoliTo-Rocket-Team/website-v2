@@ -5,6 +5,7 @@ import { GripVertical, Minus, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { removeFaq, reorderFaqs, saveFaq } from "@/app/dashboard/actions";
 import { moveTo } from "@/lib/content/order";
+import { useServerState } from "@/lib/dashboard/server-state";
 import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
 import { FAQ_QUESTION_MAX, faqFieldErrors, fieldsOf, placeOnApplyPage, updatedLabel, type FaqFieldErrors, type FaqVersion } from "@/lib/faq/faq";
 import { ConfirmDialog } from "./confirm-dialog";
@@ -19,8 +20,8 @@ import { EDIT_CHIP_WIDTH, EditChip } from "./row-open";
 // The FAQ page (boards 79 and 79b, issue #258): the questions at the bottom of
 // /apply in site order, each row dragged to its place; a row or New question
 // opens the edit panel, whose Save draft keeps /apply as it is and whose
-// Publish puts the question there. The page keeps the list it was sent and
-// each answer from the server; every write is checked there again, behind the
+// Publish puts the question there. The page shows the list the server last
+// sent, with each answer from the server applied at once; every write is checked there again, behind the
 // site-content gate.
 
 type Panel = { kind: "closed" } | { kind: "new" } | { kind: "edit"; id: number };
@@ -28,7 +29,8 @@ type Panel = { kind: "closed" } | { kind: "new" } | { kind: "edit"; id: number }
 const CLOSED: Panel = { kind: "closed" };
 
 export function FaqView({ items: initial, now }: { items: readonly ContentItem<FaqVersion>[]; now: string }) {
-  const [items, setItems] = useState<readonly ContentItem<FaqVersion>[]>(initial);
+  // The questions follow each refresh the server sends after a write (issue #984).
+  const [items, setItems] = useServerState<readonly ContentItem<FaqVersion>[]>(initial);
   const [panel, setPanel] = useState<Panel>(CLOSED);
   const ordered = [...items].sort((a, b) => a.siteOrder - b.siteOrder);
   const editing = panel.kind === "edit" ? (items.find((item) => item.id === panel.id) ?? null) : null;

@@ -57,7 +57,7 @@ type Seat = {
 };
 
 function seat(roles: readonly ScopedRole[], divisionIds: readonly number[], departmentIds: readonly number[]): Seat {
-  const activeRoles: ActiveRoleRef[] = roles.map((r) => ({ type: r.type, divisionId: r.divisionId, fullAccess: null }));
+  const activeRoles: ActiveRoleRef[] = roles.map((r) => ({ type: r.type, divisionId: r.divisionId, divisionCode: null, divisionClosedAt: null, fullAccess: null }));
   return { standing: viewerStandingOf({ scopes: [], activeRoles }), roles, divisionIds, departmentIds };
 }
 
@@ -97,8 +97,8 @@ test("pages: the team leader reaches every dashboard page a team member can, hea
 });
 
 test("positions: the team leader switches recruitment and changes positions anywhere; a head in their department, a lead in their division", () => {
-  assert.equal(canSwitchRecruitment(teamLeader.standing), true);
-  for (const other of [head, lead, member]) assert.equal(canSwitchRecruitment(other.standing), false);
+  assert.equal(canSwitchRecruitment(reader(teamLeader)), true);
+  for (const other of [head, lead, member]) assert.equal(canSwitchRecruitment(reader(other)), false);
   for (const unit of [MA, OA, DM]) assert.equal(changes(teamLeader, "positions", unit), true);
   assert.deepEqual([MA, OA, DM].map((u) => changes(head, "positions", u)), [true, true, false]);
   assert.deepEqual([MA, OA, DM].map((u) => changes(lead, "positions", u)), [true, false, false]);
@@ -138,7 +138,7 @@ const HEAD: TeamActor = { kind: "head", departmentIds: [1] };
 const LEAD: TeamActor = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] };
 
 test("members: the team leader edits and removes anyone; a head only in their department; a lead only in their division(s)", () => {
-  assert.equal(opensWholeTeam(teamLeader.standing), true, "the whole team, with Edit details on every row");
+  assert.equal(opensWholeTeam({ ...teamLeader.standing, wholeTeamAreas: [] }), true, "the whole team, with Edit details on every row");
   for (const unit of [MA, OA, DM]) assert.equal(changes(teamLeader, "members", unit), true);
   assert.deepEqual([MA, OA, DM].map((u) => changes(head, "members", u)), [true, true, false]);
   assert.deepEqual([MA, OA, DM].map((u) => changes(lead, "members", u)), [true, false, false]);
@@ -191,7 +191,7 @@ test("orders: the team leader edits every order and decides; a head their depart
         fullAccess: s.standing.kind === "operations-lead",
         teamLeader: isTeamLeader(s.standing),
         headDepartment: s.standing.kind === "department-head" ? { id: 1, name: "Aerodynamics" } : null,
-        ledDivisionIds: ledDivisionIds({ scopes: [], activeRoles: s.roles.map((r) => ({ type: r.type, divisionId: r.divisionId, fullAccess: null })) }),
+        ledDivisionIds: ledDivisionIds({ scopes: [], activeRoles: s.roles.map((r) => ({ type: r.type, divisionId: r.divisionId, divisionCode: null, divisionClosedAt: null, fullAccess: null })) }),
       },
       rows,
       units,

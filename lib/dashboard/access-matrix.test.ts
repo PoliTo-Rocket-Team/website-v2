@@ -6,11 +6,13 @@ import { maySiteContent } from "@/lib/content/gate";
 import { canReach, DASHBOARD_PAGES, NAV_GROUPS, sidebarFor, type DashboardPageKey } from "./access";
 import { mayOpenApplication, readsRecruitment, readsRecruitmentIn } from "./application-documents";
 import { overviewAreasOf } from "./division-overview";
+import { mayExportMembers } from "./members-export";
 import { opensWholeTeam } from "./members-view";
 import { ordersScopeOf, type OrdersScopeRow } from "./orders";
 import { mayChangePositionIn } from "./position-access";
-import { GRANT_AREAS, isOffTeam, ledDivisionIds, mayChange, readsArea, readsAreaIn } from "./viewer";
-import { ALL, CHANGE_AREAS, CONTENT, ORG, PAGE_OF_AREA, SCOPES, SIGNED_OUT, TEAM_BASE, UNITS, unitsWhere, VIEWERS, type Unit, type Viewer } from "./access-matrix/matrix";
+import { correctsSignInEmail } from "./sign-in-email";
+import { changesAreaAsTeam, GRANT_AREAS, isFullAccess, isOffTeam, ledDivisionIds, mayChange, readsArea, readsAreaIn } from "./viewer";
+import { ALL, CHANGE_AREAS, CONTENT, ORG, PAGE_OF_AREA, SCOPES, SIGNED_OUT, TEAM_BASE, UNITS, unitsWhere, viewerOf, VIEWERS, WHOLE_TEAM_HOLDERS, type Unit, type Viewer } from "./access-matrix/matrix";
 import { aliasAttentionFor, answersAliasRequests, managesMember, planAliasRequest, type AliasRequest, type AliasTeamPerson } from "./alias-request";
 import { ownAliasOf, planAliasSetUp, showsAliasCard } from "./alias-setup";
 import type { TeamPerson } from "./division-edit";
@@ -31,6 +33,41 @@ describe("the access matrix covers every viewer kind and every page", () => {
       assert.ok(names.includes(name), name);
     }
     assert.deepEqual(SIGNED_OUT.pages, []);
+  });
+
+  test("a whole-team grant on each area, at each level, has a row for a member, a division lead and a department head (issue #957)", () => {
+    let rows = 0;
+    for (const { who, roles, base } of WHOLE_TEAM_HOLDERS) {
+      for (const area of GRANT_AREAS) {
+        for (const level of ["view", "edit"] as const) {
+          const holders = VIEWERS.filter(
+            ({ viewer }) =>
+              viewer.heldRoles.length === roles.length &&
+              viewer.heldRoles.every((r, i) => r.type === roles[i].type && r.divisionId === roles[i].divisionId && r.departmentId === roles[i].departmentId) &&
+              viewer.rawRows.length === 1 &&
+              viewer.rawRows[0].scope === "team" &&
+              viewer.rawRows[0].target === area &&
+              viewer.rawRows[0].level === level,
+          );
+          assert.equal(holders.length, 1, `${who}: ${area} at Can ${level}`);
+          const [{ name, viewer, expect }] = holders;
+          rows++;
+          // The grant makes nobody another kind of viewer.
+          assert.equal(viewer.kind, viewerOf([...roles]).kind, `${name}: viewer kind`);
+          // The area in every unit; at Can edit changed in every unit, Members as the team; at Can view only what the role changes.
+          assert.deepEqual(expect.reads[area], ALL, `${name}: reads`);
+          if (area !== "orders") assert.deepEqual(expect.changes[area], level === "edit" ? ALL : base.changes[area], `${name}: changes`);
+          assert.equal(expect.membersAsTeam, area === "members" && level === "edit", `${name}: Members as the team`);
+          // Every other field is what the role gives without the grant.
+          for (const other of GRANT_AREAS.filter((a) => a !== area)) assert.deepEqual(expect.reads[other], base.reads[other], `${name}: reads ${other}`);
+          for (const other of CHANGE_AREAS.filter((a) => a !== area)) assert.deepEqual(expect.changes[other], base.changes[other], `${name}: changes ${other}`);
+          for (const field of ["siteContent", "switchesRecruitment", "fullAccess", "aliases", "decidesOrders"] as const) {
+            assert.deepEqual(expect[field], base[field], `${name}: ${field}`);
+          }
+        }
+      }
+    }
+    assert.equal(rows, 24);
   });
 
   test("each row names only real pages", () => {
@@ -96,6 +133,10 @@ describe("site content, the recruitment switch, Orders and the whole-team Member
       assert.equal(scope !== null, expect.ordersPage, `${name}: Orders page`);
       if (scope !== null) assert.ok(canReach(viewer, "orders"), `${name}: an Orders page they cannot reach`);
       assert.equal(opensWholeTeam(viewer), expect.wholeTeamMembers, `${name}: whole-team Members`);
+      assert.equal(changesAreaAsTeam(viewer, "members"), expect.membersAsTeam, `${name}: changes Members as the team`);
+      assert.equal(isFullAccess(viewer), expect.fullAccess, `${name}: full access`);
+      assert.equal(mayExportMembers(viewer), expect.fullAccess, `${name}: Members export`);
+      assert.equal(correctsSignInEmail(viewer, "member", false), expect.fullAccess, `${name}: sign-in email change`);
     });
   }
 });
@@ -119,7 +160,8 @@ describe("grants are independent (issue #477)", () => {
     for (const { name, viewer } of holders) {
       assert.equal(viewer.kind, "member", name);
       assert.equal(canReach(viewer, "division-access"), false, `${name}: Access page`);
-      assert.equal(opensWholeTeam(viewer), false, name);
+      // A whole-team Members grant opens the whole team's page (issue #956), and still never full access.
+      assert.equal(isFullAccess(viewer), false, name);
       assert.ok(overviewAreasOf(viewer).length < GRANT_AREAS.length, `${name}: reads every area as a lead does`);
     }
   });

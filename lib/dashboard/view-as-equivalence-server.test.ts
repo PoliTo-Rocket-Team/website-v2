@@ -175,8 +175,7 @@ function readsOf(units: Awaited<ReturnType<typeof seedUnits>>): readonly (readon
     // The Overview page reads its sections apart (#397); joined, they are one answer to compare.
     ["overviewSections", (d) => overviewOfSections(d.overviewSections())],
     ["myAlumni", (d) => d.myAlumni()],
-    ["members(null)", (d) => d.members(null)],
-    ...units.divisionIds.map((id): readonly [string, (data: DashboardData) => Promise<unknown>] => [`members(${id})`, (d) => d.members(id)]),
+    ["members", (d) => d.members()],
     ...units.divisionIds.map((id): readonly [string, (data: DashboardData) => Promise<unknown>] => [`findForAdd(${id})`, (d) => d.findForAdd(id, "a")]),
     ["findPeople", (d) => d.findPeople("a")],
     ...units.memberIds.map((id): readonly [string, (data: DashboardData) => Promise<unknown>] => [`findMoveTargets(${id})`, (d) => d.findMoveTargets(id)]),
@@ -226,7 +225,7 @@ async function seenBy(jar: Jar, units: Awaited<ReturnType<typeof seedUnits>>): P
   for (const [name, read] of readsOf(units)) reads[name] = plain(await answerOf(() => read(data)));
   const counts = (await data.navCounts()) ?? {};
   const shown = await data.hasShownApplications();
-  const members = await answerOf(() => data.members(null));
+  const members = await answerOf(() => data.members());
   const positions = await answerOf(() => data.positions());
   const applications = await answerOf(() => data.applications());
   const model = {

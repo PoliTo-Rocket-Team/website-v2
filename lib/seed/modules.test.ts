@@ -93,7 +93,10 @@ test("the people module removes only the seed's own sign-in rows, never a develo
   const people = tableModules.find((s) => s.name === "people");
   assert.ok(people);
   assert.deepEqual(people.owns.map(getTableName).sort(), ["members", "roles", "team_joins", "users"]);
-  assert.match(people.keyed?.[0]?.reset.sql ?? "", /^DELETE FROM better_auth\."user" WHERE id LIKE '7e57e500-/);
+  const resetOf = (name: string) => people.keyed?.find((k) => getTableName(k.table) === name)?.reset.sql ?? "";
+  assert.deepEqual(people.keyed?.map((k) => getTableName(k.table)).sort(), ["account", "user"]);
+  assert.match(resetOf("user"), /^DELETE FROM better_auth\."user" WHERE id LIKE '7e57e500-/);
+  assert.equal(resetOf("account"), "DELETE FROM better_auth.account WHERE id LIKE 'seed-google-%'");
 });
 
 // A database default or trigger that reads the clock or a random source gives

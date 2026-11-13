@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { HAND_OVER_OUTCOMES, type HandOverOutcome } from "./hand-over";
+import { ADVISOR_SCOPES, advisingAt, HAND_OVER_OUTCOMES, type Advising, type AdvisorScope, type HandOverOutcome } from "./hand-over";
 import {
   beyondTitle,
   divisionLabel,
@@ -55,34 +55,68 @@ export function divisionNameError(typed: string): string | null {
   return name.length > MAX_NAME ? "Too long." : null;
 }
 
-/** The name as stored: "Flight Dynamics" is kept as "Flight Dynamics Division", as every division is named. */
+/**
+ * The name as stored: trimmed, inner spaces made one, and without "Division"
+ * (issue #938). The seed, the Team tree and the Apply page all read a stored
+ * name without it and add it themselves where a page wants it, so a typed
+ * "Flight Dynamics Division" is kept as "Flight Dynamics".
+ */
 export function storedDivisionName(typed: string): string {
-  return `${divisionLabel(typed.trim().replace(/\s+/g, " "))} Division`;
+  return divisionLabel(typed.trim().replace(/\s+/g, " "));
+}
+
+/** The name as typed, as the drawer says it on screen: "Flight Dynamics Division". Never stored. */
+export function divisionTitle(typed: string): string {
+  return `${storedDivisionName(typed)} Division`;
+}
+
+/**
+ * Whether the name as typed renames the division whose name is `stored`.
+ * An older stored name may still end in "Division", so both sides are read
+ * without it: retyping the same name is no rename (issue #938).
+ */
+export function renamesDivision(typed: string, stored: string): boolean {
+  return storedDivisionName(typed) !== storedDivisionName(stored);
 }
 
 /**
  * What happens to a lead taken off with Remove and no replacement (Owner
  * decision, 2026-10-11): they stay as a member, leave this division and keep
  * their others, or leave the team (Alumni, all access ends). Remove is not a
- * hand-over, so it keeps these three (issue #253).
+ * hand-over (issue #253). "advisor" is Stays as an advisor (issue #900;
+ * Owner decision, 2026-10-31): the lead role ends and they advise where the
+ * editor picked (`advisingAt`).
  */
-export const REMOVED_LEAD_OUTCOMES = ["member", "leave-division", "leave-team"] as const;
+export const REMOVED_LEAD_OUTCOMES = ["member", "advisor", "leave-division", "leave-team"] as const;
 export type RemovedLeadOutcome = (typeof REMOVED_LEAD_OUTCOMES)[number];
 
 /**
  * A lead who stops leading the division in a save. A replaced lead hands the
- * division over (issue #253, board 68b4): they become an advisor in it or
- * leave the team, never a member. A removed lead keeps Remove's three
- * outcomes.
+ * division over (issue #253, board 68b4): they become an advisor or leave the
+ * team, never a member. A removed lead takes one of Remove's outcomes.
+ * `scope` is where an advisor advises (issue #900), read only with the
+ * "advisor" outcome; none, as a payload saved before it, is the division.
  */
 export type OldLead =
-  | { readonly personId: number; readonly via: "replaced"; readonly outcome: HandOverOutcome }
-  | { readonly personId: number; readonly via: "removed"; readonly outcome: RemovedLeadOutcome };
+  | { readonly personId: number; readonly via: "replaced"; readonly outcome: HandOverOutcome; readonly scope?: AdvisorScope | null }
+  | { readonly personId: number; readonly via: "removed"; readonly outcome: RemovedLeadOutcome; readonly scope?: AdvisorScope | null };
+
+/** An old lead who becomes an advisor in a save: the Advisor role they get, at the place picked (`advisingAt`). */
+export type AdvisingLead = { readonly memberId: number; readonly step: Advising };
+
+/**
+ * A member of the open division who becomes an advisor (issue #901), from
+ * the Advisor choice of Edit details' role pill (issue #972): their member
+ * role here ends and they advise where the editor picked, as an old lead
+ * does (`advisingAt`).
+ */
+export type NewAdvisor = { readonly personId: number; readonly scope: AdvisorScope | null };
 
 /**
  * What New division and Edit division send. Members and emails are sent only
  * by New division: an open division adds its members one by one, as the
- * Members page does.
+ * Members page does. `advisors` is sent only for an open division, by the
+ * Advisor choice of Edit details' role pill (`PeopleChange`).
  */
 export type DivisionSave = {
   /** As typed, without "Division". */
@@ -90,24 +124,35 @@ export type DivisionSave = {
   readonly code: string;
   readonly newLeads: readonly number[];
   readonly oldLeads: readonly OldLead[];
+  readonly advisors: readonly NewAdvisor[];
   readonly members: readonly number[];
   readonly emails: readonly string[];
 };
 
 const id = z.number().int().positive();
+/** A saved payload with no scope keeps today's place: the role's own unit (`defaultAdvisorScope`). */
+const advisorScope = z.enum(ADVISOR_SCOPES).nullable().default(null);
+
+const oldLeadsSchema = z
+  .array(
+    z.discriminatedUnion("via", [
+      z.object({ personId: id, via: z.literal("replaced"), outcome: z.enum(HAND_OVER_OUTCOMES), scope: advisorScope }),
+      z.object({ personId: id, via: z.literal("removed"), outcome: z.enum(REMOVED_LEAD_OUTCOMES), scope: advisorScope }),
+    ]),
+  )
+  .max(20);
+/** A payload saved before issue #901 sends no advisors. */
+const advisorsSchema = z
+  .array(z.object({ personId: id, scope: advisorScope }))
+  .max(20)
+  .default([]);
 
 const saveSchema = z.object({
   name: z.string().max(200),
   code: z.string().max(10).transform(normalizeDivisionCode),
   newLeads: z.array(id).max(20),
-  oldLeads: z
-    .array(
-      z.discriminatedUnion("via", [
-        z.object({ personId: id, via: z.literal("replaced"), outcome: z.enum(HAND_OVER_OUTCOMES) }),
-        z.object({ personId: id, via: z.literal("removed"), outcome: z.enum(REMOVED_LEAD_OUTCOMES) }),
-      ]),
-    )
-    .max(20),
+  oldLeads: oldLeadsSchema,
+  advisors: advisorsSchema,
   members: z.array(id).max(60),
   emails: z.array(z.string().trim().toLowerCase().pipe(z.email("Write an email address.").max(200))).max(20),
 });
@@ -117,6 +162,31 @@ export function checkDivisionSave(input: unknown): { ok: true; value: DivisionSa
   const result = saveSchema.safeParse(input);
   if (!result.success) return { ok: false, error: result.error.issues[0]?.message ?? "Check the form." };
   return { ok: true, value: result.data };
+}
+
+/**
+ * A change to who leads or advises in an open division, saved from Edit
+ * details' role pill on the Team tree or the Members page (issues #901,
+ * #972): an old lead stepping down with one of Remove's outcomes, or a member
+ * or advisor taking the pill's Advisor choice. It is Edit division's save
+ * with nothing else changed (`peopleSaveOf`), so the rules and the writes are
+ * that save's.
+ */
+export type PeopleChange = Pick<DivisionSave, "oldLeads" | "advisors">;
+
+const peopleSchema = z.object({ oldLeads: oldLeadsSchema.default([]), advisors: advisorsSchema });
+
+/** The change as sent, in its shape; the rules are `planDivisionSave`'s. */
+export function checkPeopleChange(input: unknown): { ok: true; value: PeopleChange } | { ok: false; error: string } {
+  const result = peopleSchema.safeParse(input);
+  if (!result.success) return { ok: false, error: result.error.issues[0]?.message ?? "Check the form." };
+  if (result.data.oldLeads.length + result.data.advisors.length === 0) return { ok: false, error: "Nothing to change." };
+  return { ok: true, value: result.data };
+}
+
+/** Edit division's save that makes `change` alone: the division's stored name and code, no new lead and no new member. */
+export function peopleSaveOf(division: Pick<OrgDivision, "name" | "code">, change: PeopleChange): DivisionSave {
+  return { name: division.name, code: normalizeDivisionCode(division.code ?? ""), newLeads: [], members: [], emails: [], ...change };
 }
 
 /** Someone on the team, as the division rules read them. */
@@ -145,8 +215,14 @@ export type DivisionSubject = { readonly kind: "new"; readonly departmentId: num
 
 /** What a checked save changes; each data source writes it in one go. */
 export type DivisionPlan = {
-  /** As stored: "Mission Analysis Division". */
+  /** As stored, without "Division": "Mission Analysis". New division writes it; Edit division only when `nameChanged`. */
   readonly name: string;
+  /**
+   * The edit renames the division, so its name is written. An edit that keeps
+   * the name leaves the stored name exactly as it is, an older one ending in
+   * "Division" included (issue #938).
+   */
+  readonly nameChanged: boolean;
   readonly code: string;
   /** The code changed: the division's position codes read the new one from now on. */
   readonly codeChanged: boolean;
@@ -157,11 +233,13 @@ export type DivisionPlan = {
   /** Old leads who stay as members (Remove only). */
   readonly demote: readonly number[];
   /**
-   * Replaced leads who become advisors in this division (issue #253): their
-   * lead role ends, one Advisor role starts here, and every access row they
-   * hold is removed (`steppingDown`).
+   * Old leads who become advisors, replaced (issue #253) or removed (issue
+   * #900), and members who become advisors (issue #901): their lead or member
+   * role here ends, one Advisor role starts at the place the editor picked
+   * (this division by default), and every access row they hold is removed
+   * (`advisingAt`). Their other divisions and roles stay.
    */
-  readonly advise: readonly number[];
+  readonly advise: readonly AdvisingLead[];
   /**
    * Old leads a new lead replaces, whichever way they step down: a hand-over,
    * so a full-access seat on their lead row moves to the new lead
@@ -210,6 +288,9 @@ function pickError(person: TeamPerson | undefined): string | null {
   return person ? null : "They are not on the team.";
 }
 
+/** Why a save, or a role pill change in Edit details for a division's only lead, would leave a division with no lead. */
+export const ONE_LEAD_NEEDED = "A division needs at least one lead.";
+
 /**
  * The save as the rules allow it (Owner decisions, 2026-10-11 on #232), or
  * the first reason it is refused:
@@ -219,8 +300,11 @@ function pickError(person: TeamPerson | undefined): string | null {
  * - leads are picked from the whole team and keep their other divisions;
  * - an open division always has at least one lead, so a create or an edit
  *   that leaves none is refused;
- * - a replaced lead becomes an advisor in the division or leaves the team,
- *   never a member (issue #253); each new lead replaces at most one;
+ * - a replaced lead becomes an advisor or leaves the team, never a member
+ *   (issue #253); each new lead replaces at most one;
+ * - an old lead who becomes an advisor advises in this division, its
+ *   department or the whole team, as the editor picked (issue #900), and so
+ *   does a member of an open division who becomes one (issue #901);
  * - a removed lead leaves this division only when they are in another one or
  *   hold a seat (`mayLeaveDivision`);
  * - an old lead leaves the team only when `mayLeaveTeam` allows it.
@@ -248,7 +332,9 @@ export function planDivisionSave(input: {
   const nameError = divisionNameError(save.name);
   if (nameError !== null) return no(nameError);
   const self = subject.kind === "open" ? subject.division.id : null;
-  const codeError = divisionCodeError(save.code, org.divisions, self);
+  // A save that keeps the stored code is not refused for it (a division stored with none included, issue #901).
+  const codeChanged = subject.kind === "new" || normalizeDivisionCode(subject.division.code ?? "") !== save.code;
+  const codeError = codeChanged ? divisionCodeError(save.code, org.divisions, self) : null;
   if (codeError !== null) return no(codeError);
 
   const byId = new Map(team.map((p) => [p.id, p]));
@@ -270,12 +356,19 @@ export function planDivisionSave(input: {
     if (error !== null) return no(error);
     if (leads.includes(personId) || oldIds.includes(personId)) return no(`${person!.name} already leads this division.`);
   }
-  if (leads.length - oldIds.length + newLeads.length < 1) return no("A division needs at least one lead.");
+  if (leads.length - oldIds.length + newLeads.length < 1) return no(ONE_LEAD_NEEDED);
   // Each new lead replaces at most one old lead (board 68b3).
   if (save.oldLeads.filter((o) => o.via === "replaced").length > newLeads.length) return no("Only a new lead can replace an old one.");
 
   const demote: number[] = [];
-  const advise: number[] = [];
+  const advise: AdvisingLead[] = [];
+  const adviseAt = (personId: number, scope: AdvisorScope | null | undefined): string | null => {
+    if (divisionId === null) return "Only a lead of this division can be replaced or removed.";
+    const step = advisingAt({ kind: "lead", divisionId, departmentId }, scope ?? null);
+    if (!step.ok) return step.error;
+    advise.push({ memberId: personId, step: step.value });
+    return null;
+  };
   const leaveDivision: number[] = [];
   const leaveTeam: number[] = [];
   const leave = (person: TeamPerson): string | null => {
@@ -287,13 +380,16 @@ export function planDivisionSave(input: {
   for (const old of save.oldLeads) {
     const person = byId.get(old.personId)!;
     if (old.via === "replaced") {
-      // A hand-over: an advisor in this division, or Alumni (`steppingDown`, ./hand-over.ts).
-      if (old.outcome === "advisor") advise.push(person.id);
-      const refusal = old.outcome === "leave" ? leave(person) : null;
+      // A hand-over: an advisor where the editor picked, or Alumni (`steppingDownAt`, ./hand-over.ts).
+      const refusal = old.outcome === "leave" ? leave(person) : adviseAt(person.id, old.scope);
       if (refusal !== null) return no(refusal);
       continue;
     }
     if (old.outcome === "member") demote.push(person.id);
+    if (old.outcome === "advisor") {
+      const refusal = adviseAt(person.id, old.scope);
+      if (refusal !== null) return no(refusal);
+    }
     if (old.outcome === "leave-division") {
       if (divisionId !== null && !mayLeaveDivision(person, divisionId)) {
         return no(`This is ${person.name}'s only division, so they stay as a member or leave the team.`);
@@ -302,6 +398,18 @@ export function planDivisionSave(input: {
     }
     const refusal = old.outcome === "leave-team" ? leave(person) : null;
     if (refusal !== null) return no(refusal);
+  }
+
+  // A member who becomes an advisor (issue #901) advises where the editor picked, as an old lead does.
+  const advisorIds = save.advisors.map((a) => a.personId);
+  if (new Set(advisorIds).size !== advisorIds.length) return no("A member is listed twice.");
+  for (const advisor of save.advisors) {
+    const person = byId.get(advisor.personId);
+    if (divisionId === null || person === undefined || roleHere(person) !== "member") return no("Only a member of this division can become an advisor here.");
+    if (newLeads.includes(person.id)) return no(`${person.name} cannot lead this division and become an advisor in one save.`);
+    const step = advisingAt({ kind: "member", divisionId, departmentId }, advisor.scope);
+    if (!step.ok) return no(step.error);
+    advise.push({ memberId: person.id, step: step.value });
   }
 
   const members = [...new Set(save.members)].filter((m) => !newLeads.includes(m));
@@ -320,8 +428,9 @@ export function planDivisionSave(input: {
     ok: true,
     plan: {
       name: storedDivisionName(save.name),
+      nameChanged: subject.kind === "open" && renamesDivision(save.name, subject.division.name),
       code: save.code,
-      codeChanged: subject.kind === "open" && normalizeDivisionCode(subject.division.code ?? "") !== save.code,
+      codeChanged: subject.kind === "open" && codeChanged,
       promote: newLeads.filter(holdsRole),
       joinAsLead: newLeads.filter((p) => !holdsRole(p)),
       demote,
@@ -393,9 +502,32 @@ export function divisionClosing(divisionId: number, held: readonly DivisionRow[]
   return { people: peopleInDivision(divisionId, held.filter((r) => r.type !== "advisor")), advisors };
 }
 
+/**
+ * What Edit details' Member or Lead writes in one division (issues #584,
+ * #972): their lead or member rows there change type; for someone whose only
+ * role there is an Advisor role, that role ends and a new lead or member role
+ * starts there today, so an advisor becomes a member or a lead again. None
+ * when they hold no role there.
+ */
+export type RoleSwitch =
+  | { readonly kind: "retype"; readonly rows: readonly [number, ...number[]] }
+  | { readonly kind: "from-advisor"; readonly ending: readonly [number, ...number[]] }
+  | { readonly kind: "none" };
+
+/** The switch for `held`, someone's active rows kept on one division (`RoleSwitch`). */
+export function roleSwitchOf(held: readonly Pick<DivisionRow, "id" | "type">[]): RoleSwitch {
+  const [first, ...rest] = held.filter((r) => r.type === "lead" || r.type === "core").map((r) => r.id);
+  if (first !== undefined) return { kind: "retype", rows: [first, ...rest] };
+  const [advisor, ...others] = held.filter((r) => r.type === "advisor").map((r) => r.id);
+  return advisor === undefined ? { kind: "none" } : { kind: "from-advisor", ending: [advisor, ...others] };
+}
+
 /** The rows of the division a plan's writes end or change, by row id. */
 export type DivisionRowWrites = {
-  /** Rows that end: the old leads who leave this division, and the replaced leads whose lead role becomes an Advisor role. */
+  /**
+   * Rows that end: the old leads who leave this division, the lead or member rows of people who become advisors (an
+   * Advisor row they hold here stays), and the Advisor row of someone who advises only here and now advises elsewhere.
+   */
   readonly end: readonly number[];
   /** Rows that become a lead's. */
   readonly toLead: readonly number[];
@@ -413,8 +545,15 @@ export type DivisionRowWrites = {
 export function divisionRowWrites(plan: DivisionPlan, divisionId: number, held: readonly DivisionRow[]): DivisionRowWrites {
   const rows = held.filter((r) => isDivisionRole({ type: r.type, divisionId }));
   const of = (people: readonly number[]) => rows.filter((r) => people.includes(r.memberId));
+  // Someone who becomes an advisor loses the lead or member role here, never an Advisor role they already hold here (issues #900, #901).
+  const advising = of(plan.advise.map((a) => a.memberId)).filter((r) => r.type !== "advisor");
+  // An advisor here whose only role here is that Advisor role, and who now advises elsewhere, moves it there
+  // (issue #972, Edit details' role pill): the row here ends, and `steppingDownWrites` starts the one at the new place.
+  const onlyAdvises = (memberId: number) => rows.every((r) => r.memberId !== memberId || r.type === "advisor");
+  const elsewhere = plan.advise.filter((a) => !(a.step.place.kind === "division" && a.step.place.divisionId === divisionId) && onlyAdvises(a.memberId));
+  const rescoped = of(elsewhere.map((a) => a.memberId));
   return {
-    end: of([...plan.leaveDivision, ...plan.advise]).map((r) => r.id),
+    end: [...of(plan.leaveDivision), ...advising, ...rescoped].map((r) => r.id),
     toLead: of(plan.promote).map((r) => r.id),
     toMember: of(plan.demote)
       .filter((r) => r.type === "lead")
@@ -433,16 +572,17 @@ export type TeamPick = {
   readonly photoUrl: string | null;
   /** "Aerodynamics · Mission Analysis": their home division and its department; null when they are in none. */
   readonly place: string | null;
-  /** "Member", "Lead · Parachutes" for someone who leads a division, or their seat: "Team Leader", "Head of Recovery". */
+  /** "Member", "Lead · Parachutes" for someone who leads a division, or their first seat: "Team Leader", "Head of Recovery". */
   readonly role: string;
   readonly divisionIds: readonly number[];
   /**
-   * They hold a role beyond every division (team leader, board seat, head,
-   * advisor). It never blocks a pick (Owner decision, issue #837): a head or
-   * seat picker shows it on their row as information ("Already Head of
-   * Propulsion"), and only the holder of the very seat being filled is refused.
+   * The title of every role they hold beyond every division (team leader,
+   * board seat, head, advisor); empty when they hold none. A seat never blocks
+   * a pick (Owner decision, issue #837): a head or seat picker shows them all
+   * on their row as information ("Already Head of Propulsion · Advisor", issue
+   * #857), and only the holder of the very seat being filled is refused.
    */
-  readonly seated: boolean;
+  readonly seats: readonly string[];
 };
 
 /** What a picker's field finds as the actor types. */
@@ -460,16 +600,17 @@ function pickOf(person: FoundPerson, org: OrgChart): TeamPick {
   const department = org.departments.find((d) => d.id === org.divisions.find((v) => v.id === home)?.departmentId);
   const led = person.memberships.find((m) => m.role === "lead");
   const ledLabel = led ? label(led.divisionId) : null;
-  const [seat] = person.beyond;
+  const seats = person.beyond.map((seat) => beyondTitle(seat, org));
+  const [seat] = seats;
   return {
     id: person.id,
     name: person.name,
     email: person.emails[0] ?? "",
     photoUrl: person.photoUrl,
     place: home === null || !department ? null : `${department.name} · ${label(home)}`,
-    role: seat !== undefined ? beyondTitle(seat, org) : ledLabel === null ? "Member" : `Lead · ${ledLabel}`,
+    role: seat ?? (ledLabel === null ? "Member" : `Lead · ${ledLabel}`),
     divisionIds: person.memberships.map((m) => m.divisionId),
-    seated: seat !== undefined,
+    seats,
   };
 }
 

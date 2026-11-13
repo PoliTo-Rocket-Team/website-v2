@@ -1,5 +1,5 @@
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
-import { isPhotoSrc } from "@/lib/outreach-photos";
+import { PROJECT_PHOTO } from "@/lib/photo-crops";
 import type { Fact, KeyFacts, Photo, TopVisual } from "@/lib/project-pages/types";
 import { editorVersion, type Versioned } from "@/lib/content/versioned";
 import { MODEL_ALTS, ownModels, ownRocketModels, rocketModelOf, type OwnModel, type RocketModel } from "@/lib/rocket-model";
@@ -8,6 +8,7 @@ import { BLOCKS_MAX } from "./block-list";
 import { cardFieldsAfterSave, cardFieldsOf, cardProblems, readCardFields, withCardFields, type CardFields } from "./card-fields";
 import { isProjectRecord } from "./check";
 import { copyFields, copyOf, type CopyFields } from "./copy-fields";
+import { readPhotoIn, storedPhotoOf } from "./photos";
 import {
   isUploadedSrc,
   presetNamed,
@@ -202,7 +203,7 @@ function visualOf(fields: VisualFields, caption: string, was: TopVisual): TopVis
     }
     case "photo":
       if (fields.photo === null) return was.kind === "photo" ? was : { kind: "none" };
-      return { kind: "photo", caption, photo: { src: fields.photo.src, alt: fields.photo.alt.trim() } };
+      return { kind: "photo", caption, photo: storedPhotoOf(fields.photo) };
     case "none":
       return { kind: "none" };
   }
@@ -366,8 +367,8 @@ function readVisual(v: unknown): VisualFields | null {
     }
     case "photo": {
       if (v.photo === null) return { kind: "photo", photo: null };
-      if (!hasStrings(v.photo, ["src", "alt"]) || !isPhotoSrc(v.photo.src)) return null;
-      return { kind: "photo", photo: { src: v.photo.src, alt: v.photo.alt } };
+      const photo = readPhotoIn(v.photo, PROJECT_PHOTO);
+      return photo === null ? null : { kind: "photo", photo };
     }
     case "none":
       return { kind: "none" };

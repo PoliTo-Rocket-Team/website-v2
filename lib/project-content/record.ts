@@ -1,4 +1,4 @@
-import type { Hero, LaunchesBlockOf, LogEntry, PageBlock, PageBlockOf, Photo, ProjectPageRecord, Stat } from "@/lib/project-pages/types";
+import type { Hero, LaunchesBlockOf, LaunchPhoto, LogEntry, PageBlock, PageBlockOf, ProjectPageRecord, Stat } from "@/lib/project-pages/types";
 import { type Award, type Copy, type Launch, type Project, type ProjectPage, type Spec, type WorkLine } from "@/lib/projects";
 import { publicVersion, type ContentItem } from "@/lib/content/versioned";
 import type { PhotoSrc } from "@/lib/outreach-types";
@@ -177,7 +177,7 @@ type LaunchBase = {
   motor: string;
   summary: Copy & { phone: string };
   /** The page's launch card's one photo (Owner decision on #522); absent until one is uploaded. */
-  cover?: Photo;
+  cover?: LaunchPhoto;
 };
 
 /**

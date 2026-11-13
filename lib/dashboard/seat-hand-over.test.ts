@@ -13,11 +13,11 @@ const SUCCESSOR = 7;
 
 for (const seat of SEATS) {
   test(`a hand-over of the ${seat} seat's role gives the seat to the successor, and the predecessor holds it no more`, () => {
-    const outgoing: ActiveRoleRef = { type: "lead", divisionId: 1, fullAccess: seat };
+    const outgoing: ActiveRoleRef = { type: "lead", divisionId: 1, divisionCode: null, divisionClosedAt: null, fullAccess: seat };
     const handed = seatHandOver([outgoing], [SUCCESSOR]);
     assert.deepEqual(handed, { ok: true, value: { seat, to: SUCCESSOR } });
     // The successor's row carries the seat; the outgoing row ends with it, so the predecessor holds no active row.
-    const successorRow: ActiveRoleRef = { type: "lead", divisionId: 1, fullAccess: handed.ok ? (handed.value?.seat ?? null) : null };
+    const successorRow: ActiveRoleRef = { type: "lead", divisionId: 1, divisionCode: null, divisionClosedAt: null, fullAccess: handed.ok ? (handed.value?.seat ?? null) : null };
     assert.equal(fullAccessSeatOf([successorRow]), seat);
     assert.equal(fullAccessSeatOf([]), null);
   });

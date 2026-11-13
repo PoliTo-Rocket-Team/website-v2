@@ -5,22 +5,28 @@
 // build never resets that branch, so rows made on a preview last across
 // preview builds (issue #465). A build that carries a `PREVIEW_RESEED_REQUEST`
 // the branch has not served yet empties it and seeds it again, once (issue
-// #595, lib/seed/reseed.ts). Every other build skips it and touches no database. A refusal
-// or a failure fails the build: a preview whose database was not migrated, or
-// not seeded while empty, must not deploy, because its pages read that
-// database (lib/database-required.ts).
+// #595, lib/seed/reseed.ts). On a Vercel production build that was given a
+// database, it applies the pending migrations to that database under its own
+// advisory lock, logs each one it applied by name, and does nothing else: no
+// seed, no re-seed, no reset (issue #874, ADR 0020). Every other build skips
+// it and touches no database. A refusal or a failure fails the build: a
+// preview whose database was not migrated, or not seeded while empty, must
+// not deploy, because its pages read that database (lib/database-required.ts),
+// and a production build whose migration failed must not replace the
+// deployment that is live.
 //
 // It reads the real environment only, never a .env file, so a local build
-// never seeds.
+// never seeds or migrates.
 
-import { drizzle } from "drizzle-orm/postgres-js";
-import { migrate } from "drizzle-orm/postgres-js/migrator";
-import postgres from "postgres";
-import { preparePreviewDatabase, type PreviewBuildSteps } from "@/lib/seed/preview-build";
+import postgres, { type Sql } from "postgres";
+import { failureLogOf } from "@/lib/seed/failure-log";
+import { appliedMigrations, journalEntries } from "@/lib/seed/journal";
+import { prepareBuildDatabase, type PreviewBuildSteps, type ProductionBuildSteps } from "@/lib/seed/preview-build";
 import { RESEED_SERVED, runReseed } from "@/lib/seed/reseed";
 import { runSeed } from "@/lib/seed/runner";
 import { guardSeedTarget } from "@/lib/seed/target";
 import { readPrivateFile, uploadPrivateFile } from "@/lib/storage/private-blob";
+import { migrateDatabase } from "./migrate-database";
 import { seedConnection } from "./seed/connection";
 import { SEED_DOCUMENTS } from "./seed/recruitment";
 import { SEED_MODULES } from "./seed/registry";
@@ -29,27 +35,65 @@ import { runStatement } from "./seed/rows";
 /** The advisory lock every preview build takes before it migrates and seeds. */
 const PREVIEW_SEED_LOCK = "prt-website-preview-seed";
 
-const steps: PreviewBuildSteps = {
-  guard: async (connectionString) => guardSeedTarget(connectionString, { VERCEL_ENV: process.env.VERCEL_ENV }),
-  async exclusive(target, work) {
-    // A session lock on its own direct connection: it lasts until unlocked or
-    // until this process ends, whichever comes first.
-    const lock = postgres(target.connectionString, { max: 1 });
+/** The advisory lock every production build takes before it migrates. */
+const PRODUCTION_MIGRATION_LOCK = "prt-website-production-migrate";
+
+/**
+ * Runs `work` while this process holds the advisory lock `name` on
+ * `connectionString`. A session lock on its own direct connection: it lasts
+ * until unlocked or until this process ends, whichever comes first.
+ */
+async function holdingLock<T>(connectionString: string, name: string, work: () => Promise<T>): Promise<T> {
+  const lock = postgres(connectionString, { max: 1 });
+  try {
+    await lock`select pg_advisory_lock(hashtext(${name}))`;
     try {
-      await lock`select pg_advisory_lock(hashtext(${PREVIEW_SEED_LOCK}))`;
-      try {
-        return await work();
-      } finally {
-        await lock`select pg_advisory_unlock(hashtext(${PREVIEW_SEED_LOCK}))`;
-      }
+      return await work();
     } finally {
-      await lock.end();
+      await lock`select pg_advisory_unlock(hashtext(${name}))`;
+    }
+  } finally {
+    await lock.end();
+  }
+}
+
+/**
+ * The `created_at` of every migration drizzle has recorded as applied, or
+ * none on a database the migrator never ran on. It reads and writes nothing
+ * else.
+ */
+async function recordedMigrations(client: Sql): Promise<ReadonlySet<string>> {
+  const [table] = await client<{ present: boolean }[]>`select to_regclass('drizzle.__drizzle_migrations') is not null as present`;
+  if (!table?.present) return new Set();
+  const rows = await client<{ created_at: string }[]>`select created_at::text as created_at from drizzle.__drizzle_migrations`;
+  return new Set(rows.map((row) => row.created_at));
+}
+
+const productionSteps: ProductionBuildSteps = {
+  exclusive: (database, work) => holdingLock(database.connectionString, PRODUCTION_MIGRATION_LOCK, work),
+  // The migrations and the post-migration steps (./migrate-database.ts), still
+  // inside the lock, with drizzle's record read either side so the log can
+  // name what was applied.
+  async migrate(database) {
+    const client = postgres(database.connectionString, { max: 1 });
+    try {
+      const before = await recordedMigrations(client);
+      await migrateDatabase(client);
+      return appliedMigrations(journalEntries(), before, await recordedMigrations(client));
+    } finally {
+      await client.end();
     }
   },
+};
+
+const previewSteps: PreviewBuildSteps = {
+  guard: async (connectionString) => guardSeedTarget(connectionString, { VERCEL_ENV: process.env.VERCEL_ENV }),
+  exclusive: (target, work) => holdingLock(target.connectionString, PREVIEW_SEED_LOCK, work),
+  // The migrations and the post-migration steps (./migrate-database.ts), still inside the lock.
   async migrate(target) {
     const client = postgres(target.connectionString, { max: 1 });
     try {
-      await migrate(drizzle(client), { migrationsFolder: "./drizzle" });
+      await migrateDatabase(client);
     } finally {
       await client.end();
     }
@@ -116,22 +160,31 @@ async function storeSampleDocuments(): Promise<void> {
 }
 
 async function main() {
-  const outcome = await preparePreviewDatabase(
+  const outcome = await prepareBuildDatabase(
     {
       VERCEL_ENV: process.env.VERCEL_ENV,
       DATABASE_URL: process.env.DATABASE_URL,
       DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
       PREVIEW_RESEED_REQUEST: process.env.PREVIEW_RESEED_REQUEST,
     },
-    steps,
+    { preview: previewSteps, production: productionSteps },
   );
   switch (outcome.kind) {
     case "skipped":
-      console.log(`Preview database step skipped: ${outcome.why}.`);
+      console.log(`Build database step skipped: ${outcome.why}.`);
       return;
     case "refused":
-      console.error(`Preview database step refused: ${outcome.why}.`);
+      console.error(`Build database step refused: ${outcome.why}.`);
       process.exit(2);
+    case "production-migrated": {
+      const { applied } = outcome;
+      console.log(
+        applied.length === 0
+          ? "Production database migrated: no migration was pending. Nothing was seeded."
+          : `Production database migrated: applied ${applied.length} migration${applied.length === 1 ? "" : "s"}: ${applied.join(", ")}. Nothing was seeded.`,
+      );
+      return;
+    }
     case "migrated-and-seeded": {
       const { target, modules } = outcome.report;
       console.log(`Migrated and seeded ${target.kind} ${target.label}, which was empty: ${modules.join(", ")}.`);
@@ -150,8 +203,10 @@ async function main() {
   }
 }
 
+// The raw error is never printed: it can carry a connection string
+// (lib/seed/failure-log.ts).
 main().catch((error) => {
-  console.error("Preview database step failed");
-  console.error(error);
+  console.error("Build database step failed");
+  console.error(failureLogOf(error, [process.env.DATABASE_URL, process.env.DATABASE_URL_UNPOOLED]));
   process.exit(1);
 });

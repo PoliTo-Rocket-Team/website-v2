@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
 import { SEAT_LABELS } from "./division-access";
+import { holderAddRefusal } from "./seat-holders";
 import type { FlaggedSeat, FullAccessSeat } from "./viewer";
 
 // Handing over a role (issue #253, boards 77i, 77e and 68b4; Owner decision,
@@ -81,6 +82,117 @@ export function advising(handed: SteppedDownFrom): Advising {
   }
 }
 
+// Where a former lead, head or seat holder advises (issue #900; Owner
+// decision, 2026-10-31). Removing or replacing a lead, a head or a team seat
+// holder in the Team tree may keep them as an advisor at a place the editor
+// picks: a lead in this division, its department or the whole team; a head in
+// its department or the whole team; a team seat holder on the whole team. A
+// scope a role has no unit for is not offered, and with no scope picked the
+// place is the role's own unit (`advising`), as before.
+
+/** Where an advisor sits, as the editor picks it: the role's division, its department, or the whole team. */
+export const ADVISOR_SCOPES = ["division", "department", "team"] as const;
+export type AdvisorScope = (typeof ADVISOR_SCOPES)[number];
+
+/**
+ * A role someone steps down from, placed in the team: a lead's division with
+ * the department it sits in, which a "department" scope reads. A member of a
+ * division who becomes an advisor (issue #901) is placed the same way. Every
+ * other role carries the units it has already.
+ */
+export type PlacedRole =
+  | Exclude<SteppedDownFrom, { kind: "lead" }>
+  | { readonly kind: "lead" | "member"; readonly divisionId: number; readonly departmentId: number };
+
+/** The kind of role stepped down from: all the scope rules read of it. A division member's is "member" (issue #901). */
+export type SteppedDownKind = { readonly kind: PlacedRole["kind"] };
+
+/**
+ * The scopes `from` offers, its default first: a lead or a division member
+ * division, department, team; a head department, team; a seat or the team
+ * leader the team.
+ */
+export function advisorScopes(from: SteppedDownKind): readonly [AdvisorScope, ...AdvisorScope[]] {
+  switch (from.kind) {
+    case "lead":
+    case "member":
+      return ["division", "department", "team"];
+    case "head":
+      return ["department", "team"];
+    case "team-seat":
+    case "team-leader":
+      return ["team"];
+  }
+}
+
+/** The scope `from` advises at when none is picked: the unit they held the role in (`advising`). */
+export function defaultAdvisorScope(from: SteppedDownKind): AdvisorScope {
+  return advisorScopes(from)[0];
+}
+
+/** The place `scope` names for someone stepping down from `role`, or null when `role` does not offer it. */
+export function advisorPlace(role: PlacedRole, scope: AdvisorScope): AdvisorPlace | null {
+  if (!advisorScopes(role).includes(scope)) return null;
+  if (scope === "team") return { kind: "team" };
+  if (scope === "division") return role.kind === "lead" || role.kind === "member" ? { kind: "division", divisionId: role.divisionId } : null;
+  return role.kind === "lead" || role.kind === "member" || role.kind === "head" ? { kind: "department", departmentId: role.departmentId } : null;
+}
+
+export const SCOPE_NOT_OFFERED = "They cannot advise there. Pick where they advise again.";
+
+/**
+ * "Stays as an advisor" at `scope`, or `role`'s default with none picked: an
+ * Advisor role at the place the scope names. A lead, a division member, a
+ * head or a seat holder loses their access, as `advising` says; a former team
+ * leader keeps theirs.
+ * A scope `role` does not offer is refused.
+ */
+export function advisingAt(role: PlacedRole, scope: AdvisorScope | null): Checked<Advising> {
+  const place = advisorPlace(role, scope ?? defaultAdvisorScope(role));
+  if (place === null) return { ok: false, error: SCOPE_NOT_OFFERED };
+  return { ok: true, value: { kind: "advisor", place, access: role.kind === "team-leader" ? "keeps-full-access" : "ends" } };
+}
+
+/** `steppingDown` with the place an advisor picked (`advisingAt`): "leave" is Alumni, whatever the scope. */
+export function steppingDownAt(role: PlacedRole, outcome: HandOverOutcome, scope: AdvisorScope | null): Checked<SteppingDown> {
+  return outcome === "leave" ? { ok: true, value: { kind: "leave" } } : advisingAt(role, scope);
+}
+
+/** A role row as the advisor rule reads it: its type and the unit it is kept on. */
+export type PlacedRow = { readonly type: string | null; readonly departmentId: number | null; readonly divisionId: number | null };
+
+/**
+ * Whether `row` is an Advisor role at `place`: someone who advises there
+ * already gets no second Advisor role there, so they hold one active advisor
+ * role at the picked place.
+ */
+export function isAdvisorRowAt(row: PlacedRow, place: AdvisorPlace): boolean {
+  if (row.type !== "advisor") return false;
+  switch (place.kind) {
+    case "team":
+      return row.departmentId === null && row.divisionId === null;
+    case "department":
+      return row.departmentId === place.departmentId && row.divisionId === null;
+    case "division":
+      return row.divisionId === place.divisionId;
+  }
+}
+
+/** The names the wording gives each scope's place: the division and the department, null where the role has none. */
+export type ScopeNames = { readonly division: string | null; readonly department: string | null };
+
+/** "Mission Analysis", "Aerodynamics", "the whole team": the place `scope` names, in words. */
+export function advisorScopeName(scope: AdvisorScope, names: ScopeNames): string {
+  if (scope === "division") return names.division ?? "this division";
+  if (scope === "department") return names.department ?? "this department";
+  return "the whole team";
+}
+
+/** "Mission Analysis", "Aerodynamics", "Whole team": a scope as the advisor picker lists it. */
+export function advisorScopeTitle(scope: AdvisorScope, names: ScopeNames): string {
+  return scope === "team" ? "Whole team" : advisorScopeName(scope, names);
+}
+
 // Full access follows the role (issue #501; Owner decision, 2026-10-21)
 
 /** A role row as the seat rule reads it: the full-access seat it is flagged as (`roles.full_access`), or null. */
@@ -96,7 +208,7 @@ export const ONE_SUCCESSOR_FOR_SEAT = "This lead holds a full-access seat. Name 
  * seat follows the role. `outgoing` are the role rows the hand-over ends;
  * when one of them carries a seat, the successor's role row carries the same
  * seat, written in the same batch that ends the outgoing rows, which end with
- * it. So the predecessor holds the seat no more and one active row holds it.
+ * it. So the predecessor holds the seat no more and the successor holds it.
  * `successors` are the people who take the role over: a seat goes to exactly
  * one, so a hand-over with more than one (a division save naming two new
  * leads) is refused rather than guessing, and one with none would drop the
@@ -114,8 +226,16 @@ export function seatHandOver(outgoing: readonly SeatRow[], successors: readonly 
 /** A role handed over from a unit: a division's lead or a department's head. The team leader's role is the team-leader seat itself. */
 export type UnitRole = Exclude<HandedRole, { readonly kind: "team-leader" }>;
 
-/** A full-access seat as it sits on the team: the person whose role row carries it, and the role it is handed over with. */
-export type HeldSeat = { readonly seat: FlaggedSeat; readonly personId: number; readonly role: UnitRole };
+/**
+ * A full-access seat a lead or head role carries: a flagged seat (`FlaggedSeat`)
+ * or the Logistics lead, read from the lead role's division (`DivisionSeat`,
+ * issue #891). Only the wording reads it; a hand-over moves a flag alone
+ * (`SeatMove`).
+ */
+export type UnitSeat = Exclude<FullAccessSeat, "team-leader">;
+
+/** A full-access seat as it sits on the team: the person whose role carries it, and the role it is handed over with. */
+export type HeldSeat = { readonly seat: UnitSeat; readonly personId: number; readonly role: UnitRole };
 
 function sameUnitRole(a: UnitRole, b: UnitRole): boolean {
   return a.kind === "lead" ? b.kind === "lead" && a.divisionId === b.divisionId : b.kind === "head" && a.departmentId === b.departmentId;
@@ -124,7 +244,8 @@ function sameUnitRole(a: UnitRole, b: UnitRole): boolean {
 /**
  * The full-access seat `personId` hands over with `handed`: the team
  * leader's role is the team-leader seat, and a lead or head role carries the
- * seat its row is flagged as (`seats`, read off the roles), or none.
+ * seat `seats` holds for it (read off the roles: the row's flag, or the
+ * Logistics lead for a lead of the open Logistics division), or none.
  */
 export function seatOfHandedRole(seats: readonly HeldSeat[], personId: number, handed: HandedRole): FullAccessSeat | null {
   if (handed.kind === "team-leader") return "team-leader";
@@ -230,9 +351,12 @@ export function advisorInDestinationDetail(destination: string): string {
 }
 
 function advisorWords(step: Advising, unit: string | null, voice: Voice): string {
-  const where = step.place.kind === "team" || unit === null ? "the team" : unit;
+  return advisorWordsAt(step.access, step.place.kind === "team" || unit === null ? "the team" : unit, voice);
+}
+
+function advisorWordsAt(access: Advising["access"], where: string, voice: Voice): string {
   const stays = withAdvisorRole(where, voice === "you" ? "stay" : "stays");
-  if (step.access === "ends") return `${stays}; ${voice === "you" ? "your" : "their"} access ends`;
+  if (access === "ends") return `${stays}; ${voice === "you" ? "your" : "their"} access ends`;
   const keeps = voice === "you" ? "keep your access" : "keeps their access";
   return `${stays} and ${keeps}; the new Team Leader can change it in Access`;
 }
@@ -251,6 +375,25 @@ export function advisorOptionDetail(handed: SteppedDownFrom, unit: string | null
 export function steppingDownLine(step: SteppingDown, unit: string | null): string {
   if (step.kind === "leave") return "leaves the team: every role they hold ends and they move to Alumni";
   return advisorWords(step, unit, "they");
+}
+
+/** The option's title where no advisor option was offered before (issue #900): Remove lead and Remove seat. */
+export const STAYS_AS_AN_ADVISOR = "Stays as an advisor";
+
+/**
+ * "stays in the whole team with the Advisor role; their access ends": what a
+ * confirm says of someone who advises at `scope` (issue #900), naming the
+ * place picked. Only the access rule reads `from`: a lead, head or seat
+ * holder's access ends, a former team leader keeps theirs.
+ */
+export function advisingLine(from: SteppedDownKind, scope: AdvisorScope, names: ScopeNames): string {
+  return advisorWordsAt(from.kind === "team-leader" ? "keeps-full-access" : "ends", advisorScopeName(scope, names), "they");
+}
+
+/** The detail under the advisor option once a scope is picked: "Stays in Aerodynamics with the Advisor role; their access ends". */
+export function advisingDetail(from: SteppedDownKind, scope: AdvisorScope, names: ScopeNames): string {
+  const words = advisingLine(from, scope, names);
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 // The Team Leader box (board 77i)
@@ -289,20 +432,27 @@ export type TeamLeaderHandOverPlan = { readonly from: number; readonly to: numbe
 
 /**
  * "Hand over the role" as the rules allow it, or the first reason it is
- * refused: only the current team leader; the one who takes over is someone
- * else on the team. They become the team leader on save, with its powers
- * (deciding orders, giving "Approve orders", handing the role over), and keep
- * every role they already hold.
+ * refused: only a current team leader, who hands over their own place;
+ * `leaders` are every team leader now (epic #861). The one who takes over is
+ * someone else on the team who is not a team leader already
+ * (`holderAddRefusal`, issue #872). They become a team leader on save, with
+ * its powers (deciding orders, giving "Approve orders", handing the role
+ * over), and keep every role they already hold. Only the viewer's own team
+ * leader row ends: every other team leader keeps the seat.
  */
 export function planTeamLeaderHandOver(input: {
   readonly viewer: HandOverViewer;
-  readonly leaderId: number | null;
+  readonly leaders: readonly number[];
   readonly handOver: TeamLeaderHandOver;
   readonly team: readonly TeamPerson[];
 }): Checked<TeamLeaderHandOverPlan> {
-  const { viewer, leaderId, handOver, team } = input;
-  if (!mayHandOverTeamLeader(viewer, leaderId) || leaderId === null) return { ok: false, error: ONLY_TEAM_LEADER };
-  if (handOver.to === leaderId) return { ok: false, error: "Pick who takes over from you." };
-  if (!team.some((p) => p.id === handOver.to)) return { ok: false, error: "They are not on the team." };
-  return { ok: true, value: { from: leaderId, to: handOver.to, steppingDown: steppingDown({ kind: "team-leader" }, handOver.outcome) } };
+  const { viewer, leaders, handOver, team } = input;
+  const from = viewer.selfId !== null && leaders.includes(viewer.selfId) ? viewer.selfId : null;
+  if (from === null || !mayHandOverTeamLeader(viewer, from)) return { ok: false, error: ONLY_TEAM_LEADER };
+  if (handOver.to === from) return { ok: false, error: "Pick who takes over from you." };
+  const next = team.find((p) => p.id === handOver.to);
+  if (next === undefined) return { ok: false, error: "They are not on the team." };
+  const refusal = holderAddRefusal(next, leaders);
+  if (refusal !== null) return { ok: false, error: refusal };
+  return { ok: true, value: { from, to: next.id, steppingDown: steppingDown({ kind: "team-leader" }, handOver.outcome) } };
 }

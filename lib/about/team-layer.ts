@@ -1,6 +1,7 @@
 import { textLength } from "@/lib/content/text";
-import { BOARD_FLAGS, type BoardFlag, type BoardRole, type DepartmentKind } from "@/lib/dashboard/team";
+import { BOARD_FLAGS, boardFlagOf, type BoardFlag, type BoardRole, type DepartmentKind } from "@/lib/dashboard/team";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
+import { GROUP_PHOTO, readShapeCrops, type GroupPhotoCrops } from "@/lib/photo-crops";
 import { personOf, type TeamPerson } from "./team-person";
 import type { DepartmentHead, DivisionLead, HeaderStats, Leader, Member, Person, PersonPhoto } from "./types";
 
@@ -13,7 +14,11 @@ import type { DepartmentHead, DivisionLead, HeaderStats, Leader, Member, Person,
 // team: an edit whose spot is gone from the roles build is kept and skipped,
 // and it shows again if the spot comes back. Only the editor or Reset to team
 // removes an edit. Pure: the database, the seed and the editor all lay it on
-// the same way.
+// the same way. Since issue #851 the editor edits the stored layout of page
+// seats (./team-layout.ts) and writes only the layer's intro text, figures
+// and group photo (`TeamPageText`); the layer's people fields stay as they
+// were, read only by the snapshot (ADR 0019 Decision 7) and the check of the
+// photos in use.
 
 /** The arc holds up to eight leaders. */
 export const ARC_LEADERS = 8;
@@ -27,7 +32,7 @@ export type ArcSeat = BoardFlag | `role-${number}`;
 
 /** The arc key of a team-level seat (`ArcSeat`). */
 export function arcSeatOf(seat: BoardRole): ArcSeat {
-  return seat.flag ?? `role-${seat.roleId}`;
+  return boardFlagOf(seat.fullAccess) ?? `role-${seat.roleId}`;
 }
 
 /** A place on the arc the roles fill: a team-level seat, and which of its holders by name (0 is the first). */
@@ -103,8 +108,13 @@ export type DepartmentEdit = {
   readonly addedLeads?: readonly AddedLead[];
 };
 
-/** The group photo over the core members: a photo of the site's own in public/team/, or one uploaded in the editor (issue #510). */
-export type GroupPhoto = { readonly src: PersonPhoto; readonly alt: string };
+/**
+ * The group photo over the core members: a photo of the site's own in
+ * public/team/, or one uploaded in the editor (issue #510). An upload may
+ * carry `crops` (issue #971), its crop for each shape the box is shown at;
+ * a photo without them, as every layer saved before, is shown centred.
+ */
+export type GroupPhoto = { readonly src: PersonPhoto; readonly alt: string; readonly crops?: GroupPhotoCrops };
 
 /** The whole visual layer. Every part is optional in effect: an empty part changes nothing. */
 export type TeamPageLayer = {
@@ -124,6 +134,24 @@ export type TeamPageLayer = {
   /** The group photo over the core members; null keeps the hand-typed one. */
   readonly groupPhoto: GroupPhoto | null;
 };
+
+/**
+ * The part of the layer the Team page editor still writes (issue #851): the
+ * intro text, the figures and the group photo. The page seats live in the
+ * layout (./team-layout.ts).
+ */
+export type TeamPageText = Pick<TeamPageLayer, "intro" | "figures" | "groupPhoto">;
+
+/** The layer's intro text, figures and group photo, with no key for figures it leaves alone. */
+export function textOf(layer: TeamPageText): TeamPageText {
+  return { intro: layer.intro, ...(layer.figures !== undefined && { figures: layer.figures }), groupPhoto: layer.groupPhoto };
+}
+
+/** `layer` with `text`'s intro, figures and group photo, every other part as it was. */
+export function withText(layer: TeamPageLayer, text: TeamPageText): TeamPageLayer {
+  const { figures: _old, ...rest } = layer;
+  return { ...rest, ...textOf(text) };
+}
 
 export const NO_TEAM_LAYER: TeamPageLayer = {
   leader: {},
@@ -145,7 +173,7 @@ export type BuiltLead = { readonly spot: LeadSpot; readonly person: TeamPerson; 
 export type BuiltDepartment = {
   readonly id: number;
   readonly name: string;
-  /** The carousel slide its heads sit on (issue #325). */
+  /** Its kind on the team record: today's group, which only the one-time snapshot reads (`TODAYS_GROUPS`, issue #856). */
   readonly kind: DepartmentKind;
   readonly heads: readonly BuiltHead[];
   readonly leads: readonly BuiltLead[];
@@ -170,7 +198,7 @@ export type Shown<R, T> = { readonly at: R; readonly shown: T };
 export type ShownDepartment = {
   readonly at: DepartmentRef;
   readonly name: string;
-  /** The carousel slide its heads sit on (issue #325); a department the editor added is technical. */
+  /** Today's group (`TODAYS_GROUPS`, issue #856), which the one-time snapshot reads; a department the layer added is technical. */
   readonly kind: DepartmentKind;
   readonly heads: readonly Shown<HeadSpot | AddedRef, DepartmentHead>[];
   readonly leads: readonly Shown<LeadRef, DivisionLead>[];
@@ -186,7 +214,31 @@ export type ShownTeam = {
   readonly groupPhoto: GroupPhoto | null;
 };
 
-const addedRef = (id: number): AddedRef => `added:${id}`;
+/**
+ * How a department block draws its division leads on the carousel (issue
+ * #856): under its head, as the technical departments drew them, or beside
+ * it, each lead at a head's level, as Operations drew its divisions (board 26).
+ */
+export const LEADS_DRAWN = ["under", "beside"] as const;
+export type LeadsDrawn = (typeof LEADS_DRAWN)[number];
+
+/** A department block as drawn, whatever its places are keyed by: the layer's spots or a layout's page seats (./team-layout.ts). */
+export type DrawnDepartment = {
+  readonly leadsDrawn: LeadsDrawn;
+  readonly heads: readonly { readonly shown: DepartmentHead }[];
+  readonly leads: readonly { readonly shown: DivisionLead }[];
+};
+
+/** A department group as drawn (issue #856): the heading its slides read, and its blocks in order. */
+export type DrawnGroup = { readonly name: string; readonly departments: readonly DrawnDepartment[] };
+
+/** The page as drawn, whatever its places are keyed by (`DrawnDepartment`): the department groups in order. */
+export type DrawnTeam = Pick<ShownTeam, "leader" | "intro" | "figures" | "groupPhoto"> & {
+  readonly leaders: readonly { readonly shown: Leader }[];
+  readonly groups: readonly DrawnGroup[];
+};
+
+const addedRef =(id: number): AddedRef => `added:${id}`;
 
 function memberOf(build: TeamBuild, id: number | undefined): TeamPerson | undefined {
   return id === undefined ? undefined : build.people.find((p) => p.id === id);
@@ -439,7 +491,10 @@ const isText =
   (value) =>
     typeof value === "string" && value.trim() !== "" && textLength(value) <= max;
 const isShortText = isText(TEAM_PAGE_TEXT_MAX);
-const isPhoto: Check = (value) => typeof value === "string" && textLength(value) <= 2048 && (value.startsWith("/team/") || value.startsWith("https://"));
+/** A person's photo the page takes: one of the site's own in public/team/, or a remote https URL. */
+export const isPagePhoto = (value: unknown): value is PersonPhoto =>
+  typeof value === "string" && textLength(value) <= 2048 && (value.startsWith("/team/") || value.startsWith("https://"));
+const isPhoto: Check = isPagePhoto;
 /** A LinkedIn handle the layer takes: the part after linkedin.com/in/, with no slash, query or space. */
 export const isLinkedinHandle = (value: unknown): value is string => typeof value === "string" && /^[^/?#\s]{1,100}$/.test(value);
 const isHandle: Check = isLinkedinHandle;
@@ -505,6 +560,8 @@ const isGroupPhoto =
       {
         src: (src) => typeof src === "string" && isPhoto(src) && (src.startsWith("/team/") || ownsUpload(src)),
         alt: (alt) => typeof alt === "string" && textLength(alt) <= 300,
+        // Optional (issue #971): absent reads as centred, so a layer saved before it still reads.
+        crops: (crops) => readShapeCrops(crops, GROUP_PHOTO) != null,
       },
       ["src", "alt"],
     );
@@ -514,6 +571,18 @@ const isFigureLabel: Check = (value) =>
 const isFigure: Check = (value) => hasShape(value, { value: isText(TEAM_PAGE_FIGURE_VALUE_MAX), label: isFigureLabel }, ["value", "label"]);
 /** Always four figures: the header's row has no room to add one and none to leave empty. */
 const isFigures: Check = (value) => Array.isArray(value) && value.length === 4 && value.every(isFigure);
+
+/** The checks of the intro text, the figures and the group photo, one each. */
+const textChecks = (ownsUpload: OwnsUpload): Readonly<Record<keyof TeamPageText, Check>> => ({
+  intro: (v) => v === null || isText(TEAM_PAGE_INTRO_MAX)(v),
+  figures: isFigures,
+  groupPhoto: (v) => v === null || isGroupPhoto(ownsUpload)(v),
+});
+
+/** The intro text, figures and group photo as the editor sends them (issue #851): checked as a layer checks them. */
+export function isTeamPageText(value: unknown, ownsUpload: OwnsUpload): value is TeamPageText {
+  return hasShape(value, textChecks(ownsUpload), ["intro", "groupPhoto"]);
+}
 
 /**
  * A layer this code could have written: every part present, each edit well
@@ -531,9 +600,7 @@ export function isTeamPageLayer(value: unknown, ownsUpload: OwnsUpload): value i
         addedLeaders: isListOf(isAddedLeader, 50),
         departments: (v) => isRecord(v) && Object.entries(v).every(([key, edit]) => isIdText(key) && isDepartmentEdit(edit)),
         addedDepartments: isListOf(isAddedDepartment, 50),
-        intro: (v) => v === null || isText(TEAM_PAGE_INTRO_MAX)(v),
-        figures: isFigures,
-        groupPhoto: (v) => v === null || isGroupPhoto(ownsUpload)(v),
+        ...textChecks(ownsUpload),
       },
       ["leader", "spots", "addedLeaders", "departments", "addedDepartments", "intro", "groupPhoto"],
     )

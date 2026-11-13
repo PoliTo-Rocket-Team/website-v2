@@ -1,8 +1,8 @@
 "use server";
 
-import { refresh } from "next/cache";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
 import { openDashboard } from "@/lib/dashboard/open";
+import { refreshDashboard } from "@/lib/dashboard/refresh";
 import { parseApproverMove } from "@/lib/dashboard/application-flow";
 import { parseStatusListChange } from "@/lib/dashboard/application-status";
 import type { CreatedPosition } from "@/lib/dashboard/new-position";
@@ -25,7 +25,8 @@ async function answer<T>(run: (data: DashboardData) => Promise<WriteResult<T>>):
     if (error instanceof DashboardRefused) return refused("You cannot change this.");
     throw error;
   }
-  if (result.ok) refresh();
+  // A landed write shows at once on every dashboard page; a refusal leaves the page as it was (issue #984).
+  if (result.ok) refreshDashboard();
   return result;
 }
 

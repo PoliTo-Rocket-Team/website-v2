@@ -63,7 +63,7 @@ function EntryRow({ entry, num, texture }: { entry: LogEntry; num: string; textu
 
       {/* Beside the copy from lg; under it from md to lg. */}
       <div className="col-start-2 flex lg:col-start-auto lg:flex-col">
-        <PhotoSlot texture={texture} photo={entry.cover} sizes="(min-width: 1024px) 300px, 50vw" className="h-[180px] flex-1 lg:flex-none" />
+        <PhotoSlot texture={texture} photo={entry.cover} shape="desktop" sizes="(min-width: 1024px) 300px, 50vw" className="h-[180px] flex-1 lg:flex-none" />
       </div>
     </article>
   );
@@ -73,7 +73,7 @@ function EntryCard({ entry, num, texture }: { entry: LogEntry; num: string; text
   const o = outcome[entry.outcome];
   return (
     <article className="glass-card rounded-2xl p-3 md:hidden">
-      <PhotoSlot texture={texture} photo={entry.cover} sizes="100vw" className="h-[112px]" />
+      <PhotoSlot texture={texture} photo={entry.cover} shape="phone" sizes="100vw" className="h-[112px]" />
       <div className="px-1 pb-1">
         <div className="mt-4 flex items-center justify-between gap-3">
           <p className="font-mono text-[11px] tracking-[0.15em] text-prt-muted">

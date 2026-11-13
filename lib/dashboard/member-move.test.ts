@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { TeamPerson } from "./division-edit";
-import { moveTargetsOf, ONLY_TEAM_MOVES_HEADS, planMove, titleOnMove, type HeadRow, type MoveRecord, type MoveRequest, type MoveTo } from "./member-move";
+import { headsAfterMove, moveTargetsOf, ONLY_TEAM_MOVES_HEADS, planMove, titleOnMove, type HeadRow, type MoveRecord, type MoveRequest, type MoveTo } from "./member-move";
 import { isDivisionRole, membershipsOfRoles, roleBeyondDivisions, type OrgChart, type RoleSeat, type TeamActor } from "./team";
 
 // The title box of a move (issue #777): Edit details and the Team tree's
@@ -83,7 +83,7 @@ const people: readonly TeamPerson[] = [1, 2, 3, 4].map((id) => ({
 const heads: readonly HeadRow[] = rows.filter((r) => r.type === "head");
 
 const plan = (request: Partial<MoveRequest> & Pick<MoveRequest, "personId" | "from" | "to">, actor: TeamActor = team) =>
-  planMove({ actor, org, viewerId: 99, request: { title: "", replaced: null, successor: null, ...request }, roles: rowsOf(request.personId), heads, team: people });
+  planMove({ actor, org, viewerId: 99, request: { title: "", replaced: null, replacing: null, successor: null, ...request }, roles: rowsOf(request.personId), heads, team: people });
 
 const fromPropulsion = { kind: "head", departmentId: 1 } as const;
 
@@ -101,6 +101,27 @@ test("a member who holds an advisor role is made head of a department, and its h
   assert.ok(moved.ok, moved.ok ? "" : moved.error);
   assert.deepEqual(moved.value.end, [401]);
   assert.equal(moved.value.replaced?.memberId, 1);
+});
+
+test("made head of a department with two heads, they replace only the head picked; the other head stays (issue #872)", () => {
+  // Bruno co-heads Avionics beside Carla here.
+  const coHeads: readonly HeadRow[] = [...heads, row(203, 2, "head", { departmentId: 2 })];
+  const moveTo = (replacing: number | null) =>
+    planMove({
+      actor: team,
+      org,
+      viewerId: 99,
+      request: { personId: 4, from: { kind: "division", divisionId: 11 }, to: { kind: "head", departmentId: 2 }, title: "", replaced: "advisor", replacing, successor: null },
+      roles: rowsOf(4),
+      heads: coHeads,
+      team: people,
+    });
+  const moved = moveTo(3);
+  assert.ok(moved.ok, moved.ok ? "" : moved.error);
+  assert.equal(moved.value.replaced?.memberId, 3);
+  assert.deepEqual(moved.value.replaced?.rows, [301], "Bruno's head row stays");
+  const unpicked = moveTo(null);
+  assert.equal(unpicked.ok ? "accepted" : unpicked.error, "Pick which head the new head replaces.");
 });
 
 test("a successor who heads another department is picked and accepted, and keeps that headship", () => {
@@ -134,7 +155,7 @@ test("the head a move replaces cannot both leave the team and take over the depa
     actor: team,
     org,
     viewerId: 99,
-    request: { personId: 1, from: fromPropulsion, to: { kind: "head", departmentId: 2 }, title: "", replaced: "leave", successor: 3 },
+    request: { personId: 1, from: fromPropulsion, to: { kind: "head", departmentId: 2 }, title: "", replaced: "leave", replacing: null, successor: 3 },
     roles: rowsOf(1),
     heads,
     team: [people[0], people[1], carla, people[3]],
@@ -148,9 +169,26 @@ test("Pick a new head lists seated people in the department's divisions, never i
     return { id, name: person.name, photoUrl: null, memberships: person.memberships, beyondDivisions: person.beyond };
   };
   const propulsion = moveTargetsOf([1, 2, 3, 4].map(record), org, team).find((d) => d.id === 1);
-  assert.equal(propulsion?.head?.id, 1);
+  assert.deepEqual(
+    propulsion?.heads.map((h) => h.id),
+    [1],
+  );
   assert.deepEqual(
     propulsion?.successors.map((p) => p.name),
     ["Bruno", "Dario"],
   );
+});
+
+// Who heads the department a head leaves (issue #879): the confirm says it
+// will have no head only when they are its last head.
+
+test("a last head leaves their department with no head; with a co-head, the co-head stays", () => {
+  const targets = (records: readonly MoveRecord[]) => moveTargetsOf(records, org, team);
+  const record = (person: TeamPerson): MoveRecord => ({ id: person.id, name: person.name, photoUrl: null, memberships: person.memberships, beyondDivisions: person.beyond });
+  assert.deepEqual(headsAfterMove(targets(people.map(record)), 1, 1), { kind: "none" });
+  // Bruno co-heads Propulsion beside Ada here.
+  const bruno: TeamPerson = { ...people[1], beyond: [...rowsOf(2), row(204, 2, "head", { departmentId: 1 })].flatMap((r) => roleBeyondDivisions(r, org) ?? []) };
+  const coHeaded = targets([people[0], bruno, people[2], people[3]].map(record));
+  assert.deepEqual(headsAfterMove(coHeaded, 1, 1), { kind: "staying", heads: [{ id: 2, name: "Bruno", photoUrl: null }] });
+  assert.deepEqual(headsAfterMove(coHeaded, 1, 2), { kind: "staying", heads: [{ id: 1, name: "Ada", photoUrl: null }] });
 });

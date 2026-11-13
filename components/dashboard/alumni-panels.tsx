@@ -1,14 +1,25 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import * as SwitchPrimitive from "@radix-ui/react-switch";
-import { AlertTriangle, ChevronDown, Info, Lock } from "lucide-react";
+import { AlertTriangle, ChevronDown, Info, Lock, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { DialogClose } from "@/components/ui/dialog";
 import { addAdvisor, fixAlumnus, setAlumnusPhoto } from "@/app/dashboard/team-actions";
-import { ADVISORS } from "@/lib/about/alumni-record";
+import { ADVISORS, type UnitRef } from "@/lib/about/alumni-record";
 import type { FounderMark } from "@/lib/about/alumni-types";
-import { FIRST_ALUMNI_YEAR, MAX_ALUMNI_NAME, MAX_ALUMNI_ROLE, yearTab, type AlumnusRow } from "@/lib/dashboard/alumni";
+import { CROP_SETTINGS } from "@/lib/dashboard/crop-settings";
+import {
+  FIRST_ALUMNI_YEAR,
+  MAX_ALUMNI_NAME,
+  MAX_ALUMNI_ROLE,
+  nextDraftYear,
+  spanOf,
+  yearTab,
+  type AlumniUnit,
+  type AlumnusRow,
+  type AlumnusYear,
+} from "@/lib/dashboard/alumni";
 
 import { Avatar } from "./avatar";
 import { Drawer, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
@@ -16,10 +27,11 @@ import { Field, GroupLabel, inputClass } from "./field";
 import { PhotoPicker } from "./photo-picker";
 
 // The Alumni page's two panels (issue #257): the fix panel (board 78b),
-// where an editor changes how one person shows on the public Alumni page,
-// and Add alumni (board 78c), which adds an external advisor to the Advisors
-// group and nowhere else. Both write the page only: roles, dates and
-// divisions stay as the team record has them.
+// where an editor changes how one person shows on the public Alumni page and
+// can add a year the record lacks (issue #981), and Add alumni (board 78c),
+// which adds an external advisor to the Advisors group and nowhere else. Both
+// write the page only: roles, dates and divisions stay as the team record
+// has them.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -59,6 +71,26 @@ export function AlumniSwitch({
   );
 }
 
+/**
+ * A refusal the panel shows. Each one is a new value, so the same words
+ * refused twice still count as a new refusal.
+ */
+type Refusal = { readonly message: string };
+
+/**
+ * Brings a refusal into view when it appears (issue #992): the panel body
+ * scrolls, so a refusal could sit past its edge.
+ */
+function useRevealed<T extends HTMLElement>(refusal: Refusal | undefined) {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    if (refusal === undefined) return;
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? true;
+    ref.current?.scrollIntoView?.({ block: "nearest", behavior: still ? "auto" : "smooth" });
+  }, [refusal]);
+  return ref;
+}
+
 function photoForm(photo: File): FormData {
   const form = new FormData();
   form.set("photo", photo);
@@ -67,23 +99,64 @@ function photoForm(photo: File): FormData {
 
 // The fix panel (board 78b) ----------------------------------------------------
 
-export function AlumnusPanel({ row, editable, onClose }: { row: AlumnusRow | null; editable: boolean; onClose: () => void }) {
+/** What "+ Add a year" needs (issue #981): the units it offers and this academic year, the last it offers. */
+export type AddYearChoices = { readonly units: readonly AlumniUnit[]; readonly thisYear: number };
+
+export function AlumnusPanel({
+  row,
+  editable,
+  choices,
+  onClose,
+}: {
+  row: AlumnusRow | null;
+  editable: boolean;
+  choices: AddYearChoices;
+  onClose: () => void;
+}) {
   // The panel keeps showing the last person while it closes.
   const [last, setLast] = useState<AlumnusRow | null>(row);
   if (row !== null && row !== last) setLast(row);
   const person = row ?? last;
-  return person === null ? null : <FixForm key={person.key} open={row !== null} row={person} editable={editable} onClose={onClose} />;
+  return person === null ? null : <FixForm key={person.key} open={row !== null} row={person} editable={editable} choices={choices} onClose={onClose} />;
 }
 
-function FixForm({ open, row, editable, onClose }: { open: boolean; row: AlumnusRow; editable: boolean; onClose: () => void }) {
+/** A year added on the page only, as the panel holds it until Save. */
+type AddedRow = { readonly year: number; readonly unit: UnitRef; readonly role: string };
+
+function sameUnit(a: UnitRef, b: UnitRef): boolean {
+  return a.kind === b.kind && a.id === b.id;
+}
+
+function unitKey(unit: UnitRef): string {
+  return `${unit.kind}:${unit.id}`;
+}
+
+function FixForm({
+  open,
+  row,
+  editable,
+  choices,
+  onClose,
+}: {
+  open: boolean;
+  row: AlumnusRow;
+  editable: boolean;
+  choices: AddYearChoices;
+  onClose: () => void;
+}) {
+  const recordLines = row.lines.filter((line) => line.added === null);
   const [shown, setShown] = useState(row.shown);
   const [name, setName] = useState(row.name);
   const [founder, setFounder] = useState<FounderMark | null>(row.founder);
-  const [roles, setRoles] = useState(() => row.lines.map((line) => line.role));
+  const [roles, setRoles] = useState(() => recordLines.map((line) => line.role));
+  const [added, setAdded] = useState<AddedRow[]>(() =>
+    row.lines.flatMap((line) => (line.added === null ? [] : [{ year: line.year, unit: line.added, role: line.role }])),
+  );
   const [photo, setPhoto] = useState(row.photo);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
+  const [error, setError] = useState<Refusal | undefined>(undefined);
+  const nameField = useRevealed<HTMLDivElement>(error);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -94,11 +167,12 @@ function FixForm({ open, row, editable, onClose }: { open: boolean; row: Alumnus
         shown,
         name,
         founder,
-        roles: row.lines.map((line, i) => ({ year: line.year, group: line.group, role: roles[i] ?? "" })),
+        roles: recordLines.map((line, i) => ({ year: line.year, group: line.group, role: roles[i] ?? "" })),
+        added,
       };
       const result = await fixAlumnus(row.key, input);
       if (!result.ok) {
-        setError(result.error);
+        setError({ message: result.error });
         return;
       }
       toast.success(`Saved ${name.trim() || row.recordName}`);
@@ -129,7 +203,7 @@ function FixForm({ open, row, editable, onClose }: { open: boolean; row: Alumnus
       open={open}
       onOpenChange={(next) => !next && onClose()}
       title={row.name}
-      detail={`Alumni · on the team ${row.from} – ${row.to}`}
+      detail={row.to === null ? `Still on the team · since ${row.from}` : `Alumni · on the team ${spanOf(row)}`}
       leading={<Avatar size="panel" person={{ photoUrl: photo }} />}
       submitLabel={saving ? "Saving…" : "Save"}
       submitting={saving || !editable}
@@ -143,25 +217,27 @@ function FixForm({ open, row, editable, onClose }: { open: boolean; row: Alumnus
         <AlumniSwitch checked={shown} onCheckedChange={setShown} disabled={!editable} label="On the Alumni page" />
       </div>
 
-      <Field label="Name on the page" error={error} className="mt-6">
-        {(id, describedBy) => (
-          <>
-            <input
-              id={id}
-              aria-describedby={describedBy}
-              value={name}
-              maxLength={MAX_ALUMNI_NAME}
-              disabled={!editable}
-              onChange={(e) => {
-                setName(e.target.value);
-                setError(undefined);
-              }}
-              className={inputClass(error)}
-            />
-            <p className="mt-2 text-[13px] text-prt-muted">Team record: {row.recordName}. Only the page changes.</p>
-          </>
-        )}
-      </Field>
+      <div ref={nameField} className="mt-6">
+        <Field label="Name on the page" error={error?.message}>
+          {(id, describedBy) => (
+            <>
+              <input
+                id={id}
+                aria-describedby={describedBy}
+                value={name}
+                maxLength={MAX_ALUMNI_NAME}
+                disabled={!editable}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setError(undefined);
+                }}
+                className={inputClass(error?.message)}
+              />
+              <p className="mt-2 text-[13px] text-prt-muted">Team record: {row.recordName}. Only the page changes.</p>
+            </>
+          )}
+        </Field>
+      </div>
 
       <div className="mt-6">
         <GroupLabel id={`${row.key}-founder`} label="Founder" hint="shown in The founders" />
@@ -191,38 +267,264 @@ function FixForm({ open, row, editable, onClose }: { open: boolean; row: Alumnus
         <GroupLabel id={`${row.key}-photo`} label="Photo" hint="optional" />
         <div className="flex items-center gap-4">
           <Avatar size="panel" person={{ photoUrl: photo }} />
-          {editable && <PhotoPicker label={photo === null ? "Upload photo" : "Replace photo"} pending={uploading} onCropped={uploadPhoto} />}
+          {editable && <PhotoPicker entry={CROP_SETTINGS.alumniPhoto} label={photo === null ? "Upload photo" : "Replace photo"} pending={uploading} onCropped={uploadPhoto} />}
         </div>
       </div>
 
       <div className="mt-6">
-        <GroupLabel id={`${row.key}-years`} label="Years on the page" hint="group from the team record" />
+        <GroupLabel id={`${row.key}-years`} label="Years on the page" hint="group from the team record, or added here" />
         <ul aria-labelledby={`${row.key}-years`} className="flex flex-col gap-2">
-          {row.lines.map((line, i) => (
-            <li key={`${line.year}-${line.group}`} className="grid grid-cols-[112px_1fr] items-center gap-3">
-              <span className="min-w-0">
-                <span className="block font-mono text-[12px] text-prt-text">{yearLine(line.year)}</span>
-                <span className="block truncate text-[12px] text-prt-muted">{line.group}</span>
-              </span>
-              <input
-                aria-label={`Role in ${line.group}, ${yearTab(line.year)}`}
-                value={roles[i] ?? ""}
-                placeholder={line.recordRole}
-                maxLength={MAX_ALUMNI_ROLE}
-                disabled={!editable}
-                onChange={(e) => setRoles((all) => all.map((role, j) => (j === i ? e.target.value : role)))}
-                className={inputClass()}
+          {yearRows(recordLines, added).map((item) =>
+            item.kind === "record" ? (
+              <li key={`record-${item.line.year}-${item.line.group}`} className={YEAR_ROW}>
+                <YearCell year={item.line.year} unit={item.line.group} />
+                <input
+                  aria-label={`Role in ${item.line.group}, ${yearTab(item.line.year)}`}
+                  value={roles[item.at] ?? ""}
+                  placeholder={item.line.recordRole}
+                  maxLength={MAX_ALUMNI_ROLE}
+                  disabled={!editable}
+                  onChange={(e) => setRoles((all) => all.map((role, j) => (j === item.at ? e.target.value : role)))}
+                  className={inputClass()}
+                />
+              </li>
+            ) : (
+              <AddedYearRow
+                key={`added-${item.row.year}-${unitKey(item.row.unit)}`}
+                row={item.row}
+                unit={unitName(choices.units, item.row.unit)}
+                editable={editable}
+                onRole={(role) => setAdded((all) => all.map((a) => (a === item.row ? { ...a, role } : a)))}
+                onRemove={() => setAdded((all) => all.filter((a) => a !== item.row))}
               />
-            </li>
-          ))}
+            ),
+          )}
         </ul>
+        {editable && (
+          <AddYear
+            key={added.length}
+            choices={choices}
+            draftYear={nextDraftYear([...recordLines.map((l) => l.year), ...added.map((a) => a.year)], choices.thisYear)}
+            taken={(year, unit) => {
+              const group = choices.units.find((u) => sameUnit(u.ref, unit))?.group;
+              return (
+                recordLines.some((l) => l.year === year && l.group === group) ||
+                added.some((a) => a.year === year && choices.units.find((u) => sameUnit(u.ref, a.unit))?.group === group)
+              );
+            }}
+            onAdd={(next) => setAdded((all) => [...all, next])}
+          />
+        )}
       </div>
 
       <p className="mt-6 flex items-start gap-3 rounded-xl border border-hairline px-4 py-3.5 text-[13px] leading-relaxed text-text-2">
         <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-        These fixes only change the Alumni page. Roles, dates and divisions stay as the team record has them.
+        {row.to === null
+          ? "They are still on the team. These fixes only change how the Alumni page shows their years, this one included: their roles stay as they are."
+          : "These fixes only change the Alumni page. Roles, dates and divisions stay as the team record has them."}
       </p>
     </Drawer>
+  );
+}
+
+// Years on the page, and "+ Add a year" (issue #981) -------------------------
+
+const YEAR_ROW = "grid grid-cols-[112px_1fr] items-center gap-3";
+const ADD_LINK = `inline-flex items-center gap-1.5 rounded-md text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:text-accent-hover ${FOCUS}`;
+
+/** The year and unit at the start of a year row. */
+function YearCell({ year, unit }: { year: number; unit: string }) {
+  return (
+    <span className="min-w-0">
+      <span className="block font-mono text-[12px] text-prt-text">{yearLine(year)}</span>
+      <span className="block truncate text-[12px] text-prt-muted">{unit}</span>
+    </span>
+  );
+}
+
+type YearItem = { readonly kind: "record"; readonly line: AlumnusYear; readonly at: number } | { readonly kind: "added"; readonly row: AddedRow };
+
+/** The record's years and the added ones in one list, newest first. */
+function yearRows(recordLines: readonly AlumnusYear[], added: readonly AddedRow[]): YearItem[] {
+  const yearOf = (item: YearItem) => (item.kind === "record" ? item.line.year : item.row.year);
+  const items: YearItem[] = [...recordLines.map((line, at) => ({ kind: "record" as const, line, at })), ...added.map((row) => ({ kind: "added" as const, row }))];
+  return items.sort((a, b) => yearOf(b) - yearOf(a));
+}
+
+function unitName(units: readonly AlumniUnit[], ref: UnitRef): string {
+  return units.find((u) => sameUnit(u.ref, ref))?.name ?? "";
+}
+
+function unitOption(unit: AlumniUnit): string {
+  const name = unit.under === null ? unit.name : `${unit.name} · ${unit.under}`;
+  return unit.closed ? `${name} (closed)` : name;
+}
+
+/** An added year: the same row as a record year, its title editable and the row removable. */
+function AddedYearRow({
+  row,
+  unit,
+  editable,
+  onRole,
+  onRemove,
+}: {
+  row: AddedRow;
+  unit: string;
+  editable: boolean;
+  onRole: (role: string) => void;
+  onRemove: () => void;
+}) {
+  const where = `${unit}, ${yearTab(row.year)}`;
+  return (
+    <li className={YEAR_ROW}>
+      <YearCell year={row.year} unit={unit} />
+      <span className="flex h-11 min-w-0 items-center gap-1 rounded-[10px] border border-white-10 bg-white-5 pl-3.5 pr-1.5 transition-colors duration-300 ease-out focus-within:border-accent focus-within:bg-accent/[0.06]">
+        <input
+          aria-label={`Role in ${where}, added on the page`}
+          value={row.role}
+          maxLength={MAX_ALUMNI_ROLE}
+          disabled={!editable}
+          onChange={(e) => onRole(e.target.value)}
+          className="h-full min-w-0 flex-1 bg-transparent text-[14px] text-prt-text placeholder:text-dim focus:outline-none"
+        />
+        {editable && (
+          <button
+            type="button"
+            aria-label={`Remove ${where}`}
+            onClick={onRemove}
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}
+          >
+            <X aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+          </button>
+        )}
+      </span>
+    </li>
+  );
+}
+
+/** A department or division, current or closed: the departments first, then the divisions. */
+function UnitSelect({ value, units, onChange }: { value: string; units: readonly AlumniUnit[]; onChange: (key: string) => void }) {
+  const departments = units.filter((u) => u.ref.kind === "department");
+  const divisions = units.filter((u) => u.ref.kind === "division");
+  return (
+    <span className="relative block min-w-0 flex-1">
+      <select aria-label="Department or division" value={value} onChange={(e) => onChange(e.target.value)} className={`${inputClass()} appearance-none pr-10`}>
+        <option value="" disabled className="bg-panel">
+          Department or division
+        </option>
+        {[
+          { label: "Departments", list: departments },
+          { label: "Divisions", list: divisions },
+        ].map(
+          (group) =>
+            group.list.length > 0 && (
+              <optgroup key={group.label} label={group.label} className="bg-panel">
+                {group.list.map((unit) => (
+                  <option key={unitKey(unit.ref)} value={unitKey(unit.ref)} className="bg-panel">
+                    {unitOption(unit)}
+                  </option>
+                ))}
+              </optgroup>
+            ),
+        )}
+      </select>
+      <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
+    </span>
+  );
+}
+
+/**
+ * "+ Add a year": the academic year, the unit and the title of a year the
+ * record lacks. It refuses a year the person already has in that unit's group,
+ * as the server does again on Save.
+ */
+function AddYear({
+  choices,
+  draftYear,
+  taken,
+  onAdd,
+}: {
+  choices: AddYearChoices;
+  /** The year the draft opens on: one the panel does not list yet (`nextDraftYear`). */
+  draftYear: number;
+  taken: (year: number, unit: UnitRef) => boolean;
+  onAdd: (row: AddedRow) => void;
+}) {
+  const years = Array.from({ length: Math.max(1, choices.thisYear - FIRST_ALUMNI_YEAR + 1) }, (_, i) => choices.thisYear - i);
+  const [open, setOpen] = useState(false);
+  const [year, setYear] = useState(draftYear);
+  const [unit, setUnit] = useState("");
+  const [role, setRole] = useState("");
+  const [error, setError] = useState<Refusal | undefined>(undefined);
+  const refusal = useRevealed<HTMLParagraphElement>(error);
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className={`mt-3 ${ADD_LINK}`}>
+        <Plus aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
+        Add a year
+      </button>
+    );
+  }
+
+  const add = () => {
+    const picked = choices.units.find((u) => unitKey(u.ref) === unit);
+    const title = role.trim().replace(/\s+/g, " ");
+    if (picked === undefined) return setError({ message: "Pick a department or division." });
+    if (title === "") return setError({ message: "Enter the title on the page." });
+    if (taken(year, picked.ref)) return setError({ message: `They already have ${yearTab(year)} in ${picked.group}.` });
+    onAdd({ year, unit: picked.ref, role: title });
+  };
+  const cancel = () => {
+    setOpen(false);
+    setUnit("");
+    setRole("");
+    setError(undefined);
+  };
+  const change = <T,>(set: (value: T) => void) => (value: T) => {
+    set(value);
+    setError(undefined);
+  };
+
+  return (
+    <div role="group" aria-label="Add a year" className="mt-3 rounded-xl border border-hairline p-3">
+      {/* On phones the unit select takes its own row, so its placeholder shows whole. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <span className="block sm:w-[132px] sm:shrink-0">
+          <YearSelect label="Academic year" value={year} years={years} onChange={change(setYear)} />
+        </span>
+        <UnitSelect value={unit} units={choices.units} onChange={change(setUnit)} />
+      </div>
+      <input
+        aria-label="Title on the page"
+        aria-describedby={error === undefined ? undefined : "add-year-error"}
+        value={role}
+        maxLength={MAX_ALUMNI_ROLE}
+        placeholder="Title on the page, e.g. Recovery Engineer"
+        onChange={(e) => change(setRole)(e.target.value)}
+        onKeyDown={(e) => {
+          // Enter adds the year; it never saves the whole panel.
+          if (e.key === "Enter") {
+            e.preventDefault();
+            add();
+          }
+        }}
+        className={`mt-2 ${inputClass(error?.message)}`}
+      />
+      {error !== undefined && (
+        <p ref={refusal} id="add-year-error" className="mt-1.5 text-[12px] text-danger">
+          {error.message}
+        </p>
+      )}
+      <div className="mt-3 flex justify-end gap-2">
+        <button type="button" onClick={cancel} className={PANEL_GHOST_BUTTON}>
+          Cancel
+        </button>
+        <button type="button" onClick={add} className={PANEL_PRIMARY_BUTTON}>
+          Add year
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -373,6 +675,7 @@ function AdvisorForm({ open, thisYear, onClose }: { open: boolean; thisYear: num
             <div className="flex items-center gap-4">
               {preview !== null && <Avatar size="panel" person={{ photoUrl: preview }} />}
               <PhotoPicker
+                entry={CROP_SETTINGS.alumniPhoto}
                 label={photo === null ? "Upload photo" : "Replace photo"}
                 pending={saving}
                 onCropped={(square) => {

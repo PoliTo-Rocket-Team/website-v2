@@ -6,8 +6,9 @@ import { leadsByRole } from "./alumni-year";
 // role's start and end dates; closed divisions and departments stay as names.
 // The years before the record held roles come from a one-time import
 // (./alumni-import.ts). An alumni entry holds only how someone shows on the
-// page: a fixed name, the founder mark, a photo, per-year role text, shown or
-// hidden, and whether they asked to be removed. Nothing here changes a role,
+// page: a fixed name, the founder mark, a photo, per-year role text, years
+// added for the page only (#981), shown or hidden, and whether they asked to
+// be removed. Nothing here changes a role,
 // a division or access: a fix is an entry, laid over the record at read time.
 // Both data sides hand an AlumniRecord to these functions.
 
@@ -30,9 +31,20 @@ export type RecordRole = {
 /** Every department and division, closed ones included: a closed one stays as a name. */
 export type RecordUnits = {
   /** In the order the page draws them. */
-  readonly departments: readonly { readonly id: number; readonly name: string }[];
-  readonly divisions: readonly { readonly id: number; readonly name: string; readonly departmentId: number | null }[];
+  readonly departments: readonly { readonly id: number; readonly name: string; readonly closed?: boolean }[];
+  readonly divisions: readonly { readonly id: number; readonly name: string; readonly departmentId: number | null; readonly closed?: boolean }[];
 };
+
+/** One department or division of the record, current or closed, by its id. */
+export type UnitRef = { readonly kind: "department"; readonly id: number } | { readonly kind: "division"; readonly id: number };
+
+/**
+ * A year an editor added for the Alumni page only (issue #981): the record
+ * holds no role for it, as for an early year that was never imported. It
+ * lists the person in `unit` that year with `role` as the text, and changes
+ * no role, date or division.
+ */
+export type AddedYear = { readonly year: number; readonly unit: UnitRef; readonly role: string };
 
 /**
  * A member's name and email on the team record; the name is null once their
@@ -71,6 +83,8 @@ export type AlumniEntry = {
   /** They ticked "Remove my name from the Alumni page" (boards 55b, 55c). */
   readonly removed: boolean;
   readonly fixes: readonly RoleFix[];
+  /** Years added for the page only (issue #981). */
+  readonly added: readonly AddedYear[];
 };
 
 /** One line of an imported year, in the import's own group. `position` keeps the import's order. */
@@ -123,6 +137,8 @@ export type AlumnusLine = {
   /** What the page prints: the fixed text, else `recordRole`. */
   readonly role: string;
   readonly fixed: boolean;
+  /** The unit of a year added for the page only (issue #981); null for a year from the record. */
+  readonly added: UnitRef | null;
 };
 
 /** One person as the page and the dashboard read them: the record with their entry laid over it. */
@@ -142,8 +158,8 @@ export type Alumnus = {
   readonly removed: boolean;
   /**
    * A member who still holds a role (one with no `leftAt`). The public page
-   * lists them in their years like anyone else; the dashboard's Alumni list
-   * leaves them out, as current members are managed on Members (#271).
+   * lists them in their finished years like anyone else, and so does the
+   * dashboard's Alumni list, marked as still on the team (#982).
    * Imported people and advisors are never on the team.
    */
   readonly onTeam: boolean;
@@ -164,14 +180,14 @@ const IMPORTED_ORDER = 100;
 const DEPARTMENT_ORDER = 1000;
 const ADVISORS_ORDER = 1_000_000;
 
-type LineBase = Omit<AlumnusLine, "year" | "role" | "fixed">;
+type LineBase = Omit<AlumnusLine, "year" | "role" | "fixed" | "added">;
 
 /**
  * Where one role puts its holder on the page, every year it was held. An
  * advisor sits in the department or division they advised that year; one
  * with neither sits in Advisors (#391).
  */
-function roleBase(role: RecordRole, units: RecordUnits): LineBase {
+function roleBase(role: Pick<RecordRole, "type" | "title" | "departmentId" | "divisionId">, units: RecordUnits): LineBase {
   const division = units.divisions.find((d) => d.id === role.divisionId);
   const departmentId = role.departmentId ?? division?.departmentId ?? null;
   const departmentAt = units.departments.findIndex((d) => d.id === departmentId);
@@ -210,7 +226,43 @@ function merged(a: LineBase, b: LineBase): LineBase {
 
 function withFixes(year: number, base: LineBase, fixes: readonly RoleFix[]): AlumnusLine {
   const fix = fixes.find((f) => f.year === year && f.group === base.group);
-  return { ...base, year, role: fix?.role ?? base.recordRole, fixed: fix !== undefined };
+  return { ...base, year, role: fix?.role ?? base.recordRole, fixed: fix !== undefined, added: null };
+}
+
+/**
+ * Where an added year's unit puts the person: as a member of that department
+ * or division, in the group its record roles would sit in. Null once the
+ * record no longer has the unit.
+ */
+function addedBase(unit: UnitRef, title: string, units: RecordUnits): LineBase | null {
+  const known = unit.kind === "department" ? units.departments.some((d) => d.id === unit.id) : units.divisions.some((d) => d.id === unit.id);
+  if (!known) return null;
+  const at = unit.kind === "department" ? { departmentId: unit.id, divisionId: null } : { departmentId: null, divisionId: unit.id };
+  return roleBase({ type: null, title, ...at }, units);
+}
+
+/** The group an added year in `unit` sits in on the page; null when the record has no such unit. */
+export function addedGroup(unit: UnitRef, units: RecordUnits): string | null {
+  return addedBase(unit, "", units)?.group ?? null;
+}
+
+/**
+ * The record's lines with the added years laid beside them (issue #981). An
+ * added year never stands in a group of a year the record already lists them
+ * in: the record's line wins, so a role added to the record later is never
+ * listed twice.
+ */
+function withAdded(lines: readonly AlumnusLine[], added: readonly AddedYear[], units: RecordUnits): AlumnusLine[] {
+  const taken = new Set(lines.map((l) => `${l.year}\u0000${l.group}`));
+  const extra = added.flatMap((a): AlumnusLine[] => {
+    const base = addedBase(a.unit, a.role, units);
+    if (base === null) return [];
+    const key = `${a.year}\u0000${base.group}`;
+    if (taken.has(key)) return [];
+    taken.add(key);
+    return [{ ...base, year: a.year, role: a.role, fixed: false, added: a.unit }];
+  });
+  return [...lines, ...extra].sort(byYearAndOrder);
 }
 
 function byYearAndOrder(a: AlumnusLine, b: AlumnusLine): number {
@@ -258,7 +310,7 @@ function advisorLines(who: Extract<EntryWho, { kind: "advisor" }>, fixes: readon
   return Array.from({ length: Math.max(0, who.to - who.from + 1) }, (_, i) => withFixes(who.from + i, base, fixes));
 }
 
-const NO_ENTRY = { name: null, founder: null, photo: null, shown: true, removed: false, fixes: [] } as const;
+const NO_ENTRY = { name: null, founder: null, photo: null, shown: true, removed: false, fixes: [], added: [] } as const;
 
 /**
  * Everyone the record can list, with their entries laid over it: each member
@@ -276,7 +328,8 @@ export function alumniOf(record: AlumniRecord, currentYear: number): Alumnus[] {
     const person = people.get(memberId);
     const kept = entry?.who.kind === "member" ? entry.who.keptName : null;
     const recordName = person?.name ?? kept;
-    const lines = nonEmpty(memberLines(roles, record.units, currentYear, entry?.fixes ?? []));
+    const fromRecord = memberLines(roles, record.units, currentYear, entry?.fixes ?? []);
+    const lines = fromRecord.length === 0 ? null : nonEmpty(withAdded(fromRecord, entry?.added ?? [], record.units));
     if (!recordName || lines === null) return [];
     const onTeam = roles.some((r) => r.leftAt === null);
     return [alumnus(`m${memberId}`, "member", recordName, person?.email ?? null, person?.picture ?? null, entry ?? NO_ENTRY, lines, onTeam)];
@@ -285,11 +338,11 @@ export function alumniOf(record: AlumniRecord, currentYear: number): Alumnus[] {
   const others = record.entries.flatMap((entry): Alumnus[] => {
     const { who } = entry;
     if (who.kind === "member") return [];
-    const lines = nonEmpty(
+    const fromRecord =
       who.kind === "imported"
         ? importedLines(record.imported.filter((l) => l.entryId === entry.id), entry.fixes)
-        : advisorLines(who, entry.fixes),
-    );
+        : advisorLines(who, entry.fixes);
+    const lines = fromRecord.length === 0 ? null : nonEmpty(withAdded(fromRecord, entry.added, record.units));
     return lines === null ? [] : [alumnus(`e${entry.id}`, who.kind, who.name, null, null, entry, lines, false)];
   });
 
@@ -412,7 +465,7 @@ export function foundersOf(alumni: readonly Alumnus[]): Founder[] {
 }
 
 /** What a fix from the dashboard changes on one person's entry; anything left out stays. */
-export type EntryChange = Partial<Pick<AlumniEntry, "name" | "founder" | "photo" | "shown" | "removed" | "fixes">>;
+export type EntryChange = Partial<Pick<AlumniEntry, "name" | "founder" | "photo" | "shown" | "removed" | "fixes" | "added">>;
 
 /**
  * The record with one person's entry changed: the tests read what a fix

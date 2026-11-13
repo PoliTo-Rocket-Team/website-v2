@@ -3,7 +3,7 @@ import { afterEach, test } from "node:test";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import type { SignInLog } from "./auth";
 import { BREAK_GLASS_SETTING, type BreakGlassSignIn } from "./break-glass";
-import { BASE, envRestorer, Jar, ORIGIN, SEAT_DIRECTORY, seededMemoryDb, setEnv, TEST_ENV } from "./dev-tester-fixture";
+import { BASE, envRestorer, Jar, NO_SITE_ROWS, ORIGIN, SEAT_DIRECTORY, seededMemoryDb, setEnv, TEST_ENV } from "./dev-tester-fixture";
 import { seatOf } from "./seeded-accounts";
 import type { ViewAsGate } from "./view-as-plugin";
 
@@ -27,7 +27,10 @@ async function setUp(setting: string | undefined) {
   const signIns: BreakGlassSignIn[] = [];
   const log: SignInLog = { record: async (signIn) => void signIns.push(signIn) };
   const { createAuth } = await import("./auth");
-  return { auth: createAuth(memoryAdapter(seededMemoryDb()), OPEN_GATE, SEAT_DIRECTORY, log), signIns };
+  return {
+    auth: createAuth(memoryAdapter(seededMemoryDb()), { viewAs: OPEN_GATE, testers: SEAT_DIRECTORY, signIns: log, siteRows: NO_SITE_ROWS }),
+    signIns,
+  };
 }
 
 type Auth = Awaited<ReturnType<typeof setUp>>["auth"];

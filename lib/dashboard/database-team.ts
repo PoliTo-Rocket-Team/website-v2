@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
@@ -29,9 +29,12 @@ import { deleteUnreferencedAfter } from "@/lib/storage/unreferenced-delete";
 import { alumniMove } from "./alumni-move";
 import { DashboardRefused, type TeamWrites } from "./data";
 import { automaticAliasRequests } from "./database-alias";
+import { readMemberGoogleEmails } from "./database-google-accounts";
 import { readWaitingHandOvers } from "./database-hand-over";
-import { automaticTeamAddressReroutes } from "./database-team-address";
-import { handedTo, seatHandedTo, type TiedRoleChange } from "./team-address";
+import { automaticTeamAddressReroutes, readActiveTieRoles } from "./database-team-address";
+import { teamStayOf } from "./database-team-stay";
+import { pageSeatsHandOver, type PageSeatsHandOver } from "./database-team-page";
+import { addedBeside, handedOver, handedTo, holdersOf, seatHandedOver, seatHandedTo, type MovesWith, type TiedRoleChange } from "./team-address";
 import { moveApplication } from "./database-recruitment";
 import { answerNoticeOf, HAND_OVER_NEEDS_MEMBER, planHandOverAnswer, type HandOverAnswer, type HandOverAnswerPlan } from "./hand-over-request";
 import { photoPathnames } from "./database-self";
@@ -42,10 +45,12 @@ import {
   addOutcome,
   checkAddMember,
   checkMemberEdit,
-  divisionMembers,
+  editedFields,
   lookupForAdd,
   positionsOf,
+  reachMembers,
   SEAT_TITLE_REQUIRED,
+  shownEditOf,
   type AddLookup,
   type AddStanding,
   type DetailsTarget,
@@ -54,6 +59,7 @@ import {
 } from "./division-members";
 import {
   defaultHeadTitle,
+  departureOf,
   headDepartmentOf,
   isDivisionRole,
   leadActor,
@@ -66,9 +72,9 @@ import {
   roleBeyondDivisions,
   standingOfRoles,
   titledSeatOf,
-  type Departure,
   type EditableRole,
   type Joining,
+  type LeaveReason,
   type MemberDirectory,
   type MemberEdit,
   type Memberships,
@@ -76,23 +82,26 @@ import {
   type RoleSeat,
   type RoleType,
   type TeamActor,
+  type TeamStay,
 } from "./team";
 import { departmentMembers } from "./department-members";
+import { checkAdvisorPlaceChange, planAdvisorPlaceChange } from "./advisor-roles";
 import { checkMove, moveTargetsOf, planMove, type MoveLookup, type MovePlan } from "./member-move";
 import { wholeTeamMembers } from "./team-members";
 import {
   ADVISOR_TITLE,
   advisorAfterDivisionCloses,
   checkTeamLeaderHandOver,
+  isAdvisorRowAt,
   planTeamLeaderHandOver,
   seatHandOver,
-  steppingDown,
   type AdvisorPlace,
   type SeatMove,
+  type Advising,
   type SeatRow,
   type SteppingDown,
 } from "./hand-over";
-import { coveredDivisionIds, FLAG_OF_SEAT, isOffTeam, mayChange, readsArea, readsAreaIn, SEAT_OF_FLAG, seatOf, type FlaggedSeat, type SeatFlag } from "./viewer";
+import { changesAreaAsTeam, coveredDivisionIds, FLAG_OF_SEAT, isOffTeam, mayChange, readsArea, readsAreaIn, SEAT_OF_FLAG, seatOf, type FlaggedSeat, type SeatFlag } from "./viewer";
 import {
   checkDepartmentClose,
   checkDepartmentCreate,
@@ -101,15 +110,20 @@ import {
   planDepartmentClose,
   planDepartmentCreate,
   planDepartmentSave,
+  planHeadAdd,
 } from "./department-edit";
 import { editableDivisionIds, editsStructure, teamStructure, type TeamStructure } from "./team-structure";
-import { checkNewSeat, checkSeatHolderChange, planNewSeat, planSeatHolderChange, planSeatRemoval, stayingOnTeam } from "./team-seats";
+import { checkNewSeat, checkSeatHolderChange, checkSeatRemoval, planNewSeat, planSeatHolderAdd, planSeatHolderChange, planSeatRemoval, planTeamLeaderAdd, stayingOnTeam } from "./team-seats";
+import { asksAlias, checkHolderAdd, tieOfSeat, type ActiveRoleRow, type HolderAddPlan } from "./seat-holders";
 import {
   checkDivisionSave,
+  checkPeopleChange,
   closeRefusal,
   divisionClosing,
   divisionRowWrites,
+  peopleSaveOf,
   planDivisionSave,
+  roleSwitchOf,
   searchTeam,
   type DivisionPlan,
   type DivisionRow,
@@ -120,9 +134,11 @@ import {
 import { refreshAfter } from "@/lib/cache-tags";
 import { mayChangePositionIn } from "./position-access";
 import { readsRecruitmentIn } from "./application-documents";
-import { readTeamSnapshot, recordsOf, seatsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
+import { editorViewOf, readTeamSnapshot, recordsOf, seatsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
-import { correctsSignInEmail, planSignInEmailCorrection, type SignInEmailCorrection, type SignInEmailRow } from "./sign-in-email";
+import { correctsSignInEmail, SIGN_IN_EMAIL_REFUSALS } from "./sign-in-email";
+import { correctionWrites, planCorrection, signedIn } from "./database-sign-in-email";
+import { isGuardFailure } from "@/lib/db-guard";
 
 // The Members page's reads and writes on the database (Dashboard v2 boards 59
 // to 59e, issue #172; boards 61e to 61h2, issue #231): who is in the lead's
@@ -149,8 +165,9 @@ export function leadDivisionId(identity: DashboardIdentity): number | null {
  * Members (or every-area) grant at Can edit that covers it (issue #342); a
  * grant across a department covers each of its divisions (issue #351). A
  * grant at Can view, or on another area, changes nobody. Null for anyone
- * else. Every Members write checks this actor, directly or through
- * `actingOn`.
+ * else. The Team tree's structure writes check this actor: a grant on an
+ * area never widens them (issue #957). The Members writes check
+ * `readMembersActor`.
  */
 async function readActor(identity: DashboardIdentity, org: OrgChart | Promise<OrgChart>): Promise<TeamActor | null> {
   return actorOf(identity, org, (divisionId, chart) => {
@@ -160,12 +177,26 @@ async function readActor(identity: DashboardIdentity, org: OrgChart | Promise<Or
 }
 
 /**
+ * Who the viewer changes people as on the Members page: the team for anyone
+ * who changes Members as the team (`changesAreaAsTeam`), a whole-team Members
+ * grant at Can edit included, whatever their role (issue #957); else
+ * `readActor`. Every Members write checks this actor, directly or through
+ * `actingOn`.
+ */
+async function readMembersActor(identity: DashboardIdentity, org: OrgChart | Promise<OrgChart>): Promise<TeamActor | null> {
+  if (!changesAreaAsTeam(identity, "members")) return readActor(identity, org);
+  // The chart is awaited on this path too, so a failed read of it never goes unheard.
+  await org;
+  return { kind: "team" };
+}
+
+/**
  * Who the viewer reads the Members page as: `readActor`, except that it reads
  * every division where they read the Members area (`readsAreaIn`): a lead's
  * own, or one a member's Members grant (or every-area grant) covers, at any
  * level. A grant on another area reads no division here (issue #471).
  * Reading is all it decides; no write takes this actor, and the page's
- * actions follow `readActor` (issue #351).
+ * actions follow `readMembersActor` (issue #351).
  */
 async function readViewingActor(identity: DashboardIdentity, org: OrgChart | Promise<OrgChart>): Promise<TeamActor | null> {
   return actorOf(identity, org, (divisionId, chart) => {
@@ -286,16 +317,6 @@ async function readJoining(identity: DashboardIdentity, divisionIds: readonly nu
   return joining;
 }
 
-/**
- * Whether a sign-in account holds the `public.users` row: a Better Auth user
- * with its id, as the `sync_auth_users` trigger (drizzle/0001) leaves it once
- * the person signs in. Only read here: nothing in this file writes the
- * `better_auth` schema. Both ids are named with their table: a one-table
- * select names its columns bare, and a bare `id` inside the subquery would
- * read the Better Auth row's own.
- */
-const signedIn = sql<boolean>`exists (select 1 from ${betterAuthUsers} as account where account.id = ${users}.${sql.identifier(users.id.name)})`;
-
 const waitingColumns = {
   join_id: teamJoins.id,
   user_id: teamJoins.userId,
@@ -371,7 +392,8 @@ function waitingDetails(row: WaitingRow): MemberDetails {
     ...filled("birthDate", row.date_of_birth),
     ...filled("gender", row.gender),
   };
-  const checked = checkMemberEdit({ title: "", details: raw });
+  // The stored phone is what Fill details opens with, so it reads whatever its format (issue #887).
+  const checked = checkMemberEdit({ title: "", details: raw }, raw.phone);
   return checked.ok ? checked.value.details : NO_MEMBER_DETAILS;
 }
 
@@ -399,7 +421,7 @@ function waitingPerson(identity: DashboardIdentity, row: WaitingRow): WaitingPer
   return {
     joinId: row.join_id,
     email: row.email,
-    correctsSignInEmail: correctsSignInEmail(identity, row.linked),
+    correctsSignInEmail: correctsSignInEmail(identity, "waiting", row.linked),
     name: [row.first_name, row.last_name].filter(Boolean).join(" ") || null,
     title: row.title,
     details: waitingDetails(row),
@@ -458,7 +480,8 @@ async function readDepartmentMembers(
     waiting: Object.fromEntries(perDivision.map((d) => [d.id, d.waiting.map((w) => waitingPerson(identity, w))])),
     joining: Object.fromEntries(perDivision.map((d) => [d.id, d.joining])),
   });
-  return page === null ? NO_MEMBERS : { scope: "department", ...page };
+  if (page === null) return NO_MEMBERS;
+  return { scope: "department", ...page, googleEmails: await readMemberGoogleEmails(page.everyone.map((p) => p.id)) };
 }
 
 /**
@@ -487,9 +510,10 @@ export async function readTeamStructure(identity: DashboardIdentity): Promise<Te
 }
 
 /**
- * The divisions `readDivisionMembers` opens when `?division=` names one: the
- * viewer's division reach on the Members page (issue #760). Empty for a page
- * that is not one division's: the whole team, a head's department, or no page.
+ * The divisions a lead's Members page holds (`readDivisionMembers`), so
+ * `?division=` opens it with one of them chosen: the viewer's division reach
+ * on the Members page (issue #760). Empty for a page that is not a lead's:
+ * the whole team, a head's department, or no page.
  */
 export async function readMembersDivisionReach(identity: DashboardIdentity): Promise<readonly number[]> {
   const snapshotRead = readTeamSnapshot();
@@ -498,39 +522,33 @@ export async function readMembersDivisionReach(identity: DashboardIdentity): Pro
 }
 
 /**
- * The Members page of a division lead (boards 61e to 61h2): one of the
- * divisions they reach, `divisionId` or the first, with everyone in it, the
- * people waiting for Confirm NDA and the accepted applicants joining. A head
- * gets their department's page instead. Which divisions it lists follows the
- * viewing reach; what the page offers to change follows `readActor`, so a
+ * The Members page of a division lead (boards 61e to 61h2): every division
+ * they reach, all at once (issue #903), each with everyone in it, the people
+ * waiting for Confirm NDA and the accepted applicants joining. A head gets
+ * their department's page instead. Which divisions it lists follows the
+ * viewing reach; what the page offers to change follows `readMembersActor`, so a
  * grant at Can view shows the people and no action (issue #351).
  */
-export async function readDivisionMembers(identity: DashboardIdentity, divisionId: number | null): Promise<MemberDirectory> {
+export async function readDivisionMembers(identity: DashboardIdentity): Promise<MemberDirectory> {
   const snapshotRead = readTeamSnapshot();
   const [snapshot, viewing] = await Promise.all([snapshotRead, readViewingActor(identity, snapshotRead.then((s) => s.org))]);
   if (viewing === null || viewing.kind === "team") return NO_MEMBERS;
   if (viewing.kind === "head") return readDepartmentMembers(identity, viewing, snapshot);
   const reach = reachOf(identity, viewing, snapshot.org);
-  const division = reach.find((id) => id === divisionId) ?? reach[0];
-  if (division === undefined) return NO_MEMBERS;
   // The accepted applicants joining are applications data: listed only for a
   // viewer who reads the Applications area here (issue #471, `readJoining`).
-  const [joining, waiting, actor] = await Promise.all([
-    readJoining(identity, [division], snapshot.org),
-    readWaiting(division),
-    readActor(identity, snapshot.org),
-  ]);
-  const page = divisionMembers({
+  const [perDivision, actor] = await Promise.all([readPerDivision(identity, reach, snapshot.org), readMembersActor(identity, snapshot.org)]);
+  const page = reachMembers({
     records: recordsOf(snapshot),
     org: snapshot.org,
-    divisionId: division,
+    divisionIds: reach,
     actor,
     selfId: identity.memberId,
-    reach,
-    waiting: waiting.map((w) => waitingPerson(identity, w)),
-    joining: joining.get(division) ?? [],
+    waiting: Object.fromEntries(perDivision.map((d) => [d.id, d.waiting.map((w) => waitingPerson(identity, w))])),
+    joining: Object.fromEntries(perDivision.map((d) => [d.id, d.joining])),
   });
-  return page === null ? NO_MEMBERS : { scope: "division", ...page };
+  if (page.divisions.length === 0) return NO_MEMBERS;
+  return { scope: "divisions", ...page, googleEmails: await readMemberGoogleEmails(page.divisions.flatMap((d) => d.people.map((p) => p.id))) };
 }
 
 /**
@@ -544,10 +562,15 @@ export async function readDivisionMembers(identity: DashboardIdentity, divisionI
  */
 export async function readWholeTeamMembers(identity: DashboardIdentity): Promise<MemberDirectory> {
   const snapshotRead = readTeamSnapshot();
-  const [snapshot, actor] = await Promise.all([snapshotRead, readActor(identity, snapshotRead.then((s) => s.org))]);
+  const [snapshot, actor] = await Promise.all([snapshotRead, readMembersActor(identity, snapshotRead.then((s) => s.org))]);
   const records = recordsOf(snapshot);
   const divisionIds = snapshot.org.divisions.map((d) => d.id);
-  const [perDivision, correctable] = await Promise.all([readPerDivision(identity, divisionIds, snapshot.org), readSignInEmailCorrectable(identity)]);
+  const team = wholeTeamMembers({ records, org: snapshot.org, selfId: identity.memberId });
+  const [perDivision, correctable, googleEmails] = await Promise.all([
+    readPerDivision(identity, divisionIds, snapshot.org),
+    readSignInEmailCorrectable(identity),
+    readMemberGoogleEmails(team.people.map((p) => p.id)),
+  ]);
   return {
     scope: "whole-team",
     positions: positionsOf(records, snapshot.org, actor, identity.memberId),
@@ -558,59 +581,22 @@ export async function readWholeTeamMembers(identity: DashboardIdentity): Promise
       joining: d.joining,
       editable: actor !== null && reachesDivision(actor, d.id, snapshot.org),
     })),
-    ...wholeTeamMembers({ records, org: snapshot.org, selfId: identity.memberId }),
+    ...team,
+    googleEmails,
   };
 }
 
-/** The members whose sign-in email the viewer may correct in Edit details (issue #741): none unless full access, and never one who signs in. */
+/** The members whose sign-in email the viewer may change in Edit details (issues #741, #864): every member for full access, none for anyone else. */
 async function readSignInEmailCorrectable(identity: DashboardIdentity): Promise<number[]> {
-  if (!correctsSignInEmail(identity, false)) return [];
+  if (!correctsSignInEmail(identity, "member", true)) return [];
   const rows = await getDb().select({ member: users.member, linked: signedIn }).from(users).where(isNotNull(users.member));
-  return rows.flatMap((r) => (r.member !== null && correctsSignInEmail(identity, r.linked) ? [r.member] : []));
-}
-
-/** The user row a sign-in email correction is aimed at, with whether a sign-in account holds it; null unless exactly one row matches. */
-async function signInEmailRowOf(where: SQL): Promise<SignInEmailRow | null> {
-  const rows = await getDb().select({ id: users.id, email: users.email, linked: signedIn }).from(users).where(where);
-  return rows.length === 1 ? rows[0] : null;
-}
-
-/** Whether any user row but `userId`'s holds `email`, compared case-insensitively: another member, someone waiting, or an account. */
-async function signInEmailTaken(userId: string, email: string): Promise<boolean> {
-  const [row] = await getDb()
-    .select({ id: users.id })
-    .from(users)
-    .where(and(sql`lower(${users.email}) = ${email}`, ne(users.id, userId)))
-    .limit(1);
-  return row !== undefined;
-}
-
-/** The correction Edit details sent for the user row `where` names (`planSignInEmailCorrection`, ./sign-in-email.ts), read for the rule. */
-async function planCorrection(identity: DashboardIdentity, sent: string | null, where: SQL): Promise<SignInEmailCorrection> {
-  if (sent === null) return planSignInEmailCorrection(identity, null, null, false);
-  const row = await signInEmailRowOf(where);
-  return planSignInEmailCorrection(identity, sent, row, row !== null && (await signInEmailTaken(row.id, sent)));
-}
-
-/**
- * The write of a planned correction, in the caller's audited batch: the
- * `public.users` email alone, on a row no sign-in account holds, which the
- * `where` checks again so a sign-in between the read and the write keeps it.
- */
-function correctionWrites(db: Tx, correction: SignInEmailCorrection): BatchItem<"pg">[] {
-  if (correction.kind !== "write") return [];
-  return [
-    db
-      .update(users)
-      .set({ email: correction.email, updatedAt: sql`now()` })
-      .where(and(eq(users.id, correction.userId), sql`not ${signedIn}`)),
-  ];
+  return rows.flatMap((r) => (r.member !== null && correctsSignInEmail(identity, "member", r.linked) ? [r.member] : []));
 }
 
 /** Add member's field (boards 61h, 69c): the team, searched by name or email, and who is waiting here. */
 export async function findForAdd(identity: DashboardIdentity, divisionId: number, query: string): Promise<AddLookup> {
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readMembersActor(identity, snapshot.org);
   if (actor === null || !reachesDivision(actor, divisionId, snapshot.org)) return { kind: "none" };
   const team = recordsOf(snapshot).map((r) => ({
     id: r.id,
@@ -656,6 +642,16 @@ async function activeRoles(memberId: number): Promise<ActiveRole[]> {
 }
 
 /**
+ * Who holds each tied role now (`holdersOf`), read off the active rows: the
+ * holders a hand-over by one of them keeps (`handedOver`, issue #872), so a
+ * team address a staying co-holder holds is owed no routing item.
+ */
+async function holdersNow(org: OrgChart): Promise<(tie: MovesWith) => number[]> {
+  const active = await readActiveTieRoles();
+  return (tie) => holdersOf(tie, active, org);
+}
+
+/**
  * The seat a hand-over moves (`seatHandOver`, ./hand-over.ts), as the
  * successor's inserted role row carries it: nothing for anyone else, so a
  * hand-over of a role with no seat inserts what it always did.
@@ -686,7 +682,7 @@ function membershipsOfActive(active: readonly ActiveRole[]): Memberships {
 
 /**
  * The person's active roles in the divisions the viewer changes people in
- * (`actor`, from `readActor`): every role for the team, and for a head or a
+ * (`actor`, from `readMembersActor`): every role for the team, and for a head or a
  * division lead the roles in the divisions they reach, each division a lead
  * of several included (issues #185, #342); never the viewer. Null when none
  * is left.
@@ -716,35 +712,50 @@ const today = () => new Date().toISOString().slice(0, 10);
  * Only for someone the viewer may edit, in a division they reach, and only
  * where `mayChangeDivision` lets them change its leads: a division lead only in
  * a division they lead by role (issue #594). The panel offers the switch by
- * the same rule (`positionOf`).
+ * the same rule (`positionOf`). An advisor there becomes a member or a lead
+ * again from Edit details' role pill (issue #972): their Advisor role there
+ * ends and the new role starts today, untitled (`roleSwitchOf`).
  */
 async function saveMember(identity: DashboardIdentity, personId: number, edit: MemberEdit): Promise<boolean> {
   const { org } = await readTeamSnapshot();
-  const actor = await readActor(identity, org);
+  const actor = await readMembersActor(identity, org);
   const active = await rolesTheViewerChanges(identity, actor, personId);
   if (actor === null || active === null) return false;
   if (!org.divisions.some((d) => d.id === edit.divisionId) || !mayChangeDivision(actor, edit.divisionId, org).allowed) return false;
-  const ids = active.filter((r) => r.division_id === edit.divisionId && (r.type === "lead" || r.type === "core")).map((r) => r.id);
-  if (ids.length === 0) return false;
-  await runAuditQuery((db) =>
-    db
-      .update(roles)
-      .set({ type: ROLE_TYPE[edit.role] })
-      .where(and(inArray(roles.id, ids), isNull(roles.leavedAt))),
-  );
-  return done();
+  const change = roleSwitchOf(active.filter((r) => r.division_id === edit.divisionId));
+  const type = ROLE_TYPE[edit.role];
+  switch (change.kind) {
+    case "none":
+      return false;
+    case "retype":
+      await runAuditQuery((db) =>
+        db
+          .update(roles)
+          .set({ type })
+          .where(and(inArray(roles.id, [...change.rows]), isNull(roles.leavedAt))),
+      );
+      return done();
+    case "from-advisor": {
+      const on = today();
+      await runAuditBatch((db) => [
+        db.update(roles).set({ leavedAt: on }).where(and(inArray(roles.id, [...change.ending]), isNull(roles.leavedAt))),
+        db.insert(roles).values({ memberId: personId, divisionId: edit.divisionId, title: "", type, startedAt: on }),
+      ]);
+      return done();
+    }
+  }
 }
 
 /**
  * "Leaves the team" (board 59d, widened by #231): when `mayLeaveTeam` allows
  * it, every open role ends, every access grant goes, and the years and the
- * team_leaves row are written, in one batch. The account and the member row
- * stay.
+ * team_leaves row are written, in one batch. The years come from stored data
+ * (`departureOf`, issue #980). The account and the member row stay.
  */
-async function moveToAlumni(identity: DashboardIdentity, personId: number, departure: Departure): Promise<boolean> {
+async function moveToAlumni(identity: DashboardIdentity, personId: number, reason: LeaveReason | null): Promise<boolean> {
   if (personId === identity.memberId) return false;
   const { org } = await readTeamSnapshot();
-  const actor = await readActor(identity, org);
+  const actor = await readMembersActor(identity, org);
   if (actor === null) return false;
   const active = await activeRoles(personId);
   // Every active role counts, one beyond every division included (a head kept on a division row too):
@@ -755,8 +766,10 @@ async function moveToAlumni(identity: DashboardIdentity, personId: number, depar
   const move = alumniMove(active.map((r) => ({ id: r.id, divisionId: r.division_id })));
   if (move === null) return false;
   const ending = move.ending.map((r) => r.id);
+  const on = today();
+  const departure = departureOf(await teamStayOf(personId), on, reason);
   await runAuditBatch((db) => [
-    db.update(roles).set({ leavedAt: today() }).where(and(inArray(roles.id, ending), isNull(roles.leavedAt))),
+    db.update(roles).set({ leavedAt: on }).where(and(inArray(roles.id, ending), isNull(roles.leavedAt))),
     db.delete(scopes).where(eq(scopes.memberId, personId)),
     db.update(members).set({ teamFrom: departure.from, teamTo: departure.to }).where(eq(members.memberId, personId)),
     db.insert(teamLeaves).values({ memberId: personId, reason: departure.reason }),
@@ -784,7 +797,7 @@ async function confirmJoin(identity: DashboardIdentity, applicationId: number): 
 /** The actor and the open org chart, when the viewer's page reaches `divisionId`. */
 async function actingOn(identity: DashboardIdentity, divisionId: number): Promise<{ actor: TeamActor; org: OrgChart } | null> {
   const { org } = await readTeamSnapshot();
-  const actor = await readActor(identity, org);
+  const actor = await readMembersActor(identity, org);
   if (actor === null || !org.divisions.some((d) => d.id === divisionId) || !reachesDivision(actor, divisionId, org)) return null;
   return { actor, org };
 }
@@ -801,6 +814,30 @@ function memberRole(memberId: number, divisionId: number, title: string | null) 
   return { memberId, divisionId, title: title ?? "", type: "core" as const, startedAt: today() };
 }
 
+/** A `users` row's id, named with its table, so the subquery on the login table cannot read it as its own. */
+const userRowId = sql`${users}.${sql.identifier(users.id.name)}`;
+
+/**
+ * The open `users` row Add member attaches the join to, for an email (issue
+ * #930). Closed rows are skipped. A row with a member comes first, then a row
+ * a login holds (a `better_auth."user"` with its id), so the join lands where
+ * the person signs in when an older same-email record sits beside their
+ * login's row. The id breaks any remaining tie, so the same rows always give
+ * the same pick.
+ */
+function accountForAdd(email: string) {
+  return getDb()
+    .select({ id: users.id, member: users.member })
+    .from(users)
+    .where(and(sql`lower(${users.email}) = ${email}`, isNull(users.deletedAt)))
+    .orderBy(
+      sql`${users.member} is null`,
+      sql`not exists (select 1 from ${betterAuthUsers} as login where login.id = ${userRowId})`,
+      asc(users.id),
+    )
+    .limit(1);
+}
+
 /**
  * Add member (boards 61h, 61h2; Owner decisions on #231). Someone on the team
  * gets a role in the division at once, keeps every other role and signs no
@@ -815,15 +852,7 @@ async function addMember(identity: DashboardIdentity, input: unknown): Promise<W
   const add = checked.value;
   if ((await actingOn(identity, add.divisionId)) === null) return refused("You can add people only to a division your Members page lets you change.");
 
-  const [account] =
-    add.kind === "email"
-      ? await getDb()
-          .select({ id: users.id, member: users.member })
-          .from(users)
-          .where(sql`lower(${users.email}) = ${add.email}`)
-          .orderBy(sql`${users.member} is null`)
-          .limit(1)
-      : [];
+  const [account] = add.kind === "email" ? await accountForAdd(add.email) : [];
   const memberId = add.kind === "member" ? add.personId : (account?.member ?? null);
   const active = memberId === null ? [] : await activeRoles(memberId);
   if (add.kind === "member" && active.length === 0) return refused("They are not on the team.");
@@ -977,7 +1006,7 @@ const NOT_IN_SCOPE = "You can edit only people your Members page lets you change
  */
 export async function findMoveTargets(identity: DashboardIdentity, personId: number): Promise<MoveLookup> {
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readMembersActor(identity, snapshot.org);
   if (actor === null || (await rolesTheViewerChanges(identity, actor, personId)) === null) return { kind: "none" };
   return { kind: "targets", departments: moveTargetsOf(recordsOf(snapshot), snapshot.org, actor) };
 }
@@ -1000,7 +1029,7 @@ async function moveMember(identity: DashboardIdentity, input: unknown): Promise<
   if (!checked.ok) return refused(checked.error);
   const request = checked.value;
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readMembersActor(identity, snapshot.org);
   if (actor === null || (await rolesTheViewerChanges(identity, actor, request.personId)) === null) return refused(NOT_IN_SCOPE);
   const [active, headRows] = await Promise.all([
     activeRoles(request.personId),
@@ -1023,19 +1052,26 @@ async function moveMember(identity: DashboardIdentity, input: unknown): Promise<
   if (!planned.ok) return refused(planned.error);
   const plan = planned.value;
   const on = today();
-  const replacedRoles = plan.replaced === null ? [] : await activeRoles(plan.replaced.memberId);
+  const replaced =
+    plan.replaced === null
+      ? null
+      : {
+          memberId: plan.replaced.memberId,
+          active: await activeRoles(plan.replaced.memberId),
+          step: await stepDownOf(plan.replaced.memberId, plan.replaced.steppingDown),
+        };
   const aliasAsked = await automaticAliasRequests(plan.newLeads);
   const [leadsThere, leadsLeft] = await Promise.all([
     plan.start.kind === "division" && plan.start.type === "lead" ? heldRows(plan.start.divisionId).then(leadsIn) : [],
     plan.leaves.kind === "division" ? heldRows(plan.leaves.divisionId).then(leadsIn) : [],
   ]);
-  const reroutesAsked = await automaticTeamAddressReroutes(moveRoleChanges(plan, leadsThere, leadsLeft));
+  const reroutesAsked = await automaticTeamAddressReroutes(moveRoleChanges(plan, leadsThere, leadsLeft, await holdersNow(snapshot.org)));
   // Every row the move ends, the head it replaces' included, ends in one guarded statement (issue #666), so an overlapping move ends nothing twice.
   const ending: readonly [number, ...number[]] = [...plan.end, ...(plan.replaced?.rows ?? [])];
   try {
     await runAuditBatch((db) => [
       endRoleRows(db, ending, on),
-      ...moveWrites(db, plan, replacedRoles, on),
+      ...moveWrites(db, plan, replaced, on),
       ...aliasAsked(db),
       ...reroutesAsked(db),
     ]);
@@ -1057,23 +1093,35 @@ const MOVED_SINCE = "Someone changed this placement since you opened it. Reload 
  * lead beside `leadsThere`, its leads now, or the department they head with
  * its seat, and the department the picked head takes over with its seat; and
  * the division they leave while leading it, beside the rest of `leadsLeft`,
- * its leads now (issue #804).
+ * its leads now (issue #804). A headship handed over from one head keeps
+ * every other head of it (`holders`, issue #872).
  */
-function moveRoleChanges(plan: MovePlan, leadsThere: readonly number[], leadsLeft: readonly number[]): TiedRoleChange[] {
-  const { personId, start, leaves, successor } = plan;
+function moveRoleChanges(
+  plan: MovePlan,
+  leadsThere: readonly number[],
+  leadsLeft: readonly number[],
+  holders: (tie: MovesWith) => readonly number[],
+): TiedRoleChange[] {
+  const { personId, start, leaves, successor, replaced } = plan;
+  const headed = (departmentId: number, to: number, from: number | null): TiedRoleChange => {
+    const tie: MovesWith = { kind: "department-head", departmentId };
+    return from === null ? handedTo(tie, to) : handedOver(tie, { from, to }, holders(tie));
+  };
+  const seatMoved = (seat: SeatMove | null, from: number | null) => (from === null ? seatHandedTo(seat) : seatHandedOver(seat, from, holders));
+  const replacedId = replaced?.memberId ?? null;
   const starts: TiedRoleChange[] =
     start.kind === "division"
       ? start.type === "lead"
         ? [{ tie: { kind: "division-lead", divisionId: start.divisionId }, becoming: [personId], staying: leadsThere, leaving: [] }]
         : []
-      : [handedTo({ kind: "department-head", departmentId: start.departmentId }, personId), ...seatHandedTo(start.seat)];
+      : [headed(start.departmentId, personId, replacedId), ...seatMoved(start.seat, replacedId)];
   const left: TiedRoleChange[] =
     leaves.kind === "division" && leadsLeft.includes(personId)
       ? [{ tie: { kind: "division-lead", divisionId: leaves.divisionId }, becoming: [], staying: leadsLeft.filter((id) => id !== personId), leaving: [personId] }]
       : [];
   const changes = [...starts, ...left];
   if (successor === null) return changes;
-  return [...changes, handedTo({ kind: "department-head", departmentId: successor.departmentId }, successor.memberId), ...seatHandedTo(successor.seat)];
+  return [...changes, headed(successor.departmentId, successor.memberId, personId), ...seatMoved(successor.seat, personId)];
 }
 
 /** The people who lead a division, newest lead first, from its active rows (`heldRows`). */
@@ -1086,15 +1134,22 @@ function leadsIn(held: readonly HeldRow[]): number[] {
  * the place they leave goes, the head they replace steps down, the new row
  * starts and the head picked for the department they leave starts.
  */
-function moveWrites(db: Tx, plan: MovePlan, replacedRoles: readonly ActiveRole[], on: string): BatchItem<"pg">[] {
+function moveWrites(
+  db: Tx,
+  plan: MovePlan,
+  /** The replaced head's active roles and how they step down; null when the move replaces no head. */
+  replaced: { readonly memberId: number; readonly active: readonly ActiveRole[]; readonly step: StepDown } | null,
+  on: string,
+): BatchItem<"pg">[] {
   const { personId, start, leaves } = plan;
   return [
     leaves.kind === "division"
       ? db.delete(scopes).where(and(eq(scopes.memberId, personId), eq(scopes.scope, "division"), eq(scopes.divisionId, leaves.divisionId)))
       : db.delete(scopes).where(and(eq(scopes.memberId, personId), eq(scopes.scope, "department"), eq(scopes.deptId, leaves.departmentId), isNull(scopes.divisionId))),
-    // The head they replace steps down before their headship starts: the database keeps one active head per department.
+    // The head they replace steps down before their headship starts. A replace ends that head's row by choice; the database
+    // would take a second active head (epic #861, drizzle/0077).
     // Their head rows already ended in `endRoleRows`, so none is passed to end here.
-    ...(plan.replaced === null ? [] : steppingDownWrites(db, { memberId: plan.replaced.memberId, active: replacedRoles }, plan.replaced.steppingDown, [], on)),
+    ...(replaced === null ? [] : steppingDownWrites(db, replaced, replaced.step, [], on)),
     start.kind === "division"
       ? db.insert(roles).values({ memberId: personId, divisionId: start.divisionId, title: start.title, type: start.type, startedAt: on })
       : db
@@ -1117,12 +1172,31 @@ function moveWrites(db: Tx, plan: MovePlan, replacedRoles: readonly ActiveRole[]
 }
 
 /**
+ * The phone Edit details opened with for `target`, read here and never taken
+ * from the form (issue #887): the person's record as the Members page reads
+ * it (`editorViewOf`), or the stored phone of someone waiting, as Fill details
+ * reads it. A save that sends it back unchanged keeps it whatever its format.
+ */
+async function openedPhoneOf(target: DetailsTarget): Promise<string> {
+  if (target.kind === "person") return editorViewOf(await readTeamSnapshot(), target.id)?.details.phone ?? "";
+  const [join] = await getDb()
+    .select({ phone: users.phone })
+    .from(teamJoins)
+    .innerJoin(users, eq(users.id, teamJoins.userId))
+    .where(eq(teamJoins.id, target.joinId))
+    .limit(1);
+  return join?.phone ?? "";
+}
+
+/**
  * Edit details (board 61g, issue #584) for anyone the viewer may edit
  * (`rolesTheViewerChanges`): the team leader, full access and the operations
  * lead reach everyone, a head their department's people, a division lead or a
  * Members grant at Can edit the people in the divisions it covers. `divisionId`
  * names the division whose role title the form sets, which the viewer must
- * reach and the person be in. Null is someone in no division the viewer
+ * reach and the person be in; each of the input's `divisionTitles` names
+ * another division of theirs, checked the same way, and its title goes to that
+ * division's rows only (issue #911). Null is someone in no division the viewer
  * reaches: only the team (the team leader, full access) edits them, and the
  * title is their seat's (`titledSeatOf`: the team leader's, a head's or a
  * team-level seat's row), never blank (issue #626). It writes `roles.title`
@@ -1139,14 +1213,16 @@ async function saveMemberDetails(
   divisionId: number | null,
   input: unknown,
 ): Promise<WriteResult<null>> {
-  const checked = checkMemberEdit(input);
+  const checked = checkMemberEdit(input, await openedPhoneOf(target));
   if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
-  const { title, details, name, signInEmail } = checked.value;
+  const { title, divisionTitles, details, name, signInEmail } = checked.value;
   const columns = columnsFromMemberDetails(details);
 
   if (target.kind === "waiting") {
     // Someone waiting keeps the name they were added with; only Edit details renames, once they are on the team.
     if (name !== null) return refused("Their name is set once they join.");
+    // They wait for one division, so theirs is the one title.
+    if (divisionTitles.length > 0) return refused(NOT_IN_SCOPE);
     if (divisionId === null || (await actingOn(identity, divisionId)) === null) return refused(NOT_IN_SCOPE);
     const [join] = await getDb()
       .select({ user_id: teamJoins.userId })
@@ -1156,6 +1232,7 @@ async function saveMemberDetails(
     if (!join) return refused("They are not waiting to join this division.");
     const correction = await planCorrection(identity, signInEmail, eq(users.id, join.user_id));
     if (correction.kind === "refused") return refused(correction.error);
+    // Someone waiting holds no member record, so no move is ever planned for them.
     await runAuditBatch((db) => [
       db.update(teamJoins).set({ title, ...columns.member }).where(eq(teamJoins.id, target.joinId)),
       db.update(users).set({ ...columns.user, updatedAt: sql`now()` }).where(eq(users.id, join.user_id)),
@@ -1164,8 +1241,9 @@ async function saveMemberDetails(
     return written(null);
   }
 
-  const { org } = await readTeamSnapshot();
-  const actor = await readActor(identity, org);
+  const snapshot = await readTeamSnapshot();
+  const { org } = snapshot;
+  const actor = await readMembersActor(identity, org);
   const active = await rolesTheViewerChanges(identity, actor, target.id);
   if (actor === null || active === null) return refused(NOT_IN_SCOPE);
   let titled: number[];
@@ -1176,35 +1254,71 @@ async function saveMemberDetails(
     if (seat !== null && title === null) return refused(SEAT_TITLE_REQUIRED);
     titled = seat === null ? [] : [seat.role.id];
   } else {
-    titled = divisionRowsIn(active, divisionId).map((r) => r.id);
-    if (titled.length === 0 || !reachesDivision(actor, divisionId, org)) return refused(NOT_IN_SCOPE);
+    const rows = titledRowsIn(actor, active, divisionId, org);
+    if (rows === null) return refused(NOT_IN_SCOPE);
+    titled = rows;
+  }
+  // Each other division row's title (issue #911), checked as the form's own one is: one out of reach refuses the whole save.
+  const rowTitles: { readonly ids: number[]; readonly title: string | null }[] = [];
+  for (const row of divisionTitles) {
+    const ids = row.divisionId === divisionId ? null : titledRowsIn(actor, active, row.divisionId, org);
+    if (ids === null) return refused(NOT_IN_SCOPE);
+    rowTitles.push({ ids, title: row.title });
   }
   const correction = await planCorrection(identity, signInEmail, eq(users.member, target.id));
   if (correction.kind === "refused") return refused(correction.error);
-  await runAuditBatch((db) => [
-    db
-      .update(users)
-      .set({ ...columns.user, ...(name === null ? {} : { firstName: name.firstName, lastName: name.lastName }), updatedAt: sql`now()` })
-      .where(eq(users.member, target.id)),
-    db.update(members).set(columns.member).where(eq(members.memberId, target.id)),
-    ...(titled.length === 0
-      ? []
-      : [
-          db
-            .update(roles)
-            .set({ title: title ?? "" })
-            .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
-        ]),
-    ...correctionWrites(db, correction),
-  ]);
+  // The record can move onto a login whose own fields the form never showed (issue #864), so the user columns written are
+  // only those the viewer changed: on the Save that moves it, against the record's row as the form showed it; on a retry
+  // of the same open form, against what its last Save wrote. The members row never moves.
+  const opened = correction.kind === "move" ? editorViewOf(snapshot, target.id) : null;
+  const edited = editedFields(checked.value, opened === null ? checked.value.landed : shownEditOf(opened.details, opened.name));
+  const userColumns = { ...columnsFromMemberDetails(edited.details).user, ...edited.name };
+  try {
+    // The change lands before the user row's details: after a move, they are written onto the row that now holds the record (issue #864).
+    await runAuditBatch((db) => [
+      db.update(members).set(columns.member).where(eq(members.memberId, target.id)),
+      ...correctionWrites(db, correction),
+      db
+        .update(users)
+        .set({ ...userColumns, updatedAt: sql`now()` })
+        .where(eq(users.member, target.id)),
+      ...(titled.length === 0
+        ? []
+        : [
+            db
+              .update(roles)
+              .set({ title: title ?? "" })
+              .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
+          ]),
+      ...rowTitles.map((row) =>
+        db
+          .update(roles)
+          .set({ title: row.title ?? "" })
+          .where(and(inArray(roles.id, row.ids), isNull(roles.leavedAt))),
+      ),
+    ]);
+  } catch (error) {
+    if (isGuardFailure(error)) return refused(SIGN_IN_EMAIL_REFUSALS.changed);
+    throw error;
+  }
   done();
   return written(null);
+}
+
+/**
+ * The rows a role title in `divisionId` is written on: the person's lead and
+ * member rows there, when the viewer reaches the division; null when they are
+ * not in it or it is out of the viewer's reach. Edit details reads it.
+ */
+function titledRowsIn(actor: TeamActor, active: readonly ActiveRole[], divisionId: number, org: OrgChart): number[] | null {
+  const ids = divisionRowsIn(active, divisionId).map((r) => r.id);
+  return ids.length === 0 || !reachesDivision(actor, divisionId, org) ? null : ids;
 }
 
 /** The photo in Edit details (board 61g): a square JPEG under 500 KB in the public store, or none; for anyone the viewer may edit. */
 async function setMemberPhoto(identity: DashboardIdentity, personId: number, photo: Upload | null): Promise<WriteResult<null>> {
   const { org } = await readTeamSnapshot();
-  if ((await rolesTheViewerChanges(identity, await readActor(identity, org), personId)) === null) return refused(NOT_IN_SCOPE);
+  if ((await rolesTheViewerChanges(identity, await readMembersActor(identity, org), personId)) === null) return refused(NOT_IN_SCOPE);
   const checked = photo === null ? written(null) : checkedMemberPhoto(photo);
   if (!checked.ok) return refused(checked.error);
   const [member] = await getDb().select({ picture: members.picture }).from(members).where(eq(members.memberId, personId)).limit(1);
@@ -1272,22 +1386,31 @@ async function heldRows(divisionId: number): Promise<HeldRow[]> {
 }
 
 /**
- * Someone who leaves the team from a structure edit (an old lead's or head's
- * "Leave the team"): every active role ends and every
- * access row goes, their years on the team are set from their roles, and the
- * leave is recorded, so they appear on Alumni.
+ * A hand-over's way of stepping down, as the batch writes it: a leave carries
+ * the stored stay its years are read from (`departureOf`, issue #986), so no
+ * leave reaches the batch without it.
  */
-function leaveTeamWrites(db: Tx, leaver: { readonly memberId: number; readonly active: readonly ActiveRole[] }, on: string): [BatchItem<"pg">, ...BatchItem<"pg">[]] {
-  const { memberId, active } = leaver;
-  const year = Number(on.slice(0, 4));
+type StepDown = Advising | { readonly kind: "leave"; readonly stay: TeamStay };
+
+/** The step a hand-over picked for `memberId`, with their stored stay read when they leave the team. */
+async function stepDownOf(memberId: number, step: SteppingDown): Promise<StepDown> {
+  return step.kind === "leave" ? { kind: "leave", stay: await teamStayOf(memberId) } : step;
+}
+
+/**
+ * Someone who leaves the team from a structure edit (an old lead's or head's
+ * "Leave the team"): every active role ends and every access row goes, their
+ * years on the team are set by the rule Leaves the team uses (`departureOf`,
+ * issue #986), and the leave is recorded, so they appear on Alumni.
+ */
+function leaveTeamWrites(db: Tx, leaver: { readonly memberId: number; readonly stay: TeamStay }, on: string): [BatchItem<"pg">, ...BatchItem<"pg">[]] {
+  const { memberId, stay } = leaver;
+  const departure = departureOf(stay, on, null);
   return [
     db.update(roles).set({ leavedAt: on }).where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt))),
     db.delete(scopes).where(eq(scopes.memberId, memberId)),
-    db
-      .update(members)
-      .set({ teamFrom: Math.min(year, ...active.map((r) => Number(r.started_at.slice(0, 4)))), teamTo: year })
-      .where(eq(members.memberId, memberId)),
-    db.insert(teamLeaves).values({ memberId, reason: null }),
+    db.update(members).set({ teamFrom: departure.from, teamTo: departure.to }).where(eq(members.memberId, memberId)),
+    db.insert(teamLeaves).values({ memberId, reason: departure.reason }),
   ];
 }
 
@@ -1316,24 +1439,25 @@ function advisorUnit(place: AdvisorPlace): { deptId: number | null; divisionId: 
 function steppingDownWrites(
   db: Tx,
   person: { readonly memberId: number; readonly active: readonly ActiveRole[] },
-  step: SteppingDown,
+  step: StepDown,
   ending: readonly number[],
   on: string,
   /** Org-wide or admin rows they hold now: a former team leader who holds one keeps it, and gets no second. */
   fullAccessRows = 0,
-): [BatchItem<"pg">, ...BatchItem<"pg">[]] {
-  if (step.kind === "leave") return leaveTeamWrites(db, person, on);
+): BatchItem<"pg">[] {
+  if (step.kind === "leave") return leaveTeamWrites(db, { memberId: person.memberId, stay: step.stay }, on);
   const { memberId } = person;
-  const advisor = db.insert(roles).values({ memberId, ...advisorUnit(step.place), title: ADVISOR_TITLE, type: "advisor", startedAt: on });
+  // Someone who advises at the place already keeps that one Advisor role (issue #900).
+  const advisesThere = person.active.some((r) => !ending.includes(r.id) && isAdvisorRowAt({ type: r.type, departmentId: r.dept_id, divisionId: r.division_id }, step.place));
+  const advisor = advisesThere ? [] : [db.insert(roles).values({ memberId, ...advisorUnit(step.place), title: ADVISOR_TITLE, type: "advisor", startedAt: on })];
   const access =
     step.access === "ends"
       ? [db.delete(scopes).where(eq(scopes.memberId, memberId))]
       : fullAccessRows > 0
         ? []
         : [db.insert(scopes).values({ memberId, givenBy: memberId, scope: "org", target: "all", accessLevel: "edit" })];
-  return ending.length === 0
-    ? [advisor, ...access]
-    : [db.update(roles).set({ leavedAt: on }).where(and(inArray(roles.id, [...ending]), isNull(roles.leavedAt))), advisor, ...access];
+  const end = ending.length === 0 ? [] : [db.update(roles).set({ leavedAt: on }).where(and(inArray(roles.id, [...ending]), isNull(roles.leavedAt)))];
+  return [...end, ...advisor, ...access];
 }
 
 /**
@@ -1363,7 +1487,9 @@ async function writeDivisionPlan(
   );
   if (!handed.ok) return refused(handed.error);
   const seat = handed.value;
-  const leavers = await Promise.all(plan.leaveTeam.map(async (memberId) => ({ memberId, active: await activeRoles(memberId) })));
+  const leavers = await Promise.all(plan.leaveTeam.map(async (memberId) => ({ memberId, stay: await teamStayOf(memberId) })));
+  // Their active roles say whether they advise at the picked place already (`steppingDownWrites`).
+  const advisors = await Promise.all(plan.advise.map(async (a) => ({ ...a, active: await activeRoles(a.memberId) })));
   const newRole = (memberId: number, type: "lead" | "core") => ({ memberId, divisionId, title: "", type, startedAt: on });
   const rows = divisionRowWrites(plan, divisionId, held);
   const open = (ids: readonly number[]) => and(inArray(roles.id, [...ids]), isNull(roles.leavedAt));
@@ -1373,7 +1499,7 @@ async function writeDivisionPlan(
   // Each new lead is owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests([...plan.promote, ...plan.joinAsLead]);
   // A team address tied to this division's lead, held by a lead the save replaces or steps down, is owed a routing item (issues #789, #804).
-  const leaving = new Set([...plan.demote, ...plan.advise, ...plan.replaced, ...plan.leaveDivision, ...plan.leaveTeam]);
+  const leaving = new Set([...plan.demote, ...plan.advise.map((a) => a.memberId), ...plan.replaced, ...plan.leaveDivision, ...plan.leaveTeam]);
   const reroutesAsked = await automaticTeamAddressReroutes([
     {
       tie: { kind: "division-lead", divisionId },
@@ -1389,10 +1515,13 @@ async function writeDivisionPlan(
       ? db.insert(divisions).values({ id: divisionId, deptId: create.departmentId, name: plan.name, code: plan.code })
       : db
           .update(divisions)
-          .set({ name: plan.name, code: plan.code })
+          // A save that keeps the name leaves the stored one as it is (issue #938), and one that keeps the code leaves
+          // the stored code, none included (issue #901): the row is then written with its own code, the batch's head.
+          .set({ ...(plan.nameChanged ? { name: plan.name } : {}), code: plan.codeChanged ? plan.code : sql`${divisions.code}` })
           .where(and(eq(divisions.id, divisionId), isNull(divisions.closedAt))),
     ...(rows.end.length === 0 ? [] : [db.update(roles).set({ leavedAt: on }).where(open(rows.end))]),
-    // Old leads who leave the team end every role before a seat on one moves to a new lead (issue #667).
+    // Old leads who leave the team end every role before a seat on one moves to a new lead. The hand-over ends their rows by
+    // choice, not because the database refuses a second active holder (epic #861, drizzle/0077).
     ...leavers.flatMap((leaver) => leaveTeamWrites(db, leaver, on)),
     ...(rows.toLead.length === 0 ? [] : [db.update(roles).set({ type: "lead" }).where(open(rows.toLead))]),
     ...seatOnto(db, seat, seatRow),
@@ -1401,9 +1530,10 @@ async function writeDivisionPlan(
     ...plan.leaveDivision.map((id) =>
       db.delete(scopes).where(and(eq(scopes.memberId, id), eq(scopes.scope, "division"), eq(scopes.divisionId, divisionId))),
     ),
-    // A replaced lead's lead row ends with `rows.end`; the Advisor role starts here (issue #253).
-    ...plan.advise.flatMap((memberId) =>
-      steppingDownWrites(db, { memberId, active: [] }, steppingDown({ kind: "lead", divisionId }, "advisor"), [], on),
+    // An old lead's lead row ends with `rows.end`; the Advisor role starts where the editor picked (issues #253, #900).
+    // They read the roles left after this batch: a row `rows.end` ends here is no Advisor role they keep.
+    ...advisors.flatMap(({ memberId, step, active }) =>
+      steppingDownWrites(db, { memberId, active: active.filter((r) => !rows.end.includes(r.id)) }, step, [], on),
     ),
     ...aliasAsked(db),
     ...reroutesAsked(db),
@@ -1445,6 +1575,60 @@ async function saveDivision(identity: DashboardIdentity, divisionId: number, inp
   // Position codes are built from the division's code when read, so a new code reaches every position at once.
   if (planned.plan.codeChanged) refreshPositions();
   return result;
+}
+
+/**
+ * A lead or advisor change from Edit details' role pill (issues #901, #972),
+ * on the Team tree and the Members page alike: Edit division's save with only
+ * that change in it (`peopleSaveOf`), planned and written as Edit division's
+ * is. It is a Members write, so the viewer acts as `readMembersActor` says,
+ * and `planDivisionSave` still asks `mayChangeDivision`.
+ */
+async function changeDivisionPeople(identity: DashboardIdentity, divisionId: number, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkPeopleChange(input);
+  if (!checked.ok) return refused(checked.error);
+  const snapshot = await readTeamSnapshot();
+  const actor = await readMembersActor(identity, snapshot.org);
+  const subject = savedSubject(divisionId, snapshot.org);
+  if (actor === null || subject === null) return refused("That division is not one you manage.");
+  const save = peopleSaveOf(subject.division, checked.value);
+  const planned = planDivisionSave({ actor, org: snapshot.org, subject, save, team: teamPeopleOf(snapshot) });
+  if (!planned.ok) return refused(planned.error);
+  return writeDivisionPlan(identity, divisionId, planned.plan, null);
+}
+
+/**
+ * A department or whole-team Advisor role's pill in Edit details (issue #976),
+ * as `planAdvisorPlaceChange` (./advisor-roles.ts) allows it, in one batch:
+ * the Advisor row ends, and one starts at the place picked, or none when the
+ * role ends. Their access stays as it is: an advisor who moves keeps the
+ * access they hold. The row ends through `endRoleRows`, so of two overlapping
+ * saves only the first lands.
+ */
+async function changeAdvisorPlace(identity: DashboardIdentity, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkAdvisorPlaceChange(input);
+  if (!checked.ok) return refused(checked.error);
+  const change = checked.value;
+  const snapshot = await readTeamSnapshot();
+  const actor = await readMembersActor(identity, snapshot.org);
+  const active = await rolesTheViewerChanges(identity, actor, change.personId);
+  if (actor === null || active === null) return refused(NOT_IN_SCOPE);
+  const held = active.map(roleSeat);
+  const planned = planAdvisorPlaceChange({ actor, org: snapshot.org, change, roles: held, standing: standingOfRoles(held, snapshot.org) });
+  if (!planned.ok) return refused(planned.error);
+  const { ending, start } = planned.value;
+  const on = today();
+  try {
+    await runAuditBatch((db) => [
+      endRoleRows(db, [ending], on),
+      ...(start === null ? [] : [db.insert(roles).values({ memberId: change.personId, ...advisorUnit(start), title: ADVISOR_TITLE, type: "advisor", startedAt: on })]),
+    ]);
+  } catch (error) {
+    if (!isEndGuardFailure(error)) throw error;
+    return refused(MOVED_SINCE);
+  }
+  done();
+  return written(null);
 }
 
 function refreshPositions() {
@@ -1517,7 +1701,7 @@ async function createDepartment(identity: DashboardIdentity, input: unknown): Pr
   const actor = await readActor(identity, snapshot.org);
   const planned = planDepartmentCreate({ actor, org: snapshot.org, save: checked.value, team: teamPeopleOf(snapshot) });
   if (!planned.ok) return refused(planned.error);
-  const { name, code, kind, headId } = planned.value;
+  const { name, code, headId } = planned.value;
   // The batch cannot read one write's result in the next, so the department id is taken first.
   const next = await getDb().execute(sql`select nextval(pg_get_serial_sequence('departments', 'id'))::int as id`);
   const departmentId = Number((next.rows[0] as { id: number }).id);
@@ -1526,7 +1710,8 @@ async function createDepartment(identity: DashboardIdentity, input: unknown): Pr
   // Read for every role change (issue #789), though no team address can move with a department not made yet.
   const reroutesAsked = await automaticTeamAddressReroutes([handedTo({ kind: "department-head", departmentId }, headId)]);
   await runAuditBatch((db) => [
-    db.insert(departments).values({ id: departmentId, name, code, kind }),
+    // No kind (issue #856): the column keeps its default until follow-up #855 drops it.
+    db.insert(departments).values({ id: departmentId, name, code }),
     db.insert(roles).values({ memberId: headId, deptId: departmentId, divisionId: null, title: defaultHeadTitle(name), type: "head", startedAt: today() }),
     ...aliasAsked(db),
     ...reroutesAsked(db),
@@ -1536,9 +1721,10 @@ async function createDepartment(identity: DashboardIdentity, input: unknown): Pr
 }
 
 /**
- * Edit department's Save changes (board 77e): the name, the code and the
- * kind. A new name reaches each head title still at the old default ("Head
- * of <old name>"); a head title renamed by hand is kept (issue #625).
+ * Edit department's Save changes (board 77e): the name and the code; the
+ * kind is no longer written (issue #856). A new name reaches each head title
+ * still at the old default ("Head of <old name>"); a head title renamed by
+ * hand is kept (issue #625).
  */
 async function saveDepartment(identity: DashboardIdentity, departmentId: number, input: unknown): Promise<WriteResult<null>> {
   const checked = checkDepartmentSave(input);
@@ -1549,25 +1735,35 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
   const headIds = [...new Set(snapshot.roles.filter((r) => r.leaved_at === null && isHeadRow(r)).map((r) => r.member_id))];
   const planned = planDepartmentSave({ actor, org: snapshot.org, departmentId, save: checked.value, team: teamPeopleOf(snapshot), headIds });
   if (!planned.ok) return refused(planned.error);
-  const { name, code, kind, nameChanged, head } = planned.value;
+  const { name, code, nameChanged, head } = planned.value;
   const oldName = snapshot.org.departments.find((d) => d.id === departmentId)?.name ?? null;
   const on = today();
-  const stepping = head?.steppingDown ?? null;
-  const replaced = head === null || stepping === null ? [] : await Promise.all(head.from.map(async (memberId) => ({ memberId, active: await activeRoles(memberId) })));
+  // Change head replaces the one head picked (issue #872): only their head rows end, and every other head stays.
+  const replaces = head?.replaces ?? null;
+  const replaced =
+    replaces === null
+      ? null
+      : { memberId: replaces.memberId, active: await activeRoles(replaces.memberId), step: await stepDownOf(replaces.memberId, replaces.steppingDown) };
   // A seat on a head row they hand over moves to the new head's row (issue #501).
-  const handed = head === null ? null : seatHandOver(replaced.flatMap((person) => person.active.filter(isHeadRow)), [head.to]);
+  const handed = head === null ? null : seatHandOver(replaced === null ? [] : replaced.active.filter(isHeadRow), [head.to]);
   if (handed !== null && !handed.ok) return refused(handed.error);
   const seat = handed?.value ?? null;
   // A new head is owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests(head === null ? [] : [head.to]);
-  // A team address tied to the head, or to the seat on their row, is owed a routing item (issue #789).
+  // A team address tied to the head, or to the seat on their row, is owed a routing item (issue #789); one a staying head holds is not (issue #872).
+  const holders = await holdersNow(snapshot.org);
+  const headTie: MovesWith = { kind: "department-head", departmentId };
   const reroutesAsked = await automaticTeamAddressReroutes(
-    head === null ? [] : [handedTo({ kind: "department-head", departmentId }, head.to), ...seatHandedTo(seat)],
+    head === null
+      ? []
+      : replaces === null
+        ? [handedTo(headTie, head.to), ...seatHandedTo(seat)]
+        : [handedOver(headTie, { from: replaces.memberId, to: head.to }, holders(headTie)), ...seatHandedOver(seat, replaces.memberId, holders)],
   );
   await runAuditBatch((db) => [
     db
       .update(departments)
-      .set({ name, code, kind })
+      .set({ name, code })
       .where(and(eq(departments.id, departmentId), isNull(departments.closedAt))),
     ...(nameChanged && oldName !== null
       ? [
@@ -1578,7 +1774,7 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
         ]
       : []),
     // Change head (issue #253): the head they replace steps down as the editor picked, then the new head's role starts.
-    ...(stepping === null ? [] : replaced.flatMap((person) => steppingDownWrites(db, person, stepping, person.active.filter(isHeadRow).map((r) => r.id), on))),
+    ...(replaced === null ? [] : steppingDownWrites(db, replaced, replaced.step, replaced.active.filter(isHeadRow).map((r) => r.id), on)),
     ...(head === null
       ? []
       : [db.insert(roles).values({ memberId: head.to, deptId: departmentId, divisionId: null, title: defaultHeadTitle(name), type: "head", startedAt: on, ...seatFor(seat, head.to) })]),
@@ -1687,25 +1883,28 @@ async function closeDepartment(identity: DashboardIdentity, departmentId: number
  * powers (deciding orders, giving "Approve orders", handing the role over)
  * move with it (`seatOf`, ./viewer.ts); the former team leader's role ends,
  * and they become a team-level advisor who keeps their access, or leave the
- * team (`steppingDown`). Only the current team leader may: the server refuses
- * everyone else, the operations lead and the IT lead included.
+ * team (`steppingDown`). Only a current team leader may, for their own place:
+ * the server refuses everyone else, the operations lead and the IT lead
+ * included. Every other team leader keeps the seat, and the successor may not
+ * be one already (issue #872).
  */
 async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): Promise<WriteResult<null>> {
   const checked = checkTeamLeaderHandOver(input);
   if (!checked.ok) return refused(checked.error);
   const snapshot = await readTeamSnapshot();
-  const leaders = new Set(snapshot.roles.filter((r) => r.leaved_at === null && r.type === "president").map((r) => r.member_id));
-  const leaderId = identity.memberId !== null && leaders.has(identity.memberId) ? identity.memberId : null;
+  const holders = await holdersNow(snapshot.org);
+  const leaderTie: MovesWith = { kind: "team-leader" };
   const planned = planTeamLeaderHandOver({
     viewer: { seat: seatOf(identity), selfId: identity.memberId },
-    leaderId,
+    leaders: holders(leaderTie),
     handOver: checked.value,
     team: teamPeopleOf(snapshot),
   });
   if (!planned.ok) return refused(planned.error);
-  const { from, to, steppingDown: step } = planned.value;
-  const [active, [held]] = await Promise.all([
+  const { from, to } = planned.value;
+  const [active, step, [held]] = await Promise.all([
     activeRoles(from),
+    stepDownOf(from, planned.value.steppingDown),
     getDb()
       .select({ count: sql<number>`count(*)::int` })
       .from(scopes)
@@ -1714,16 +1913,17 @@ async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): 
   const seat = active.filter((r) => r.type === "president");
   // The new team leader is owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests([to]);
-  // A team address tied to the team leader is owed a routing item (issue #789).
-  const reroutesAsked = await automaticTeamAddressReroutes([handedTo({ kind: "team-leader" }, to)]);
+  // A team address tied to the team leader is owed a routing item (issue #789); one a staying team leader holds is not (issue #872).
+  const reroutesAsked = await automaticTeamAddressReroutes([handedOver(leaderTie, { from, to }, holders(leaderTie))]);
   const on = today();
-  // The old role ends before the new one starts: the database keeps one active team leader (issue #667).
-  await runAuditBatch((db) => [
-    ...steppingDownWrites(db, { memberId: from, active }, step, seat.map((r) => r.id), on, Number(held?.count ?? 0)),
-    db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: seat[0]?.title.trim() || "Team Leader", type: "president", startedAt: on }),
-    ...aliasAsked(db),
-    ...reroutesAsked(db),
-  ]);
+  // The old role ends before the new one starts. The hand-over ends the holder's row by choice, not because the database
+  // refuses a second active team leader (epic #861, drizzle/0077).
+  await runAuditBatch((db) => {
+    const takesOver = db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: seat[0]?.title.trim() || "Team Leader", type: "president", startedAt: on });
+    // The stepping-down writes may be none (`steppingDownWrites`), so the batch starts with whichever comes first.
+    const [first = takesOver, ...rest] = [...steppingDownWrites(db, { memberId: from, active }, step, seat.map((r) => r.id), on, Number(held?.count ?? 0)), takesOver];
+    return [first, ...rest, ...aliasAsked(db), ...reroutesAsked(db)];
+  });
   done();
   return written(null);
 }
@@ -1767,38 +1967,62 @@ function isEndGuardFailure(error: unknown): boolean {
   return false;
 }
 
+const TEAM_PAGE_SAVED_MEANWHILE = "The Team page was saved while this ran. Try again.";
+
 /**
- * Runs one seat write: `endSeatRow` first, then `after`, in one audited
- * batch. When the batch fails on `endSeatRow`'s guard and the seat row is
- * ended on re-read, the write is refused as no longer held; any other
- * failure is thrown unchanged (issue #696).
+ * Runs one seat write: `endSeatRow` first, then `after`, then the layer rows'
+ * guard and any page seats' move when the hand-over carries them
+ * (`pageSeats`, issue #852), in one
+ * audited batch. When the batch fails on a guard, the write is refused as no
+ * longer held when the seat row is ended on re-read, else as the Team page
+ * saved meanwhile when the layer rows changed; any other failure is thrown
+ * unchanged (issue #696).
  */
-async function writeSeat(roleId: number, on: string, after: (db: Tx) => BatchItem<"pg">[]): Promise<WriteResult<null>> {
+async function writeSeat(
+  roleId: number,
+  on: string,
+  after: (db: Tx) => BatchItem<"pg">[],
+  pageSeats: PageSeatsHandOver | null = null,
+): Promise<WriteResult<null>> {
   try {
-    await runAuditBatch((db) => [endSeatRow(db, roleId, on), ...after(db)]);
+    await runAuditBatch((db) => [endSeatRow(db, roleId, on), ...after(db), ...(pageSeats?.writes(db) ?? [])]);
   } catch (error) {
     if (!isEndGuardFailure(error)) throw error;
     const [held] = await getDb().select({ id: roles.id }).from(roles).where(and(eq(roles.id, roleId), isNull(roles.leavedAt)));
     if (held === undefined) return refused(SEAT_NO_LONGER_HELD);
+    if (pageSeats !== null && (await pageSeats.changed())) return refused(TEAM_PAGE_SAVED_MEANWHILE);
     throw error;
   }
+  pageSeats?.landed();
   done();
   return written(null);
 }
 
+/** A new `roles` row's id, taken from the table's own sequence before the batch that inserts the row with it. */
+async function reservedRoleId(): Promise<number> {
+  const read = await getDb().execute<{ id: number }>(sql`select nextval(pg_get_serial_sequence('roles', 'id'))::int as id`);
+  const id = read.rows[0]?.id;
+  if (typeof id !== "number") throw new Error("The roles sequence gave no id.");
+  return id;
+}
+
 /**
- * Change holder on a seat box, in one batch: the holder's seat role ends, the
+ * Change holder on a seat box, in one batch: the picked holder's seat role
+ * (`roleId`) ends and every co-holder keeps theirs (issue #872), the
  * successor's starts with the same type, title and full-access flag, so the
- * flag moves with the seat and one active row holds it; then the holder
+ * flag moves with the seat; then the holder
  * becomes an advisor to the team, whose access rows go, or leaves the team
- * (`steppingDownWrites`). The successor keeps every role they hold.
+ * (`steppingDownWrites`). The successor keeps every role they hold. A seat
+ * with no flag is bound on the Team page by its row, so the page seats bound
+ * to the ended row move to the successor's in the same batch (issue #852);
+ * a flagged seat is bound by its flag, which moves, so the page needs no write.
  */
 async function changeSeatHolder(identity: DashboardIdentity, roleId: number, input: unknown): Promise<WriteResult<null>> {
   const checked = checkSeatHolderChange(input);
   if (!checked.ok) return refused(checked.error);
-  const snapshot = await readTeamSnapshot();
+  const [snapshot, activeRows] = await Promise.all([readTeamSnapshot(), activeRoleRows()]);
   const actor = await readActor(identity, snapshot.org);
-  const planned = planSeatHolderChange({ actor, roleId, change: checked.value, team: teamPeopleOf(snapshot) });
+  const planned = planSeatHolderChange({ actor, roleId, change: checked.value, team: teamPeopleOf(snapshot), active: activeRows, org: snapshot.org });
   if (!planned.ok) return refused(planned.error);
   const { from, to, steppingDown: step } = planned.value;
   const row = snapshot.roles.find((r) => r.id === roleId && r.leaved_at === null && r.member_id === from);
@@ -1806,17 +2030,33 @@ async function changeSeatHolder(identity: DashboardIdentity, roleId: number, inp
   // A full-access flag on the seat's row moves to the successor's (`seatHandOver`, issue #501).
   const handed = seatHandOver([{ fullAccess: seatOfFlag(row.full_access) }], [to]);
   if (!handed.ok) return refused(handed.error);
-  const active = await activeRoles(from);
-  // A team address tied to the full-access seat is owed a routing item (issue #789).
-  const reroutesAsked = await automaticTeamAddressReroutes(seatHandedTo(handed.value));
+  const [active, stepDown] = await Promise.all([activeRoles(from), stepDownOf(from, step)]);
+  // A team address tied to the full-access seat is owed a routing item (issue #789); one a staying co-holder holds is not (issue #872).
+  const reroutesAsked = await automaticTeamAddressReroutes(seatHandedOver(handed.value, from, await holdersNow(snapshot.org)));
+  const pageSeats = row.full_access === null ? await pageSeatsHandOver(roleId, reservedRoleId) : null;
   const on = today();
-  // The holder's row ends before the successor's starts: the database keeps one active holder per seat (issue #667).
+  // The holder's row ends before the successor's starts. Change holder ends that row by choice, not because the database
+  // refuses a second active holder (epic #861, drizzle/0077).
   // It ends in `writeSeat`'s first statement, so the stepping-down writes end no row of it again.
-  return writeSeat(roleId, on, (db) => [
-    ...steppingDownWrites(db, { memberId: from, active }, step, [], on),
-    db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: row.title, type: row.type, startedAt: on, ...seatFor(handed.value, to) }),
-    ...reroutesAsked(db),
-  ]);
+  return writeSeat(
+    roleId,
+    on,
+    (db) => [
+      ...steppingDownWrites(db, { memberId: from, active }, stepDown, [], on),
+      db.insert(roles).values({
+        ...(pageSeats?.to != null && { id: pageSeats.to }),
+        memberId: to,
+        deptId: null,
+        divisionId: null,
+        title: row.title,
+        type: row.type,
+        startedAt: on,
+        ...seatFor(handed.value, to),
+      }),
+      ...reroutesAsked(db),
+    ],
+    pageSeats,
+  );
 }
 
 /** Add seat: one active role in no department and no division, with the title given and no full-access flag. */
@@ -1833,23 +2073,116 @@ async function addSeat(identity: DashboardIdentity, input: unknown): Promise<Wri
   return written(null);
 }
 
+// Add another holder (epic #861, issue #868). `planTeamLeaderAdd`,
+// `planSeatHolderAdd` (./team-seats.ts) and `planHeadAdd`
+// (./department-edit.ts) decide; each write below starts the new holder's row
+// in one audited batch and ends no row, so every holder of the seat keeps it.
+
+/** Every active role row on the team, read now rather than off the cached roster, as a seat is read off it. */
+async function activeRoleRows(): Promise<ActiveRoleRow[]> {
+  const rows = await getDb()
+    .select({
+      id: roles.id,
+      memberId: roles.memberId,
+      type: roles.type,
+      title: roles.title,
+      fullAccess: roles.fullAccess,
+      departmentId: roles.deptId,
+      divisionId: roles.divisionId,
+    })
+    .from(roles)
+    .where(isNull(roles.leavedAt))
+    .orderBy(asc(roles.startedAt), asc(roles.id));
+  return rows.flatMap(({ memberId, fullAccess, ...r }) => (memberId === null ? [] : [{ ...r, memberId, fullAccess: seatOfFlag(fullAccess) }]));
+}
+
 /**
- * Remove seat (issue #643), in one batch: the holder's seat role ends and no
- * successor's starts, so a full-access flag on it ends with the row. The
+ * Writes a checked Add another holder: the new holder's row, then what a
+ * hand-over of the seat owes them. A new team leader or head is owed an
+ * alias request when they have none (`asksAlias`, issue #543), and a team
+ * address tied to the seat is owed a routing item only when its holder holds
+ * the seat no more (`addedBeside`, issue #789).
+ */
+async function writeHolderAdd(plan: HolderAddPlan): Promise<WriteResult<null>> {
+  const { seat, holders, row } = plan;
+  const aliasAsked = await automaticAliasRequests(asksAlias(seat) ? [row.personId] : []);
+  const tie = tieOfSeat(seat);
+  const reroutesAsked = await automaticTeamAddressReroutes(tie === null ? [] : [addedBeside(tie, row.personId, holders)]);
+  await runAuditBatch((db) => [
+    db.insert(roles).values({
+      memberId: row.personId,
+      deptId: row.departmentId,
+      divisionId: null,
+      title: row.title,
+      type: row.type,
+      startedAt: today(),
+      fullAccess: row.fullAccess === null ? null : FLAG_OF_SEAT[row.fullAccess],
+    }),
+    ...aliasAsked(db),
+    ...reroutesAsked(db),
+  ]);
+  done();
+  return written(null);
+}
+
+/** Add another team leader (`planTeamLeaderAdd`): a `president` row starts for them, and every team leader stays one. */
+async function addTeamLeader(identity: DashboardIdentity, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkHolderAdd(input);
+  if (!checked.ok) return refused(checked.error);
+  const [snapshot, active] = await Promise.all([readTeamSnapshot(), activeRoleRows()]);
+  const actor = await readActor(identity, snapshot.org);
+  const planned = planTeamLeaderAdd({ actor, add: checked.value, team: teamPeopleOf(snapshot), active, org: snapshot.org });
+  if (!planned.ok) return refused(planned.error);
+  return writeHolderAdd(planned.value);
+}
+
+/** Add another holder on the team-level seat `roleId` (`planSeatHolderAdd`): a row with the seat's type, title and full-access flag starts for them. */
+async function addSeatHolder(identity: DashboardIdentity, roleId: number, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkHolderAdd(input);
+  if (!checked.ok) return refused(checked.error);
+  const [snapshot, active] = await Promise.all([readTeamSnapshot(), activeRoleRows()]);
+  const actor = await readActor(identity, snapshot.org);
+  const planned = planSeatHolderAdd({ actor, roleId, add: checked.value, team: teamPeopleOf(snapshot), active, org: snapshot.org });
+  if (!planned.ok) return refused(planned.error);
+  return writeHolderAdd(planned.value);
+}
+
+/** Add another head of `departmentId` (`planHeadAdd`): a head row on the department starts for them, and every head of it stays one. */
+async function addDepartmentHead(identity: DashboardIdentity, departmentId: number, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkHolderAdd(input);
+  if (!checked.ok) return refused(checked.error);
+  const [snapshot, active] = await Promise.all([readTeamSnapshot(), activeRoleRows()]);
+  const actor = await readActor(identity, snapshot.org);
+  const planned = planHeadAdd({ actor, org: snapshot.org, departmentId, add: checked.value, team: teamPeopleOf(snapshot), active });
+  if (!planned.ok) return refused(planned.error);
+  return writeHolderAdd(planned.value);
+}
+
+/**
+ * Remove seat (issue #643), in one batch: the picked holder's seat role
+ * (`roleId`) ends and no successor's starts, so a full-access flag on it
+ * ends with the row; every co-holder keeps theirs (issue #872). The
  * holder stays on the team (`stayingOnTeam`): they keep every other role and
  * every access row, and when the seat was their only role they become an
  * advisor to the team, so they stay on the roster and never move to Alumni.
+ * When the editor picked Stays as an advisor (issue #900), they get one
+ * Advisor role on the whole team and their access ends
+ * (`steppingDownWrites`); they keep every other role.
  */
-async function removeSeat(identity: DashboardIdentity, roleId: number): Promise<WriteResult<null>> {
+async function removeSeat(identity: DashboardIdentity, roleId: number, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkSeatRemoval(input);
+  if (!checked.ok) return refused(checked.error);
   const snapshot = await readTeamSnapshot();
   const actor = await readActor(identity, snapshot.org);
-  const planned = planSeatRemoval({ actor, roleId, team: teamPeopleOf(snapshot) });
+  const planned = planSeatRemoval({ actor, roleId, removal: checked.value, team: teamPeopleOf(snapshot) });
   if (!planned.ok) return refused(planned.error);
-  const { holder } = planned.value;
+  const { holder, advising } = planned.value;
   const active = await activeRoles(holder);
   if (!active.some((r) => r.id === roleId)) return refused(SEAT_NO_LONGER_HELD);
-  const staying = stayingOnTeam(active.filter((r) => r.id !== roleId).length);
   const on = today();
+  // The seat row ends in `writeSeat`'s first statement, so the stepping-down writes end no row of it again.
+  if (advising !== null) return writeSeat(roleId, on, (db) => steppingDownWrites(db, { memberId: holder, active: active.filter((r) => r.id !== roleId) }, advising, [], on));
+  const staying = stayingOnTeam(active.filter((r) => r.id !== roleId).length);
   return writeSeat(roleId, on, (db) =>
     staying === "advisor-to-the-team"
       ? [db.insert(roles).values({ memberId: holder, ...advisorUnit({ kind: "team" }), title: ADVISOR_TITLE, type: "advisor", startedAt: on })]
@@ -1870,9 +2203,8 @@ async function confirmedHandOverWrites(
   org: OrgChart,
   on: string,
 ): Promise<(db: Tx) => BatchItem<"pg">[]> {
-  const { request, steppingDown: step } = plan;
-  const { fromId, toId, role } = request;
-  const active = await activeRoles(fromId);
+  const { fromId, toId, role } = plan.request;
+  const [active, step] = await Promise.all([activeRoles(fromId), stepDownOf(fromId, plan.steppingDown)]);
   const ending = active.filter(
     role.kind === "lead" ? (r) => r.division_id === role.divisionId && r.type === "lead" : headRowOf(role.departmentId, org),
   );
@@ -1881,6 +2213,8 @@ async function confirmedHandOverWrites(
   if (!handed.ok) throw new Error(handed.error);
   const seat = handed.value;
   const endingIds = ending.map((r) => r.id);
+  // Every other holder of the role or its seat keeps it (issue #872).
+  const holders = await holdersNow(org);
   if (role.kind === "lead") {
     const held = await heldRows(role.divisionId);
     const theirs = held.filter((r) => r.memberId === toId);
@@ -1897,9 +2231,10 @@ async function confirmedHandOverWrites(
         staying: leadsIn(held).filter((id) => id !== fromId),
         leaving: [fromId],
       },
-      ...seatHandedTo(seat),
+      ...seatHandedOver(seat, fromId, holders),
     ]);
-    // The sender's rows end before the seat lands on the successor's: one active holder per seat (issue #667).
+    // The sender's rows end before the seat lands on the successor's. The hand-over ends them by choice, not because the
+    // database refuses a second active holder (epic #861, drizzle/0077).
     return (db) => [
       ...(promote.length === 0 ? [] : [db.update(roles).set({ type: "lead" }).where(and(inArray(roles.id, promote), isNull(roles.leavedAt)))]),
       ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
@@ -1911,9 +2246,15 @@ async function confirmedHandOverWrites(
   const department = org.departments.find((d) => d.id === role.departmentId)?.name ?? "";
   // The successor becomes a head, owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests([toId]);
-  // A team address tied to this head, or to the seat on the sender's row, is owed a routing item (issue #789).
-  const reroutesAsked = await automaticTeamAddressReroutes([handedTo({ kind: "department-head", departmentId: role.departmentId }, toId), ...seatHandedTo(seat)]);
-  // The sender's head row ends before the successor's starts: one active head per department (issue #667).
+  // A team address tied to this head, or to the seat on the sender's row, is owed a routing item (issue #789); one a staying
+  // co-head holds is not (issue #872).
+  const headTie: MovesWith = { kind: "department-head", departmentId: role.departmentId };
+  const reroutesAsked = await automaticTeamAddressReroutes([
+    handedOver(headTie, { from: fromId, to: toId }, holders(headTie)),
+    ...seatHandedOver(seat, fromId, holders),
+  ]);
+  // Only the sender's head row ends, before the successor's starts: every other head of the department stays (issue #872).
+  // The hand-over ends it by choice, not because the database refuses a second active head (epic #861, drizzle/0077).
   return (db) => [
     ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
     db.insert(roles).values({ memberId: toId, deptId: role.departmentId, divisionId: null, title: defaultHeadTitle(department), type: "head", startedAt: on, ...seatFor(seat, toId) }),
@@ -1986,7 +2327,7 @@ export function databaseTeamWrites(
 ): Omit<TeamWrites, "setAlumnusShown" | "fixAlumnus" | "setAlumnusPhoto" | "addAdvisor"> {
   return {
     saveMember: (personId, edit) => saveMember(identity, personId, edit),
-    moveToAlumni: (personId, departure) => moveToAlumni(identity, personId, departure),
+    moveToAlumni: (personId, reason) => moveToAlumni(identity, personId, reason),
     confirmJoin: (applicationId) => confirmJoin(identity, applicationId),
     addMember: (input) => addMember(identity, input),
     confirmNda: (joinId) => confirmNda(identity, joinId),
@@ -1997,6 +2338,8 @@ export function databaseTeamWrites(
     setMemberPhoto: (personId, photo) => setMemberPhoto(identity, personId, photo),
     createDivision: (departmentId, input) => createDivision(identity, departmentId, input),
     saveDivision: (divisionId, input) => saveDivision(identity, divisionId, input),
+    changeDivisionPeople: (divisionId, input) => changeDivisionPeople(identity, divisionId, input),
+    changeAdvisorPlace: (input) => changeAdvisorPlace(identity, input),
     closeDivision: (divisionId) => closeDivision(identity, divisionId),
     createDepartment: (input) => createDepartment(identity, input),
     saveDepartment: (departmentId, input) => saveDepartment(identity, departmentId, input),
@@ -2004,6 +2347,9 @@ export function databaseTeamWrites(
     handOverTeamLeader: (input) => handOverTeamLeader(identity, input),
     changeSeatHolder: (roleId, input) => changeSeatHolder(identity, roleId, input),
     addSeat: (input) => addSeat(identity, input),
-    removeSeat: (roleId) => removeSeat(identity, roleId),
+    removeSeat: (roleId, input) => removeSeat(identity, roleId, input),
+    addTeamLeader: (input) => addTeamLeader(identity, input),
+    addSeatHolder: (roleId, input) => addSeatHolder(identity, roleId, input),
+    addDepartmentHead: (departmentId, input) => addDepartmentHead(identity, departmentId, input),
   };
 }

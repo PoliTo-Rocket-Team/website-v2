@@ -1,6 +1,7 @@
 import type { NonEmpty } from "./about/alumni-types";
 import type { ContentStore } from "./content/editor";
 import type { ContentItem, Versioned } from "./content/versioned";
+import type { GalleryPhotoCrops, PostPhotoCrops } from "./photo-crops";
 import type { Copy } from "./projects";
 
 // The Outreach page (/outreach) and its post pages (/outreach/<slug>) as
@@ -22,12 +23,14 @@ export type PhotoSrc = `/outreach/${string}` | `/project-photos/${string}` | `ht
 
 /**
  * A photo with its alt text. The text is optional (Owner decision, issue
- * #430): an empty one draws the photo with `alt=""`.
+ * #430): an empty one draws the photo with `alt=""`. `crops` holds its crop
+ * for each post page shape the editor framed (issue #969); a shape with none,
+ * and a photo with no `crops`, is shown centred.
  */
-export type OutreachPhoto = { src: PhotoSrc; alt: string };
+export type OutreachPhoto = { src: PhotoSrc; alt: string; crops?: PostPhotoCrops };
 
-/** A photo of a post's gallery, with a one-line caption the lightbox shows under it when it has one. */
-export type PostGalleryPhoto = OutreachPhoto & { caption?: string };
+/** A photo of a post's gallery, with a one-line caption the lightbox shows under it when it has one, and its crop for each carousel shape framed. */
+export type PostGalleryPhoto = Omit<OutreachPhoto, "crops"> & { caption?: string; crops?: GalleryPhotoCrops };
 
 /**
  * A post's gallery at the bottom of its page (issue #430): the carousel and

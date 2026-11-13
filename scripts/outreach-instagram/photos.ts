@@ -1,0 +1,113 @@
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { join, relative, resolve, sep } from "node:path";
+import sharp from "sharp";
+import { checkPhotoUpload, type CheckedPhoto, type PublicFileWrites } from "@/lib/outreach-photos";
+import type { PhotoSrc } from "@/lib/outreach-types";
+import { publicPathname, publicPathnameOfUrl, publicStoreHost, type PublicStoreHost } from "@/lib/storage/pathname";
+
+// The carousel photos (issue #886). Each is read from the export, shaped as
+// the Edit post panel keeps a picked photo before it uploads it: the
+// `outreachPhoto` crop entry (lib/dashboard/crop-settings.ts, `CROP_SETTINGS`)
+// stores the photo once, its longest side at most 2400 px, a JPEG at quality
+// 0.86; here it is also turned upright. It is stored with no crops, so the
+// site shows it centred. It must then pass the panel's own upload check
+// (`checkPhotoUpload`), and it is stored as the panel stores one: under
+// `post-photos/`, with a new name.
+
+/** The longest side of a stored photo, as the `outreachPhoto` crop entry's `maxSide`. */
+export const PHOTO_EDGE = 2400;
+/** The JPEG quality of a stored photo, as the `outreachPhoto` crop entry's 0.86. */
+export const PHOTO_QUALITY = 86;
+
+/** The bytes of one photo of the export, by its path inside it. */
+export type PhotoReader = (file: string) => Uint8Array;
+
+/**
+ * Reads photos from the export directory, read as data only. A path that
+ * leaves the directory, through `..` or a link, is refused, and so is
+ * anything but a file.
+ */
+export function exportPhotos(directory: string): PhotoReader {
+  const root = realpathSync(resolve(directory));
+  return (file) => {
+    const path = join(root, file);
+    if (!existsSync(path)) throw new Error(`The export has no file ${file}.`);
+    const real = realpathSync(path);
+    const inside = relative(root, real);
+    if (inside === "" || inside.startsWith(`..${sep}`) || inside === ".." || !statSync(real).isFile()) throw new Error(`${file} is not a file inside the export.`);
+    return new Uint8Array(readFileSync(real));
+  };
+}
+
+/** The photo the panel would store from these bytes, or null when they do not make one. */
+export async function shapePhoto(bytes: Uint8Array): Promise<CheckedPhoto | null> {
+  try {
+    const shaped = await sharp(bytes)
+      .rotate()
+      .resize({ width: PHOTO_EDGE, height: PHOTO_EDGE, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: PHOTO_QUALITY })
+      .toBuffer();
+    const checked = checkPhotoUpload({ name: "photo.jpg", contentType: "image/jpeg", bytes: new Uint8Array(shaped) });
+    return checked.ok ? checked.value : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The public store photos go to: the host it serves files from, and its upload. */
+export type PhotoStore = { readonly host: PublicStoreHost; readonly writes: Pick<PublicFileWrites, "upload"> };
+
+/** Stores one shaped photo under `post-photos/<newName>.jpg` and answers its URL, which must be the store's own. */
+export async function storePhoto(store: PhotoStore, photo: CheckedPhoto, newName: string): Promise<PhotoSrc> {
+  const pathname = publicPathname("post-photo", `${newName}.${photo.extension}`);
+  const { url } = await store.writes.upload(pathname, photo.bytes, photo.contentType);
+  if (publicPathnameOfUrl(url, store.host) !== pathname) throw new Error("The public store answered a URL off its own host or pathname.");
+  return url as `https://${string}`;
+}
+
+/** A value given as the store token that is not a Vercel Blob read-write token. */
+export class BlobTokenError extends Error {}
+
+/** A Vercel Blob read-write token, checked: the token itself and the id of the store it opens. */
+export type BlobToken = { readonly token: string; readonly storeId: string };
+
+const READ_WRITE_TOKEN = /^vercel_blob_rw_([A-Za-z0-9]+)_(\S+)$/;
+
+/**
+ * `value` as a Vercel Blob read-write token: `vercel_blob_rw_<storeId>_<secret>`,
+ * the shape the Blob SDK reads a store id from (its fourth `_` part), with the
+ * space a pasted value may carry at either end dropped. Any other value is a
+ * `BlobTokenError` that says what was expected and never repeats the value.
+ */
+export function blobTokenOf(value: string): BlobToken {
+  const token = value.trim();
+  const match = READ_WRITE_TOKEN.exec(token);
+  if (match !== null) return { token, storeId: match[1] };
+  const expected = "The Blob token must be the public store's read-write token, which reads vercel_blob_rw_<store id>_<secret>.";
+  const got = token.startsWith("eyJ")
+    ? "The value given starts like an encoded JSON value (an OIDC token, or an environment value as the Vercel dashboard lists it), not a read-write token."
+    : token.startsWith("vercel_blob_")
+      ? "The value given is a Vercel Blob token of another kind, or is cut short."
+      : "The value given does not have that shape.";
+  throw new BlobTokenError(`${expected} ${got} Copy the token from the public store's page on Vercel (Storage, the store, its .env.local tab).`);
+}
+
+/**
+ * The public store a Vercel Blob read-write token opens, as the team data
+ * import read one (removed in #847). Each upload passes the token,
+ * `access: "public"` and the content type, as `uploadPublicFile` does with
+ * the deployment's credential; the store's answer must be a URL on that
+ * store's public host (`storePhoto`), so a private store's token fails there.
+ */
+export async function blobPhotoStore({ token, storeId }: BlobToken): Promise<PhotoStore> {
+  const { put } = await import("@vercel/blob");
+  return {
+    host: publicStoreHost(storeId),
+    writes: {
+      async upload(pathname, bytes, contentType) {
+        const { url } = await put(pathname, Buffer.from(bytes), { access: "public", token, contentType });
+        return { url };
+      },
+    },
+  };
+}
