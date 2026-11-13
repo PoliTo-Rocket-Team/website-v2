@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { alumniOf, alumniYears, foundersOf, withEntryChange, type AlumniRecord, type RecordRole } from "@/lib/about/alumni-record";
-import { alumniDirectory, alumnusRow, checkAdvisor, checkAlumnusFix, spanOf } from "./alumni";
+import { alumniDirectory, alumnusRow, checkAdvisor, checkAlumnusFix, nextDraftYear, spanOf } from "./alumni";
 
 // The checks behind boards 78b and 78c (issue #257), run on the server by both data sides.
 
@@ -223,6 +223,18 @@ test("a year the record has in a unit cannot be added again, nor one year added 
   assert.equal(refusal([twice, { ...twice, role: "Other" }]), "They already have 2022–23 in Recovery.");
   // Another year, or another unit that year, is fine.
   assert.equal(refusal([twice, { year: 2022, unit: { kind: "department", id: 1 }, role: "Aero" }]), null);
+});
+
+test("each new draft opens on a year the panel does not list yet, so two years add in a row (#992)", () => {
+  // The record has 2024–25; the first draft opens on 2023–24.
+  const first = nextDraftYear([2024], 2025);
+  assert.equal(first, 2023);
+  // Once 2023–24 is added, the next draft opens on 2022–23, not on 2023–24 again.
+  const second = nextDraftYear([2024, first], 2025);
+  assert.equal(second, 2022);
+  // Back at 2021–22, it opens on the newest year still free.
+  assert.equal(nextDraftYear([2022, 2021, 2025], 2025), 2024);
+  assert.equal(nextDraftYear([], 2025), 2024);
 });
 
 test("a record year can only be retitled: a fix may not name an added year as one of the record's", () => {
