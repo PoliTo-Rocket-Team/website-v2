@@ -159,10 +159,11 @@ export function AdvisorPlacePill({
         <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={1.75} />
       </DropdownMenuTrigger>
       <DropdownMenuPortal>
+        {/* No fixed cap (issue #979): the menu grows to the room the window has and scrolls only when it has less. */}
         <DropdownMenuPrimitive.Content
           align="end"
           sideOffset={6}
-          className={`${MENU_CONTENT} max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-[280px] overflow-y-auto`}
+          className={`${MENU_CONTENT} max-h-[var(--radix-dropdown-menu-content-available-height)] w-[280px] overflow-y-auto`}
         >
           <DropdownMenuPrimitive.Label className={MENU_LABEL}>Advisor · advises</DropdownMenuPrimitive.Label>
           {places.map((o) => (
