@@ -159,10 +159,14 @@ export function AdvisorPlacePill({
         <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={1.75} />
       </DropdownMenuTrigger>
       <DropdownMenuPortal>
+        {/* Opens beside the pill, not under it: on that side Radix can slide the menu up and down, so the whole
+            window height is its room (a whole-team advisor's list is ~444px). It scrolls only when the window is shorter. */}
         <DropdownMenuPrimitive.Content
-          align="end"
+          side="left"
+          align="start"
           sideOffset={6}
-          className={`${MENU_CONTENT} max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-[280px] overflow-y-auto`}
+          collisionPadding={8}
+          className={`${MENU_CONTENT} max-h-[var(--radix-dropdown-menu-content-available-height)] w-[280px] overflow-y-auto`}
         >
           <DropdownMenuPrimitive.Label className={MENU_LABEL}>Advisor · advises</DropdownMenuPrimitive.Label>
           {places.map((o) => (
