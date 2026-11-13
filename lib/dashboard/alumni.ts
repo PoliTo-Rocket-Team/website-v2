@@ -296,6 +296,19 @@ export function checkAlumnusFix(input: unknown, person: Pick<AlumnusRow, "record
 /** The first academic year a year select offers: the Team's first, 2021–22. */
 export const FIRST_ALUMNI_YEAR = 2021;
 
+/**
+ * The year "+ Add a year" opens its draft on (issue #992): the year before the
+ * earliest one the panel lists, the record's years and the added ones alike,
+ * or the year before this one when none is listed. When that falls before
+ * 2021–22, the newest year not listed; with every year listed, this year.
+ */
+export function nextDraftYear(listed: readonly number[], thisYear: number): number {
+  const before = Math.min(thisYear, ...listed) - 1;
+  if (before >= FIRST_ALUMNI_YEAR) return before;
+  for (let year = thisYear; year >= FIRST_ALUMNI_YEAR; year--) if (!listed.includes(year)) return year;
+  return thisYear;
+}
+
 /** An external advisor, as Add advisor sends them. Always in the Advisors group. */
 export type NewAdvisor = {
   readonly name: string;

@@ -219,6 +219,8 @@ function YearTabs({
 /**
  * The tags beside a name: Founder or Co-founder, "Still on the team" for a current
  * member listed in their past years (#982), then "Name fixed" and "Role fixed".
+ * The phone card has no room for "Still on the team" beside the name (#992);
+ * its "– now" span says the same.
  */
 function Tags({ row }: { row: AlumnusRow }) {
   const fixed = [row.nameFixed && "Name fixed", row.roleFixed && "Role fixed"].filter((tag): tag is string => tag !== false);
@@ -230,7 +232,7 @@ function Tags({ row }: { row: AlumnusRow }) {
         </span>
       )}
       {row.to === null && (
-        <span className="shrink-0 rounded-full border border-white-10 px-2 py-0.5 text-[11px] text-text-2">Still on the team</span>
+        <span className="hidden shrink-0 rounded-full border border-white-10 px-2 py-0.5 text-[11px] text-text-2 md:inline">Still on the team</span>
       )}
       {fixed.map((tag) => (
         <span key={tag} className="hidden shrink-0 items-center gap-1 rounded-full border border-white-10 px-2 py-0.5 text-[11px] text-prt-muted lg:inline-flex">

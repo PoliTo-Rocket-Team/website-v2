@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import * as SwitchPrimitive from "@radix-ui/react-switch";
 import { AlertTriangle, ChevronDown, Info, Lock, Plus, X } from "lucide-react";
 import { toast } from "sonner";
@@ -13,6 +13,7 @@ import {
   FIRST_ALUMNI_YEAR,
   MAX_ALUMNI_NAME,
   MAX_ALUMNI_ROLE,
+  nextDraftYear,
   spanOf,
   yearTab,
   type AlumniUnit,
@@ -68,6 +69,26 @@ export function AlumniSwitch({
       <SwitchPrimitive.Thumb className="block h-4 w-4 translate-x-0.5 rounded-full bg-prt-text motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-out data-[state=checked]:translate-x-[18px]" />
     </SwitchPrimitive.Root>
   );
+}
+
+/**
+ * A refusal the panel shows. Each one is a new value, so the same words
+ * refused twice still count as a new refusal.
+ */
+type Refusal = { readonly message: string };
+
+/**
+ * Brings a refusal into view when it appears (issue #992): the panel body
+ * scrolls, so a refusal could sit past its edge.
+ */
+function useRevealed<T extends HTMLElement>(refusal: Refusal | undefined) {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    if (refusal === undefined) return;
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? true;
+    ref.current?.scrollIntoView?.({ block: "nearest", behavior: still ? "auto" : "smooth" });
+  }, [refusal]);
+  return ref;
 }
 
 function photoForm(photo: File): FormData {
@@ -134,7 +155,8 @@ function FixForm({
   const [photo, setPhoto] = useState(row.photo);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
+  const [error, setError] = useState<Refusal | undefined>(undefined);
+  const nameField = useRevealed<HTMLDivElement>(error);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -150,7 +172,7 @@ function FixForm({
       };
       const result = await fixAlumnus(row.key, input);
       if (!result.ok) {
-        setError(result.error);
+        setError({ message: result.error });
         return;
       }
       toast.success(`Saved ${name.trim() || row.recordName}`);
@@ -195,25 +217,27 @@ function FixForm({
         <AlumniSwitch checked={shown} onCheckedChange={setShown} disabled={!editable} label="On the Alumni page" />
       </div>
 
-      <Field label="Name on the page" error={error} className="mt-6">
-        {(id, describedBy) => (
-          <>
-            <input
-              id={id}
-              aria-describedby={describedBy}
-              value={name}
-              maxLength={MAX_ALUMNI_NAME}
-              disabled={!editable}
-              onChange={(e) => {
-                setName(e.target.value);
-                setError(undefined);
-              }}
-              className={inputClass(error)}
-            />
-            <p className="mt-2 text-[13px] text-prt-muted">Team record: {row.recordName}. Only the page changes.</p>
-          </>
-        )}
-      </Field>
+      <div ref={nameField} className="mt-6">
+        <Field label="Name on the page" error={error?.message}>
+          {(id, describedBy) => (
+            <>
+              <input
+                id={id}
+                aria-describedby={describedBy}
+                value={name}
+                maxLength={MAX_ALUMNI_NAME}
+                disabled={!editable}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setError(undefined);
+                }}
+                className={inputClass(error?.message)}
+              />
+              <p className="mt-2 text-[13px] text-prt-muted">Team record: {row.recordName}. Only the page changes.</p>
+            </>
+          )}
+        </Field>
+      </div>
 
       <div className="mt-6">
         <GroupLabel id={`${row.key}-founder`} label="Founder" hint="shown in The founders" />
@@ -280,7 +304,7 @@ function FixForm({
           <AddYear
             key={added.length}
             choices={choices}
-            firstYear={recordLines.at(-1)?.year ?? choices.thisYear}
+            draftYear={nextDraftYear([...recordLines.map((l) => l.year), ...added.map((a) => a.year)], choices.thisYear)}
             taken={(year, unit) => {
               const group = choices.units.find((u) => sameUnit(u.ref, unit))?.group;
               return (
@@ -296,7 +320,7 @@ function FixForm({
       <p className="mt-6 flex items-start gap-3 rounded-xl border border-hairline px-4 py-3.5 text-[13px] leading-relaxed text-text-2">
         <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
         {row.to === null
-          ? "They are still on the team. These fixes only change how the Alumni page shows their past years: their roles stay as they are."
+          ? "They are still on the team. These fixes only change how the Alumni page shows their years, this one included: their roles stay as they are."
           : "These fixes only change the Alumni page. Roles, dates and divisions stay as the team record has them."}
       </p>
     </Drawer>
@@ -416,22 +440,23 @@ function UnitSelect({ value, units, onChange }: { value: string; units: readonly
  */
 function AddYear({
   choices,
-  firstYear,
+  draftYear,
   taken,
   onAdd,
 }: {
   choices: AddYearChoices;
-  /** The person's first year on the record: the draft starts the year before. */
-  firstYear: number;
+  /** The year the draft opens on: one the panel does not list yet (`nextDraftYear`). */
+  draftYear: number;
   taken: (year: number, unit: UnitRef) => boolean;
   onAdd: (row: AddedRow) => void;
 }) {
   const years = Array.from({ length: Math.max(1, choices.thisYear - FIRST_ALUMNI_YEAR + 1) }, (_, i) => choices.thisYear - i);
   const [open, setOpen] = useState(false);
-  const [year, setYear] = useState(() => Math.min(choices.thisYear, Math.max(FIRST_ALUMNI_YEAR, firstYear - 1)));
+  const [year, setYear] = useState(draftYear);
   const [unit, setUnit] = useState("");
   const [role, setRole] = useState("");
-  const [error, setError] = useState<string | undefined>(undefined);
+  const [error, setError] = useState<Refusal | undefined>(undefined);
+  const refusal = useRevealed<HTMLParagraphElement>(error);
 
   if (!open) {
     return (
@@ -445,9 +470,9 @@ function AddYear({
   const add = () => {
     const picked = choices.units.find((u) => unitKey(u.ref) === unit);
     const title = role.trim().replace(/\s+/g, " ");
-    if (picked === undefined) return setError("Pick a department or division.");
-    if (title === "") return setError("Enter the title on the page.");
-    if (taken(year, picked.ref)) return setError(`They already have ${yearTab(year)} in ${picked.group}.`);
+    if (picked === undefined) return setError({ message: "Pick a department or division." });
+    if (title === "") return setError({ message: "Enter the title on the page." });
+    if (taken(year, picked.ref)) return setError({ message: `They already have ${yearTab(year)} in ${picked.group}.` });
     onAdd({ year, unit: picked.ref, role: title });
   };
   const cancel = () => {
@@ -463,8 +488,9 @@ function AddYear({
 
   return (
     <div role="group" aria-label="Add a year" className="mt-3 rounded-xl border border-hairline p-3">
-      <div className="flex items-center gap-2">
-        <span className="block w-[132px] shrink-0">
+      {/* On phones the unit select takes its own row, so its placeholder shows whole. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <span className="block sm:w-[132px] sm:shrink-0">
           <YearSelect label="Academic year" value={year} years={years} onChange={change(setYear)} />
         </span>
         <UnitSelect value={unit} units={choices.units} onChange={change(setUnit)} />
@@ -483,11 +509,11 @@ function AddYear({
             add();
           }
         }}
-        className={`mt-2 ${inputClass(error)}`}
+        className={`mt-2 ${inputClass(error?.message)}`}
       />
       {error !== undefined && (
-        <p id="add-year-error" className="mt-1.5 text-[12px] text-danger">
-          {error}
+        <p ref={refusal} id="add-year-error" className="mt-1.5 text-[12px] text-danger">
+          {error.message}
         </p>
       )}
       <div className="mt-3 flex justify-end gap-2">
