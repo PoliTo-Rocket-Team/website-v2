@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import Link from "next/link";
+import { useServerState } from "@/lib/dashboard/server-state";
 import { CalendarCheck, CalendarClock, Check, ChevronDown, FileText, Info, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
@@ -64,8 +65,9 @@ function StatusPill({ pill }: { pill: Pill }) {
 // over under Past. Props in, nothing fetched; a withdrawal or a picked time
 // lives in this page's state once the write answers.
 export function MyApplicationsView({ applications, ...actions }: { applications: MyApplications } & Actions) {
-  const [active, setActive] = useState(applications.active);
-  const [past, setPast] = useState(applications.past);
+  // Both lists follow each refresh the server sends after a write (issue #984).
+  const [active, setActive] = useServerState(applications.active);
+  const [past, setPast] = useServerState(applications.past);
   const [withdrawing, setWithdrawing] = useState<ActiveApplication | null>(null);
   const [pending, setPending] = useState(false);
 

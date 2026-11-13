@@ -22,6 +22,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useServerState } from "@/lib/dashboard/server-state";
 import {
   ACCESS_LEVEL_LABELS,
   ACCESS_LEVEL_SHORT_LABELS,
@@ -182,8 +183,9 @@ function changeableIn(access: AccessPage, grants: readonly AccessGrant[], person
 // grants live in this page's state, so a save shows at once. Remove all
 // access asks first.
 export function DivisionAccessView({ access: initial, ...actions }: { access: AccessPage } & Actions) {
-  const [grants, setGrants] = useState(initial.grants);
-  const [holders, setHolders] = useState(initial.approveOrders.holders);
+  // The grants and the holders follow each refresh the server sends after a write (issue #984).
+  const [grants, setGrants] = useServerState(initial.grants);
+  const [holders, setHolders] = useServerState(initial.approveOrders.holders);
   const [open, setOpen] = useState<Open>(CLOSED);
   // Every role's page starts on all departments, all divisions and everyone, the most recently given access first (issue #481).
   const [filter, setFilter] = useState<AccessFilter>(NO_ACCESS_FILTER);

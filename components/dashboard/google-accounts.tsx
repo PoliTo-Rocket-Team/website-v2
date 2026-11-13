@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CircleCheck, Merge, Plus, Unlink } from "lucide-react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
+import { useServerState } from "@/lib/dashboard/server-state";
 import { LINK_FAILED, mayRemove, unlinkErrorMessage, type GoogleAccountsNotice, type LinkedGoogleAccount } from "@/lib/dashboard/google-accounts";
 import { LOGIN_MERGE_REFUSAL_MESSAGES, MERGE_TICKET_STATE_KEY } from "@/lib/dashboard/login-merge";
 import { Card } from "./account-parts";
@@ -44,8 +45,8 @@ export function GoogleAccountsCard({
    */
   onRemoved: () => void;
 }) {
-  // The list lives in this card once a removal answers; nothing else on the page reads it.
-  const [accounts, setAccounts] = useState(stored);
+  // The list lives in this card once a removal answers, and follows each refresh the server sends (issue #984).
+  const [accounts, setAccounts] = useServerState(stored);
   const [notice, setNotice] = useState(returned);
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<LinkedGoogleAccount | null>(null);

@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { parseAlumnusKey } from "@/lib/about/alumni-record";
 import { canReach, type DashboardPageKey } from "@/lib/dashboard/access";
 import type { TeamWrites } from "@/lib/dashboard/data";
@@ -8,6 +7,7 @@ import type { TeamSearch } from "@/lib/dashboard/division-edit";
 import { isDetailsTarget, type AddLookup, type DetailsTarget } from "@/lib/dashboard/division-members";
 import type { MoveLookup } from "@/lib/dashboard/member-move";
 import { openDashboard } from "@/lib/dashboard/open";
+import { refreshDashboard } from "@/lib/dashboard/refresh";
 import { checkLeaveReason, type EditableRole } from "@/lib/dashboard/team";
 import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
 
@@ -30,7 +30,7 @@ function isId(value: unknown): value is number {
 
 function done(ok: boolean): TeamActionResult {
   if (!ok) return REFUSED;
-  revalidatePath("/dashboard", "layout");
+  refreshDashboard();
   return { ok: true };
 }
 
@@ -107,7 +107,7 @@ export async function confirmJoin(applicationId: number): Promise<TeamActionResu
 /** What a write that can say why it was refused answers. */
 function answered<T>(result: WriteResult<T>): TeamActionResult {
   if (!result.ok) return { ok: false, error: result.error };
-  revalidatePath("/dashboard", "layout");
+  refreshDashboard();
   return { ok: true };
 }
 
@@ -124,7 +124,7 @@ export async function addMember(input: unknown): Promise<WriteResult<"joined" | 
   const writes = await writesOn("members");
   if (!writes) return refused("This change could not be saved.");
   const result = await writes.addMember(input);
-  if (result.ok) revalidatePath("/dashboard", "layout");
+  if (result.ok) refreshDashboard();
   return result;
 }
 
@@ -207,7 +207,7 @@ export async function createDivision(departmentId: number, input: unknown): Prom
   const writes = await writesOn("members");
   if (!writes || !isId(departmentId)) return refused("This change could not be saved.");
   const result = await writes.createDivision(departmentId, input);
-  if (result.ok) revalidatePath("/dashboard", "layout");
+  if (result.ok) refreshDashboard();
   return result;
 }
 
@@ -232,7 +232,7 @@ export async function createDepartment(input: unknown): Promise<WriteResult<numb
   const writes = await writesOn("team-tree");
   if (!writes) return refused("This change could not be saved.");
   const result = await writes.createDepartment(input);
-  if (result.ok) revalidatePath("/dashboard", "layout");
+  if (result.ok) refreshDashboard();
   return result;
 }
 
