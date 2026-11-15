@@ -27,7 +27,7 @@ function referencingTexts(): { readonly table: SQL; readonly text: SQL }[] {
   return [
     { table: sql`${members}`, text: sql`${members.picture}` },
     { table: sql`${alumniEntries}`, text: sql`${alumniEntries.photo}` },
-    { table: sql`${teamPageLayerVersions}`, text: sql`${teamPageLayerVersions.layer}::text || coalesce(${teamPageLayerVersions.layout}::text, '')` },
+    { table: sql`${teamPageLayerVersions}`, text: sql`${teamPageLayerVersions.layer}::text || ${teamPageLayerVersions.layout}::text` },
     { table: sql`${teamPageAdvisorVersions}`, text: sql`${teamPageAdvisorVersions.advisor}::text` },
     {
       table: sql`${outreachPostVersions}`,

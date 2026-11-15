@@ -1,112 +1,18 @@
 import { textLength } from "@/lib/content/text";
-import { BOARD_FLAGS, boardFlagOf, type BoardFlag, type BoardRole, type DepartmentKind } from "@/lib/dashboard/team";
-import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { GROUP_PHOTO, readShapeCrops, type GroupPhotoCrops } from "@/lib/photo-crops";
-import { personOf, type TeamPerson } from "./team-person";
-import type { DepartmentHead, DivisionLead, HeaderStats, Leader, Member, Person, PersonPhoto } from "./types";
+import type { DepartmentHead, DivisionLead, HeaderStats, Leader, PersonPhoto } from "./types";
 
-// The Team page's visual layer (issue #283, ADR 0015): what an editor changes
-// on the page, laid over the page the team's roles build (./team-roles.ts).
-// It changes only what the page shows, never anyone's role, division,
-// department or access. Edits are keyed to spots, the places on the page a
-// person fills (the team leader, a place on the arc, a head block, a division
-// lead row), never to a person or a role, so they outlive changes to the real
-// team: an edit whose spot is gone from the roles build is kept and skipped,
-// and it shows again if the spot comes back. Only the editor or Reset to team
-// removes an edit. Pure: the database, the seed and the editor all lay it on
-// the same way. Since issue #851 the editor edits the stored layout of page
-// seats (./team-layout.ts) and writes only the layer's intro text, figures
-// and group photo (`TeamPageText`); the layer's people fields stay as they
-// were, read only by the snapshot (ADR 0019 Decision 7) and the check of the
-// photos in use.
+// The Team page's visual layer (issue #283, ADR 0015): the intro text, the
+// header's figures and the group photo an editor sets on the page, kept in
+// each stored version beside its layout of page seats (./team-layout.ts,
+// ADR 0019). It changes only what the page shows, never anyone's role,
+// division, department or access. Its people fields, which epic #835 kept
+// for one release, are gone since issue #855: the page's seats live in the
+// layout alone. Pure: the database, the seed and the editor all read it the
+// same way.
 
 /** The arc holds up to eight leaders. */
 export const ARC_LEADERS = 8;
-
-/**
- * The seat an arc spot names: a flagged seat by its flag ("project-manager",
- * the key stored layers already hold), any other team-level seat by its role
- * row ("role-27"). Never its title, so a rename keeps the spot's edits.
- */
-export type ArcSeat = BoardFlag | `role-${number}`;
-
-/** The arc key of a team-level seat (`ArcSeat`). */
-export function arcSeatOf(seat: BoardRole): ArcSeat {
-  return boardFlagOf(seat.fullAccess) ?? `role-${seat.roleId}`;
-}
-
-/** A place on the arc the roles fill: a team-level seat, and which of its holders by name (0 is the first). */
-export type ArcSpot = `arc:${ArcSeat}:${number}`;
-/** A head block: a department by id, and which of its heads by name. */
-export type HeadSpot = `head:${number}:${number}`;
-/** A division lead row: a division by id, and which of its leads by name. */
-export type LeadSpot = `lead:${number}:${number}`;
-export type Spot = ArcSpot | HeadSpot | LeadSpot;
-
-/** Something the editor added to the page, by its id in the layer. */
-export type AddedRef = `added:${number}`;
-/** Anything on the arc: a spot the roles fill, or a leader the editor added. */
-export type ArcRef = ArcSpot | AddedRef;
-/** Any division lead row: one the roles fill, or one the editor added. */
-export type LeadRef = LeadSpot | AddedRef;
-
-/** A department by its id in the roles, or one the editor added. */
-export type DepartmentRef = number | AddedRef;
-
-/**
- * What the page shows in one spot instead of what the roles say. `person`
- * shows another team member there (their name, photo, LinkedIn and team
- * email); the other fields replace one thing each. The team email is never
- * edited: it is the shown person's own. On a division lead row `role` is the
- * division shown under the name.
- */
-export type PersonEdit = {
-  readonly person?: number;
-  readonly name?: string;
-  readonly role?: string;
-  readonly photo?: PersonPhoto;
-  /** A LinkedIn handle, the part after linkedin.com/in/. */
-  readonly linkedin?: string;
-};
-
-/** A spot's edit; a hidden spot is left off the page. The team leader cannot be hidden. */
-export type SpotEdit = PersonEdit & { readonly hidden?: true };
-
-/** A team member the editor put on the page, with what the page shows for them. */
-export type AddedPerson = {
-  readonly person: number;
-  readonly name?: string;
-  readonly photo?: PersonPhoto;
-  readonly linkedin?: string;
-};
-
-/** Where an added leader sits in `OrgChart.leaders` reading order: at either end, or right after a neighbour. */
-export type ArcPlace = { readonly at: "start" } | { readonly at: "end" } | { readonly after: ArcRef };
-
-export type AddedLeader = AddedPerson & { readonly id: number; readonly place: ArcPlace; readonly role: string };
-export type AddedLead = AddedPerson & { readonly id: number; readonly division: string };
-
-/** A department the editor added: its name, its head and their division leads. It creates no department. */
-export type AddedDepartment = {
-  readonly id: number;
-  readonly name: string;
-  readonly head: AddedPerson & { readonly role?: string };
-  readonly leads: readonly AddedLead[];
-};
-
-/**
- * One department's edit: the name the page shows (the head's role reads
- * "Head of" it unless the head spot sets a role), hidden, division leads
- * added, and the order of its division lead rows. A lead row is removed by
- * hiding its spot. A row the order does not name (a lead the roles gained
- * later) follows the named ones.
- */
-export type DepartmentEdit = {
-  readonly name?: string;
-  readonly hidden?: true;
-  readonly leadOrder?: readonly LeadRef[];
-  readonly addedLeads?: readonly AddedLead[];
-};
 
 /**
  * The group photo over the core members: a photo of the site's own in
@@ -116,13 +22,8 @@ export type DepartmentEdit = {
  */
 export type GroupPhoto = { readonly src: PersonPhoto; readonly alt: string; readonly crops?: GroupPhotoCrops };
 
-/** The whole visual layer. Every part is optional in effect: an empty part changes nothing. */
+/** The whole visual layer: the intro text, the figures and the group photo. */
 export type TeamPageLayer = {
-  readonly leader: PersonEdit;
-  readonly spots: Readonly<Partial<Record<Spot, SpotEdit>>>;
-  readonly addedLeaders: readonly AddedLeader[];
-  readonly departments: Readonly<Partial<Record<`${number}`, DepartmentEdit>>>;
-  readonly addedDepartments: readonly AddedDepartment[];
   /** The header's intro; null keeps the hand-typed one. */
   readonly intro: string | null;
   /**
@@ -135,84 +36,18 @@ export type TeamPageLayer = {
   readonly groupPhoto: GroupPhoto | null;
 };
 
-/**
- * The part of the layer the Team page editor still writes (issue #851): the
- * intro text, the figures and the group photo. The page seats live in the
- * layout (./team-layout.ts).
- */
-export type TeamPageText = Pick<TeamPageLayer, "intro" | "figures" | "groupPhoto">;
+/** What the Team page editor edits of the layer (issue #851): all of it, the intro text, the figures and the group photo. */
+export type TeamPageText = TeamPageLayer;
 
 /** The layer's intro text, figures and group photo, with no key for figures it leaves alone. */
 export function textOf(layer: TeamPageText): TeamPageText {
   return { intro: layer.intro, ...(layer.figures !== undefined && { figures: layer.figures }), groupPhoto: layer.groupPhoto };
 }
 
-/** `layer` with `text`'s intro, figures and group photo, every other part as it was. */
-export function withText(layer: TeamPageLayer, text: TeamPageText): TeamPageLayer {
-  const { figures: _old, ...rest } = layer;
-  return { ...rest, ...textOf(text) };
-}
+export const NO_TEAM_LAYER: TeamPageLayer = { intro: null, groupPhoto: null };
 
-export const NO_TEAM_LAYER: TeamPageLayer = {
-  leader: {},
-  spots: {},
-  addedLeaders: [],
-  departments: {},
-  addedDepartments: [],
-  intro: null,
-  groupPhoto: null,
-};
-
-// The page the roles build, with the spot each person fills, before any edit.
-
-export type BuiltLeader = { readonly spot: ArcSpot; readonly person: TeamPerson; readonly role: string };
-/** `title` is the title their role carries; without one the page reads "Head of" the department. */
-export type BuiltHead = { readonly spot: HeadSpot; readonly person: TeamPerson; readonly title: string | undefined };
-export type BuiltLead = { readonly spot: LeadSpot; readonly person: TeamPerson; readonly division: string };
-/** An open department with a head: its heads by name, and the leads of its divisions in division order. */
-export type BuiltDepartment = {
-  readonly id: number;
-  readonly name: string;
-  /** Its kind on the team record: today's group, which only the one-time snapshot reads (`TODAYS_GROUPS`, issue #856). */
-  readonly kind: DepartmentKind;
-  readonly heads: readonly BuiltHead[];
-  readonly leads: readonly BuiltLead[];
-};
-
-export type TeamBuild = {
-  /** Everyone with an active role: who an edit may show in a spot. */
-  readonly people: readonly TeamPerson[];
-  readonly leader: { readonly person: TeamPerson; readonly role: string } | null;
-  /** The board seats in reading order, every holder, before the cap of eight. */
-  readonly arc: readonly BuiltLeader[];
-  readonly departments: readonly BuiltDepartment[];
-  /** Not editable: always from the roles. */
-  readonly core: readonly Member[];
-};
-
-// The page with the layer laid on.
-
-/** Something on the page and where it came from, so the editor can find its edit. */
+/** Something on the page and where it came from, so the editor can find it. */
 export type Shown<R, T> = { readonly at: R; readonly shown: T };
-
-export type ShownDepartment = {
-  readonly at: DepartmentRef;
-  readonly name: string;
-  /** Today's group (`TODAYS_GROUPS`, issue #856), which the one-time snapshot reads; a department the layer added is technical. */
-  readonly kind: DepartmentKind;
-  readonly heads: readonly Shown<HeadSpot | AddedRef, DepartmentHead>[];
-  readonly leads: readonly Shown<LeadRef, DivisionLead>[];
-};
-
-export type ShownTeam = {
-  readonly leader: Leader | null;
-  /** In `OrgChart.leaders` reading order, at most eight. */
-  readonly leaders: readonly Shown<ArcRef, Leader>[];
-  readonly departments: readonly ShownDepartment[];
-  readonly intro: string | null;
-  readonly figures?: HeaderStats;
-  readonly groupPhoto: GroupPhoto | null;
-};
 
 /**
  * How a department block draws its division leads on the carousel (issue
@@ -222,7 +57,7 @@ export type ShownTeam = {
 export const LEADS_DRAWN = ["under", "beside"] as const;
 export type LeadsDrawn = (typeof LEADS_DRAWN)[number];
 
-/** A department block as drawn, whatever its places are keyed by: the layer's spots or a layout's page seats (./team-layout.ts). */
+/** A department block as drawn, whatever its places are keyed by. */
 export type DrawnDepartment = {
   readonly leadsDrawn: LeadsDrawn;
   readonly heads: readonly { readonly shown: DepartmentHead }[];
@@ -232,230 +67,14 @@ export type DrawnDepartment = {
 /** A department group as drawn (issue #856): the heading its slides read, and its blocks in order. */
 export type DrawnGroup = { readonly name: string; readonly departments: readonly DrawnDepartment[] };
 
-/** The page as drawn, whatever its places are keyed by (`DrawnDepartment`): the department groups in order. */
-export type DrawnTeam = Pick<ShownTeam, "leader" | "intro" | "figures" | "groupPhoto"> & {
+/** The page as drawn, whatever its places are keyed by (`DrawnDepartment`): the team leader, the arc, the department groups in order, and the layer. */
+export type DrawnTeam = TeamPageLayer & {
+  readonly leader: Leader | null;
   readonly leaders: readonly { readonly shown: Leader }[];
   readonly groups: readonly DrawnGroup[];
 };
 
-const addedRef =(id: number): AddedRef => `added:${id}`;
-
-function memberOf(build: TeamBuild, id: number | undefined): TeamPerson | undefined {
-  return id === undefined ? undefined : build.people.find((p) => p.id === id);
-}
-
-/** What a spot shows: the person the edit names when they are still on the team, else the roles' one, with each field the edit sets. */
-function shownPerson(build: TeamBuild, fromRoles: TeamPerson, edit: PersonEdit | undefined): Person {
-  const drawn = personOf(memberOf(build, edit?.person) ?? fromRoles);
-  return {
-    ...drawn,
-    ...(edit?.name !== undefined && { name: edit.name }),
-    ...(edit?.photo !== undefined && { photo: edit.photo }),
-    ...(edit?.linkedin !== undefined && { linkedin: edit.linkedin }),
-  };
-}
-
-/** An added person as the page draws them; null once they have left the team. */
-function shownAdded(build: TeamBuild, added: AddedPerson): Person | null {
-  const member = memberOf(build, added.person);
-  if (member === undefined) return null;
-  return shownPerson(build, member, { name: added.name, photo: added.photo, linkedin: added.linkedin });
-}
-
-/** Where an added leader goes in `slots`; null while its neighbour is not placed yet. */
-function insertAt(slots: readonly { readonly ref: ArcRef }[], place: ArcPlace): number | null {
-  if ("after" in place) {
-    const index = slots.findIndex((slot) => slot.ref === place.after);
-    return index === -1 ? null : index + 1;
-  }
-  return place.at === "start" ? 0 : slots.length;
-}
-
-/**
- * The arc in reading order, before the cap: the roles' leaders, then each
- * added leader at its place. A hidden leader keeps their place while the
- * added ones are placed, so "after" a hidden neighbour still means where they
- * stood. An added leader whose neighbour is gone from the page goes at the
- * end; one who has left the team is skipped. A person shows on the arc once:
- * when the roles come to seat someone the editor already added (a role that
- * became a team-level seat, issue #600), the editor's entry stays where they
- * put it and the roles' spot is left off, as if hidden.
- */
-function arcOf(build: TeamBuild, layer: TeamPageLayer): Shown<ArcRef, Leader>[] {
-  let pending = layer.addedLeaders.flatMap((added) => {
-    const person = shownAdded(build, added);
-    return person === null ? [] : [{ added, leader: { ...person, role: added.role } }];
-  });
-  const addedPeople = new Set(pending.map(({ added }) => added.person));
-  const slots: { ref: ArcRef; leader: Leader | null }[] = build.arc.map((built) => {
-    const edit = layer.spots[built.spot];
-    const shownId = memberOf(build, edit?.person)?.id ?? built.person.id;
-    return {
-      ref: built.spot,
-      leader: edit?.hidden || addedPeople.has(shownId) ? null : { ...shownPerson(build, built.person, edit), role: edit?.role ?? built.role },
-    };
-  });
-  for (let placed = true; placed && pending.length > 0; ) {
-    placed = false;
-    pending = pending.filter(({ added, leader }) => {
-      const index = insertAt(slots, added.place);
-      if (index === null) return true;
-      slots.splice(index, 0, { ref: addedRef(added.id), leader });
-      placed = true;
-      return false;
-    });
-  }
-  for (const { added, leader } of pending) slots.push({ ref: addedRef(added.id), leader });
-  return slots.flatMap((slot) => (slot.leader === null ? [] : [{ at: slot.ref, shown: slot.leader }]));
-}
-
-/** `items` with those `order` names first, in its order, then the rest as they were. */
-function inOrder<T extends { readonly at: LeadRef }>(items: readonly T[], order: readonly LeadRef[] | undefined): T[] {
-  if (order === undefined) return [...items];
-  const rank = (item: T) => {
-    const i = order.indexOf(item.at);
-    return i === -1 ? order.length : i;
-  };
-  return items.map((item, i) => ({ item, i })).sort((a, b) => rank(a.item) - rank(b.item) || a.i - b.i).map(({ item }) => item);
-}
-
-function addedLeadsOf(build: TeamBuild, leads: readonly AddedLead[]): Shown<LeadRef, DivisionLead>[] {
-  return leads.flatMap((lead) => {
-    const person = shownAdded(build, lead);
-    return person === null ? [] : [{ at: addedRef(lead.id), shown: { ...person, division: lead.division } }];
-  });
-}
-
-function departmentOf(build: TeamBuild, layer: TeamPageLayer, department: BuiltDepartment): ShownDepartment | null {
-  const edit = layer.departments[`${department.id}`];
-  if (edit?.hidden) return null;
-  const name = edit?.name ?? department.name;
-  const fromRoles = department.leads.flatMap((built): Shown<LeadRef, DivisionLead>[] => {
-    const spot = layer.spots[built.spot];
-    if (spot?.hidden) return [];
-    return [{ at: built.spot, shown: { ...shownPerson(build, built.person, spot), division: spot?.role ?? built.division } }];
-  });
-  const leads = inOrder([...fromRoles, ...addedLeadsOf(build, edit?.addedLeads ?? [])], edit?.leadOrder);
-  const heads = department.heads.flatMap((built): Shown<HeadSpot, DepartmentHead>[] => {
-    const spot = layer.spots[built.spot];
-    if (spot?.hidden) return [];
-    const role = spot?.role ?? built.title ?? `Head of ${name}`;
-    return [{ at: built.spot, shown: { kind: "head", ...shownPerson(build, built.person, spot), role, leads: leads.map((l) => l.shown) } }];
-  });
-  return { at: department.id, name, kind: department.kind, heads, leads };
-}
-
-function addedDepartmentOf(build: TeamBuild, added: AddedDepartment): ShownDepartment | null {
-  const head = shownAdded(build, added.head);
-  if (head === null) return null;
-  const leads = addedLeadsOf(build, added.leads);
-  const role = added.head.role ?? `Head of ${added.name}`;
-  return {
-    at: addedRef(added.id),
-    name: added.name,
-    kind: "technical",
-    heads: [{ at: addedRef(added.id), shown: { kind: "head", ...head, role, leads: leads.map((l) => l.shown) } }],
-    leads,
-  };
-}
-
-/**
- * The page the roles build with the layer laid on: each edit at its spot,
- * added leaders at their places on the arc (at most eight in all), added
- * departments after the roles' ones. An edit whose spot the roles no longer
- * fill, or that shows someone who has left the team, is skipped and kept.
- */
-export function applyLayer(build: TeamBuild, layer: TeamPageLayer): ShownTeam {
-  const leader =
-    build.leader === null
-      ? null
-      : { ...shownPerson(build, build.leader.person, layer.leader), role: layer.leader.role ?? build.leader.role };
-  const departments = [
-    ...build.departments.map((d) => departmentOf(build, layer, d)),
-    ...layer.addedDepartments.map((d) => addedDepartmentOf(build, d)),
-  ].filter((d): d is ShownDepartment => d !== null);
-  return {
-    leader,
-    leaders: arcOf(build, layer).slice(0, ARC_LEADERS),
-    departments,
-    intro: layer.intro,
-    ...(layer.figures !== undefined && { figures: layer.figures }),
-    groupPhoto: layer.groupPhoto,
-  };
-}
-
-/** How many leaders the arc would hold under the layer, before the cap of eight. */
-export function leadersOnArc(build: TeamBuild, layer: TeamPageLayer): number {
-  return arcOf(build, layer).length;
-}
-
-/** Reset to team (board 80h): every edit goes, except the intro text and its figures and the group photo. */
-export function resetLayer(layer: TeamPageLayer): TeamPageLayer {
-  return {
-    ...NO_TEAM_LAYER,
-    intro: layer.intro,
-    ...(layer.figures !== undefined && { figures: layer.figures }),
-    groupPhoto: layer.groupPhoto,
-  };
-}
-
-/**
- * Every photo the layer sets: on the team leader, on a spot, on each person
- * it added, and the group photo, which may be an upload too (issue #510).
- */
-export function layerPhotos(layer: TeamPageLayer): PersonPhoto[] {
-  const people: readonly { readonly photo?: PersonPhoto }[] = [
-    layer.leader,
-    ...Object.values(layer.spots).flatMap((edit) => edit ?? []),
-    ...layer.addedLeaders,
-    ...Object.values(layer.departments).flatMap((edit) => edit?.addedLeads ?? []),
-    ...layer.addedDepartments.flatMap((d) => [d.head, ...d.leads]),
-  ];
-  return [...people.flatMap((person) => person.photo ?? []), ...(layer.groupPhoto === null ? [] : [layer.groupPhoto.src])];
-}
-
-/** The layer with each photo `layerPhotos` reads put through `swap`, everything else as it was. */
-export function withLayerPhotos(layer: TeamPageLayer, swap: (photo: PersonPhoto) => PersonPhoto): TeamPageLayer {
-  const on = <P extends { readonly photo?: PersonPhoto }>(person: P): P => (person.photo === undefined ? person : { ...person, photo: swap(person.photo) });
-  const each = <K extends string, V>(record: Readonly<Partial<Record<K, V>>>, f: (value: V) => V) =>
-    Object.fromEntries(Object.entries(record).map(([key, value]) => [key, value === undefined ? value : f(value as V)])) as Partial<Record<K, V>>;
-  return {
-    ...layer,
-    leader: on(layer.leader),
-    spots: each(layer.spots, on),
-    addedLeaders: layer.addedLeaders.map(on),
-    departments: each(layer.departments, (edit) => (edit.addedLeads === undefined ? edit : { ...edit, addedLeads: edit.addedLeads.map(on) })),
-    addedDepartments: layer.addedDepartments.map((d) => ({ ...d, head: on(d.head), leads: d.leads.map(on) })),
-    groupPhoto: layer.groupPhoto === null ? null : { ...layer.groupPhoto, src: swap(layer.groupPhoto.src) },
-  };
-}
-
-/** Every id the things the editor added hold, in one list: one id names one thing. */
-function addedIds(layer: TeamPageLayer): number[] {
-  return [
-    ...layer.addedLeaders.map((l) => l.id),
-    ...layer.addedDepartments.flatMap((d) => [d.id, ...d.leads.map((l) => l.id)]),
-    ...Object.values(layer.departments).flatMap((d) => (d?.addedLeads ?? []).map((l) => l.id)),
-  ];
-}
-
-/** The id the next thing the editor adds takes: after every id the layer holds. */
-export function nextAddedId(layer: TeamPageLayer): number {
-  return addedIds(layer).reduce((last, id) => Math.max(last, id), 0) + 1;
-}
-
 export const ARC_FULL = `The arc holds up to ${ARC_LEADERS} leaders.`;
-
-/**
- * Add leader (board 80f): a team member on the arc at `place`, between two
- * neighbours or at either end. Refused when the arc already shows eight, or
- * when they are not on the team.
- */
-export function addLeader(build: TeamBuild, layer: TeamPageLayer, leader: Omit<AddedLeader, "id">): WriteResult<TeamPageLayer> {
-  if (memberOf(build, leader.person) === undefined) return refused("Pick someone on the team.");
-  if (leadersOnArc(build, layer) >= ARC_LEADERS) return refused(ARC_FULL);
-  return written({ ...layer, addedLeaders: [...layer.addedLeaders, { ...leader, id: nextAddedId(layer) }] });
-}
 
 // A layer read back from storage or sent by the browser: anything this code
 // could not have written reads as not a layer.
@@ -483,22 +102,15 @@ export const NO_UPLOADS: OwnsUpload = () => false;
 type Check = (value: unknown) => boolean;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-const isId = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) > 0;
-const isIndex = (value: string) => /^(0|[1-9]\d{0,5})$/.test(value);
-const isIdText = (value: string) => /^[1-9]\d{0,9}$/.test(value);
 const isText =
   (max: number): Check =>
   (value) =>
     typeof value === "string" && value.trim() !== "" && textLength(value) <= max;
-const isShortText = isText(TEAM_PAGE_TEXT_MAX);
 /** A person's photo the page takes: one of the site's own in public/team/, or a remote https URL. */
 export const isPagePhoto = (value: unknown): value is PersonPhoto =>
   typeof value === "string" && textLength(value) <= 2048 && (value.startsWith("/team/") || value.startsWith("https://"));
-const isPhoto: Check = isPagePhoto;
-/** A LinkedIn handle the layer takes: the part after linkedin.com/in/, with no slash, query or space. */
+/** A LinkedIn handle the page takes: the part after linkedin.com/in/, with no slash, query or space. */
 export const isLinkedinHandle = (value: unknown): value is string => typeof value === "string" && /^[^/?#\s]{1,100}$/.test(value);
-const isHandle: Check = isLinkedinHandle;
-const isTrue: Check = (value) => value === true;
 
 /** Every key is one of `checks` and passes it; a key `required` names must be there. */
 function hasShape(value: unknown, checks: Readonly<Record<string, Check>>, required: readonly string[] = []): boolean {
@@ -509,47 +121,6 @@ function hasShape(value: unknown, checks: Readonly<Record<string, Check>>, requi
   );
 }
 
-const PERSON_EDIT: Readonly<Record<string, Check>> = { person: isId, name: isShortText, role: isShortText, photo: isPhoto, linkedin: isHandle };
-const ADDED_PERSON: Readonly<Record<string, Check>> = { person: isId, name: isShortText, photo: isPhoto, linkedin: isHandle };
-
-export function isSpot(value: unknown): value is Spot {
-  if (typeof value !== "string") return false;
-  const [kind, a, b, ...rest] = value.split(":");
-  if (rest.length > 0 || b === undefined || !isIndex(b)) return false;
-  if (kind === "arc") return (BOARD_FLAGS as readonly string[]).includes(a) || (a.startsWith("role-") && isIdText(a.slice("role-".length)));
-  return (kind === "head" || kind === "lead") && isIdText(a);
-}
-
-const isAddedRef = (value: unknown): value is AddedRef => typeof value === "string" && /^added:[1-9]\d{0,9}$/.test(value);
-const isArcRef = (value: unknown): value is ArcRef => isAddedRef(value) || (isSpot(value) && value.startsWith("arc:"));
-const isLeadRef = (value: unknown): value is LeadRef => isAddedRef(value) || (isSpot(value) && value.startsWith("lead:"));
-
-const isPlace: Check = (value) =>
-  isRecord(value) && (Object.keys(value).length === 1 ? value.at === "start" || value.at === "end" || isArcRef(value.after) : false);
-
-const isAddedLead: Check = (value) => hasShape(value, { ...ADDED_PERSON, id: isId, division: isShortText }, ["person", "id", "division"]);
-const isAddedLeader: Check = (value) =>
-  hasShape(value, { ...ADDED_PERSON, id: isId, place: isPlace, role: isShortText }, ["person", "id", "place", "role"]);
-const isListOf =
-  (check: Check, max: number): Check =>
-  (value) =>
-    Array.isArray(value) && value.length <= max && value.every(check);
-
-const isDepartmentEdit: Check = (value) =>
-  hasShape(value, { name: isShortText, hidden: isTrue, leadOrder: isListOf(isLeadRef, 200), addedLeads: isListOf(isAddedLead, 50) });
-
-const isAddedDepartment: Check = (value) =>
-  hasShape(
-    value,
-    {
-      id: isId,
-      name: isShortText,
-      head: (head) => hasShape(head, { ...ADDED_PERSON, role: isShortText }, ["person"]),
-      leads: isListOf(isAddedLead, 50),
-    },
-    ["id", "name", "head", "leads"],
-  );
-
 /** A group photo: a photo of the site's own, or a Team page upload `ownsUpload` names; never any other remote URL. */
 const isGroupPhoto =
   (ownsUpload: OwnsUpload): Check =>
@@ -558,7 +129,7 @@ const isGroupPhoto =
     hasShape(
       value,
       {
-        src: (src) => typeof src === "string" && isPhoto(src) && (src.startsWith("/team/") || ownsUpload(src)),
+        src: (src) => typeof src === "string" && isPagePhoto(src) && (src.startsWith("/team/") || ownsUpload(src)),
         alt: (alt) => typeof alt === "string" && textLength(alt) <= 300,
         // Optional (issue #971): absent reads as centred, so a layer saved before it still reads.
         crops: (crops) => readShapeCrops(crops, GROUP_PHOTO) != null,
@@ -585,28 +156,10 @@ export function isTeamPageText(value: unknown, ownsUpload: OwnsUpload): value is
 }
 
 /**
- * A layer this code could have written: every part present, each edit well
- * formed, every added id used once. `figures` alone may be absent, as layers
- * saved before it existed leave it. A group photo off the site's own photos
- * must be an upload `ownsUpload` names.
+ * A layer this code could have written: the intro text and the group photo
+ * present, the figures present or absent, as layers saved before they existed
+ * leave them, and nothing else. A group photo off the site's own photos must
+ * be an upload `ownsUpload` names. The browser's text and the stored layer
+ * are one shape (`TeamPageText`).
  */
-export function isTeamPageLayer(value: unknown, ownsUpload: OwnsUpload): value is TeamPageLayer {
-  if (
-    !hasShape(
-      value,
-      {
-        leader: (v) => hasShape(v, PERSON_EDIT),
-        spots: (v) => isRecord(v) && Object.entries(v).every(([key, edit]) => isSpot(key) && hasShape(edit, { ...PERSON_EDIT, hidden: isTrue })),
-        addedLeaders: isListOf(isAddedLeader, 50),
-        departments: (v) => isRecord(v) && Object.entries(v).every(([key, edit]) => isIdText(key) && isDepartmentEdit(edit)),
-        addedDepartments: isListOf(isAddedDepartment, 50),
-        ...textChecks(ownsUpload),
-      },
-      ["leader", "spots", "addedLeaders", "departments", "addedDepartments", "intro", "groupPhoto"],
-    )
-  ) {
-    return false;
-  }
-  const ids = addedIds(value as TeamPageLayer);
-  return new Set(ids).size === ids.length;
-}
+export const isTeamPageLayer: (value: unknown, ownsUpload: OwnsUpload) => value is TeamPageLayer = isTeamPageText;

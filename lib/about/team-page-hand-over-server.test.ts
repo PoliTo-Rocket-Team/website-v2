@@ -15,7 +15,7 @@ import { openDashboard } from "@/lib/dashboard/open";
 import { queryTeamSnapshot, teamRolesOf } from "@/lib/dashboard/team-snapshot";
 import { teamPageData } from "./team-data";
 import { NO_TEAM_LAYER } from "./team-layer";
-import { holdingOf, layoutSeats, parseTeamLayout, resolveLayout, sameBinding, snapshot, type PageSeat, type PlaceBinding, type TeamLayout } from "./team-layout";
+import { firstLayout, holdingOf, layoutSeats, parseTeamLayout, resolveLayout, sameBinding, type PageSeat, type PlaceBinding, type TeamLayout } from "./team-layout";
 import type { TeamPage } from "./types";
 
 // A Team tree hand-over and the Team page's stored layout (issue #852, ADR
@@ -51,12 +51,12 @@ async function storedLayouts(): Promise<Record<string, TeamLayout | null>> {
 }
 
 /**
- * Stores a published and a draft version, each with the layout the team
- * snapshots to now, and a place on the draft's arc bound to the seat's holder
+ * Stores a published and a draft version, each with the layout of the team
+ * record's places now, and a place on the draft's arc bound to the seat's holder
  * as a person (#846 R4.1). Answers the published layout.
  */
 async function storeLayouts(): Promise<TeamLayout> {
-  const { layout } = snapshot(await rolesNow(), NO_TEAM_LAYER);
+  const layout = firstLayout(await rolesNow());
   const nextId = Math.max(...layoutSeats(layout).map((s) => s.id), ...layout.departments.map((b) => b.id)) + 1;
   const draft: TeamLayout = { ...layout, arc: [...layout.arc, { id: nextId, binding: holderBinding, overrides: { role: "Ambassador" } }] };
   await addRows(teamPageLayerVersions, [
@@ -166,7 +166,7 @@ test("a hand-over of a team-level seat with no flag to someone who holds another
 });
 
 test("a hand-over of a team-level seat no stored page seat is bound to writes nothing to the layout", async () => {
-  const { layout } = snapshot(await rolesNow(), NO_TEAM_LAYER);
+  const layout = firstLayout(await rolesNow());
   const without: TeamLayout = { ...layout, arc: layout.arc.filter((s) => !sameBinding(s.binding, seatBinding)) };
   await addRows(teamPageLayerVersions, [{ version: "published", layer: NO_TEAM_LAYER, layout: without }]);
   const stored = await tableRows(teamPageLayerVersions);
@@ -175,9 +175,9 @@ test("a hand-over of a team-level seat no stored page seat is bound to writes no
   assert.deepEqual(await tableRows(teamPageLayerVersions), stored);
 });
 
-test("a hand-over with no stored layout yet writes none, and the page draws its derived layout", async () => {
-  await addRows(teamPageLayerVersions, [{ version: "published", layer: NO_TEAM_LAYER, layout: null }]);
+test("a hand-over with nothing saved on the Team page writes no version, and the page draws the team record's places", async () => {
   const stored = await tableRows(teamPageLayerVersions);
+  assert.deepEqual(stored, [], "nothing is saved");
   signInAs(TEAM_LEADER);
   assert.deepEqual(await teamActions.changeSeatHolder(SEAT, { to: EXTRA.mover, outcome: "advisor" }), { ok: true });
   assert.deepEqual(await tableRows(teamPageLayerVersions), stored);
@@ -209,7 +209,7 @@ test("a Team page save that lands between the hand-over's read and its batch ref
 });
 
 test("a Team page save that binds a page seat to the ended row between the hand-over's read and its batch refuses the hand-over, and nothing is written", async () => {
-  const { layout } = snapshot(await rolesNow(), NO_TEAM_LAYER);
+  const layout = firstLayout(await rolesNow());
   const without: TeamLayout = { ...layout, arc: layout.arc.filter((s) => !sameBinding(s.binding, seatBinding)) };
   await addRows(teamPageLayerVersions, [{ version: "published", layer: NO_TEAM_LAYER, layout: without }]);
   signInAs(TEAM_LEADER);

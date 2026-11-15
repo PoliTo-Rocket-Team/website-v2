@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BOARD_FLAG_TITLES, inDivisions, NO_MEMBERSHIPS, type BoardFlag, type Placement } from "@/lib/dashboard/team";
 import { team } from "./team";
-import { teamPageFromRoles, type TeamPerson, type TeamRoles } from "./team-roles";
+import { NO_TEAM_LAYER } from "./team-layer";
+import { FIRST_GROUP, layoutPageOf, recordLayout, teamPageFromRoles } from "./team-layout";
+import type { TeamPerson, TeamRoles } from "./team-roles";
 
 // The Team page built from the team's roles (issue #282).
 
@@ -31,9 +33,9 @@ const member = (divisionId: number) => inDivisions([{ divisionId, role: "member"
 
 const org: TeamRoles["org"] = {
   departments: [
-    { id: 1, name: "Aerodynamics", kind: "technical" },
-    { id: 2, name: "Recovery", kind: "technical" },
-    { id: 3, name: "Electronics", kind: "technical" },
+    { id: 1, name: "Aerodynamics" },
+    { id: 2, name: "Recovery" },
+    { id: 3, name: "Electronics" },
   ],
   divisions: [
     { id: 10, name: "Mission Analysis Division", departmentId: 1 },
@@ -65,6 +67,17 @@ const people: readonly TeamPerson[] = [
 ];
 
 const built = (list: readonly TeamPerson[] = people) => teamPageFromRoles({ org, people: list }, team);
+
+/** The page of the team record's places in today's two groups: department `operations` alone in "Operations", its leads beside its head. */
+const groupedPage = (roles: TeamRoles, operations: number) =>
+  layoutPageOf(
+    roles,
+    recordLayout(roles, [{ id: 1, name: "Technical Departments" }, { id: 2, name: "Operations" }], (id) =>
+      id === operations ? { group: 2, leadsDrawn: "beside" } : { group: 1, leadsDrawn: "under" },
+    ),
+    NO_TEAM_LAYER,
+    team,
+  );
 
 test("who leads: the team leader, then the board seats on the arc in the Team tree's order", () => {
   const page = built()!;
@@ -159,7 +172,7 @@ test("photo, LinkedIn and team email come from the member record; none of them i
 const oneDivisionEach = (departments: readonly { readonly id: number }[]) => departments.map((d, i) => ({ id: 5000 + i, name: `Division ${i}`, departmentId: d.id }));
 
 test("a department with no division has no block on the carousel: its head is a core member, as before it was a department (Owner decision on #627)", () => {
-  const withRd: TeamRoles["org"] = { departments: [...org.departments, { id: 90, name: "R&D", kind: "technical" }], divisions: org.divisions };
+  const withRd: TeamRoles["org"] = { departments: [...org.departments, { id: 90, name: "R&D" }], divisions: org.divisions };
   const rd = person(30, "Marco Dona", head(90), { pageTitle: "Head of R&D" });
   const page = teamPageFromRoles({ org: withRd, people: [...people, rd] }, team)!;
   assert.ok(!page.departments.groups.some((g) => g.members.some((m) => m.name === "Marco Dona")), "not on the carousel");
@@ -168,8 +181,8 @@ test("a department with no division has no block on the carousel: its head is a 
 });
 
 test("the arc keeps at most eight leaders; slides hold ten heads each, at most five", () => {
-  const seats = Array.from({ length: 10 }, (_, i) => person(100 + i, `Seat ${String(i).padStart(2, "0")}`, seat("chief-engineer")));
-  const departments = Array.from({ length: 56 }, (_, i) => ({ id: 1000 + i, name: `Department ${i}`, kind: "technical" as const }));
+  const seats = Array.from({ length: 10 }, (_, i) => person(100 + i, `Seat ${String(i).padStart(2, "0")}`, seat(null, `Seat title ${i}`)));
+  const departments = Array.from({ length: 56 }, (_, i) => ({ id: 1000 + i, name: `Department ${i}` }));
   const heads = departments.map((d, i) => person(200 + i, `Head ${String(i).padStart(2, "0")}`, head(d.id)));
   const page = teamPageFromRoles({ org: { departments, divisions: oneDivisionEach(departments) }, people: [...people, ...seats, ...heads] }, team)!;
   assert.equal(page.orgChart.leaders.length, 8);
@@ -177,13 +190,13 @@ test("the arc keeps at most eight leaders; slides hold ten heads each, at most f
     page.departments.groups.map((g) => g.members.length),
     [10, 10, 10, 10, 10],
   );
-  assert.ok(page.departments.groups.every((g) => g.name === "Technical Departments"));
+  assert.ok(page.departments.groups.every((g) => g.name === FIRST_GROUP.name));
 });
 
-test("the carousel groups heads by their department's kind: Technical Departments first, then Operations (issue #325)", () => {
+test("the carousel draws its groups in order, Technical Departments then Operations, whatever the department order (issues #325, #856)", () => {
   // Operations comes first by id; its slide still follows the technical one.
   const kinded: TeamRoles["org"] = {
-    departments: [{ id: 0, name: "Operations", kind: "operations" }, ...org.departments],
+    departments: [{ id: 0, name: "Operations" }, ...org.departments],
     divisions: [...org.divisions, { id: 40, name: "Logistics Division", departmentId: 0 }, { id: 41, name: "Safety Division", departmentId: 0 }],
   };
   const operationsPeople = [
@@ -191,9 +204,9 @@ test("the carousel groups heads by their department's kind: Technical Department
     person(21, "Ettore De Bartolo", lead(40)),
     person(22, "Asmaa Jamai", lead(41)),
   ];
-  const page = teamPageFromRoles({ org: kinded, people: [...people, ...operationsPeople] }, team)!;
+  const page = groupedPage({ org: kinded, people: [...people, ...operationsPeople] }, 0);
   const [technical, operations] = page.departments.groups;
-  assert.ok(operations);
+  assert.ok(technical && operations);
   assert.deepEqual(
     page.departments.groups.map((g) => g.name),
     ["Technical Departments", "Operations"],
@@ -215,13 +228,13 @@ test("the carousel groups heads by their department's kind: Technical Department
   assert.ok(!page.coreMembers.members.some((m) => operationsPeople.some((p) => p.name === m.name)));
 });
 
-test("a kind with more than ten places fills more slides under the same heading, at most five in all (boards 26e, 26f)", () => {
+test("a group with more than ten places fills more slides under the same heading, at most five in all (boards 26e, 26f)", () => {
   const departments = [
-    ...Array.from({ length: 35 }, (_, i) => ({ id: 1000 + i, name: `Department ${i}`, kind: "technical" as const })),
-    { id: 2000, name: "Operations", kind: "operations" as const },
+    ...Array.from({ length: 35 }, (_, i) => ({ id: 1000 + i, name: `Department ${i}` })),
+    { id: 2000, name: "Operations" },
   ];
   const heads = departments.map((d, i) => person(200 + i, `Head ${String(i).padStart(2, "0")}`, head(d.id)));
-  const page = teamPageFromRoles({ org: { departments, divisions: oneDivisionEach(departments) }, people: [...people, ...heads] }, team)!;
+  const page = groupedPage({ org: { departments, divisions: oneDivisionEach(departments) }, people: [...people, ...heads] }, 2000);
   assert.deepEqual(
     page.departments.groups.map((g) => [g.name, g.members.length]),
     [

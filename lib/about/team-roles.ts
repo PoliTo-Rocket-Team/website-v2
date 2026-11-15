@@ -1,34 +1,88 @@
 import type { PersonRecord } from "@/lib/dashboard/division-members";
-import { boardTitleOf, bySeatOrder, divisionLabel, roleIn, type DepartmentKind, type OrgChart as TeamOrg, type RosterEntry } from "@/lib/dashboard/team";
 import {
-  applyLayer,
-  arcSeatOf,
-  ARC_LEADERS,
-  NO_TEAM_LAYER,
-  type BuiltDepartment,
-  type BuiltLeader,
-  type DrawnGroup,
-  type DrawnTeam,
-  type LeadsDrawn,
-  type ShownTeam,
-  type TeamBuild,
-  type TeamPageLayer,
-} from "./team-layer";
+  BOARD_FLAGS,
+  boardFlagOf,
+  boardTitleOf,
+  bySeatOrder,
+  divisionLabel,
+  roleIn,
+  type BoardFlag,
+  type BoardRole,
+  type OrgChart as TeamOrg,
+  type RosterEntry,
+} from "@/lib/dashboard/team";
+import { ARC_LEADERS, type DrawnGroup, type DrawnTeam, type LeadsDrawn, type TeamPageLayer } from "./team-layer";
 import { byName, furtherSeatsOf, personOf, titleOf, type TeamPerson } from "./team-person";
 import type { DepartmentGroup, FilledTeamPage, GroupMember, Member, TeamPage, UpTo } from "./types";
 
-// The Team page built from the team's roles (issue #282, ADR 0015): who
-// leads, every department and every core member come from the roles the
-// dashboard sets, so a title saved on the member panel reaches the page once
-// the `team-roster` cache is refreshed. The visual layer (./team-layer.ts,
-// issue #283) is laid on that build; the header, "In numbers" and, unless
-// the layer sets them, the intro text and the group photo stay the
-// hand-typed values of ./team.ts. The advisors come from the stored list
+// The Team page's places as the team's roles hold them (issue #282, ADR
+// 0015): who leads, every department and every core member, as the roles the
+// dashboard sets build them. Since ADR 0019 the page draws its stored layout
+// of page seats (./team-layout.ts), and this build is read only where a
+// layout is built from the team record (`recordLayout`: the seed, a database
+// with nothing saved, and Reset to team). The carousel and the drawn page
+// below are shared with the layout. The header, "In numbers" and, unless the
+// layer sets them, the intro text and the group photo stay the hand-typed
+// values of ./team.ts. The advisors come from the stored list
 // (./advisors.ts, issue #286), laid on by ./team-data.ts. Pure: the database
 // (lib/about/team-data.ts) and the seed (db/seed/cases.ts) read the same build.
 
 export type { TeamPerson } from "./team-person";
 export { ARC_LEADERS } from "./team-layer";
+
+/**
+ * The seat an arc spot names: a flagged seat by its flag ("project-manager"),
+ * any other team-level seat by its role row ("role-27"). Never its title.
+ */
+export type ArcSeat = BoardFlag | `role-${number}`;
+
+/** The arc key of a team-level seat (`ArcSeat`). */
+export function arcSeatOf(seat: BoardRole): ArcSeat {
+  return boardFlagOf(seat.fullAccess) ?? `role-${seat.roleId}`;
+}
+
+/** A place on the arc the roles fill: a team-level seat, and which of its holders by name (0 is the first). */
+export type ArcSpot = `arc:${ArcSeat}:${number}`;
+/** A head block: a department by id, and which of its heads by name. */
+export type HeadSpot = `head:${number}:${number}`;
+/** A division lead row: a division by id, and which of its leads by name. */
+export type LeadSpot = `lead:${number}:${number}`;
+export type Spot = ArcSpot | HeadSpot | LeadSpot;
+
+const isIdText = (value: string) => /^[1-9]\d{0,9}$/.test(value);
+
+/** Whether `value` names a spot of the roles build. */
+export function isSpot(value: unknown): value is Spot {
+  if (typeof value !== "string") return false;
+  const [kind, a, b, ...rest] = value.split(":");
+  if (rest.length > 0 || b === undefined || !/^(0|[1-9]\d{0,5})$/.test(b)) return false;
+  if (kind === "arc") return (BOARD_FLAGS as readonly string[]).includes(a) || (a.startsWith("role-") && isIdText(a.slice("role-".length)));
+  return (kind === "head" || kind === "lead") && isIdText(a);
+}
+
+export type BuiltLeader = { readonly spot: ArcSpot; readonly person: TeamPerson; readonly role: string };
+/** `title` is the title their role carries; without one the page reads "Head of" the department. */
+export type BuiltHead = { readonly spot: HeadSpot; readonly person: TeamPerson; readonly title: string | undefined };
+export type BuiltLead = { readonly spot: LeadSpot; readonly person: TeamPerson; readonly division: string };
+/** An open department with a head: its heads by name, and the leads of its divisions in division order. */
+export type BuiltDepartment = {
+  readonly id: number;
+  readonly name: string;
+  readonly heads: readonly BuiltHead[];
+  readonly leads: readonly BuiltLead[];
+};
+
+/** The places the roles fill, each with its spot. */
+export type TeamBuild = {
+  /** Everyone with an active role. */
+  readonly people: readonly TeamPerson[];
+  readonly leader: { readonly person: TeamPerson; readonly role: string } | null;
+  /** The board seats in reading order, every holder, before the cap of eight. */
+  readonly arc: readonly BuiltLeader[];
+  readonly departments: readonly BuiltDepartment[];
+  /** Everyone the build's places leave out, by name. */
+  readonly core: readonly Member[];
+};
 
 /** The open departments and divisions, in display order, and everyone with an active role. */
 export type TeamRoles = { readonly org: TeamOrg; readonly people: readonly TeamPerson[] };
@@ -54,36 +108,6 @@ export function teamPeopleOf(roster: readonly RosterEntry[], records: readonly P
 /** A slide holds up to ten members, the carousel up to five slides. */
 export const SLIDE_MEMBERS = 10;
 export const SLIDES = 5;
-
-/**
- * Today's grouping, before department groups (issue #325, boards 26, 26e,
- * 26f, 26m): a department's kind on the team record put its head on the
- * "Technical Departments" slides, its leads under them, or on the
- * "Operations" slides, its leads beside them. Since issue #856 the page draws
- * the groups its stored layout names, and this is read only to snapshot
- * today's page into a first layout (./team-layout.ts `snapshot`) and by the
- * roles build that snapshot reads: no other Team page code reads a
- * department's kind.
- */
-export const TODAYS_GROUPS: readonly { readonly kind: DepartmentKind; readonly name: string; readonly leadsDrawn: LeadsDrawn }[] = [
-  { kind: "technical", name: "Technical Departments", leadsDrawn: "under" },
-  { kind: "operations", name: "Operations", leadsDrawn: "beside" },
-];
-
-/** Today's group of a department of kind `kind` (`TODAYS_GROUPS`). */
-export function todaysGroupOf(kind: DepartmentKind): (typeof TODAYS_GROUPS)[number] {
-  return TODAYS_GROUPS.find((g) => g.kind === kind) ?? TODAYS_GROUPS[0];
-}
-
-/** `departments` in today's two groups, in that order, each drawing its leads as its kind did (`TODAYS_GROUPS`). */
-export function todaysGroupsOf<D extends { readonly kind: DepartmentKind }>(
-  departments: readonly D[],
-): { readonly name: string; readonly departments: readonly (D & { readonly leadsDrawn: LeadsDrawn })[] }[] {
-  return TODAYS_GROUPS.map((group) => ({
-    name: group.name,
-    departments: departments.filter((d) => d.kind === group.kind).map((d) => ({ ...d, leadsDrawn: group.leadsDrawn })),
-  }));
-}
 
 /**
  * One place on a carousel slide: a head with the division leads drawn under
@@ -162,7 +186,7 @@ function arcOf(people: readonly TeamPerson[]): BuiltLeader[] {
 function departmentsOf(roles: TeamRoles): BuiltDepartment[] {
   return roles.org.departments.flatMap((department): BuiltDepartment[] => {
     if (!roles.org.divisions.some((d) => d.departmentId === department.id)) return [];
-    // A head reads their head role's stored title; a blank one reads "Head of" the department (./team-layer.ts).
+    // A head reads their head role's stored title; a blank one reads "Head of" the department.
     const heads = roles.people
       .flatMap((p) => (p.placement.role === "head" && p.placement.departmentId === department.id ? [{ person: p, title: p.placement.title.trim() }] : []))
       .sort((a, b) => byName(a.person, b.person))
@@ -176,7 +200,7 @@ function departmentsOf(roles: TeamRoles): BuiltDepartment[] {
           .sort(byName)
           .map((p, n) => ({ spot: `lead:${division.id}:${n}` as const, person: p, division: divisionLabel(division.name) })),
       );
-    return [{ id: department.id, name: department.name, kind: department.kind, heads, leads }];
+    return [{ id: department.id, name: department.name, heads, leads }];
   });
 }
 
@@ -186,13 +210,15 @@ function departmentsOf(roles: TeamRoles): BuiltDepartment[] {
  * - departments: the head of each open department with a division, with its
  *   division leads;
  * - core members: everyone else with an active role, by name, with their
- *   title. Someone the arc or the carousel has no room for is a core member.
+ *   title. Someone the arc, or the carousel with every department in one
+ *   group and its leads under its heads, has no room for is a core member.
  */
 export function teamBuildOf(roles: TeamRoles): TeamBuild {
   const leaderPerson = roles.people.filter((p) => p.placement.role === "team-leader").sort(byName)[0];
   const arc = arcOf(roles.people);
   const departments = departmentsOf(roles);
-  const carousel = carouselOf(todaysGroupsOf(departments)).flatMap((slide) =>
+  const oneGroup = [{ name: "", departments: departments.map((d) => ({ ...d, leadsDrawn: "under" as const })) }];
+  const carousel = carouselOf(oneGroup).flatMap((slide) =>
     slide.places.flatMap((place) => (place.kind === "head" ? [place.head.person, ...place.leads.map((l) => l.person)] : [place.lead.person])),
   );
   const shown = new Set([leaderPerson, ...arc.slice(0, ARC_LEADERS).map((l) => l.person), ...carousel].flatMap((p) => p?.id ?? []));
@@ -247,13 +273,8 @@ export function carouselSpotsOf<A>(groups: readonly CarouselGroup<{ readonly at:
   return carouselOf(groups).flatMap((slide) => slide.places.map((place) => (place.kind === "head" ? place.head.at : null)));
 }
 
-/** The page the roles build with the layer laid on, as drawn: its departments in today's two groups (`TODAYS_GROUPS`). */
-export function todaysDrawnTeam(shown: ShownTeam): DrawnTeam {
-  return { ...shown, groups: todaysGroupsOf(shown.departments) };
-}
-
 /** `page` with the layer's intro text, figures and group photo, where it sets them. */
-export function withLayerText<P extends TeamPage>(page: P, layer: Pick<TeamPageLayer, "intro" | "figures" | "groupPhoto">): P {
+export function withLayerText<P extends TeamPage>(page: P, layer: TeamPageLayer): P {
   return {
     ...page,
     header: {
@@ -277,7 +298,7 @@ export type TeamPageSection = "leader" | "arc" | "departments" | "core";
  * `shown` fills no one in is drawn empty, never filled from `base` (ADR 0019
  * Decision 9): the stored layout's page reads it so (./team-layout.ts).
  */
-export function drawnTeamPage(build: Pick<TeamBuild, "core">, shown: DrawnTeam, base: TeamPage): TeamPage {
+export function drawnTeamPage(build: { readonly core: readonly Member[] }, shown: DrawnTeam, base: TeamPage): TeamPage {
   const page: TeamPage = {
     ...base,
     orgChart: { ...base.orgChart, leader: shown.leader, leaders: upTo(shown.leaders.map((l) => l.shown), ARC_LEADERS) ?? [] },
@@ -306,13 +327,9 @@ function filledOrEmpty(page: TeamPage): { readonly page: FilledTeamPage } | { re
   };
 }
 
-/**
- * The Team page as `shown` lays it out (`drawnTeamPage`), or null when a
- * section the page always draws is empty (`emptySectionOf`): the editor's
- * working layer, which may not empty one.
- */
-export function teamPageOf(build: Pick<TeamBuild, "core">, shown: DrawnTeam, base: TeamPage): FilledTeamPage | null {
-  const laid = filledOrEmpty(drawnTeamPage(build, shown, base));
+/** `page` as one that fills every section the page always draws, or null when it leaves one empty (`emptySectionOf`). */
+export function filledTeamPage(page: TeamPage): FilledTeamPage | null {
+  const laid = filledOrEmpty(page);
   return "page" in laid ? laid.page : null;
 }
 
@@ -320,14 +337,4 @@ export function teamPageOf(build: Pick<TeamBuild, "core">, shown: DrawnTeam, bas
 export function emptySectionOf(page: TeamPage): TeamPageSection | null {
   const laid = filledOrEmpty(page);
   return "empty" in laid ? laid.empty : null;
-}
-
-/**
- * The Team page built from the roles with `layer` laid on (none by default),
- * onto `base` for everything else; null when the roles cannot fill a section
- * the page always draws (`teamPageOf`).
- */
-export function teamPageFromRoles(roles: TeamRoles, base: TeamPage, layer: TeamPageLayer = NO_TEAM_LAYER): FilledTeamPage | null {
-  const build = teamBuildOf(roles);
-  return teamPageOf(build, todaysDrawnTeam(applyLayer(build, layer)), base);
 }

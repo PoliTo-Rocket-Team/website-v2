@@ -11,7 +11,7 @@ import { publicStoreHost } from "@/lib/storage/pathname";
 import { advisorRowsOf, publicAdvisors, withAdvisors, type AdvisorRow, type AdvisorVersion } from "./advisors";
 import { importedAdvisors } from "./advisors-import";
 import { NO_TEAM_LAYER, NO_UPLOADS, textOf } from "./team-layer";
-import { holdingOf, layoutPageOf, nextSeatId, snapshot, type DepartmentBlock, type PageSeat, type SeatOverrides, type TeamLayout } from "./team-layout";
+import { firstLayout, holdingOf, layoutPageOf, nextSeatId, teamPageFromRoles, type DepartmentBlock, type PageSeat, type SeatOverrides, type TeamLayout } from "./team-layout";
 import { hideHead } from "./team-page-add";
 import {
   HEADS_FULL,
@@ -26,11 +26,11 @@ import {
   type TeamPageStore,
 } from "./team-page-editor";
 import { memoryTeamPageStore } from "./team-page-memory";
-import { NO_STORED_TEAM_PAGE, savedTeamPage, storedTeamPage, type StoredTeamPage, type TeamPageContent } from "./team-page-stored";
+import { savedTeamPage, type StoredTeamPage, type TeamPageContent } from "./team-page-stored";
 import { publicStoreTeamPagePhotos, type TeamPageFileWrites } from "./team-page-photos";
 import { CHANGED_SINCE_READ } from "@/lib/content/editor";
 import { team } from "./team";
-import { HEADS_SHOWN_MAX, teamPageFromRoles, type TeamRoles } from "./team-roles";
+import { HEADS_SHOWN_MAX, type TeamRoles } from "./team-roles";
 import type { PersonPhoto } from "./types";
 
 // The Team page as the editor saves it, its layout of page seats with the
@@ -48,7 +48,7 @@ const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", si
 const siteContent: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false };
 
 /** The layout Reset to team writes, and the content the editor opens on before anything is saved. */
-const record = snapshot(roles, NO_TEAM_LAYER).layout;
+const record = firstLayout(roles);
 const plain: TeamPageContent = { layout: record, text: textOf(NO_TEAM_LAYER) };
 
 /** The plain content with the team leader's page seat overriding `overrides`. */
@@ -67,7 +67,7 @@ async function openedPage(editor: TeamPageEditor) {
 }
 
 /** The photo the published version's team leader seat sets, if any. */
-const publishedLeaderPhoto = (items: Parameters<typeof publishedTeamPage>[0]) => publishedTeamPage(items).layout?.leader?.overrides.photo;
+const publishedLeaderPhoto = (items: Parameters<typeof publishedTeamPage>[1]) => publishedTeamPage(roles, items).layout.leader?.overrides.photo;
 
 function editorOver(viewer: ViewerStanding, seed: ContentItem<StoredTeamPage>[] = []) {
   const layer = memoryContentStore(seed);
@@ -122,7 +122,7 @@ test("a save stores the layout the editor sends, and the public page drawn from 
     layout: { ...renamed.layout, arc: [leaders[1], leaders[0], ...leaders.slice(2)], departments: renamed.layout.departments.slice(1) },
   };
   assert.ok((await editor.save("publish", content, await rowsOf(store))).ok);
-  assert.deepEqual(publishedTeamPage(await store.layer.list()).layout, content.layout);
+  assert.deepEqual(publishedTeamPage(roles, await store.layer.list()).layout, content.layout);
   assert.deepEqual(await publicPage(store), layoutPageOf(roles, content.layout, content.text, team));
   assert.deepEqual(await publicPage(store), await openedPage(editor));
 });
@@ -167,7 +167,7 @@ test("Reset to team is a draft whose layout the team's roles rebuild, with only 
 });
 
 test("every write path is refused without the site-content permission, and stores nothing", async () => {
-  const published: ContentItem<StoredTeamPage>[] = [{ id: 1, siteOrder: 1, version: { state: "published", published: savedTeamPage(NO_STORED_TEAM_PAGE, renamed), draft: null } }];
+  const published: ContentItem<StoredTeamPage>[] = [{ id: 1, siteOrder: 1, version: { state: "published", published: savedTeamPage(renamed), draft: null } }];
   const refusedViewers: ViewerStanding[] = [
     { kind: "non-member", siteContent: false, approveOrders: false },
     ...VIEWER_KINDS.filter((kind) => kind !== "operations-lead" && kind !== "non-member").map(
@@ -267,7 +267,7 @@ test("a layout showing more department heads than the carousel holds is refused 
 const without = (personId: number) => ({ ...roles, people: roles.people.filter((p) => p.id !== personId) });
 
 /** The plain content, published. */
-const publishedPlain: ContentItem<StoredTeamPage>[] = [{ id: 1, siteOrder: 1, version: { state: "published", published: savedTeamPage(NO_STORED_TEAM_PAGE, plain), draft: null } }];
+const publishedPlain: ContentItem<StoredTeamPage>[] = [{ id: 1, siteOrder: 1, version: { state: "published", published: savedTeamPage(plain), draft: null } }];
 
 test("a page seat whose seat has no holder is not drawn in the editor, survives a save in its place, and shows again once the seat has a holder", async () => {
   const { store } = editorOver(siteContent, publishedPlain);
@@ -286,7 +286,7 @@ test("a page seat whose seat has no holder is not drawn in the editor, survives 
   assert.ok(!page.orgChart.leaders.some((l) => l.name === holder.name), "not drawn in the editor");
   assert.equal(page.orgChart.leaders.length, record.arc.length - 1);
   assert.ok((await editor.save("publish", opened.content, await rowsOf(store))).ok);
-  assert.deepEqual(publishedTeamPage(await store.layer.list()).layout?.arc[index], seat, "kept in its place");
+  assert.deepEqual(publishedTeamPage(roles, await store.layer.list()).layout.arc[index], seat, "kept in its place");
 
   teamRoles = roles;
   assert.deepEqual((await publicPage(store)).orgChart.leaders, teamPageFromRoles(roles, team)!.orgChart.leaders, "shown again in the same place");
@@ -532,13 +532,13 @@ test("a Team page save made on a layer another save replaced in the meantime is 
     ...store,
     async save(layer, advisors, expected) {
       // Another save lands between this one's read and its write.
-      await store.save({ state: "published", published: storedTeamPage(roles, { ...NO_TEAM_LAYER, intro: "Theirs" }), draft: null }, [], expected);
+      await store.save({ state: "published", published: { layer: { ...NO_TEAM_LAYER, intro: "Theirs" }, layout: record }, draft: null }, [], expected);
       return store.save(layer, advisors, expected);
     },
   };
   const editor = teamPageEditor(siteContent, racing, async () => roles, team, NO_PHOTOS);
   assert.deepEqual(await editor.save("publish", { ...plain, text: { ...plain.text, intro: "Mine" } }, await rowsOf(store)), refused(CHANGED_SINCE_READ));
-  assert.equal(publishedTeamPage(await store.layer.list()).layer.intro, "Theirs");
+  assert.equal(publishedTeamPage(roles, await store.layer.list()).layer.intro, "Theirs");
 });
 
 test("an uploaded group photo is in use while any stored version shows it, and its file goes once none does", async () => {

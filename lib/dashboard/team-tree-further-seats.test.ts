@@ -11,8 +11,8 @@ import { boxOf, layoutTeamTree } from "./tree-layout";
 
 const org: OrgChart = {
   departments: [
-    { id: 1, name: "Aerodynamics", kind: "technical" },
-    { id: 2, name: "Operations", kind: "operations" },
+    { id: 1, name: "Aerodynamics" },
+    { id: 2, name: "Operations" },
   ],
   divisions: [
     { id: 10, name: "Mission Analysis Division", departmentId: 1 },

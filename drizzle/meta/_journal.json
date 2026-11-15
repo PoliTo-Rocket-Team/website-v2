@@ -596,6 +596,13 @@
       "when": 1796491200000,
       "tag": "0087_alumni_added_years",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1796577600000,
+      "tag": "0088_team_page_layer_cleanup",
+      "breakpoints": true
     }
   ]
 }

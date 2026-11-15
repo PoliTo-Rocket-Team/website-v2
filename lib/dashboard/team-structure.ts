@@ -11,7 +11,6 @@ import {
   roleIn,
   type BoardFlag,
   type BoardRole,
-  type DepartmentKind,
   type Joining,
   type OrgChart,
   type OrgDivision,
@@ -62,8 +61,6 @@ export type StructureDepartment = {
   /** "Aerodynamics" */
   readonly name: string;
   readonly code: string | null;
-  /** The Team page slide its head sits on (issue #325); Edit department sets it. */
-  readonly kind: DepartmentKind;
   /** Every head of it, by name (epic #861: a seat may have several holders); none while it has no head. */
   readonly heads: readonly StructureHead[];
   /** Everyone in it, heads included, each once. */
@@ -263,7 +260,6 @@ export function teamStructure(input: {
       id: department.id,
       name: department.name,
       code: department.code ?? null,
-      kind: department.kind,
       heads: heads.map(headOf).sort(byName),
       size: headIds.size + inDepartment.size,
       divisionsEditable: editable,

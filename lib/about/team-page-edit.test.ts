@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SEED_DATA, teamRolesOf } from "@/db/seed/cases";
+import { seededRecordLayout } from "@/db/seed/team-page";
 import { NO_TEAM_LAYER, textOf } from "./team-layer";
-import { bindingFor, snapshot, teamRecordLayout, type TeamLayout } from "./team-layout";
+import { bindingFor, firstLayout, teamPageFromRoles, teamRecordLayout, type TeamLayout } from "./team-layout";
 import { team } from "./team";
 import {
   backToTeamRecord,
@@ -15,7 +16,6 @@ import {
   withPersonFields,
 } from "./team-page-edit";
 import type { TeamPageContent } from "./team-page-stored";
-import { teamPageFromRoles, type TeamRoles } from "./team-roles";
 
 // The Team page editor's Edit person panel (board 80b, issues #284 and #851):
 // the fields make a page seat with only the overrides that differ from the
@@ -25,7 +25,7 @@ import { teamPageFromRoles, type TeamRoles } from "./team-roles";
 // reads it, and the layout is the one Reset to team writes.
 
 const roles = teamRolesOf(SEED_DATA);
-const layout = snapshot(roles, NO_TEAM_LAYER).layout;
+const layout = seededRecordLayout(roles);
 const text = textOf(NO_TEAM_LAYER);
 const fromRoles = teamPageFromRoles(roles, team)!;
 const leaderId = layout.leader!.id;
@@ -34,8 +34,8 @@ const pageOf = (content: TeamPageContent) => editedTeamPage(roles, team, content
 const shownIds = new Set([layout.leader!, ...layout.arc].map((seat) => spotRecord(roles, layout, seat.id)!.person.id));
 const someoneElse = roles.people.find((p) => !shownIds.has(p.id))!;
 
-test("the layout the editor opens on draws the page the roles build", () => {
-  assert.deepEqual(pageOf({ layout, text }), fromRoles);
+test("the layout the editor opens on with nothing saved draws the page the roles build", () => {
+  assert.deepEqual(pageOf({ layout: firstLayout(roles), text }), fromRoles);
 });
 
 test("the panel's fields make only the overrides that differ from the team record: put back as the record has it, there is none", () => {
@@ -88,18 +88,10 @@ test("Reset to team counts an edit whenever the arc, the department blocks or a 
   }
 });
 
-test("Reset to team keeps the stored groups (issue #856): a kind changed in the Team tree counts nothing, and a group or block moved off the stored ones counts", () => {
+test("Reset to team keeps the stored groups (issue #856): the record counts nothing, and a group or block moved off the stored ones counts", () => {
   const block = layout.departments.find((b) => b.leads.length > 0 && b.head.binding.kind === "department-head")!;
-  const departmentId = block.head.binding.kind === "department-head" ? block.head.binding.departmentId : -1;
-  const changed: TeamRoles = {
-    ...roles,
-    org: {
-      ...roles.org,
-      departments: roles.org.departments.map((d) => (d.id === departmentId ? { ...d, kind: d.kind === "technical" ? ("operations" as const) : ("technical" as const) } : d)),
-    },
-  };
-  assert.deepEqual(teamRecordLayout(changed, layout), layout, "the record keeps each department's stored group and lead drawing");
-  assert.equal(editCount(changed, layout, teamRecordLayout(changed, layout)), 0);
+  assert.deepEqual(teamRecordLayout(roles, layout), layout, "the record keeps each department's stored group and lead drawing");
+  assert.equal(editCount(roles, layout, teamRecordLayout(roles, layout)), 0);
 
   const other = layout.groups.find((g) => g.id !== block.group)!;
   const record = teamRecordLayout(roles, layout);

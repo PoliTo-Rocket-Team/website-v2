@@ -17,17 +17,17 @@ import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { checkPhotoUpload, PHOTO_GONE, type CheckedPhoto } from "@/lib/outreach-photos";
 import { advisorsAfter, advisorWritesOf, type AdvisorItem, type AdvisorWrite } from "./advisors";
-import { layerPhotos, textOf, type OwnsUpload } from "./team-layer";
+import type { OwnsUpload } from "./team-layer";
 import { layoutPageOf, layoutPhotos, resolveLayout, teamRecordLayout, withLayoutPhotos, withoutGoneSeats, type TeamLayout } from "./team-layout";
 import {
   contentOf,
   layoutOf,
-  NO_STORED_TEAM_PAGE,
   parseTeamPageContent,
   savedTeamPage,
   storedTeamPageOf,
   type StoredTeamPage,
   type TeamPageContent,
+  unsavedTeamPage,
 } from "./team-page-stored";
 import { emptySectionOf, HEADS_SHOWN_MAX, type TeamPageSection, type TeamRoles } from "./team-roles";
 import type { PersonPhoto, TeamPage } from "./types";
@@ -38,8 +38,9 @@ import type { PersonPhoto, TeamPage } from "./types";
 // stored with its layout of page seats (./team-page-stored.ts, issue #850).
 // The editor edits that layout and the layer's intro text, figures and group
 // photo, and a save stores the layout it sends, less every page seat whose
-// team seat is gone (ADR 0019 Decision 4), with the layer's text; the layer's
-// people fields stay as they were. The public page and the editor draw the
+// team seat is gone (ADR 0019 Decision 4), with the layer's text. Before
+// anything is saved, both draw the team record's places (`unsavedTeamPage`).
+// The public page and the editor draw the
 // same stored layout. Save draft and Reset to team never reach the public
 // page; Publish does. Every write passes the site-content gate
 // (lib/content/gate.ts) first. Save draft and Publish write the version and
@@ -60,9 +61,9 @@ import type { PersonPhoto, TeamPage } from "./types";
 // interface build it, each with its own store, its own roles and its own
 // photo files.
 
-/** The version the public page draws: the published one, or none saved yet. */
-export function publishedTeamPage(items: readonly ContentItem<StoredTeamPage>[]): StoredTeamPage {
-  return publicItems(items)[0] ?? NO_STORED_TEAM_PAGE;
+/** The version the public page draws: the published one, or the team record's places on `roles` while none is saved (`unsavedTeamPage`). */
+export function publishedTeamPage(roles: TeamRoles, items: readonly ContentItem<StoredTeamPage>[]): StoredTeamPage {
+  return publicItems(items)[0] ?? unsavedTeamPage(roles);
 }
 
 /**
@@ -71,7 +72,7 @@ export function publishedTeamPage(items: readonly ContentItem<StoredTeamPage>[])
  * (`storedTeamPageOf`). A draft never reaches it.
  */
 export function publicTeamPage(roles: TeamRoles, base: TeamPage, items: readonly ContentItem<StoredTeamPage>[]): TeamPage {
-  return storedTeamPageOf(roles, publishedTeamPage(items), base);
+  return storedTeamPageOf(roles, publishedTeamPage(roles, items), base);
 }
 
 /** The content of stored versions, as the editor reads and answers them. */
@@ -162,7 +163,10 @@ export const PICKED_PHOTO_GONE = "A photo you picked is no longer stored. Reload
 /** Every photo the stored layer versions, their layouts and the advisor versions show. */
 export function photosInUse(layer: readonly ContentItem<StoredTeamPage>[], advisors: readonly AdvisorItem[]): Set<PersonPhoto> {
   const layers = layer.flatMap((item) =>
-    versionRows(item.version).flatMap(({ content }) => [...layerPhotos(content.layer), ...(content.layout === null ? [] : layoutPhotos(content.layout))]),
+    versionRows(item.version).flatMap(({ content }) => [
+      ...layoutPhotos(content.layout),
+      ...(content.layer.groupPhoto === null ? [] : [content.layer.groupPhoto.src]),
+    ]),
   );
   const rows = advisors.flatMap((item) => versionRows(item.version).flatMap((row) => row.content.photo ?? []));
   return new Set([...layers, ...rows]);
@@ -229,8 +233,8 @@ export interface TeamPageEditor {
   save(step: PublishStep, content: unknown, advisors: unknown): Promise<WriteResult<TeamPageSaved>>;
   /**
    * Reset to team (board 80h): a draft whose layout is rebuilt from the
-   * team's roles as they are now (the snapshot function, ADR 0019 Decision
-   * 7), keeping the intro text, its figures and the group photo, and the
+   * team record as it is now (`recordLayout`, ADR 0019 Decision 7),
+   * keeping the intro text, its figures and the group photo, and the
    * stored group list with each department's group (`teamRecordLayout`,
    * issue #856).
    */
@@ -282,10 +286,10 @@ export function teamPageEditor(
   const editor = contentEditor(viewer, store.layer);
   /** The one document's id; null before the first save. */
   const documentId = async () => (await store.layer.list())[0]?.id ?? null;
-  /** The version the editor works on: the draft, else the published one, else none saved yet. */
-  const editing = (items: readonly ContentItem<StoredTeamPage>[]) => {
+  /** The version the editor works on: the draft, else the published one, else the team record's places while none is saved. */
+  const editing = (teamRoles: TeamRoles, items: readonly ContentItem<StoredTeamPage>[]) => {
     const version = items[0]?.version;
-    return version === undefined ? NO_STORED_TEAM_PAGE : editorVersion(version);
+    return version === undefined ? unsavedTeamPage(teamRoles) : editorVersion(version);
   };
 
   return {
@@ -294,7 +298,7 @@ export function teamPageEditor(
       const [items, teamRoles] = await Promise.all([editor.list(), roles()]);
       if (items === null) return null;
       const version = items[0]?.version ?? null;
-      return { status: version === null ? null : statusOf(version), content: contentOf(teamRoles, editing(items)), roles: teamRoles, base };
+      return { status: version === null ? null : statusOf(version), content: contentOf(teamRoles, editing(teamRoles, items)), roles: teamRoles, base };
     },
 
     async save(step, sent, advisors) {
@@ -302,7 +306,7 @@ export function teamPageEditor(
       const content = parseTeamPageContent(sent, photos.owns);
       if (content === null) return refused(NOT_A_LAYER);
       const [teamRoles, items, advisorItems] = await Promise.all([roles(), store.layer.list(), store.advisors()]);
-      const current = editing(items);
+      const current = editing(teamRoles, items);
       const refusal = layoutRefusal(teamRoles, base, content, layoutOf(teamRoles, current));
       if (refusal !== null) return refused(refusal);
       const writes = advisorWritesOf(advisorItems, step, advisors);
@@ -312,7 +316,7 @@ export function teamPageEditor(
       const before = photosInUse(items, advisorItems);
       // A page seat whose team seat was deleted leaves the layout here (ADR 0019 Decision 4).
       const kept = { ...adopted.value.content, layout: withoutGoneSeats(adopted.value.content.layout, teamRoles) };
-      const version = afterStep(items[0]?.version ?? null, savedTeamPage(current, kept), step);
+      const version = afterStep(items[0]?.version ?? null, savedTeamPage(kept), step);
       // A Team page upload the stored versions did not show must still be
       // stored, and young enough that the daily sweep cannot delete it
       // while this save is under way (`TeamPagePhotos.gone`).
@@ -329,9 +333,9 @@ export function teamPageEditor(
       const [advisors, teamRoles] = await Promise.all([store.advisors(), roles()]);
       const before = photosInUse(await store.layer.list(), advisors);
       const result = await editor.save(await documentId(), "save-draft", async (current) => {
-        const stored = current ?? NO_STORED_TEAM_PAGE;
+        const stored = current ?? unsavedTeamPage(teamRoles);
         // The stored group list and each department's group stay (issue #856).
-        return written(savedTeamPage(stored, { layout: teamRecordLayout(teamRoles, layoutOf(teamRoles, stored)), text: textOf(stored.layer) }));
+        return written(savedTeamPage({ layout: teamRecordLayout(teamRoles, layoutOf(teamRoles, stored)), text: stored.layer }));
       });
       if (!result.ok) return result;
       await photos.drop(photosNoLongerUsed(before, photosInUse(await store.layer.list(), advisors)));

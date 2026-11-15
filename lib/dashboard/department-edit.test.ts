@@ -22,8 +22,8 @@ import { membershipsOf, type OrgChart, type TeamActor } from "./team";
 
 const org: OrgChart = {
   departments: [
-    { id: 1, name: "Aerodynamics", code: "AE", kind: "technical" },
-    { id: 2, name: "Structures", code: "ST", kind: "technical" },
+    { id: 1, name: "Aerodynamics", code: "AE" },
+    { id: 2, name: "Structures", code: "ST" },
   ],
   divisions: [
     { id: 1, name: "Mission Analysis Division", departmentId: 1, code: "MA" },
@@ -181,7 +181,7 @@ test("Close department sends people only to an open unit outside it where they h
   assert.deepEqual(closing([...allToDesign, allToDesign[0]!]), { ok: false, error: "Someone is listed twice." });
   assert.deepEqual(closing([...allToDesign, { personId: 30, to: DM, role: null }]), { ok: false, error: "Only people in this department move when it closes." });
   assert.deepEqual(closing(allToDesign, { 2: 1 }), { ok: false, error: "1 person is waiting for their NDA in Optimization and Analysis. Confirm or cancel them first." });
-  const empty: OrgChart = { ...org, departments: [...org.departments, { id: 3, name: "Recovery", code: "RC", kind: "technical" }] };
+  const empty: OrgChart = { ...org, departments: [...org.departments, { id: 3, name: "Recovery", code: "RC" }] };
   assert.deepEqual(planDepartmentClose({ actor: fullAccess, org: empty, departmentId: 3, close: { people: [] }, people: [], waiting: {} }), { ok: true, value: { divisions: [], moves: [] } }, "a department with nobody in it closes at once");
 });
 

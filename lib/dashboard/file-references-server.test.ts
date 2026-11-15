@@ -22,7 +22,7 @@ import {
 } from "@/db/schema";
 import { advisorRowsOf } from "@/lib/about/advisors";
 import { NO_TEAM_LAYER } from "@/lib/about/team-layer";
-import { snapshot, type TeamLayout } from "@/lib/about/team-layout";
+import { firstLayout, type TeamLayout } from "@/lib/about/team-layout";
 import type { PersonPhoto } from "@/lib/about/types";
 import { CHANGED_SINCE_READ } from "@/lib/content/editor";
 import { versionRows } from "@/lib/content/versioned";
@@ -77,6 +77,12 @@ async function memberWithPicture(): Promise<void> {
   await changeRows(members, { memberId: MEMBER }, { picture: publicUrlOf(MEMBER_FILE) });
 }
 
+/** A stored Team page version whose layer names `pathname` as its group photo, with the team record's layout. */
+async function versionShowing(version: "published" | "draft", pathname: string) {
+  const groupPhoto = { src: publicUrlOf(pathname) as PersonPhoto, alt: "" };
+  return { version, layer: { ...NO_TEAM_LAYER, groupPhoto }, layout: firstLayout(teamRolesOf(await queryTeamSnapshot(testDb))) };
+}
+
 // Which rows name a file -------------------------------------------------------
 
 test("the reference read finds a file named in each column that may hold one, and no other", async () => {
@@ -84,7 +90,7 @@ test("the reference read finds a file named in each column that may hold one, an
   const named = (column: string) => `photos/${column}.jpg`;
   await changeRows(members, { memberId: MEMBER }, { picture: publicUrlOf(named("member")) });
   await addRows(alumniEntries, [{ kind: "advisor", recordName: "Ada", advisorRole: "Advisor", advisorFrom: 2022, advisorTo: 2023, photo: publicUrlOf(named("alumni")) }]);
-  await addRows(teamPageLayerVersions, [{ version: "draft", layer: { ...NO_TEAM_LAYER, leader: { photo: publicUrlOf(named("layer")) } } }]);
+  await addRows(teamPageLayerVersions, [await versionShowing("draft", named("layer"))]);
   const [advisor] = await tableRows(teamPageAdvisorVersions);
   await changeRows(teamPageAdvisorVersions, { id: advisor.id }, { advisor: { ...(advisor.advisor as object), photo: publicUrlOf(named("advisor")) } });
   const [post] = await tableRows(outreachPostVersions);
@@ -146,8 +152,8 @@ test("End advising gives the Alumni entry a copy of the advisor's photo, and the
 test("a member replacing a picture an older Team page version still shows keeps the file", async () => {
   await seedFixture();
   await memberWithPicture();
-  // A layer saved before copies existed names the member's file itself.
-  await addRows(teamPageLayerVersions, [{ version: "published", layer: { ...NO_TEAM_LAYER, leader: { photo: publicUrlOf(MEMBER_FILE) } } }]);
+  // A version saved before copies existed names the member's file itself.
+  await addRows(teamPageLayerVersions, [await versionShowing("published", MEMBER_FILE)]);
   const member = await dataAs("member");
   assert.ok((await member.setPhoto(photoUpload())).ok);
   assert.deepEqual(await filesWritten("delete-public"), [], "the Team page still shows it");
@@ -156,7 +162,7 @@ test("a member replacing a picture an older Team page version still shows keeps 
 test("a photo only a stored Team page layout shows keeps its file, and the reference read finds it there (issue #850)", async () => {
   await seedFixture();
   await memberWithPicture();
-  const layout = snapshot(teamRolesOf(await queryTeamSnapshot(testDb)), NO_TEAM_LAYER).layout;
+  const layout = firstLayout(teamRolesOf(await queryTeamSnapshot(testDb)));
   const showing = (pathname: string): TeamLayout => ({ ...layout, leader: { ...layout.leader!, overrides: { photo: publicUrlOf(pathname) as PersonPhoto } } });
   await addRows(teamPageLayerVersions, [
     { version: "published", layer: NO_TEAM_LAYER, layout: showing(MEMBER_FILE) },
@@ -353,7 +359,7 @@ test("anonymization locks the person's row before its guard reads it, so a sign-
 test("anonymization keeps a photo another row still names", async () => {
   await seedFixture();
   const userId = await deletedMember();
-  await addRows(teamPageLayerVersions, [{ version: "published", layer: { ...NO_TEAM_LAYER, leader: { photo: publicUrlOf(MEMBER_FILE) } } }]);
+  await addRows(teamPageLayerVersions, [await versionShowing("published", MEMBER_FILE)]);
   const run = await anonymizeDeletedAccounts(new Date(), databaseAnonymizationStore);
   assert.ok(run.anonymized.includes(userId));
   assert.deepEqual(await filesWritten("delete-public"), [], "the Team page still shows it");

@@ -4,9 +4,10 @@ import { arcLayout } from "@/components/about/arc-layout";
 import { memoryContentStore } from "@/lib/content/memory";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { SEED_DATA, teamRolesOf } from "@/db/seed/cases";
+import { seededRecordLayout } from "@/db/seed/team-page";
 import { team } from "./team";
 import { ARC_LEADERS, NO_TEAM_LAYER, NO_UPLOADS, textOf } from "./team-layer";
-import { bindingFor, holdingOf, layoutPageOf, nextSeatId, resolveLayout, sameBinding, snapshot, type TeamLayout } from "./team-layout";
+import { bindingFor, holdingOf, layoutPageOf, nextSeatId, resolveLayout, sameBinding, type TeamLayout } from "./team-layout";
 import type { TeamRoles } from "./team-roles";
 import { arcVisualOrder, readingIndexOfGap } from "./arc-order";
 import {
@@ -48,7 +49,7 @@ import { importedAdvisors } from "./advisors-import";
 const roles = teamRolesOf(SEED_DATA);
 /** Photos that store nothing: no test here uploads one. */
 const NO_PHOTOS: TeamPagePhotos = { put: async () => "/team/stand-in.webp", owns: NO_UPLOADS, adopt: async (photo) => photo, drop: async () => {}, gone: async () => [] };
-const record = snapshot(roles, NO_TEAM_LAYER).layout;
+const record = seededRecordLayout(roles);
 const text = textOf(NO_TEAM_LAYER);
 const siteContent: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false };
 const pageOf = (layout: TeamLayout) => layoutPageOf(roles, layout, text, team);

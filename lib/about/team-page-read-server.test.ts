@@ -15,7 +15,7 @@ import { boardFlagOf, isTeamSeat, type RoleType } from "@/lib/dashboard/team";
 import { queryTeamSnapshot, teamRolesOf } from "@/lib/dashboard/team-snapshot";
 import { teamPageData } from "./team-data";
 import { NO_TEAM_LAYER, type TeamPageLayer } from "./team-layer";
-import { parseTeamLayout, snapshot, type TeamLayout } from "./team-layout";
+import { parseTeamLayout, firstLayout, type TeamLayout } from "./team-layout";
 import { teamBuildOf } from "./team-roles";
 import type { TeamPage } from "./types";
 
@@ -47,14 +47,14 @@ async function nameOf(memberId: number): Promise<string> {
   return [user.firstName, user.lastName].filter(Boolean).join(" ");
 }
 
-/** The page the published version draws with its stored layout set aside: the layout derived from its layer on the roles as they stand. */
-async function derivedPage(): Promise<TeamPage> {
-  const stored = (await tableRows(teamPageLayerVersions)).find((r) => r.version === "published")?.layout;
-  await changeRows(teamPageLayerVersions, { version: "published" }, { layout: null });
+/** The page a database with nothing saved draws, the team record's places on the roles as they stand: the stored versions set aside. */
+async function unsavedPage(): Promise<TeamPage> {
+  const stored = await tableRows(teamPageLayerVersions);
+  await testDb.delete(teamPageLayerVersions);
   try {
     return await teamPageData();
   } finally {
-    await changeRows(teamPageLayerVersions, { version: "published" }, { layout: stored });
+    await addRows(teamPageLayerVersions, stored);
   }
 }
 
@@ -80,7 +80,7 @@ test("adding, removing, moving or reordering a seat in the Team tree leaves the 
   // Added: a new department, and a new division under a department the page shows, led by a lead the page already shows.
   const shownLead = active.find((r) => r.type === "lead" && r.divisionId !== null && drawnLeads.includes(r.divisionId))!;
   assert.ok(shownLead, "the page shows a seeded division lead");
-  await addRows(departments, [{ name: "Payload", code: "PAY", startedAt: ROLE_DAY, kind: "technical" }]);
+  await addRows(departments, [{ name: "Payload", code: "PAY", startedAt: ROLE_DAY }]);
   await addRows(divisions, [{ name: "Wind Tunnel", code: "WTN", deptId: drawnHeads[0], startedAt: ROLE_DAY }]);
   const added = ((await tableRows(divisions)) as (DivisionRow & { name: string })[]).find((d) => d.name === "Wind Tunnel")!;
   await addRows(roles, [{ memberId: shownLead.memberId, deptId: added.deptId, divisionId: added.id, title: "Second lead", startedAt: ROLE_DAY, type: "lead" }]);
@@ -102,11 +102,11 @@ test("adding, removing, moving or reordering a seat in the Team tree leaves the 
   const [first, second] = await unflagged();
   assert.ok(first !== undefined && second !== undefined, "the Team tree holds two unflagged team-level seats");
   assert.deepEqual(seatsOf(await teamPageData()), seatsOf(before));
-  const derivedBefore = await derivedPage();
+  const unsavedBefore = await unsavedPage();
   await changeRows(roles, { id: second }, { startedAt: "2000-01-01" });
   const [nowFirst, nowSecond] = await unflagged();
   assert.deepEqual([nowFirst, nowSecond], [second, first], "the Team tree's own seat order reversed");
-  assert.notDeepEqual((await derivedPage()).orgChart.leaders, derivedBefore.orgChart.leaders, "without a stored layout the reorder moves the arc");
+  assert.notDeepEqual((await unsavedPage()).orgChart.leaders, unsavedBefore.orgChart.leaders, "with nothing saved the reorder moves the arc");
   const reordered = await teamPageData();
   assert.deepEqual(seatsOf(reordered), seatsOf(before));
   assert.deepEqual(reordered.coreMembers.members, before.coreMembers.members);
@@ -120,9 +120,8 @@ test("adding, removing, moving or reordering a seat in the Team tree leaves the 
   assert.deepEqual(seatsOf(after), seatsOf(before));
   assert.deepEqual(after.coreMembers.members, before.coreMembers.members);
 
-  // The same changes on a version with no layout: the layout its layer snapshots to on the changed team, which does follow them.
-  await changeRows(teamPageLayerVersions, { version: "published" }, { layout: null });
-  assert.notDeepEqual(seatsOf(await teamPageData()), seatsOf(before), "without a stored layout the page follows the Team tree");
+  // The same changes with nothing saved: the team record's places on the changed team, which do follow them.
+  assert.notDeepEqual(seatsOf(await unsavedPage()), seatsOf(before), "with nothing saved the page follows the Team tree");
 });
 
 test("a page seat whose bound seat has no holder, or whose team seat is gone, is not drawn on /about/the-team", async () => {
@@ -179,7 +178,7 @@ test("a section whose seats have no holder is drawn empty on /about/the-team, ne
   for (const head of heads) await changeRows(roles, { id: head.id }, { leavedAt: ROLE_DAY });
   const noHeads = await teamPageData();
   assert.deepEqual(noHeads.departments.groups, [], "the departments area is empty, not the hand-typed carousel");
-  // The layer puts some heads on the arc too: their places there go with their seats.
+  // The layout puts some heads on the arc too: their places there go with their seats.
   assert.deepEqual(noHeads.orgChart.leaders, before.orgChart.leaders.filter((l) => !headNames.includes(l.name)));
   assert.equal(noHeads.orgChart.leader, null);
 });
@@ -193,7 +192,7 @@ test("a save from the editor stores the layout it sends and the layer's text in 
   const opened = await teamPage.open();
   assert.ok(opened);
   const teamRoles = teamRolesOf(await queryTeamSnapshot(testDb));
-  assert.deepEqual(opened.content.layout, snapshot(teamRoles, NO_TEAM_LAYER).layout, "before any save, the layout the roles snapshot to");
+  assert.deepEqual(opened.content.layout, firstLayout(teamRoles), "before any save, the team record's places");
   const layout: TeamLayout = { ...opened.content.layout, arc: [...opened.content.layout.arc].reverse() };
   const saved = await teamPage.save("publish", { layout, text: { ...opened.content.text, intro: "Saved with its layout." } }, advisorRowsOf((await teamAdvisors.list()) ?? []));
   assert.ok(saved.ok, JSON.stringify(saved));

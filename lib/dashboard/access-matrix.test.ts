@@ -224,7 +224,7 @@ describe("grants are independent (issue #477)", () => {
 // or full access from a scope row.
 
 const ALIAS_ORG: OrgChart = {
-  departments: ORG.map((d) => ({ id: d.id, name: d.name, code: null, kind: "technical" as const })),
+  departments: ORG.map((d) => ({ id: d.id, name: d.name, code: null })),
   divisions: ORG.flatMap((d) => d.divisions.map((v) => ({ id: v.id, name: v.name, departmentId: d.id, code: null }))),
 };
 const VIEWER_ID = 100;

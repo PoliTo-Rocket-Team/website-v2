@@ -10,7 +10,7 @@ import { recordsOf, rosterOf, type TeamSnapshot } from "./team-snapshot";
 // starts are academic-year placeholders. With no stored day, nothing is shown.
 
 const org: OrgChart = {
-  departments: [{ id: 1, name: "Aerodynamics", kind: "technical" }],
+  departments: [{ id: 1, name: "Aerodynamics" }],
   divisions: [{ id: 10, name: "Mission Analysis Division", departmentId: 1 }],
 };
 

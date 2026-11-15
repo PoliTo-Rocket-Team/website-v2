@@ -17,8 +17,8 @@ import { membershipsOf, type OrgChart, type RoleSeat, type TeamActor, type TeamS
 
 const ORG: OrgChart = {
   departments: [
-    { id: 1, name: "Aerodynamics", kind: "technical" },
-    { id: 2, name: "Structures", kind: "technical" },
+    { id: 1, name: "Aerodynamics" },
+    { id: 2, name: "Structures" },
   ],
   divisions: [
     { id: 10, name: "Mission Analysis", departmentId: 1 },

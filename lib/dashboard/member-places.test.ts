@@ -8,7 +8,7 @@ import { membershipsOf, type OrgChart } from "./team";
 // its stored title, never shown an empty section.
 
 const org: OrgChart = {
-  departments: [{ id: 1, name: "Operations", kind: "operations", code: "OPS" }],
+  departments: [{ id: 1, name: "Operations", code: "OPS" }],
   divisions: [{ id: 1, name: "Mission Analysis Division", departmentId: 1, code: "MA" }],
 };
 

@@ -87,7 +87,7 @@ describe("full access follows the role on the database's hand-over writes", () =
     test(`${seat}: Change head`, async () => {
       const held = await seededWith(seat, HEAD_ROW);
       signInAs(TEAM_LEADER);
-      const saved = await teamActions.saveDepartment(STRUCTURES, { name: "Structures", code: "STR", kind: "technical", head: { to: MEMBER, outcome: "advisor" } });
+      const saved = await teamActions.saveDepartment(STRUCTURES, { name: "Structures", code: "STR", head: { to: MEMBER, outcome: "advisor" } });
       assert.equal(saved.ok, true);
       assert.deepEqual([await seatOf(MEMBER), await seatOf(EXTRA.head), await holders(seat)], [seat, null, held]);
     });

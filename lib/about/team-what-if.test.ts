@@ -5,7 +5,8 @@ import { groupLayout } from "@/components/about/group-layout";
 import { inDivisions, NO_MEMBERSHIPS, type Placement } from "@/lib/dashboard/team";
 import { arcVisualOrder } from "./arc-order";
 import { team } from "./team";
-import { SLIDE_MEMBERS, SLIDES, teamPageFromRoles, type TeamPerson, type TeamRoles } from "./team-roles";
+import { teamPageFromRoles } from "./team-layout";
+import { SLIDE_MEMBERS, SLIDES, type TeamPerson, type TeamRoles } from "./team-roles";
 import type { DepartmentGroup, DepartmentHead, DivisionAsHead, UpTo } from "./types";
 
 // The Team page's what-if layouts (issue #325): the counts boards 26b, 26d,
@@ -74,7 +75,7 @@ test("boards 26e and 26f: five groups each take their own grid in the carousel",
 
 test("the role build fills at most five carousel slides of up to ten heads", () => {
   const org: TeamRoles["org"] = {
-    departments: range(52).map((id) => ({ id, name: `Department ${id}`, kind: "technical" as const })),
+    departments: range(52).map((id) => ({ id, name: `Department ${id}` })),
     divisions: range(52).map((id) => ({ id: 1000 + id, name: `Division ${id}`, departmentId: id })),
   };
   const person = (id: number, name: string, placement: Placement): TeamPerson => ({

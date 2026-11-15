@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SEED_DATA, teamRolesOf } from "@/db/seed/cases";
+import { seededRecordLayout } from "@/db/seed/team-page";
 import { NO_TEAM_LAYER, textOf } from "./team-layer";
-import { parseTeamLayout, snapshot, type TeamLayout } from "./team-layout";
+import { parseTeamLayout, type TeamLayout } from "./team-layout";
 import { team } from "./team";
 import { CHOOSE_A_GROUP, headFieldErrors, headFieldsOf, layoutWithHead, newDepartmentFields, pickedHead } from "./team-page-add";
 import { editedTeamPage } from "./team-page-edit";
@@ -14,7 +15,7 @@ import { blocksIn, groupNameError, withGroupAdded, withGroupMoved, withGroupRena
 // must be given one. The team is the seeded one; the layout is its snapshot.
 
 const roles = teamRolesOf(SEED_DATA);
-const layout = snapshot(roles, NO_TEAM_LAYER).layout;
+const layout = seededRecordLayout(roles);
 const [technical, operations] = layout.groups;
 const names = (of: TeamLayout) => of.groups.map((g) => g.name);
 const headings = (of: TeamLayout) => [...new Set(editedTeamPage(roles, team, { layout: of, text: textOf(NO_TEAM_LAYER) }).page.departments.groups.map((g) => g.name))];

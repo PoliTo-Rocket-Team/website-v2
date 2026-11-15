@@ -30,8 +30,8 @@ import { plainSeatStanding, type ViewerStanding } from "./viewer";
 
 const org: OrgChart = {
   departments: [
-    { id: 1, name: "Aerodynamics", code: "AE", kind: "technical" },
-    { id: 2, name: "Structures", code: "ST", kind: "technical" },
+    { id: 1, name: "Aerodynamics", code: "AE" },
+    { id: 2, name: "Structures", code: "ST" },
   ],
   divisions: [
     { id: 1, name: "Mission Analysis Division", departmentId: 1, code: "MA" },

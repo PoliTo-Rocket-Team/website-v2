@@ -1,11 +1,11 @@
-import { isTeamPageLayer, isTeamPageText, NO_TEAM_LAYER, textOf, withText, type OwnsUpload, type TeamPageLayer, type TeamPageText } from "./team-layer";
+import { isTeamPageLayer, isTeamPageText, NO_TEAM_LAYER, textOf, type OwnsUpload, type TeamPageLayer, type TeamPageText } from "./team-layer";
 import { mapVersions, versionRows, type Versioned } from "@/lib/content/versioned";
 import {
   bindsTeamSeat,
+  firstLayout,
   layoutPageOf,
   parseStoredLayout,
   parseTeamLayout,
-  snapshot,
   teamLayoutOf,
   withTeamSeatMoved,
   type StoredLayout,
@@ -17,35 +17,24 @@ import type { TeamPage } from "./types";
 // One stored version of the Team page (issue #850, ADR 0019): the visual
 // layer, which keeps the intro text, the figures and the group photo, and the
 // layout of page seats the page draws (./team-layout.ts), kept side by side
-// in one row of `team_page_layer_versions`. A row written before the layout
-// existed holds none until the post-migration step fills it
-// (./team-layout-fill.ts); meanwhile it reads the layout its layer snapshots
-// to, so the order of deploy and migration does not matter. The editor edits
-// the layout and the layer's text (issue #851): a save stores the layout it
-// sends and writes the layer's intro text, figures and group photo, leaving
-// the layer's people fields as they were until follow-up #855 drops them
-// (ADR 0019 Decision 8). A layout stored before department groups keeps that
-// form until the editor saves it: only the team record tells which
-// department each of its blocks shows (`teamLayoutOf`, issue #856).
+// in one row of `team_page_layer_versions`. Every row holds a layout since
+// issue #855, which made the column required. The editor edits the layout
+// and the layer's text (issue #851): a save stores both as it sends them. A
+// layout stored before department groups keeps that form until the editor
+// saves it: only the team record tells which department each of its blocks
+// shows (`teamLayoutOf`, issue #856).
 
-/** A stored version: the layer, and its layout, or none on a row the layout's first fill has not reached. */
-export type StoredTeamPage = { readonly layer: TeamPageLayer; readonly layout: StoredLayout | null };
+/** A stored version: the layer, and its layout. */
+export type StoredTeamPage = { readonly layer: TeamPageLayer; readonly layout: StoredLayout };
 
-/** What the page draws before anything was saved: no layer edit, and the layout that snapshots to. */
-export const NO_STORED_TEAM_PAGE: StoredTeamPage = { layer: NO_TEAM_LAYER, layout: null };
-
-/** The version the seed and the first fill store: `layer`, and the layout it snapshots to on `roles` (ADR 0019 Decision 7). */
-export function storedTeamPage(roles: TeamRoles, layer: TeamPageLayer): StoredTeamPage & { readonly layout: TeamLayout } {
-  return { layer, layout: snapshot(roles, layer).layout };
+/** What the page draws before anything was saved: no layer edit, and the team record's places (`firstLayout`). */
+export function unsavedTeamPage(roles: TeamRoles): StoredTeamPage {
+  return { layer: NO_TEAM_LAYER, layout: firstLayout(roles) };
 }
 
-/**
- * The layout `stored` draws: its own, grouped on `roles` (`teamLayoutOf`),
- * else the one its layer snapshots to on `roles` (ADR 0019 Decision 7,
- * transitional read).
- */
+/** The layout `stored` draws: its own, grouped on `roles` (`teamLayoutOf`). */
 export function layoutOf(roles: TeamRoles, stored: StoredTeamPage): TeamLayout {
-  return stored.layout === null ? snapshot(roles, stored.layer).layout : teamLayoutOf(stored.layout, roles, stored.layer);
+  return teamLayoutOf(stored.layout, roles);
 }
 
 /**
@@ -60,13 +49,13 @@ export function storedTeamPageOf(roles: TeamRoles, stored: StoredTeamPage, base:
 }
 
 /**
- * A row as storage holds it, read back: null when its layer is not one this
- * code could have written, so the row is skipped. A layout this code could
- * not have written reads as none, so the row draws the layout its layer
- * snapshots to.
+ * A row as storage holds it, read back: null when its layer or its layout is
+ * not one this code could have written, so the row is skipped.
  */
 export function storedTeamPageOfRow(row: { readonly layer: unknown; readonly layout: unknown }, owns: OwnsUpload): StoredTeamPage | null {
-  return isTeamPageLayer(row.layer, owns) ? { layer: row.layer, layout: parseStoredLayout(row.layout) } : null;
+  if (!isTeamPageLayer(row.layer, owns)) return null;
+  const layout = parseStoredLayout(row.layout);
+  return layout === null ? null : { layer: textOf(row.layer), layout };
 }
 
 // A hand-over in the Team tree (issue #852, ADR 0019 Decision 3): a
@@ -78,18 +67,16 @@ export function storedTeamPageOfRow(row: { readonly layer: unknown; readonly lay
 
 /** Whether a stored layout of any version binds a page seat to team-level seat row `roleId`: only then does its hand-over write to the page. */
 export function bindsStoredTeamSeat(version: Versioned<StoredTeamPage>, roleId: number): boolean {
-  return versionRows(version).some(({ content }) => content.layout !== null && bindsTeamSeat(content.layout, roleId));
+  return versionRows(version).some(({ content }) => bindsTeamSeat(content.layout, roleId));
 }
 
 /**
  * The versions after team-level seat row `from` is handed over to the
  * successor's row `to`: in each stored layout every page seat bound to `from`
- * is bound to `to`, with its place and overrides. A version with no stored
- * layout yet keeps none: it draws the layout its layer snapshots to on the
- * team record after the hand-over (`layoutOf`). The layer is unchanged.
+ * is bound to `to`, with its place and overrides. The layer is unchanged.
  */
 export function teamSeatHandedOver(version: Versioned<StoredTeamPage>, from: number, to: number): Versioned<StoredTeamPage> {
-  return mapVersions(version, (stored) => (stored.layout === null ? stored : { ...stored, layout: withTeamSeatMoved(stored.layout, from, to) }));
+  return mapVersions(version, (stored) => ({ ...stored, layout: withTeamSeatMoved(stored.layout, from, to) }));
 }
 
 /** What the Team page editor edits and saves (issue #851): the layout of page seats, and the layer's intro text, figures and group photo. */
@@ -100,9 +87,9 @@ export function contentOf(roles: TeamRoles, stored: StoredTeamPage): TeamPageCon
   return { layout: layoutOf(roles, stored), text: textOf(stored.layer) };
 }
 
-/** The version a save of `content` stores over `stored`: its layout, and the layer with its text; the layer's people fields stay as they were. */
-export function savedTeamPage(stored: StoredTeamPage, content: TeamPageContent): StoredTeamPage {
-  return { layer: withText(stored.layer, content.text), layout: content.layout };
+/** The version a save of `content` stores: its layout, and its text as the layer. */
+export function savedTeamPage(content: TeamPageContent): StoredTeamPage {
+  return { layer: textOf(content.text), layout: content.layout };
 }
 
 /** Content as the browser sends it, read back: null for anything this code could not have written. */

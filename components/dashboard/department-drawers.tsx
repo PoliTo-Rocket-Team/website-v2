@@ -77,7 +77,7 @@ export type DepartmentDrawerTarget =
 /** The chart the edit view shows, as the department rules read it. */
 function orgOf(structure: TeamStructure): OrgChart {
   return {
-    departments: structure.departments.map((d) => ({ id: d.id, name: d.name, code: d.code, kind: d.kind })),
+    departments: structure.departments.map((d) => ({ id: d.id, name: d.name, code: d.code })),
     divisions: structure.departments.flatMap((d) => d.divisions.map((v) => ({ id: v.id, name: v.name, departmentId: d.id, code: v.code }))),
   };
 }
