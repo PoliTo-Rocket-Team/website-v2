@@ -110,10 +110,6 @@ export const contentVersionEnum = pgEnum("content_version", [
 
 export const partnerTierEnum = pgEnum("partner_tier", ["main", "media"]);
 
-// Which slide of the Team page's departments carousel a department's head
-// sits on: "Technical Departments" or "Operations" (issue #325, ADR 0015).
-export const departmentKindEnum = pgEnum("department_kind", ["technical", "operations"]);
-
 export const partnerLogoKindEnum = pgEnum("partner_logo_kind", [
   "wordmark",
   "mark",
@@ -205,7 +201,6 @@ export const departments = pgTable("departments", {
     .notNull(),
   closedAt: date("closed_at", { mode: "string" }),
   code: text("code"),
-  kind: departmentKindEnum("kind").default("technical").notNull(),
 });
 
 export const divisions = pgTable("divisions", {
@@ -1186,20 +1181,17 @@ export const outreachSummitVersions = pgTable(
   }),
 );
 
-// The Team page's visual layer (issue #283, ADR 0015): one document, kept as
-// the published version /about/the-team lays on the roles build and an
-// optional draft, one row each. It holds what an editor changed on the page
-// (lib/about/team-layer.ts), never a role, division, department or access.
-// Each version also keeps the page's layout of page seats (issue #850, ADR
-// 0019, lib/about/team-layout.ts). It is null on a row written before the
-// layout existed, until the post-migration step fills it
-// (lib/about/team-layout-fill.ts); the page reads such a row's layout from
-// its layer meanwhile (lib/about/team-page-stored.ts).
+// The Team page (issue #283, ADR 0015): one document, kept as the published
+// version /about/the-team draws and an optional draft, one row each. Each
+// version keeps the page's layout of page seats (issue #850, ADR 0019,
+// lib/about/team-layout.ts), required since issue #855, and its visual layer:
+// the intro text, the figures and the group photo (lib/about/team-layer.ts).
+// Neither is a role, division, department or access.
 export const teamPageLayerVersions = pgTable("team_page_layer_versions", {
   id: serial("id").primaryKey(),
   version: contentVersionEnum("version").notNull().unique("team_page_layer_versions_version_unique"),
   layer: jsonb("layer").notNull(),
-  layout: jsonb("layout"),
+  layout: jsonb("layout").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
     .defaultNow()
     .notNull(),

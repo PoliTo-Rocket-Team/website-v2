@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { team } from "../about/team";
-import type { TeamBuild } from "../about/team-layer";
+import type { TeamBuild } from "../about/team-roles";
 import { isTeamSeat } from "../dashboard/team";
 import { isActive, SEED_DATA, teamPageOfSeed, teamRolesOf, type SeedData } from "../../db/seed/cases";
 import { CHIEF_ENGINEER, PROJECT_MANAGER, SECOND_SEAT_TITLE } from "../../db/seed/people";

@@ -47,14 +47,14 @@ const ROUTES: readonly { readonly name: string; readonly run: () => Promise<{ ok
     name: "a head set at create (New department)",
     run: () => {
       signInAs(TEAM_LEADER);
-      return teamActions.createDepartment({ name: "Propulsion", code: "PRP", kind: "technical", heads: [MEMBER] });
+      return teamActions.createDepartment({ name: "Propulsion", code: "PRP", heads: [MEMBER] });
     },
   },
   {
     name: "a head set at save (Change head)",
     run: () => {
       signInAs(TEAM_LEADER);
-      return teamActions.saveDepartment(STRUCTURES, { name: "Structures", code: "STR", kind: "technical", head: { to: MEMBER, outcome: "advisor" } });
+      return teamActions.saveDepartment(STRUCTURES, { name: "Structures", code: "STR", head: { to: MEMBER, outcome: "advisor" } });
     },
   },
   {
@@ -114,8 +114,8 @@ describe("every route that makes someone a lead, a head or the team leader asks 
 describe("a role change refused asks for nothing", () => {
   const REFUSED: readonly { readonly name: string; readonly run: () => Promise<{ ok: boolean }> }[] = [
     { name: "Edit division by a member", run: () => (signInAs("person-dm"), teamActions.saveDivision(DM, { name: "Design & Manufacturing", code: "DMA", members: [], emails: [], newLeads: [MEMBER], oldLeads: [] })) },
-    { name: "New department naming two heads", run: () => (signInAs(TEAM_LEADER), teamActions.createDepartment({ name: "Propulsion", code: "PRP", kind: "technical", heads: [MEMBER, EXTRA.mover] })) },
-    { name: "Change head by a head", run: () => (signInAs("head-str"), teamActions.saveDepartment(STRUCTURES, { name: "Structures", code: "STR", kind: "technical", head: { to: MEMBER, outcome: "advisor" } })) },
+    { name: "New department naming two heads", run: () => (signInAs(TEAM_LEADER), teamActions.createDepartment({ name: "Propulsion", code: "PRP", heads: [MEMBER, EXTRA.mover] })) },
+    { name: "Change head by a head", run: () => (signInAs("head-str"), teamActions.saveDepartment(STRUCTURES, { name: "Structures", code: "STR", head: { to: MEMBER, outcome: "advisor" } })) },
     { name: "the team leader hand-over by someone else", run: () => (signInAs("head-str"), teamActions.handOverTeamLeader({ to: MEMBER, outcome: "advisor" })) },
     { name: "a hand-over confirmed by someone who does not answer it", run: () => (signInAs("person-dm"), actions.answerHandOver(IDS.handOver("DM"), "confirm")) },
   ];

@@ -652,10 +652,10 @@ const ACTION_CASES: readonly ActionCase[] = [
   { action: "team-actions.createDivision", run: () => teamActions.createDivision(IDS.department(DM), { name: "Avionics", code: "AVI", ...DIVISION }), may: inStructures, control: by("team leader") },
   { action: "team-actions.saveDivision", run: () => teamActions.saveDivision(EXTRA.emptyDivision, { name: "Avionics", code: "AVI", ...DIVISION }), may: inStructures, control: by("team leader") },
   { action: "team-actions.closeDivision", run: () => teamActions.closeDivision(EXTRA.emptyDivision), may: inStructures, control: by("team leader") },
-  { action: "team-actions.createDepartment", run: () => teamActions.createDepartment({ name: "Avionics", code: "AVI", kind: "technical", heads: [EXTRA.mover] }), may: fullAccess, control: by("team leader") },
+  { action: "team-actions.createDepartment", run: () => teamActions.createDepartment({ name: "Avionics", code: "AVI", heads: [EXTRA.mover] }), may: fullAccess, control: by("team leader") },
   {
     action: "team-actions.saveDepartment",
-    run: () => teamActions.saveDepartment(EXTRA.emptyDepartment, { name: "Spares", code: "SPR", kind: "technical", head: null }),
+    run: () => teamActions.saveDepartment(EXTRA.emptyDepartment, { name: "Spares", code: "SPR", head: null }),
     may: fullAccess,
     control: by("team leader"),
   },
@@ -2400,7 +2400,7 @@ describe("a whole-team grant acts as full access within its own area, and the Te
   });
 
   test("a new department is refused for every grant row, and writes nothing", async () => {
-    const run = () => teamActions.createDepartment({ name: "Avionics", code: "AVI", kind: "technical", heads: [EXTRA.mover] });
+    const run = () => teamActions.createDepartment({ name: "Avionics", code: "AVI", heads: [EXTRA.mover] });
     const control = await attempt(accountOf("team leader").userId, run);
     assert.ok(!isRefusal(control.answer), `the team leader: ${JSON.stringify(control.answer)}`);
     for (const { name } of GRANT_ROWS) {
@@ -3037,7 +3037,7 @@ describe("a renamed role title changes no access, no seat and no headship (issue
       await seedFixture();
       await changeRows(roles, { id: 6_000 }, { title: headTitle });
       signInAs(accountOf("team leader").userId);
-      const answer = await teamActions.saveDepartment(IDS.department(DM), { name: "Frames", code: "FRM", kind: "technical", head: null });
+      const answer = await teamActions.saveDepartment(IDS.department(DM), { name: "Frames", code: "FRM", head: null });
       assert.deepEqual(answer, { ok: true });
       return (await tableRows(roles)).find((r) => r.id === 6_000)?.title;
     };
@@ -3048,7 +3048,7 @@ describe("a renamed role title changes no access, no seat and no headship (issue
   test("a new head row gets the default title", async () => {
     await seedFixture();
     signInAs(accountOf("team leader").userId);
-    const created = await teamActions.createDepartment({ name: "Avionics", code: "AVI", kind: "technical", heads: [EXTRA.mover] });
+    const created = await teamActions.createDepartment({ name: "Avionics", code: "AVI", heads: [EXTRA.mover] });
     assert.ok(created.ok, JSON.stringify(created));
     const row = (await tableRows(roles)).find((r) => r.memberId === EXTRA.mover && r.type === "head");
     assert.equal(row?.title, "Head of Avionics");
@@ -3057,7 +3057,7 @@ describe("a renamed role title changes no access, no seat and no headship (issue
   test("another department's head may head a new department too, and keeps the head seat they hold (issue #837)", async () => {
     await seedFixture();
     signInAs(accountOf("team leader").userId);
-    const created = await teamActions.createDepartment({ name: "Avionics", code: "AVI", kind: "technical", heads: [EXTRA.head] });
+    const created = await teamActions.createDepartment({ name: "Avionics", code: "AVI", heads: [EXTRA.head] });
     assert.ok(created.ok, JSON.stringify(created));
     const heads = (await tableRows(roles)).filter((r) => r.memberId === EXTRA.head && r.type === "head" && r.leavedAt == null);
     assert.deepEqual(heads.map((r) => r.deptId).sort(), [IDS.department(DM), created.ok ? created.value : null].sort(), "Structures' head row stays beside the new one");

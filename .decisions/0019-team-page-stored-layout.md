@@ -86,6 +86,15 @@ This amends Decision 3 ("A page seat shows whoever holds its bound seat now"): a
 - **The snapshot.** The snapshot of Decision 7 gives a co-held seat one page seat, whichever `roles` rows its holders sit on, and that page seat draws every holder. A role, name, photo or LinkedIn edit on a further holder's own spot has no place on that page seat, so the snapshot names it among the parts of the layer it does not carry.
 - **The stored form does not change.** A page seat still holds one binding, so no stored layout is rewritten, and every layout stored before this amendment parses as before. A place whose seat has one holder draws as before; a place whose seat now has several draws every holder as above. Core members (Decision 5) leave out every holder a drawn place shows.
 
+## Amendment — 2026-11-15: the cleanup release
+
+Follow-up [#855](https://github.com/PoliTo-Rocket-Team/website-v2/issues/855) is the later release Decision 8 names. Its precondition held: a read-only check on production found every stored version with a layout (the 2026-11-14 comment on #855). This amends Decisions 6, 7 and 8 and the binding constraints that name the snapshot function.
+
+- **No first fill, no transitional read.** The post-migration step that filled a layout is gone, and so is the read that drew a version with no layout from its layer. Migration `0088_team_page_layer_cleanup` removes any version still without a layout and makes the layout required. Every stored version draws its own layout.
+- **The layer keeps only its text.** The leader edit, spots, added leaders, department edits and added departments leave the layer type and every stored layer. The layer holds the intro text, the figures and the group photo, as Decision 8 kept them.
+- **No department kind.** The `departments.kind` column and its `department_kind` type are dropped, and no code reads a department's kind. A layout stored before department groups still names a kind per block, and still reads as the two groups Technical Departments and Operations (`teamLayoutOf`); it finds each block's department from the block's own lead rows, name and head binding, since the layer edits it once read are gone.
+- **The team record's places.** What was the snapshot function now builds a layout from the team record alone, with no layer: `recordLayout` in `lib/about/team-layout.ts`. Three uses call it: Reset to team with its edit count, under the stored group list (Decision 7, unchanged); a database with nothing saved, under one group, "Departments", every department's leads under its head; and the seed, under today's two groups. The binding constraints that allow the snapshot function allow `recordLayout` for these uses only.
+
 ## Records
 
 New terms in `.glossary/TERMS.md`: page seat, seat binding, department group. No vacant or unbound seat term.

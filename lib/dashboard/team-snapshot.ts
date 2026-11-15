@@ -31,10 +31,8 @@ import {
 
 // The team snapshot of the Team pages (issue #143): every role, the open org
 // chart and every scope, read on any Postgres connection, and what the pages
-// read from it. The app reads it cached through ./team-database.ts; the
-// post-migration step that fills the Team page layout (issue #850,
-// lib/about/team-layout-fill.ts) reads it here on the migration's own
-// connection, outside Next.
+// read from it. The app reads it cached through ./team-database.ts; tests
+// read it here on their own connection, outside Next.
 
 type RoleRow = {
   id: number;
@@ -96,7 +94,7 @@ export type SnapshotDb = Pick<PgDatabase<PgQueryResultHKT>, "select">;
 export async function queryTeamSnapshot(db: SnapshotDb): Promise<TeamSnapshot> {
   const [departmentRows, divisionRows, roleRows, personRows, scopeRows] = await Promise.all([
     db
-      .select({ id: departments.id, name: departments.name, code: departments.code, kind: departments.kind })
+      .select({ id: departments.id, name: departments.name, code: departments.code })
       .from(departments)
       .where(isNull(departments.closedAt))
       .orderBy(asc(departments.id)),
@@ -155,7 +153,7 @@ export async function queryTeamSnapshot(db: SnapshotDb): Promise<TeamSnapshot> {
   ]);
   return {
     org: {
-      departments: departmentRows.map((d) => ({ id: d.id, name: d.name, code: d.code?.trim() || null, kind: d.kind })),
+      departments: departmentRows.map((d) => ({ id: d.id, name: d.name, code: d.code?.trim() || null })),
       divisions: divisionRows.flatMap((d) =>
         d.dept_id === null ? [] : [{ id: d.id, name: d.name, departmentId: d.dept_id, code: d.code?.trim() || null }],
       ),

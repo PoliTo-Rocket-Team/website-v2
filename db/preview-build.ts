@@ -71,7 +71,7 @@ async function recordedMigrations(client: Sql): Promise<ReadonlySet<string>> {
 
 const productionSteps: ProductionBuildSteps = {
   exclusive: (database, work) => holdingLock(database.connectionString, PRODUCTION_MIGRATION_LOCK, work),
-  // The migrations and the post-migration steps (./migrate-database.ts), still
+  // The migrations (./migrate-database.ts), still
   // inside the lock, with drizzle's record read either side so the log can
   // name what was applied.
   async migrate(database) {
@@ -89,7 +89,7 @@ const productionSteps: ProductionBuildSteps = {
 const previewSteps: PreviewBuildSteps = {
   guard: async (connectionString) => guardSeedTarget(connectionString, { VERCEL_ENV: process.env.VERCEL_ENV }),
   exclusive: (target, work) => holdingLock(target.connectionString, PREVIEW_SEED_LOCK, work),
-  // The migrations and the post-migration steps (./migrate-database.ts), still inside the lock.
+  // The migrations (./migrate-database.ts), still inside the lock.
   async migrate(target) {
     const client = postgres(target.connectionString, { max: 1 });
     try {

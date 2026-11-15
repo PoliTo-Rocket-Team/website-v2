@@ -805,8 +805,8 @@ test("0075 succeeds and leaves every member as it was on a database whose member
 });
 
 // The Team page's own layout (issue #850, ADR 0019): one nullable column
-// beside each stored layer version. The post-migration step that fills it is
-// TypeScript (lib/about/team-layout-fill.ts), so the migration changes no row.
+// beside each stored layer version. A post-migration step in TypeScript
+// filled it until 0088 below made it required, so the migration changes no row.
 const TEAM_PAGE_LAYOUT_TAG = "0076_team_page_layout";
 
 test("0076_team_page_layout.sql only adds the nullable layout column, applies again and leaves every stored layer version as it was", async () => {
@@ -823,6 +823,51 @@ test("0076_team_page_layout.sql only adds the nullable layout column, applies ag
     `select data_type, is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'team_page_layer_versions' and column_name = 'layout'`,
   );
   assert.deepEqual(column.rows, [{ data_type: "jsonb", is_nullable: "YES" }]);
+});
+
+// The cleanup half of 0076 (issue #855): not additive, by design. No code
+// reads a row with no layout, the layer's people fields or `departments.kind`
+// any more, so it removes a row with no layout, makes the layout required,
+// strips the people fields from each stored layer, and drops the column and
+// its type. Each statement is pinned here, and any further drop or rewrite
+// fails.
+const TEAM_PAGE_CLEANUP_TAG = "0088_team_page_layer_cleanup";
+const PEOPLE_FIELDS = `"layer" - 'leader' - 'spots' - 'addedLeaders' - 'departments' - 'addedDepartments'`;
+
+test("0088_team_page_layer_cleanup.sql removes rows with no layout, requires the layout, strips the layer's people fields and drops the department kind, and nothing else", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${TEAM_PAGE_CLEANUP_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), [
+    `DELETE FROM "team_page_layer_versions" WHERE "layout" IS NULL`,
+    `UPDATE "team_page_layer_versions" SET "layer" = ${PEOPLE_FIELDS} WHERE "layer" <> ${PEOPLE_FIELDS}`,
+    `ALTER TABLE "departments" DROP COLUMN IF EXISTS "kind"`,
+    `DROP TYPE IF EXISTS "public"."department_kind"`,
+  ]);
+  assert.match(sql, /ALTER TABLE "team_page_layer_versions" ALTER COLUMN "layout" SET NOT NULL;/);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/855/);
+});
+
+test("0088 succeeds on a database holding a version with no layout: it removes that row, keeps the others with their layer's text only, and applies again", async () => {
+  const { db, apply } = await databaseBefore(TEAM_PAGE_CLEANUP_TAG);
+  const people = `"leader": {}, "spots": {"head:4:0": {"role": "Head"}}, "addedLeaders": [], "departments": {}, "addedDepartments": []`;
+  await db.exec(`
+    insert into departments (name, kind) values ('Operations', 'operations');
+    insert into team_page_layer_versions (version, layer, layout) values
+      ('published', '{${people}, "intro": "Kept", "groupPhoto": null}', '{"leader": null, "arc": [], "groups": [{"id": 1, "name": "Departments"}], "departments": []}'),
+      ('draft', '{${people}, "intro": "Unfilled", "groupPhoto": null}', null);
+  `);
+  await apply();
+  await apply();
+  assert.deepEqual((await db.query(`select version, layer, layout from team_page_layer_versions order by id`)).rows, [
+    { version: "published", layer: { intro: "Kept", groupPhoto: null }, layout: { leader: null, arc: [], groups: [{ id: 1, name: "Departments" }], departments: [] } },
+  ]);
+  const layout = await db.query(
+    `select is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'team_page_layer_versions' and column_name = 'layout'`,
+  );
+  assert.deepEqual(layout.rows, [{ is_nullable: "NO" }]);
+  const kind = await db.query(`select column_name from information_schema.columns where table_schema = 'public' and table_name = 'departments' and column_name = 'kind'`);
+  assert.deepEqual(kind.rows, [], "departments has no kind column");
+  assert.deepEqual((await db.query(`select typname from pg_type where typname = 'department_kind'`)).rows, [], "the department_kind type is gone");
+  assert.deepEqual((await db.query(`select name from departments`)).rows, [{ name: "Operations" }], "every department stays");
 });
 
 // The sign-in sync takes over only a free, open row (issue #910): the

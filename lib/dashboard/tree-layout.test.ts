@@ -8,8 +8,8 @@ const on = (node: TreeNode, personId: number) => peopleOn(node).some((p) => p.id
 
 const org: OrgChart = {
   departments: [
-    { id: 1, name: "Aerodynamics", kind: "technical" },
-    { id: 2, name: "Operations", kind: "technical" },
+    { id: 1, name: "Aerodynamics" },
+    { id: 2, name: "Operations" },
   ],
   divisions: [
     { id: 10, name: "Mission Analysis Division", departmentId: 1 },

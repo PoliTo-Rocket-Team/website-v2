@@ -33,9 +33,9 @@ test("lead or member in the one new division keeps what the editor typed", () =>
 
 const org: OrgChart = {
   departments: [
-    { id: 1, name: "Propulsion", kind: "technical" },
-    { id: 2, name: "Avionics", kind: "technical" },
-    { id: 3, name: "Recovery", kind: "technical" },
+    { id: 1, name: "Propulsion" },
+    { id: 2, name: "Avionics" },
+    { id: 3, name: "Recovery" },
   ],
   divisions: [
     { id: 10, name: "Engines", departmentId: 1 },

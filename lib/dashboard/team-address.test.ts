@@ -48,7 +48,7 @@ import { plainSeatStanding, type ViewerStanding } from "./viewer";
 // check, the roles Moves with offers and the duplicate refusals.
 
 const org: OrgChart = {
-  departments: [{ id: 7, name: "Operations", code: "OP", kind: "operations" }],
+  departments: [{ id: 7, name: "Operations", code: "OP" }],
   divisions: [
     { id: 9, name: "Logistics Division", departmentId: 7, code: "LG" },
     { id: 10, name: "Marketing Division", departmentId: 7, code: "MK" },

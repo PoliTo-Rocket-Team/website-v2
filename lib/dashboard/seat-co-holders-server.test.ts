@@ -32,8 +32,8 @@ const userOf = (memberId: number) => `user-${memberId}`;
 beforeEach(async () => {
   await resetDatabase();
   await addRows(departments, [
-    { id: AERODYNAMICS, name: "Aerodynamics", startedAt: SINCE, code: "AER", kind: "technical" },
-    { id: STRUCTURES, name: "Structures", startedAt: SINCE, code: "STR", kind: "technical" },
+    { id: AERODYNAMICS, name: "Aerodynamics", startedAt: SINCE, code: "AER" },
+    { id: STRUCTURES, name: "Structures", startedAt: SINCE, code: "STR" },
   ]);
   await addRows(members, PEOPLE.map((memberId) => ({ memberId, ndaSignedAt: SINCE })));
   await addRows(

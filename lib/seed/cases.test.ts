@@ -41,7 +41,7 @@ import {
   outreachTagsOf,
   partnerItemsOf,
   projectItemsOf,
-  publishedTeamPageLayerOf,
+  publishedTeamPageOf,
   resolvesTo,
   SEED_AREAS,
   SEED_CASES,
@@ -60,7 +60,8 @@ import { DIVISION_ROWS } from "../../db/seed/structure";
 import { teamPageSeed } from "../../db/seed/team-page";
 import { getTableName } from "drizzle-orm";
 import { advisorOfFields, fieldsOf as advisorFields } from "../about/advisors";
-import { ARC_LEADERS, isTeamPageLayer, leadersOnArc, NO_UPLOADS } from "../about/team-layer";
+import { ARC_LEADERS, isTeamPageLayer, NO_UPLOADS } from "../about/team-layer";
+import { holdingOf, layoutSeats, parseTeamLayout, type PlaceBinding } from "../about/team-layout";
 
 const data = SEED_DATA;
 
@@ -475,35 +476,30 @@ test("the team-page module writes only the Team page's own tables, so no seeded 
   assert.deepEqual(teamRolesOf(withoutLayer), teamRolesOf(data));
 });
 
-test("the seeded layer is published, is one the editor could have saved, and every edit lands on the page", () => {
-  const layer = publishedTeamPageLayerOf(data);
-  assert.ok(layer, "the published layer reads back");
-  assert.ok(isTeamPageLayer(layer, NO_UPLOADS));
+test("the seeded version is published, is one the editor could have saved, and every page seat lands on the page", () => {
+  const stored = publishedTeamPageOf(data);
+  assert.ok(stored, "the published version reads back");
+  assert.ok(isTeamPageLayer(stored.layer, NO_UPLOADS));
+  assert.ok(parseTeamLayout(JSON.parse(JSON.stringify(stored.layout))), "the layout is one the editor could have saved");
   assert.deepEqual(
     data.teamPageLayerVersions.map((r) => r.version),
     ["published"],
   );
-  const { build } = teamPageOfSeed(data);
-  assert.ok(leadersOnArc(build, layer) <= ARC_LEADERS, "the arc holds the added leader");
-  const spots = new Set<string>([
-    ...build.arc.map((l) => l.spot),
-    ...build.departments.flatMap((d) => [...d.heads.map((h) => h.spot), ...d.leads.map((l) => l.spot)]),
-  ]);
-  for (const spot of Object.keys(layer.spots)) assert.ok(spots.has(spot), `${spot} is a spot the seeded roles fill`);
-  for (const id of Object.keys(layer.departments)) assert.ok(build.departments.some((d) => `${d.id}` === id), `department ${id} is on the page`);
+  const { build, layout, shown } = teamPageOfSeed(data);
+  assert.ok(layout && shown);
+  assert.ok(layout.arc.length <= ARC_LEADERS, "the arc holds the added leaders");
+  assert.equal(shown.leaders.length, layout.arc.length, "every arc page seat is drawn");
+  assert.equal(shown.departments.filter((d) => d.heads.length > 0).length, layout.departments.length, "every block draws its head");
   const onTeam = new Set(build.people.map((p) => p.id));
-  const named = [
-    layer.leader.person,
-    ...Object.values(layer.spots).map((edit) => edit?.person),
-    ...layer.addedLeaders.map((l) => l.person),
-    ...Object.values(layer.departments).flatMap((d) => (d?.addedLeads ?? []).map((l) => l.person)),
-  ].filter((id): id is number => id !== undefined);
+  const named = layoutSeats(layout).flatMap(({ binding }) => (binding.kind === "person" ? [binding.memberId] : []));
   assert.ok(named.length > 0);
   for (const id of named) assert.ok(onTeam.has(id), `member ${id} is on the team`);
 });
 
 test("the public Team page the seed builds shows only real units, and no one as a lead of a division they do not lead (issue #644)", () => {
-  const { build, layer, shown } = teamPageOfSeed(data);
+  const { layout, shown } = teamPageOfSeed(data);
+  assert.ok(layout && shown);
+  const blocks = layout.departments;
   const publicRoles = PUBLIC_TEAM.flatMap((p) => p.roles);
   const publicDivisions = new Set(publicRoles.flatMap((r) => (r.divisionId === null ? [] : [r.divisionId])));
   const publicDepartments = new Set([
@@ -513,16 +509,17 @@ test("the public Team page the seed builds shows only real units, and no one as 
   const divisionNamed = (name: string) => DIVISION_ROWS.rows.find((d) => d.name === name && d.closedAt == null);
   assert.ok(shown.departments.length > 0);
   for (const department of shown.departments) {
-    assert.equal(typeof department.at, "number", `${department.name} is a seeded department, not one the layer added`);
-    assert.ok(publicDepartments.has(department.at as number), `${department.name} is a department the public team data uses`);
+    const block = blocks.find((b) => b.id === department.at)!;
+    assert.notEqual(block.department, null, `${department.name} is a seeded department, not one the editor added`);
+    assert.ok(publicDepartments.has(block.department!), `${department.name} is a department the public team data uses`);
     assert.notEqual(department.name, "Payload");
     for (const { at, shown: lead } of department.leads) {
       assert.notEqual(lead.division, "Payload Integration");
       const division = divisionNamed(lead.division);
       assert.ok(division !== undefined && publicDivisions.has(division.id!), `${lead.division} is a division the public team data uses`);
-      assert.ok(at.startsWith("lead:"), `${lead.name} is a lead the roles place, not one the layer added`);
-      const built = build.departments.flatMap((d) => d.leads).find((l) => l.spot === at);
-      const person = layer.spots[at as `lead:${number}:${number}`]?.person ?? built?.person.id;
+      const seat = block.leads.find((s) => s.id === at)!;
+      assert.equal(seat.binding.kind, "division-lead", `${lead.name} is a lead the roles place, not one the editor added`);
+      const person = holderOf(seat.binding);
       assert.ok(
         data.roles.some((r) => r.memberId === person && r.type === "lead" && r.divisionId === division!.id && isActive(r)),
         `${lead.name} holds a lead role in ${lead.division}`,
@@ -536,6 +533,11 @@ test("the public Team page the seed builds shows only real units, and no one as 
   ];
   assert.ok(!names.includes("Tester Department Head"), "no one is shown as the old department-head tester");
 });
+
+/** The member a seat binding shows first on the seeded team. */
+function holderOf(binding: PlaceBinding): number | undefined {
+  return holdingOf(binding, teamRolesOf(data))?.person.id;
+}
 
 test("each seeded advisor is one the Advisors panel would keep as it is", () => {
   const items = teamAdvisorItemsOf(data);

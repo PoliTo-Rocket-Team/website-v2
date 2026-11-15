@@ -168,8 +168,8 @@ export type TeamPage = {
 /**
  * A Team page that fills every section the page always draws: a team leader,
  * one leader on the arc, one department group and one core member at least.
- * The hand-typed ./team.ts is one, and so is every page the editor's working
- * layer may draw (`teamPageOf`, ./team-roles.ts).
+ * The hand-typed ./team.ts is one, and so is the team record's page while
+ * nothing is saved, when its roles fill it (`filledTeamPage`, ./team-roles.ts).
  */
 export type FilledTeamPage = Omit<TeamPage, "orgChart" | "departments" | "coreMembers"> & {
   orgChart: Omit<OrgChart, "leader" | "leaders"> & { leader: Leader; leaders: UpTo<Leader, 8> };

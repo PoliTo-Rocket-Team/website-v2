@@ -347,7 +347,7 @@ export const EXTRA = {
 } as const;
 
 async function seedExtras(): Promise<void> {
-  await addRows(departments, [{ id: EXTRA.emptyDepartment, name: "Spare", startedAt: SINCE, code: "SPR", kind: "technical" }]);
+  await addRows(departments, [{ id: EXTRA.emptyDepartment, name: "Spare", startedAt: SINCE, code: "SPR" }]);
   await addRows(divisions, [
     { id: EXTRA.testing, deptId: 2, name: "Testing", startedAt: SINCE, code: "TST" },
     { id: EXTRA.emptyDivision, deptId: 2, name: "Empty", startedAt: SINCE, code: "EMP" },
@@ -378,8 +378,8 @@ export function seedFixture(): Promise<void> {
 
 async function loadFixture(): Promise<void> {
   await addRows(departments, [
-    { id: 1, name: "Aerodynamics", startedAt: SINCE, code: "AER", kind: "technical" },
-    { id: 2, name: "Structures", startedAt: SINCE, code: "STR", kind: "technical" },
+    { id: 1, name: "Aerodynamics", startedAt: SINCE, code: "AER" },
+    { id: 2, name: "Structures", startedAt: SINCE, code: "STR" },
   ]);
   await addRows(
     divisions,

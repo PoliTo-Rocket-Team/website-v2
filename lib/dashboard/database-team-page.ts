@@ -33,9 +33,6 @@ const DOCUMENT = { id: 1, siteOrder: 1 } as const;
 /** Postgres' "undefined_table": the layer's migration has not run on this database yet. */
 const UNDEFINED_TABLE = "42P01";
 
-/** Postgres' "undefined_column": migration 0076, which adds `team_page_layer_versions.layout`, has not run on this database yet. */
-const UNDEFINED_COLUMN = "42703";
-
 function hasCode(error: unknown, code: string): boolean {
   for (let e = error; e instanceof Error; e = e.cause) {
     if ((e as { code?: unknown }).code === code) return true;
@@ -44,29 +41,13 @@ function hasCode(error: unknown, code: string): boolean {
 }
 
 /**
- * Every stored version's row. Before migration 0076 has run there is no
- * `layout` column: each row reads with no layout, so it draws the layout its
- * layer snapshots to, whichever of the code and the migration lands first.
- */
-async function layerRows(): Promise<readonly { version: VersionKind; layer: unknown; layout: unknown }[]> {
-  const db = getDb();
-  try {
-    return await db.select().from(teamPageLayerVersions);
-  } catch (error) {
-    if (!hasCode(error, UNDEFINED_COLUMN)) throw error;
-    const rows = await db.select({ version: teamPageLayerVersions.version, layer: teamPageLayerVersions.layer }).from(teamPageLayerVersions);
-    return rows.map((row) => ({ ...row, layout: null }));
-  }
-}
-
-/**
  * The layer document, each version with its layout, or none before the first
- * save. A row whose layer no write of this code leaves is skipped; a group
- * photo it uploaded is one in this deployment's public store (issue #510). A
- * row with no layout yet reads as none (`storedTeamPageOfRow`).
+ * save. A row whose layer or layout no write of this code leaves is skipped
+ * (`storedTeamPageOfRow`); a group photo it uploaded is one in this
+ * deployment's public store (issue #510).
  */
 export async function readTeamPageLayer(): Promise<ContentItem<StoredTeamPage>[]> {
-  const rows = await layerRows();
+  const rows = await getDb().select().from(teamPageLayerVersions);
   const owns = ownsTeamPageUpload(ownPublicStoreHost());
   const versions = rows.flatMap((row): { kind: VersionKind; content: StoredTeamPage }[] => {
     const stored = storedTeamPageOfRow(row, owns);
