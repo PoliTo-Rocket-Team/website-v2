@@ -370,6 +370,8 @@ export type DashboardViewer = ViewerStanding & {
   readonly photoUrl: string | null;
   /** Whether they have a profile of their own (`hasOwnProfile`): the user menu offers My profile only then. */
   readonly hasOwnProfile: boolean;
+  /** Their Team tree grant (issue #1005): the Team tree shows them its Edit button with one (`showsTreeEdit`). */
+  readonly treeGrant: TreeGrant;
 };
 
 /**
@@ -400,7 +402,7 @@ export type ScopeKind = "admin" | "org" | "department" | "division" | "website" 
  * is the Content grant's own target, on a `website` row alone (issue #504,
  * drizzle/0049).
  */
-export type ScopeTarget = "all" | "positions" | "applications" | "members" | "orders" | "faq" | "blog" | "logs" | "approve_orders" | "content";
+export type ScopeTarget = "all" | "positions" | "applications" | "members" | "orders" | "faq" | "blog" | "logs" | "approve_orders" | "content" | "team_tree";
 
 /** `scopes.access_level`: Can view or Can edit (docs/dashboard-rules.md, "Access"). */
 export type AccessLevel = "view" | "edit";
@@ -466,7 +468,8 @@ export function fullAccessSeatOf(activeRoles: readonly ActiveRoleRef[]): FullAcc
  * alumnus when the Alumni record has an entry for them, else a non-member
  * (issue #317). Full access,
  * the `operations-lead` kind, comes from a full-access seat (issue #238) or
- * from an org-wide or admin scope row; a role of type `head` is a department
+ * from an org-wide or admin scope row (the Access page's Full access grant is
+ * the `org` row, issue #1005); a role of type `head` is a department
  * head's (issue #230); a lead role in any division is a division lead's;
  * anyone else on the team is a member. A department or division scope row is
  * an area grant, at any area and level: it makes nobody a division lead
@@ -550,6 +553,42 @@ export function unitRowsOf(rows: readonly ScopeUnitRow[], openDepartmentIds: rea
       ? openDepartmentIds.map((deptId) => ({ scope: "department", target: row.target, level: row.level, divisionId: null, deptId }))
       : [{ scope: row.scope, target: row.target, level: row.level, divisionId: row.divisionId, deptId: row.deptId }],
   );
+}
+
+/**
+ * The Team tree grant (Owner decision, 2026-11-16, issue #1005): a scope row
+ * on `team_tree` lets its holder edit the Team tree's structure where it
+ * applies, as that unit's lead or head may, and never makes them one anywhere
+ * else (#471). It opens no page and no other area, so its rows are kept out
+ * of every area's reading (`isTreeGrantRow`) and read here alone. Only a row
+ * at Can edit counts: the Team tree is already readable by members, so Can
+ * view changes nothing. A whole-team row edits the Team tree as full access
+ * may; a department's or a division's edits that unit.
+ */
+export type TreeGrant =
+  | { readonly kind: "none" }
+  | { readonly kind: "team" }
+  | {
+      readonly kind: "units";
+      /** Never both empty: a grant on no unit is `none`. */
+      readonly divisionIds: readonly number[];
+      readonly departmentIds: readonly number[];
+    };
+
+export const NO_TREE_GRANT: TreeGrant = { kind: "none" };
+
+/** Whether a scope row is a Team tree grant (`TreeGrant`): no area reads it. */
+export function isTreeGrantRow(row: { readonly target: ScopeTarget }): boolean {
+  return row.target === "team_tree";
+}
+
+/** The Team tree grant the viewer's stored scope rows hold, read before `unitRowsOf` so "whole team" is still said. */
+export function treeGrantOf(rows: readonly ScopeUnitRow[]): TreeGrant {
+  const edits = rows.filter((r) => isTreeGrantRow(r) && r.level === "edit");
+  if (edits.some((r) => r.scope === "team")) return { kind: "team" };
+  const divisionIds = [...new Set(edits.flatMap((r) => (r.scope === "division" && r.divisionId !== null ? [r.divisionId] : [])))];
+  const departmentIds = [...new Set(edits.flatMap((r) => (r.scope === "department" && r.deptId !== null ? [r.deptId] : [])))];
+  return divisionIds.length === 0 && departmentIds.length === 0 ? NO_TREE_GRANT : { kind: "units", divisionIds, departmentIds };
 }
 
 /**

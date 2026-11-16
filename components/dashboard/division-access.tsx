@@ -12,6 +12,7 @@ import {
   Info,
   Layers,
   Lock,
+  Network,
   PenLine,
   Plus,
   ShieldCheck,
@@ -26,6 +27,7 @@ import { useServerState } from "@/lib/dashboard/server-state";
 import {
   ACCESS_LEVEL_LABELS,
   ACCESS_LEVEL_SHORT_LABELS,
+  ALL_AREAS_LINE,
   ACCESS_LEVELS_EXPLAINED,
   ACCESS_TARGET_LABELS,
   ACCESS_TARGETS,
@@ -94,11 +96,13 @@ import { PersonCombobox } from "./person-combobox";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 
 const TARGET_ICONS: Readonly<Record<AccessTarget, LucideIcon>> = {
+  all: ShieldCheck,
   positions: BriefcaseBusiness,
   applications: Inbox,
   members: Users,
   content: PenLine,
   orders: ShoppingCart,
+  team_tree: Network,
 };
 
 /** The line under Whole team where a lead or head gives Content alone (issue #504). */
@@ -1227,7 +1231,7 @@ function AreaOption({
         <Icon aria-hidden className={`h-[18px] w-[18px] shrink-0 ${on ? "text-accent" : "text-text-2"}`} strokeWidth={1.75} />
         <span className="min-w-0">
           <span className="block text-[14px] font-medium">{ACCESS_TARGET_LABELS[target]}</span>
-          <span className="block truncate text-[12px] text-prt-muted">{placeName}</span>
+          <span className="block truncate text-[12px] text-prt-muted">{target === "all" ? ALL_AREAS_LINE : placeName}</span>
         </span>
       </label>
       {on && levels.length > 1 && (

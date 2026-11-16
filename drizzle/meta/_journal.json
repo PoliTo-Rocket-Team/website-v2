@@ -603,6 +603,13 @@
       "when": 1796577600000,
       "tag": "0088_team_page_layer_cleanup",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1796664000000,
+      "tag": "0089_team_tree_grant",
+      "breakpoints": true
     }
   ]
 }

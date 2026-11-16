@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { roleLabelOf } from "./role-label";
 import { viewAsLineOf, type ViewAsRole } from "./view-as";
-import { userCardRole, viewerStandingOf } from "./viewer";
+import { NO_TREE_GRANT, userCardRole, viewerStandingOf } from "./viewer";
 
 // One role label (issue #650): the View as dialog's row opens with the label
 // the banner then shows for that person. The banner's role is the user card's
@@ -10,7 +10,7 @@ import { userCardRole, viewerStandingOf } from "./viewer";
 
 function bannerRoleOf(roles: readonly ViewAsRole[]): string {
   const standing = viewerStandingOf({ scopes: [], activeRoles: roles.map((r) => ({ type: r.type, divisionId: 17, divisionCode: null, divisionClosedAt: null, fullAccess: r.seat })) });
-  return userCardRole({ ...standing, name: "Elif Kaya", role: roleLabelOf(roles), photoUrl: null, hasOwnProfile: true }, false);
+  return userCardRole({ ...standing, name: "Elif Kaya", role: roleLabelOf(roles), photoUrl: null, hasOwnProfile: true, treeGrant: NO_TREE_GRANT }, false);
 }
 
 test("the dialog's row starts with the label the banner shows, for a seat holder and a division member with a stored title", () => {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { sidebarFor, userMenuPageFor } from "./access";
 import { openChrome } from "./chrome";
-import { hasOwnProfile, isOffTeam, plainSeatStanding, type DashboardViewer } from "./viewer";
+import { hasOwnProfile, isOffTeam, NO_TREE_GRANT, plainSeatStanding, type DashboardViewer } from "./viewer";
 
 // The frame's chrome now streams in on its own (issue #397); it must carry
 // the same sidebar, user card line and user menu the layout built before.
@@ -15,7 +15,7 @@ function viewerOf(
 ): DashboardViewer {
   const standing = plainSeatStanding(kind);
   const record = memberId === undefined ? (isOffTeam(standing.kind) ? null : 1) : memberId;
-  return { ...standing, name: "Ada Lovelace", role, photoUrl: null, hasOwnProfile: hasOwnProfile({ kind: standing.kind, memberId: record }) };
+  return { ...standing, name: "Ada Lovelace", role, photoUrl: null, hasOwnProfile: hasOwnProfile({ kind: standing.kind, memberId: record }), treeGrant: NO_TREE_GRANT };
 }
 
 test("an applicant with nothing shown reads Signed in, with the sidebar and menu their standing gives", () => {

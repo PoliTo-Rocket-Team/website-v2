@@ -207,12 +207,12 @@ test("a head never changes a lead's role access, and gives, changes and removes 
   assert.equal(areaRule(ROLE_HELD_ACCESS, laura, inAoa, "members", null).changeable, false);
   assert.equal(areaRule(ROLE_HELD_ACCESS, laura, inAoa, "orders", null).changeable, false);
   assert.deepEqual(shownAreas(ROLE_HELD_ACCESS, laura, inAoa, {}), []);
-  assert.deepEqual(shownAreas(ROLE_HELD_ACCESS, laura, wholeDepartment, {}), ["positions", "applications", "members", "orders"]);
+  assert.deepEqual(shownAreas(ROLE_HELD_ACCESS, laura, wholeDepartment, {}), ["positions", "applications", "members", "orders", "team_tree"]);
 });
 
 test("a lead's role covers Orders in each division they lead and nowhere else (issue #632)", () => {
   const twoDivisions: AccessPerson = { id: 21, name: "Giorgia Galli", photoUrl: null, role: { kind: "lead", divisions:[msa, aoa] }, division: msa };
-  assert.deepEqual(LEAD_ROLE_HELD_ACCESS, ["positions", "applications", "members", "orders"].map((target) => ({ target, level: "edit" })));
+  assert.deepEqual(LEAD_ROLE_HELD_ACCESS, ["positions", "applications", "members", "orders", "team_tree"].map((target) => ({ target, level: "edit" })));
   for (const place of [inMsa, inAoa]) assert.equal(roleCovers(twoDivisions, place, "orders"), true);
   assert.equal(roleCovers(laura, inMsa, "orders"), false, "a division Laura does not lead");
   assert.equal(roleCovers(laura, wholeDepartment, "orders"), false, "the whole department");
@@ -411,7 +411,7 @@ test("Give access offers the whole team, one department or one division, every a
 });
 
 test("the Access page offers no Alumni area: the Alumni page is site content under Content (issue #589)", () => {
-  assert.deepEqual([...ACCESS_TARGETS], ["positions", "applications", "members", "content", "orders"]);
+  assert.deepEqual([...ACCESS_TARGETS], ["all", "positions", "applications", "members", "content", "orders", "team_tree"]);
   assert.equal(Object.values(ACCESS_TARGET_LABELS).includes("Alumni"), false);
   // The drawer's schema refuses an Alumni key from anyone, full access included, in any place.
   for (const facts of [team(), team([], fullAccessOnly), team([], teamLeaderGives), head()]) {
@@ -425,7 +425,7 @@ test("the Access page offers no Alumni area: the Alumni page is site content und
   const [line] = heldLines(team().unit);
   assert.deepEqual(
     line.held.map((h) => h.target),
-    ["positions", "applications", "members", "content", "orders"],
+    ["all", "positions", "applications", "members", "content", "orders", "team_tree"],
   );
 });
 

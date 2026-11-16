@@ -16,6 +16,7 @@ import {
   isTeamLeader,
   ledDivisionIds,
   mayChange,
+  NO_TREE_GRANT,
   readsArea,
   readsAreaIn,
   standingIn,
@@ -83,7 +84,7 @@ test("with no active role, an Alumni record entry makes an alumnus and none a no
 });
 
 test("the user card reads Alumni for an alumnus, and Applicant or Signed in for a non-member (boards 56, 50e, 50f)", () => {
-  const off = (kind: "alumni" | "non-member") => ({ ...plainSeatStanding(kind), name: "Luca Moretti", role: "Applicant", photoUrl: null, hasOwnProfile: false });
+  const off = (kind: "alumni" | "non-member") => ({ ...plainSeatStanding(kind), name: "Luca Moretti", role: "Applicant", photoUrl: null, hasOwnProfile: false, treeGrant: NO_TREE_GRANT });
   assert.equal(userCardRole(off("alumni"), false), "Alumni");
   assert.equal(userCardRole(off("non-member"), true), "Applicant");
   assert.equal(userCardRole(off("non-member"), false), "Signed in");

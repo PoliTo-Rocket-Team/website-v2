@@ -232,8 +232,8 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
   // A lead's or head's page holds the Content grants of the people in the unit when the viewer gives Content (issue #504).
   // The old Alumni `website` rows on `all` were deleted (issues #589, #637: drizzle/0074).
   const contentRows = and(eq(scopes.scope, "website"), eq(scopes.target, "content"));
-  // A team page also holds the grants across the whole team, Content and "Approve orders" (issue #247).
-  const acrossTeam = or(and(eq(scopes.scope, "team"), or(unitTarget, eq(scopes.target, "approve_orders"))), contentRows);
+  // A team page also holds the grants across the whole team, Content, "Approve orders" (issue #247) and All areas, the `org` row (issue #1005).
+  const acrossTeam = or(and(eq(scopes.scope, "team"), or(unitTarget, eq(scopes.target, "approve_orders"))), contentRows, eq(scopes.scope, "org"));
   const unitRows = unit.kind === "team" ? or(inUnitDivisions, inUnitDepartments, acrossTeam) : unit.content === true ? or(inUnitDivisions, inUnitDepartments, contentRows) : or(inUnitDivisions, inUnitDepartments);
   const listed = me === null ? unitRows : and(unitRows, ne(scopes.memberId, me));
   // When each grant was given and the seats of the acting accounts that gave them are read by the grants' own
@@ -394,19 +394,20 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
       ? []
       : [{ person: personOf(r.member_id, r), givenBy: giverOf(r), givenOn: givenOn.get(String(r.id)) ?? null }],
   );
-
   const grants = rows.flatMap((r): AccessGrant[] => {
     if (r.member_id === null) return [];
     const person = personOf(r.member_id, r);
     // Off a team page, a Content row counts only for someone in the unit (issue #504).
     if (r.scope === "website" && unit.kind !== "team" && !byMember.has(r.member_id)) return [];
     // A `website` row is Content on `content`, across the whole team (#247, #504); any other is no grant (#589).
-    const target = r.scope === "website" ? (r.target === "content" ? ("content" as const) : null) : isUnitTarget(r.target) ? r.target : null;
+    // An `org` row is All areas across the whole team, which is full access, as `viewerKindOf` reads it (#1005).
+    const target =
+      r.scope === "website" ? (r.target === "content" ? ("content" as const) : null) : r.scope === "org" ? ("all" as const) : isUnitTarget(r.target) ? r.target : null;
     if (target === null) return [];
     const division = unitDivisions.find((d) => d.id === r.division_id);
     const department = r.scope === "department" ? departmentById(r.dept_id) : null;
     const place: AccessPlace | null =
-      r.scope === "team" || r.scope === "website"
+      r.scope === "team" || r.scope === "website" || r.scope === "org"
         ? WHOLE_TEAM_PLACE
         : department !== null
           ? { kind: "department", department }
@@ -437,6 +438,9 @@ function grantWhere(personId: number, place: AccessPlace, target: AccessTarget) 
   const row = grantRowOf(place, target);
   const mine = eq(scopes.memberId, personId);
   switch (row.scope) {
+    // All areas: every `org` row the person holds, since any one is full access (issue #1005).
+    case "org":
+      return and(mine, eq(scopes.scope, "org"));
     case "website":
       return and(mine, eq(scopes.scope, "website"), eq(scopes.target, row.target));
     case "team":

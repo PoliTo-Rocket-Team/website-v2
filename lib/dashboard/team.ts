@@ -4,7 +4,7 @@ import type { DepartmentMembers } from "./department-members";
 import type { PersonPosition, ReachMembers, WaitingPerson } from "./division-members";
 import type { MemberGoogleEmails } from "./google-accounts";
 import type { WholeTeamMembers } from "./team-members";
-import type { FlaggedSeat } from "./viewer";
+import type { FlaggedSeat, TreeGrant } from "./viewer";
 
 // The Team pages of the dashboard (issue #143): Members (boards 46, 61g),
 // Alumni (46c) and the Team tree (42, 42b). Both sides of the data
@@ -556,7 +556,15 @@ export function memberRowOf(entry: RosterEntry, org: OrgChart, selfId: number | 
  */
 export type TeamActor =
   | { readonly kind: "team" }
-  | { readonly kind: "head"; readonly departmentIds: readonly number[] }
+  | {
+      readonly kind: "head";
+      readonly departmentIds: readonly number[];
+      /**
+       * Divisions outside `departmentIds` they act on as their lead: only a
+       * Team tree grant adds one (`withTreeGrant`, issue #1005); none when absent.
+       */
+      readonly ledDivisionIds?: readonly number[];
+    }
   | {
       readonly kind: "lead";
       readonly divisionIds: readonly number[];
@@ -572,6 +580,26 @@ export type TeamActor =
 export function leadActor(divisionIds: readonly number[], led: readonly number[]): TeamActor | null {
   if (divisionIds.length === 0) return null;
   return { kind: "lead", divisionIds, ledDivisionIds: led.filter((id) => divisionIds.includes(id)) };
+}
+
+/**
+ * Who the viewer edits the Team tree's structure as (issue #1005): `actor`,
+ * the reach their role and grants give, widened by their Team tree grant. A
+ * whole-team grant acts as the team; a department's as that department's
+ * head (its divisions, Add division, Close division); a division's as that
+ * division's lead. Nothing the actor already reached is lost. Only the
+ * structure writes and the edit view read this: a Team tree grant changes no
+ * Members write and no other area (#471).
+ */
+export function withTreeGrant(actor: TeamActor | null, grant: TreeGrant): TeamActor | null {
+  if (grant.kind === "none") return actor;
+  if (grant.kind === "team" || actor?.kind === "team") return { kind: "team" };
+  const unique = (ids: readonly number[]) => [...new Set(ids)];
+  const ledBefore = actor === null ? [] : actor.kind === "lead" ? actor.ledDivisionIds : (actor.ledDivisionIds ?? []);
+  const led = unique([...ledBefore, ...grant.divisionIds]);
+  const departmentIds = unique([...(actor?.kind === "head" ? actor.departmentIds : []), ...grant.departmentIds]);
+  if (departmentIds.length > 0) return { kind: "head", departmentIds, ledDivisionIds: led };
+  return leadActor(unique([...(actor?.kind === "lead" ? actor.divisionIds : []), ...grant.divisionIds]), led);
 }
 
 /** Whether an action is open to the actor; when it is not, the reason the menu shows beside the lock. */
@@ -797,11 +825,7 @@ export function mayLeaveTeam(actor: TeamActor, standing: TeamStanding, org: OrgC
   if (beyond !== undefined) return denied(`Also ${beyondLabel(beyond, org)}, so only the team leader can do this`);
   const person = standing.memberships;
   if (person.length === 0) return denied("Only the team leader can do this");
-  const outside = person.find((m) =>
-    actor.kind === "lead"
-      ? !actor.divisionIds.includes(m.divisionId)
-      : !actor.departmentIds.includes(departmentOfDivision(org, m.divisionId)?.id ?? -1),
-  );
+  const outside = person.find((m) => !reachesDivision(actor, m.divisionId, org));
   if (outside === undefined) return ALLOWED;
   const who = actor.kind === "lead" ? whoReachesAll(person, org) : "the team leader";
   return denied(`Also in ${divisionName(org, outside.divisionId)}, so only ${who} can do this`);
@@ -832,11 +856,15 @@ export function removalFrom(actor: TeamActor, person: TeamStanding, divisionId: 
   return { kind: "offered" };
 }
 
-/** Whether the actor's Members page reaches the division: theirs as lead, their department's as head, any as the team. */
+/**
+ * Whether the actor's Members page reaches the division: theirs as lead, their
+ * department's as head (and any division a Team tree grant has them lead,
+ * issue #1005), any as the team.
+ */
 export function reachesDivision(actor: TeamActor, divisionId: number, org: OrgChart): boolean {
   if (actor.kind === "team") return true;
   if (actor.kind === "lead") return actor.divisionIds.includes(divisionId);
-  return actor.departmentIds.includes(departmentOfDivision(org, divisionId)?.id ?? -1);
+  return actor.departmentIds.includes(departmentOfDivision(org, divisionId)?.id ?? -1) || (actor.ledDivisionIds ?? []).includes(divisionId);
 }
 
 /** The line under a lead's Members header: "Leads are changed by the Head of Aerodynamics". */

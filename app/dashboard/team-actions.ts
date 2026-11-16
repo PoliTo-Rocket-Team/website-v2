@@ -8,6 +8,7 @@ import { isDetailsTarget, type AddLookup, type DetailsTarget } from "@/lib/dashb
 import type { MoveLookup } from "@/lib/dashboard/member-move";
 import { openDashboard } from "@/lib/dashboard/open";
 import { refreshDashboard } from "@/lib/dashboard/refresh";
+import { showsTreeEdit } from "@/lib/dashboard/team-structure";
 import { checkLeaveReason, type EditableRole } from "@/lib/dashboard/team";
 import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
 
@@ -22,6 +23,18 @@ async function writesOn(page: DashboardPageKey): Promise<TeamWrites | null> {
   const opening = await openDashboard();
   if (opening.kind !== "open" || !canReach(opening.data.viewer, page)) return null;
   return opening.data.teamWrites;
+}
+
+/**
+ * The division writes of the Team tree's edit view: for whoever reaches the
+ * Members page, or edits the tree through a Team tree grant (issue #1005).
+ * The write's own actor decides what they may change.
+ */
+async function divisionWrites(): Promise<TeamWrites | null> {
+  const opening = await openDashboard();
+  if (opening.kind !== "open") return null;
+  const viewer = opening.data.viewer;
+  return canReach(viewer, "members") || showsTreeEdit(viewer, viewer.treeGrant) ? opening.data.teamWrites : null;
 }
 
 function isId(value: unknown): value is number {
@@ -199,12 +212,14 @@ export async function setMemberPhoto(personId: number, form: FormData | null): P
 /** The lead, member and head pickers of the structure drawers: the whole team, searched by name or email. */
 export async function findPeople(query: string): Promise<TeamSearch> {
   const opening = await openDashboard();
-  if (opening.kind !== "open" || !canReach(opening.data.viewer, "members") || typeof query !== "string") return { kind: "none" };
+  if (opening.kind !== "open" || typeof query !== "string") return { kind: "none" };
+  const viewer = opening.data.viewer;
+  if (!canReach(viewer, "members") && !showsTreeEdit(viewer, viewer.treeGrant)) return { kind: "none" };
   return opening.data.findPeople(query.slice(0, 200));
 }
 
 export async function createDivision(departmentId: number, input: unknown): Promise<WriteResult<number>> {
-  const writes = await writesOn("members");
+  const writes = await divisionWrites();
   if (!writes || !isId(departmentId)) return refused("This change could not be saved.");
   const result = await writes.createDivision(departmentId, input);
   if (result.ok) refreshDashboard();
@@ -212,13 +227,13 @@ export async function createDivision(departmentId: number, input: unknown): Prom
 }
 
 export async function saveDivision(divisionId: number, input: unknown): Promise<TeamActionResult> {
-  const writes = await writesOn("members");
+  const writes = await divisionWrites();
   if (!writes || !isId(divisionId)) return REFUSED;
   return answered(await writes.saveDivision(divisionId, input));
 }
 
 export async function closeDivision(divisionId: number): Promise<TeamActionResult> {
-  const writes = await writesOn("members");
+  const writes = await divisionWrites();
   if (!writes || !isId(divisionId)) return REFUSED;
   return answered(await writes.closeDivision(divisionId));
 }

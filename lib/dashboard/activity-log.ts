@@ -352,6 +352,7 @@ const TARGET_WORDS: Readonly<Record<string, string>> = {
   members: "Members",
   orders: "Orders",
   content: "Content",
+  team_tree: "Team tree",
   faq: "FAQ",
   blog: "Blog",
   logs: "Activity log",

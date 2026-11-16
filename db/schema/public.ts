@@ -83,6 +83,9 @@ export const targetTypeEnum = pgEnum("target_type", [
   // the Alumni page too; the old Alumni `website` rows on `all` were deleted
   // (issue #589, drizzle/0058; issue #637, drizzle/0074).
   "content",
+  // The Team tree grant, on a division, a department or the whole team
+  // (issue #1005, drizzle/0089): it edits the Team tree's structure there.
+  "team_tree",
 ]);
 
 // The seats besides the team leader that hold every access in the dashboard

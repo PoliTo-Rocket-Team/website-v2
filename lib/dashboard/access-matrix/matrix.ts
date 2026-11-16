@@ -4,6 +4,9 @@ import {
   BREAK_GLASS_STANDING,
   GRANT_AREAS,
   isOffTeam,
+  isTreeGrantRow,
+  NO_TREE_GRANT,
+  treeGrantOf,
   unitRowsOf,
   viewerStandingOf,
   wholeTeamAreasOf,
@@ -14,6 +17,7 @@ import {
   type FlaggedSeat,
   type GrantArea,
   type ScopeUnitRow,
+  type TreeGrant,
   type ViewerStanding,
 } from "../viewer";
 import type { RecruitmentRole } from "../application-documents";
@@ -82,6 +86,8 @@ export type Viewer = ViewerStanding & {
   readonly wholeTeamAreas: readonly GrantArea[];
   /** The areas a `team` row grants at Can edit (`wholeTeamAreasOf`, issue #957); none off the team. */
   readonly wholeTeamEdits: readonly GrantArea[];
+  /** The Team tree grant (`treeGrantOf`, issue #1005), read apart from every area; none off the team. */
+  readonly treeGrant: TreeGrant;
   /** The active roles as stored, before an alumnus's are dropped. */
   readonly heldRoles: readonly Role[];
   readonly rawRows: readonly ScopeUnitRow[];
@@ -92,7 +98,9 @@ export type Viewer = ViewerStanding & {
 };
 
 export function viewerOf(roles: readonly Role[], rows: readonly ScopeUnitRow[] = [], onAlumniRecord = false): Viewer {
-  const unitRows = unitRowsOf(rows, rows.some((r) => r.scope === "team" && r.target !== "approve_orders") ? OPEN_DEPARTMENTS : []);
+  // A Team tree grant is read apart, so no area reads it (issue #1005).
+  const areaRows = rows.filter((r) => !isTreeGrantRow(r));
+  const unitRows = unitRowsOf(areaRows, areaRows.some((r) => r.scope === "team" && r.target !== "approve_orders") ? OPEN_DEPARTMENTS : []);
   const standing = viewerStandingOf({ scopes: unitRows, activeRoles: roles, onAlumniRecord });
   const offTeam = isOffTeam(standing.kind);
   const head = standing.kind === "department-head" ? roles.find((r) => r.type === "head")?.departmentId ?? null : null;
@@ -100,8 +108,9 @@ export function viewerOf(roles: readonly Role[], rows: readonly ScopeUnitRow[] =
     ...standing,
     roles: offTeam ? [] : roles,
     grants: offTeam ? [] : areaGrantsOf(unitRows),
-    wholeTeamAreas: offTeam ? [] : wholeTeamAreasOf(rows),
-    wholeTeamEdits: offTeam ? [] : wholeTeamAreasOf(rows, "edit"),
+    wholeTeamAreas: offTeam ? [] : wholeTeamAreasOf(areaRows),
+    wholeTeamEdits: offTeam ? [] : wholeTeamAreasOf(areaRows, "edit"),
+    treeGrant: offTeam ? NO_TREE_GRANT : treeGrantOf(rows),
     heldRoles: roles,
     rawRows: rows,
     onAlumniRecord,
@@ -112,7 +121,19 @@ export function viewerOf(roles: readonly Role[], rows: readonly ScopeUnitRow[] =
 
 /** The break-glass admin as `readIdentity` reads it (issue #646): the team leader's standing, from no member row, role or scope row. */
 export function breakGlassViewer(): Viewer {
-  return { ...BREAK_GLASS_STANDING, roles: [], grants: [], wholeTeamAreas: [], wholeTeamEdits: [], heldRoles: [], rawRows: [], onAlumniRecord: false, headDepartment: null, breakGlass: true };
+  return {
+    ...BREAK_GLASS_STANDING,
+    roles: [],
+    grants: [],
+    wholeTeamAreas: [],
+    wholeTeamEdits: [],
+    treeGrant: NO_TREE_GRANT,
+    heldRoles: [],
+    rawRows: [],
+    onAlumniRecord: false,
+    headDepartment: null,
+    breakGlass: true,
+  };
 }
 
 // The matrix ------------------------------------------------------------------
@@ -172,7 +193,32 @@ export type Expect = {
    * what waits for a decision, whatever its shape (issue #592).
    */
   readonly decidesOrders: boolean;
+  /**
+   * The Team tree's edit view (issue #1005), on the rows that name it: null
+   * where it does not open, else what it lets the viewer change. Every row
+   * that names a Team tree grant names it.
+   */
+  readonly tree?: TreeReach | null;
 };
+
+/**
+ * What the Team tree's edit view lets a viewer change (issues #594, #1005):
+ * the divisions with a pencil (Edit division), the departments with Add
+ * division and Close division, and whether every department, the seats and
+ * Add department change too (`departmentsEditable`).
+ */
+export type TreeReach = {
+  readonly divisions: readonly Unit[];
+  readonly departments: readonly number[];
+  readonly wholeTree: boolean;
+};
+
+/** Full access's edit view, and a whole-team Team tree grant's at Can edit: every box. */
+export const WHOLE_TREE: TreeReach = { divisions: ALL, departments: OPEN_DEPARTMENTS, wholeTree: true };
+/** A lead of MA's: MA alone (issue #594). */
+const TREE_OF_LEAD_MA: TreeReach = { divisions: ["MA"], departments: [], wholeTree: false };
+/** The head of Aerodynamics': its divisions, and Add and Close division in it. */
+const TREE_OF_HEAD: TreeReach = { divisions: AERODYNAMICS, departments: [1], wholeTree: false };
 
 const NO_ALIASES = { requests: NONE, manages: NONE, answers: false } as const;
 /** Full access with no lead or head role: asks for anyone (issue #721), manages nobody. */
@@ -294,8 +340,58 @@ const WHOLE_TEAM_ROWS: readonly MatrixRow[] = WHOLE_TEAM_HOLDERS.flatMap(({ who,
   ),
 );
 
+/**
+ * Where a Team tree grant is given in the rows below (issue #1005): DM, which
+ * no holder leads or heads, Structures, and the whole team.
+ */
+const TREE_SCOPES = {
+  "DM": { at: { divisionId: 3 }, kind: "division" },
+  "Structures": { at: { deptId: 2 }, kind: "department" },
+  "the whole team": { at: {}, kind: "team" },
+} as const satisfies Record<string, { at: { divisionId?: number; deptId?: number }; kind: ScopeUnitRow["scope"] }>;
+
+/** What each holder's edit view is by the role alone, and with a Team tree grant at Can edit on each place. */
+const TREE_OF_HOLDER: Readonly<Record<(typeof WHOLE_TEAM_HOLDERS)[number]["who"], { base: TreeReach | null } & Record<keyof typeof TREE_SCOPES, TreeReach>>> = {
+  member: {
+    base: null,
+    DM: { divisions: ["DM"], departments: [], wholeTree: false },
+    Structures: { divisions: ["DM"], departments: [2], wholeTree: false },
+    "the whole team": WHOLE_TREE,
+  },
+  "division lead": {
+    base: TREE_OF_LEAD_MA,
+    DM: { divisions: ["MA", "DM"], departments: [], wholeTree: false },
+    Structures: { divisions: ["MA", "DM"], departments: [2], wholeTree: false },
+    "the whole team": WHOLE_TREE,
+  },
+  "department head": {
+    base: TREE_OF_HEAD,
+    DM: { divisions: ALL, departments: [1], wholeTree: false },
+    Structures: { divisions: ALL, departments: OPEN_DEPARTMENTS, wholeTree: false },
+    "the whole team": WHOLE_TREE,
+  },
+};
+
+/**
+ * A Team tree grant for a member, a division lead (MA) and a department head
+ * (Aerodynamics), on each place and at each level (Owner decision,
+ * 2026-11-16, issue #1005). It opens no page, area or unit: every field is the
+ * role's but the Team tree's edit view, which at Can edit edits the place as
+ * its lead or head may, and as full access may across the whole team. At Can
+ * view it changes nothing.
+ */
+export const TREE_GRANT_ROWS: readonly MatrixRow[] = WHOLE_TEAM_HOLDERS.flatMap(({ who, roles, base }) =>
+  Object.entries(TREE_SCOPES).flatMap(([where, s]) =>
+    (["view", "edit"] as const).map((level): MatrixRow => ({
+      name: `${who} with a Team tree grant (Can ${level}) on ${where}`,
+      viewer: viewerOf(roles, [row(s.kind, "team_tree", level, s.at)]),
+      expect: { ...base, tree: level === "edit" ? TREE_OF_HOLDER[who][where as keyof typeof TREE_SCOPES] : TREE_OF_HOLDER[who].base },
+    })),
+  ),
+);
+
 /** The team leader's row: every page and action of full access, plus deciding orders and asking for, and managing, any unit's alias. */
-const TEAM_LEADER: Expect = { ...FULL_ACCESS, aliases: { requests: ALL, manages: ALL, answers: true }, decidesOrders: true };
+const TEAM_LEADER: Expect = { ...FULL_ACCESS, aliases: { requests: ALL, manages: ALL, answers: true }, decidesOrders: true, tree: WHOLE_TREE };
 
 export const VIEWERS: readonly MatrixRow[] = [
   // Full access: the seats by role alone (issues #238, #485), or an org scope row.
@@ -324,13 +420,10 @@ export const VIEWERS: readonly MatrixRow[] = [
   // The board seats (issue #485): a flagged role in no unit, the operations lead's expectations.
   { name: "Project Manager", viewer: viewerOf([role(null, null, null, "project-manager")]), expect: FULL_ACCESS },
   { name: "Chief Engineer", viewer: viewerOf([role(null, null, null, "chief-engineer")]), expect: FULL_ACCESS },
-  { name: "org-wide editor", viewer: viewerOf([MEMBER_ROLE], [row("org", "all", "edit")]), expect: FULL_ACCESS },
+  // The org row is the Access page's whole team · All areas · Can edit (issue #1005): a member holding it is full access, the Team tree's whole edit view included.
+  { name: "org-wide editor", viewer: viewerOf([MEMBER_ROLE], [row("org", "all", "edit")]), expect: { ...FULL_ACCESS, tree: WHOLE_TREE } },
   // A department head: every area in their department, by the role.
-  {
-    name: "department head",
-    viewer: viewerOf([role("head", null, 1)]),
-    expect: { ...PLAIN_MEMBER, aliases: leadsOrHeads(AERODYNAMICS), pages: [...TEAM_BASE, ...LEADING], reads: everywhere(AERODYNAMICS), changes: changing(AERODYNAMICS), ordersPage: true },
-  },
+  { name: "department head", viewer: viewerOf([role("head", null, 1)]), expect: { ...HEAD_OF_AERODYNAMICS, tree: TREE_OF_HEAD } },
   // Approve orders adds deciding across the team to a head's role, and nothing else (issue #592).
   {
     name: "department head with Approve orders",
@@ -376,7 +469,7 @@ export const VIEWERS: readonly MatrixRow[] = [
     name: "division lead",
     viewer: viewerOf([role("lead", 1, 1)]),
     // A lead's role opens Orders with no Orders row, editing their own division's orders (`ordersScopeOf`, issue #590).
-    expect: { ...PLAIN_MEMBER, aliases: leadsOrHeads(["MA"]), pages: [...TEAM_BASE, ...LEADING], reads: everywhere(["MA"]), changes: changing(["MA"]), ordersPage: true },
+    expect: { ...LEAD_OF_MA, tree: TREE_OF_LEAD_MA },
   },
   // The same for a lead (issue #592).
   {
@@ -418,7 +511,9 @@ export const VIEWERS: readonly MatrixRow[] = [
       ordersPage: true,
     },
   },
-  { name: "member", viewer: viewerOf([MEMBER_ROLE]), expect: PLAIN_MEMBER },
+  { name: "member", viewer: viewerOf([MEMBER_ROLE]), expect: { ...PLAIN_MEMBER, tree: null } },
+  // A Team tree grant, for each holder, on each place, at each level (issue #1005).
+  ...TREE_GRANT_ROWS,
   // Each single grant, at each scope, at Can edit: its own page and units alone.
   ...GRANT_AREAS.flatMap((area) =>
     Object.entries(SCOPES).map(([scope, s]): MatrixRow => ({
