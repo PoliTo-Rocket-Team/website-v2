@@ -610,6 +610,13 @@
       "when": 1796664000000,
       "tag": "0089_team_tree_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1796750400000,
+      "tag": "0090_alumni_line_fixes",
+      "breakpoints": true
     }
   ]
 }

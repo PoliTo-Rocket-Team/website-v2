@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { asc, eq, isNotNull, sql } from "drizzle-orm";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
 import { getDb } from "@/db/client";
-import { alumniAddedYears, alumniEntries, alumniImportedRoles, alumniRoleFixes, departments, divisions, members, roles, users } from "@/db/schema";
+import { alumniAddedYears, alumniEntries, alumniImportedRoles, alumniLineFixes, alumniRoleFixes, departments, divisions, members, roles, users } from "@/db/schema";
 import { currentAcademicYearStart } from "@/lib/about/academic-year";
 import {
   alumniOf,
@@ -13,6 +13,8 @@ import {
   type Alumnus,
   type AlumnusKey,
   type EntryWho,
+  type Mark,
+  type RoleFix,
   type UnitRef,
 } from "@/lib/about/alumni-record";
 import type { FounderMark } from "@/lib/about/alumni-types";
@@ -22,7 +24,7 @@ import { referencedPublicFiles } from "@/lib/storage/public-references";
 import { uploadPublicFile } from "@/lib/storage/public-store";
 import { deleteUnreferencedAfter } from "@/lib/storage/unreferenced-delete";
 import { canReach } from "./access";
-import { alumniDirectory, checkAdvisor, checkAlumnusFix, alumnusRow, type AddedYearGround, type AlumniDirectory } from "./alumni";
+import { alumniDirectory, checkAdvisor, checkAlumnusFix, alumnusRow, MARKS, type AddedYearGround, type AlumniDirectory } from "./alumni";
 import type { DashboardIdentity } from "./database";
 import { photoPathnames } from "./database-self";
 import { myAlumniOf, type MyAlumni } from "./my-alumni";
@@ -44,10 +46,44 @@ const FOUNDER_COLUMN: Readonly<Record<FounderMark, "founder" | "co_founder">> = 
 
 type EntryRow = typeof alumniEntries.$inferSelect;
 
-/** An added year's unit: the check on the table keeps exactly one of the two columns set. */
-function unitOf(row: Pick<typeof alumniAddedYears.$inferSelect, "departmentId" | "divisionId">): UnitRef | null {
-  if (row.departmentId !== null) return { kind: "department", id: row.departmentId };
-  return row.divisionId === null ? null : { kind: "division", id: row.divisionId };
+/** A unit stored as a department column and a division column: the checks keep at most one set. */
+function unitOf(departmentId: number | null, divisionId: number | null): UnitRef | null {
+  if (departmentId !== null) return { kind: "department", id: departmentId };
+  return divisionId === null ? null : { kind: "division", id: divisionId };
+}
+
+function unitColumns(unit: UnitRef | null): { departmentId: number | null; divisionId: number | null } {
+  return { departmentId: unit?.kind === "department" ? unit.id : null, divisionId: unit?.kind === "division" ? unit.id : null };
+}
+
+/** A stored mark; the table's check keeps it one of these or null. */
+function markOf(value: string | null): Mark | null {
+  return MARKS.find((mark) => mark === value) ?? null;
+}
+
+type LineFixRow = typeof alumniLineFixes.$inferSelect;
+
+/**
+ * One entry's line fixes: the text from `alumni_role_fixes` and the year,
+ * unit and mark from `alumni_line_fixes` (issue #1006), joined on the line
+ * they are keyed by.
+ */
+function fixesOf(entryId: number, texts: readonly (typeof alumniRoleFixes.$inferSelect)[], lines: readonly LineFixRow[]): RoleFix[] {
+  const key = (year: number, group: string) => `${year}\u0000${group}`;
+  const fixes = new Map<string, RoleFix>();
+  const at = (year: number, group: string) =>
+    fixes.get(key(year, group)) ?? { year, group, role: null, toYear: null, toUnit: null, mark: null };
+  for (const t of texts) if (t.entryId === entryId) fixes.set(key(t.year, t.groupName), { ...at(t.year, t.groupName), role: t.role });
+  for (const l of lines) {
+    if (l.entryId !== entryId) continue;
+    fixes.set(key(l.year, l.groupName), {
+      ...at(l.year, l.groupName),
+      toYear: l.toYear,
+      toUnit: unitOf(l.toDepartmentId, l.toDivisionId),
+      mark: markOf(l.mark),
+    });
+  }
+  return [...fixes.values()];
 }
 
 function whoOf(row: EntryRow): EntryWho | null {
@@ -65,7 +101,7 @@ function whoOf(row: EntryRow): EntryWho | null {
 
 async function queryAlumniRecord(): Promise<AlumniRecord> {
   const db = getDb();
-  const [departmentRows, divisionRows, roleRows, personRows, entryRows, fixRows, importedRows, addedRows] = await Promise.all([
+  const [departmentRows, divisionRows, roleRows, personRows, entryRows, fixRows, lineFixRows, importedRows, addedRows] = await Promise.all([
     // Closed departments and divisions stay on the page as names.
     db
       .select({ id: departments.id, name: departments.name, closed: sql<boolean>`${departments.closedAt} is not null` })
@@ -94,6 +130,7 @@ async function queryAlumniRecord(): Promise<AlumniRecord> {
       .where(isNotNull(users.member)),
     db.select().from(alumniEntries).orderBy(asc(alumniEntries.id)),
     db.select().from(alumniRoleFixes),
+    db.select().from(alumniLineFixes),
     db.select().from(alumniImportedRoles).orderBy(asc(alumniImportedRoles.position)),
     db.select().from(alumniAddedYears).orderBy(asc(alumniAddedYears.id)),
   ]);
@@ -109,10 +146,10 @@ async function queryAlumniRecord(): Promise<AlumniRecord> {
         photo: row.photo,
         shown: row.shown,
         removed: row.removedAt !== null,
-        fixes: fixRows.filter((f) => f.entryId === row.id).map((f) => ({ year: f.year, group: f.groupName, role: f.role })),
+        fixes: fixesOf(row.id, fixRows, lineFixRows),
         added: addedRows.filter((a) => a.entryId === row.id).flatMap((a) => {
-          const unit = unitOf(a);
-          return unit === null ? [] : [{ year: a.year, unit, role: a.role }];
+          const unit = unitOf(a.departmentId, a.divisionId);
+          return unit === null ? [] : [{ year: a.year, unit, role: a.role, mark: markOf(a.mark) ?? "member" }];
         }),
       },
     ];
@@ -202,8 +239,9 @@ async function setAlumnusShown(viewer: ViewerStanding, key: AlumnusKey, shown: b
 }
 
 /**
- * Board 78b's Save: the entry, its per-year role text and the years added for
- * the page only (issue #981), in one batch. Roles, divisions and access are
+ * Board 78b's Save: the entry, its per-year role text, year, unit and mark
+ * (issue #1006) and the years added for the page only (issue #981), in one
+ * batch. Roles, divisions and access are
  * not touched.
  */
 async function fixAlumnus(viewer: ViewerStanding, key: AlumnusKey, input: unknown): Promise<WriteResult<null>> {
@@ -213,28 +251,26 @@ async function fixAlumnus(viewer: ViewerStanding, key: AlumnusKey, input: unknow
   const checked = checkAlumnusFix(input, alumnusRow(found.person), found.ground);
   if (!checked.ok) return checked;
   const fix = checked.value;
+  const texts = fix.fixes.flatMap((f) => (f.role === null ? [] : [{ entryId: entryIdOf(key), year: f.year, groupName: f.group, role: f.role }]));
+  const places = fix.fixes.flatMap((f) => {
+    if (f.toYear === null && f.toUnit === null && f.mark === null) return [];
+    const unit = unitColumns(f.toUnit);
+    return [
+      { entryId: entryIdOf(key), year: f.year, groupName: f.group, toYear: f.toYear, toDepartmentId: unit.departmentId, toDivisionId: unit.divisionId, mark: f.mark },
+    ];
+  });
   await runAuditBatch((db) => [
     upsertEntry(db, key, { shown: fix.shown, name: fix.name, founder: fix.founder === null ? null : FOUNDER_COLUMN[fix.founder] }),
     db.delete(alumniRoleFixes).where(eq(alumniRoleFixes.entryId, entryIdOf(key))),
-    ...(fix.fixes.length === 0
-      ? []
-      : [
-          db.insert(alumniRoleFixes).values(
-            fix.fixes.map((f) => ({ entryId: entryIdOf(key), year: f.year, groupName: f.group, role: f.role })),
-          ),
-        ]),
+    ...(texts.length === 0 ? [] : [db.insert(alumniRoleFixes).values(texts)]),
+    db.delete(alumniLineFixes).where(eq(alumniLineFixes.entryId, entryIdOf(key))),
+    ...(places.length === 0 ? [] : [db.insert(alumniLineFixes).values(places)]),
     db.delete(alumniAddedYears).where(eq(alumniAddedYears.entryId, entryIdOf(key))),
     ...(fix.added.length === 0
       ? []
       : [
           db.insert(alumniAddedYears).values(
-            fix.added.map((a) => ({
-              entryId: entryIdOf(key),
-              year: a.year,
-              departmentId: a.unit.kind === "department" ? a.unit.id : null,
-              divisionId: a.unit.kind === "division" ? a.unit.id : null,
-              role: a.role,
-            })),
+            fix.added.map((a) => ({ entryId: entryIdOf(key), year: a.year, ...unitColumns(a.unit), role: a.role, mark: a.mark })),
           ),
         ]),
   ]);

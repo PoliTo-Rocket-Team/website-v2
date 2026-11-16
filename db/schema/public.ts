@@ -893,9 +893,40 @@ export const alumniAddedYears = pgTable("alumni_added_years", {
   departmentId: integer("department_id").references(() => departments.id, { onDelete: "cascade" }),
   divisionId: integer("division_id").references(() => divisions.id, { onDelete: "cascade" }),
   role: text("role").notNull(),
+  // How the page marks them that year (drizzle/0090, issue #1006): "member",
+  // "lead" or "head". Null, on a row saved before, reads as "member".
+  mark: text("mark"),
 }, (table) => ({
   entryIdx: index("alumni_added_years_entry_idx").on(table.entryId),
   oneUnit: check("alumni_added_years_one_unit", sql`num_nonnulls(${table.departmentId}, ${table.divisionId}) = 1`),
+  markKnown: check("alumni_added_years_mark", sql`${table.mark} is null or ${table.mark} in ('member', 'lead', 'head')`),
+}));
+
+/**
+ * Where and how the page shows one record line (drizzle/0090, issue #1006),
+ * keyed like `alumni_role_fixes` by the year and group the record gives it:
+ * moved to another academic year or unit, and the mark it carries. Each
+ * column left null shows what the record says. It never writes a role.
+ */
+export const alumniLineFixes = pgTable("alumni_line_fixes", {
+  id: serial("id").primaryKey(),
+  entryId: integer("entry_id")
+    .references(() => alumniEntries.id, { onDelete: "cascade" })
+    .notNull(),
+  year: integer("year").notNull(),
+  groupName: text("group_name").notNull(),
+  toYear: integer("to_year"),
+  toDepartmentId: integer("to_department_id").references(() => departments.id, { onDelete: "cascade" }),
+  toDivisionId: integer("to_division_id").references(() => divisions.id, { onDelete: "cascade" }),
+  mark: text("mark"),
+}, (table) => ({
+  oneFixPerLine: uniqueIndex("alumni_line_fixes_line").on(table.entryId, table.year, table.groupName),
+  oneUnit: check("alumni_line_fixes_one_unit", sql`num_nonnulls(${table.toDepartmentId}, ${table.toDivisionId}) <= 1`),
+  markKnown: check("alumni_line_fixes_mark", sql`${table.mark} is null or ${table.mark} in ('member', 'lead', 'head')`),
+  changesSomething: check(
+    "alumni_line_fixes_changes",
+    sql`num_nonnulls(${table.toYear}, ${table.toDepartmentId}, ${table.toDivisionId}, ${table.mark}) >= 1`,
+  ),
 }));
 
 export const scopes = pgTable(
