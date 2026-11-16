@@ -1436,3 +1436,38 @@ test("0087 applies again, and an added year sits in exactly one department or di
   const logged = await db.query(`select operation from public.logs where table_name = 'alumni_added_years'`);
   assert.deepEqual(logged.rows, [{ operation: "INSERT" }], "the audit trigger logs the write");
 });
+
+// Each Alumni year row's year, unit and mark (issue #1006): one new table
+// beside the alumni entries, with its audit trigger, and a mark column on the
+// added years. No team table changes.
+const ALUMNI_LINE_FIXES_TAG = "0090_alumni_line_fixes";
+
+test("0090_alumni_line_fixes.sql drops, renames and rewrites nothing", () => {
+  const sql = readFileSync(resolve(process.cwd(), `drizzle/${ALUMNI_LINE_FIXES_TAG}.sql`), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), []);
+  assert.match(sql, /https:\/\/github\.com\/PoliTo-Rocket-Team\/website-v2\/issues\/1006/);
+});
+
+test("0090 applies again, keeps every added year with no mark, and a line fix changes something in at most one unit", async () => {
+  const { db, apply } = await databaseBefore(ALUMNI_LINE_FIXES_TAG);
+  await db.exec(`
+    insert into departments (id, name) values (9001, 'Recovery');
+    insert into divisions (id, name) values (9002, 'Parachutes');
+    insert into alumni_entries (id, kind, record_name) values (9001, 'imported', 'Carla Neri');
+    insert into alumni_added_years (entry_id, year, department_id, role) values (9001, 2021, 9001, 'Recovery Engineer');
+  `);
+  await apply();
+  await apply();
+  const added = await db.query(`select role, mark from alumni_added_years where entry_id = 9001`);
+  assert.deepEqual(added.rows, [{ role: "Recovery Engineer", mark: null }]);
+  await assert.rejects(db.exec(`update alumni_added_years set mark = 'chief' where entry_id = 9001`));
+  await db.exec(`insert into alumni_line_fixes (entry_id, year, group_name, to_year, to_department_id, mark) values (9001, 2021, 'Operations', 2022, 9001, 'lead');`);
+  await assert.rejects(db.exec(`insert into alumni_line_fixes (entry_id, year, group_name) values (9001, 2022, 'Operations');`), "a fix that changes nothing");
+  await assert.rejects(
+    db.exec(`insert into alumni_line_fixes (entry_id, year, group_name, to_department_id, to_division_id) values (9001, 2023, 'Operations', 9001, 9002);`),
+    "two units",
+  );
+  await assert.rejects(db.exec(`insert into alumni_line_fixes (entry_id, year, group_name, mark) values (9001, 2021, 'Operations', 'head');`), "one fix per line");
+  const logged = await db.query(`select operation from public.logs where table_name = 'alumni_line_fixes'`);
+  assert.deepEqual(logged.rows, [{ operation: "INSERT" }], "the audit trigger logs the write");
+});

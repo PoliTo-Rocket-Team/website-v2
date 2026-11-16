@@ -287,6 +287,7 @@ const TABLE_RANK = [
   "team_page_advisors",
   "alumni_entries",
   "alumni_role_fixes",
+  "alumni_line_fixes",
   "alumni_imported_roles",
   "users",
   "dashboard_notices",
@@ -706,6 +707,7 @@ const SENTENCES: Readonly<Record<string, Sentence>> = {
     return { sentence: `Edited the alumni entry of ${person}`, area };
   },
   alumni_role_fixes: () => ({ sentence: "Fixed a role line on the Alumni page", area: "alumni" }),
+  alumni_line_fixes: () => ({ sentence: "Fixed a year row on the Alumni page", area: "alumni" }),
   alumni_imported_roles: () => ({ sentence: "Changed an imported role line on the Alumni page", area: "alumni" }),
   alumni_added_years: (row) => ({
     sentence: `${row.operation === "INSERT" ? "Added" : row.operation === "DELETE" ? "Removed" : "Changed"} a year on the Alumni page`,

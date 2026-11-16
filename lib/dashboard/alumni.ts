@@ -2,9 +2,15 @@ import { shortAcademicYearLabel } from "@/lib/about/academic-year-copy";
 import {
   ADVISORS,
   addedGroup,
+  changesNothing,
   type AddedYear,
+  unchosenMark,
   type Alumnus,
   type AlumnusKey,
+  type AlumnusLine,
+  type LineSource,
+  type Mark,
+  type Rank,
   type RecordUnits,
   type RoleFix,
   type UnitRef,
@@ -22,19 +28,23 @@ import { refused, written, type WriteResult } from "./write";
 
 /** One person in one group of one year, as the fix panel lists them (board 78b). */
 export type AlumnusYear = {
+  /** The year the page lists it in. */
   readonly year: number;
-  /** The group from the record, read-only. */
+  /** The group the page lists it in. */
   readonly group: string;
   /** What the record prints. */
   readonly recordRole: string;
   /** What the page prints. */
   readonly role: string;
+  /** How the page marks them (issue #1006): the record's rank, or the mark an editor chose. */
+  readonly rank: Rank;
   /**
-   * A year added for the page only (issue #981): the unit it was added in.
-   * Its text is edited and the row removed in the fix panel. Null for a year
-   * from the record, which can only be retitled.
+   * A record line, with what the record says and the fix over it: its text,
+   * year, unit and mark are edited, and an undo returns it to the record
+   * (issue #1006). Or a year added for the page only (issue #981), edited the
+   * same way and removed.
    */
-  readonly added: UnitRef | null;
+  readonly source: LineSource;
 };
 
 /** A department or division, current or closed, that "+ Add a year" offers (issue #981). */
@@ -60,7 +70,7 @@ export type AlumnusRow = {
   readonly founder: FounderMark | null;
   /** The page shows another name than the record's: the "Name fixed" tag. */
   readonly nameFixed: boolean;
-  /** A year's role text was fixed: the "Role fixed" tag. */
+  /** A year's text, year, unit or mark was fixed: the "Role fixed" tag. */
   readonly roleFixed: boolean;
   readonly shown: boolean;
   /** The record's title in their latest year: "Head of Structures". */
@@ -77,6 +87,12 @@ export type AlumnusRow = {
   readonly groups: readonly string[];
   /** Newest year first. */
   readonly lines: readonly AlumnusYear[];
+  /**
+   * Lines the page cannot list, because another of theirs holds the same
+   * year and group (`Alumnus.clashing`). The fix panel lists them with the
+   * others, and Save refuses until each is moved or undone (issue #1006).
+   */
+  readonly clashing: readonly AlumnusYear[];
 };
 
 export type AlumniDirectory = {
@@ -103,10 +119,15 @@ export function alumniUnits(units: RecordUnits): AlumniUnit[] {
   ];
 }
 
+function yearOf({ year, group, recordRole, role, rank, source }: AlumnusLine): AlumnusYear {
+  return { year, group, recordRole, role, rank, source };
+}
+
 export function alumnusRow(a: Alumnus): AlumnusRow {
   const newestFirst = [...a.lines].reverse();
   const last = newestFirst[0]!;
   const years = [...new Set(newestFirst.map((l) => l.year))];
+  const fixed = (l: AlumnusLine) => l.source.kind === "record" && l.source.fix !== null;
   return {
     key: a.key,
     kind: a.kind,
@@ -116,7 +137,7 @@ export function alumnusRow(a: Alumnus): AlumnusRow {
     photo: a.photo,
     founder: a.founder,
     nameFixed: a.name !== a.recordName,
-    roleFixed: a.lines.some((l) => l.fixed),
+    roleFixed: a.lines.some(fixed) || a.clashing.some(fixed),
     shown: a.shown,
     lastRole: last.title,
     lastUnit: last.unit,
@@ -124,7 +145,8 @@ export function alumnusRow(a: Alumnus): AlumnusRow {
     to: a.onTeam ? null : last.year + 1,
     years,
     groups: [...new Set(a.lines.map((l) => l.group))],
-    lines: newestFirst.map(({ year, group, recordRole, role, added }) => ({ year, group, recordRole, role, added })),
+    lines: newestFirst.map(yearOf),
+    clashing: [...a.clashing].reverse().map(yearOf),
   };
 }
 
@@ -232,63 +254,132 @@ function unitRefOf(value: unknown): UnitRef | null {
   return value.kind === "department" || value.kind === "division" ? { kind: value.kind, id } : null;
 }
 
+/** The marks the fix panel offers (issue #1006), in its order. */
+export const MARKS: readonly Mark[] = ["member", "lead", "head"];
+
+function markOf(value: unknown): Mark | undefined {
+  return MARKS.find((mark) => mark === value);
+}
+
+const CHECK_THE_FORM = refused("Check the form.");
+
+/** A year the panel's year selects offer, or the refusal when it is not one. */
+function yearRefusal(year: number, ground: AddedYearGround): string | null {
+  return year >= FIRST_ALUMNI_YEAR && year <= ground.thisYear ? null : `Pick a year from ${yearTab(FIRST_ALUMNI_YEAR)} to this one.`;
+}
+
+const UNKNOWN_UNIT = "That department or division is not on the team record.";
+
+/** The years and groups the page lists someone in, so no two of their lines share one. */
+class Slots {
+  private readonly taken = new Set<string>();
+
+  /** Takes the slot; the refusal when a line already holds it. */
+  take(year: number, group: string): string | null {
+    const key = `${year}\u0000${group}`;
+    if (this.taken.has(key)) return `They already have ${yearTab(year)} in ${group}.`;
+    this.taken.add(key);
+    return null;
+  }
+}
+
+/**
+ * One record row of the fix panel's form, keyed by the year and group the
+ * record gives it. Text equal to the record's, or empty, keeps no text fix;
+ * the record's year keeps none either, and neither does the mark the page
+ * shows with none chosen (`unchosenMark`). Any other mark is kept, so the
+ * page shows it in every kind of group. A unit moves the line into that
+ * department or division (issue #1006).
+ */
+function checkRecordRow(raw: unknown, recordLines: readonly AlumnusYear[], ground: AddedYearGround): WriteResult<RoleFix | null> {
+  if (!isRecord(raw) || !Number.isInteger(raw.year) || typeof raw.group !== "string" || typeof raw.role !== "string") return CHECK_THE_FORM;
+  const line = recordLines.find((l) => l.source.kind === "record" && l.source.year === raw.year && l.source.group === raw.group);
+  if (line === undefined || line.source.kind !== "record") return refused("That year is not on their record.");
+  const { source } = line;
+  const role = raw.role.trim().replace(/\s+/g, " ");
+  if (role.length > MAX_ALUMNI_ROLE) return refused(`A role can be at most ${MAX_ALUMNI_ROLE} characters.`);
+  const toYear = raw.toYear ?? null;
+  if (toYear !== null && !Number.isInteger(toYear)) return CHECK_THE_FORM;
+  const toYearRefusal = toYear === null || toYear === source.year ? null : yearRefusal(toYear as number, ground);
+  if (toYearRefusal !== null) return refused(toYearRefusal);
+  const toUnit = raw.toUnit === undefined || raw.toUnit === null ? null : unitRefOf(raw.toUnit);
+  if (raw.toUnit !== undefined && raw.toUnit !== null && toUnit === null) return CHECK_THE_FORM;
+  if (toUnit !== null && addedGroup(toUnit, ground.units) === null) return refused(UNKNOWN_UNIT);
+  const mark = raw.mark === undefined || raw.mark === null ? null : markOf(raw.mark);
+  if (mark === undefined) return refused("Pick Member, Lead or Head.");
+  const fix: RoleFix = {
+    year: source.year,
+    group: source.group,
+    role: role === "" || role === line.recordRole ? null : role,
+    toYear: toYear === source.year ? null : (toYear as number | null),
+    toUnit,
+    mark: mark === unchosenMark(source, toUnit) ? null : mark,
+  };
+  return written(changesNothing(fix) ? null : fix);
+}
+
 /**
  * The added years in the fix panel's form (issue #981). Each sits in a
  * department or division the record has, in a year from 2021–22 to this one,
- * with its text. A year may not stand in a group the person already has that
- * year, from the record or added twice: the page would list them twice.
+ * with its text and its mark (issue #1006; Member when none is sent).
  */
-function checkAddedYears(input: unknown, recordLines: readonly AlumnusYear[], ground: AddedYearGround): WriteResult<AddedYear[]> {
-  if (!Array.isArray(input)) return refused("Check the form.");
-  const taken = new Set(recordLines.map((l) => `${l.year}\u0000${l.group}`));
-  const added: AddedYear[] = [];
-  for (const raw of input) {
-    const unit = isRecord(raw) ? unitRefOf(raw.unit) : null;
-    if (!isRecord(raw) || unit === null || !Number.isInteger(raw.year) || typeof raw.role !== "string") return refused("Check the form.");
-    const year = raw.year as number;
-    if (year < FIRST_ALUMNI_YEAR || year > ground.thisYear) return refused(`Pick a year from ${yearTab(FIRST_ALUMNI_YEAR)} to this one.`);
-    const group = addedGroup(unit, ground.units);
-    if (group === null) return refused("That department or division is not on the team record.");
-    const role = raw.role.trim().replace(/\s+/g, " ");
-    if (role === "") return refused("Enter the title for each added year.");
-    if (role.length > MAX_ALUMNI_ROLE) return refused(`A role can be at most ${MAX_ALUMNI_ROLE} characters.`);
-    const key = `${year}\u0000${group}`;
-    if (taken.has(key)) return refused(`They already have ${yearTab(year)} in ${group}.`);
-    taken.add(key);
-    added.push({ year, unit, role });
-  }
-  return written(added);
+function checkAddedYear(raw: unknown, ground: AddedYearGround): WriteResult<{ added: AddedYear; group: string }> {
+  const unit = isRecord(raw) ? unitRefOf(raw.unit) : null;
+  if (!isRecord(raw) || unit === null || !Number.isInteger(raw.year) || typeof raw.role !== "string") return CHECK_THE_FORM;
+  const year = raw.year as number;
+  const yearRefused = yearRefusal(year, ground);
+  if (yearRefused !== null) return refused(yearRefused);
+  const group = addedGroup(unit, ground.units);
+  if (group === null) return refused(UNKNOWN_UNIT);
+  const role = raw.role.trim().replace(/\s+/g, " ");
+  if (role === "") return refused("Enter the title for each added year.");
+  if (role.length > MAX_ALUMNI_ROLE) return refused(`A role can be at most ${MAX_ALUMNI_ROLE} characters.`);
+  const mark = raw.mark === undefined ? "member" : markOf(raw.mark);
+  if (mark === undefined) return refused("Pick Member, Lead or Head.");
+  return written({ added: { year, unit, role, mark }, group });
 }
 
 /**
  * Checks the fix panel's form against the person it was opened on. Each
- * year's role must be one of theirs from the record; text equal to the
- * record's, or empty, keeps no fix. The group is never taken from the form:
- * it is the record's. The added years are the whole list the page keeps.
+ * record row must be one of theirs from the record, by the year and group
+ * the record gives it; a row left out keeps no fix. The added years are the
+ * whole list the page keeps. No two lines may then stand in one group of one
+ * year, a record line moved there or an added one: the page would list them
+ * twice. A line that already clashes counts too, so a Save never drops its
+ * fix without a word: it is refused until the line is moved or undone.
  */
-export function checkAlumnusFix(input: unknown, person: Pick<AlumnusRow, "recordName" | "lines">, ground: AddedYearGround): WriteResult<AlumnusFix> {
-  if (!isRecord(input) || typeof input.shown !== "boolean" || typeof input.name !== "string" || !Array.isArray(input.roles)) {
-    return refused("Check the form.");
+export function checkAlumnusFix(input: unknown, person: Pick<AlumnusRow, "recordName" | "lines" | "clashing">, ground: AddedYearGround): WriteResult<AlumnusFix> {
+  if (!isRecord(input) || typeof input.shown !== "boolean" || typeof input.name !== "string" || !Array.isArray(input.roles) || !Array.isArray(input.added)) {
+    return CHECK_THE_FORM;
   }
   const founder = founderOf(input.founder);
   if (founder === undefined) return refused("Pick No, Co-founder or Founder.");
   const name = input.name.trim().replace(/\s+/g, " ");
   if (name.length > MAX_ALUMNI_NAME) return refused(`The name can be at most ${MAX_ALUMNI_NAME} characters.`);
-  const recordLines = person.lines.filter((l) => l.added === null);
+  const recordLines = [...person.lines, ...person.clashing].filter((l) => l.source.kind === "record");
   const fixes: RoleFix[] = [];
   for (const raw of input.roles) {
-    if (!isRecord(raw) || !Number.isInteger(raw.year) || typeof raw.group !== "string" || typeof raw.role !== "string") {
-      return refused("Check the form.");
-    }
-    const line = recordLines.find((l) => l.year === raw.year && l.group === raw.group);
-    if (line === undefined) return refused("That year is not on their record.");
-    const role = raw.role.trim().replace(/\s+/g, " ");
-    if (role.length > MAX_ALUMNI_ROLE) return refused(`A role can be at most ${MAX_ALUMNI_ROLE} characters.`);
-    if (role !== "" && role !== line.recordRole) fixes.push({ year: line.year, group: line.group, role });
+    const checked = checkRecordRow(raw, recordLines, ground);
+    if (!checked.ok) return checked;
+    if (checked.value !== null) fixes.push(checked.value);
   }
-  const added = checkAddedYears(input.added, recordLines, ground);
-  if (!added.ok) return added;
-  return written({ shown: input.shown, name: name === "" || name === person.recordName ? null : name, founder, fixes, added: added.value });
+  const slots = new Slots();
+  for (const line of recordLines) {
+    if (line.source.kind !== "record") continue;
+    const { year, group } = line.source;
+    const fix = fixes.find((f) => f.year === year && f.group === group);
+    const taken = slots.take(fix?.toYear ?? year, fix?.toUnit ? addedGroup(fix.toUnit, ground.units)! : group);
+    if (taken !== null) return refused(taken);
+  }
+  const added: AddedYear[] = [];
+  for (const raw of input.added) {
+    const checked = checkAddedYear(raw, ground);
+    if (!checked.ok) return checked;
+    const taken = slots.take(checked.value.added.year, checked.value.group);
+    if (taken !== null) return refused(taken);
+    added.push(checked.value.added);
+  }
+  return written({ shown: input.shown, name: name === "" || name === person.recordName ? null : name, founder, fixes, added });
 }
 
 // Add alumni (board 78c)

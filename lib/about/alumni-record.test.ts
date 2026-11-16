@@ -147,7 +147,7 @@ test("a fix changes only the page: roles, units and people stay as they were", (
   const fixed = withEntryChange(record, "m1", {
     name: "Ada R.",
     founder: "co-founder",
-    fixes: [{ year: 2024, group: "Recovery", role: "Parachutes Lead" }],
+    fixes: [{ year: 2024, group: "Recovery", role: "Parachutes Lead", toYear: null, toUnit: null, mark: null }],
   });
   assert.equal(fixed.roles, record.roles);
   assert.equal(fixed.units, record.units);
