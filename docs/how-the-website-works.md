@@ -72,6 +72,7 @@ Three daily jobs run on production ([`vercel.json`](../vercel.json), routes in
 
 - [README](../README.md): setup, environment variables, seeding.
 - [AGENTS.md](../AGENTS.md): how work is planned, built, reviewed and shipped in this repo.
+- [docs/dashboard-guide.md](dashboard-guide.md): a tour of every dashboard page.
 - [docs/dashboard-rules.md](dashboard-rules.md): who sees what and who may do what in the dashboard.
 - [`.decisions/`](../.decisions): one file per architecture decision.
 - [`.glossary/`](../.glossary): the words the code and the team use.
