@@ -40,8 +40,15 @@ jobs:
 
   # Runs the unit tests (`lib/**/*.test.ts`). It needs no secrets and no
   # database: every test that reads env passes its own values in.
+  # The suite runs in four shards at once (node's --test-shard), which cuts
+  # its wall time to about a quarter. `needs.test.result` is success only
+  # when every shard succeeds, so ci-required reads it as before.
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -50,7 +57,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test
+      - run: pnpm exec tsx --test --test-shard=${{ matrix.shard }}/4 "lib/**/*.test.ts" "scripts/**/*.test.ts"
 
   # The one check the merge queue requires. It always runs, so a pull request
   # never waits on a job that did not start. It also enforces `ready-for:human`
