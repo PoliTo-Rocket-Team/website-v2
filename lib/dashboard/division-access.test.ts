@@ -425,7 +425,7 @@ test("the Access page offers no Alumni area: the Alumni page is site content und
   const [line] = heldLines(team().unit);
   assert.deepEqual(
     line.held.map((h) => h.target),
-    ["positions", "applications", "members", "content", "orders"],
+    ["all", "positions", "applications", "members", "content", "orders", "team_tree"],
   );
 });
 

@@ -65,7 +65,7 @@ import { isOffTeam, isTeamLeader } from "./viewer";
 import { fileReads, resetFiles } from "./access-matrix/fakes/files";
 import { ownPublicStoreHost } from "./access-matrix/fakes/public-store";
 import { accountOf, cvHash, EXTRA, IDS, MARKERS, seedFixture } from "./access-matrix/fixture";
-import { ALL, ORG, VIEWERS, type Expect, type MatrixRow, type TreeReach, type Unit } from "./access-matrix/matrix";
+import { ALL, OPEN_DEPARTMENTS, ORG, VIEWERS, type Expect, type MatrixRow, type TreeReach, type Unit } from "./access-matrix/matrix";
 import { signInAs, viewAs } from "./access-matrix/session";
 
 // The server side of the dashboard access matrix (issue #477): every loader
@@ -262,8 +262,9 @@ describe("figures about applications come only where the viewer reads Applicatio
 });
 
 /** Whether the viewer holds a `team` row on `area`: a grant across the whole team (issues #956, #957). */
+// A Team tree grant is no area grant (issue #1005), so it is no whole-team area row either.
 const holdsWholeTeam = (row: MatrixRow, area?: string) =>
-  row.viewer.rawRows.some((r) => r.scope === "team" && r.target !== "approve_orders" && (area === undefined || r.target === area));
+  row.viewer.rawRows.some((r) => r.scope === "team" && r.target !== "approve_orders" && r.target !== "team_tree" && (area === undefined || r.target === area));
 
 /** The intro of every matrix row holding a whole-team grant on `area`, whatever their role and level (issue #957). */
 const wholeTeamIntros = (area: "positions" | "applications", intro: string): Record<string, string> =>
@@ -540,6 +541,13 @@ const ORDER = { item: "Bolts", link: "https://example.com/bolts", price: "1", qu
 const DIVISION = { newLeads: [EXTRA.mover], oldLeads: [], members: [], emails: [] };
 /** A change in Structures' units: a lead's or a head's of it, or full access. DM is the matrix's unit there. */
 const inStructures = (r: MatrixRow) => (r.expect.reads.members.includes(DM) ? leadsOnly(r) : false);
+/** A row naming the Team tree's edit view (`tree`, issue #1005) is decided by it; any other by `otherwise`. */
+const treeOr = (otherwise: (r: MatrixRow) => boolean | undefined, byTree: (tree: TreeReach | null) => boolean) => (r: MatrixRow) =>
+  r.expect.tree !== undefined ? byTree(r.expect.tree) : otherwise(r);
+/** A division write in Structures: its head's, as Add division and Close division are, or the whole tree's. */
+const structuresTree = treeOr(inStructures, (t) => t !== null && (t.wholeTree || t.departments.includes(IDS.department(DM))));
+/** A department or seat write: full access, or a whole-team Team tree grant at Can edit. */
+const wholeTree = (r: MatrixRow) => fullAccess(r) || r.expect.tree?.wholeTree === true;
 const siteContent = (r: MatrixRow) => r.expect.siteContent;
 /**
  * Access on someone in DM: full access. No matrix lead leads DM, and a lead's
@@ -647,44 +655,44 @@ const ACTION_CASES: readonly ActionCase[] = [
     control: by("team leader"),
   },
 
-  // The Team tree's structure: divisions and departments, in Structures.
-  { action: "team-actions.findPeople", run: () => teamActions.findPeople("person"), may: leadsOnly, control: by("team leader", "answer") },
-  { action: "team-actions.createDivision", run: () => teamActions.createDivision(IDS.department(DM), { name: "Avionics", code: "AVI", ...DIVISION }), may: inStructures, control: by("team leader") },
-  { action: "team-actions.saveDivision", run: () => teamActions.saveDivision(EXTRA.emptyDivision, { name: "Avionics", code: "AVI", ...DIVISION }), may: inStructures, control: by("team leader") },
-  { action: "team-actions.closeDivision", run: () => teamActions.closeDivision(EXTRA.emptyDivision), may: inStructures, control: by("team leader") },
-  { action: "team-actions.createDepartment", run: () => teamActions.createDepartment({ name: "Avionics", code: "AVI", heads: [EXTRA.mover] }), may: fullAccess, control: by("team leader") },
+  // The Team tree's structure: divisions and departments, in Structures. A row naming its edit view (`tree`, issue #1005) is decided by it.
+  { action: "team-actions.findPeople", run: () => teamActions.findPeople("person"), may: treeOr(leadsOnly, (t) => t !== null), control: by("team leader", "answer") },
+  { action: "team-actions.createDivision", run: () => teamActions.createDivision(IDS.department(DM), { name: "Avionics", code: "AVI", ...DIVISION }), may: structuresTree, control: by("team leader") },
+  { action: "team-actions.saveDivision", run: () => teamActions.saveDivision(EXTRA.emptyDivision, { name: "Avionics", code: "AVI", ...DIVISION }), may: structuresTree, control: by("team leader") },
+  { action: "team-actions.closeDivision", run: () => teamActions.closeDivision(EXTRA.emptyDivision), may: structuresTree, control: by("team leader") },
+  { action: "team-actions.createDepartment", run: () => teamActions.createDepartment({ name: "Avionics", code: "AVI", heads: [EXTRA.mover] }), may: wholeTree, control: by("team leader") },
   {
     action: "team-actions.saveDepartment",
     run: () => teamActions.saveDepartment(EXTRA.emptyDepartment, { name: "Spares", code: "SPR", head: null }),
-    may: fullAccess,
+    may: wholeTree,
     control: by("team leader"),
   },
-  { action: "team-actions.closeDepartment", run: () => teamActions.closeDepartment(EXTRA.emptyDepartment, { people: [] }), may: fullAccess, control: by("team leader") },
+  { action: "team-actions.closeDepartment", run: () => teamActions.closeDepartment(EXTRA.emptyDepartment, { people: [] }), may: wholeTree, control: by("team leader") },
   {
     action: "team-actions.handOverTeamLeader",
     run: () => teamActions.handOverTeamLeader({ to: IDS.person(DM), outcome: "leave" }),
     may: (r) => r.name === "team leader",
     control: by("team leader"),
   },
-  // The seat row of Edit team tree (issue #627): the team leader and full access, as for departments.
+  // The seat row of Edit team tree (issue #627): the team leader and full access, as for departments, and a whole-team Team tree grant (issue #1005).
   {
     action: "team-actions.changeSeatHolder",
     run: async () => teamActions.changeSeatHolder(await seatRowOf("Project Manager"), { to: EXTRA.mover, outcome: "advisor" }),
-    may: fullAccess,
+    may: wholeTree,
     control: by("team leader"),
   },
-  { action: "team-actions.addSeat", run: () => teamActions.addSeat({ personId: EXTRA.mover, title: "Safety Officer" }), may: fullAccess, control: by("team leader") },
+  { action: "team-actions.addSeat", run: () => teamActions.addSeat({ personId: EXTRA.mover, title: "Safety Officer" }), may: wholeTree, control: by("team leader") },
   // Remove seat (issue #643): the same viewers as the rest of the seat row.
-  { action: "team-actions.removeSeat", run: async () => teamActions.removeSeat(await seatRowOf("Project Manager")), may: fullAccess, control: by("team leader") },
+  { action: "team-actions.removeSeat", run: async () => teamActions.removeSeat(await seatRowOf("Project Manager")), may: wholeTree, control: by("team leader") },
   // Add another holder (epic #861, issue #868): the same viewers as the rest of the seat row, on every seat kind.
-  { action: "team-actions.addTeamLeader", run: () => teamActions.addTeamLeader({ personId: EXTRA.mover }), may: fullAccess, control: by("team leader") },
+  { action: "team-actions.addTeamLeader", run: () => teamActions.addTeamLeader({ personId: EXTRA.mover }), may: wholeTree, control: by("team leader") },
   {
     action: "team-actions.addSeatHolder",
     run: async () => teamActions.addSeatHolder(await seatRowOf("Project Manager"), { personId: EXTRA.mover }),
-    may: fullAccess,
+    may: wholeTree,
     control: by("team leader"),
   },
-  { action: "team-actions.addDepartmentHead", run: () => teamActions.addDepartmentHead(IDS.department(DM), { personId: EXTRA.mover }), may: fullAccess, control: by("team leader") },
+  { action: "team-actions.addDepartmentHead", run: () => teamActions.addDepartmentHead(IDS.department(DM), { personId: EXTRA.mover }), may: wholeTree, control: by("team leader") },
 
   // The Alumni page: site content under the Content grant (issue #589). The
   // control is a member holding Content at Can edit, so each write is proven
@@ -1378,7 +1386,7 @@ describe("leads and heads hold grants beyond their role, and their role access s
     if (page.unit.kind !== "division") return;
     assert.deepEqual(
       page.unit.divisions.map((d) => [d.division.id, d.held]),
-      [[IDS.division("MA"), ["positions", "applications", "members", "orders"].map((target) => ({ target, level: "edit" }))]],
+      [[IDS.division("MA"), ["positions", "applications", "members", "orders", "team_tree"].map((target) => ({ target, level: "edit" }))]],
     );
     assert.ok(holdsAny(page.unit), "Your access and Give access show");
     assert.ok(grantablePeople(page).some((p) => p.id === IDS.person("MA")), "Give access lists the member of Mission Analysis");
@@ -1391,7 +1399,7 @@ describe("leads and heads hold grants beyond their role, and their role access s
     const page = await pageAs("division lead");
     assert.equal(page.unit.kind, "division");
     if (page.unit.kind !== "division") return;
-    const roleAreas = ["positions", "applications", "members", "orders"].map((target) => ({ target, level: "edit" }));
+    const roleAreas = ["positions", "applications", "members", "orders", "team_tree"].map((target) => ({ target, level: "edit" }));
     assert.deepEqual(
       page.unit.divisions.map((d) => [d.division.id, d.held]),
       [
@@ -2441,13 +2449,13 @@ describe("a whole-team grant acts as full access within its own area, and the Te
 describe("a Team tree grant edits the Team tree where it applies and nothing else, and whole team All areas at Can edit is full access only full access gives (issue #1005)", () => {
   const TREE_ROWS = (VIEWERS as readonly MatrixRow[]).filter((r) => r.expect.tree !== undefined);
   const GRANT_ROWS = TREE_ROWS.filter((r) => r.viewer.rawRows.some((s) => s.target === "team_tree"));
-  /** What the edit view lets the viewer change, as the matrix names it. */
+  /** What the edit view lets the viewer change, as the matrix names it: its units and its open departments, never the fixture's spare one. */
   const reachOf = (s: TeamStructure | null): TreeReach | null =>
     s === null
       ? null
       : {
           divisions: ALL.filter((u) => s.departments.some((d) => d.divisions.some((v) => v.id === IDS.division(u) && v.page !== null))),
-          departments: s.departments.filter((d) => d.divisionsEditable).map((d) => d.id),
+          departments: s.departments.filter((d) => d.divisionsEditable && OPEN_DEPARTMENTS.includes(d.id)).map((d) => d.id),
           wholeTree: s.departmentsEditable,
         };
   const rename = (u: Unit) => async () => {
