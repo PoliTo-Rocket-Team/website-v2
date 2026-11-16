@@ -909,7 +909,7 @@ function IntroBox({
           value={text}
           aria-invalid={error !== undefined}
           onChange={(e) => type(e.target.value)}
-          className={`${PAGE_INTRO} block w-full resize-none rounded-xl border-[1.5px] bg-accent/5 px-3 py-2 focus:outline-none ${error === undefined ? "border-accent" : "border-danger"}`}
+          className={`${PAGE_INTRO} block w-full resize-y rounded-xl border-[1.5px] bg-accent/5 px-3 py-2 focus:outline-none ${error === undefined ? "border-accent" : "border-danger"}`}
         />
         <p className="mt-2 text-[12px] text-prt-muted">
           {CURRENT_ACADEMIC_YEAR} shows the current academic year.{" "}
