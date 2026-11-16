@@ -2,6 +2,8 @@
 
 This repository powers the PoliTo Rocket Team website. The stack is Next.js, Vercel for deployment, Drizzle ORM for database schema/migrations, Neon Postgres, Better Auth, and Tailwind CSS.
 
+For an overview of how the site and the dashboard fit together, read [How the website works](docs/how-the-website-works.md).
+
 ## Setup
 
 1. Install dependencies:
