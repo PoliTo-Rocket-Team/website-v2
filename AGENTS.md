@@ -118,3 +118,4 @@ Keep each fact in the document that owns it, and link to it from elsewhere.
 | [.glossary/](.glossary/TERMS.md) | Canonical terms: domain nouns in `TERMS.md`, architecture terms in `LANGUAGE.md` |
 | [.patterns/](.patterns/index.md) | How the code is shaped today, and when to read each pattern |
 | [docs/dashboard-rules.md](docs/dashboard-rules.md) | Dashboard rules: who sees each page and the conditions behind each action |
+| [docs/pr-pipeline.md](docs/pr-pipeline.md) | Branches, CI checks, tests, migrations, merge queue and releases |
