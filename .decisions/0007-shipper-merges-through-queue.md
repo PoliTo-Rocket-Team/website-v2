@@ -20,13 +20,13 @@ The model is the sibling repo's ADR 0006 (not this repo's 0006), which made a pa
 
 **Code pull requests merge through the "landing-page merge queue" once their required verdicts pass at head; only control-plane or `ready-for:human` pull requests wait for Huey.**
 
-1. **The queue.** The "landing-page merge queue" ruleset (id 24788684, active) on `huey/landing-page` puts every merge through the merge queue. It requires two status checks: the secrets scan (`scan PR files for secrets and machine-local paths`) and `ci-required`. `ci-required` fails a queue entry while the pull request carries `ready-for:human`, so that label is a real hold.
+1. **The queue.** The "dev merge queue" ruleset (id 24788684, active) on `dev` (on `huey/landing-page` until #686) puts every merge through the merge queue. It requires two status checks: the secrets scan (`scan PR files for secrets and machine-local paths`) and `ci-required`. `ci-required` fails a queue entry while the pull request carries `ready-for:human`, so that label is a real hold.
 2. **CODEOWNERS keeps only Fabrika's fixed control-plane paths.** `.github/CODEOWNERS` lists `/.claude/`, `/.github/` and the lefthook files, plus the control-plane rows Fabrika names that do not exist here yet. Fabrika's `codeowners-cp` guard requires those rows, so workflow, agent-setting and git-hook changes still need Huey's sign-off.
 3. **Rule files are gated by the governance verdict, not by CODEOWNERS.** `.decisions/`, `AGENTS.md`, `CLAUDE.md`, `.fabrika.jsonc` and the design manifest are listed in `governedRoots` in `.fabrika.jsonc`. A change to them merges through the shipper once its required verdicts, governance included, pass at head.
 4. **Who waits for Huey.** Code pull requests merge through the queue with no human step. Only a control-plane pull request (one that touches a CODEOWNERS path) or a `ready-for:human` one waits for him.
 
 **Binding constraints.**
-- The shipper merges only through the queue. No direct merge into `huey/landing-page`.
+- The shipper merges only through the queue. No direct merge into `dev`.
 - Huey's hold is the `ready-for:human` label. An agent never removes it to get a pull request merged.
 - Do not add rule files back to CODEOWNERS to get a stop; the governance verdict is their gate.
 - Do not drop a required check from the ruleset without a new ruling.
