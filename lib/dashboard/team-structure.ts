@@ -1,6 +1,6 @@
 import { closingPeople, mayManageDepartments, type ClosingPerson } from "./department-edit";
 import { mayManageDivisionsIn } from "./division-edit";
-import { divisionMembers, type DivisionMembers, type PersonRecord, type WaitingPerson } from "./division-members";
+import { divisionMembers, structureOnly, type DivisionMembers, type PersonRecord, type WaitingPerson } from "./division-members";
 import {
   boardFlagOf,
   boardSeatKey,
@@ -17,7 +17,7 @@ import {
   type TeamActor,
 } from "./team";
 import { mayHandOverTeamLeader, type HeldSeat } from "./hand-over";
-import type { FullAccessSeat, ViewerStanding } from "./viewer";
+import { isOffTeam, NO_TREE_GRANT, type FullAccessSeat, type TreeGrant, type ViewerStanding } from "./viewer";
 
 // The Team tree's edit view (issue #251, boards 77b and 66t-b): every open
 // department with its heads, and every open division under it with its lead,
@@ -162,11 +162,12 @@ export function editsStructure(actor: TeamActor | null, org: OrgChart): actor is
 /**
  * Whether the Team tree shows the viewer its Edit button (boards 77 and 66t):
  * full access (the team leader, the operations lead, the IT lead), a
- * department head and a division lead (issue #594). The data source answers
- * who they act as (`teamStructure`), and the server checks every write again.
+ * department head and a division lead (issue #594), and anyone holding a
+ * Team tree grant at Can edit (issue #1005). The data source answers who they
+ * act as (`teamStructure`), and the server checks every write again.
  */
-export function showsTreeEdit(viewer: ViewerStanding): boolean {
-  return viewer.kind === "operations-lead" || viewer.kind === "department-head" || viewer.kind === "division-lead";
+export function showsTreeEdit(viewer: ViewerStanding, treeGrant: TreeGrant = NO_TREE_GRANT): boolean {
+  return viewer.kind === "operations-lead" || viewer.kind === "department-head" || viewer.kind === "division-lead" || (!isOffTeam(viewer.kind) && treeGrant.kind !== "none");
 }
 
 /** "A", "A and B", "A, B and C". */
@@ -206,6 +207,12 @@ export function teamStructure(input: {
   readonly openPositions: Readonly<Record<number, number>>;
   /** The full-access seats on the team's roles, as the data source reads them; none when the team holds none. */
   readonly seats?: readonly HeldSeat[];
+  /**
+   * Whether the viewer reads the Members area in the division (`readsAreaIn`).
+   * A division they edit only through a Team tree grant shows its structure
+   * alone (`structureOnly`, issue #1005). Left out, they read every division they edit.
+   */
+  readonly readsMembersIn?: (divisionId: number) => boolean;
 }): TeamStructure | null {
   const { records, org, actor } = input;
   if (!editsStructure(actor, org)) return null;
@@ -228,23 +235,24 @@ export function teamStructure(input: {
         .filter((r) => roleIn(r.memberships, division.id) === "lead")
         .map(person)
         .sort(byName);
+      const page = editsDivision(actor, division, org)
+        ? divisionMembers({
+            records,
+            org,
+            divisionId: division.id,
+            actor,
+            selfId: input.selfId,
+            waiting: input.waiting[division.id] ?? [],
+            joining: input.joining[division.id] ?? [],
+          })
+        : null;
       return {
         id: division.id,
         name: division.name,
         code: division.code ?? null,
         lead: lead ?? null,
         size: people.length,
-        page: editsDivision(actor, division, org)
-          ? divisionMembers({
-              records,
-              org,
-              divisionId: division.id,
-              actor,
-              selfId: input.selfId,
-              waiting: input.waiting[division.id] ?? [],
-              joining: input.joining[division.id] ?? [],
-            })
-          : null,
+        page: page !== null && input.readsMembersIn?.(division.id) === false ? structureOnly(page) : page,
         openPositions: input.openPositions[division.id] ?? 0,
         yours: self !== undefined && roleIn(self.memberships, division.id) === "lead",
       };

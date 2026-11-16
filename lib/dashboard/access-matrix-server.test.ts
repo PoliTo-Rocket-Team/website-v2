@@ -65,7 +65,7 @@ import { isOffTeam, isTeamLeader } from "./viewer";
 import { fileReads, resetFiles } from "./access-matrix/fakes/files";
 import { ownPublicStoreHost } from "./access-matrix/fakes/public-store";
 import { accountOf, cvHash, EXTRA, IDS, MARKERS, seedFixture } from "./access-matrix/fixture";
-import { ALL, ORG, VIEWERS, type Expect, type MatrixRow, type Unit } from "./access-matrix/matrix";
+import { ALL, ORG, VIEWERS, type Expect, type MatrixRow, type TreeReach, type Unit } from "./access-matrix/matrix";
 import { signInAs, viewAs } from "./access-matrix/session";
 
 // The server side of the dashboard access matrix (issue #477): every loader
@@ -2434,6 +2434,149 @@ describe("a whole-team grant acts as full access within its own area, and the Te
       const access = board.access.kind === "lines" ? board.access.lines.find((l) => l.area === "members") : undefined;
       assert.ok(access !== undefined && access.area === "members", `${name}: a Members line under Your access`);
       assert.equal(access.people, active.size, `${name}: Your access counts`);
+    }
+  });
+});
+
+describe("a Team tree grant edits the Team tree where it applies and nothing else, and whole team All areas at Can edit is full access only full access gives (issue #1005)", () => {
+  const TREE_ROWS = (VIEWERS as readonly MatrixRow[]).filter((r) => r.expect.tree !== undefined);
+  const GRANT_ROWS = TREE_ROWS.filter((r) => r.viewer.rawRows.some((s) => s.target === "team_tree"));
+  /** What the edit view lets the viewer change, as the matrix names it. */
+  const reachOf = (s: TeamStructure | null): TreeReach | null =>
+    s === null
+      ? null
+      : {
+          divisions: ALL.filter((u) => s.departments.some((d) => d.divisions.some((v) => v.id === IDS.division(u) && v.page !== null))),
+          departments: s.departments.filter((d) => d.divisionsEditable).map((d) => d.id),
+          wholeTree: s.departmentsEditable,
+        };
+  const rename = (u: Unit) => async () => {
+    const division = (await tableRows(divisions)).find((d) => d.id === IDS.division(u))!;
+    return teamActions.saveDivision(IDS.division(u), { name: `${String(division.name)} Renamed`, code: String(division.code), newLeads: [], oldLeads: [], members: [], emails: [] });
+  };
+
+  test("every row naming the edit view gets exactly that edit view, each Team tree grant on each place at each level", async () => {
+    assert.equal(GRANT_ROWS.length, 18);
+    for (const { name, expect } of TREE_ROWS) {
+      const answer = await (await open(name)).teamStructure();
+      assert.deepEqual(reachOf(answer), expect.tree, name);
+    }
+  });
+
+  test("Edit division saves on exactly the divisions the edit view gives a pencil, and writes nothing elsewhere", async () => {
+    for (const { name, expect } of GRANT_ROWS) {
+      for (const u of ALL) {
+        const { answer, writes } = await attempt(accountOf(name).userId, rename(u));
+        const may = expect.tree?.divisions.includes(u) ?? false;
+        assert.equal(!isRefusal(answer), may, `${name}: rename ${u}: ${JSON.stringify(answer)}`);
+        assert.equal(writes.length > 0, may, `${name}: rename ${u}: the writes`);
+      }
+    }
+  });
+
+  test("a new department is saved for a whole-team Team tree grant at Can edit alone", async () => {
+    const run = () => teamActions.createDepartment({ name: "Avionics", code: "AVI", heads: [EXTRA.mover] });
+    for (const { name, expect } of GRANT_ROWS) {
+      const { answer, writes } = await attempt(accountOf(name).userId, run);
+      const may = expect.tree?.wholeTree === true;
+      assert.equal(!isRefusal(answer), may, `${name}: ${JSON.stringify(answer)}`);
+      assert.equal(writes.length > 0, may, `${name}: the writes`);
+    }
+  });
+
+  test("a member's Team tree grant changes no member: Add member and Remove stay the Members area's", async () => {
+    for (const { name } of GRANT_ROWS.filter((r) => r.viewer.kind === "member" && r.viewer.treeGrant.kind !== "none")) {
+      for (const run of [
+        () => teamActions.addMember({ kind: "member", divisionId: IDS.division("DM"), personId: IDS.person("OA"), title: "Member" }),
+        () => teamActions.removeFromDivision(IDS.person("DM"), IDS.division("DM")),
+        () => teamActions.moveToAlumni(IDS.person("DM"), null),
+      ]) {
+        const { answer, writes } = await attempt(accountOf(name).userId, run);
+        assert.ok(isRefusal(answer), `${name}: not refused: ${JSON.stringify(answer)}`);
+        assert.deepEqual(writes, [], `${name}: wrote`);
+      }
+    }
+  });
+
+  // Whole team · All areas · Can edit is full access -----------------------------
+
+  const TARGET = () => IDS.person("MA");
+  const orgRow = (memberId: number) => ({ id: 9_400 + memberId, memberId, scope: "org", target: "all", accessLevel: "edit" });
+  const orgRowsOf = async (memberId: number) => (await tableRows(scopes)).filter((r) => r.memberId === memberId && r.scope === "org");
+  async function seedWith(rows: readonly Record<string, unknown>[] = []): Promise<void> {
+    await seedFixture();
+    resetFiles();
+    if (rows.length > 0) await addRows(scopes, rows);
+  }
+  /** The grants the Access page lists for the target, as `area level place`. */
+  async function grantsAs(name: string): Promise<string[]> {
+    signInAs(accountOf(name).userId);
+    const page = await ((await openDashboard()) as { data: DashboardData }).data.divisionAccess();
+    return (page?.grants ?? []).filter((g) => g.person.id === TARGET()).map((g) => `${g.target} ${g.level} ${g.place.kind}`);
+  }
+
+  test("the team leader and full access give whole team All areas at Can edit as the org row, and the next read lists it", async () => {
+    for (const name of ["team leader", "operations lead", "org-wide editor"]) {
+      await seedWith();
+      signInAs(accountOf(name).userId);
+      const answer = await answerOf(() => actions.saveAccess({ personId: TARGET(), where: "team", areas: { all: "edit" } }));
+      assert.ok(!isRefusal(answer), `${name}: ${JSON.stringify(answer)}`);
+      assert.deepEqual((await orgRowsOf(TARGET())).map((r) => `${r.scope} ${r.target} ${r.accessLevel}`), ["org all edit"], name);
+      assert.deepEqual(await grantsAs(name), ["all edit team"], `${name}: the next read lists it`);
+    }
+  });
+
+  test("the team leader removes All areas, by Edit access, by its own Remove and by Remove all access", async () => {
+    const removals: [string, () => Promise<unknown>][] = [
+      ["Edit access", () => actions.saveAccess({ personId: TARGET(), where: "team", areas: { positions: "view" } })],
+      ["Remove", () => actions.removeGrant({ personId: TARGET(), where: "team", target: "all" })],
+      ["Remove all access", () => actions.removeAllAccess(TARGET())],
+    ];
+    for (const [label, run] of removals) {
+      await seedWith([orgRow(TARGET())]);
+      assert.deepEqual(await grantsAs("team leader"), ["all edit team"], `${label}: held before`);
+      const answer = await answerOf(run);
+      assert.ok(!isRefusal(answer), `${label}: ${JSON.stringify(answer)}`);
+      assert.deepEqual(await orgRowsOf(TARGET()), [], `${label}: the row stays`);
+    }
+  });
+
+  test("nobody without full access gives or removes All areas, nobody gives it at Can view or outside the whole team, and a refusal writes nothing", async () => {
+    const cases: [string, readonly Record<string, unknown>[], () => Promise<unknown>][] = [];
+    for (const name of ["department head", "division lead", "member with a Team tree grant (Can edit) on the whole team"]) {
+      cases.push([name, [], () => actions.saveAccess({ personId: TARGET(), where: "team", areas: { all: "edit" } })]);
+      cases.push([name, [], () => actions.saveAccess({ personId: TARGET(), areas: { all: "edit" } })]);
+      cases.push([name, [orgRow(TARGET())], () => actions.removeGrant({ personId: TARGET(), where: "team", target: "all" })]);
+    }
+    cases.push(["team leader", [], () => actions.saveAccess({ personId: accountOf("operations lead").memberId!, where: "team", areas: { all: "edit" } })]);
+    cases.push(["team leader", [], () => actions.saveAccess({ personId: TARGET(), where: "team", areas: { all: "view" } })]);
+    cases.push(["team leader", [], () => actions.saveAccess({ personId: TARGET(), where: IDS.division("MA"), areas: { all: "edit" } })]);
+    for (const [name, rows, run] of cases) {
+      await seedWith(rows);
+      signInAs(accountOf(name).userId);
+      const before = (await tableRows(scopes)).length;
+      const answer = await answerOf(run);
+      assert.ok(isRefusal(answer), `${name}: not refused: ${JSON.stringify(answer)}`);
+      assert.deepEqual(await databaseWrites(), [], `${name}: wrote`);
+      assert.equal((await tableRows(scopes)).length, before, `${name}: the scope rows changed`);
+    }
+  });
+
+  test("Team tree is given on the Access page at each place and level, within the giver's own reach", async () => {
+    const gives: [string, Record<string, unknown>, boolean][] = [
+      ["team leader", { personId: TARGET(), where: "team", areas: { team_tree: "edit" } }, true],
+      ["team leader", { personId: TARGET(), where: `department-${IDS.department("DM")}`, areas: { team_tree: "view" } }, true],
+      ["team leader", { personId: TARGET(), where: IDS.division("DM"), areas: { team_tree: "edit" } }, true],
+      ["department head", { personId: TARGET(), where: IDS.division("MA"), areas: { team_tree: "edit" } }, true],
+      ["department head", { personId: IDS.person("DM"), where: IDS.division("DM"), areas: { team_tree: "edit" } }, false],
+    ];
+    for (const [name, save, may] of gives) {
+      await seedWith();
+      signInAs(accountOf(name).userId);
+      const answer = await answerOf(() => actions.saveAccess(save as Parameters<typeof actions.saveAccess>[0]));
+      assert.equal(!isRefusal(answer), may, `${name} ${JSON.stringify(save)}: ${JSON.stringify(answer)}`);
+      const rows = (await tableRows(scopes)).filter((r) => r.memberId === save.personId && r.target === "team_tree");
+      assert.equal(rows.length, may ? 1 : 0, `${name} ${JSON.stringify(save)}: the rows`);
     }
   });
 });

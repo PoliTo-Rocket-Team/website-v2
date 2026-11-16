@@ -493,6 +493,25 @@ export function divisionMembers(input: {
 }
 
 /**
+ * A division's page with only what Edit division needs to change its
+ * structure (issue #1005): for a viewer who edits it through a Team tree
+ * grant and does not read the Members area there. A Team tree grant opens no
+ * other area (#471), so each person keeps their name, photo, divisions and
+ * roles, and what the lead choices read (`leave`), but no private details, no
+ * signed NDA and no row action; nobody waiting or joining is listed, and Add
+ * member is not offered (`editable`). Those stay the Members area's.
+ */
+export function structureOnly(page: DivisionMembers): DivisionMembers {
+  return {
+    ...page,
+    people: page.people.map((p) => ({ ...p, details: NO_MEMBER_DETAILS, nda: null, removal: VIEW_ONLY.removal, position: null })),
+    waiting: [],
+    joining: [],
+    editable: false,
+  };
+}
+
+/**
  * A division lead's Members page (issue #903): every division they reach,
  * their own and every one a grant gives them, all held at once, each as its
  * own division page. The page opens on all of them; the selects narrow it.

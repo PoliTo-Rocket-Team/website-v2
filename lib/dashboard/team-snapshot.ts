@@ -221,6 +221,7 @@ const TARGET_LABELS: Readonly<Record<string, string>> = {
   applications: "Applications",
   members: "Members",
   orders: "Orders",
+  team_tree: "Team tree",
   faq: "FAQ",
   blog: "Blog",
   logs: "Activity log",

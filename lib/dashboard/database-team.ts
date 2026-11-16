@@ -63,6 +63,7 @@ import {
   headDepartmentOf,
   isDivisionRole,
   leadActor,
+  withTreeGrant,
   mayChangeDivision,
   mayLeaveTeam,
   membershipsOfRoles,
@@ -165,15 +166,25 @@ export function leadDivisionId(identity: DashboardIdentity): number | null {
  * Members (or every-area) grant at Can edit that covers it (issue #342); a
  * grant across a department covers each of its divisions (issue #351). A
  * grant at Can view, or on another area, changes nobody. Null for anyone
- * else. The Team tree's structure writes check this actor: a grant on an
- * area never widens them (issue #957). The Members writes check
- * `readMembersActor`.
+ * else. The Team tree's structure writes check `readTreeActor`, this actor
+ * widened by a Team tree grant alone: a grant on an area never widens them
+ * (issue #957). The Members writes check `readMembersActor`.
  */
 async function readActor(identity: DashboardIdentity, org: OrgChart | Promise<OrgChart>): Promise<TeamActor | null> {
   return actorOf(identity, org, (divisionId, chart) => {
     const division = chart.divisions.find((d) => d.id === divisionId);
     return division !== undefined && mayChange(identity, "members", { divisionId, departmentId: division.departmentId });
   });
+}
+
+/**
+ * Who the viewer edits the Team tree's structure as (issue #1005): `readActor`
+ * widened by their Team tree grant (`withTreeGrant`). The edit view and every
+ * structure write (New, Edit and Close division and department, the seats,
+ * the Team Leader box) check this actor; no Members write does.
+ */
+async function readTreeActor(identity: DashboardIdentity, org: OrgChart | Promise<OrgChart>): Promise<TeamActor | null> {
+  return withTreeGrant(await readActor(identity, org), identity.treeGrant);
 }
 
 /**
@@ -492,14 +503,21 @@ async function readDepartmentMembers(
  */
 export async function readTeamStructure(identity: DashboardIdentity): Promise<TeamStructure | null> {
   const snapshotRead = readTeamSnapshot();
-  const [snapshot, actor] = await Promise.all([snapshotRead, readActor(identity, snapshotRead.then((s) => s.org))]);
+  const [snapshot, actor] = await Promise.all([snapshotRead, readTreeActor(identity, snapshotRead.then((s) => s.org))]);
   const ids = editableDivisionIds(actor, snapshot.org);
   if (!editsStructure(actor, snapshot.org)) return null;
-  const [perDivision, openPositions] = await Promise.all([readPerDivision(identity, ids, snapshot.org), readOpenPositions(ids)]);
+  // A division edited through a Team tree grant alone shows no Members data (issue #1005).
+  const readsMembersIn = (divisionId: number) => {
+    const division = snapshot.org.divisions.find((d) => d.id === divisionId);
+    return division !== undefined && readsAreaIn(identity, "members", { divisionId, departmentId: division.departmentId });
+  };
+  const readIds = ids.filter(readsMembersIn);
+  const [perDivision, openPositions] = await Promise.all([readPerDivision(identity, readIds, snapshot.org), readOpenPositions(ids)]);
   return teamStructure({
     records: recordsOf(snapshot),
     org: snapshot.org,
     actor,
+    readsMembersIn,
     selfId: identity.memberId,
     seat: seatOf(identity),
     waiting: Object.fromEntries(perDivision.map((d) => [d.id, d.waiting.map((w) => waitingPerson(identity, w))])),
@@ -1346,7 +1364,7 @@ async function setMemberPhoto(identity: DashboardIdentity, personId: number, pho
 /** The lead and member pickers (boards 68b2, 69d): the whole team, for whoever edits a division, its lead included (issue #594). */
 export async function findPeople(identity: DashboardIdentity, query: string): Promise<TeamSearch> {
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readTreeActor(identity, snapshot.org);
   if (!editsStructure(actor, snapshot.org)) return { kind: "none" };
   return searchTeam(query, teamPeopleOf(snapshot), snapshot.org);
 }
@@ -1551,7 +1569,7 @@ async function createDivision(identity: DashboardIdentity, departmentId: number,
   const checked = checkDivisionSave(input);
   if (!checked.ok) return refused(checked.error);
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readTreeActor(identity, snapshot.org);
   if (actor === null) return refused("Only a department head or the team leader creates a division.");
   const planned = planDivisionSave({ actor, org: snapshot.org, subject: { kind: "new", departmentId }, save: checked.value, team: teamPeopleOf(snapshot) });
   if (!planned.ok) return refused(planned.error);
@@ -1566,7 +1584,7 @@ async function saveDivision(identity: DashboardIdentity, divisionId: number, inp
   const checked = checkDivisionSave(input);
   if (!checked.ok) return refused(checked.error);
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readTreeActor(identity, snapshot.org);
   const subject = savedSubject(divisionId, snapshot.org);
   if (actor === null || subject === null) return refused("That division is not one you manage.");
   const planned = planDivisionSave({ actor, org: snapshot.org, subject, save: checked.value, team: teamPeopleOf(snapshot) });
@@ -1646,7 +1664,7 @@ function refreshPositions() {
  */
 async function closeDivision(identity: DashboardIdentity, divisionId: number): Promise<WriteResult<null>> {
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readTreeActor(identity, snapshot.org);
   if (actor === null) return refused("Only a department head or the team leader closes a division.");
   const db = getDb();
   const [held, [waiting]] = await Promise.all([
@@ -1698,7 +1716,7 @@ async function createDepartment(identity: DashboardIdentity, input: unknown): Pr
   const checked = checkDepartmentCreate(input);
   if (!checked.ok) return refused(checked.error);
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readTreeActor(identity, snapshot.org);
   const planned = planDepartmentCreate({ actor, org: snapshot.org, save: checked.value, team: teamPeopleOf(snapshot) });
   if (!planned.ok) return refused(planned.error);
   const { name, code, headId } = planned.value;
@@ -1730,7 +1748,7 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
   const checked = checkDepartmentSave(input);
   if (!checked.ok) return refused(checked.error);
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readTreeActor(identity, snapshot.org);
   const isHeadRow = headRowOf(departmentId, snapshot.org);
   const headIds = [...new Set(snapshot.roles.filter((r) => r.leaved_at === null && isHeadRow(r)).map((r) => r.member_id))];
   const planned = planDepartmentSave({ actor, org: snapshot.org, departmentId, save: checked.value, team: teamPeopleOf(snapshot), headIds });
@@ -1811,7 +1829,7 @@ async function closeDepartment(identity: DashboardIdentity, departmentId: number
   const checked = checkDepartmentClose(input);
   if (!checked.ok) return refused(checked.error);
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readTreeActor(identity, snapshot.org);
   const divisionIds = snapshot.org.divisions.filter((d) => d.departmentId === departmentId).map((d) => d.id);
   const waiting =
     divisionIds.length === 0
@@ -2021,7 +2039,7 @@ async function changeSeatHolder(identity: DashboardIdentity, roleId: number, inp
   const checked = checkSeatHolderChange(input);
   if (!checked.ok) return refused(checked.error);
   const [snapshot, activeRows] = await Promise.all([readTeamSnapshot(), activeRoleRows()]);
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readTreeActor(identity, snapshot.org);
   const planned = planSeatHolderChange({ actor, roleId, change: checked.value, team: teamPeopleOf(snapshot), active: activeRows, org: snapshot.org });
   if (!planned.ok) return refused(planned.error);
   const { from, to, steppingDown: step } = planned.value;
@@ -2064,7 +2082,7 @@ async function addSeat(identity: DashboardIdentity, input: unknown): Promise<Wri
   const checked = checkNewSeat(input);
   if (!checked.ok) return refused(checked.error);
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readTreeActor(identity, snapshot.org);
   const planned = planNewSeat({ actor, add: checked.value, team: teamPeopleOf(snapshot) });
   if (!planned.ok) return refused(planned.error);
   const { personId, title } = planned.value;
@@ -2130,7 +2148,7 @@ async function addTeamLeader(identity: DashboardIdentity, input: unknown): Promi
   const checked = checkHolderAdd(input);
   if (!checked.ok) return refused(checked.error);
   const [snapshot, active] = await Promise.all([readTeamSnapshot(), activeRoleRows()]);
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readTreeActor(identity, snapshot.org);
   const planned = planTeamLeaderAdd({ actor, add: checked.value, team: teamPeopleOf(snapshot), active, org: snapshot.org });
   if (!planned.ok) return refused(planned.error);
   return writeHolderAdd(planned.value);
@@ -2141,7 +2159,7 @@ async function addSeatHolder(identity: DashboardIdentity, roleId: number, input:
   const checked = checkHolderAdd(input);
   if (!checked.ok) return refused(checked.error);
   const [snapshot, active] = await Promise.all([readTeamSnapshot(), activeRoleRows()]);
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readTreeActor(identity, snapshot.org);
   const planned = planSeatHolderAdd({ actor, roleId, add: checked.value, team: teamPeopleOf(snapshot), active, org: snapshot.org });
   if (!planned.ok) return refused(planned.error);
   return writeHolderAdd(planned.value);
@@ -2152,7 +2170,7 @@ async function addDepartmentHead(identity: DashboardIdentity, departmentId: numb
   const checked = checkHolderAdd(input);
   if (!checked.ok) return refused(checked.error);
   const [snapshot, active] = await Promise.all([readTeamSnapshot(), activeRoleRows()]);
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readTreeActor(identity, snapshot.org);
   const planned = planHeadAdd({ actor, org: snapshot.org, departmentId, add: checked.value, team: teamPeopleOf(snapshot), active });
   if (!planned.ok) return refused(planned.error);
   return writeHolderAdd(planned.value);
@@ -2173,7 +2191,7 @@ async function removeSeat(identity: DashboardIdentity, roleId: number, input: un
   const checked = checkSeatRemoval(input);
   if (!checked.ok) return refused(checked.error);
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readTreeActor(identity, snapshot.org);
   const planned = planSeatRemoval({ actor, roleId, removal: checked.value, team: teamPeopleOf(snapshot) });
   if (!planned.ok) return refused(planned.error);
   const { holder, advising } = planned.value;

@@ -149,7 +149,8 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
         target={drawerTarget}
         takenCodes={structure.takenCodes}
         seats={structure.seats}
-        editable
+        // A division edited through a Team tree grant alone offers no member action (issue #1005).
+        editable={drawerTarget?.kind !== "edit" || drawerTarget.tab.editable}
         onClose={() => setDivision(null)}
         onFill={fill}
         onEdit={edit}

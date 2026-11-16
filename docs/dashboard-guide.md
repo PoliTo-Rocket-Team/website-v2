@@ -24,6 +24,16 @@ On top of the role, a person can get **access grants**: an extra right on one ar
 Content, or "Approve orders"), for one division, one department or the whole team. A grant gives
 only that area; it never makes someone a lead.
 
+Two grants reach further:
+
+- **All areas** across the whole team at **Can edit** is full access. The holder is treated
+  exactly as a full-access seat. Only the team leader and full access can give or remove it.
+- **Team tree** at **Can edit** lets the holder edit the Team tree's structure where it applies:
+  a division as its lead may, a department as its head may, or the whole tree as full access may.
+  It changes no other area, and at Can view it changes nothing.
+
+No grant gives the Access page: it stays with leads, heads and full access.
+
 Everyone uses the same pages. A lead and the team leader open the same Members page; the lead
 just sees their own divisions and fewer actions. An action someone may not take shows as locked,
 with the reason.
@@ -46,7 +56,8 @@ with the reason.
 ### People
 
 - **Team tree**: the team as departments, divisions and seats. Leads and heads use it to add,
-  move, promote and hand over people, to open or close divisions, and to change seat holders.
+  move, promote and hand over people, to open or close divisions, and to change seat holders. A
+  Team tree grant at Can edit opens the same edit view for its place.
 - **Members**: the same people as a list (the team leader also gets a table view and an Excel
   export). Opening a person shows their details and roles; the same member actions as in the Team
   tree are here: edit details, move, remove from a division, becomes an advisor, leaves the team.

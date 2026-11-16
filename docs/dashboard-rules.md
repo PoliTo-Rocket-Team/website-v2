@@ -789,6 +789,16 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
   division**, department pencil or **+ Add department** (#594). Departments with none of their
   divisions are dimmed. The intro line names the divisions they can edit. The server refuses
   their edit of any other division, not only the page.
+- **A Team tree grant at Can edit** (Owner decision, 2026-11-16, #1005) also shows the **Edit**
+  button, and adds its place to what the holder already edits, without making them a lead or
+  head anywhere. On a division it edits that division as its lead may (its pencil, Edit
+  division). On a department it edits it as its head may (a pencil on each of its divisions,
+  **+ Add division** and **Close division**). On the whole team it edits the tree as full access
+  may (every box, **+ Add division**, **+ Add department** and the seats). A division edited
+  through the grant alone opens Edit division with the division's structure only: the lead and
+  member pickers, but no person's private details and no row action such as Remove or Leaves the
+  team, since those are the Members area's. At Can view the grant changes nothing. The server
+  checks the same reach on every structure write.
 - A division's pencil opens Edit division (below), with **Close division** in its footer for its
   department's head, the team leader and full access; a lead's Edit division has none. Add
   division opens New division in the department of the column it is under.
@@ -1178,8 +1188,8 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
 
 - There are two levels: **Can view** and **Can edit**. Can view lets a person see an area. Can
   edit also lets them change it. There is no third level.
-- There are four areas, each scoped to the lead's division: **Positions**, **Applications**,
-  **Members** and **Orders**.
+- There are five areas, each scoped to the lead's division: **Positions**, **Applications**,
+  **Members**, **Orders** and **Team tree** (#1005).
   - Applications at Can edit moves applications between steps and accepts or rejects them.
   - Positions at Can edit opens, closes, adds and edits positions. A grant at Can view, or on
     another area, changes neither page, and no grant makes its holder a division lead (#160).
@@ -1215,14 +1225,20 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
     the sign-in email change (#741, #864), the recruitment switch (#621), the Activity log (#238,
     #727), deciding orders (#592), the Access page (#471), PRT email alias and team address
     requests (#538, #721), and the Team tree's structure edits (departments, divisions, seats and
-    their holders).
+    their holders), which only a Team tree grant adds (#1005).
+  - **Team tree** (Owner decision, 2026-11-16, #1005) is an area given on a division, a
+    department or the whole team, at Can view or Can edit. At Can edit it edits the Team tree
+    there as "Team structure" above says, and nothing else: no page, no other area, and no
+    Members write. At Can view it changes nothing, since members already read the Team tree. A
+    division lead's and a department head's role hold it where they lead, so they give it there.
+    There is no Access area: no grant gives Access page reach.
 - A person holds each area at one level or not at all. In both drawers each area has a tick; a
   ticked area takes its own level, and an unticked area means no access.
 - Delegation limit: a lead gives only an area they hold, and only up to their own level in it.
   They cannot change or remove access held above their level, or another lead's role access. The
   server checks every change, not only the drawer.
-- A division lead's role gives Positions, Applications, Members and Orders at Can edit in each
-  division they lead (#591, #590, #632). "Your access" counts them with no grant, so a lead with
+- A division lead's role gives Positions, Applications, Members, Orders and Team tree (#1005) at
+  Can edit in each division they lead (#591, #590, #632). "Your access" counts them with no grant, so a lead with
   no grants still has Give access. Grants the lead also holds there are added on top. Since the
   role holds Orders, a lead with no Orders grant can give Orders (Can view or Can edit) to people
   in their own division, by the same delegation limit as the other areas (#632).
@@ -1289,14 +1305,21 @@ These rules come from #238 and #247 (boards 71 and 71b).
   the role", locked), then the heads and division leads with their role's access, locked.
 - Give access picks a person from the whole team and a Where: the whole team (a `team` scope row
   in no unit, which covers every department and any added later), one department, or one division.
-  The areas are Positions, Applications, Members, Content and Orders, each at Can view or Can
-  edit but Content. There is no Alumni area: the Alumni page comes with Content (Owner decision,
+  The areas are All areas (whole team only, below), Positions, Applications, Members, Content,
+  Orders and Team tree (#1005), each at Can view or Can edit but Content and All areas. There is no Alumni area: the Alumni page comes with Content (Owner decision,
   2026-10-22, #589). Content (#504) has no level toggle: it is given at Can edit only. Content is
   given to the whole team only, and the server refuses it in a department or a division, refuses
   it at Can view, and refuses an Alumni area from anyone.
 - A division lead or department head who holds a Content grant also gives Content: their Where
   adds the whole team, last, where they give Content alone. Nobody else is offered Content, and
   the server refuses it from them.
+- **All areas** (Owner decision, 2026-11-16, #1005) comes first in the areas of the whole team,
+  at Can edit only, with "Whole team, as full access" under it. Whole team · All areas · Can edit
+  is full access: its holder is treated exactly as a full-access seat (the Team tree's whole edit
+  view, the Access page across the whole team, Content and every area). It is stored as the
+  person's `org` row on `all`. Only full access, the team leader included, sees it and gives or
+  removes it; the server refuses it from anyone else, at Can view, and outside the whole team.
+  There is no separate "Full access" option. Team tree is offered at every place, last.
 - **Approve orders** is a checkbox in Give access that only the team leader sees; the server refuses
   it from anyone else. The other full-access seats give every other access. The Activity
   log is never given: it stays the IT lead's.

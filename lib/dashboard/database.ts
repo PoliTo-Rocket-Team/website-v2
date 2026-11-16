@@ -111,7 +111,7 @@ import {
 import { answerPrtEmailRemoval, readPrtEmailRemovalAttention } from "./database-prt-email-removal";
 import { NO_TEAM_ADDRESSES } from "./team-address";
 import { upcomingInterviews } from "./interview-slots";
-import { BREAK_GLASS_STANDING, SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, hasOwnProfile, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, wholeTeamAreasOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type BreakGlassStanding, type ViewerStanding } from "./viewer";
+import { BREAK_GLASS_STANDING, NO_TREE_GRANT, SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areasGrantedBy, hasOwnProfile, isOffTeam, isTeamLeader, isTreeGrantRow, readsArea, readsAreaIn, standingOf, treeGrantOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, wholeTeamAreasOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type BreakGlassStanding, type TreeGrant, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 import { BREAK_GLASS_TITLE } from "./acting-account";
 import { primaryRoleOf, roleLabelOf } from "./role-label";
@@ -178,6 +178,8 @@ type IdentityFields = {
    * (`changesAreaAsTeam`). None off the team.
    */
   wholeTeamEdits: readonly GrantArea[];
+  /** Their Team tree grant (issue #1005), read apart from every area: what the Team tree's structure writes add to their reach. None off the team. */
+  treeGrant: TreeGrant;
 };
 
 /**
@@ -266,7 +268,7 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
   };
   // The break-glass admin stands as the team leader, with or without a member row or a role (issue #646).
   const breakGlass = isBreakGlassEmail(user.sign_in_email);
-  const noUnits = { role: null, roles: [], divisionIds: [], departmentIds: [], grants: [], wholeTeamAreas: [], wholeTeamEdits: [] };
+  const noUnits = { role: null, roles: [], divisionIds: [], departmentIds: [], grants: [], wholeTeamAreas: [], wholeTeamEdits: [], treeGrant: NO_TREE_GRANT };
   if (user.member_id === null) {
     if (breakGlass) return { ...base, ...noUnits, ...BREAK_GLASS_STANDING };
     return { ...base, ...noUnits, breakGlass, ...viewerStandingOf(null) };
@@ -274,13 +276,13 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
 
   const activeRoles: ActiveRole[] = roleRows.map((r) => ({ ...r, fullAccess: r.fullAccess === null ? null : SEAT_OF_FLAG[r.fullAccess] }));
 
+  const stored = scopeRows.map((s) => ({ scope: s.scope, target: s.target, level: s.level, divisionId: s.division_id, deptId: s.dept_id }));
+  // A Team tree grant is read apart, so no area, page or unit reads it (issue #1005).
+  const areaRows = stored.filter((s) => !isTreeGrantRow(s));
   // A grant across the whole team stands for every open department (issue #247).
-  const wholeTeam = scopeRows.some((s) => s.scope === "team" && s.target !== "approve_orders");
+  const wholeTeam = areaRows.some((s) => s.scope === "team" && s.target !== "approve_orders");
   const openDepartmentIds = wholeTeam ? openDepartments.map((d) => d.id) : [];
-  const unitRows = unitRowsOf(
-    scopeRows.map((s) => ({ scope: s.scope, target: s.target, level: s.level, divisionId: s.division_id, deptId: s.dept_id })),
-    openDepartmentIds,
-  );
+  const unitRows = unitRowsOf(areaRows, openDepartmentIds);
   // Every division they lead and the department they head, plus the units their scopes name.
   const units = viewerUnitsOf(unitRows, activeRoles);
   const held = {
@@ -289,8 +291,9 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
     divisionIds: [...units.divisionIds],
     departmentIds: [...units.departmentIds],
     grants: areaGrantsOf(unitRows),
-    wholeTeamAreas: wholeTeamAreasOf(scopeRows),
-    wholeTeamEdits: wholeTeamAreasOf(scopeRows, "edit"),
+    wholeTeamAreas: wholeTeamAreasOf(areaRows),
+    wholeTeamEdits: wholeTeamAreasOf(areaRows, "edit"),
+    treeGrant: treeGrantOf(stored),
   };
   if (breakGlass) return { ...base, ...held, ...BREAK_GLASS_STANDING };
 
@@ -1117,6 +1120,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     role: cardRoleOf(identity),
     photoUrl: identity.picture,
     hasOwnProfile: hasOwnProfile(identity),
+    treeGrant: identity.treeGrant,
   };
   const self = databaseSelfPages(identity);
   return {

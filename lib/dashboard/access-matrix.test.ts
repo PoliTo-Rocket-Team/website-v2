@@ -12,7 +12,8 @@ import { ordersScopeOf, type OrdersScopeRow } from "./orders";
 import { mayChangePositionIn } from "./position-access";
 import { correctsSignInEmail } from "./sign-in-email";
 import { changesAreaAsTeam, GRANT_AREAS, isFullAccess, isOffTeam, ledDivisionIds, mayChange, readsArea, readsAreaIn } from "./viewer";
-import { ALL, CHANGE_AREAS, CONTENT, ORG, PAGE_OF_AREA, SCOPES, SIGNED_OUT, TEAM_BASE, UNITS, unitsWhere, viewerOf, VIEWERS, WHOLE_TEAM_HOLDERS, type Unit, type Viewer } from "./access-matrix/matrix";
+import { ALL, CHANGE_AREAS, CONTENT, ORG, PAGE_OF_AREA, SCOPES, SIGNED_OUT, TEAM_BASE, TREE_GRANT_ROWS, UNITS, unitsWhere, viewerOf, VIEWERS, WHOLE_TEAM_HOLDERS, WHOLE_TREE, type Unit, type Viewer } from "./access-matrix/matrix";
+import { showsTreeEdit } from "./team-structure";
 import { aliasAttentionFor, answersAliasRequests, managesMember, planAliasRequest, type AliasRequest, type AliasTeamPerson } from "./alias-request";
 import { ownAliasOf, planAliasSetUp, showsAliasCard } from "./alias-setup";
 import type { TeamPerson } from "./division-edit";
@@ -68,6 +69,32 @@ describe("the access matrix covers every viewer kind and every page", () => {
       }
     }
     assert.equal(rows, 24);
+  });
+
+  test("a Team tree grant on a division, a department and the whole team, at each level, has a row for a member, a division lead and a department head (issue #1005)", () => {
+    assert.equal(TREE_GRANT_ROWS.length, 18);
+    for (const { name, viewer, expect } of TREE_GRANT_ROWS) {
+      assert.ok(VIEWERS.some((v) => v.name === name), `${name}: in the matrix`);
+      const plain = viewerOf(viewer.heldRoles);
+      // The grant makes nobody another kind of viewer and is no area grant.
+      assert.equal(viewer.kind, plain.kind, `${name}: viewer kind`);
+      assert.deepEqual(viewer.grants, plain.grants, `${name}: area grants`);
+      assert.deepEqual([viewer.wholeTeamAreas, viewer.wholeTeamEdits], [plain.wholeTeamAreas, plain.wholeTeamEdits], `${name}: whole-team areas`);
+      assert.ok(expect.tree !== undefined, `${name}: names its edit view`);
+      // At Can edit the Team tree shows its Edit button; at Can view only the role decides.
+      assert.equal(showsTreeEdit(viewer, viewer.treeGrant), expect.tree !== null, `${name}: Edit button`);
+      assert.equal(viewer.treeGrant.kind === "none", viewer.rawRows[0].level === "view", `${name}: the grant counts at Can edit only`);
+    }
+  });
+
+  test("whole team All areas at Can edit (the org row) is full access exactly as a full-access seat is (issue #1005)", () => {
+    const granted = VIEWERS.find((v) => v.name === "org-wide editor")!;
+    const seat = VIEWERS.find((v) => v.name === "Project Manager")!;
+    assert.deepEqual(granted.viewer.rawRows, [{ scope: "org", target: "all", level: "edit", divisionId: null, deptId: null }]);
+    const { tree, ...rest } = granted.expect;
+    assert.deepEqual(rest, seat.expect);
+    assert.deepEqual(tree, WHOLE_TREE);
+    assert.equal(showsTreeEdit(granted.viewer, granted.viewer.treeGrant), true);
   });
 
   test("each row names only real pages", () => {

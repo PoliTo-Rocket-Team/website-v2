@@ -33,7 +33,7 @@ async function LiveTeamTree({ searchParams }: { searchParams: Search }) {
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
   if (!canReach(data.viewer, "team-tree")) notFound();
-  const edits = showsTreeEdit(data.viewer);
+  const edits = showsTreeEdit(data.viewer, data.viewer.treeGrant);
   if (edits && (await searchParams).edit !== undefined) {
     const structure = await data.teamStructure();
     if (structure !== null) return <TeamTreeEditView structure={structure} />;
