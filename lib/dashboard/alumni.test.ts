@@ -7,11 +7,12 @@ import { alumniDirectory, alumnusRow, checkAdvisor, checkAlumnusFix, nextDraftYe
 
 /** A record line as the fix panel lists it, with no fix over it. */
 const recordLine = (year: number, group: string, recordRole: string) =>
-  ({ year, group, recordRole, role: recordRole, rank: "member", source: { kind: "record", year, group, unit: group, rank: "member", fix: null } }) as const;
+  ({ year, group, recordRole, role: recordRole, rank: "member", source: { kind: "record", year, group, groupKind: "department", unit: group, rank: "member", fix: null } }) as const;
 
 const person = {
   recordName: "Fabio Meloni",
   lines: [recordLine(2022, "Executive", "President"), recordLine(2021, "Operations", "President · Chief Engineer, Cavour")],
+  clashing: [],
 };
 
 const ground = { units: { departments: [{ id: 3, name: "Executive" }], divisions: [] }, thisYear: 2025 };
@@ -333,4 +334,39 @@ test("a row may not move into a group of a year the person already has", () => {
     addGround,
   );
   assert.equal(freed.ok, true);
+});
+
+test("a mark the editor picks is what the page shows outside a department: Member on an imported lead title shows no lead", () => {
+  // Carla's imported 2021 title reads as a lead; with no mark chosen the title decides.
+  const titled: AlumniRecord = { ...record, imported: [{ entryId: 7, year: 2021, group: "Operations", role: "IT Lead", position: 0 }] };
+  assert.deepEqual(groupOnPage(titled, 2021, "Operations"), [{ name: "Carla Neri", role: "IT Lead", lead: true }]);
+  const member = fixedRows(titled, "e7", [{ year: 2021, group: "Operations", role: "IT Lead", mark: "member" }]);
+  assert.deepEqual(member.entries.find((e) => e.id === 7)?.fixes, [{ year: 2021, group: "Operations", role: null, toYear: null, toUnit: null, mark: "member" }]);
+  assert.deepEqual(groupOnPage(member, 2021, "Operations"), [{ name: "Carla Neri", role: "IT Lead", lead: false }]);
+  const head = fixedRows(titled, "e7", [{ year: 2021, group: "Operations", role: "IT Lead", mark: "head" }]);
+  assert.deepEqual(groupOnPage(head, 2021, "Operations"), [{ name: "Carla Neri", role: "IT Lead", lead: true, tag: "HEAD" }]);
+});
+
+test("a moved row stays in the fix panel when the record later gains a row where it moved, and Save never drops its fix", () => {
+  const moved = fixedRows(record, "m2", [{ ...BO_2023, toYear: 2022, toUnit: { kind: "department", id: 2 } }]);
+  // The record gains Bo in Recovery in 2022–23: the record's own line wins on the page.
+  const later: AlumniRecord = { ...moved, roles: [...moved.roles, role(2, { title: "Recovery Engineer", startedAt: "2022-10-01", leftAt: "2023-06-30", departmentId: 2 })] };
+  assert.deepEqual(groupOnPage(later, 2022, "Recovery"), [{ name: "Bo Kim", role: "Recovery Engineer", lead: false }]);
+  const row = alumnusRow(alumniOf(later, 2025).find((a) => a.key === "m2")!);
+  assert.deepEqual(
+    row.clashing.map((l) => [l.year, l.group, l.source.kind === "record" ? [l.source.year, l.source.group, l.source.fix?.toYear] : null]),
+    [[2022, "Recovery", [2023, "Aerodynamics", 2022]]],
+  );
+  assert.equal(row.roleFixed, true);
+  // Saving the rows as they stand, with only a name change, is refused rather than dropping the fix.
+  const asTheyStand = [
+    { year: 2022, group: "Recovery", role: "Recovery Engineer" },
+    { ...BO_2023, toYear: 2022, toUnit: { kind: "department", id: 2 } },
+  ];
+  const kept = checkAlumnusFix({ shown: true, name: "Bo K.", founder: null, roles: asTheyStand, added: [] }, row, addGround);
+  assert.deepEqual(kept, { ok: false, error: "They already have 2022–23 in Recovery." });
+  // Undo returns it to the record, where the page lists it again.
+  const undone = fixedRows(later, "m2", [{ ...BO_2023, toYear: null, toUnit: null }]);
+  assert.deepEqual(undone.entries.find((e) => e.who.kind === "member" && e.who.memberId === 2)?.fixes, []);
+  assert.deepEqual(groupOnPage(undone, 2023, "Aerodynamics"), [{ name: "Bo Kim", role: "Aerodynamicist", lead: false }]);
 });

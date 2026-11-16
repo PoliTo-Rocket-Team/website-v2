@@ -145,21 +145,34 @@ export type GroupKind = "leadership" | "department" | "imported" | "advisors";
 export type Rank = "leader" | "head" | "lead" | "member";
 
 /**
- * Where a line comes from. A record line keeps the year, group, unit and rank
- * the record gives it, which its fix is keyed by and an undo returns it to,
- * and the fix laid over it, if any. A year added for the page only (issue
- * #981) keeps the unit it was added in.
+ * Where a line comes from. A record line keeps the year, group, kind of
+ * group, unit and rank the record gives it, which its fix is keyed by and an
+ * undo returns it to, and the fix laid over it, if any. A year added for the
+ * page only (issue #981) keeps the unit it was added in.
  */
 export type LineSource =
   | {
       readonly kind: "record";
       readonly year: number;
       readonly group: string;
+      readonly groupKind: GroupKind;
       readonly unit: string;
       readonly rank: Rank;
       readonly fix: RoleFix | null;
     }
   | { readonly kind: "added"; readonly unit: UnitRef };
+
+/**
+ * The mark the page shows a record line when no mark is chosen (issue #1006):
+ * in a department, the record's rank; in any other group none of the three,
+ * since the title decides who leads there. A line moved into a unit sits in a
+ * department group. A mark the editor picks that differs from this one is
+ * kept, so the page always shows it.
+ */
+export function unchosenMark(source: Pick<Extract<LineSource, { kind: "record" }>, "groupKind" | "rank">, toUnit: UnitRef | null): Mark | null {
+  const kind = toUnit === null ? source.groupKind : "department";
+  return kind === "department" && source.rank !== "leader" ? source.rank : null;
+}
 
 /** One person in one group of one academic year. */
 export type AlumnusLine = {
@@ -208,6 +221,13 @@ export type Alumnus = {
   readonly onTeam: boolean;
   /** Oldest year first, then in group order. */
   readonly lines: NonEmpty<AlumnusLine>;
+  /**
+   * Lines the page cannot list: a moved line or an added year that stands in
+   * a group of a year where another of their lines already does, for example
+   * once the record gains a role there. The fix panel still lists them, so
+   * the editor can move or undo them (issue #1006).
+   */
+  readonly clashing: readonly AlumnusLine[];
 };
 
 /** The academic year a day falls in: it runs from 1 October, so "2026-10-01" is 2026–27. */
@@ -285,7 +305,7 @@ function withFix({ year, base }: RecordLine, fixes: readonly RoleFix[], units: R
     rank: fix?.mark ?? base.rank,
     marked: fix !== null && fix.mark !== null,
     role: fix?.role ?? base.recordRole,
-    source: { kind: "record", year, group: base.group, unit: base.unit, rank: base.rank, fix },
+    source: { kind: "record", year, group: base.group, groupKind: base.kind, unit: base.unit, rank: base.rank, fix },
   };
 }
 
@@ -310,13 +330,17 @@ function moved(line: AlumnusLine): boolean {
   return line.source.kind === "record" && (line.year !== line.source.year || line.group !== line.source.group);
 }
 
+/** A person's lines: what the page lists, and the ones it cannot (`Alumnus.clashing`). */
+type Layout = { readonly lines: AlumnusLine[]; readonly clashing: AlumnusLine[] };
+
 /**
  * The record's lines with their fixes, then the added years (issue #981).
  * A line an editor moved, or a year added, never stands in a group of a year
  * where a line before it already lists them: the record's own line wins, then
  * a moved one, so a role added to the record later is never listed twice.
+ * The line that loses is kept apart, never dropped, so its fix stays in reach.
  */
-function laidOut(record: readonly RecordLine[], fixes: readonly RoleFix[], added: readonly AddedYear[], units: RecordUnits): AlumnusLine[] {
+function laidOut(record: readonly RecordLine[], fixes: readonly RoleFix[], added: readonly AddedYear[], units: RecordUnits): Layout {
   const fixed = record.map((line) => withFix(line, fixes, units));
   const staying = fixed.filter((line) => !moved(line));
   const taken = new Set(staying.map((l) => `${l.year}\u0000${l.group}`));
@@ -326,13 +350,15 @@ function laidOut(record: readonly RecordLine[], fixes: readonly RoleFix[], added
       const base = addedBase(a.unit, a.role, units);
       return base === null ? [] : [{ ...base, year: a.year, rank: a.mark, marked: true, role: a.role, source: { kind: "added", unit: a.unit } }];
     }),
-  ].filter((line) => {
+  ];
+  const placed: AlumnusLine[] = [];
+  const clashing: AlumnusLine[] = [];
+  for (const line of extra) {
     const key = `${line.year}\u0000${line.group}`;
-    if (taken.has(key)) return false;
+    (taken.has(key) ? clashing : placed).push(line);
     taken.add(key);
-    return true;
-  });
-  return [...staying, ...extra].sort(byYearAndOrder);
+  }
+  return { lines: [...staying, ...placed].sort(byYearAndOrder), clashing: clashing.sort(byYearAndOrder) };
 }
 
 function byYearAndOrder(a: AlumnusLine, b: AlumnusLine): number {
@@ -397,18 +423,20 @@ export function alumniOf(record: AlumniRecord, currentYear: number): Alumnus[] {
     const kept = entry?.who.kind === "member" ? entry.who.keptName : null;
     const recordName = person?.name ?? kept;
     const fromRecord = memberLines(roles, record.units, currentYear);
-    const lines = fromRecord.length === 0 ? null : nonEmpty(laidOut(fromRecord, entry?.fixes ?? [], entry?.added ?? [], record.units));
-    if (!recordName || lines === null) return [];
+    const layout = fromRecord.length === 0 ? null : laidOut(fromRecord, entry?.fixes ?? [], entry?.added ?? [], record.units);
+    const lines = layout === null ? null : nonEmpty(layout.lines);
+    if (!recordName || layout === null || lines === null) return [];
     const onTeam = roles.some((r) => r.leftAt === null);
-    return [alumnus(`m${memberId}`, "member", recordName, person?.email ?? null, person?.picture ?? null, entry ?? NO_ENTRY, lines, onTeam)];
+    return [alumnus(`m${memberId}`, "member", recordName, person?.email ?? null, person?.picture ?? null, entry ?? NO_ENTRY, lines, layout.clashing, onTeam)];
   });
 
   const others = record.entries.flatMap((entry): Alumnus[] => {
     const { who } = entry;
     if (who.kind === "member") return [];
     const fromRecord = who.kind === "imported" ? importedLines(record.imported.filter((l) => l.entryId === entry.id)) : advisorLines(who);
-    const lines = fromRecord.length === 0 ? null : nonEmpty(laidOut(fromRecord, entry.fixes, entry.added, record.units));
-    return lines === null ? [] : [alumnus(`e${entry.id}`, who.kind, who.name, null, null, entry, lines, false)];
+    const layout = fromRecord.length === 0 ? null : laidOut(fromRecord, entry.fixes, entry.added, record.units);
+    const lines = layout === null ? null : nonEmpty(layout.lines);
+    return layout === null || lines === null ? [] : [alumnus(`e${entry.id}`, who.kind, who.name, null, null, entry, lines, layout.clashing, false)];
   });
 
   return [...members, ...others];
@@ -422,6 +450,7 @@ function alumnus(
   picture: string | null,
   entry: Pick<AlumniEntry, "name" | "founder" | "photo" | "shown" | "removed">,
   lines: NonEmpty<AlumnusLine>,
+  clashing: readonly AlumnusLine[],
   onTeam: boolean,
 ): Alumnus {
   return {
@@ -437,6 +466,7 @@ function alumnus(
     removed: entry.removed,
     onTeam,
     lines,
+    clashing,
   };
 }
 

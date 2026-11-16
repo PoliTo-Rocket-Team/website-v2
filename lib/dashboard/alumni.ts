@@ -4,8 +4,10 @@ import {
   addedGroup,
   changesNothing,
   type AddedYear,
+  unchosenMark,
   type Alumnus,
   type AlumnusKey,
+  type AlumnusLine,
   type LineSource,
   type Mark,
   type Rank,
@@ -85,6 +87,12 @@ export type AlumnusRow = {
   readonly groups: readonly string[];
   /** Newest year first. */
   readonly lines: readonly AlumnusYear[];
+  /**
+   * Lines the page cannot list, because another of theirs holds the same
+   * year and group (`Alumnus.clashing`). The fix panel lists them with the
+   * others, and Save refuses until each is moved or undone (issue #1006).
+   */
+  readonly clashing: readonly AlumnusYear[];
 };
 
 export type AlumniDirectory = {
@@ -111,10 +119,15 @@ export function alumniUnits(units: RecordUnits): AlumniUnit[] {
   ];
 }
 
+function yearOf({ year, group, recordRole, role, rank, source }: AlumnusLine): AlumnusYear {
+  return { year, group, recordRole, role, rank, source };
+}
+
 export function alumnusRow(a: Alumnus): AlumnusRow {
   const newestFirst = [...a.lines].reverse();
   const last = newestFirst[0]!;
   const years = [...new Set(newestFirst.map((l) => l.year))];
+  const fixed = (l: AlumnusLine) => l.source.kind === "record" && l.source.fix !== null;
   return {
     key: a.key,
     kind: a.kind,
@@ -124,7 +137,7 @@ export function alumnusRow(a: Alumnus): AlumnusRow {
     photo: a.photo,
     founder: a.founder,
     nameFixed: a.name !== a.recordName,
-    roleFixed: a.lines.some((l) => l.source.kind === "record" && l.source.fix !== null),
+    roleFixed: a.lines.some(fixed) || a.clashing.some(fixed),
     shown: a.shown,
     lastRole: last.title,
     lastUnit: last.unit,
@@ -132,7 +145,8 @@ export function alumnusRow(a: Alumnus): AlumnusRow {
     to: a.onTeam ? null : last.year + 1,
     years,
     groups: [...new Set(a.lines.map((l) => l.group))],
-    lines: newestFirst.map(({ year, group, recordRole, role, rank, source }) => ({ year, group, recordRole, role, rank, source })),
+    lines: newestFirst.map(yearOf),
+    clashing: [...a.clashing].reverse().map(yearOf),
   };
 }
 
@@ -272,8 +286,10 @@ class Slots {
 /**
  * One record row of the fix panel's form, keyed by the year and group the
  * record gives it. Text equal to the record's, or empty, keeps no text fix;
- * the record's year, or the record's rank as the mark, keeps none either.
- * A unit moves the line into that department or division (issue #1006).
+ * the record's year keeps none either, and neither does the mark the page
+ * shows with none chosen (`unchosenMark`). Any other mark is kept, so the
+ * page shows it in every kind of group. A unit moves the line into that
+ * department or division (issue #1006).
  */
 function checkRecordRow(raw: unknown, recordLines: readonly AlumnusYear[], ground: AddedYearGround): WriteResult<RoleFix | null> {
   if (!isRecord(raw) || !Number.isInteger(raw.year) || typeof raw.group !== "string" || typeof raw.role !== "string") return CHECK_THE_FORM;
@@ -297,7 +313,7 @@ function checkRecordRow(raw: unknown, recordLines: readonly AlumnusYear[], groun
     role: role === "" || role === line.recordRole ? null : role,
     toYear: toYear === source.year ? null : (toYear as number | null),
     toUnit,
-    mark: mark === source.rank ? null : mark,
+    mark: mark === unchosenMark(source, toUnit) ? null : mark,
   };
   return written(changesNothing(fix) ? null : fix);
 }
@@ -329,9 +345,10 @@ function checkAddedYear(raw: unknown, ground: AddedYearGround): WriteResult<{ ad
  * the record gives it; a row left out keeps no fix. The added years are the
  * whole list the page keeps. No two lines may then stand in one group of one
  * year, a record line moved there or an added one: the page would list them
- * twice.
+ * twice. A line that already clashes counts too, so a Save never drops its
+ * fix without a word: it is refused until the line is moved or undone.
  */
-export function checkAlumnusFix(input: unknown, person: Pick<AlumnusRow, "recordName" | "lines">, ground: AddedYearGround): WriteResult<AlumnusFix> {
+export function checkAlumnusFix(input: unknown, person: Pick<AlumnusRow, "recordName" | "lines" | "clashing">, ground: AddedYearGround): WriteResult<AlumnusFix> {
   if (!isRecord(input) || typeof input.shown !== "boolean" || typeof input.name !== "string" || !Array.isArray(input.roles) || !Array.isArray(input.added)) {
     return CHECK_THE_FORM;
   }
@@ -339,7 +356,7 @@ export function checkAlumnusFix(input: unknown, person: Pick<AlumnusRow, "record
   if (founder === undefined) return refused("Pick No, Co-founder or Founder.");
   const name = input.name.trim().replace(/\s+/g, " ");
   if (name.length > MAX_ALUMNI_NAME) return refused(`The name can be at most ${MAX_ALUMNI_NAME} characters.`);
-  const recordLines = person.lines.filter((l) => l.source.kind === "record");
+  const recordLines = [...person.lines, ...person.clashing].filter((l) => l.source.kind === "record");
   const fixes: RoleFix[] = [];
   for (const raw of input.roles) {
     const checked = checkRecordRow(raw, recordLines, ground);

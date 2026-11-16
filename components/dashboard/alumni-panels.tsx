@@ -6,7 +6,7 @@ import { AlertTriangle, ChevronDown, Info, Lock, Plus, Undo2, X } from "lucide-r
 import { toast } from "sonner";
 import { DialogClose } from "@/components/ui/dialog";
 import { addAdvisor, fixAlumnus, setAlumnusPhoto } from "@/app/dashboard/team-actions";
-import { ADVISORS, type Mark, type Rank, type UnitRef } from "@/lib/about/alumni-record";
+import { ADVISORS, unchosenMark, type LineSource, type Mark, type Rank, type UnitRef } from "@/lib/about/alumni-record";
 import type { FounderMark } from "@/lib/about/alumni-types";
 import { CROP_SETTINGS } from "@/lib/dashboard/crop-settings";
 import {
@@ -125,7 +125,7 @@ export function AlumnusPanel({
 type YearRow =
   | {
       readonly kind: "record";
-      readonly record: { readonly year: number; readonly group: string; readonly unit: string; readonly rank: Rank; readonly role: string };
+      readonly record: Pick<Extract<LineSource, { kind: "record" }>, "year" | "group" | "groupKind" | "unit" | "rank"> & { readonly role: string };
       readonly role: string;
       readonly toYear: number | null;
       readonly toUnit: UnitRef | null;
@@ -141,7 +141,7 @@ function rowOf(line: AlumnusYear, id: number): YearRow {
   if (source.kind === "added") return { kind: "added", id, year: line.year, unit: source.unit, role: line.role, mark: markOfRank(line.rank) ?? "member" };
   return {
     kind: "record",
-    record: { year: source.year, group: source.group, unit: source.unit, rank: source.rank, role: line.recordRole },
+    record: { year: source.year, group: source.group, groupKind: source.groupKind, unit: source.unit, rank: source.rank, role: line.recordRole },
     role: line.role,
     toYear: source.fix?.toYear ?? null,
     toUnit: source.fix?.toUnit ?? null,
@@ -152,6 +152,11 @@ function rowOf(line: AlumnusYear, id: number): YearRow {
 /** The mark a rank reads as; the team leader is none of the three. */
 function markOfRank(rank: Rank): Mark | null {
   return rank === "leader" ? null : rank;
+}
+
+/** The mark the page shows a record row with: the chosen one, else the record's; null where the title decides. */
+function shownMark(row: Extract<YearRow, { kind: "record" }>): Mark | null {
+  return row.mark ?? unchosenMark(row.record, row.toUnit);
 }
 
 /** The year the page lists the row in. */
@@ -195,9 +200,11 @@ function FixForm({
   const [shown, setShown] = useState(row.shown);
   const [name, setName] = useState(row.name);
   const [founder, setFounder] = useState<FounderMark | null>(row.founder);
-  // Newest first, as the lines come; an added row's id is its place in this first list.
-  const [years, setYears] = useState<YearRow[]>(() => row.lines.map(rowOf));
-  const [nextId, setNextId] = useState(row.lines.length);
+  // Newest first, the lines the page cannot list among them (issue #1006); an added row's id is its place in this first list.
+  const [years, setYears] = useState<YearRow[]>(() => [...row.lines, ...row.clashing].sort((a, b) => b.year - a.year).map(rowOf));
+  const [nextId, setNextId] = useState(row.lines.length + row.clashing.length);
+  const clashes = (item: YearRow) =>
+    years.some((r) => r !== item && rowYear(r) === rowYear(item) && rowGroup(r, choices.units) === rowGroup(item, choices.units));
   const change = (at: YearRow, next: YearRow) => setYears((all) => all.map((r) => (r === at ? next : r)));
   const [photo, setPhoto] = useState(row.photo);
   const [saving, setSaving] = useState(false);
@@ -327,6 +334,7 @@ function FixForm({
             <YearRowItem
               key={item.kind === "record" ? `record-${item.record.year}-${item.record.group}` : `added-${item.id}`}
               row={item}
+              clashes={clashes(item)}
               choices={choices}
               editable={editable}
               onChange={(next) => change(item, next)}
@@ -407,16 +415,19 @@ function MarkPicker({ value, label, disabled, onChange }: { value: Mark | null; 
  * One year row: its academic year, its department or division, its mark and
  * its title, each editable (issue #1006). A record row shows the record's
  * values until one is changed, and Undo returns it to them; an added row
- * (issue #981) is removed instead.
+ * (issue #981) is removed instead. A row that shares its year and group with
+ * another says so: the page lists only one, and Save refuses until one moves.
  */
 function YearRowItem({
   row,
+  clashes,
   choices,
   editable,
   onChange,
   onRemove,
 }: {
   row: YearRow;
+  clashes: boolean;
   choices: AddYearChoices;
   editable: boolean;
   onChange: (next: YearRow) => void;
@@ -430,7 +441,7 @@ function YearRowItem({
   const years = [...new Set([...Array.from({ length: Math.max(1, choices.thisYear - FIRST_ALUMNI_YEAR + 1) }, (_, i) => choices.thisYear - i), ...(recordYear === null ? [] : [recordYear])])].sort(
     (a, b) => b - a,
   );
-  const mark = row.kind === "added" ? row.mark : (row.mark ?? markOfRank(row.record.rank));
+  const mark = row.kind === "added" ? row.mark : shownMark(row);
 
   const setYear = (next: number) =>
     onChange(row.kind === "added" ? { ...row, year: next } : { ...row, toYear: next === row.record.year ? null : next });
@@ -440,7 +451,7 @@ function YearRowItem({
     else if (picked !== null) onChange({ ...row, unit: picked });
   };
   const setMark = (next: Mark) =>
-    onChange(row.kind === "added" ? { ...row, mark: next } : { ...row, mark: next === markOfRank(row.record.rank) ? null : next });
+    onChange(row.kind === "added" ? { ...row, mark: next } : { ...row, mark: next === unchosenMark(row.record, row.toUnit) ? null : next });
 
   return (
     <li className="rounded-xl border border-hairline p-3">
@@ -469,6 +480,7 @@ function YearRowItem({
         onChange={(e) => onChange({ ...row, role: e.target.value })}
         className={`mt-2 ${inputClass()}`}
       />
+      {clashes && <p className="mt-2 text-[13px] text-prt-muted">Another row is in the same year and group. Change or undo one of them to save.</p>}
       {editable && (row.kind === "added" || isFixed(row)) && (
         <div className="mt-2 flex justify-end">
           {row.kind === "added" ? (
