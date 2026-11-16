@@ -867,7 +867,7 @@ function OrderPanel({
               rows={4}
               aria-invalid={noteError !== undefined}
               aria-describedby={`${noteId}-hint`}
-              className={`${inputClass(noteError)} mt-2 block h-auto min-h-[110px] resize-none py-3 leading-[1.6] ${deciding === "ask-for-changes" ? "border-accent/70" : ""}`}
+              className={`${inputClass(noteError)} mt-2 block h-auto min-h-[110px] resize-y py-3 leading-[1.6] ${deciding === "ask-for-changes" ? "border-accent/70" : ""}`}
             />
             {noteError && (
               <p role="alert" className="mt-2 text-[13px] text-danger">
@@ -1204,7 +1204,7 @@ function OrderFormDrawer({
               rows={3}
               aria-invalid={!!errors.reason}
               aria-describedby={describedBy}
-              className={`${inputClass(errors.reason)} block h-auto min-h-[72px] resize-none py-3 leading-[1.5]`}
+              className={`${inputClass(errors.reason)} block h-auto min-h-[72px] resize-y py-3 leading-[1.5]`}
             />
           )}
         </Field>

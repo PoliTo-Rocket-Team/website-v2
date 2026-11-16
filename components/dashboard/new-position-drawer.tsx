@@ -252,7 +252,7 @@ export function NewPositionDrawer({
                 value={form.description}
                 maxLength={NEW_POSITION_LIMITS.description}
                 onChange={(e) => set("description", e.target.value)}
-                className={`${inputClass(errors.description)} h-auto resize-none py-2.5 leading-relaxed`}
+                className={`${inputClass(errors.description)} h-auto resize-y py-2.5 leading-relaxed`}
               />
             )}
           </Field>

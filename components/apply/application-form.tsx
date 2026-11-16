@@ -203,7 +203,7 @@ export function ApplicationForm({
                     aria-invalid={errors[`answers.${i}`] !== undefined}
                     aria-describedby={describedBy}
                     onChange={() => clear(`answers.${i}`)}
-                    className={`${inputClass(errors[`answers.${i}`])} block h-auto min-h-[112px] resize-none py-3 leading-[1.5]`}
+                    className={`${inputClass(errors[`answers.${i}`])} block h-auto min-h-[112px] resize-y py-3 leading-[1.5]`}
                   />
                 )}
               </Field>

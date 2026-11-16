@@ -296,7 +296,14 @@ function TreeCanvas({ tree, found, target }: { tree: TeamTree; found: number | n
         const rect = el.getBoundingClientRect();
         setView((current) => {
           if (!current) return current;
-          const next = clampZoom(current.k * Math.exp(-event.deltaY * 0.01));
+          // A mouse wheel notch (line mode, or a big pixel delta) steps by
+          // 0.1 like the + and − buttons, so two notches out and two back in
+          // return to the same zoom (issue #1003). A trackpad pinch sends
+          // small deltas and keeps the smooth zoom.
+          const notch = event.deltaMode !== 0 || Math.abs(event.deltaY) >= 50;
+          const next = notch
+            ? clampZoom(Math.round((current.k - Math.sign(event.deltaY) * 0.1) * 10) / 10)
+            : clampZoom(current.k * Math.exp(-event.deltaY * 0.01));
           const at = { x: event.clientX - rect.left, y: event.clientY - rect.top };
           return { k: next, x: at.x - (at.x - current.x) * (next / current.k), y: at.y - (at.y - current.y) * (next / current.k) };
         });
