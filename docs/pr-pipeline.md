@@ -8,7 +8,7 @@ and [CLAUDE.md](../CLAUDE.md) for those.
 
 - `dev` is the trunk and the default branch. Every pull request targets `dev`.
 - `main` is production. Only a release pull request (`dev` into `main`) changes it.
-- Branch from `origin/dev` in a `/tmp` worktree; never switch branches in the shared checkout.
+- Branch from `origin/dev` in a separate git worktree; never switch branches in the shared checkout.
   Hand-made branches start with `huey/`; Fabrika lanes name their own.
 - `huey/design-boards` holds board images linked from old issues. Never delete it.
 
@@ -19,7 +19,7 @@ and [CLAUDE.md](../CLAUDE.md) for those.
 | `typecheck` | [ci.yml](../.github/workflows/ci.yml) | pnpm catalog guard (every dependency reads `catalog:`), `tsc --noEmit`, ADR corpus validation. |
 | `test (1)` to `test (4)` | ci.yml | The test suite in four shards (`--test-shard=N/4`), about 2 to 5 minutes each. |
 | `ci-required` | ci.yml | Passes only when `typecheck` and every test shard pass. In the merge queue it also fails while the pull request carries `ready-for:human`. |
-| secrets scan | [secrets.yml](../.github/workflows/secrets.yml) | gitleaks on the changed files: no secrets, no machine-local paths (`/Users/...`, `/private/tmp/...`). |
+| secrets scan | [secrets.yml](../.github/workflows/secrets.yml) | gitleaks on the changed files: no secrets, no machine-local paths (home folders, temp folders). |
 | preview marker | [preview-marker.yml](../.github/workflows/preview-marker.yml) | Posts the Vercel preview URL as a sticky comment, in the shape `fabrika review-ui` reads. |
 | Vercel | Vercel | Builds a preview deployment. The build applies pending migrations to the shared `preview` database first. |
 
