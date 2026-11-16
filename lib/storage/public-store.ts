@@ -10,15 +10,23 @@ import { publicStoreHost, type PublicPathname, type PublicStoreHost } from "./pa
 // missing token fails here instead of falling back to the private store's
 // read-write token from the environment.
 
+// Previews and development use their own public store (PREVIEW_PUBLIC_STORE_ID,
+// set only for those environments), so the production sweep of unused uploads,
+// which asks only the production database, never sees a preview's files
+// (issue #961). Production has no PREVIEW_PUBLIC_STORE_ID and uses prt-public.
+function publicStoreId(): string | undefined {
+  return process.env.PREVIEW_PUBLIC_STORE_ID || process.env.PUBLIC_BLOB_STORE_ID;
+}
+
 async function credentials() {
-  const storeId = process.env.PUBLIC_BLOB_STORE_ID;
+  const storeId = publicStoreId();
   if (!storeId) throw new Error("PUBLIC_BLOB_STORE_ID is not set: the public file store is not configured.");
   return { access: "public", oidcToken: await getVercelOidcToken(), storeId } as const;
 }
 
 /** The host this deployment's public store serves its files from; null while the store is not configured. */
 export function ownPublicStoreHost(): PublicStoreHost | null {
-  const storeId = process.env.PUBLIC_BLOB_STORE_ID;
+  const storeId = publicStoreId();
   return storeId ? publicStoreHost(storeId) : null;
 }
 
