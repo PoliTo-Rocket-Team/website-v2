@@ -55,7 +55,7 @@ Tailwind 3.
 - Never ask Huey to type approval comments. Ask him in chat, then record his chat decision on the
   issue as a neutral owner-decision statement, never a quote, as
   [ADR 0006](.decisions/0006-pitch-approval-from-chat-ruling.md) says.
-- The default branch is `huey/landing-page` for now (the redesign lives there and `dev` does not have it yet); pull requests target it. Branches you create by hand start with
+- The default branch is `dev`; pull requests target it. Production deploys from `main`, through a release PR from `dev`. Branches you create by hand start with
   `huey/`. Fabrika lanes name their own branches.
 - Decisions live in `.decisions/` as `NNNN-slug.md`. Filenames plus each record's frontmatter
   (`id`, `title`, `status`) are the index. Read the records that govern a choice before changing
