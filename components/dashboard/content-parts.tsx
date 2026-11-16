@@ -207,7 +207,7 @@ export function TextField({
       {rows === undefined ? (
         <input type={type} {...control} className={inputClass(error ?? (over ? "" : undefined))} />
       ) : (
-        <textarea rows={rows} {...control} className={`${inputClass(error ?? (over ? "" : undefined))} h-auto resize-none py-2.5 leading-relaxed`} />
+        <textarea rows={rows} {...control} className={`${inputClass(error ?? (over ? "" : undefined))} h-auto resize-y py-2.5 leading-relaxed`} />
       )}
       {error !== undefined && (
         <p id={errorId} className="mt-1.5 text-[12px] text-danger">

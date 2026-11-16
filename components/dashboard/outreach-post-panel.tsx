@@ -396,7 +396,7 @@ function BlockCard({
               rows={block.kind === "heading" ? 1 : 4}
               value={block.text}
               onChange={(e) => onChange({ ...block, text: e.target.value })}
-              className={`${inputClass()} h-auto resize-none py-2 leading-relaxed ${block.kind === "heading" ? "font-semibold" : "text-[13px]"}`}
+              className={`${inputClass()} h-auto resize-y py-2 leading-relaxed ${block.kind === "heading" ? "font-semibold" : "text-[13px]"}`}
             />
           </div>
         ) : (
@@ -480,7 +480,7 @@ function ChannelsSection({
               rows={2}
               value={channel.caption}
               onChange={(e) => update(channel.name, { caption: e.target.value })}
-              className={`${inputClass()} h-auto resize-none py-2.5 leading-relaxed`}
+              className={`${inputClass()} h-auto resize-y py-2.5 leading-relaxed`}
             />
           </div>
         );

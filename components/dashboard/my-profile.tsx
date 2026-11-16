@@ -728,7 +728,7 @@ function LeaveDialog({
         maxLength={MAX_LEAVE_REASON}
         onChange={(e) => setReason(e.target.value)}
         rows={3}
-        className={`${inputClass()} mt-2 h-auto resize-none py-2.5`}
+        className={`${inputClass()} mt-2 h-auto resize-y py-2.5`}
       />
       <RemoveFromAlumniBox checked={removeFromAlumni} onChange={setRemoveFromAlumni} />
     </ConfirmDialog>

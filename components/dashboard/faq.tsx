@@ -415,7 +415,7 @@ function AnswerField({
                 rows={2}
                 value={paragraph.text}
                 onChange={(e) => onChange(paragraph.key, e.target.value)}
-                className={`${inputClass(error)} h-auto min-h-[44px] flex-1 resize-none py-2.5 leading-relaxed [field-sizing:content]`}
+                className={`${inputClass(error)} h-auto min-h-[44px] flex-1 resize-y py-2.5 leading-relaxed [field-sizing:content]`}
               />
               <button
                 type="button"

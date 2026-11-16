@@ -213,7 +213,7 @@ export function PhotosSection<N extends string>({
             placeholder="Optional: what the photo shows, for screen readers"
             value={picked.photo.alt}
             onChange={(e) => describe(picked.photo.src, e.target.value)}
-            className={`${inputClass()} h-auto resize-none py-2 text-[13px] leading-relaxed`}
+            className={`${inputClass()} h-auto resize-y py-2 text-[13px] leading-relaxed`}
           />
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <TextButton label="Move earlier" onClick={picked.index > 0 ? () => move(picked.photo.src, -1) : null} />
