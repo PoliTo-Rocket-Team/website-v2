@@ -133,8 +133,6 @@ export type ViewerStanding =
       readonly seat: FullAccessSeat | null;
       readonly siteContent: boolean;
       readonly approveOrders: boolean;
-      /** What else they hold by role beside `seat` (`alsoHeldOf`); absent when nothing. It adds no right of its own: only a page row's `fullAccessSeats` reads it (./access.ts). */
-      readonly alsoHolds?: readonly AlsoHeld[];
       /** Never set on a standing read from roles and scope rows: only `BreakGlassStanding` carries it. */
       readonly breakGlass?: false;
     }
@@ -153,9 +151,6 @@ export type ViewerStanding =
       readonly siteContent: boolean;
       readonly approveOrders: boolean;
     };
-
-/** A role full access hides: a board seat a higher seat outranks, or a head's or a lead's role that is no full-access seat itself. */
-export type AlsoHeld = Extract<FlaggedSeat, "project-manager" | "chief-engineer"> | "department-head" | "division-lead";
 
 /**
  * The standing the break-glass setting gives (issue #646): the team leader's
@@ -219,13 +214,7 @@ export function standingOf(viewer: ViewerStanding): ViewerStanding {
       return { kind: viewer.kind, siteContent: false, approveOrders: false };
     case "operations-lead":
       if (isBreakGlass(viewer)) return BREAK_GLASS_STANDING;
-      return {
-        kind: viewer.kind,
-        seat: viewer.seat,
-        siteContent: viewer.siteContent,
-        approveOrders: viewer.approveOrders,
-        ...(viewer.alsoHolds !== undefined && { alsoHolds: viewer.alsoHolds }),
-      };
+      return { kind: viewer.kind, seat: viewer.seat, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
     case "member":
       return {
         kind: viewer.kind,
@@ -471,23 +460,6 @@ export function fullAccessSeatOf(activeRoles: readonly ActiveRoleRef[]): FullAcc
 }
 
 /**
- * What the active roles hold beside `seat`, the one full-access seat they are
- * read as: a board seat it outranks, a head role, a division lead role. A
- * role that is itself a full-access seat (a flagged row, whatever its type,
- * or a lead role in the open Logistics division) counts as no head's or
- * lead's role, so the IT lead's, operations lead's or Logistics lead's own
- * seat adds nothing here.
- */
-export function alsoHeldOf(activeRoles: readonly ActiveRoleRef[], seat: FullAccessSeat | null): AlsoHeld[] {
-  const unseated = activeRoles.filter((r) => r.fullAccess === null && !leadsRecruitmentManagerDivision([r]));
-  return [
-    ...(["project-manager", "chief-engineer"] as const).filter((board) => board !== seat && activeRoles.some((r) => r.fullAccess === board)),
-    ...(unseated.some((r) => r.type === "head") ? (["department-head"] as const) : []),
-    ...(unseated.some((r) => r.type === "lead") ? (["division-lead"] as const) : []),
-  ];
-}
-
-/**
  * A real account's viewer kind, read from all their active roles (issue
  * #229). No member row is a non-member (an applicant). A member row with no
  * active role is off the team, whatever scope rows remain (issue #201): an
@@ -553,11 +525,7 @@ export function viewerStandingOf(access: MemberAccess | null): ViewerStanding {
   if (access === null) return { kind: "non-member", siteContent: false, approveOrders: false };
   const siteContent = holdsContentGrant(access.scopes);
   const approveOrders = access.scopes.some((s) => s.scope === "team");
-  if (kind === "operations-lead") {
-    const seat = fullAccessSeatOf(access.activeRoles);
-    const alsoHolds = alsoHeldOf(access.activeRoles, seat);
-    return { kind, seat, siteContent, approveOrders, ...(alsoHolds.length > 0 && { alsoHolds }) };
-  }
+  if (kind === "operations-lead") return { kind, seat: fullAccessSeatOf(access.activeRoles), siteContent, approveOrders };
   if (kind === "member") return { kind, grantedAreas: grantedAreasOf(access.scopes), siteContent, approveOrders };
   return { kind, siteContent, approveOrders };
 }

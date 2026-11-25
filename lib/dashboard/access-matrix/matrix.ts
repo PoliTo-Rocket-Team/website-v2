@@ -120,7 +120,7 @@ export function breakGlassViewer(): Viewer {
 export const TEAM_BASE: readonly DashboardPageKey[] = ["overview", "my-applications", "team-tree", "my-profile"];
 /** The editors a Content grant opens (issue #504), the Alumni page among them (Owner decision, 2026-10-22, issue #589). */
 export const CONTENT: readonly DashboardPageKey[] = ["projects", "outreach", "partners", "alumni", "faq", "team-page"];
-export const LEADING: readonly DashboardPageKey[] = ["positions", "applications", "members", "division-access", "orders"];
+export const LEADING: readonly DashboardPageKey[] = ["positions", "applications", "members", "division-access", "meeting-minutes", "orders"];
 export const FULL: readonly DashboardPageKey[] = [...TEAM_BASE, ...LEADING, ...CONTENT];
 export const PAGE_OF_AREA: Readonly<Record<GrantArea, DashboardPageKey>> = { positions: "positions", applications: "applications", members: "members", orders: "orders" };
 export const CHANGE_AREAS: readonly ChangeArea[] = ["positions", "applications", "members"];
@@ -297,7 +297,7 @@ const WHOLE_TEAM_ROWS: readonly MatrixRow[] = WHOLE_TEAM_HOLDERS.flatMap(({ who,
 /** The team leader's row: every page and action of full access, plus deciding orders and asking for, and managing, any unit's alias. */
 const TEAM_LEADER: Expect = { ...FULL_ACCESS, aliases: { requests: ALL, manages: ALL, answers: true }, decidesOrders: true };
 
-const MATRIX_VIEWERS: readonly MatrixRow[] = [
+export const VIEWERS: readonly MatrixRow[] = [
   // Full access: the seats by role alone (issues #238, #485), or an org scope row.
   { name: "team leader", viewer: viewerOf([role("president", null, null)]), expect: TEAM_LEADER },
   // The break-glass admin (issue #646): an account the break-glass setting names, with no member row, reaches what the team
@@ -544,40 +544,6 @@ const MATRIX_VIEWERS: readonly MatrixRow[] = [
   },
   { name: "non-member", viewer: viewerOf([]), expect: { ...PLAIN_MEMBER, pages: ["overview", "my-applications", "my-account"] } },
 ];
-
-/**
- * Meeting Minutes is restricted to the approved leadership roles and seats. No
- * row here holds an approved role beside a refused seat or scope row; those
- * cases are in ../meeting-minutes-access.test.ts.
- */
-export const VIEWERS: readonly MatrixRow[] = MATRIX_VIEWERS.map((entry) => {
-  const { viewer, expect } = entry;
-
-  const approvedFullAccessSeat =
-    viewer.kind === "operations-lead" &&
-    !viewer.breakGlass &&
-    (
-      viewer.seat === "team-leader" ||
-      viewer.seat === "project-manager" ||
-      viewer.seat === "chief-engineer"
-    );
-
-  const approvedLeadershipRole =
-    viewer.kind === "department-head" ||
-    viewer.kind === "division-lead";
-
-  if (!approvedFullAccessSeat && !approvedLeadershipRole) {
-    return entry;
-  }
-
-  return {
-    ...entry,
-    expect: {
-      ...expect,
-      pages: [...expect.pages, "meeting-minutes"],
-    },
-  };
-});
 
 /** What every reach and read answers when nobody is signed in: the dashboard does not open (`dashboardOpening`), so every cell refuses. */
 export const SIGNED_OUT: Expect = { ...PLAIN_MEMBER, pages: [] };

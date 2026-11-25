@@ -138,13 +138,11 @@ const fullAccess = (seat: FullAccessSeat | null): ViewerStanding => ({
 test("every full-access seat reaches every page of the team (issues #238, #485)", () => {
   // My account and My alumni are pages off the team.
   // Activity log is exclusive to the IT lead.
-  // Meeting Minutes has its own restricted access rule.
   const teamPages = DASHBOARD_PAGES.map((p) => p.key).filter(
     (key) =>
       key !== "my-account" &&
       key !== "my-alumni" &&
-      key !== "activity-log" &&
-      key !== "meeting-minutes",
+      key !== "activity-log",
   );
 
   for (const seat of FULL_ACCESS_SEATS) {
@@ -167,15 +165,11 @@ test("the team leader's sidebar is board 72's: Team holds Members, Access and Or
 });
 
 test("the operations lead's, the IT lead's, the Project Manager's and the Chief Engineer's sidebars are the team leader's, Content group included (issues #408, #485)", () => {
-  // The IT lead's adds the Activity log at the end of Team (issue #642), and
-  // Meeting Minutes has its own rule, tested below; nothing else differs.
-  const shared = (viewer: ViewerStanding) =>
+  // The IT lead's adds the Activity log at the end of Team (issue #642), and nothing else.
+  const withoutLog = (viewer: ViewerStanding) =>
     shape(viewer, withoutApplications).map(([label, items]) => [
       label,
-      (items as string[]).filter(
-        (item) =>
-          item !== "Activity log" && item !== "Minutes & Requests",
-      ),
+      (items as string[]).filter((item) => item !== "Activity log"),
     ]);
   for (const seat of [
     "operations-lead",
@@ -185,8 +179,8 @@ test("the operations lead's, the IT lead's, the Project Manager's and the Chief 
     null,
   ] as const) {
     assert.deepEqual(
-      shared(fullAccess(seat)),
-      shared(fullAccess("team-leader")),
+      withoutLog(fullAccess(seat)),
+      shape(fullAccess("team-leader"), withoutApplications),
       String(seat),
     );
   }
@@ -340,13 +334,13 @@ test("the one sidebar structure leaves which pages each viewer reaches as it was
     order.filter((key) => keys.includes(key));
   const expected: Readonly<Record<string, readonly string[]>> = {
     "team leader": inOrder(fullWithMeeting),
-    "operations lead": full,
-    "IT lead": inOrder([...full, "activity-log"]),
+    "operations lead": inOrder(fullWithMeeting),
+    "IT lead": inOrder([...fullWithMeeting, "activity-log"]),
     "Project Manager": inOrder(fullWithMeeting),
     "Chief Engineer": inOrder(fullWithMeeting),
     "department head": inOrder(headWithMeeting),
-    "full access by scope row": full,
-    "Logistics lead": full,
+    "full access by scope row": inOrder(fullWithMeeting),
+    "Logistics lead": inOrder(fullWithMeeting),
     "department head with Content": inOrder([...headWithMeeting, ...content]),
     "division lead": inOrder(headWithMeeting),
     "division lead with Content": inOrder([...headWithMeeting, ...content]),
@@ -385,7 +379,7 @@ test("the one sidebar structure leaves which pages each viewer reaches as it was
 test("full access from an admin or org scope row reaches every page of the team too (issue #238)", () => {
   assert.equal(canReach(fullAccess(null), "division-access"), true);
   assert.equal(canReach(fullAccess(null), "orders"), true);
-  assert.equal(canReach(fullAccess(null), "meeting-minutes"), false);
+  assert.equal(canReach(fullAccess(null), "meeting-minutes"), true);
 });
 
 test("the break-glass standing reaches the Activity log, and every other page the team leader reaches, no more (issue #727)", () => {
@@ -396,9 +390,8 @@ test("the break-glass standing reaches the Activity log, and every other page th
     true,
   );
   const order = DASHBOARD_PAGES.map((page) => page.key);
-  const teamLeader = order.filter(
-    (key) =>
-      canReach(fullAccess("team-leader"), key) && key !== "meeting-minutes",
+  const teamLeader = order.filter((key) =>
+    canReach(fullAccess("team-leader"), key),
   );
   assert.deepEqual(
     order.filter((key) => canReach(BREAK_GLASS_STANDING, key)),
@@ -780,15 +773,6 @@ test('"Approve orders" with no area grant still opens Orders; a Content grant wi
 });
 
 test("heads, leads and every full-access seat reach and list the pages they did before grant areas, and the user menu is unchanged (issue #471)", () => {
-  const lead = [
-    "overview",
-    "team-tree",
-    "positions",
-    "applications",
-    "members",
-    "division-access",
-    "orders",
-  ];
   const leadWithMeeting = [
     "overview",
     "team-tree",
@@ -798,15 +782,6 @@ test("heads, leads and every full-access seat reach and list the pages they did 
     "division-access",
     "meeting-minutes",
     "orders",
-  ];
-  const full = [
-    ...lead,
-    "projects",
-    "outreach",
-    "partners",
-    "alumni",
-    "faq",
-    "team-page",
   ];
   const fullWithMeeting = [
     ...leadWithMeeting,
@@ -821,12 +796,12 @@ test("heads, leads and every full-access seat reach and list the pages they did 
     ["department head", kindOnly("department-head"), leadWithMeeting],
     ["division lead", kindOnly("division-lead"), leadWithMeeting],
     ["team leader", fullAccess("team-leader"), fullWithMeeting],
-    ["operations lead", fullAccess("operations-lead"), full],
+    ["operations lead", fullAccess("operations-lead"), fullWithMeeting],
     [
       "IT lead",
       fullAccess("it-lead"),
       [
-        ...lead,
+        ...leadWithMeeting,
         "activity-log",
         "projects",
         "outreach",
@@ -838,7 +813,7 @@ test("heads, leads and every full-access seat reach and list the pages they did 
     ],
     ["Project Manager", fullAccess("project-manager"), fullWithMeeting],
     ["Chief Engineer", fullAccess("chief-engineer"), fullWithMeeting],
-    ["Logistics lead", fullAccess("logistics-lead"), full],
+    ["Logistics lead", fullAccess("logistics-lead"), fullWithMeeting],
   ];
   for (const [who, viewer, keys] of listed) {
     assert.deepEqual(listedKeys(viewer), keys, who);
@@ -865,11 +840,15 @@ test("heads, leads and every full-access seat reach and list the pages they did 
     "non-member": "my-account",
   });
 });
-test("Meeting Minutes and Requests is reachable only by the five approved roles", () => {
+test("Meeting Minutes and Requests is reachable by full access, department heads and division leads only", () => {
   const allowed = [
     "team leader",
+    "operations lead",
+    "IT lead",
+    "Logistics lead",
     "Project Manager",
     "Chief Engineer",
+    "full access by scope row",
     "department head",
     "department head with Content",
     "division lead",
@@ -892,11 +871,10 @@ test("Meeting Minutes and Requests is reachable only by the five approved roles"
     );
   }
 
-  // The break-glass standing sits in the team leader's seat and still is not admitted.
-  assert.equal(canReach(BREAK_GLASS_STANDING, "meeting-minutes"), false);
+  assert.equal(canReach(BREAK_GLASS_STANDING, "meeting-minutes"), true);
   assert.equal(
     listedKeys(BREAK_GLASS_STANDING).includes("meeting-minutes"),
-    false,
+    true,
   );
 });
 

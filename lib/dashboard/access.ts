@@ -10,7 +10,7 @@ import { isBreakGlass, seatOf, type FullAccessSeat, type GrantArea, type ViewerK
 // break-glass standing when the row says so (issue #727). The `operations-lead`
 // kind is full access: the team leader, the operations lead and the IT lead,
 // or an admin or org scope row (./viewer.ts), so it reaches every page of the
-// team, except where a row names a `seat` or its `fullAccessSeats`.
+// team.
 //
 // Owner decision (issue #408): the sidebar has one structure for every role,
 // the same groups in the same order under the same names. A row therefore
@@ -60,13 +60,6 @@ type PageRow = {
   readonly shownWhen?: Readonly<Partial<Record<ViewerKind, NavCondition>>>;
   /** The one full-access seat that reaches the page; every other viewer, full access or not, does not. */
   readonly seat?: FullAccessSeat;
-  /**
-   * Of full access, only these seats reach the page, or someone who beside
-   * their seat or scope row holds one of them, or a head's or lead's role in
-   * `reach` (`alsoHolds`). Another seat or a scope row alone does not, and the
-   * break-glass standing never does. Every other kind follows `reach`.
-   */
-  readonly fullAccessSeats?: readonly FullAccessSeat[];
   /** Beside `seat`, the break-glass standing reaches the page too; no other seat does (issue #727). */
   readonly breakGlass?: true;
 };
@@ -222,11 +215,10 @@ export const DASHBOARD_PAGES = [
     label: "Minutes & Requests",
     href: "/dashboard/meeting-minutes",
     // The label is short to fit the sidebar; the page has the full title. For
-    // leads and heads: every department head and division lead, and of the
-    // full-access seats the ones named here. No grant opens it.
+    // full access, the break-glass standing included, and every department
+    // head and division lead. No area grant opens it.
     place: "team",
     reach: ["operations-lead", "department-head", "division-lead"],
-    fullAccessSeats: ["team-leader", "project-manager", "chief-engineer"],
   },
   {
     key: "orders",
@@ -302,27 +294,7 @@ export type MenuPage = {
 
 /** Whether `viewer` reaches `page`, by their role or by a grant the row admits. */
 function reaches(page: PageRow, viewer: ViewerStanding): boolean {
-  if (
-    page.seat !== undefined &&
-    seatOf(viewer) !== page.seat &&
-    !(page.breakGlass === true && isBreakGlass(viewer))
-  ) {
-    return false;
-  }
-
-  if (
-    page.fullAccessSeats !== undefined &&
-    viewer.kind === "operations-lead"
-  ) {
-    if (isBreakGlass(viewer)) return false;
-    const held: readonly (FullAccessSeat | ViewerKind | null)[] = [viewer.seat, ...(viewer.alsoHolds ?? [])];
-    const admitting: readonly (FullAccessSeat | ViewerKind | null)[] = [
-      ...page.fullAccessSeats,
-      ...page.reach.filter((kind) => kind === "department-head" || kind === "division-lead"),
-    ];
-    return held.some((h) => h !== null && admitting.includes(h));
-  }
-
+  if (page.seat !== undefined && seatOf(viewer) !== page.seat && !(page.breakGlass === true && isBreakGlass(viewer))) return false;
   return (
     page.reach.includes(viewer.kind) ||
     (viewer.kind === "member" && page.grantArea !== undefined && viewer.grantedAreas.includes(page.grantArea)) ||

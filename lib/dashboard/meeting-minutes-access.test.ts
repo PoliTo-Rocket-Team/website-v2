@@ -52,24 +52,27 @@ const CASES: readonly [string, ViewerStanding, boolean][] = [
   ["division lead", of([lead]), true],
   ["department head with every grant", of([head], extras), true],
   ["division lead with every grant", of([lead], extras), true],
-  ["operations lead", of([opsLead]), false],
-  ["IT lead", of([itLead]), false],
-  ["Logistics lead", of([logistics]), false],
-  ["operations lead, IT lead and Logistics lead at once", of([opsLead, itLead, logistics]), false],
-  ["operations lead with every grant", of([opsLead], extras), false],
-  ["IT lead with an org row", of([itLead], [org]), false],
-  ["Logistics lead with an admin row", of([logistics], [admin]), false],
-  ["IT lead who is a member elsewhere", of([itLead, core]), false],
+  ["operations lead", of([opsLead]), true],
+  ["IT lead", of([itLead]), true],
+  ["Logistics lead", of([logistics]), true],
+  ["operations lead, IT lead and Logistics lead at once", of([opsLead, itLead, logistics]), true],
+  ["operations lead with every grant", of([opsLead], extras), true],
+  ["IT lead with an org row", of([itLead], [org]), true],
+  ["Logistics lead with an admin row", of([logistics], [admin]), true],
+  ["IT lead who is a member elsewhere", of([itLead, core]), true],
   ["member", of([core]), false],
   ["advisor", of([role("advisor")]), false],
   ["member with every grant", of([core], extras), false],
-  ["member with an org row", of([core], [org]), false],
-  ["member with an admin row", of([core], [admin]), false],
+  ["member with an org row", of([core], [org]), true],
+  ["member with an admin row", of([core], [admin]), true],
   ["alumnus with an admin row left over", of([], [admin], true), false],
   ["non-member with an org row left over", of([], [org]), false],
   ["no member row", viewerStandingOf(null), false],
-  ["break-glass admin", BREAK_GLASS_STANDING, false],
-  // Independently qualified: a permitted role full access would hide.
+  ["break-glass admin", BREAK_GLASS_STANDING, true],
+  ["member with an org row at Can view", of([core], [{ ...org, level: "view" }]), true],
+  ["member with an org row on one area", of([core], [{ ...org, target: "positions" }]), true],
+  ["advisor with an org row, as a former team leader keeps", of([role("advisor")], [org]), true],
+  // Someone in two of these.
   ["division lead with an org row", of([lead], [org]), true],
   ["department head with an admin row", of([head], [admin]), true],
   ["IT lead who is also Project Manager", of([itLead, pm]), true],
@@ -103,23 +106,16 @@ for (const [who, standing, admitted] of CASES) {
   });
 }
 
-test("what someone also holds opens no other page: it only answers this page's rule", () => {
-  for (const key of ["overview", "orders", "members", "activity-log", "faq", "my-profile", "my-account"] as const) {
-    assert.equal(canReach(of([lead], [org]), key), canReach(of([core], [org]), key), key);
-    assert.equal(canReach(of([itLead, pm]), key), canReach(of([itLead]), key), key);
-  }
-});
-
-test("a break-glass account is refused whatever roles its person holds, by the rule, the sidebar and the address", async () => {
-  for (const held of [of([teamLeader, lead]), of([pm]), of([head]), of([itLead, lead], [org])]) {
+test("a break-glass account is admitted whatever roles its person holds, none included, by the rule, the sidebar and the address", async () => {
+  for (const held of [of([]), of([core]), of([teamLeader, lead]), of([pm]), of([head]), of([itLead, lead], [org])]) {
     // `readIdentity` (./database.ts) spreads the break-glass standing last, over the held roles.
     const identity = { ...held, ...BREAK_GLASS_STANDING } as ViewerStanding;
     for (const viewer of [identity, standingOf(identity)]) {
-      assert.equal(canReach(viewer, "meeting-minutes"), false);
+      assert.equal(canReach(viewer, "meeting-minutes"), true);
       const listed = sidebarFor(viewer, { counts: {}, hasShownApplications: true }).some((s) => s.items.some((i) => i.key === "meeting-minutes"));
-      assert.equal(listed, false);
+      assert.equal(listed, true);
       open.openAs(viewer);
-      await assert.rejects(page(), { digest: "NEXT_HTTP_ERROR_FALLBACK;404" });
+      assert.match(renderToStaticMarkup((await page())!), /drive\.google\.com/);
     }
   }
 });

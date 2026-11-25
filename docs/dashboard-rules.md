@@ -43,7 +43,7 @@ An admin column comes later. **Planned**, no issue yet.
 | Alumni | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it under Content |
 | FAQ | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it under Content |
 | Access | No | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
-| Meeting Minutes & Requests ("Minutes & Requests" in the sidebar) | No | No | No | Yes | Yes | The team leader, the Project Manager, the Chief Engineer, and anyone who also heads a department or leads a division (Exception 4) |
+| Meeting Minutes & Requests ("Minutes & Requests" in the sidebar) | No | No | No | Yes | Yes | Yes |
 | Orders | No | No | Only with "Approve orders": every order in the team, under Team; decides, edits nothing | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
 | Activity log | No | No | No | No | No | The IT lead only |
 | My account | User menu only | User menu only | No | No | No | No |
@@ -110,8 +110,7 @@ An admin column comes later. **Planned**, no issue yet.
     not hold it. The Access page lists it as "Logistics Lead".
   - Someone in two seats shows as the higher one: the team leader, the IT lead, the operations
     lead, the Project Manager, the Chief Engineer, then the Logistics lead.
-  - Full access reaches every page in the table, apart from Exceptions 2 and 4, in every department
-    and every division. On
+  - Full access reaches every page in the table, in every department and every division. On
     Access and Orders it sees and acts on the whole team, and it can give any access to anyone.
   - An `admin` or `org` scope row still gives full access, as before.
   - **Exception 1, deciding orders:** by default only the team leader approves, rejects or asks
@@ -132,15 +131,12 @@ An admin column comes later. **Planned**, no issue yet.
     application not to email the applicant (board 97e, ADR 0011 rule 6,
     [#751](https://github.com/PoliTo-Rocket-Team/website-v2/issues/751)). "Rejected · email sent"
     stays open to anyone who can move the application.
-  - **Exception 4, Meeting Minutes & Requests:** of full access only the team leader, the Project
-    Manager and the Chief Engineer reach it, beside every department head and division lead. The
-    operations lead, the IT lead, the Logistics lead and full access from a scope row alone do not,
-    unless they also hold one of those seats or a head or lead role apart from their own seat
-    (`alsoHolds`). The break-glass admin never does, whatever roles they hold, and no grant opens it
-    (`fullAccessSeats` in [lib/dashboard/access.ts](../lib/dashboard/access.ts)). The server checks
-    this before it sends any link, and sends the links to the browser of a viewer it admits. A View
-    as session is checked as the person viewed, as on every page. Google's own sharing settings
-    separately decide who can open each folder and the spreadsheet.
+- **Meeting Minutes & Requests** links to Google Drive and Google Sheets. Full access, the
+  break-glass admin included, every department head and every division lead reach it; no area
+  grant opens it. The server checks this before it sends any link, and sends the links to the
+  browser of a viewer it admits. A View as session is checked as the person viewed, as on every
+  page. Google's own sharing settings separately decide who can open each folder and the
+  spreadsheet.
 - **The team leader's own pages** (boards 72 to 73c, #252). The team leader has full access like
   the operations lead and the IT lead, but some of their pages differ. The operations lead and the
   IT lead keep boards 40 and 46.
