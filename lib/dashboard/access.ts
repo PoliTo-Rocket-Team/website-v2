@@ -211,6 +211,16 @@ export const DASHBOARD_PAGES = [
     reach: ["operations-lead", "department-head", "division-lead"],
   },
   {
+    key: "meeting-minutes",
+    label: "Minutes & Requests",
+    href: "/dashboard/meeting-minutes",
+    // The label is short to fit the sidebar; the page has the full title. For
+    // full access, the break-glass standing included, and every department
+    // head and division lead. No area grant opens it.
+    place: "team",
+    reach: ["operations-lead", "department-head", "division-lead"],
+  },
+  {
     key: "orders",
     label: "Orders",
     href: "/dashboard/orders",

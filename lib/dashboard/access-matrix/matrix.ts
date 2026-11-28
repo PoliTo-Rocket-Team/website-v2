@@ -141,7 +141,7 @@ export function breakGlassViewer(): Viewer {
 export const TEAM_BASE: readonly DashboardPageKey[] = ["overview", "my-applications", "team-tree", "my-profile"];
 /** The editors a Content grant opens (issue #504), the Alumni page among them (Owner decision, 2026-10-22, issue #589). */
 export const CONTENT: readonly DashboardPageKey[] = ["projects", "outreach", "partners", "alumni", "faq", "team-page"];
-export const LEADING: readonly DashboardPageKey[] = ["positions", "applications", "members", "division-access", "orders"];
+export const LEADING: readonly DashboardPageKey[] = ["positions", "applications", "members", "division-access", "meeting-minutes", "orders"];
 export const FULL: readonly DashboardPageKey[] = [...TEAM_BASE, ...LEADING, ...CONTENT];
 export const PAGE_OF_AREA: Readonly<Record<GrantArea, DashboardPageKey>> = { positions: "positions", applications: "applications", members: "members", orders: "orders" };
 export const CHANGE_AREAS: readonly ChangeArea[] = ["positions", "applications", "members"];
